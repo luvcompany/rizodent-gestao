@@ -13,6 +13,7 @@ const navItems = [
   { to: "/pacientes", icon: Users, label: "Pacientes" },
   { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },
   { to: "/marketing", icon: Megaphone, label: "Marketing" },
+  { to: "/procedimentos", icon: Stethoscope, label: "Procedimentos" },
   { to: "/usuarios", icon: Shield, label: "Usuários" },
 ];
 
