@@ -88,7 +88,7 @@ const AppLayout = () => {
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col lg:ml-64">
         <header className="flex h-16 items-center gap-4 border-b border-border px-6">
           <button
             className="text-foreground lg:hidden"
