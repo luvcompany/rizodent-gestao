@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  DollarSign, Users, TrendingUp, Building2, Filter, CalendarIcon,
+  DollarSign, Users, TrendingUp, Building2, Filter, CalendarIcon, Megaphone,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import DashboardFunnel from "@/components/DashboardFunnel";
 
-const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(0, 0%, 50%)"];
+const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(200, 70%, 50%)", "hsl(280, 60%, 55%)"];
 
 const tooltipStyle = { background: "hsl(0,0%,11%)", border: "1px solid hsl(0,0%,20%)", borderRadius: "8px", color: "#fff" };
 
@@ -22,15 +22,29 @@ const formatAxisValue = (v: number) => {
   return String(v);
 };
 
+const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
 const renderBarLabel = (props: any) => {
   const { x, y, width, value } = props;
   if (!value) return null;
+  const label = typeof value === "number" && value >= 1000 ? formatCurrency(value) : String(value);
   return (
-    <text x={x + width / 2} y={y - 6} fill="hsl(0,0%,75%)" textAnchor="middle" fontSize={11} fontWeight={600}>
-      {typeof value === "number" && value >= 1000 ? `R$ ${formatAxisValue(value)}` : value}
+    <text x={x + width / 2} y={y - 6} fill="hsl(0,0%,75%)" textAnchor="middle" fontSize={10} fontWeight={600}>
+      {label}
     </text>
   );
 };
+
+const ChartCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <Card className="gradient-card border-border shadow-card">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+    </CardHeader>
+    <CardContent className="pt-0">
+      {children}
+    </CardContent>
+  </Card>
+);
 
 const Dashboard = () => {
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
@@ -82,8 +96,8 @@ const Dashboard = () => {
   const ticketMedio = filtered.pagamentos.length > 0 ? fatTotal / filtered.pagamentos.length : 0;
 
   const kpis = [
-    { title: "Faturamento no Período", value: `R$ ${fatTotal.toLocaleString("pt-BR")}`, icon: TrendingUp },
-    { title: "Ticket Médio", value: `R$ ${ticketMedio.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`, icon: DollarSign },
+    { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
+    { title: "Ticket Médio", value: formatCurrency(ticketMedio), icon: DollarSign },
     { title: "Pagamentos", value: String(filtered.pagamentos.length), icon: DollarSign },
     { title: "Pacientes", value: String(totalPacientes), icon: Users },
   ];
@@ -92,7 +106,7 @@ const Dashboard = () => {
   const fatClinica = clinicas.map((c) => ({
     name: c.nome.replace("Clínica ", "").replace("Rizodent ", ""),
     value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0),
-  }));
+  })).filter(d => d.value > 0);
 
   // Chart: Faturamento por Procedimento
   const procMap = new Map<string, number>();
@@ -100,12 +114,37 @@ const Dashboard = () => {
     const paid = filtered.pagamentos.filter((p) => p.tratamento_id === t.id).reduce((s, p) => s + Number(p.valor), 0);
     procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + paid);
   });
-  const fatProcedimento = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 6);
+  const fatProcedimento = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
 
-  // Chart: Origem pacientes
-  const origemMap = new Map<string, number>();
-  pacientes.forEach((p) => { const o = p.origem || "Outros"; origemMap.set(o, (origemMap.get(o) || 0) + 1); });
-  const origemData = Array.from(origemMap.entries()).map(([name, value]) => ({ name, value }));
+  // Chart: Faturamento por Especialidade
+  const espMap = new Map<string, number>();
+  filtered.tratamentos.forEach((t) => {
+    const esp = t.especialidade || "Sem Especialidade";
+    const paid = filtered.pagamentos.filter((p) => p.tratamento_id === t.id).reduce((s, p) => s + Number(p.valor), 0);
+    espMap.set(esp, (espMap.get(esp) || 0) + paid);
+  });
+  const fatEspecialidade = Array.from(espMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
+
+  // Chart: Origem dos pacientes (canal)
+  const origemMap = new Map<string, { qtd: number; fat: number }>();
+  pacientes.forEach((p) => {
+    const o = p.origem || "Outros";
+    const entry = origemMap.get(o) || { qtd: 0, fat: 0 };
+    entry.qtd += 1;
+    const fat = filtered.pagamentos.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
+    entry.fat += fat;
+    origemMap.set(o, entry);
+  });
+  const origemData = Array.from(origemMap.entries()).map(([name, { qtd, fat }]) => ({ name, pacientes: qtd, faturamento: fat })).sort((a, b) => b.faturamento - a.faturamento);
+
+  // Chart: Faturamento por Anúncio
+  const anuncioMap = new Map<string, number>();
+  pacientes.forEach((p) => {
+    if (!p.nome_anuncio) return;
+    const paid = filtered.pagamentos.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
+    anuncioMap.set(p.nome_anuncio, (anuncioMap.get(p.nome_anuncio) || 0) + paid);
+  });
+  const anuncioData = Array.from(anuncioMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
 
   // Funnel data
   const funnelTotals = filtered.leads.reduce(
@@ -245,82 +284,91 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Charts */}
+      {/* Charts Row 1 */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="gradient-card border-border shadow-card">
-          <CardHeader><CardTitle className="text-base">Faturamento por Clínica</CardTitle></CardHeader>
-           <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={fatClinica}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={12} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={formatAxisValue} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`R$ ${value.toLocaleString("pt-BR")}`, "Faturamento"]} />
-                <Bar dataKey="value" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <ChartCard title="Faturamento por Clínica">
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={fatClinica} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="value" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
-        <Card className="gradient-card border-border shadow-card">
-          <CardHeader><CardTitle className="text-base">Faturamento por Procedimento</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={fatProcedimento}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} interval={0} angle={-15} textAnchor="end" height={50} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={formatAxisValue} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`R$ ${value.toLocaleString("pt-BR")}`, "Faturamento"]} />
-                <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <ChartCard title="Faturamento por Procedimento">
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={fatProcedimento} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
       </div>
 
+      {/* Charts Row 2 */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="gradient-card border-border shadow-card">
-          <CardHeader><CardTitle className="text-base">Origem dos Pacientes</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={origemData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={12} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} allowDecimals={false} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 12, fontWeight: 600 }}>
-                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        <ChartCard title="Faturamento por Especialidade">
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={fatEspecialidade} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} label={renderBarLabel}>
+                {fatEspecialidade.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
-        <Card className="gradient-card border-border shadow-card">
-          <CardHeader><CardTitle className="text-base">Faturamento por Anúncio</CardTitle></CardHeader>
-          <CardContent>
-            {(() => {
-              const anuncioMap = new Map<string, number>();
-              pacientes.forEach((p) => {
-                if (!p.nome_anuncio) return;
-                const paid = filtered.pagamentos.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
-                anuncioMap.set(p.nome_anuncio, (anuncioMap.get(p.nome_anuncio) || 0) + paid);
-              });
-              const anuncioData = Array.from(anuncioMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
-              return (
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={anuncioData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                    <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} interval={0} angle={-15} textAnchor="end" height={50} />
-                    <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={formatAxisValue} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`R$ ${value.toLocaleString("pt-BR")}`, "Faturamento"]} />
-                    <Bar dataKey="value" fill="hsl(15,90%,45%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
-                  </BarChart>
-                </ResponsiveContainer>
-              );
-            })()}
-          </CardContent>
-        </Card>
+        <ChartCard title="Faturamento por Anúncio">
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={anuncioData} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="value" fill="hsl(15,90%,45%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      {/* Charts Row 3: Canal de Origem */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ChartCard title="Pacientes por Canal de Origem">
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={origemData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} allowDecimals={false} width={40} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Bar dataKey="pacientes" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 11, fontWeight: 600 }}>
+                {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Faturamento por Canal de Origem">
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={origemData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="faturamento" radius={[6, 6, 0, 0]} label={renderBarLabel}>
+                {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
       </div>
     </div>
   );
