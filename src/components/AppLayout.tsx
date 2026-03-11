@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
-  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield,
+  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import logo from "@/assets/logo-rizodent.webp";
@@ -13,6 +13,7 @@ const navItems = [
   { to: "/pacientes", icon: Users, label: "Pacientes" },
   { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },
   { to: "/marketing", icon: Megaphone, label: "Marketing" },
+  { to: "/procedimentos", icon: Stethoscope, label: "Procedimentos" },
   { to: "/usuarios", icon: Shield, label: "Usuários" },
 ];
 

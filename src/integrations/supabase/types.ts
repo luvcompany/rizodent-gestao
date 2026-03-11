@@ -218,6 +218,36 @@ export type Database = {
         }
         Relationships: []
       }
+      tipos_procedimento: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          descricao: string | null
+          id: string
+          nome: string
+          updated_at: string
+          valor_referencia: number | null
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          nome: string
+          updated_at?: string
+          valor_referencia?: number | null
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          nome?: string
+          updated_at?: string
+          valor_referencia?: number | null
+        }
+        Relationships: []
+      }
       tratamentos: {
         Row: {
           clinica_id: string

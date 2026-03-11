@@ -13,6 +13,7 @@ import Relatorios from "./pages/Relatorios";
 import Marketing from "./pages/Marketing";
 import CadastroLeads from "./pages/CadastroLeads";
 import Usuarios from "./pages/Usuarios";
+import TiposProcedimento from "./pages/TiposProcedimento";
 import AppLayout from "./components/AppLayout";
 import NotFound from "./pages/NotFound";
 
@@ -41,6 +42,7 @@ const App = () => (
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/leads" element={<CadastroLeads />} />
               <Route path="/usuarios" element={<Usuarios />} />
+              <Route path="/procedimentos" element={<TiposProcedimento />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
