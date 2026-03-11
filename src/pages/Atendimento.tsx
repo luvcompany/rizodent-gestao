@@ -504,8 +504,6 @@ const Atendimento = () => {
                   {procedimentos.map((proc, index) => {
                     const espDisp = getEspecialidadesDisponiveis(proc.procedimento);
                     const temMultiplas = espDisp.length > 1;
-                    const valorOrcado = parseCurrency(proc.valorOrcado);
-                    const valorNaoContratado = parseCurrency(proc.valorNaoContratado);
 
                     return (
                       <Card key={proc.id} className="border-border bg-secondary/30">
@@ -549,37 +547,38 @@ const Atendimento = () => {
                               )}
                             </div>
                           </div>
-
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Valor Orçado (R$)</Label>
-                              <Input
-                                inputMode="numeric"
-                                placeholder="R$ 0,00"
-                                value={proc.valorOrcado}
-                                onChange={(e) => updateProcedimento(index, "valorOrcado", formatCurrencyInput(e.target.value))}
-                                className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Não Contratado (R$)</Label>
-                              <Input
-                                inputMode="numeric"
-                                placeholder="R$ 0,00"
-                                value={proc.valorNaoContratado}
-                                onChange={(e) => updateProcedimento(index, "valorNaoContratado", formatCurrencyInput(e.target.value))}
-                                className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Contratado (R$)</Label>
-                              <Input readOnly value={formatCurrencyDisplay(valorOrcado - valorNaoContratado)} className="bg-muted border-border cursor-not-allowed text-sm" />
-                            </div>
-                          </div>
                         </CardContent>
                       </Card>
                     );
                   })}
+                </div>
+
+                {/* Valores gerais do orçamento */}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Valor Orçado (R$)</Label>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="R$ 0,00"
+                      value={valorOrcadoGeral}
+                      onChange={(e) => setValorOrcadoGeral(formatCurrencyInput(e.target.value))}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Não Contratado (R$)</Label>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="R$ 0,00"
+                      value={valorNaoContratado}
+                      onChange={(e) => setValorNaoContratado(formatCurrencyInput(e.target.value))}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contratado (R$)</Label>
+                    <Input readOnly value={formatCurrencyDisplay(parseCurrency(valorOrcadoGeral) - parseCurrency(valorNaoContratado))} className="bg-muted border-border cursor-not-allowed text-sm" />
+                  </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
