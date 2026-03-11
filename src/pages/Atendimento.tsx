@@ -140,7 +140,7 @@ const Atendimento = () => {
       if (tratError) throw tratError;
 
       // Create pagamento if value > 0
-      if (valorPago && parseFloat(valorPago) > 0) {
+      if (valorPago && parseCurrency(valorPago) > 0) {
         const { error: pagError } = await supabase
           .from("pagamentos")
           .insert({
