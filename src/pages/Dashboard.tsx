@@ -49,6 +49,9 @@ const ChartCard = ({ title, children }: { title: string; children: React.ReactNo
 const Dashboard = () => {
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaFiltro, setClinicaFiltro] = useState("todas");
+  const [procedimentoFiltro, setProcedimentoFiltro] = useState("todos");
+  const [especialidadeFiltro, setEspecialidadeFiltro] = useState("todas");
+  const [canalFiltro, setCanalFiltro] = useState("todos");
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
@@ -79,20 +82,68 @@ const Dashboard = () => {
     fetchAll();
   }, []);
 
+  // Unique values for filter dropdowns
+  const procedimentosUnicos = useMemo(() => {
+    const set = new Set(tratamentos.map(t => t.procedimento).filter(Boolean));
+    return Array.from(set).sort();
+  }, [tratamentos]);
+
+  const especialidadesUnicas = useMemo(() => {
+    const set = new Set(tratamentos.map(t => t.especialidade).filter(Boolean));
+    return Array.from(set).sort();
+  }, [tratamentos]);
+
+  const canaisUnicos = useMemo(() => {
+    const set = new Set(pacientes.map(p => p.origem).filter(Boolean));
+    return Array.from(set).sort();
+  }, [pacientes]);
+
   const filtered = useMemo(() => {
     const filterByClinica = (items: any[]) =>
       clinicaFiltro === "todas" ? items : items.filter((i) => i.clinica_id === clinicaFiltro);
     const filterByDate = (items: any[], dateField: string) =>
       items.filter((i) => i[dateField] >= dateFrom && i[dateField] <= dateTo);
+
+    // Filter tratamentos by clinica, procedimento, especialidade
+    let filteredTratamentos = filterByClinica(tratamentos);
+    if (procedimentoFiltro !== "todos") {
+      filteredTratamentos = filteredTratamentos.filter(t => t.procedimento === procedimentoFiltro);
+    }
+    if (especialidadeFiltro !== "todas") {
+      filteredTratamentos = filteredTratamentos.filter(t => t.especialidade === especialidadeFiltro);
+    }
+
+    const tratamentoIds = new Set(filteredTratamentos.map(t => t.id));
+    const pacienteIds = new Set(filteredTratamentos.map(t => t.paciente_id));
+
+    // Filter pacientes by canal
+    let filteredPacientes = pacientes;
+    if (canalFiltro !== "todos") {
+      filteredPacientes = pacientes.filter(p => (p.origem || "Outros") === canalFiltro);
+      // Further restrict tratamentos/pagamentos to only these pacientes
+      const canalPacienteIds = new Set(filteredPacientes.map(p => p.id));
+      filteredTratamentos = filteredTratamentos.filter(t => canalPacienteIds.has(t.paciente_id));
+    }
+
+    const finalTratamentoIds = new Set(filteredTratamentos.map(t => t.id));
+    const finalPacienteIds = new Set(filteredTratamentos.map(t => t.paciente_id));
+
+    let filteredPagamentos = filterByDate(filterByClinica(pagamentos), "data_pagamento");
+    // Only include pagamentos linked to filtered tratamentos
+    if (procedimentoFiltro !== "todos" || especialidadeFiltro !== "todas" || canalFiltro !== "todos") {
+      filteredPagamentos = filteredPagamentos.filter(p => finalTratamentoIds.has(p.tratamento_id));
+    }
+
     return {
-      pagamentos: filterByDate(filterByClinica(pagamentos), "data_pagamento"),
-      tratamentos: filterByClinica(tratamentos),
+      pagamentos: filteredPagamentos,
+      tratamentos: filteredTratamentos,
       leads: filterByDate(filterByClinica(leadsData), "data"),
+      pacientes: filteredPacientes,
     };
-  }, [clinicaFiltro, pagamentos, tratamentos, leadsData, dateFrom, dateTo]);
+  }, [clinicaFiltro, procedimentoFiltro, especialidadeFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo]);
 
   const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
-  const totalPacientes = clinicaFiltro === "todas" ? pacientes.length : filtered.tratamentos.reduce((s, t) => { s.add(t.paciente_id); return s; }, new Set()).size;
+  const totalPacientes = new Set(filtered.tratamentos.map(t => t.paciente_id)).size;
   const ticketMedio = filtered.pagamentos.length > 0 ? fatTotal / filtered.pagamentos.length : 0;
 
   const kpis = [
@@ -127,7 +178,7 @@ const Dashboard = () => {
 
   // Chart: Origem dos pacientes (canal)
   const origemMap = new Map<string, { qtd: number; fat: number }>();
-  pacientes.forEach((p) => {
+  filtered.pacientes.forEach((p) => {
     const o = p.origem || "Outros";
     const entry = origemMap.get(o) || { qtd: 0, fat: 0 };
     entry.qtd += 1;
@@ -139,7 +190,7 @@ const Dashboard = () => {
 
   // Chart: Faturamento por Anúncio
   const anuncioMap = new Map<string, number>();
-  pacientes.forEach((p) => {
+  filtered.pacientes.forEach((p) => {
     if (!p.nome_anuncio) return;
     const paid = filtered.pagamentos.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
     anuncioMap.set(p.nome_anuncio, (anuncioMap.get(p.nome_anuncio) || 0) + paid);
@@ -168,6 +219,12 @@ const Dashboard = () => {
     { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[4] },
   ];
 
+  // Which filters are active — hide corresponding chart
+  const showClinicaChart = clinicaFiltro === "todas";
+  const showProcedimentoChart = procedimentoFiltro === "todos";
+  const showEspecialidadeChart = especialidadeFiltro === "todas";
+  const showCanalChart = canalFiltro === "todos";
+
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando dados...</div>;
   }
@@ -184,7 +241,7 @@ const Dashboard = () => {
       {/* Filters */}
       <Card className="gradient-card border-border shadow-card">
         <CardContent className="pt-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Clínica</Label>
               <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
@@ -200,6 +257,51 @@ const Dashboard = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Procedimento</Label>
+              <Select value={procedimentoFiltro} onValueChange={setProcedimentoFiltro}>
+                <SelectTrigger className="bg-secondary border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os Procedimentos</SelectItem>
+                  {procedimentosUnicos.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Especialidade</Label>
+              <Select value={especialidadeFiltro} onValueChange={setEspecialidadeFiltro}>
+                <SelectTrigger className="bg-secondary border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as Especialidades</SelectItem>
+                  {especialidadesUnicas.map((e) => (
+                    <SelectItem key={e} value={e}>{e}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Canal de Origem</Label>
+              <Select value={canalFiltro} onValueChange={setCanalFiltro}>
+                <SelectTrigger className="bg-secondary border-border">
+                  <Megaphone size={16} className="mr-2 text-primary" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os Canais</SelectItem>
+                  {canaisUnicos.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-4">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Data Início</Label>
               <div className="relative">
@@ -284,48 +386,51 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Charts Row 1 */}
+      {/* Charts - dynamically shown based on active filters */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <ChartCard title="Faturamento por Clínica">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={fatClinica} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="value" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+        {showClinicaChart && (
+          <ChartCard title="Faturamento por Clínica">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={fatClinica} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+                <Bar dataKey="value" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
 
-        <ChartCard title="Faturamento por Procedimento">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={fatProcedimento} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </div>
+        {showProcedimentoChart && (
+          <ChartCard title="Faturamento por Procedimento">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={fatProcedimento} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+                <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
 
-      {/* Charts Row 2 */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ChartCard title="Faturamento por Especialidade">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={fatEspecialidade} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]} label={renderBarLabel}>
-                {fatEspecialidade.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+        {showEspecialidadeChart && (
+          <ChartCard title="Faturamento por Especialidade">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={fatEspecialidade} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} label={renderBarLabel}>
+                  {fatEspecialidade.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
 
         <ChartCard title="Faturamento por Anúncio">
           <ResponsiveContainer width="100%" height={280}>
@@ -338,37 +443,38 @@ const Dashboard = () => {
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
-      </div>
 
-      {/* Charts Row 3: Canal de Origem */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ChartCard title="Pacientes por Canal de Origem">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={origemData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} allowDecimals={false} width={40} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Bar dataKey="pacientes" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 11, fontWeight: 600 }}>
-                {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+        {showCanalChart && (
+          <ChartCard title="Pacientes por Canal de Origem">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={origemData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} allowDecimals={false} width={40} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="pacientes" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 11, fontWeight: 600 }}>
+                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
 
-        <ChartCard title="Faturamento por Canal de Origem">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={origemData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="faturamento" radius={[6, 6, 0, 0]} label={renderBarLabel}>
-                {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
+        {showCanalChart && (
+          <ChartCard title="Faturamento por Canal de Origem">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={origemData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+                <Bar dataKey="faturamento" radius={[6, 6, 0, 0]} label={renderBarLabel}>
+                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        )}
       </div>
     </div>
   );
