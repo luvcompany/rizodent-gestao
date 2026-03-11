@@ -23,7 +23,7 @@ const Atendimento = () => {
   const [cidade, setCidade] = useState("");
   const [procedimento, setProcedimento] = useState("");
   const [valorOrcado, setValorOrcado] = useState("");
-  const [valorContratado, setValorContratado] = useState("");
+  const [valorNaoContratado, setValorNaoContratado] = useState("");
   const [valorPago, setValorPago] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("");
