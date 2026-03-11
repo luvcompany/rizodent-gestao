@@ -145,11 +145,15 @@ const Dashboard = () => {
   }, [clinicaFiltro, procedimentoFiltro, especialidadeFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo]);
 
   const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
+  const fatNovos = filtered.pagamentos.filter(p => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
+  const fatRecorrentes = filtered.pagamentos.filter(p => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
   const totalPacientes = new Set(filtered.tratamentos.map(t => t.paciente_id)).size;
   const ticketMedio = filtered.pagamentos.length > 0 ? fatTotal / filtered.pagamentos.length : 0;
 
   const kpis = [
     { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
+    { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
+    { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
     { title: "Ticket Médio", value: formatCurrency(ticketMedio), icon: DollarSign },
     { title: "Pagamentos", value: String(filtered.pagamentos.length), icon: DollarSign },
     { title: "Pacientes", value: String(totalPacientes), icon: Users },
@@ -327,8 +331,8 @@ const Dashboard = () => {
       </Card>
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((kpi) => (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {kpis.map((kpi: any) => (
           <Card key={kpi.title} className="gradient-card border-border shadow-card">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{kpi.title}</CardTitle>
@@ -338,6 +342,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{kpi.value}</div>
+              {kpi.subtitle && <p className="text-xs text-muted-foreground mt-0.5">{kpi.subtitle}</p>}
             </CardContent>
           </Card>
         ))}
