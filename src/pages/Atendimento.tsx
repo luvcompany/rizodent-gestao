@@ -222,10 +222,16 @@ const Atendimento = () => {
 
             <div className="space-y-2">
               <Label>Procedimento</Label>
-              <Select value={procedimento} onValueChange={setProcedimento}>
+              <Select value={procedimento} onValueChange={(v) => {
+                setProcedimento(v);
+                const tp = tiposProcedimento.find(t => t.nome === v);
+                if (tp && tp.valor_referencia && !valorOrcado) {
+                  setValorOrcado(tp.valor_referencia.toString());
+                }
+              }}>
                 <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione o procedimento" /></SelectTrigger>
                 <SelectContent>
-                  {procedimentos.map((p) => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
+                  {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
