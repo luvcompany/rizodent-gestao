@@ -243,7 +243,7 @@ const Atendimento = () => {
                 setProcedimento(v);
                 const tp = tiposProcedimento.find(t => t.nome === v);
                 if (tp && tp.valor_referencia && !valorOrcado) {
-                  setValorOrcado(tp.valor_referencia.toString());
+                  setValorOrcado(formatCurrencyDisplay(tp.valor_referencia));
                 }
               }}>
                 <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione o procedimento" /></SelectTrigger>
