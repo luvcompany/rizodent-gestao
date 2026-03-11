@@ -13,6 +13,23 @@ import type { Tables } from "@/integrations/supabase/types";
 const formasPagamento = ["Dinheiro", "Pix", "Cartão de Crédito", "Cartão de Débito", "Boleto", "Financiamento"];
 const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
+const formatCurrencyInput = (value: string): string => {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  const num = parseInt(digits, 10) / 100;
+  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+};
+
+const parseCurrency = (value: string): number => {
+  if (!value) return 0;
+  const digits = value.replace(/\D/g, "");
+  return parseInt(digits || "0", 10) / 100;
+};
+
+const formatCurrencyDisplay = (value: number): string => {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+};
+
 const Atendimento = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
@@ -23,7 +40,7 @@ const Atendimento = () => {
   const [cidade, setCidade] = useState("");
   const [procedimento, setProcedimento] = useState("");
   const [valorOrcado, setValorOrcado] = useState("");
-  const [valorContratado, setValorContratado] = useState("");
+  const [valorNaoContratado, setValorNaoContratado] = useState("");
   const [valorPago, setValorPago] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("");
@@ -80,7 +97,7 @@ const Atendimento = () => {
 
   const resetForm = () => {
     setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
-    setProcedimento(""); setValorOrcado(""); setValorContratado("");
+    setProcedimento(""); setValorOrcado(""); setValorNaoContratado("");
     setValorPago(""); setFormaPagamento(""); setTipoPagamento("");
     setOrigem(""); setNomeAnuncio(""); setPacienteSelecionadoId(null);
   };
@@ -114,8 +131,8 @@ const Atendimento = () => {
           paciente_id: pacienteId,
           clinica_id: clinicaId,
           procedimento,
-          valor_orcado: valorOrcado ? parseFloat(valorOrcado) : 0,
-          valor_contratado: valorContratado ? parseFloat(valorContratado) : 0,
+          valor_orcado: parseCurrency(valorOrcado),
+          valor_contratado: parseCurrency(valorOrcado) - parseCurrency(valorNaoContratado),
           created_by: user?.id,
         })
         .select("id")
@@ -123,14 +140,14 @@ const Atendimento = () => {
       if (tratError) throw tratError;
 
       // Create pagamento if value > 0
-      if (valorPago && parseFloat(valorPago) > 0) {
+      if (valorPago && parseCurrency(valorPago) > 0) {
         const { error: pagError } = await supabase
           .from("pagamentos")
           .insert({
             tratamento_id: trat.id,
             paciente_id: pacienteId,
             clinica_id: clinicaId,
-            valor: parseFloat(valorPago),
+            valor: parseCurrency(valorPago),
             forma_pagamento: formaPagamento || "Pix",
             tipo: tipoPagamento || "primeiro",
             created_by: user?.id,
@@ -226,7 +243,7 @@ const Atendimento = () => {
                 setProcedimento(v);
                 const tp = tiposProcedimento.find(t => t.nome === v);
                 if (tp && tp.valor_referencia && !valorOrcado) {
-                  setValorOrcado(tp.valor_referencia.toString());
+                  setValorOrcado(formatCurrencyDisplay(tp.valor_referencia));
                 }
               }}>
                 <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione o procedimento" /></SelectTrigger>
@@ -236,18 +253,22 @@ const Atendimento = () => {
               </Select>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Valor Orçado (R$)</Label>
-                <Input type="number" placeholder="0,00" value={valorOrcado} onChange={(e) => setValorOrcado(e.target.value)} className="bg-secondary border-border" />
+                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorOrcado} onChange={(e) => setValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+              </div>
+              <div className="space-y-2">
+                <Label>Valor Não Contratado (R$)</Label>
+                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorNaoContratado} onChange={(e) => setValorNaoContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
               </div>
               <div className="space-y-2">
                 <Label>Valor Contratado (R$)</Label>
-                <Input type="number" placeholder="0,00" value={valorContratado} onChange={(e) => setValorContratado(e.target.value)} className="bg-secondary border-border" />
+                <Input readOnly value={formatCurrencyDisplay(parseCurrency(valorOrcado) - parseCurrency(valorNaoContratado))} className="bg-muted border-border cursor-not-allowed" />
               </div>
               <div className="space-y-2">
                 <Label>Valor Pago no Dia (R$)</Label>
-                <Input type="number" placeholder="0,00" value={valorPago} onChange={(e) => setValorPago(e.target.value)} className="bg-secondary border-border" />
+                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
               </div>
             </div>
 
