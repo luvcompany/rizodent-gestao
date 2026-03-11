@@ -66,6 +66,7 @@ const Atendimento = () => {
   const [formaPagamento, setFormaPagamento] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("");
   const [origem, setOrigem] = useState("");
+  const [valorPago, setValorPago] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
