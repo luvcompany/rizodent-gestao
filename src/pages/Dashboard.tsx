@@ -145,11 +145,15 @@ const Dashboard = () => {
   }, [clinicaFiltro, procedimentoFiltro, especialidadeFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo]);
 
   const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
+  const fatNovos = filtered.pagamentos.filter(p => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
+  const fatRecorrentes = filtered.pagamentos.filter(p => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
   const totalPacientes = new Set(filtered.tratamentos.map(t => t.paciente_id)).size;
   const ticketMedio = filtered.pagamentos.length > 0 ? fatTotal / filtered.pagamentos.length : 0;
 
   const kpis = [
     { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
+    { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
+    { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
     { title: "Ticket Médio", value: formatCurrency(ticketMedio), icon: DollarSign },
     { title: "Pagamentos", value: String(filtered.pagamentos.length), icon: DollarSign },
     { title: "Pacientes", value: String(totalPacientes), icon: Users },
