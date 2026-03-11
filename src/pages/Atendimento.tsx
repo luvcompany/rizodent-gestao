@@ -37,6 +37,9 @@ const Atendimento = () => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
       if (data) setClinicas(data);
     });
+    supabase.from("tipos_procedimento").select("id, nome, valor_referencia").eq("ativo", true).order("nome").then(({ data }) => {
+      if (data) setTiposProcedimento(data as any);
+    });
   }, []);
 
   const formatPhone = (value: string) => {
