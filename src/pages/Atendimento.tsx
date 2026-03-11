@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Search, UserCheck } from "lucide-react";
+import { Save, Search, UserCheck, CalendarIcon, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -46,8 +46,10 @@ const Atendimento = () => {
   const [tipoPagamento, setTipoPagamento] = useState("");
   const [origem, setOrigem] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
+  const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
+  const [tratamentosExistentes, setTratamentosExistentes] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -70,6 +72,7 @@ const Atendimento = () => {
     const formatted = formatPhone(value);
     setTelefone(formatted);
     setPacienteSelecionadoId(null);
+    setTratamentosExistentes([]);
 
     const digits = value.replace(/\D/g, "");
     if (digits.length >= 4) {
@@ -84,7 +87,28 @@ const Atendimento = () => {
     }
   };
 
-  const selecionarPaciente = (pac: Tables<"pacientes">) => {
+  const carregarTratamentos = async (pacienteId: string) => {
+    const { data } = await supabase
+      .from("tratamentos")
+      .select("*, clinicas(nome)")
+      .eq("paciente_id", pacienteId)
+      .order("created_at", { ascending: false });
+
+    if (data) {
+      // For each tratamento, get total paid
+      const enriched = await Promise.all(data.map(async (t) => {
+        const { data: pags } = await supabase
+          .from("pagamentos")
+          .select("valor")
+          .eq("tratamento_id", t.id);
+        const totalPago = pags?.reduce((s, p) => s + Number(p.valor), 0) || 0;
+        return { ...t, totalPago };
+      }));
+      setTratamentosExistentes(enriched);
+    }
+  };
+
+  const selecionarPaciente = async (pac: Tables<"pacientes">) => {
     setTelefone(pac.telefone);
     setNome(pac.nome);
     setCidade(pac.cidade || "");
@@ -92,6 +116,7 @@ const Atendimento = () => {
     setNomeAnuncio(pac.nome_anuncio || "");
     setPacienteSelecionadoId(pac.id);
     setSugestoes([]);
+    await carregarTratamentos(pac.id);
     toast.success(`Paciente ${pac.nome} selecionado!`);
   };
 
@@ -100,6 +125,8 @@ const Atendimento = () => {
     setProcedimento(""); setValorOrcado(""); setValorNaoContratado("");
     setValorPago(""); setFormaPagamento(""); setTipoPagamento("");
     setOrigem(""); setNomeAnuncio(""); setPacienteSelecionadoId(null);
+    setDataPagamento(new Date().toISOString().split("T")[0]);
+    setTratamentosExistentes([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,7 +140,6 @@ const Atendimento = () => {
     try {
       let pacienteId = pacienteSelecionadoId;
 
-      // Create patient if new
       if (!pacienteId) {
         const { data: newPac, error } = await supabase
           .from("pacientes")
@@ -124,7 +150,6 @@ const Atendimento = () => {
         pacienteId = newPac.id;
       }
 
-      // Create tratamento
       const { data: trat, error: tratError } = await supabase
         .from("tratamentos")
         .insert({
@@ -139,7 +164,6 @@ const Atendimento = () => {
         .single();
       if (tratError) throw tratError;
 
-      // Create pagamento if value > 0
       if (valorPago && parseCurrency(valorPago) > 0) {
         const { error: pagError } = await supabase
           .from("pagamentos")
@@ -150,6 +174,7 @@ const Atendimento = () => {
             valor: parseCurrency(valorPago),
             forma_pagamento: formaPagamento || "Pix",
             tipo: tipoPagamento || "primeiro",
+            data_pagamento: dataPagamento,
             created_by: user?.id,
           });
         if (pagError) throw pagError;
@@ -212,6 +237,27 @@ const Atendimento = () => {
               )}
             </div>
 
+            {/* Existing treatments info */}
+            {pacienteSelecionadoId && tratamentosExistentes.length > 0 && (
+              <Card className="border-primary/30 bg-primary/5">
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
+                    <FileText size={14} /> Tratamentos existentes ({tratamentosExistentes.length})
+                  </p>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {tratamentosExistentes.map((t) => (
+                      <div key={t.id} className="flex justify-between text-xs text-muted-foreground">
+                        <span>{t.procedimento} — {(t.clinicas as any)?.nome}</span>
+                        <span className="text-foreground font-medium">
+                          Pago: {formatCurrencyDisplay(t.totalPago)} / {formatCurrencyDisplay(Number(t.valor_contratado || 0))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="space-y-2">
               <Label>Nome do Paciente</Label>
               <Input placeholder="Nome completo" value={nome} onChange={(e) => setNome(e.target.value)} className="bg-secondary border-border" required />
@@ -267,12 +313,19 @@ const Atendimento = () => {
                 <Input readOnly value={formatCurrencyDisplay(parseCurrency(valorOrcado) - parseCurrency(valorNaoContratado))} className="bg-muted border-border cursor-not-allowed" />
               </div>
               <div className="space-y-2">
-                <Label>Valor Pago no Dia (R$)</Label>
+                <Label>Valor Pago (R$)</Label>
                 <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Data do Pagamento</Label>
+                <div className="relative">
+                  <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label>Forma de Pagamento</Label>
                 <Select value={formaPagamento} onValueChange={setFormaPagamento}>
