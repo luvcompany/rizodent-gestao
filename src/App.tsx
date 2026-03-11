@@ -11,6 +11,8 @@ import Atendimento from "./pages/Atendimento";
 import Pacientes from "./pages/Pacientes";
 import Relatorios from "./pages/Relatorios";
 import Marketing from "./pages/Marketing";
+import CadastroLeads from "./pages/CadastroLeads";
+import Usuarios from "./pages/Usuarios";
 import AppLayout from "./components/AppLayout";
 import NotFound from "./pages/NotFound";
 
@@ -37,6 +39,8 @@ const App = () => (
               <Route path="/pacientes" element={<Pacientes />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/marketing" element={<Marketing />} />
+              <Route path="/leads" element={<CadastroLeads />} />
+              <Route path="/usuarios" element={<Usuarios />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
