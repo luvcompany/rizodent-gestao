@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Search, UserCheck, CalendarIcon, FileText, Plus, CreditCard } from "lucide-react";
+import { Save, Search, UserCheck, CalendarIcon, FileText, Plus, CreditCard, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,6 +40,22 @@ interface TipoProcedimento {
   especialidade_secundaria: string | null;
 }
 
+interface ProcedimentoEntry {
+  id: string;
+  procedimento: string;
+  especialidade: string;
+  valorOrcado: string;
+  valorNaoContratado: string;
+}
+
+const createEmptyProcedimento = (): ProcedimentoEntry => ({
+  id: crypto.randomUUID(),
+  procedimento: "",
+  especialidade: "",
+  valorOrcado: "",
+  valorNaoContratado: "",
+});
+
 const Atendimento = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
@@ -48,10 +64,7 @@ const Atendimento = () => {
   const [nome, setNome] = useState("");
   const [clinicaId, setClinicaId] = useState("");
   const [cidade, setCidade] = useState("");
-  const [procedimento, setProcedimento] = useState("");
-  const [especialidade, setEspecialidade] = useState("");
-  const [valorOrcado, setValorOrcado] = useState("");
-  const [valorNaoContratado, setValorNaoContratado] = useState("");
+  const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
   const [valorPago, setValorPago] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("");
@@ -65,6 +78,9 @@ const Atendimento = () => {
   const [modo, setModo] = useState<ModoAtendimento>("selecionar");
   const [tratamentoSelecionadoId, setTratamentoSelecionadoId] = useState<string | null>(null);
 
+  // Legacy single-procedure state for payment mode
+  const [procedimentoPayment, setProcedimentoPayment] = useState("");
+
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
       if (data) setClinicas(data);
@@ -74,18 +90,15 @@ const Atendimento = () => {
     });
   }, []);
 
-  // Get available specialties for selected procedure
-  const especialidadesDisponiveis = (() => {
-    if (!procedimento) return [];
-    const tp = tiposProcedimento.find(t => t.nome === procedimento);
+  const getEspecialidadesDisponiveis = (procNome: string) => {
+    if (!procNome) return [];
+    const tp = tiposProcedimento.find(t => t.nome === procNome);
     if (!tp) return [];
     const list: string[] = [];
     if (tp.especialidade) list.push(tp.especialidade);
     if (tp.especialidade_secundaria) list.push(tp.especialidade_secundaria);
     return list;
-  })();
-
-  const temMultiplasEspecialidades = especialidadesDisponiveis.length > 1;
+  };
 
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, "");
@@ -153,7 +166,7 @@ const Atendimento = () => {
     setTratamentoSelecionadoId(tratamento.id);
     setModo("novo_pagamento");
     setClinicaId(tratamento.clinica_id);
-    setProcedimento(tratamento.procedimento);
+    setProcedimentoPayment(tratamento.procedimento);
     const cl = clinicas.find(c => c.id === tratamento.clinica_id);
     if (cl) setCidade(cl.cidade);
     toast.info(`Registrar pagamento para: ${tratamento.procedimento}`);
@@ -163,38 +176,48 @@ const Atendimento = () => {
     setModo("novo_tratamento");
     setTratamentoSelecionadoId(null);
     setClinicaId("");
-    setProcedimento("");
-    setEspecialidade("");
-    setValorOrcado("");
-    setValorNaoContratado("");
+    setProcedimentos([createEmptyProcedimento()]);
     setCidade("");
   };
 
   const resetForm = () => {
     setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
-    setProcedimento(""); setEspecialidade(""); setValorOrcado(""); setValorNaoContratado("");
+    setProcedimentos([createEmptyProcedimento()]);
     setValorPago(""); setFormaPagamento(""); setTipoPagamento("");
     setOrigem(""); setNomeAnuncio(""); setPacienteSelecionadoId(null);
     setDataPagamento(new Date().toISOString().split("T")[0]);
     setTratamentosExistentes([]);
     setModo("selecionar");
     setTratamentoSelecionadoId(null);
+    setProcedimentoPayment("");
   };
 
-  const handleProcedimentoChange = (v: string) => {
-    setProcedimento(v);
-    const tp = tiposProcedimento.find(t => t.nome === v);
-    if (tp) {
-      if (tp.valor_referencia && !valorOrcado) {
-        setValorOrcado(formatCurrencyDisplay(tp.valor_referencia));
+  const updateProcedimento = (index: number, field: keyof ProcedimentoEntry, value: string) => {
+    setProcedimentos(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+
+      // Auto-select single specialty when changing procedimento
+      if (field === "procedimento") {
+        const tp = tiposProcedimento.find(t => t.nome === value);
+        if (tp && tp.especialidade && !tp.especialidade_secundaria) {
+          updated[index].especialidade = tp.especialidade;
+        } else {
+          updated[index].especialidade = "";
+        }
       }
-      // Auto-select specialty if only one
-      if (tp.especialidade && !tp.especialidade_secundaria) {
-        setEspecialidade(tp.especialidade);
-      } else {
-        setEspecialidade("");
-      }
-    }
+
+      return updated;
+    });
+  };
+
+  const addProcedimento = () => {
+    setProcedimentos(prev => [...prev, createEmptyProcedimento()]);
+  };
+
+  const removeProcedimento = (index: number) => {
+    if (procedimentos.length <= 1) return;
+    setProcedimentos(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -235,14 +258,25 @@ const Atendimento = () => {
     }
 
     // New treatment flow
-    if (!clinicaId || !procedimento) {
-      toast.error("Preencha clínica e procedimento.");
+    if (!clinicaId) {
+      toast.error("Selecione a clínica.");
       return;
     }
-    if (especialidadesDisponiveis.length > 0 && !especialidade) {
-      toast.error("Selecione a especialidade.");
-      return;
+
+    // Validate all procedures
+    for (let i = 0; i < procedimentos.length; i++) {
+      const p = procedimentos[i];
+      if (!p.procedimento) {
+        toast.error(`Selecione o procedimento ${i + 1}.`);
+        return;
+      }
+      const espDisp = getEspecialidadesDisponiveis(p.procedimento);
+      if (espDisp.length > 0 && !p.especialidade) {
+        toast.error(`Selecione a especialidade do procedimento "${p.procedimento}".`);
+        return;
+      }
     }
+
     setSaving(true);
 
     try {
@@ -258,38 +292,45 @@ const Atendimento = () => {
         pacienteId = newPac.id;
       }
 
-      const { data: trat, error: tratError } = await supabase
-        .from("tratamentos")
-        .insert({
-          paciente_id: pacienteId,
-          clinica_id: clinicaId,
-          procedimento,
-          especialidade: especialidade || null,
-          valor_orcado: parseCurrency(valorOrcado),
-          valor_contratado: parseCurrency(valorOrcado) - parseCurrency(valorNaoContratado),
-          created_by: user?.id,
-        })
-        .select("id")
-        .single();
-      if (tratError) throw tratError;
+      // Create all treatments
+      for (const proc of procedimentos) {
+        const valorOrcado = parseCurrency(proc.valorOrcado);
+        const valorNaoContratado = parseCurrency(proc.valorNaoContratado);
 
-      if (valorPago && parseCurrency(valorPago) > 0) {
-        const { error: pagError } = await supabase
-          .from("pagamentos")
+        const { data: trat, error: tratError } = await supabase
+          .from("tratamentos")
           .insert({
-            tratamento_id: trat.id,
             paciente_id: pacienteId,
             clinica_id: clinicaId,
-            valor: parseCurrency(valorPago),
-            forma_pagamento: formaPagamento || "Pix",
-            tipo: tipoPagamento || "primeiro",
-            data_pagamento: dataPagamento,
+            procedimento: proc.procedimento,
+            especialidade: proc.especialidade || null,
+            valor_orcado: valorOrcado,
+            valor_contratado: valorOrcado - valorNaoContratado,
             created_by: user?.id,
-          });
-        if (pagError) throw pagError;
+          })
+          .select("id")
+          .single();
+        if (tratError) throw tratError;
+
+        // Only add payment to first procedure if valor pago is set
+        if (proc === procedimentos[0] && valorPago && parseCurrency(valorPago) > 0) {
+          const { error: pagError } = await supabase
+            .from("pagamentos")
+            .insert({
+              tratamento_id: trat.id,
+              paciente_id: pacienteId,
+              clinica_id: clinicaId,
+              valor: parseCurrency(valorPago),
+              forma_pagamento: formaPagamento || "Pix",
+              tipo: tipoPagamento || "primeiro",
+              data_pagamento: dataPagamento,
+              created_by: user?.id,
+            });
+          if (pagError) throw pagError;
+        }
       }
 
-      toast.success("Atendimento registrado com sucesso!");
+      toast.success(`${procedimentos.length > 1 ? `${procedimentos.length} procedimentos registrados` : "Atendimento registrado"} com sucesso!`);
       resetForm();
     } catch (err: any) {
       toast.error("Erro ao salvar: " + err.message);
@@ -450,48 +491,97 @@ const Atendimento = () => {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Procedimento</Label>
-                    <Select value={procedimento} onValueChange={handleProcedimentoChange}>
-                      <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione o procedimento" /></SelectTrigger>
-                      <SelectContent>
-                        {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
+                {/* Procedures list */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">Procedimentos</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addProcedimento} className="gap-1 text-xs">
+                      <Plus size={14} /> Adicionar Procedimento
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Especialidade</Label>
-                    {temMultiplasEspecialidades ? (
-                      <Select value={especialidade} onValueChange={setEspecialidade}>
-                        <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a especialidade" /></SelectTrigger>
-                        <SelectContent>
-                          {especialidadesDisponiveis.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input
-                        readOnly
-                        value={especialidade || "Selecione um procedimento"}
-                        className="bg-muted border-border cursor-not-allowed"
-                      />
-                    )}
-                  </div>
+
+                  {procedimentos.map((proc, index) => {
+                    const espDisp = getEspecialidadesDisponiveis(proc.procedimento);
+                    const temMultiplas = espDisp.length > 1;
+                    const valorOrcado = parseCurrency(proc.valorOrcado);
+                    const valorNaoContratado = parseCurrency(proc.valorNaoContratado);
+
+                    return (
+                      <Card key={proc.id} className="border-border bg-secondary/30">
+                        <CardContent className="pt-4 pb-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              Procedimento {procedimentos.length > 1 ? `${index + 1}` : ""}
+                            </span>
+                            {procedimentos.length > 1 && (
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removeProcedimento(index)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
+                                <Trash2 size={14} />
+                              </Button>
+                            )}
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Procedimento</Label>
+                              <Select value={proc.procedimento} onValueChange={(v) => updateProcedimento(index, "procedimento", v)}>
+                                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                <SelectContent>
+                                  {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Especialidade</Label>
+                              {temMultiplas ? (
+                                <Select value={proc.especialidade} onValueChange={(v) => updateProcedimento(index, "especialidade", v)}>
+                                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                  <SelectContent>
+                                    {espDisp.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input
+                                  readOnly
+                                  value={proc.especialidade || "Selecione um procedimento"}
+                                  className="bg-muted border-border cursor-not-allowed text-sm"
+                                />
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Valor Orçado (R$)</Label>
+                              <Input
+                                inputMode="numeric"
+                                placeholder="R$ 0,00"
+                                value={proc.valorOrcado}
+                                onChange={(e) => updateProcedimento(index, "valorOrcado", formatCurrencyInput(e.target.value))}
+                                className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Não Contratado (R$)</Label>
+                              <Input
+                                inputMode="numeric"
+                                placeholder="R$ 0,00"
+                                value={proc.valorNaoContratado}
+                                onChange={(e) => updateProcedimento(index, "valorNaoContratado", formatCurrencyInput(e.target.value))}
+                                className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Contratado (R$)</Label>
+                              <Input readOnly value={formatCurrencyDisplay(valorOrcado - valorNaoContratado)} className="bg-muted border-border cursor-not-allowed text-sm" />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="space-y-2">
-                    <Label>Valor Orçado (R$)</Label>
-                    <Input inputMode="numeric" placeholder="R$ 0,00" value={valorOrcado} onChange={(e) => setValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Valor Não Contratado (R$)</Label>
-                    <Input inputMode="numeric" placeholder="R$ 0,00" value={valorNaoContratado} onChange={(e) => setValorNaoContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Valor Contratado (R$)</Label>
-                    <Input readOnly value={formatCurrencyDisplay(parseCurrency(valorOrcado) - parseCurrency(valorNaoContratado))} className="bg-muted border-border cursor-not-allowed" />
-                  </div>
                   <div className="space-y-2">
                     <Label>Valor Pago (R$)</Label>
                     <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
@@ -566,7 +656,7 @@ const Atendimento = () => {
                   className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity"
                 >
                   <Save size={18} className="mr-2" />
-                  {saving ? "Salvando..." : modo === "novo_pagamento" ? "Registrar Pagamento" : "Salvar Atendimento"}
+                  {saving ? "Salvando..." : modo === "novo_pagamento" ? "Registrar Pagamento" : `Salvar Atendimento${procedimentos.length > 1 ? ` (${procedimentos.length} procedimentos)` : ""}`}
                 </Button>
               </>
             )}
