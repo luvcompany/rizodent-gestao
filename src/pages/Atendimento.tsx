@@ -236,19 +236,24 @@ const Atendimento = () => {
               </Select>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Valor Orçado (R$)</Label>
-                <Input type="number" placeholder="0,00" value={valorOrcado} onChange={(e) => setValorOrcado(e.target.value)} className="bg-secondary border-border" />
+                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorOrcado} onChange={(e) => setValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+              </div>
+              <div className="space-y-2">
+                <Label>Valor Não Contratado (R$)</Label>
+                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorNaoContratado} onChange={(e) => setValorNaoContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
               </div>
               <div className="space-y-2">
                 <Label>Valor Contratado (R$)</Label>
-                <Input type="number" placeholder="0,00" value={valorContratado} onChange={(e) => setValorContratado(e.target.value)} className="bg-secondary border-border" />
+                <Input readOnly value={formatCurrencyDisplay(parseCurrency(valorOrcado) - parseCurrency(valorNaoContratado))} className="bg-muted border-border cursor-not-allowed" />
               </div>
               <div className="space-y-2">
                 <Label>Valor Pago no Dia (R$)</Label>
-                <Input type="number" placeholder="0,00" value={valorPago} onChange={(e) => setValorPago(e.target.value)} className="bg-secondary border-border" />
+                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
               </div>
+            </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
