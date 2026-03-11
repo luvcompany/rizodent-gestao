@@ -16,6 +16,7 @@ const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "
 const Atendimento = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
+  const [tiposProcedimento, setTiposProcedimento] = useState<{ id: string; nome: string; valor_referencia: number | null }[]>([]);
   const [telefone, setTelefone] = useState("");
   const [nome, setNome] = useState("");
   const [clinicaId, setClinicaId] = useState("");
