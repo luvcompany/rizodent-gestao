@@ -312,9 +312,9 @@ const Dashboard = () => {
                   <BarChart data={anuncioData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                     <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} interval={0} angle={-15} textAnchor="end" height={50} />
-                    <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={formatAxisValue} />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`R$ ${value.toLocaleString("pt-BR")}`, "Faturamento"]} />
-                    <Bar dataKey="value" fill="hsl(15,90%,45%)" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="value" fill="hsl(15,90%,45%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
                   </BarChart>
                 </ResponsiveContainer>
               );
