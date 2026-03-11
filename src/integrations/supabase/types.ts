@@ -14,16 +14,247 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      clinicas: {
+        Row: {
+          ativa: boolean
+          cidade: string
+          created_at: string
+          endereco: string | null
+          id: string
+          nome: string
+          telefone: string | null
+        }
+        Insert: {
+          ativa?: boolean
+          cidade: string
+          created_at?: string
+          endereco?: string | null
+          id?: string
+          nome: string
+          telefone?: string | null
+        }
+        Update: {
+          ativa?: boolean
+          cidade?: string
+          created_at?: string
+          endereco?: string | null
+          id?: string
+          nome?: string
+          telefone?: string | null
+        }
+        Relationships: []
+      }
+      pacientes: {
+        Row: {
+          cidade: string | null
+          created_at: string
+          email: string | null
+          id: string
+          nome: string
+          nome_anuncio: string | null
+          origem: string | null
+          telefone: string
+          updated_at: string
+        }
+        Insert: {
+          cidade?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          nome: string
+          nome_anuncio?: string | null
+          origem?: string | null
+          telefone: string
+          updated_at?: string
+        }
+        Update: {
+          cidade?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          nome?: string
+          nome_anuncio?: string | null
+          origem?: string | null
+          telefone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      pagamentos: {
+        Row: {
+          clinica_id: string
+          created_at: string
+          created_by: string | null
+          data_pagamento: string
+          forma_pagamento: string
+          id: string
+          paciente_id: string
+          tipo: string
+          tratamento_id: string
+          valor: number
+        }
+        Insert: {
+          clinica_id: string
+          created_at?: string
+          created_by?: string | null
+          data_pagamento?: string
+          forma_pagamento: string
+          id?: string
+          paciente_id: string
+          tipo?: string
+          tratamento_id: string
+          valor: number
+        }
+        Update: {
+          clinica_id?: string
+          created_at?: string
+          created_by?: string | null
+          data_pagamento?: string
+          forma_pagamento?: string
+          id?: string
+          paciente_id?: string
+          tipo?: string
+          tratamento_id?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pagamentos_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagamentos_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pagamentos_tratamento_id_fkey"
+            columns: ["tratamento_id"]
+            isOneToOne: false
+            referencedRelation: "tratamentos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          cargo: string | null
+          created_at: string
+          email: string
+          id: string
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          cargo?: string | null
+          created_at?: string
+          email: string
+          id: string
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          cargo?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          nome?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tratamentos: {
+        Row: {
+          clinica_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          paciente_id: string
+          procedimento: string
+          status: string
+          updated_at: string
+          valor_contratado: number | null
+          valor_orcado: number | null
+        }
+        Insert: {
+          clinica_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          paciente_id: string
+          procedimento: string
+          status?: string
+          updated_at?: string
+          valor_contratado?: number | null
+          valor_orcado?: number | null
+        }
+        Update: {
+          clinica_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          paciente_id?: string
+          procedimento?: string
+          status?: string
+          updated_at?: string
+          valor_contratado?: number | null
+          valor_orcado?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tratamentos_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tratamentos_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "gerente" | "crc"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +381,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "gerente", "crc"],
+    },
   },
 } as const

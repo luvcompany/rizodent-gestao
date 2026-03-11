@@ -4,10 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, LogIn } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 import logo from "@/assets/logo-rizodent.webp";
 
 const Login = () => {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -16,12 +19,13 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Mock login - will be replaced with real auth
-    setTimeout(() => {
-      localStorage.setItem("rizodent-user", JSON.stringify({ email, role: "admin", name: "Admin" }));
-      setLoading(false);
+    const { error } = await signIn(email, password);
+    setLoading(false);
+    if (error) {
+      toast.error("Erro ao entrar: " + error);
+    } else {
       navigate("/dashboard");
-    }, 800);
+    }
   };
 
   return (

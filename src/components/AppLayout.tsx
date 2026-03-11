@@ -10,6 +10,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import logo from "@/assets/logo-rizodent.webp";
 
 const navItems = [
@@ -22,16 +23,16 @@ const navItems = [
 
 const AppLayout = () => {
   const navigate = useNavigate();
+  const { signOut, profile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const handleLogout = () => {
-    localStorage.removeItem("rizodent-user");
+  const handleLogout = async () => {
+    await signOut();
     navigate("/");
   };
 
   return (
     <div className="flex min-h-screen">
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
@@ -39,7 +40,6 @@ const AppLayout = () => {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform lg:relative lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -76,6 +76,12 @@ const AppLayout = () => {
         </nav>
 
         <div className="border-t border-sidebar-border p-4">
+          {profile && (
+            <div className="mb-3 px-3">
+              <p className="text-sm font-medium text-sidebar-foreground">{profile.nome}</p>
+              <p className="text-xs text-muted-foreground">{profile.email}</p>
+            </div>
+          )}
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
@@ -86,7 +92,6 @@ const AppLayout = () => {
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="flex flex-1 flex-col">
         <header className="flex h-16 items-center gap-4 border-b border-border px-6">
           <button

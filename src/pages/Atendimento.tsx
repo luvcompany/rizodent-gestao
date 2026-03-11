@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,23 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Save, Search, UserCheck } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import type { Tables } from "@/integrations/supabase/types";
 
-const clinicas = ["Clínica SP", "Clínica RJ", "Clínica BH", "Clínica Curitiba", "Clínica Porto Alegre"];
 const procedimentos = ["Implante", "Ortodontia", "Clareamento", "Prótese", "Limpeza", "Endodontia", "Extração", "Restauração"];
 const formasPagamento = ["Dinheiro", "Pix", "Cartão de Crédito", "Cartão de Débito", "Boleto", "Financiamento"];
 const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
-// Mock patients for phone search
-const mockPacientes = [
-  { id: "1", nome: "Maria Silva", telefone: "(11) 99999-1234" },
-  { id: "2", nome: "João Santos", telefone: "(11) 99999-5678" },
-  { id: "3", nome: "Ana Oliveira", telefone: "(21) 98888-4321" },
-];
-
 const Atendimento = () => {
+  const { user } = useAuth();
+  const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [telefone, setTelefone] = useState("");
   const [nome, setNome] = useState("");
-  const [clinica, setClinica] = useState("");
+  const [clinicaId, setClinicaId] = useState("");
   const [cidade, setCidade] = useState("");
   const [procedimento, setProcedimento] = useState("");
   const [valorOrcado, setValorOrcado] = useState("");
@@ -32,8 +29,15 @@ const Atendimento = () => {
   const [tipoPagamento, setTipoPagamento] = useState("");
   const [origem, setOrigem] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
-  const [sugestoes, setSugestoes] = useState<typeof mockPacientes>([]);
-  const [pacienteSelecionado, setPacienteSelecionado] = useState(false);
+  const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
+  const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
+      if (data) setClinicas(data);
+    });
+  }, []);
 
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, "");
@@ -42,47 +46,102 @@ const Atendimento = () => {
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
   };
 
-  const handlePhoneChange = (value: string) => {
+  const handlePhoneChange = async (value: string) => {
     const formatted = formatPhone(value);
     setTelefone(formatted);
+    setPacienteSelecionadoId(null);
 
     const digits = value.replace(/\D/g, "");
     if (digits.length >= 4) {
-      const found = mockPacientes.filter((p) =>
-        p.telefone.replace(/\D/g, "").includes(digits)
-      );
-      setSugestoes(found);
+      const { data } = await supabase
+        .from("pacientes")
+        .select("*")
+        .ilike("telefone", `%${digits}%`)
+        .limit(5);
+      setSugestoes(data || []);
     } else {
       setSugestoes([]);
     }
-    setPacienteSelecionado(false);
   };
 
-  const selecionarPaciente = (pac: typeof mockPacientes[0]) => {
+  const selecionarPaciente = (pac: Tables<"pacientes">) => {
     setTelefone(pac.telefone);
     setNome(pac.nome);
+    setCidade(pac.cidade || "");
+    setOrigem(pac.origem || "");
+    setNomeAnuncio(pac.nome_anuncio || "");
+    setPacienteSelecionadoId(pac.id);
     setSugestoes([]);
-    setPacienteSelecionado(true);
     toast.success(`Paciente ${pac.nome} selecionado!`);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const resetForm = () => {
+    setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
+    setProcedimento(""); setValorOrcado(""); setValorContratado("");
+    setValorPago(""); setFormaPagamento(""); setTipoPagamento("");
+    setOrigem(""); setNomeAnuncio(""); setPacienteSelecionadoId(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Atendimento registrado com sucesso!");
-    // Reset form
-    setTelefone("");
-    setNome("");
-    setClinica("");
-    setCidade("");
-    setProcedimento("");
-    setValorOrcado("");
-    setValorContratado("");
-    setValorPago("");
-    setFormaPagamento("");
-    setTipoPagamento("");
-    setOrigem("");
-    setNomeAnuncio("");
-    setPacienteSelecionado(false);
+    if (!clinicaId || !procedimento) {
+      toast.error("Preencha clínica e procedimento.");
+      return;
+    }
+    setSaving(true);
+
+    try {
+      let pacienteId = pacienteSelecionadoId;
+
+      // Create patient if new
+      if (!pacienteId) {
+        const { data: newPac, error } = await supabase
+          .from("pacientes")
+          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncio || null })
+          .select("id")
+          .single();
+        if (error) throw error;
+        pacienteId = newPac.id;
+      }
+
+      // Create tratamento
+      const { data: trat, error: tratError } = await supabase
+        .from("tratamentos")
+        .insert({
+          paciente_id: pacienteId,
+          clinica_id: clinicaId,
+          procedimento,
+          valor_orcado: valorOrcado ? parseFloat(valorOrcado) : 0,
+          valor_contratado: valorContratado ? parseFloat(valorContratado) : 0,
+          created_by: user?.id,
+        })
+        .select("id")
+        .single();
+      if (tratError) throw tratError;
+
+      // Create pagamento if value > 0
+      if (valorPago && parseFloat(valorPago) > 0) {
+        const { error: pagError } = await supabase
+          .from("pagamentos")
+          .insert({
+            tratamento_id: trat.id,
+            paciente_id: pacienteId,
+            clinica_id: clinicaId,
+            valor: parseFloat(valorPago),
+            forma_pagamento: formaPagamento || "Pix",
+            tipo: tipoPagamento || "primeiro",
+            created_by: user?.id,
+          });
+        if (pagError) throw pagError;
+      }
+
+      toast.success("Atendimento registrado com sucesso!");
+      resetForm();
+    } catch (err: any) {
+      toast.error("Erro ao salvar: " + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -115,7 +174,7 @@ const Atendimento = () => {
                   required
                 />
               </div>
-              {sugestoes.length > 0 && !pacienteSelecionado && (
+              {sugestoes.length > 0 && !pacienteSelecionadoId && (
                 <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-popover p-1 shadow-card">
                   {sugestoes.map((pac) => (
                     <button
@@ -133,114 +192,70 @@ const Atendimento = () => {
               )}
             </div>
 
-            {/* Name */}
             <div className="space-y-2">
               <Label>Nome do Paciente</Label>
-              <Input
-                placeholder="Nome completo"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                className="bg-secondary border-border"
-                required
-              />
+              <Input placeholder="Nome completo" value={nome} onChange={(e) => setNome(e.target.value)} className="bg-secondary border-border" required />
             </div>
 
-            {/* Clínica and Cidade */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Clínica</Label>
-                <Select value={clinica} onValueChange={setClinica} required>
-                  <SelectTrigger className="bg-secondary border-border">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
+                <Select value={clinicaId} onValueChange={(v) => {
+                  setClinicaId(v);
+                  const cl = clinicas.find(c => c.id === v);
+                  if (cl) setCidade(cl.cidade);
+                }}>
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
-                    {clinicas.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
+                    {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>Cidade</Label>
-                <Input
-                  placeholder="Cidade"
-                  value={cidade}
-                  onChange={(e) => setCidade(e.target.value)}
-                  className="bg-secondary border-border"
-                />
+                <Input placeholder="Cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} className="bg-secondary border-border" />
               </div>
             </div>
 
-            {/* Procedimento */}
             <div className="space-y-2">
               <Label>Procedimento</Label>
               <Select value={procedimento} onValueChange={setProcedimento}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue placeholder="Selecione o procedimento" />
-                </SelectTrigger>
+                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione o procedimento" /></SelectTrigger>
                 <SelectContent>
-                  {procedimentos.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
+                  {procedimentos.map((p) => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Valores */}
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label>Valor Orçado (R$)</Label>
-                <Input
-                  type="number"
-                  placeholder="0,00"
-                  value={valorOrcado}
-                  onChange={(e) => setValorOrcado(e.target.value)}
-                  className="bg-secondary border-border"
-                />
+                <Input type="number" placeholder="0,00" value={valorOrcado} onChange={(e) => setValorOrcado(e.target.value)} className="bg-secondary border-border" />
               </div>
               <div className="space-y-2">
                 <Label>Valor Contratado (R$)</Label>
-                <Input
-                  type="number"
-                  placeholder="0,00"
-                  value={valorContratado}
-                  onChange={(e) => setValorContratado(e.target.value)}
-                  className="bg-secondary border-border"
-                />
+                <Input type="number" placeholder="0,00" value={valorContratado} onChange={(e) => setValorContratado(e.target.value)} className="bg-secondary border-border" />
               </div>
               <div className="space-y-2">
                 <Label>Valor Pago no Dia (R$)</Label>
-                <Input
-                  type="number"
-                  placeholder="0,00"
-                  value={valorPago}
-                  onChange={(e) => setValorPago(e.target.value)}
-                  className="bg-secondary border-border"
-                />
+                <Input type="number" placeholder="0,00" value={valorPago} onChange={(e) => setValorPago(e.target.value)} className="bg-secondary border-border" />
               </div>
             </div>
 
-            {/* Pagamento */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Forma de Pagamento</Label>
                 <Select value={formaPagamento} onValueChange={setFormaPagamento}>
-                  <SelectTrigger className="bg-secondary border-border">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
-                    {formasPagamento.map((f) => (
-                      <SelectItem key={f} value={f}>{f}</SelectItem>
-                    ))}
+                    {formasPagamento.map((f) => (<SelectItem key={f} value={f}>{f}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>Tipo de Pagamento</Label>
                 <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
-                  <SelectTrigger className="bg-secondary border-border">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="primeiro">Primeiro Pagamento</SelectItem>
                     <SelectItem value="recorrente">Recorrente</SelectItem>
@@ -249,38 +264,29 @@ const Atendimento = () => {
               </div>
             </div>
 
-            {/* Marketing */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Origem do Lead</Label>
                 <Select value={origem} onValueChange={setOrigem}>
-                  <SelectTrigger className="bg-secondary border-border">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
-                    {origens.map((o) => (
-                      <SelectItem key={o} value={o}>{o}</SelectItem>
-                    ))}
+                    {origens.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>Nome do Anúncio</Label>
-                <Input
-                  placeholder="Ex: Campanha Implante Jan"
-                  value={nomeAnuncio}
-                  onChange={(e) => setNomeAnuncio(e.target.value)}
-                  className="bg-secondary border-border"
-                />
+                <Input placeholder="Ex: Campanha Implante Jan" value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} className="bg-secondary border-border" />
               </div>
             </div>
 
             <Button
               type="submit"
+              disabled={saving}
               className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity"
             >
               <Save size={18} className="mr-2" />
-              Salvar Atendimento
+              {saving ? "Salvando..." : "Salvar Atendimento"}
             </Button>
           </form>
         </CardContent>
