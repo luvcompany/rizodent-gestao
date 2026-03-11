@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Atendimento from "./pages/Atendimento";
 import Pacientes from "./pages/Pacientes";
+import PacienteDetalhe from "./pages/PacienteDetalhe";
 import Relatorios from "./pages/Relatorios";
 import Marketing from "./pages/Marketing";
 import CadastroLeads from "./pages/CadastroLeads";

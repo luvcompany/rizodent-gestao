@@ -130,7 +130,7 @@ const Pacientes = () => {
                       </p>
                     )}
                   </div>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={() => navigate(`/pacientes/${pac.id}`)}>
                     <Eye size={18} />
                   </Button>
                 </div>
