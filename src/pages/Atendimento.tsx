@@ -12,8 +12,6 @@ import type { Tables } from "@/integrations/supabase/types";
 
 const formasPagamento = ["Dinheiro", "Pix", "Cartão de Crédito", "Cartão de Débito", "Boleto", "Financiamento"];
 const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
-const formasPagamento = ["Dinheiro", "Pix", "Cartão de Crédito", "Cartão de Débito", "Boleto", "Financiamento"];
-const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
 const Atendimento = () => {
   const { user } = useAuth();
