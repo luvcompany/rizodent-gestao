@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
@@ -236,12 +238,32 @@ const Dashboard = () => {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Visão geral do desempenho</p>
         </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="gap-2 bg-secondary border-border text-sm">
+              <CalendarIcon size={16} className="text-primary" />
+              {dateFrom && dateTo
+                ? `${new Date(dateFrom + "T12:00:00").toLocaleDateString("pt-BR")} — ${new Date(dateTo + "T12:00:00").toLocaleDateString("pt-BR")}`
+                : "Selecione o período"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-4 space-y-3" align="end">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Data Início</Label>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Data Fim</Label>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border" />
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Filters */}
       <Card className="gradient-card border-border shadow-card">
         <CardContent className="pt-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Clínica</Label>
               <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
@@ -299,27 +321,6 @@ const Dashboard = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-4">
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Data Início</Label>
-              <div className="relative">
-                <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border pl-10" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Data Fim</Label>
-              <div className="relative">
-                <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border pl-10" />
-              </div>
-            </div>
-            <div className="flex items-end">
-              <div className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary font-medium w-full text-center">
-                {dateFrom && dateTo ? `${new Date(dateFrom + "T12:00:00").toLocaleDateString("pt-BR")} — ${new Date(dateTo + "T12:00:00").toLocaleDateString("pt-BR")}` : "Selecione o período"}
-              </div>
             </div>
           </div>
         </CardContent>
