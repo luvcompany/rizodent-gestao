@@ -76,10 +76,11 @@ const Atendimento = () => {
 
     const digits = value.replace(/\D/g, "");
     if (digits.length >= 4) {
+      // Search using the formatted phone to match stored format
       const { data } = await supabase
         .from("pacientes")
         .select("*")
-        .ilike("telefone", `%${digits}%`)
+        .ilike("telefone", `%${formatted}%`)
         .limit(5);
       setSugestoes(data || []);
     } else {
