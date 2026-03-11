@@ -13,6 +13,7 @@ import Relatorios from "./pages/Relatorios";
 import Marketing from "./pages/Marketing";
 import CadastroLeads from "./pages/CadastroLeads";
 import Usuarios from "./pages/Usuarios";
+import TiposProcedimento from "./pages/TiposProcedimento";
 import AppLayout from "./components/AppLayout";
 import NotFound from "./pages/NotFound";
 
