@@ -80,7 +80,7 @@ const Atendimento = () => {
 
   const resetForm = () => {
     setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
-    setProcedimento(""); setValorOrcado(""); setValorContratado("");
+    setProcedimento(""); setValorOrcado(""); setValorNaoContratado("");
     setValorPago(""); setFormaPagamento(""); setTipoPagamento("");
     setOrigem(""); setNomeAnuncio(""); setPacienteSelecionadoId(null);
   };
