@@ -44,6 +44,56 @@ export type Database = {
         }
         Relationships: []
       }
+      leads_diarios: {
+        Row: {
+          agendaram: number
+          clinica_id: string
+          contrataram: number
+          created_at: string
+          created_by: string | null
+          data: string
+          faltaram: number
+          id: string
+          leads_novos: number
+          nao_contrataram: number
+          updated_at: string
+        }
+        Insert: {
+          agendaram?: number
+          clinica_id: string
+          contrataram?: number
+          created_at?: string
+          created_by?: string | null
+          data?: string
+          faltaram?: number
+          id?: string
+          leads_novos?: number
+          nao_contrataram?: number
+          updated_at?: string
+        }
+        Update: {
+          agendaram?: number
+          clinica_id?: string
+          contrataram?: number
+          created_at?: string
+          created_by?: string | null
+          data?: string
+          faltaram?: number
+          id?: string
+          leads_novos?: number
+          nao_contrataram?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_diarios_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pacientes: {
         Row: {
           cidade: string | null
