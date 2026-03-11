@@ -114,8 +114,8 @@ const Atendimento = () => {
           paciente_id: pacienteId,
           clinica_id: clinicaId,
           procedimento,
-          valor_orcado: valorOrcado ? parseFloat(valorOrcado) : 0,
-          valor_contratado: valorContratado ? parseFloat(valorContratado) : 0,
+          valor_orcado: parseCurrency(valorOrcado),
+          valor_contratado: parseCurrency(valorOrcado) - parseCurrency(valorNaoContratado),
           created_by: user?.id,
         })
         .select("id")
