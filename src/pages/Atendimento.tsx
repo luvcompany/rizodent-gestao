@@ -147,7 +147,7 @@ const Atendimento = () => {
             tratamento_id: trat.id,
             paciente_id: pacienteId,
             clinica_id: clinicaId,
-            valor: parseFloat(valorPago),
+            valor: parseCurrency(valorPago),
             forma_pagamento: formaPagamento || "Pix",
             tipo: tipoPagamento || "primeiro",
             created_by: user?.id,
