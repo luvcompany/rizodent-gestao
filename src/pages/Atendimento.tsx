@@ -44,16 +44,12 @@ interface ProcedimentoEntry {
   id: string;
   procedimento: string;
   especialidade: string;
-  valorOrcado: string;
-  valorNaoContratado: string;
 }
 
 const createEmptyProcedimento = (): ProcedimentoEntry => ({
   id: crypto.randomUUID(),
   procedimento: "",
   especialidade: "",
-  valorOrcado: "",
-  valorNaoContratado: "",
 });
 
 const Atendimento = () => {
@@ -65,10 +61,12 @@ const Atendimento = () => {
   const [clinicaId, setClinicaId] = useState("");
   const [cidade, setCidade] = useState("");
   const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
-  const [valorPago, setValorPago] = useState("");
+  const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
+  const [valorNaoContratado, setValorNaoContratado] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("");
   const [origem, setOrigem] = useState("");
+  const [valorPago, setValorPago] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
@@ -186,7 +184,7 @@ const Atendimento = () => {
     setValorPago(""); setFormaPagamento(""); setTipoPagamento("");
     setOrigem(""); setNomeAnuncio(""); setPacienteSelecionadoId(null);
     setDataPagamento(new Date().toISOString().split("T")[0]);
-    setTratamentosExistentes([]);
+    setValorOrcadoGeral(""); setValorNaoContratado("");
     setModo("selecionar");
     setTratamentoSelecionadoId(null);
     setProcedimentoPayment("");
@@ -292,11 +290,14 @@ const Atendimento = () => {
         pacienteId = newPac.id;
       }
 
+      const totalOrcado = parseCurrency(valorOrcadoGeral);
+      const totalNaoContratado = parseCurrency(valorNaoContratado);
+      const totalContratado = totalOrcado - totalNaoContratado;
+      const valorPorProc = procedimentos.length > 0 ? totalOrcado / procedimentos.length : totalOrcado;
+      const contratadoPorProc = procedimentos.length > 0 ? totalContratado / procedimentos.length : totalContratado;
+
       // Create all treatments
       for (const proc of procedimentos) {
-        const valorOrcado = parseCurrency(proc.valorOrcado);
-        const valorNaoContratado = parseCurrency(proc.valorNaoContratado);
-
         const { data: trat, error: tratError } = await supabase
           .from("tratamentos")
           .insert({
@@ -304,8 +305,8 @@ const Atendimento = () => {
             clinica_id: clinicaId,
             procedimento: proc.procedimento,
             especialidade: proc.especialidade || null,
-            valor_orcado: valorOrcado,
-            valor_contratado: valorOrcado - valorNaoContratado,
+            valor_orcado: valorPorProc,
+            valor_contratado: contratadoPorProc,
             created_by: user?.id,
           })
           .select("id")
@@ -503,8 +504,6 @@ const Atendimento = () => {
                   {procedimentos.map((proc, index) => {
                     const espDisp = getEspecialidadesDisponiveis(proc.procedimento);
                     const temMultiplas = espDisp.length > 1;
-                    const valorOrcado = parseCurrency(proc.valorOrcado);
-                    const valorNaoContratado = parseCurrency(proc.valorNaoContratado);
 
                     return (
                       <Card key={proc.id} className="border-border bg-secondary/30">
@@ -548,37 +547,38 @@ const Atendimento = () => {
                               )}
                             </div>
                           </div>
-
-                          <div className="grid gap-3 sm:grid-cols-3">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Valor Orçado (R$)</Label>
-                              <Input
-                                inputMode="numeric"
-                                placeholder="R$ 0,00"
-                                value={proc.valorOrcado}
-                                onChange={(e) => updateProcedimento(index, "valorOrcado", formatCurrencyInput(e.target.value))}
-                                className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Não Contratado (R$)</Label>
-                              <Input
-                                inputMode="numeric"
-                                placeholder="R$ 0,00"
-                                value={proc.valorNaoContratado}
-                                onChange={(e) => updateProcedimento(index, "valorNaoContratado", formatCurrencyInput(e.target.value))}
-                                className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Contratado (R$)</Label>
-                              <Input readOnly value={formatCurrencyDisplay(valorOrcado - valorNaoContratado)} className="bg-muted border-border cursor-not-allowed text-sm" />
-                            </div>
-                          </div>
                         </CardContent>
                       </Card>
                     );
                   })}
+                </div>
+
+                {/* Valores gerais do orçamento */}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Valor Orçado (R$)</Label>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="R$ 0,00"
+                      value={valorOrcadoGeral}
+                      onChange={(e) => setValorOrcadoGeral(formatCurrencyInput(e.target.value))}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Não Contratado (R$)</Label>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="R$ 0,00"
+                      value={valorNaoContratado}
+                      onChange={(e) => setValorNaoContratado(formatCurrencyInput(e.target.value))}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contratado (R$)</Label>
+                    <Input readOnly value={formatCurrencyDisplay(parseCurrency(valorOrcadoGeral) - parseCurrency(valorNaoContratado))} className="bg-muted border-border cursor-not-allowed text-sm" />
+                  </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
