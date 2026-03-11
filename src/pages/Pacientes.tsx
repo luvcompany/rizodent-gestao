@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Search, Eye, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface PacienteView {
   id: string;
@@ -13,18 +20,39 @@ interface PacienteView {
   cidade: string | null;
   created_at: string;
   total_pago: number;
+  valor_contratado: number;
   ultima_visita: string | null;
   clinica_nome: string | null;
 }
 
+const FILTROS_PERIODO = [
+  { label: "Todos", value: "todos" },
+  { label: "Últimos 7 dias", value: "7" },
+  { label: "Últimos 15 dias", value: "15" },
+  { label: "Últimos 30 dias", value: "30" },
+  { label: "Últimos 60 dias", value: "60" },
+  { label: "Últimos 90 dias", value: "90" },
+];
+
 const Pacientes = () => {
   const [busca, setBusca] = useState("");
+  const [periodo, setPeriodo] = useState("todos");
   const [pacientes, setPacientes] = useState<PacienteView[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchPacientes = async () => {
+      setLoading(true);
+
+      // Build date filter
+      let dataMinima: string | null = null;
+      if (periodo !== "todos") {
+        const d = new Date();
+        d.setDate(d.getDate() - Number(periodo));
+        dataMinima = d.toISOString().split("T")[0];
+      }
+
       const { data: pacs } = await supabase
         .from("pacientes")
         .select("id, nome, telefone, cidade, created_at")
@@ -32,37 +60,49 @@ const Pacientes = () => {
 
       if (!pacs) { setLoading(false); return; }
 
-      // Get aggregated payment data
       const result: PacienteView[] = [];
       for (const p of pacs) {
-        const { data: pagData } = await supabase
-          .from("pagamentos")
-          .select("valor, data_pagamento, clinica_id")
-          .eq("paciente_id", p.id)
-          .order("data_pagamento", { ascending: false })
-          .limit(1);
-
-        const { data: totalData } = await supabase
-          .from("pagamentos")
-          .select("valor")
+        // Tratamentos (valor contratado)
+        const { data: tratData } = await supabase
+          .from("tratamentos")
+          .select("valor_contratado")
           .eq("paciente_id", p.id);
 
-        const total = totalData?.reduce((sum, pg) => sum + Number(pg.valor), 0) || 0;
+        const valorContratado = tratData?.reduce((sum, t) => sum + Number(t.valor_contratado || 0), 0) || 0;
+
+        // Pagamentos
+        let pagQuery = supabase
+          .from("pagamentos")
+          .select("valor, data_pagamento, clinica_id")
+          .eq("paciente_id", p.id);
+
+        if (dataMinima) {
+          pagQuery = pagQuery.gte("data_pagamento", dataMinima);
+        }
+
+        const { data: allPag } = await pagQuery.order("data_pagamento", { ascending: false });
+
+        const totalPago = allPag?.reduce((sum, pg) => sum + Number(pg.valor), 0) || 0;
+        const ultimaVisita = allPag?.[0]?.data_pagamento || null;
 
         let clinicaNome: string | null = null;
-        if (pagData?.[0]?.clinica_id) {
+        if (allPag?.[0]?.clinica_id) {
           const { data: cl } = await supabase
             .from("clinicas")
             .select("nome")
-            .eq("id", pagData[0].clinica_id)
+            .eq("id", allPag[0].clinica_id)
             .maybeSingle();
           clinicaNome = cl?.nome || null;
         }
 
+        // If filtering by date, only show patients that have payments in the period
+        if (dataMinima && (!allPag || allPag.length === 0)) continue;
+
         result.push({
           ...p,
-          total_pago: total,
-          ultima_visita: pagData?.[0]?.data_pagamento || null,
+          total_pago: totalPago,
+          valor_contratado: valorContratado,
+          ultima_visita: ultimaVisita,
           clinica_nome: clinicaNome,
         });
       }
@@ -70,7 +110,7 @@ const Pacientes = () => {
       setLoading(false);
     };
     fetchPacientes();
-  }, []);
+  }, [periodo]);
 
   const filtered = pacientes.filter(
     (p) =>
@@ -94,14 +134,26 @@ const Pacientes = () => {
         </Button>
       </div>
 
-      <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por nome ou telefone..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="bg-secondary border-border pl-10"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome ou telefone..."
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="bg-secondary border-border pl-10"
+          />
+        </div>
+        <Select value={periodo} onValueChange={setPeriodo}>
+          <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border">
+            <SelectValue placeholder="Período" />
+          </SelectTrigger>
+          <SelectContent>
+            {FILTROS_PERIODO.map((f) => (
+              <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {loading ? (
@@ -120,9 +172,12 @@ const Pacientes = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="text-right">
+                  <div className="text-right space-y-0.5">
+                    <p className="text-xs text-muted-foreground">
+                      Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </p>
                     <p className="text-sm font-semibold text-primary">
-                      R$ {pac.total_pago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      Pago: R$ {pac.total_pago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     {pac.ultima_visita && (
                       <p className="text-xs text-muted-foreground">
