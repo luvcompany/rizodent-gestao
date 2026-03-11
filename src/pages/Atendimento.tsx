@@ -10,13 +10,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 
-const procedimentos = ["Implante", "Ortodontia", "Clareamento", "Prótese", "Limpeza", "Endodontia", "Extração", "Restauração"];
 const formasPagamento = ["Dinheiro", "Pix", "Cartão de Crédito", "Cartão de Débito", "Boleto", "Financiamento"];
 const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
 const Atendimento = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
+  const [tiposProcedimento, setTiposProcedimento] = useState<{ id: string; nome: string; valor_referencia: number | null }[]>([]);
   const [telefone, setTelefone] = useState("");
   const [nome, setNome] = useState("");
   const [clinicaId, setClinicaId] = useState("");
@@ -36,6 +36,9 @@ const Atendimento = () => {
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
       if (data) setClinicas(data);
+    });
+    supabase.from("tipos_procedimento").select("id, nome, valor_referencia").eq("ativo", true).order("nome").then(({ data }) => {
+      if (data) setTiposProcedimento(data as any);
     });
   }, []);
 
@@ -219,10 +222,16 @@ const Atendimento = () => {
 
             <div className="space-y-2">
               <Label>Procedimento</Label>
-              <Select value={procedimento} onValueChange={setProcedimento}>
+              <Select value={procedimento} onValueChange={(v) => {
+                setProcedimento(v);
+                const tp = tiposProcedimento.find(t => t.nome === v);
+                if (tp && tp.valor_referencia && !valorOrcado) {
+                  setValorOrcado(tp.valor_referencia.toString());
+                }
+              }}>
                 <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione o procedimento" /></SelectTrigger>
                 <SelectContent>
-                  {procedimentos.map((p) => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
+                  {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
