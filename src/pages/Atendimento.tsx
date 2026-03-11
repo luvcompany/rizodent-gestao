@@ -61,7 +61,8 @@ const Atendimento = () => {
   const [clinicaId, setClinicaId] = useState("");
   const [cidade, setCidade] = useState("");
   const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
-  const [valorPago, setValorPago] = useState("");
+  const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
+  const [valorNaoContratado, setValorNaoContratado] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("");
   const [origem, setOrigem] = useState("");
