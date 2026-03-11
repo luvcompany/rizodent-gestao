@@ -44,16 +44,12 @@ interface ProcedimentoEntry {
   id: string;
   procedimento: string;
   especialidade: string;
-  valorOrcado: string;
-  valorNaoContratado: string;
 }
 
 const createEmptyProcedimento = (): ProcedimentoEntry => ({
   id: crypto.randomUUID(),
   procedimento: "",
   especialidade: "",
-  valorOrcado: "",
-  valorNaoContratado: "",
 });
 
 const Atendimento = () => {
