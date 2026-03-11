@@ -249,14 +249,14 @@ const Dashboard = () => {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="gradient-card border-border shadow-card">
           <CardHeader><CardTitle className="text-base">Faturamento por Clínica</CardTitle></CardHeader>
-          <CardContent>
+           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={fatClinica}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={12} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={formatAxisValue} />
                 <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`R$ ${value.toLocaleString("pt-BR")}`, "Faturamento"]} />
-                <Bar dataKey="value" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="value" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -266,12 +266,12 @@ const Dashboard = () => {
           <CardHeader><CardTitle className="text-base">Faturamento por Procedimento</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={fatProcedimento} layout="vertical">
+              <BarChart data={fatProcedimento}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis type="number" stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <YAxis type="category" dataKey="name" stroke="hsl(0,0%,64%)" fontSize={12} width={90} />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} interval={0} angle={-15} textAnchor="end" height={50} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={formatAxisValue} />
                 <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [`R$ ${value.toLocaleString("pt-BR")}`, "Faturamento"]} />
-                <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[0, 6, 6, 0]} />
+                <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -281,14 +281,17 @@ const Dashboard = () => {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="gradient-card border-border shadow-card">
           <CardHeader><CardTitle className="text-base">Origem dos Pacientes</CardTitle></CardHeader>
-          <CardContent className="flex items-center justify-center">
+          <CardContent>
             <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={origemData} cx="50%" cy="50%" outerRadius={100} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
+              <BarChart data={origemData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={12} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} />
-              </PieChart>
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 12, fontWeight: 600 }}>
+                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
