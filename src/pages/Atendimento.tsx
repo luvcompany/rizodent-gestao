@@ -13,6 +13,23 @@ import type { Tables } from "@/integrations/supabase/types";
 const formasPagamento = ["Dinheiro", "Pix", "Cartão de Crédito", "Cartão de Débito", "Boleto", "Financiamento"];
 const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
+const formatCurrencyInput = (value: string): string => {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  const num = parseInt(digits, 10) / 100;
+  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+};
+
+const parseCurrency = (value: string): number => {
+  if (!value) return 0;
+  const digits = value.replace(/\D/g, "");
+  return parseInt(digits || "0", 10) / 100;
+};
+
+const formatCurrencyDisplay = (value: number): string => {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+};
+
 const Atendimento = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
