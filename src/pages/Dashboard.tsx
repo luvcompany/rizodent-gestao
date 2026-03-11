@@ -16,6 +16,22 @@ const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)",
 
 const tooltipStyle = { background: "hsl(0,0%,11%)", border: "1px solid hsl(0,0%,20%)", borderRadius: "8px", color: "#fff" };
 
+const formatAxisValue = (v: number) => {
+  if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
+  if (v >= 1000) return `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k`;
+  return String(v);
+};
+
+const renderBarLabel = (props: any) => {
+  const { x, y, width, value } = props;
+  if (!value) return null;
+  return (
+    <text x={x + width / 2} y={y - 6} fill="hsl(0,0%,75%)" textAnchor="middle" fontSize={11} fontWeight={600}>
+      {typeof value === "number" && value >= 1000 ? `R$ ${formatAxisValue(value)}` : value}
+    </text>
+  );
+};
+
 const Dashboard = () => {
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaFiltro, setClinicaFiltro] = useState("todas");
