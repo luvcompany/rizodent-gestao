@@ -1,15 +1,18 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  DollarSign, Users, TrendingUp, Building2, ArrowUpRight, ArrowDownRight, Filter,
+  DollarSign, Users, TrendingUp, Building2, Filter, CalendarIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, FunnelChart, Funnel, LabelList } from "recharts";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import DashboardFunnel from "@/components/DashboardFunnel";
 
 const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(0, 0%, 50%)"];
-const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(45, 90%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
 
 const tooltipStyle = { background: "hsl(0,0%,11%)", border: "1px solid hsl(0,0%,20%)", borderRadius: "8px", color: "#fff" };
 
@@ -21,6 +24,10 @@ const Dashboard = () => {
   const [pacientes, setPacientes] = useState<any[]>([]);
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dateFrom, setDateFrom] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0];
+  });
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -45,38 +52,36 @@ const Dashboard = () => {
   const filtered = useMemo(() => {
     const filterByClinica = (items: any[]) =>
       clinicaFiltro === "todas" ? items : items.filter((i) => i.clinica_id === clinicaFiltro);
+    const filterByDate = (items: any[], dateField: string) =>
+      items.filter((i) => i[dateField] >= dateFrom && i[dateField] <= dateTo);
     return {
-      pagamentos: filterByClinica(pagamentos),
+      pagamentos: filterByDate(filterByClinica(pagamentos), "data_pagamento"),
       tratamentos: filterByClinica(tratamentos),
-      leads: filterByClinica(leadsData),
+      leads: filterByDate(filterByClinica(leadsData), "data"),
     };
-  }, [clinicaFiltro, pagamentos, tratamentos, leadsData]);
+  }, [clinicaFiltro, pagamentos, tratamentos, leadsData, dateFrom, dateTo]);
 
-  const today = new Date().toISOString().split("T")[0];
-  const thisMonth = new Date().toISOString().slice(0, 7);
-
-  const fatDia = filtered.pagamentos.filter((p) => p.data_pagamento === today).reduce((s, p) => s + Number(p.valor), 0);
-  const fatMes = filtered.pagamentos.filter((p) => p.data_pagamento?.startsWith(thisMonth)).reduce((s, p) => s + Number(p.valor), 0);
+  const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
   const totalPacientes = clinicaFiltro === "todas" ? pacientes.length : filtered.tratamentos.reduce((s, t) => { s.add(t.paciente_id); return s; }, new Set()).size;
-  const ticketMedio = filtered.pagamentos.length > 0 ? fatMes / filtered.pagamentos.filter((p) => p.data_pagamento?.startsWith(thisMonth)).length : 0;
+  const ticketMedio = filtered.pagamentos.length > 0 ? fatTotal / filtered.pagamentos.length : 0;
 
   const kpis = [
-    { title: "Faturamento do Dia", value: `R$ ${fatDia.toLocaleString("pt-BR")}`, icon: DollarSign },
-    { title: "Faturamento do Mês", value: `R$ ${fatMes.toLocaleString("pt-BR")}`, icon: TrendingUp },
+    { title: "Faturamento no Período", value: `R$ ${fatTotal.toLocaleString("pt-BR")}`, icon: TrendingUp },
     { title: "Ticket Médio", value: `R$ ${ticketMedio.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`, icon: DollarSign },
+    { title: "Pagamentos", value: String(filtered.pagamentos.length), icon: DollarSign },
     { title: "Pacientes", value: String(totalPacientes), icon: Users },
   ];
 
   // Chart: Faturamento por Clínica
   const fatClinica = clinicas.map((c) => ({
-    name: c.nome.replace("Clínica ", ""),
-    value: pagamentos.filter((p) => p.clinica_id === c.id && p.data_pagamento?.startsWith(thisMonth)).reduce((s, p) => s + Number(p.valor), 0),
+    name: c.nome.replace("Clínica ", "").replace("Rizodent ", ""),
+    value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0),
   }));
 
   // Chart: Faturamento por Procedimento
   const procMap = new Map<string, number>();
   filtered.tratamentos.forEach((t) => {
-    const paid = pagamentos.filter((p) => p.tratamento_id === t.id && p.data_pagamento?.startsWith(thisMonth)).reduce((s, p) => s + Number(p.valor), 0);
+    const paid = filtered.pagamentos.filter((p) => p.tratamento_id === t.id).reduce((s, p) => s + Number(p.valor), 0);
     procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + paid);
   });
   const fatProcedimento = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 6);
@@ -86,7 +91,7 @@ const Dashboard = () => {
   pacientes.forEach((p) => { const o = p.origem || "Outros"; origemMap.set(o, (origemMap.get(o) || 0) + 1); });
   const origemData = Array.from(origemMap.entries()).map(([name, value]) => ({ name, value }));
 
-  // Funnel: Leads
+  // Funnel data
   const funnelTotals = filtered.leads.reduce(
     (acc, l) => ({
       leads: acc.leads + l.leads_novos,
@@ -97,6 +102,9 @@ const Dashboard = () => {
     }),
     { leads: 0, agendaram: 0, compareceram: 0, contrataram: 0, naoContrataram: 0 }
   );
+
+  const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(45, 90%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
+
   const funnelData = [
     { name: "Leads", value: funnelTotals.leads, fill: FUNNEL_COLORS[0] },
     { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
@@ -116,19 +124,49 @@ const Dashboard = () => {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Visão geral do desempenho</p>
         </div>
-        <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
-          <SelectTrigger className="w-48 bg-secondary border-border">
-            <Building2 size={16} className="mr-2 text-primary" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas as Clínicas</SelectItem>
-            {clinicas.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
+
+      {/* Filters */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardContent className="pt-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Clínica</Label>
+              <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
+                <SelectTrigger className="bg-secondary border-border">
+                  <Building2 size={16} className="mr-2 text-primary" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as Clínicas</SelectItem>
+                  {clinicas.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Data Início</Label>
+              <div className="relative">
+                <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border pl-10" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Data Fim</Label>
+              <div className="relative">
+                <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border pl-10" />
+              </div>
+            </div>
+            <div className="flex items-end">
+              <div className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary font-medium w-full text-center">
+                {dateFrom && dateTo ? `${new Date(dateFrom + "T12:00:00").toLocaleDateString("pt-BR")} — ${new Date(dateTo + "T12:00:00").toLocaleDateString("pt-BR")}` : "Selecione o período"}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -152,31 +190,42 @@ const Dashboard = () => {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Filter size={18} className="text-primary" />
-            Funil de Vendas (Mês Atual)
+            Funil de Vendas (Período Selecionado)
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-2 sm:grid-cols-5">
-            {funnelData.map((item, i) => (
-              <div key={item.name} className="text-center">
-                <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
-                <div className="text-xs text-muted-foreground mt-1">{item.name}</div>
-                {i > 0 && funnelData[0].value > 0 && (
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {((item.value / funnelData[0].value) * 100).toFixed(1)}%
+          <Tabs defaultValue="numeros" className="space-y-4">
+            <TabsList className="bg-secondary">
+              <TabsTrigger value="numeros">Números</TabsTrigger>
+              <TabsTrigger value="funil">Funil Visual</TabsTrigger>
+            </TabsList>
+            <TabsContent value="numeros">
+              <div className="grid gap-2 sm:grid-cols-5">
+                {funnelData.map((item, i) => (
+                  <div key={item.name} className="text-center">
+                    <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{item.name}</div>
+                    {i > 0 && funnelData[0].value > 0 && (
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {((item.value / funnelData[0].value) * 100).toFixed(1)}%
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="mt-4 flex h-8 overflow-hidden rounded-lg">
-            {funnelData.filter(d => d.value > 0).map((item) => {
-              const total = funnelData.reduce((s, d) => s + d.value, 0) || 1;
-              return (
-                <div key={item.name} style={{ width: `${(item.value / total) * 100}%`, backgroundColor: item.fill }} className="transition-all" title={`${item.name}: ${item.value}`} />
-              );
-            })}
-          </div>
+              <div className="mt-4 flex h-8 overflow-hidden rounded-lg">
+                {funnelData.filter(d => d.value > 0).map((item) => {
+                  const total = funnelData.reduce((s, d) => s + d.value, 0) || 1;
+                  return (
+                    <div key={item.name} style={{ width: `${(item.value / total) * 100}%`, backgroundColor: item.fill }} className="transition-all" title={`${item.name}: ${item.value}`} />
+                  );
+                })}
+              </div>
+            </TabsContent>
+            <TabsContent value="funil">
+              <DashboardFunnel data={funnelData} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
@@ -235,7 +284,7 @@ const Dashboard = () => {
               const anuncioMap = new Map<string, number>();
               pacientes.forEach((p) => {
                 if (!p.nome_anuncio) return;
-                const paid = pagamentos.filter((pg) => pg.paciente_id === p.id && pg.data_pagamento?.startsWith(thisMonth)).reduce((s, pg) => s + Number(pg.valor), 0);
+                const paid = filtered.pagamentos.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
                 anuncioMap.set(p.nome_anuncio, (anuncioMap.get(p.nome_anuncio) || 0) + paid);
               });
               const anuncioData = Array.from(anuncioMap.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
