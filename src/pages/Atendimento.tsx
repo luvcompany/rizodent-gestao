@@ -32,15 +32,24 @@ const formatCurrencyDisplay = (value: number): string => {
 
 type ModoAtendimento = "selecionar" | "novo_tratamento" | "novo_pagamento";
 
+interface TipoProcedimento {
+  id: string;
+  nome: string;
+  valor_referencia: number | null;
+  especialidade: string | null;
+  especialidade_secundaria: string | null;
+}
+
 const Atendimento = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
-  const [tiposProcedimento, setTiposProcedimento] = useState<{ id: string; nome: string; valor_referencia: number | null }[]>([]);
+  const [tiposProcedimento, setTiposProcedimento] = useState<TipoProcedimento[]>([]);
   const [telefone, setTelefone] = useState("");
   const [nome, setNome] = useState("");
   const [clinicaId, setClinicaId] = useState("");
   const [cidade, setCidade] = useState("");
   const [procedimento, setProcedimento] = useState("");
+  const [especialidade, setEspecialidade] = useState("");
   const [valorOrcado, setValorOrcado] = useState("");
   const [valorNaoContratado, setValorNaoContratado] = useState("");
   const [valorPago, setValorPago] = useState("");
@@ -53,8 +62,6 @@ const Atendimento = () => {
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
   const [tratamentosExistentes, setTratamentosExistentes] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
-
-  // Modo: selecionar (escolher tratamento existente ou novo), novo_tratamento, novo_pagamento
   const [modo, setModo] = useState<ModoAtendimento>("selecionar");
   const [tratamentoSelecionadoId, setTratamentoSelecionadoId] = useState<string | null>(null);
 
@@ -62,10 +69,23 @@ const Atendimento = () => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
       if (data) setClinicas(data);
     });
-    supabase.from("tipos_procedimento").select("id, nome, valor_referencia").eq("ativo", true).order("nome").then(({ data }) => {
-      if (data) setTiposProcedimento(data as any);
+    supabase.from("tipos_procedimento").select("id, nome, valor_referencia, especialidade, especialidade_secundaria").eq("ativo", true).order("nome").then(({ data }) => {
+      if (data) setTiposProcedimento(data as TipoProcedimento[]);
     });
   }, []);
+
+  // Get available specialties for selected procedure
+  const especialidadesDisponiveis = (() => {
+    if (!procedimento) return [];
+    const tp = tiposProcedimento.find(t => t.nome === procedimento);
+    if (!tp) return [];
+    const list: string[] = [];
+    if (tp.especialidade) list.push(tp.especialidade);
+    if (tp.especialidade_secundaria) list.push(tp.especialidade_secundaria);
+    return list;
+  })();
+
+  const temMultiplasEspecialidades = especialidadesDisponiveis.length > 1;
 
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, "");
@@ -144,6 +164,7 @@ const Atendimento = () => {
     setTratamentoSelecionadoId(null);
     setClinicaId("");
     setProcedimento("");
+    setEspecialidade("");
     setValorOrcado("");
     setValorNaoContratado("");
     setCidade("");
@@ -151,7 +172,7 @@ const Atendimento = () => {
 
   const resetForm = () => {
     setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
-    setProcedimento(""); setValorOrcado(""); setValorNaoContratado("");
+    setProcedimento(""); setEspecialidade(""); setValorOrcado(""); setValorNaoContratado("");
     setValorPago(""); setFormaPagamento(""); setTipoPagamento("");
     setOrigem(""); setNomeAnuncio(""); setPacienteSelecionadoId(null);
     setDataPagamento(new Date().toISOString().split("T")[0]);
@@ -160,11 +181,26 @@ const Atendimento = () => {
     setTratamentoSelecionadoId(null);
   };
 
+  const handleProcedimentoChange = (v: string) => {
+    setProcedimento(v);
+    const tp = tiposProcedimento.find(t => t.nome === v);
+    if (tp) {
+      if (tp.valor_referencia && !valorOrcado) {
+        setValorOrcado(formatCurrencyDisplay(tp.valor_referencia));
+      }
+      // Auto-select specialty if only one
+      if (tp.especialidade && !tp.especialidade_secundaria) {
+        setEspecialidade(tp.especialidade);
+      } else {
+        setEspecialidade("");
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (modo === "novo_pagamento") {
-      // Only register a payment for existing treatment
       if (!tratamentoSelecionadoId || !valorPago || parseCurrency(valorPago) <= 0) {
         toast.error("Preencha o valor do pagamento.");
         return;
@@ -203,6 +239,10 @@ const Atendimento = () => {
       toast.error("Preencha clínica e procedimento.");
       return;
     }
+    if (especialidadesDisponiveis.length > 0 && !especialidade) {
+      toast.error("Selecione a especialidade.");
+      return;
+    }
     setSaving(true);
 
     try {
@@ -224,6 +264,7 @@ const Atendimento = () => {
           paciente_id: pacienteId,
           clinica_id: clinicaId,
           procedimento,
+          especialidade: especialidade || null,
           valor_orcado: parseCurrency(valorOrcado),
           valor_contratado: parseCurrency(valorOrcado) - parseCurrency(valorNaoContratado),
           created_by: user?.id,
@@ -310,7 +351,7 @@ const Atendimento = () => {
               )}
             </div>
 
-            {/* Treatment selector - choose existing or new */}
+            {/* Treatment selector */}
             {showTratamentoSelector && (
               <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="pt-4 pb-3">
@@ -331,7 +372,7 @@ const Atendimento = () => {
                             <CreditCard size={16} className="text-primary" />
                             <div className="text-left">
                               <p className="font-medium text-foreground">{t.procedimento}</p>
-                              <p className="text-xs text-muted-foreground">{(t.clinicas as any)?.nome}</p>
+                              <p className="text-xs text-muted-foreground">{(t.clinicas as any)?.nome}{t.especialidade ? ` · ${t.especialidade}` : ""}</p>
                             </div>
                           </div>
                           <div className="text-right">
@@ -386,7 +427,7 @@ const Atendimento = () => {
               <Input placeholder="Nome completo" value={nome} onChange={(e) => setNome(e.target.value)} className="bg-secondary border-border" required readOnly={!!pacienteSelecionadoId} />
             </div>
 
-            {/* New treatment fields: clinic, procedure, values */}
+            {/* New treatment fields */}
             {showNovoTratamentoFields && (
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -409,20 +450,33 @@ const Atendimento = () => {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Procedimento</Label>
-                  <Select value={procedimento} onValueChange={(v) => {
-                    setProcedimento(v);
-                    const tp = tiposProcedimento.find(t => t.nome === v);
-                    if (tp && tp.valor_referencia && !valorOrcado) {
-                      setValorOrcado(formatCurrencyDisplay(tp.valor_referencia));
-                    }
-                  }}>
-                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione o procedimento" /></SelectTrigger>
-                    <SelectContent>
-                      {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
-                    </SelectContent>
-                  </Select>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Procedimento</Label>
+                    <Select value={procedimento} onValueChange={handleProcedimentoChange}>
+                      <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione o procedimento" /></SelectTrigger>
+                      <SelectContent>
+                        {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Especialidade</Label>
+                    {temMultiplasEspecialidades ? (
+                      <Select value={especialidade} onValueChange={setEspecialidade}>
+                        <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a especialidade" /></SelectTrigger>
+                        <SelectContent>
+                          {especialidadesDisponiveis.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        readOnly
+                        value={especialidade || "Selecione um procedimento"}
+                        className="bg-muted border-border cursor-not-allowed"
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -446,7 +500,7 @@ const Atendimento = () => {
               </>
             )}
 
-            {/* Payment-only fields when adding payment to existing treatment */}
+            {/* Payment-only fields */}
             {showPagamentoFields && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -456,7 +510,7 @@ const Atendimento = () => {
               </div>
             )}
 
-            {/* Payment details (date, method, type) - shown for both modes */}
+            {/* Payment details */}
             {(showNovoTratamentoFields || showPagamentoFields) && (
               <>
                 <div className="grid gap-4 sm:grid-cols-3">

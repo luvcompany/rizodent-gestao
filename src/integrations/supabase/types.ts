@@ -223,6 +223,8 @@ export type Database = {
           ativo: boolean
           created_at: string
           descricao: string | null
+          especialidade: string | null
+          especialidade_secundaria: string | null
           id: string
           nome: string
           updated_at: string
@@ -232,6 +234,8 @@ export type Database = {
           ativo?: boolean
           created_at?: string
           descricao?: string | null
+          especialidade?: string | null
+          especialidade_secundaria?: string | null
           id?: string
           nome: string
           updated_at?: string
@@ -241,6 +245,8 @@ export type Database = {
           ativo?: boolean
           created_at?: string
           descricao?: string | null
+          especialidade?: string | null
+          especialidade_secundaria?: string | null
           id?: string
           nome?: string
           updated_at?: string
@@ -253,6 +259,7 @@ export type Database = {
           clinica_id: string
           created_at: string
           created_by: string | null
+          especialidade: string | null
           id: string
           paciente_id: string
           procedimento: string
@@ -265,6 +272,7 @@ export type Database = {
           clinica_id: string
           created_at?: string
           created_by?: string | null
+          especialidade?: string | null
           id?: string
           paciente_id: string
           procedimento: string
@@ -277,6 +285,7 @@ export type Database = {
           clinica_id?: string
           created_at?: string
           created_by?: string | null
+          especialidade?: string | null
           id?: string
           paciente_id?: string
           procedimento?: string
