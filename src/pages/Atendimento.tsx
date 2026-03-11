@@ -290,11 +290,14 @@ const Atendimento = () => {
         pacienteId = newPac.id;
       }
 
+      const totalOrcado = parseCurrency(valorOrcadoGeral);
+      const totalNaoContratado = parseCurrency(valorNaoContratado);
+      const totalContratado = totalOrcado - totalNaoContratado;
+      const valorPorProc = procedimentos.length > 0 ? totalOrcado / procedimentos.length : totalOrcado;
+      const contratadoPorProc = procedimentos.length > 0 ? totalContratado / procedimentos.length : totalContratado;
+
       // Create all treatments
       for (const proc of procedimentos) {
-        const valorOrcado = parseCurrency(proc.valorOrcado);
-        const valorNaoContratado = parseCurrency(proc.valorNaoContratado);
-
         const { data: trat, error: tratError } = await supabase
           .from("tratamentos")
           .insert({
@@ -302,8 +305,8 @@ const Atendimento = () => {
             clinica_id: clinicaId,
             procedimento: proc.procedimento,
             especialidade: proc.especialidade || null,
-            valor_orcado: valorOrcado,
-            valor_contratado: valorOrcado - valorNaoContratado,
+            valor_orcado: valorPorProc,
+            valor_contratado: contratadoPorProc,
             created_by: user?.id,
           })
           .select("id")
