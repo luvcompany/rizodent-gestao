@@ -16,7 +16,17 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import * as XLSX from "xlsx";
 import type { Tables } from "@/integrations/supabase/types";
 
-const tooltipStyle = { background: "hsl(0,0%,11%)", border: "1px solid hsl(0,0%,20%)", borderRadius: "8px", color: "#fff" };
+const tooltipStyle = {
+  background: "hsl(0,0%,8%)",
+  border: "1px solid hsl(0,0%,18%)",
+  borderRadius: "10px",
+  color: "#fff",
+  padding: "10px 14px",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+};
+
+const tooltipLabelStyle = { color: "hsl(0,0%,70%)", fontSize: 12, marginBottom: 4 };
+const tooltipItemStyle = { color: "hsl(25,100%,50%)" };
 const COLORS = ["hsl(25,100%,50%)", "hsl(35,100%,55%)", "hsl(180,60%,50%)", "hsl(280,60%,60%)", "hsl(120,50%,50%)", "hsl(0,70%,55%)", "hsl(210,70%,55%)", "hsl(50,90%,55%)"];
 
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;

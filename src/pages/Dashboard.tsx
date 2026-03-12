@@ -16,7 +16,17 @@ import DashboardFunnel from "@/components/DashboardFunnel";
 
 const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(200, 70%, 50%)", "hsl(280, 60%, 55%)"];
 
-const tooltipStyle = { background: "hsl(0,0%,11%)", border: "1px solid hsl(0,0%,20%)", borderRadius: "8px", color: "#fff" };
+const tooltipStyle = {
+  background: "hsl(0,0%,8%)",
+  border: "1px solid hsl(0,0%,18%)",
+  borderRadius: "10px",
+  color: "#fff",
+  padding: "10px 14px",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+};
+
+const tooltipLabelStyle = { color: "hsl(0,0%,70%)", fontSize: 12, marginBottom: 4 };
+const tooltipItemStyle = { color: "hsl(25,100%,50%)" };
 
 const formatAxisValue = (v: number) => {
   if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
