@@ -448,8 +448,7 @@ const Atendimento = () => {
                         Registrar pagamento: {tratamentoSelecionado.procedimento}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Pago: {formatCurrencyDisplay(tratamentoSelecionado.totalPago)} / {formatCurrencyDisplay(Number(tratamentoSelecionado.valor_contratado || 0))}
-                        {" — "}Restam: {formatCurrencyDisplay(Number(tratamentoSelecionado.valor_contratado || 0) - tratamentoSelecionado.totalPago)}
+                        Orçado: {formatCurrencyDisplay(Number(tratamentoSelecionado.valor_orcado || 0))} · Contratado: {formatCurrencyDisplay(Number(tratamentoSelecionado.valor_contratado || 0))}
                       </p>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={() => { setModo("selecionar"); setTratamentoSelecionadoId(null); }}>
