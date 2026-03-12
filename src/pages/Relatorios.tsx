@@ -674,7 +674,7 @@ const Relatorios = () => {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={procedimentoReport.slice(0, 10)} layout="vertical">
+              <BarChart data={procedimentoReport.slice(0, 10)} layout="vertical" margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis type="number" stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <YAxis type="category" dataKey="procedimento" stroke="hsl(0,0%,64%)" fontSize={10} width={120} />
