@@ -384,10 +384,9 @@ const Relatorios = () => {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="rounded-lg bg-secondary p-4 cursor-pointer hover:bg-secondary/80 transition-colors" onClick={() => setShowContratadoDialog(true)}>
+              <div className="rounded-lg bg-secondary p-4">
                 <p className="text-xs text-muted-foreground">Total Contratado</p>
                 <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalContratado)}</p>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Eye size={12} /> Clique para ver detalhes</p>
               </div>
               <div className="rounded-lg bg-secondary p-4">
                 <p className="text-xs text-muted-foreground">Total Pago</p>
