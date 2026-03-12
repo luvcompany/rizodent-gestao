@@ -141,7 +141,7 @@ const Relatorios = () => {
     // Dias distintos com faturamento
     const diasComFaturamento = new Set(filteredPagamentos.map((p) => p.data_pagamento)).size;
     const ticketMedioDiario = diasComFaturamento > 0 ? totalRecebido / diasComFaturamento : 0;
-    const projecaoMensal = ticketMedioDiario * DIAS_UTEIS_MES;
+    const projecaoMensal = ticketMedioDiario * diasUteisMes;
 
     // Dias distintos com leads
     const diasComLeads = new Set(filteredLeads.map((l) => l.data)).size;
