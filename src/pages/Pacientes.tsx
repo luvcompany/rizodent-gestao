@@ -99,7 +99,7 @@ const Pacientes = () => {
 
         result.push({
           ...p,
-          total_pago: totalPago,
+          valor_orcado: valorOrcado,
           valor_contratado: valorContratado,
           ultima_visita: ultimaVisita,
           clinica_nome: clinicaNome,
