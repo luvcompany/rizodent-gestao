@@ -130,7 +130,7 @@ const PacienteDetalhe = () => {
     setEditTratProcedimento(t.procedimento);
     setEditTratEspecialidade(t.especialidade || "");
     setEditTratValorOrcado(formatCurrency(Number(t.valor_orcado || 0)));
-    setEditTratValorNaoContratado(formatCurrency(Number((t.valor_orcado || 0) - (t.valor_contratado || 0))));
+    setEditTratValorContratado(formatCurrency(Number(t.valor_contratado || 0)));
     setEditTratStatus(t.status);
     setEditTratClinicaId(t.clinica_id);
   };
