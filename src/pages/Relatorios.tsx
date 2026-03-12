@@ -104,17 +104,65 @@ const Relatorios = () => {
   }, [filteredPagamentos]);
 
   // Predictability
+  const DIAS_UTEIS_MES = 26; // seg a sáb
+
   const predictability = useMemo(() => {
     const totalContratado = filteredTratamentos.filter((t) => t.status === "ativo").reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
     const totalRecebido = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
     const aReceber = totalContratado - totalRecebido;
+
+    // Leads totals
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
       leads: acc.leads + l.leads_novos,
+      agendaram: acc.agendaram + l.agendaram,
+      compareceram: acc.compareceram + (l.agendaram - l.faltaram),
+      faltaram: acc.faltaram + l.faltaram,
       contrataram: acc.contrataram + l.contrataram,
-    }), { leads: 0, contrataram: 0 });
+      naoContrataram: acc.naoContrataram + l.nao_contrataram,
+    }), { leads: 0, agendaram: 0, compareceram: 0, faltaram: 0, contrataram: 0, naoContrataram: 0 });
+
     const taxaConversao = leadsTotals.leads > 0 ? (leadsTotals.contrataram / leadsTotals.leads) * 100 : 0;
-    const ticketMedio = filteredPagamentos.length > 0 ? totalRecebido / filteredPagamentos.length : 0;
-    return { totalContratado, totalRecebido, aReceber, taxaConversao, ticketMedio, leads: leadsTotals.leads, contrataram: leadsTotals.contrataram };
+
+    // Ticket médio por pagamento
+    const ticketMedioPgto = filteredPagamentos.length > 0 ? totalRecebido / filteredPagamentos.length : 0;
+
+    // Dias distintos com faturamento
+    const diasComFaturamento = new Set(filteredPagamentos.map((p) => p.data_pagamento)).size;
+    const ticketMedioDiario = diasComFaturamento > 0 ? totalRecebido / diasComFaturamento : 0;
+    const projecaoMensal = ticketMedioDiario * DIAS_UTEIS_MES;
+
+    // Dias distintos com leads
+    const diasComLeads = new Set(filteredLeads.map((l) => l.data)).size;
+
+    // Taxas do funil
+    const txAgendamento = leadsTotals.leads > 0 ? leadsTotals.agendaram / leadsTotals.leads : 0;
+    const txComparecimento = leadsTotals.agendaram > 0 ? leadsTotals.compareceram / leadsTotals.agendaram : 0;
+    const txContratacao = leadsTotals.leads > 0 ? leadsTotals.contrataram / leadsTotals.leads : 0;
+    const txNaoContratacao = leadsTotals.leads > 0 ? leadsTotals.naoContrataram / leadsTotals.leads : 0;
+
+    // Médias diárias de leads
+    const mediaDiariaLeads = diasComLeads > 0 ? leadsTotals.leads / diasComLeads : 0;
+    const mediaDiariaAgendaram = diasComLeads > 0 ? leadsTotals.agendaram / diasComLeads : 0;
+    const mediaDiariaCompareceram = diasComLeads > 0 ? leadsTotals.compareceram / diasComLeads : 0;
+    const mediaDiariaContrataram = diasComLeads > 0 ? leadsTotals.contrataram / diasComLeads : 0;
+    const mediaDiariaNaoContrataram = diasComLeads > 0 ? leadsTotals.naoContrataram / diasComLeads : 0;
+
+    return {
+      totalContratado, totalRecebido, aReceber, taxaConversao,
+      ticketMedioPgto, ticketMedioDiario, projecaoMensal,
+      leads: leadsTotals.leads, contrataram: leadsTotals.contrataram,
+      // Taxas
+      txAgendamento, txComparecimento, txContratacao, txNaoContratacao,
+      // Médias diárias
+      mediaDiariaLeads, mediaDiariaAgendaram, mediaDiariaCompareceram,
+      mediaDiariaContrataram, mediaDiariaNaoContrataram,
+      // Projeções mensais de leads
+      projMensalLeads: mediaDiariaLeads * DIAS_UTEIS_MES,
+      projMensalAgendaram: mediaDiariaAgendaram * DIAS_UTEIS_MES,
+      projMensalCompareceram: mediaDiariaCompareceram * DIAS_UTEIS_MES,
+      projMensalContrataram: mediaDiariaContrataram * DIAS_UTEIS_MES,
+      projMensalNaoContrataram: mediaDiariaNaoContrataram * DIAS_UTEIS_MES,
+    };
   }, [filteredTratamentos, filteredPagamentos, filteredLeads]);
 
   // Funnel report
