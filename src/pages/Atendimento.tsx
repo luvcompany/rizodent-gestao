@@ -418,10 +418,7 @@ const Atendimento = () => {
                           </div>
                           <div className="text-right">
                             <p className="text-xs text-muted-foreground">
-                              Pago: {formatCurrencyDisplay(t.totalPago)} / {formatCurrencyDisplay(Number(t.valor_contratado || 0))}
-                            </p>
-                            <p className={`text-xs font-semibold ${saldo > 0 ? "text-destructive" : "text-green-600"}`}>
-                              {saldo > 0 ? `Restam: ${formatCurrencyDisplay(saldo)}` : "Quitado"}
+                              Orçado: {formatCurrencyDisplay(Number(t.valor_orcado || 0))} · Contratado: {formatCurrencyDisplay(Number(t.valor_contratado || 0))}
                             </p>
                           </div>
                         </button>
@@ -451,8 +448,7 @@ const Atendimento = () => {
                         Registrar pagamento: {tratamentoSelecionado.procedimento}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Pago: {formatCurrencyDisplay(tratamentoSelecionado.totalPago)} / {formatCurrencyDisplay(Number(tratamentoSelecionado.valor_contratado || 0))}
-                        {" — "}Restam: {formatCurrencyDisplay(Number(tratamentoSelecionado.valor_contratado || 0) - tratamentoSelecionado.totalPago)}
+                        Orçado: {formatCurrencyDisplay(Number(tratamentoSelecionado.valor_orcado || 0))} · Contratado: {formatCurrencyDisplay(Number(tratamentoSelecionado.valor_contratado || 0))}
                       </p>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={() => { setModo("selecionar"); setTratamentoSelecionadoId(null); }}>

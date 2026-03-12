@@ -19,7 +19,7 @@ interface PacienteView {
   telefone: string;
   cidade: string | null;
   created_at: string;
-  total_pago: number;
+  valor_orcado: number;
   valor_contratado: number;
   ultima_visita: string | null;
   clinica_nome: string | null;
@@ -48,7 +48,7 @@ const Pacientes = () => {
       // Fetch all data in parallel — 4 queries total instead of N*3
       const [{ data: pacs }, { data: tratamentos }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
         supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
-        supabase.from("tratamentos").select("paciente_id, valor_contratado"),
+        supabase.from("tratamentos").select("paciente_id, valor_orcado, valor_contratado"),
         supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id").order("data_pagamento", { ascending: false }),
         supabase.from("clinicas").select("id, nome"),
       ]);
@@ -60,9 +60,11 @@ const Pacientes = () => {
       clinicas?.forEach((c) => clinicaMap.set(c.id, c.nome));
 
       // Group tratamentos by paciente_id
-      const tratMap = new Map<string, number>();
+      const tratOrcadoMap = new Map<string, number>();
+      const tratContratadoMap = new Map<string, number>();
       tratamentos?.forEach((t) => {
-        tratMap.set(t.paciente_id, (tratMap.get(t.paciente_id) || 0) + Number(t.valor_contratado || 0));
+        tratOrcadoMap.set(t.paciente_id, (tratOrcadoMap.get(t.paciente_id) || 0) + Number(t.valor_orcado || 0));
+        tratContratadoMap.set(t.paciente_id, (tratContratadoMap.get(t.paciente_id) || 0) + Number(t.valor_contratado || 0));
       });
 
       // Group pagamentos by paciente_id
@@ -82,7 +84,8 @@ const Pacientes = () => {
 
       const result: PacienteView[] = [];
       for (const p of pacs) {
-        const valorContratado = tratMap.get(p.id) || 0;
+        const valorOrcado = tratOrcadoMap.get(p.id) || 0;
+        const valorContratado = tratContratadoMap.get(p.id) || 0;
         let pags = pagMap.get(p.id) || [];
 
         if (dataMinima) {
@@ -96,7 +99,7 @@ const Pacientes = () => {
 
         result.push({
           ...p,
-          total_pago: totalPago,
+          valor_orcado: valorOrcado,
           valor_contratado: valorContratado,
           ultima_visita: ultimaVisita,
           clinica_nome: clinicaNome,
@@ -174,10 +177,10 @@ const Pacientes = () => {
                 <div className="flex items-center gap-4">
                   <div className="text-right space-y-0.5">
                     <p className="text-xs text-muted-foreground">
-                      Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      Orçado: R$ {pac.valor_orcado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     <p className="text-sm font-semibold text-primary">
-                      Pago: R$ {pac.total_pago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     {pac.ultima_visita && (
                       <p className="text-xs text-muted-foreground">

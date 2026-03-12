@@ -196,7 +196,7 @@ const PacienteDetalhe = () => {
     toast.success("Tratamento excluído!");
   };
 
-  const totalPago = pagamentos.reduce((s, p) => s + Number(p.valor), 0);
+  const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
   const totalContratado = tratamentos.reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
 
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>;
@@ -244,8 +244,8 @@ const PacienteDetalhe = () => {
         <Card className="gradient-card border-border shadow-card">
           <CardContent className="pt-4 pb-3 text-center">
             <DollarSign size={20} className="mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold text-primary">{formatCurrency(totalPago)}</p>
-            <p className="text-xs text-muted-foreground">Total Pago</p>
+            <p className="text-2xl font-bold text-primary">{formatCurrency(totalOrcado)}</p>
+            <p className="text-xs text-muted-foreground">Total Orçado</p>
           </CardContent>
         </Card>
         <Card className="gradient-card border-border shadow-card">
