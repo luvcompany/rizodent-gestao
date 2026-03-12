@@ -291,8 +291,7 @@ const Atendimento = () => {
       }
 
       const totalOrcado = parseCurrency(valorOrcadoGeral);
-      const totalNaoContratado = parseCurrency(valorNaoContratado);
-      const totalContratado = totalOrcado - totalNaoContratado;
+      const totalContratado = parseCurrency(valorContratadoGeral);
       const valorPorProc = procedimentos.length > 0 ? totalOrcado / procedimentos.length : totalOrcado;
       const contratadoPorProc = procedimentos.length > 0 ? totalContratado / procedimentos.length : totalContratado;
 
