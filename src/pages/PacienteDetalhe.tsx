@@ -196,7 +196,7 @@ const PacienteDetalhe = () => {
     toast.success("Tratamento excluído!");
   };
 
-  const totalPago = pagamentos.reduce((s, p) => s + Number(p.valor), 0);
+  const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
   const totalContratado = tratamentos.reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
 
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>;
