@@ -320,7 +320,7 @@ const Atendimento = () => {
               tratamento_id: trat.id,
               paciente_id: pacienteId,
               clinica_id: clinicaId,
-              valor: parseCurrency(valorPago),
+              valor: contratadoPorProc,
               forma_pagamento: formaPagamento || "Pix",
               tipo: tipoPagamento || "primeiro",
               data_pagamento: dataPagamento,
