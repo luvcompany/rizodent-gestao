@@ -461,8 +461,8 @@ const Relatorios = () => {
                 <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {contratadoVsPago.concluidos.map((p, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium">{p.nome}</TableCell>
+                    <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
+                      <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
                       <TableCell>{formatCurrency(p.contratado)}</TableCell>
                       <TableCell className="text-green-400">{formatCurrency(p.pago)}</TableCell>
                     </TableRow>
