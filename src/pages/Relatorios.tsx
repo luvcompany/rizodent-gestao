@@ -789,7 +789,7 @@ const Relatorios = () => {
                   <Pie data={especialidadeReport} dataKey="contratado" nameKey="especialidade" cx="50%" cy="50%" outerRadius={100} label={({ especialidade, percent }) => `${especialidade} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
                     {especialidadeReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => formatCurrency(v)} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: number) => formatCurrency(v)} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="overflow-x-auto">
