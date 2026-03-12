@@ -104,7 +104,19 @@ const Relatorios = () => {
   }, [filteredPagamentos]);
 
   // Predictability
-  const DIAS_UTEIS_MES = 26; // seg a sáb
+  // Calcula dias úteis reais (seg-sáb) no mês selecionado
+  const diasUteisMes = useMemo(() => {
+    const refDate = new Date(dateFrom + "T12:00:00");
+    const year = refDate.getFullYear();
+    const month = refDate.getMonth();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    let count = 0;
+    for (let day = 1; day <= totalDays; day++) {
+      const dow = new Date(year, month, day).getDay();
+      if (dow !== 0) count++; // 0 = domingo
+    }
+    return count;
+  }, [dateFrom]);
 
   const predictability = useMemo(() => {
     const totalContratado = filteredTratamentos.filter((t) => t.status === "ativo").reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
@@ -129,7 +141,7 @@ const Relatorios = () => {
     // Dias distintos com faturamento
     const diasComFaturamento = new Set(filteredPagamentos.map((p) => p.data_pagamento)).size;
     const ticketMedioDiario = diasComFaturamento > 0 ? totalRecebido / diasComFaturamento : 0;
-    const projecaoMensal = ticketMedioDiario * DIAS_UTEIS_MES;
+    const projecaoMensal = ticketMedioDiario * diasUteisMes;
 
     // Dias distintos com leads
     const diasComLeads = new Set(filteredLeads.map((l) => l.data)).size;
@@ -157,13 +169,13 @@ const Relatorios = () => {
       mediaDiariaLeads, mediaDiariaAgendaram, mediaDiariaCompareceram,
       mediaDiariaContrataram, mediaDiariaNaoContrataram,
       // Projeções mensais de leads
-      projMensalLeads: mediaDiariaLeads * DIAS_UTEIS_MES,
-      projMensalAgendaram: mediaDiariaAgendaram * DIAS_UTEIS_MES,
-      projMensalCompareceram: mediaDiariaCompareceram * DIAS_UTEIS_MES,
-      projMensalContrataram: mediaDiariaContrataram * DIAS_UTEIS_MES,
-      projMensalNaoContrataram: mediaDiariaNaoContrataram * DIAS_UTEIS_MES,
+      projMensalLeads: mediaDiariaLeads * diasUteisMes,
+      projMensalAgendaram: mediaDiariaAgendaram * diasUteisMes,
+      projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes,
+      projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
+      projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
     };
-  }, [filteredTratamentos, filteredPagamentos, filteredLeads]);
+  }, [filteredTratamentos, filteredPagamentos, filteredLeads, diasUteisMes]);
 
   // Funnel report
   const funnelReport = useMemo(() => {
@@ -421,7 +433,7 @@ const Relatorios = () => {
                 <TrendingUp size={18} className="text-primary" /> Relatório de Previsibilidade
               </CardTitle>
               <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-                `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTaxa de Conversão: ${predictability.taxaConversao.toFixed(1)}%\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${DIAS_UTEIS_MES} dias): ${formatCurrency(predictability.projecaoMensal)}`
+                `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTaxa de Conversão: ${predictability.taxaConversao.toFixed(1)}%\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${formatCurrency(predictability.projecaoMensal)}`
               } />
             </CardHeader>
             <CardContent className="space-y-6">
@@ -450,7 +462,7 @@ const Relatorios = () => {
                     <p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioDiario)}</p>
                   </div>
                   <div className="rounded-lg bg-secondary p-4">
-                    <p className="text-xs text-muted-foreground">Projeção Mensal ({DIAS_UTEIS_MES} dias úteis)</p>
+                    <p className="text-xs text-muted-foreground">Projeção Mensal ({diasUteisMes} dias úteis)</p>
                     <p className="text-xl font-bold text-primary">{formatCurrency(predictability.projecaoMensal)}</p>
                   </div>
                 </div>
@@ -466,7 +478,7 @@ const Relatorios = () => {
                         <TableHead>Etapa</TableHead>
                         <TableHead className="text-center">Taxa</TableHead>
                         <TableHead className="text-center">Média/Dia</TableHead>
-                        <TableHead className="text-center">Projeção Mensal ({DIAS_UTEIS_MES}d)</TableHead>
+                        <TableHead className="text-center">Projeção Mensal ({diasUteisMes}d)</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
