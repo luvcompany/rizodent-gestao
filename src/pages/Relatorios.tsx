@@ -94,7 +94,7 @@ const Relatorios = () => {
     const pacienteMap = new Map<string, { id: string; nome: string; contratado: number; pago: number; tratamentos: any[] }>();
     filteredTratamentos.filter(t => t.status === "ativo").forEach((t) => {
       const pid = t.paciente_id;
-      const entry = pacienteMap.get(pid) || { nome: t.pacientes?.nome || "—", contratado: 0, pago: 0, tratamentos: [] };
+      const entry = pacienteMap.get(pid) || { id: pid, nome: t.pacientes?.nome || "—", contratado: 0, pago: 0, tratamentos: [] };
       const contratado = Number(t.valor_contratado || 0);
       const pago = pagosPorTratamento.get(t.id) || 0;
       entry.contratado += contratado;
