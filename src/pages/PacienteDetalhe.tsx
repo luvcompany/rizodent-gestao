@@ -161,13 +161,13 @@ const PacienteDetalhe = () => {
   const handleSaveTratamento = async () => {
     if (!editingTratId) return;
     const valorOrcado = parseCurrency(editTratValorOrcado);
-    const valorNaoContratado = parseCurrency(editTratValorNaoContratado);
+    const valorContratado = parseCurrency(editTratValorContratado);
     setSaving(true);
     const { error } = await supabase.from("tratamentos").update({
       procedimento: editTratProcedimento,
       especialidade: editTratEspecialidade || null,
       valor_orcado: valorOrcado,
-      valor_contratado: valorOrcado - valorNaoContratado,
+      valor_contratado: valorContratado,
       status: editTratStatus,
       clinica_id: editTratClinicaId,
     }).eq("id", editingTratId);
