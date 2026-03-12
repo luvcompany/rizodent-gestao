@@ -404,9 +404,9 @@ const Relatorios = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" />
                 <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} />
-                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[6, 6, 0, 0]} />
+                <Tooltip contentStyle={tooltipStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
+                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
               </BarChart>
             </ResponsiveContainer>
             <div className="grid gap-4 sm:grid-cols-2">
