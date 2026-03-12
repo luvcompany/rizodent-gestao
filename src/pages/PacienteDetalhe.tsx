@@ -178,7 +178,7 @@ const PacienteDetalhe = () => {
       procedimento: editTratProcedimento,
       especialidade: editTratEspecialidade || null,
       valor_orcado: valorOrcado,
-      valor_contratado: valorOrcado - valorNaoContratado,
+      valor_contratado: valorContratado,
       status: editTratStatus,
       clinica_id: editTratClinicaId,
       clinicas: clinicas.find(c => c.id === editTratClinicaId) || t.clinicas,
