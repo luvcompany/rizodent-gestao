@@ -444,8 +444,8 @@ const Dashboard = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
               <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: "hsl(0,0%,64%)" }} />
               <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="value" fill="hsl(15,90%,45%)" radius={[6, 6, 0, 0]} label={renderBarLabel} />
+              <Tooltip contentStyle={tooltipStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="value" fill="hsl(15,90%,45%)" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
