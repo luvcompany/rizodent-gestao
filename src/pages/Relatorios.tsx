@@ -421,38 +421,111 @@ const Relatorios = () => {
                 <TrendingUp size={18} className="text-primary" /> Relatório de Previsibilidade
               </CardTitle>
               <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-                `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTaxa de Conversão: ${predictability.taxaConversao.toFixed(1)}%\nTicket Médio: ${formatCurrency(predictability.ticketMedio)}`
+                `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTaxa de Conversão: ${predictability.taxaConversao.toFixed(1)}%\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${DIAS_UTEIS_MES} dias): ${formatCurrency(predictability.projecaoMensal)}`
               } />
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Total Contratado</p>
-                  <p className="text-xl font-bold text-primary">{formatCurrency(predictability.totalContratado)}</p>
+            <CardContent className="space-y-6">
+              {/* Faturamento */}
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">💰 Faturamento</h3>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Total Contratado</p>
+                    <p className="text-xl font-bold text-primary">{formatCurrency(predictability.totalContratado)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Total Recebido</p>
+                    <p className="text-xl font-bold text-accent-foreground">{formatCurrency(predictability.totalRecebido)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">A Receber</p>
+                    <p className="text-xl font-bold text-primary">{formatCurrency(predictability.aReceber)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Ticket Médio por Pagamento</p>
+                    <p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioPgto)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Ticket Médio Diário</p>
+                    <p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioDiario)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Projeção Mensal ({DIAS_UTEIS_MES} dias úteis)</p>
+                    <p className="text-xl font-bold text-primary">{formatCurrency(predictability.projecaoMensal)}</p>
+                  </div>
                 </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Total Recebido</p>
-                  <p className="text-xl font-bold text-green-400">{formatCurrency(predictability.totalRecebido)}</p>
+              </div>
+
+              {/* Previsibilidade de Leads */}
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">📊 Previsibilidade de Leads (taxas atuais)</h3>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Etapa</TableHead>
+                        <TableHead className="text-center">Taxa</TableHead>
+                        <TableHead className="text-center">Média/Dia</TableHead>
+                        <TableHead className="text-center">Projeção Mensal ({DIAS_UTEIS_MES}d)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell className="font-medium">Leads Novos</TableCell>
+                        <TableCell className="text-center">—</TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaLeads.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalLeads)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-medium">Agendaram</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                            {(predictability.txAgendamento * 100).toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaAgendaram.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalAgendaram)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-medium">Compareceram</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                            {(predictability.txComparecimento * 100).toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaCompareceram.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalCompareceram)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-medium">Contrataram</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                            {(predictability.txContratacao * 100).toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaContrataram.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalContrataram)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-medium">Não Contrataram</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                            {(predictability.txNaoContratacao * 100).toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaNaoContrataram.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalNaoContrataram)}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
                 </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">A Receber</p>
-                  <p className="text-xl font-bold text-yellow-400">{formatCurrency(predictability.aReceber)}</p>
-                </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Taxa de Conversão (Leads)</p>
-                  <p className="text-xl font-bold">{predictability.taxaConversao.toFixed(1)}%</p>
-                  <p className="text-xs text-muted-foreground mt-1">{predictability.contrataram} de {predictability.leads} leads</p>
-                </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Ticket Médio</p>
-                  <p className="text-xl font-bold">{formatCurrency(predictability.ticketMedio)}</p>
-                </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Projeção Mensal (base taxa atual)</p>
-                  <p className="text-xl font-bold text-primary">
-                    {formatCurrency(predictability.leads > 0 ? (predictability.taxaConversao / 100) * predictability.leads * predictability.ticketMedio : 0)}
-                  </p>
-                </div>
+              </div>
+
+              {/* Taxa de conversão resumo */}
+              <div className="rounded-lg bg-secondary p-4">
+                <p className="text-xs text-muted-foreground">Taxa de Conversão Geral (Leads → Contratação)</p>
+                <p className="text-xl font-bold">{predictability.taxaConversao.toFixed(1)}%</p>
+                <p className="text-xs text-muted-foreground mt-1">{predictability.contrataram} de {predictability.leads} leads</p>
               </div>
             </CardContent>
           </Card>
