@@ -486,7 +486,7 @@ const Dashboard = () => {
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} tick={{ fill: "hsl(0,0%,64%)" }} />
                 <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-                <Bar dataKey="faturamento" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.04)", transformOrigin: "bottom", transition: "all 0.2s ease" } }}>
+                <Bar dataKey="faturamento" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
                   {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Bar>
               </BarChart>
