@@ -1,14 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, TrendingUp, CalendarDays } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
+import { format } from "date-fns";
+
+type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
 const CadastroLeads = () => {
   const { user } = useAuth();
@@ -22,12 +27,26 @@ const CadastroLeads = () => {
   const [naoContrataram, setNaoContrataram] = useState("");
   const [saving, setSaving] = useState(false);
   const [existingId, setExistingId] = useState<string | null>(null);
+  const [registros, setRegistros] = useState<LeadWithClinica[]>([]);
 
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
       if (data) setClinicas(data);
     });
   }, []);
+
+  const fetchRegistros = useCallback(async () => {
+    const { data } = await supabase
+      .from("leads_diarios")
+      .select("*, clinicas(nome)")
+      .order("data", { ascending: false })
+      .limit(50);
+    if (data) setRegistros(data);
+  }, []);
+
+  useEffect(() => {
+    fetchRegistros();
+  }, [fetchRegistros]);
 
   // Check if record exists for date+clinic
   useEffect(() => {
@@ -54,6 +73,14 @@ const CadastroLeads = () => {
       });
   }, [clinicaId, data]);
 
+  const resetForm = () => {
+    setExistingId(null);
+    setLeadsNovos(""); setAgendaram(""); setFaltaram("");
+    setContrataram(""); setNaoContrataram("");
+    setClinicaId("");
+    setData(new Date().toISOString().split("T")[0]);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clinicaId) { toast.error("Selecione uma clínica."); return; }
@@ -79,6 +106,7 @@ const CadastroLeads = () => {
         if (error) throw error;
         toast.success("Dados cadastrados!");
       }
+      fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
     } finally {
@@ -86,8 +114,36 @@ const CadastroLeads = () => {
     }
   };
 
+  const handleEdit = (registro: LeadWithClinica) => {
+    setClinicaId(registro.clinica_id);
+    setData(registro.data);
+    setExistingId(registro.id);
+    setLeadsNovos(String(registro.leads_novos));
+    setAgendaram(String(registro.agendaram));
+    setFaltaram(String(registro.faltaram));
+    setContrataram(String(registro.contrataram));
+    setNaoContrataram(String(registro.nao_contrataram));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase.from("leads_diarios").delete().eq("id", id);
+      if (error) throw error;
+      toast.success("Registro excluído!");
+      if (existingId === id) resetForm();
+      fetchRegistros();
+    } catch (err: any) {
+      toast.error("Erro ao excluir: " + err.message);
+    }
+  };
+
+  const getClinicaNome = (registro: LeadWithClinica) => {
+    return registro.clinicas?.nome || "—";
+  };
+
   return (
-    <div className="mx-auto max-w-2xl animate-fade-in">
+    <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Cadastro de Leads Diário</h1>
         <p className="text-sm text-muted-foreground">Preencha os dados do funil de vendas</p>
@@ -155,6 +211,79 @@ const CadastroLeads = () => {
               {saving ? "Salvando..." : existingId ? "Atualizar Dados" : "Salvar Dados"}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Histórico de registros */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <List size={18} className="text-primary" />
+            Registros Cadastrados
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {registros.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Nenhum registro encontrado.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Clínica</TableHead>
+                    <TableHead className="text-center">Leads</TableHead>
+                    <TableHead className="text-center">Agend.</TableHead>
+                    <TableHead className="text-center">Falt.</TableHead>
+                    <TableHead className="text-center">Contr.</TableHead>
+                    <TableHead className="text-center">Não Contr.</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {registros.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-medium">{format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy")}</TableCell>
+                      <TableCell>{getClinicaNome(r)}</TableCell>
+                      <TableCell className="text-center">{r.leads_novos}</TableCell>
+                      <TableCell className="text-center">{r.agendaram}</TableCell>
+                      <TableCell className="text-center">{r.faltaram}</TableCell>
+                      <TableCell className="text-center">{r.contrataram}</TableCell>
+                      <TableCell className="text-center">{r.nao_contrataram}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleEdit(r)} title="Editar">
+                            <Pencil size={16} className="text-primary" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" title="Excluir">
+                                <Trash2 size={16} className="text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Deseja realmente excluir o registro de {format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy")}? Esta ação não pode ser desfeita.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(r.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                  Excluir
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
