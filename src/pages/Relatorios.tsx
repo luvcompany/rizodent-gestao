@@ -29,6 +29,8 @@ const tooltipLabelStyle = { color: "hsl(0,0%,70%)", fontSize: 12, marginBottom: 
 const tooltipItemStyle = { color: "hsl(25,100%,50%)" };
 const COLORS = ["hsl(25,100%,50%)", "hsl(35,100%,55%)", "hsl(180,60%,50%)", "hsl(280,60%,60%)", "hsl(120,50%,50%)", "hsl(0,70%,55%)", "hsl(210,70%,55%)", "hsl(50,90%,55%)"];
 
+const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
+
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
 const Relatorios = () => {

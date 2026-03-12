@@ -36,6 +36,8 @@ const formatAxisValue = (v: number) => {
 
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
+const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
+
 const renderBarLabel = (props: any) => {
   const { x, y, width, value } = props;
   if (!value) return null;
