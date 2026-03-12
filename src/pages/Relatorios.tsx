@@ -169,13 +169,13 @@ const Relatorios = () => {
       mediaDiariaLeads, mediaDiariaAgendaram, mediaDiariaCompareceram,
       mediaDiariaContrataram, mediaDiariaNaoContrataram,
       // Projeções mensais de leads
-      projMensalLeads: mediaDiariaLeads * DIAS_UTEIS_MES,
-      projMensalAgendaram: mediaDiariaAgendaram * DIAS_UTEIS_MES,
-      projMensalCompareceram: mediaDiariaCompareceram * DIAS_UTEIS_MES,
-      projMensalContrataram: mediaDiariaContrataram * DIAS_UTEIS_MES,
-      projMensalNaoContrataram: mediaDiariaNaoContrataram * DIAS_UTEIS_MES,
+      projMensalLeads: mediaDiariaLeads * diasUteisMes,
+      projMensalAgendaram: mediaDiariaAgendaram * diasUteisMes,
+      projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes,
+      projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
+      projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
     };
-  }, [filteredTratamentos, filteredPagamentos, filteredLeads]);
+  }, [filteredTratamentos, filteredPagamentos, filteredLeads, diasUteisMes]);
 
   // Funnel report
   const funnelReport = useMemo(() => {
