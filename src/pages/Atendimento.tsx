@@ -62,7 +62,7 @@ const Atendimento = () => {
   const [cidade, setCidade] = useState("");
   const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
   const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
-  const [valorNaoContratado, setValorNaoContratado] = useState("");
+  const [valorContratadoGeral, setValorContratadoGeral] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("");
   const [origem, setOrigem] = useState("");
