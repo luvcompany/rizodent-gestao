@@ -433,7 +433,7 @@ const Relatorios = () => {
                 <TrendingUp size={18} className="text-primary" /> Relatório de Previsibilidade
               </CardTitle>
               <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-                `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTaxa de Conversão: ${predictability.taxaConversao.toFixed(1)}%\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${DIAS_UTEIS_MES} dias): ${formatCurrency(predictability.projecaoMensal)}`
+                `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTaxa de Conversão: ${predictability.taxaConversao.toFixed(1)}%\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${formatCurrency(predictability.projecaoMensal)}`
               } />
             </CardHeader>
             <CardContent className="space-y-6">
