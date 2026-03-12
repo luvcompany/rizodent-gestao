@@ -22,6 +22,7 @@ const COLORS = ["hsl(25,100%,50%)", "hsl(35,100%,55%)", "hsl(180,60%,50%)", "hsl
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
 const Relatorios = () => {
+  const navigate = useNavigate();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaFiltro, setClinicaFiltro] = useState("todas");
   const [pagamentos, setPagamentos] = useState<any[]>([]);
