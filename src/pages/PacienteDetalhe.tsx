@@ -63,7 +63,7 @@ const PacienteDetalhe = () => {
   const [editTratProcedimento, setEditTratProcedimento] = useState("");
   const [editTratEspecialidade, setEditTratEspecialidade] = useState("");
   const [editTratValorOrcado, setEditTratValorOrcado] = useState("");
-  const [editTratValorNaoContratado, setEditTratValorNaoContratado] = useState("");
+  const [editTratValorContratado, setEditTratValorContratado] = useState("");
   const [editTratStatus, setEditTratStatus] = useState("");
   const [editTratClinicaId, setEditTratClinicaId] = useState("");
 
@@ -130,7 +130,7 @@ const PacienteDetalhe = () => {
     setEditTratProcedimento(t.procedimento);
     setEditTratEspecialidade(t.especialidade || "");
     setEditTratValorOrcado(formatCurrency(Number(t.valor_orcado || 0)));
-    setEditTratValorNaoContratado(formatCurrency(Number((t.valor_orcado || 0) - (t.valor_contratado || 0))));
+    setEditTratValorContratado(formatCurrency(Number(t.valor_contratado || 0)));
     setEditTratStatus(t.status);
     setEditTratClinicaId(t.clinica_id);
   };
@@ -161,13 +161,13 @@ const PacienteDetalhe = () => {
   const handleSaveTratamento = async () => {
     if (!editingTratId) return;
     const valorOrcado = parseCurrency(editTratValorOrcado);
-    const valorNaoContratado = parseCurrency(editTratValorNaoContratado);
+    const valorContratado = parseCurrency(editTratValorContratado);
     setSaving(true);
     const { error } = await supabase.from("tratamentos").update({
       procedimento: editTratProcedimento,
       especialidade: editTratEspecialidade || null,
       valor_orcado: valorOrcado,
-      valor_contratado: valorOrcado - valorNaoContratado,
+      valor_contratado: valorContratado,
       status: editTratStatus,
       clinica_id: editTratClinicaId,
     }).eq("id", editingTratId);
@@ -178,7 +178,7 @@ const PacienteDetalhe = () => {
       procedimento: editTratProcedimento,
       especialidade: editTratEspecialidade || null,
       valor_orcado: valorOrcado,
-      valor_contratado: valorOrcado - valorNaoContratado,
+      valor_contratado: valorContratado,
       status: editTratStatus,
       clinica_id: editTratClinicaId,
       clinicas: clinicas.find(c => c.id === editTratClinicaId) || t.clinicas,
@@ -392,12 +392,12 @@ const PacienteDetalhe = () => {
                           <Input inputMode="numeric" value={editTratValorOrcado} onChange={e => setEditTratValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Não Contratado</Label>
-                          <Input inputMode="numeric" value={editTratValorNaoContratado} onChange={e => setEditTratValorNaoContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
+                          <Label className="text-xs">Valor Contratado</Label>
+                          <Input inputMode="numeric" value={editTratValorContratado} onChange={e => setEditTratValorContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Contratado</Label>
-                          <Input readOnly value={formatCurrency(parseCurrency(editTratValorOrcado) - parseCurrency(editTratValorNaoContratado))} className="bg-muted border-border cursor-not-allowed text-sm" />
+                          <Label className="text-xs">Não Contratado</Label>
+                          <Input readOnly value={formatCurrency(Math.max(0, parseCurrency(editTratValorOrcado) - parseCurrency(editTratValorContratado)))} className="bg-muted border-border cursor-not-allowed text-sm" />
                         </div>
                       </div>
                       <Button size="sm" onClick={handleSaveTratamento} disabled={saving} className="w-full">
@@ -446,6 +446,7 @@ const PacienteDetalhe = () => {
                     <div className="flex gap-4 text-xs text-muted-foreground">
                       <span>Orçado: {formatCurrency(Number(t.valor_orcado || 0))}</span>
                       <span>Contratado: {formatCurrency(Number(t.valor_contratado || 0))}</span>
+                      <span>Não Contratado: {formatCurrency(Math.max(0, Number(t.valor_orcado || 0) - Number(t.valor_contratado || 0)))}</span>
                       <span className="text-primary font-medium">Pago: {formatCurrency(totalPagoTrat)}</span>
                     </div>
                     {pagsTrat.length > 0 && (
