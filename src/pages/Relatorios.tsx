@@ -104,7 +104,19 @@ const Relatorios = () => {
   }, [filteredPagamentos]);
 
   // Predictability
-  const DIAS_UTEIS_MES = 26; // seg a sáb
+  // Calcula dias úteis reais (seg-sáb) no mês selecionado
+  const diasUteisMes = useMemo(() => {
+    const refDate = new Date(dateFrom + "T12:00:00");
+    const year = refDate.getFullYear();
+    const month = refDate.getMonth();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    let count = 0;
+    for (let day = 1; day <= totalDays; day++) {
+      const dow = new Date(year, month, day).getDay();
+      if (dow !== 0) count++; // 0 = domingo
+    }
+    return count;
+  }, [dateFrom]);
 
   const predictability = useMemo(() => {
     const totalContratado = filteredTratamentos.filter((t) => t.status === "ativo").reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
