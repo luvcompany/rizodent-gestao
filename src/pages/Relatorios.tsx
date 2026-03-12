@@ -16,7 +16,17 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import * as XLSX from "xlsx";
 import type { Tables } from "@/integrations/supabase/types";
 
-const tooltipStyle = { background: "hsl(0,0%,11%)", border: "1px solid hsl(0,0%,20%)", borderRadius: "8px", color: "#fff" };
+const tooltipStyle = {
+  background: "hsl(0,0%,8%)",
+  border: "1px solid hsl(0,0%,18%)",
+  borderRadius: "10px",
+  color: "#fff",
+  padding: "10px 14px",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+};
+
+const tooltipLabelStyle = { color: "hsl(0,0%,70%)", fontSize: 12, marginBottom: 4 };
+const tooltipItemStyle = { color: "hsl(25,100%,50%)" };
 const COLORS = ["hsl(25,100%,50%)", "hsl(35,100%,55%)", "hsl(180,60%,50%)", "hsl(280,60%,60%)", "hsl(120,50%,50%)", "hsl(0,70%,55%)", "hsl(210,70%,55%)", "hsl(50,90%,55%)"];
 
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
@@ -400,11 +410,11 @@ const Relatorios = () => {
               </div>
             </div>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={[{ name: "Resumo", contratado: contratadoVsPago.totalContratado, pago: contratadoVsPago.totalPago }]}>
+              <BarChart data={[{ name: "Resumo", contratado: contratadoVsPago.totalContratado, pago: contratadoVsPago.totalPago }]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" />
                 <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={tooltipStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
                 <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
                 <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
               </BarChart>
@@ -491,11 +501,11 @@ const Relatorios = () => {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={dailyReport.slice(0, 14).reverse()}>
+              <BarChart data={dailyReport.slice(0, 14).reverse()} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="date" stroke="hsl(0,0%,64%)" fontSize={10} />
                 <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={tooltipStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
                 <Bar dataKey="faturamento" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
               </BarChart>
             </ResponsiveContainer>
@@ -527,11 +537,11 @@ const Relatorios = () => {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={weeklyReport.slice(0, 8).reverse()}>
+              <BarChart data={weeklyReport.slice(0, 8).reverse()} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="week" stroke="hsl(0,0%,64%)" fontSize={10} />
                 <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={tooltipStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
                 <Bar dataKey="faturamento" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
               </BarChart>
             </ResponsiveContainer>
@@ -664,11 +674,11 @@ const Relatorios = () => {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={procedimentoReport.slice(0, 10)} layout="vertical">
+              <BarChart data={procedimentoReport.slice(0, 10)} layout="vertical" margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis type="number" stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <YAxis type="category" dataKey="procedimento" stroke="hsl(0,0%,64%)" fontSize={10} width={120} />
-                <Tooltip contentStyle={tooltipStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
                 <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[0, 6, 6, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleX(1.05)", transformOrigin: "left", transition: "all 0.2s ease" } }} />
                 <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[0, 6, 6, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleX(1.05)", transformOrigin: "left", transition: "all 0.2s ease" } }} />
               </BarChart>
@@ -708,7 +718,7 @@ const Relatorios = () => {
                   <Pie data={formaPagamentoReport} dataKey="valor" nameKey="forma" cx="50%" cy="50%" outerRadius={100} label={({ forma, percent }) => `${forma} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
                     {formaPagamentoReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => formatCurrency(v)} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: number) => formatCurrency(v)} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="overflow-x-auto">
@@ -779,7 +789,7 @@ const Relatorios = () => {
                   <Pie data={especialidadeReport} dataKey="contratado" nameKey="especialidade" cx="50%" cy="50%" outerRadius={100} label={({ especialidade, percent }) => `${especialidade} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
                     {especialidadeReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => formatCurrency(v)} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: number) => formatCurrency(v)} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="overflow-x-auto">
