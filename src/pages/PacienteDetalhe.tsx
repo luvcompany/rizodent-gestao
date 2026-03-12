@@ -63,7 +63,7 @@ const PacienteDetalhe = () => {
   const [editTratProcedimento, setEditTratProcedimento] = useState("");
   const [editTratEspecialidade, setEditTratEspecialidade] = useState("");
   const [editTratValorOrcado, setEditTratValorOrcado] = useState("");
-  const [editTratValorNaoContratado, setEditTratValorNaoContratado] = useState("");
+  const [editTratValorContratado, setEditTratValorContratado] = useState("");
   const [editTratStatus, setEditTratStatus] = useState("");
   const [editTratClinicaId, setEditTratClinicaId] = useState("");
 
