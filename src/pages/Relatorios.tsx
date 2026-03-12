@@ -505,7 +505,7 @@ const Relatorios = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="date" stroke="hsl(0,0%,64%)" fontSize={10} />
                 <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={tooltipStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
                 <Bar dataKey="faturamento" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
               </BarChart>
             </ResponsiveContainer>
