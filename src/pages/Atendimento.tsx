@@ -312,8 +312,8 @@ const Atendimento = () => {
           .single();
         if (tratError) throw tratError;
 
-        // Only add payment to first procedure if valor pago is set
-        if (proc === procedimentos[0] && valorPago && parseCurrency(valorPago) > 0) {
+        // Add first payment using valor_contratado
+        if (proc === procedimentos[0] && contratadoPorProc > 0) {
           const { error: pagError } = await supabase
             .from("pagamentos")
             .insert({
