@@ -244,8 +244,8 @@ const PacienteDetalhe = () => {
         <Card className="gradient-card border-border shadow-card">
           <CardContent className="pt-4 pb-3 text-center">
             <DollarSign size={20} className="mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold text-primary">{formatCurrency(totalPago)}</p>
-            <p className="text-xs text-muted-foreground">Total Pago</p>
+            <p className="text-2xl font-bold text-primary">{formatCurrency(totalOrcado)}</p>
+            <p className="text-xs text-muted-foreground">Total Orçado</p>
           </CardContent>
         </Card>
         <Card className="gradient-card border-border shadow-card">

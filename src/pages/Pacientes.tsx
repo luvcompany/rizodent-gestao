@@ -177,10 +177,10 @@ const Pacientes = () => {
                 <div className="flex items-center gap-4">
                   <div className="text-right space-y-0.5">
                     <p className="text-xs text-muted-foreground">
-                      Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      Orçado: R$ {pac.valor_orcado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     <p className="text-sm font-semibold text-primary">
-                      Pago: R$ {pac.total_pago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     {pac.ultima_visita && (
                       <p className="text-xs text-muted-foreground">
