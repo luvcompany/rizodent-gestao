@@ -19,7 +19,7 @@ interface PacienteView {
   telefone: string;
   cidade: string | null;
   created_at: string;
-  total_pago: number;
+  valor_orcado: number;
   valor_contratado: number;
   ultima_visita: string | null;
   clinica_nome: string | null;
