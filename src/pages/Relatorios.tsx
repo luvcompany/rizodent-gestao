@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +22,7 @@ const COLORS = ["hsl(25,100%,50%)", "hsl(35,100%,55%)", "hsl(180,60%,50%)", "hsl
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
 const Relatorios = () => {
+  const navigate = useNavigate();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaFiltro, setClinicaFiltro] = useState("todas");
   const [pagamentos, setPagamentos] = useState<any[]>([]);
@@ -90,10 +92,10 @@ const Relatorios = () => {
     const totalPago = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
 
     // Build per-patient summary
-    const pacienteMap = new Map<string, { nome: string; contratado: number; pago: number; tratamentos: any[] }>();
+    const pacienteMap = new Map<string, { id: string; nome: string; contratado: number; pago: number; tratamentos: any[] }>();
     filteredTratamentos.filter(t => t.status === "ativo").forEach((t) => {
       const pid = t.paciente_id;
-      const entry = pacienteMap.get(pid) || { nome: t.pacientes?.nome || "—", contratado: 0, pago: 0, tratamentos: [] };
+      const entry = pacienteMap.get(pid) || { id: pid, nome: t.pacientes?.nome || "—", contratado: 0, pago: 0, tratamentos: [] };
       const contratado = Number(t.valor_contratado || 0);
       const pago = pagosPorTratamento.get(t.id) || 0;
       entry.contratado += contratado;
@@ -429,8 +431,8 @@ const Relatorios = () => {
                 <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead><TableHead>Restante</TableHead><TableHead>%</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {contratadoVsPago.emAberto.map((p, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium">{p.nome}</TableCell>
+                    <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
+                      <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
                       <TableCell>{formatCurrency(p.contratado)}</TableCell>
                       <TableCell>{formatCurrency(p.pago)}</TableCell>
                       <TableCell className="text-destructive font-medium">{formatCurrency(p.contratado - p.pago)}</TableCell>
@@ -459,8 +461,8 @@ const Relatorios = () => {
                 <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {contratadoVsPago.concluidos.map((p, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium">{p.nome}</TableCell>
+                    <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
+                      <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
                       <TableCell>{formatCurrency(p.contratado)}</TableCell>
                       <TableCell className="text-green-400">{formatCurrency(p.pago)}</TableCell>
                     </TableRow>
