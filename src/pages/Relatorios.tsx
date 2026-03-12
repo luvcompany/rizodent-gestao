@@ -104,17 +104,65 @@ const Relatorios = () => {
   }, [filteredPagamentos]);
 
   // Predictability
+  const DIAS_UTEIS_MES = 26; // seg a sáb
+
   const predictability = useMemo(() => {
     const totalContratado = filteredTratamentos.filter((t) => t.status === "ativo").reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
     const totalRecebido = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
     const aReceber = totalContratado - totalRecebido;
+
+    // Leads totals
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
       leads: acc.leads + l.leads_novos,
+      agendaram: acc.agendaram + l.agendaram,
+      compareceram: acc.compareceram + (l.agendaram - l.faltaram),
+      faltaram: acc.faltaram + l.faltaram,
       contrataram: acc.contrataram + l.contrataram,
-    }), { leads: 0, contrataram: 0 });
+      naoContrataram: acc.naoContrataram + l.nao_contrataram,
+    }), { leads: 0, agendaram: 0, compareceram: 0, faltaram: 0, contrataram: 0, naoContrataram: 0 });
+
     const taxaConversao = leadsTotals.leads > 0 ? (leadsTotals.contrataram / leadsTotals.leads) * 100 : 0;
-    const ticketMedio = filteredPagamentos.length > 0 ? totalRecebido / filteredPagamentos.length : 0;
-    return { totalContratado, totalRecebido, aReceber, taxaConversao, ticketMedio, leads: leadsTotals.leads, contrataram: leadsTotals.contrataram };
+
+    // Ticket médio por pagamento
+    const ticketMedioPgto = filteredPagamentos.length > 0 ? totalRecebido / filteredPagamentos.length : 0;
+
+    // Dias distintos com faturamento
+    const diasComFaturamento = new Set(filteredPagamentos.map((p) => p.data_pagamento)).size;
+    const ticketMedioDiario = diasComFaturamento > 0 ? totalRecebido / diasComFaturamento : 0;
+    const projecaoMensal = ticketMedioDiario * DIAS_UTEIS_MES;
+
+    // Dias distintos com leads
+    const diasComLeads = new Set(filteredLeads.map((l) => l.data)).size;
+
+    // Taxas do funil
+    const txAgendamento = leadsTotals.leads > 0 ? leadsTotals.agendaram / leadsTotals.leads : 0;
+    const txComparecimento = leadsTotals.agendaram > 0 ? leadsTotals.compareceram / leadsTotals.agendaram : 0;
+    const txContratacao = leadsTotals.leads > 0 ? leadsTotals.contrataram / leadsTotals.leads : 0;
+    const txNaoContratacao = leadsTotals.leads > 0 ? leadsTotals.naoContrataram / leadsTotals.leads : 0;
+
+    // Médias diárias de leads
+    const mediaDiariaLeads = diasComLeads > 0 ? leadsTotals.leads / diasComLeads : 0;
+    const mediaDiariaAgendaram = diasComLeads > 0 ? leadsTotals.agendaram / diasComLeads : 0;
+    const mediaDiariaCompareceram = diasComLeads > 0 ? leadsTotals.compareceram / diasComLeads : 0;
+    const mediaDiariaContrataram = diasComLeads > 0 ? leadsTotals.contrataram / diasComLeads : 0;
+    const mediaDiariaNaoContrataram = diasComLeads > 0 ? leadsTotals.naoContrataram / diasComLeads : 0;
+
+    return {
+      totalContratado, totalRecebido, aReceber, taxaConversao,
+      ticketMedioPgto, ticketMedioDiario, projecaoMensal,
+      leads: leadsTotals.leads, contrataram: leadsTotals.contrataram,
+      // Taxas
+      txAgendamento, txComparecimento, txContratacao, txNaoContratacao,
+      // Médias diárias
+      mediaDiariaLeads, mediaDiariaAgendaram, mediaDiariaCompareceram,
+      mediaDiariaContrataram, mediaDiariaNaoContrataram,
+      // Projeções mensais de leads
+      projMensalLeads: mediaDiariaLeads * DIAS_UTEIS_MES,
+      projMensalAgendaram: mediaDiariaAgendaram * DIAS_UTEIS_MES,
+      projMensalCompareceram: mediaDiariaCompareceram * DIAS_UTEIS_MES,
+      projMensalContrataram: mediaDiariaContrataram * DIAS_UTEIS_MES,
+      projMensalNaoContrataram: mediaDiariaNaoContrataram * DIAS_UTEIS_MES,
+    };
   }, [filteredTratamentos, filteredPagamentos, filteredLeads]);
 
   // Funnel report
@@ -373,38 +421,111 @@ const Relatorios = () => {
                 <TrendingUp size={18} className="text-primary" /> Relatório de Previsibilidade
               </CardTitle>
               <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-                `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTaxa de Conversão: ${predictability.taxaConversao.toFixed(1)}%\nTicket Médio: ${formatCurrency(predictability.ticketMedio)}`
+                `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTaxa de Conversão: ${predictability.taxaConversao.toFixed(1)}%\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${DIAS_UTEIS_MES} dias): ${formatCurrency(predictability.projecaoMensal)}`
               } />
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Total Contratado</p>
-                  <p className="text-xl font-bold text-primary">{formatCurrency(predictability.totalContratado)}</p>
+            <CardContent className="space-y-6">
+              {/* Faturamento */}
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">💰 Faturamento</h3>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Total Contratado</p>
+                    <p className="text-xl font-bold text-primary">{formatCurrency(predictability.totalContratado)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Total Recebido</p>
+                    <p className="text-xl font-bold text-accent-foreground">{formatCurrency(predictability.totalRecebido)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">A Receber</p>
+                    <p className="text-xl font-bold text-primary">{formatCurrency(predictability.aReceber)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Ticket Médio por Pagamento</p>
+                    <p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioPgto)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Ticket Médio Diário</p>
+                    <p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioDiario)}</p>
+                  </div>
+                  <div className="rounded-lg bg-secondary p-4">
+                    <p className="text-xs text-muted-foreground">Projeção Mensal ({DIAS_UTEIS_MES} dias úteis)</p>
+                    <p className="text-xl font-bold text-primary">{formatCurrency(predictability.projecaoMensal)}</p>
+                  </div>
                 </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Total Recebido</p>
-                  <p className="text-xl font-bold text-green-400">{formatCurrency(predictability.totalRecebido)}</p>
+              </div>
+
+              {/* Previsibilidade de Leads */}
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">📊 Previsibilidade de Leads (taxas atuais)</h3>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Etapa</TableHead>
+                        <TableHead className="text-center">Taxa</TableHead>
+                        <TableHead className="text-center">Média/Dia</TableHead>
+                        <TableHead className="text-center">Projeção Mensal ({DIAS_UTEIS_MES}d)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell className="font-medium">Leads Novos</TableCell>
+                        <TableCell className="text-center">—</TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaLeads.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalLeads)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-medium">Agendaram</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                            {(predictability.txAgendamento * 100).toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaAgendaram.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalAgendaram)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-medium">Compareceram</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                            {(predictability.txComparecimento * 100).toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaCompareceram.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalCompareceram)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-medium">Contrataram</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                            {(predictability.txContratacao * 100).toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaContrataram.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalContrataram)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-medium">Não Contrataram</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                            {(predictability.txNaoContratacao * 100).toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{predictability.mediaDiariaNaoContrataram.toFixed(1)}</TableCell>
+                        <TableCell className="text-center font-medium">{Math.round(predictability.projMensalNaoContrataram)}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
                 </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">A Receber</p>
-                  <p className="text-xl font-bold text-yellow-400">{formatCurrency(predictability.aReceber)}</p>
-                </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Taxa de Conversão (Leads)</p>
-                  <p className="text-xl font-bold">{predictability.taxaConversao.toFixed(1)}%</p>
-                  <p className="text-xs text-muted-foreground mt-1">{predictability.contrataram} de {predictability.leads} leads</p>
-                </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Ticket Médio</p>
-                  <p className="text-xl font-bold">{formatCurrency(predictability.ticketMedio)}</p>
-                </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Projeção Mensal (base taxa atual)</p>
-                  <p className="text-xl font-bold text-primary">
-                    {formatCurrency(predictability.leads > 0 ? (predictability.taxaConversao / 100) * predictability.leads * predictability.ticketMedio : 0)}
-                  </p>
-                </div>
+              </div>
+
+              {/* Taxa de conversão resumo */}
+              <div className="rounded-lg bg-secondary p-4">
+                <p className="text-xs text-muted-foreground">Taxa de Conversão Geral (Leads → Contratação)</p>
+                <p className="text-xl font-bold">{predictability.taxaConversao.toFixed(1)}%</p>
+                <p className="text-xs text-muted-foreground mt-1">{predictability.contrataram} de {predictability.leads} leads</p>
               </div>
             </CardContent>
           </Card>
