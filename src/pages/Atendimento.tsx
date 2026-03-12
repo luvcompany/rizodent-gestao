@@ -312,15 +312,15 @@ const Atendimento = () => {
           .single();
         if (tratError) throw tratError;
 
-        // Only add payment to first procedure if valor pago is set
-        if (proc === procedimentos[0] && valorPago && parseCurrency(valorPago) > 0) {
+        // Add first payment using valor_contratado
+        if (proc === procedimentos[0] && contratadoPorProc > 0) {
           const { error: pagError } = await supabase
             .from("pagamentos")
             .insert({
               tratamento_id: trat.id,
               paciente_id: pacienteId,
               clinica_id: clinicaId,
-              valor: parseCurrency(valorPago),
+              valor: contratadoPorProc,
               forma_pagamento: formaPagamento || "Pix",
               tipo: tipoPagamento || "primeiro",
               data_pagamento: dataPagamento,
@@ -580,12 +580,6 @@ const Atendimento = () => {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="space-y-2">
-                    <Label>Valor Pago (R$)</Label>
-                    <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
-                  </div>
-                </div>
               </>
             )}
 
