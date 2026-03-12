@@ -410,7 +410,7 @@ const Relatorios = () => {
               </div>
             </div>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={[{ name: "Resumo", contratado: contratadoVsPago.totalContratado, pago: contratadoVsPago.totalPago }]}>
+              <BarChart data={[{ name: "Resumo", contratado: contratadoVsPago.totalContratado, pago: contratadoVsPago.totalPago }]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" />
                 <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
