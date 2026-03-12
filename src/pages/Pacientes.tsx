@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -42,10 +42,37 @@ const Pacientes = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchPacientes = async () => {
+    const fetchAll = async () => {
       setLoading(true);
 
-      // Build date filter
+      // Fetch all data in parallel — 4 queries total instead of N*3
+      const [{ data: pacs }, { data: tratamentos }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
+        supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
+        supabase.from("tratamentos").select("paciente_id, valor_contratado"),
+        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id").order("data_pagamento", { ascending: false }),
+        supabase.from("clinicas").select("id, nome"),
+      ]);
+
+      if (!pacs) { setLoading(false); return; }
+
+      // Index clinicas by id
+      const clinicaMap = new Map<string, string>();
+      clinicas?.forEach((c) => clinicaMap.set(c.id, c.nome));
+
+      // Group tratamentos by paciente_id
+      const tratMap = new Map<string, number>();
+      tratamentos?.forEach((t) => {
+        tratMap.set(t.paciente_id, (tratMap.get(t.paciente_id) || 0) + Number(t.valor_contratado || 0));
+      });
+
+      // Group pagamentos by paciente_id
+      const pagMap = new Map<string, typeof pagamentos>();
+      pagamentos?.forEach((p) => {
+        if (!pagMap.has(p.paciente_id)) pagMap.set(p.paciente_id, []);
+        pagMap.get(p.paciente_id)!.push(p);
+      });
+
+      // Date filter
       let dataMinima: string | null = null;
       if (periodo !== "todos") {
         const d = new Date();
@@ -53,50 +80,19 @@ const Pacientes = () => {
         dataMinima = d.toISOString().split("T")[0];
       }
 
-      const { data: pacs } = await supabase
-        .from("pacientes")
-        .select("id, nome, telefone, cidade, created_at")
-        .order("created_at", { ascending: false });
-
-      if (!pacs) { setLoading(false); return; }
-
       const result: PacienteView[] = [];
       for (const p of pacs) {
-        // Tratamentos (valor contratado)
-        const { data: tratData } = await supabase
-          .from("tratamentos")
-          .select("valor_contratado")
-          .eq("paciente_id", p.id);
-
-        const valorContratado = tratData?.reduce((sum, t) => sum + Number(t.valor_contratado || 0), 0) || 0;
-
-        // Pagamentos
-        let pagQuery = supabase
-          .from("pagamentos")
-          .select("valor, data_pagamento, clinica_id")
-          .eq("paciente_id", p.id);
+        const valorContratado = tratMap.get(p.id) || 0;
+        let pags = pagMap.get(p.id) || [];
 
         if (dataMinima) {
-          pagQuery = pagQuery.gte("data_pagamento", dataMinima);
+          pags = pags.filter((pg) => pg.data_pagamento >= dataMinima!);
+          if (pags.length === 0) continue;
         }
 
-        const { data: allPag } = await pagQuery.order("data_pagamento", { ascending: false });
-
-        const totalPago = allPag?.reduce((sum, pg) => sum + Number(pg.valor), 0) || 0;
-        const ultimaVisita = allPag?.[0]?.data_pagamento || null;
-
-        let clinicaNome: string | null = null;
-        if (allPag?.[0]?.clinica_id) {
-          const { data: cl } = await supabase
-            .from("clinicas")
-            .select("nome")
-            .eq("id", allPag[0].clinica_id)
-            .maybeSingle();
-          clinicaNome = cl?.nome || null;
-        }
-
-        // If filtering by date, only show patients that have payments in the period
-        if (dataMinima && (!allPag || allPag.length === 0)) continue;
+        const totalPago = pags.reduce((sum, pg) => sum + Number(pg.valor), 0);
+        const ultimaVisita = pags[0]?.data_pagamento || null;
+        const clinicaNome = pags[0]?.clinica_id ? clinicaMap.get(pags[0].clinica_id) || null : null;
 
         result.push({
           ...p,
@@ -106,16 +102,20 @@ const Pacientes = () => {
           clinica_nome: clinicaNome,
         });
       }
+
       setPacientes(result);
       setLoading(false);
     };
-    fetchPacientes();
+    fetchAll();
   }, [periodo]);
 
-  const filtered = pacientes.filter(
-    (p) =>
-      p.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      p.telefone.includes(busca)
+  const filtered = useMemo(() =>
+    pacientes.filter(
+      (p) =>
+        p.nome.toLowerCase().includes(busca.toLowerCase()) ||
+        p.telefone.includes(busca)
+    ),
+    [pacientes, busca]
   );
 
   return (
