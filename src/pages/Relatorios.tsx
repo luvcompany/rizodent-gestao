@@ -478,7 +478,7 @@ const Relatorios = () => {
                         <TableHead>Etapa</TableHead>
                         <TableHead className="text-center">Taxa</TableHead>
                         <TableHead className="text-center">Média/Dia</TableHead>
-                        <TableHead className="text-center">Projeção Mensal ({DIAS_UTEIS_MES}d)</TableHead>
+                        <TableHead className="text-center">Projeção Mensal ({diasUteisMes}d)</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
