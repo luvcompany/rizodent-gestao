@@ -33,6 +33,7 @@ const Relatorios = () => {
   });
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
   const [showContratadoDialog, setShowContratadoDialog] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
