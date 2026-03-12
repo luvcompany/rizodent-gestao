@@ -678,7 +678,7 @@ const Relatorios = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis type="number" stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <YAxis type="category" dataKey="procedimento" stroke="hsl(0,0%,64%)" fontSize={10} width={120} />
-                <Tooltip contentStyle={tooltipStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
                 <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[0, 6, 6, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleX(1.05)", transformOrigin: "left", transition: "all 0.2s ease" } }} />
                 <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[0, 6, 6, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleX(1.05)", transformOrigin: "left", transition: "all 0.2s ease" } }} />
               </BarChart>
