@@ -580,12 +580,6 @@ const Atendimento = () => {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="space-y-2">
-                    <Label>Valor Pago (R$)</Label>
-                    <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
-                  </div>
-                </div>
               </>
             )}
 
