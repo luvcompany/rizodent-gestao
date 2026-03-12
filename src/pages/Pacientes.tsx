@@ -48,7 +48,7 @@ const Pacientes = () => {
       // Fetch all data in parallel — 4 queries total instead of N*3
       const [{ data: pacs }, { data: tratamentos }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
         supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
-        supabase.from("tratamentos").select("paciente_id, valor_contratado"),
+        supabase.from("tratamentos").select("paciente_id, valor_orcado, valor_contratado"),
         supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id").order("data_pagamento", { ascending: false }),
         supabase.from("clinicas").select("id, nome"),
       ]);
