@@ -392,12 +392,12 @@ const PacienteDetalhe = () => {
                           <Input inputMode="numeric" value={editTratValorOrcado} onChange={e => setEditTratValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Não Contratado</Label>
-                          <Input inputMode="numeric" value={editTratValorNaoContratado} onChange={e => setEditTratValorNaoContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
+                          <Label className="text-xs">Valor Contratado</Label>
+                          <Input inputMode="numeric" value={editTratValorContratado} onChange={e => setEditTratValorContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">Contratado</Label>
-                          <Input readOnly value={formatCurrency(parseCurrency(editTratValorOrcado) - parseCurrency(editTratValorNaoContratado))} className="bg-muted border-border cursor-not-allowed text-sm" />
+                          <Label className="text-xs">Não Contratado</Label>
+                          <Input readOnly value={formatCurrency(Math.max(0, parseCurrency(editTratValorOrcado) - parseCurrency(editTratValorContratado)))} className="bg-muted border-border cursor-not-allowed text-sm" />
                         </div>
                       </div>
                       <Button size="sm" onClick={handleSaveTratamento} disabled={saving} className="w-full">

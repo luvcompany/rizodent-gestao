@@ -565,18 +565,18 @@ const Atendimento = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Não Contratado (R$)</Label>
+                    <Label>Valor Contratado (R$)</Label>
                     <Input
                       inputMode="numeric"
                       placeholder="R$ 0,00"
-                      value={valorNaoContratado}
-                      onChange={(e) => setValorNaoContratado(formatCurrencyInput(e.target.value))}
+                      value={valorContratadoGeral}
+                      onChange={(e) => setValorContratadoGeral(formatCurrencyInput(e.target.value))}
                       className="bg-secondary border-border"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Contratado (R$)</Label>
-                    <Input readOnly value={formatCurrencyDisplay(parseCurrency(valorOrcadoGeral) - parseCurrency(valorNaoContratado))} className="bg-muted border-border cursor-not-allowed text-sm" />
+                    <Label>Não Contratado (R$)</Label>
+                    <Input readOnly value={formatCurrencyDisplay(Math.max(0, parseCurrency(valorOrcadoGeral) - parseCurrency(valorContratadoGeral)))} className="bg-muted border-border cursor-not-allowed text-sm" />
                   </div>
                 </div>
 
