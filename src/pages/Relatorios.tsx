@@ -462,7 +462,7 @@ const Relatorios = () => {
                     <p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioDiario)}</p>
                   </div>
                   <div className="rounded-lg bg-secondary p-4">
-                    <p className="text-xs text-muted-foreground">Projeção Mensal ({DIAS_UTEIS_MES} dias úteis)</p>
+                    <p className="text-xs text-muted-foreground">Projeção Mensal ({diasUteisMes} dias úteis)</p>
                     <p className="text-xl font-bold text-primary">{formatCurrency(predictability.projecaoMensal)}</p>
                   </div>
                 </div>
