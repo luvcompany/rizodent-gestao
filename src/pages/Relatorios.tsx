@@ -29,6 +29,8 @@ const tooltipLabelStyle = { color: "hsl(0,0%,70%)", fontSize: 12, marginBottom: 
 const tooltipItemStyle = { color: "hsl(25,100%,50%)" };
 const COLORS = ["hsl(25,100%,50%)", "hsl(35,100%,55%)", "hsl(180,60%,50%)", "hsl(280,60%,60%)", "hsl(120,50%,50%)", "hsl(0,70%,55%)", "hsl(210,70%,55%)", "hsl(50,90%,55%)"];
 
+const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
+
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
 const Relatorios = () => {
@@ -415,8 +417,8 @@ const Relatorios = () => {
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" />
                 <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
-                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
+                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -506,7 +508,7 @@ const Relatorios = () => {
                 <XAxis dataKey="date" stroke="hsl(0,0%,64%)" fontSize={10} />
                 <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
-                <Bar dataKey="faturamento" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
+                <Bar dataKey="faturamento" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
@@ -542,7 +544,7 @@ const Relatorios = () => {
                 <XAxis dataKey="week" stroke="hsl(0,0%,64%)" fontSize={10} />
                 <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
-                <Bar dataKey="faturamento" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleY(1.05)", transformOrigin: "bottom", transition: "all 0.2s ease" } }} />
+                <Bar dataKey="faturamento" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
@@ -679,8 +681,8 @@ const Relatorios = () => {
                 <XAxis type="number" stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <YAxis type="category" dataKey="procedimento" stroke="hsl(0,0%,64%)" fontSize={10} width={120} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[0, 6, 6, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleX(1.05)", transformOrigin: "left", transition: "all 0.2s ease" } }} />
-                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[0, 6, 6, 0]} activeBar={{ style: { filter: "brightness(1.2)", transform: "scaleX(1.05)", transformOrigin: "left", transition: "all 0.2s ease" } }} />
+                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[0, 6, 6, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[0, 6, 6, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
