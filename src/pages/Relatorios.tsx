@@ -33,6 +33,8 @@ const Relatorios = () => {
   });
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
   const [showContratadoDialog, setShowContratadoDialog] = useState(false);
+  const [showEmAbertoDialog, setShowEmAbertoDialog] = useState(false);
+  const [showConcluidosDialog, setShowConcluidosDialog] = useState(false);
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -382,10 +384,9 @@ const Relatorios = () => {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="rounded-lg bg-secondary p-4 cursor-pointer hover:bg-secondary/80 transition-colors" onClick={() => setShowContratadoDialog(true)}>
+              <div className="rounded-lg bg-secondary p-4">
                 <p className="text-xs text-muted-foreground">Total Contratado</p>
                 <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalContratado)}</p>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Eye size={12} /> Clique para ver detalhes</p>
               </div>
               <div className="rounded-lg bg-secondary p-4">
                 <p className="text-xs text-muted-foreground">Total Pago</p>
@@ -407,57 +408,72 @@ const Relatorios = () => {
               </BarChart>
             </ResponsiveContainer>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg bg-secondary p-3">
+              <div className="rounded-lg bg-secondary p-3 cursor-pointer hover:bg-secondary/80 transition-colors" onClick={() => setShowEmAbertoDialog(true)}>
                 <p className="text-sm font-semibold text-destructive mb-1">Em aberto ({contratadoVsPago.emAberto.length})</p>
-                <p className="text-xs text-muted-foreground">Pacientes com pagamento pendente</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Eye size={12} /> Clique para ver pacientes</p>
               </div>
-              <div className="rounded-lg bg-secondary p-3">
+              <div className="rounded-lg bg-secondary p-3 cursor-pointer hover:bg-secondary/80 transition-colors" onClick={() => setShowConcluidosDialog(true)}>
                 <p className="text-sm font-semibold text-green-400 mb-1">Concluídos ({contratadoVsPago.concluidos.length})</p>
-                <p className="text-xs text-muted-foreground">Pacientes com pagamento completo</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Eye size={12} /> Clique para ver pacientes</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Dialog open={showContratadoDialog} onOpenChange={setShowContratadoDialog}>
+
+        {/* Dialog Em Aberto */}
+        <Dialog open={showEmAbertoDialog} onOpenChange={setShowEmAbertoDialog}>
           <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>Detalhes Contratado vs Pago</DialogTitle></DialogHeader>
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-sm font-semibold text-destructive mb-2">🔴 Em Aberto ({contratadoVsPago.emAberto.length})</h3>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead><TableHead>Restante</TableHead><TableHead>%</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                      {contratadoVsPago.emAberto.map((p, i) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-medium">{p.nome}</TableCell>
-                          <TableCell>{formatCurrency(p.contratado)}</TableCell>
-                          <TableCell>{formatCurrency(p.pago)}</TableCell>
-                          <TableCell className="text-destructive font-medium">{formatCurrency(p.contratado - p.pago)}</TableCell>
-                          <TableCell><Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">{p.contratado > 0 ? ((p.pago / p.contratado) * 100).toFixed(0) : 0}%</Badge></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-green-400 mb-2">🟢 Concluídos ({contratadoVsPago.concluidos.length})</h3>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                      {contratadoVsPago.concluidos.map((p, i) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-medium">{p.nome}</TableCell>
-                          <TableCell>{formatCurrency(p.contratado)}</TableCell>
-                          <TableCell className="text-green-400">{formatCurrency(p.pago)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+            <DialogHeader><DialogTitle>🔴 Pacientes em Aberto ({contratadoVsPago.emAberto.length})</DialogTitle></DialogHeader>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead><TableHead>Restante</TableHead><TableHead>%</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {contratadoVsPago.emAberto.map((p, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium">{p.nome}</TableCell>
+                      <TableCell>{formatCurrency(p.contratado)}</TableCell>
+                      <TableCell>{formatCurrency(p.pago)}</TableCell>
+                      <TableCell className="text-destructive font-medium">{formatCurrency(p.contratado - p.pago)}</TableCell>
+                      <TableCell><Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">{p.contratado > 0 ? ((p.pago / p.contratado) * 100).toFixed(0) : 0}%</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                  {contratadoVsPago.emAberto.length === 0 && (
+                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Nenhum paciente com pagamento em aberto</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="rounded-lg bg-secondary p-3 mt-2">
+              <p className="text-xs text-muted-foreground">Total a receber</p>
+              <p className="text-lg font-bold text-destructive">{formatCurrency(contratadoVsPago.emAberto.reduce((s, p) => s + (p.contratado - p.pago), 0))}</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog Concluídos */}
+        <Dialog open={showConcluidosDialog} onOpenChange={setShowConcluidosDialog}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader><DialogTitle>🟢 Pacientes Concluídos ({contratadoVsPago.concluidos.length})</DialogTitle></DialogHeader>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {contratadoVsPago.concluidos.map((p, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium">{p.nome}</TableCell>
+                      <TableCell>{formatCurrency(p.contratado)}</TableCell>
+                      <TableCell className="text-green-400">{formatCurrency(p.pago)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {contratadoVsPago.concluidos.length === 0 && (
+                    <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">Nenhum paciente com pagamento concluído</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="rounded-lg bg-secondary p-3 mt-2">
+              <p className="text-xs text-muted-foreground">Total recebido (concluídos)</p>
+              <p className="text-lg font-bold text-green-400">{formatCurrency(contratadoVsPago.concluidos.reduce((s, p) => s + p.pago, 0))}</p>
             </div>
           </DialogContent>
         </Dialog>
