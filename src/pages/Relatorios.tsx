@@ -91,7 +91,7 @@ const Relatorios = () => {
     const totalPago = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
 
     // Build per-patient summary
-    const pacienteMap = new Map<string, { nome: string; contratado: number; pago: number; tratamentos: any[] }>();
+    const pacienteMap = new Map<string, { id: string; nome: string; contratado: number; pago: number; tratamentos: any[] }>();
     filteredTratamentos.filter(t => t.status === "ativo").forEach((t) => {
       const pid = t.paciente_id;
       const entry = pacienteMap.get(pid) || { nome: t.pacientes?.nome || "—", contratado: 0, pago: 0, tratamentos: [] };
