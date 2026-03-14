@@ -95,15 +95,6 @@ const Dashboard = () => {
   }, []);
 
   // Unique values for filter dropdowns
-  const procedimentosUnicos = useMemo(() => {
-    const set = new Set(tratamentos.map((t) => t.procedimento).filter(Boolean));
-    return Array.from(set).sort();
-  }, [tratamentos]);
-
-  const especialidadesUnicas = useMemo(() => {
-    const set = new Set(tratamentos.map((t) => t.especialidade).filter(Boolean));
-    return Array.from(set).sort();
-  }, [tratamentos]);
 
   const canaisUnicos = useMemo(() => {
     const set = new Set(pacientes.map((p) => p.origem).filter(Boolean));
