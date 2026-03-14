@@ -170,6 +170,16 @@ const Pacientes = () => {
             ))}
           </SelectContent>
         </Select>
+        <Select value={statusFiltro} onValueChange={setStatusFiltro}>
+          <SelectTrigger className="w-full sm:w-[180px] bg-secondary border-border">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos</SelectItem>
+            <SelectItem value="aberto">Em aberto</SelectItem>
+            <SelectItem value="concluido">Concluídos</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {loading ? (
