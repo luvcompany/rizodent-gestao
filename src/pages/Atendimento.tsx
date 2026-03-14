@@ -301,7 +301,7 @@ const Atendimento = () => {
       const totalOrcado = parseCurrency(valorOrcadoGeral);
       const totalContratado = parseCurrency(valorContratadoGeral);
 
-      // Create all treatments - valor_orcado goes on FIRST treatment only, rest get 0
+      // Create all treatments - no price on individual procedures
       let firstTratamentoId: string | null = null;
       for (let i = 0; i < procedimentos.length; i++) {
         const proc = procedimentos[i];
@@ -312,8 +312,8 @@ const Atendimento = () => {
             clinica_id: clinicaId,
             procedimento: proc.procedimento,
             especialidade: proc.especialidade || null,
-            valor_orcado: i === 0 ? totalOrcado : 0,
-            valor_contratado: i === 0 ? totalContratado : 0,
+            valor_orcado: 0,
+            valor_contratado: 0,
             created_by: user?.id,
           })
           .select("id")
