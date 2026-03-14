@@ -167,14 +167,10 @@ const PacienteDetalhe = () => {
 
   const handleSaveTratamento = async () => {
     if (!editingTratId) return;
-    const valorOrcado = parseCurrency(editTratValorOrcado);
-    const valorContratado = parseCurrency(editTratValorContratado);
     setSaving(true);
     const { error } = await supabase.from("tratamentos").update({
       procedimento: editTratProcedimento,
       especialidade: editTratEspecialidade || null,
-      valor_orcado: valorOrcado,
-      valor_contratado: valorContratado,
       status: editTratStatus,
       clinica_id: editTratClinicaId,
     }).eq("id", editingTratId);
@@ -184,14 +180,24 @@ const PacienteDetalhe = () => {
       ...t,
       procedimento: editTratProcedimento,
       especialidade: editTratEspecialidade || null,
-      valor_orcado: valorOrcado,
-      valor_contratado: valorContratado,
       status: editTratStatus,
       clinica_id: editTratClinicaId,
       clinicas: clinicas.find(c => c.id === editTratClinicaId) || t.clinicas,
     } : t));
     setEditingTratId(null);
     toast.success("Tratamento atualizado!");
+  };
+
+  const handleSaveValorOrcado = async () => {
+    if (!id) return;
+    const valor = parseCurrency(editValorOrcado);
+    setSaving(true);
+    const { error } = await supabase.from("pacientes").update({ valor_orcado: valor }).eq("id", id);
+    setSaving(false);
+    if (error) { toast.error("Erro: " + error.message); return; }
+    setPaciente({ ...paciente, valor_orcado: valor });
+    setEditingValorOrcado(false);
+    toast.success("Valor orçado atualizado!");
   };
 
   const handleDeleteTratamento = async (tratId: string) => {
