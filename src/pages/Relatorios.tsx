@@ -888,9 +888,8 @@ const Relatorios = () => {
           </CardContent>
         </Card>
       );
-            <ShareButtons title="Relatório por Forma de Pagamento" data={formaPagamentoReport} getSummary={() =>
-              formaPagamentoReport.map((r) => `${r.forma}: ${formatCurrency(r.valor)} (${r.qtd}x)`).join("\n")
-            } />
+
+
           </CardHeader>
           <CardContent>
             <div className="grid gap-6 lg:grid-cols-2">
