@@ -777,7 +777,7 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Por Especialidade</CardTitle>
             <ShareButtons title="Relatório por Especialidade" data={especialidadeReport} getSummary={() =>
-              especialidadeReport.map((r) => `${r.especialidade}: ${formatCurrency(r.contratado)} contratado (${r.qtd}x)`).join("\n")
+              especialidadeReport.map((r) => `${r.especialidade}: Orçado ${formatCurrency(r.orcado)}, Contratado ${formatCurrency(r.contratado)}, Taxa ${r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}% (${r.qtd}x)`).join("\n")
             } />
           </CardHeader>
           <CardContent>
@@ -792,13 +792,15 @@ const Relatorios = () => {
               </ResponsiveContainer>
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead>Qtd</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead>Qtd</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {especialidadeReport.map((r) => (
                       <TableRow key={r.especialidade}>
                         <TableCell className="font-medium">{r.especialidade}</TableCell>
                         <TableCell>{r.qtd}</TableCell>
+                        <TableCell>{formatCurrency(r.orcado)}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
+                        <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}%</Badge></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
