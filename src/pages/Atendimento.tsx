@@ -622,41 +622,38 @@ const Atendimento = () => {
             {/* Payment details */}
             {(showNovoTratamentoFields || showPagamentoFields) && (
               <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Data do Pagamento</Label>
-                    <div className="relative">
-                      <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Forma de Pagamento</Label>
-                    <Select value={formaPagamento} onValueChange={setFormaPagamento}>
-                      <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        {formasPagamento.map((f) => (<SelectItem key={f} value={f}>{f}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-2">
+                  <Label>Data do Pagamento</Label>
+                  <div className="relative">
+                    <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
                   </div>
                 </div>
 
                 {showNovoTratamentoFields && (
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <>
                     <div className="space-y-2">
                       <Label>Origem do Lead</Label>
-                      <Select value={origem} onValueChange={setOrigem}>
+                      <Select value={origem} onValueChange={(v) => { setOrigem(v); setNomeAnuncio(""); setOrigemOutrosDesc(""); }}>
                         <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
                         <SelectContent>
                           {origens.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Nome do Anúncio</Label>
-                      <Input placeholder="Ex: Campanha Implante Jan" value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} className="bg-secondary border-border" />
-                    </div>
-                  </div>
+                    {origem === "Anúncio" && (
+                      <div className="space-y-2">
+                        <Label>Nome do Anúncio</Label>
+                        <Input placeholder="Ex: Campanha Implante Jan" value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} className="bg-secondary border-border" />
+                      </div>
+                    )}
+                    {origem === "Outros" && (
+                      <div className="space-y-2">
+                        <Label>De onde veio o lead?</Label>
+                        <Input placeholder="Descreva a origem do lead" value={origemOutrosDesc} onChange={(e) => setOrigemOutrosDesc(e.target.value)} className="bg-secondary border-border" />
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <Button

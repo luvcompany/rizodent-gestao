@@ -321,7 +321,9 @@ const PacienteDetalhe = () => {
               <div><span className="text-muted-foreground">Cidade:</span> <span className="font-medium">{paciente.cidade || "—"}</span></div>
               <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{paciente.email || "—"}</span></div>
               <div><span className="text-muted-foreground">Origem:</span> <span className="font-medium">{paciente.origem || "—"}</span></div>
-              <div><span className="text-muted-foreground">Anúncio:</span> <span className="font-medium">{paciente.nome_anuncio || "—"}</span></div>
+              {(paciente.origem === "Anúncio" || paciente.origem === "Outros") && paciente.nome_anuncio && (
+                <div><span className="text-muted-foreground">{paciente.origem === "Anúncio" ? "Anúncio:" : "Detalhe:"}</span> <span className="font-medium">{paciente.nome_anuncio}</span></div>
+              )}
             </div>
           )}
         </CardContent>
