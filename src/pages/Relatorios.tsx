@@ -374,7 +374,7 @@ const Relatorios = () => {
     { key: "previsibilidade", label: "Previsibilidade", desc: "Projeções de faturamento e leads", icon: TrendingUp },
     { key: "procedimento", label: "Por Procedimento", desc: "Procedimentos mais contratados por volume", icon: Stethoscope },
     { key: "forma_pgto", label: "Forma de Pagamento", desc: "Distribuição por forma de pagamento", icon: CreditCard },
-    { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor pago e contratado", icon: Users },
+    { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor contratado", icon: Users },
     { key: "especialidade", label: "Por Especialidade", desc: "Faturamento agrupado por especialidade", icon: Stethoscope },
     { key: "origem", label: "Origem / Anúncio", desc: "Performance por canal de origem e anúncio", icon: Megaphone },
   ];
