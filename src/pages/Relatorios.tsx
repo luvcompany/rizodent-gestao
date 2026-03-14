@@ -373,7 +373,7 @@ const Relatorios = () => {
     { key: "semanal", label: "Relatório Semanal", desc: "Faturamento agrupado por semana", icon: Calendar },
     { key: "funil", label: "Funil de Leads", desc: "Conversão de leads por etapa do funil", icon: Filter },
     { key: "previsibilidade", label: "Previsibilidade", desc: "Projeções de faturamento e leads", icon: TrendingUp },
-    { key: "procedimento", label: "Por Procedimento", desc: "Faturamento agrupado por tipo de procedimento", icon: Stethoscope },
+    { key: "procedimento", label: "Por Procedimento", desc: "Procedimentos mais contratados por volume", icon: Stethoscope },
     { key: "forma_pgto", label: "Forma de Pagamento", desc: "Distribuição por forma de pagamento", icon: CreditCard },
     { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor pago e contratado", icon: Users },
     { key: "especialidade", label: "Por Especialidade", desc: "Faturamento agrupado por especialidade", icon: Stethoscope },
