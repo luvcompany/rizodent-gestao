@@ -168,12 +168,8 @@ const Relatorios = () => {
   }, [dateFrom]);
 
   const predictability = useMemo(() => {
-    // Orçado = patient-level sum from tratamentos (budget is stored on first treatment per patient)
-    const orcadoPorPaciente = new Map<string, number>();
-    filteredTratamentos.filter((t) => t.status === "ativo").forEach((t) => {
-      orcadoPorPaciente.set(t.paciente_id, (orcadoPorPaciente.get(t.paciente_id) || 0) + Number(t.valor_orcado || 0));
-    });
-    const totalOrcado = Array.from(orcadoPorPaciente.values()).reduce((s, v) => s + v, 0);
+    // Orçado = patient-level (stored on pacientes table)
+    const totalOrcado = pacientes.reduce((s, p) => s + Number(p.valor_orcado || 0), 0);
     // Contratado = sum of pagamentos (actual payments made)
     const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
     const aReceber = Math.max(0, totalOrcado - totalContratado);
