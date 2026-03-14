@@ -38,6 +38,7 @@ const FILTROS_PERIODO = [
 const Pacientes = () => {
   const [busca, setBusca] = useState("");
   const [periodo, setPeriodo] = useState("todos");
+  const [statusFiltro, setStatusFiltro] = useState("todos");
   const [pacientes, setPacientes] = useState<PacienteView[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
