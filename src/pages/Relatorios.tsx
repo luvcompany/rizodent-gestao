@@ -221,7 +221,7 @@ const Relatorios = () => {
       projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes, projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
       projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
     };
-  }, [orcamentos, filteredPagamentos, filteredLeads, diasUteisMes, diasUteisPassados]);
+  }, [filteredOrcamentos, filteredPagamentos, filteredLeads, diasUteisMes, diasUteisPassados]);
 
   // ========== FUNNEL ==========
   const funnelReport = useMemo(() => {
