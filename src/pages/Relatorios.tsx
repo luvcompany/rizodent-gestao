@@ -641,6 +641,20 @@ const Relatorios = () => {
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Projeção Mensal ({diasUteisMes} dias úteis)</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.projecaoMensal)}</p></div>
               </div>
             </div>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={[
+                { name: "Orçado", value: predictability.totalOrcado },
+                { name: "Contratado", value: predictability.totalContratado },
+                { name: "A Receber", value: predictability.aReceber },
+                { name: "Projeção", value: predictability.projecaoMensal },
+              ]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} />
+                <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                <Bar dataKey="value" fill="hsl(25,100%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+              </BarChart>
+            </ResponsiveContainer>
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📊 Previsibilidade de Leads</h3>
               <div className="overflow-x-auto">
