@@ -167,18 +167,24 @@ const Relatorios = () => {
   }, [dateFrom]);
 
   const predictability = useMemo(() => {
-    const totalContratado = filteredTratamentos.filter((t) => t.status === "ativo").reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
-    const totalRecebido = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
-    const aReceber = totalContratado - totalRecebido;
+    // Orçado = patient-level sum from tratamentos (budget is stored on first treatment per patient)
+    const orcadoPorPaciente = new Map<string, number>();
+    filteredTratamentos.filter((t) => t.status === "ativo").forEach((t) => {
+      orcadoPorPaciente.set(t.paciente_id, (orcadoPorPaciente.get(t.paciente_id) || 0) + Number(t.valor_orcado || 0));
+    });
+    const totalOrcado = Array.from(orcadoPorPaciente.values()).reduce((s, v) => s + v, 0);
+    // Contratado = sum of pagamentos (actual payments made)
+    const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
+    const aReceber = Math.max(0, totalOrcado - totalContratado);
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
       leads: acc.leads + l.leads_novos, agendaram: acc.agendaram + l.agendaram,
       compareceram: acc.compareceram + (l.agendaram - l.faltaram), faltaram: acc.faltaram + l.faltaram,
       contrataram: acc.contrataram + l.contrataram, naoContrataram: acc.naoContrataram + l.nao_contrataram,
     }), { leads: 0, agendaram: 0, compareceram: 0, faltaram: 0, contrataram: 0, naoContrataram: 0 });
     const taxaConversao = leadsTotals.leads > 0 ? (leadsTotals.contrataram / leadsTotals.leads) * 100 : 0;
-    const ticketMedioPgto = filteredPagamentos.length > 0 ? totalRecebido / filteredPagamentos.length : 0;
+    const ticketMedioPgto = filteredPagamentos.length > 0 ? totalContratado / filteredPagamentos.length : 0;
     const diasComFaturamento = new Set(filteredPagamentos.map((p) => p.data_pagamento)).size;
-    const ticketMedioDiario = diasComFaturamento > 0 ? totalRecebido / diasComFaturamento : 0;
+    const ticketMedioDiario = diasComFaturamento > 0 ? totalContratado / diasComFaturamento : 0;
     const projecaoMensal = ticketMedioDiario * diasUteisMes;
     const diasComLeads = new Set(filteredLeads.map((l) => l.data)).size;
     const txAgendamento = leadsTotals.leads > 0 ? leadsTotals.agendaram / leadsTotals.leads : 0;
@@ -191,7 +197,7 @@ const Relatorios = () => {
     const mediaDiariaContrataram = diasComLeads > 0 ? leadsTotals.contrataram / diasComLeads : 0;
     const mediaDiariaNaoContrataram = diasComLeads > 0 ? leadsTotals.naoContrataram / diasComLeads : 0;
     return {
-      totalContratado, totalRecebido, aReceber, taxaConversao, ticketMedioPgto, ticketMedioDiario, projecaoMensal,
+      totalOrcado, totalContratado, aReceber, taxaConversao, ticketMedioPgto, ticketMedioDiario, projecaoMensal,
       leads: leadsTotals.leads, contrataram: leadsTotals.contrataram,
       txAgendamento, txComparecimento, txContratacao, txNaoContratacao,
       mediaDiariaLeads, mediaDiariaAgendaram, mediaDiariaCompareceram, mediaDiariaContrataram, mediaDiariaNaoContrataram,
@@ -607,15 +613,15 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Previsibilidade</CardTitle>
             <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-              `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTotal Recebido: ${formatCurrency(predictability.totalRecebido)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${formatCurrency(predictability.projecaoMensal)}`
+              `Total Orçado: ${formatCurrency(predictability.totalOrcado)}\nTotal Contratado: ${formatCurrency(predictability.totalContratado)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${formatCurrency(predictability.projecaoMensal)}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">💰 Faturamento</h3>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Total Contratado</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.totalContratado)}</p></div>
-                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Total Recebido</p><p className="text-xl font-bold text-accent-foreground">{formatCurrency(predictability.totalRecebido)}</p></div>
+                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Total Orçado</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.totalOrcado)}</p></div>
+                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Total Contratado</p><p className="text-xl font-bold text-accent-foreground">{formatCurrency(predictability.totalContratado)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">A Receber</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.aReceber)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Ticket Médio por Pagamento</p><p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioPgto)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Ticket Médio Diário</p><p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioDiario)}</p></div>
