@@ -206,6 +206,27 @@ const Dashboard = () => {
     return days;
   }, [dateFrom, dateTo, filtered.pagamentos]);
 
+  // Chart: Leads Novos Diários (todos os dias úteis do período)
+  const leadsDiario = useMemo(() => {
+    const start = new Date(dateFrom + "T12:00:00");
+    const end = new Date(dateTo + "T12:00:00");
+    const leadsMap = new Map<string, number>();
+    filtered.leads.forEach((l) => {
+      leadsMap.set(l.data, (leadsMap.get(l.data) || 0) + l.leads_novos);
+    });
+    const days: { dia: string; leads: number }[] = [];
+    const current = new Date(start);
+    while (current <= end) {
+      if (current.getDay() !== 0) {
+        const dateStr = current.toISOString().split("T")[0];
+        const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+        days.push({ dia: label, leads: leadsMap.get(dateStr) || 0 });
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return days;
+  }, [dateFrom, dateTo, filtered.leads]);
+
   // Chart: Faturamento por Clínica
   const fatClinica = clinicas.map((c) => ({
     name: c.nome.replace("Clínica ", "").replace("Rizodent ", ""),
