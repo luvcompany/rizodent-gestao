@@ -288,9 +288,10 @@ const Atendimento = () => {
       let pacienteId = pacienteSelecionadoId;
 
       if (!pacienteId) {
+        const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
         const { data: newPac, error } = await supabase
           .from("pacientes")
-          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncio || null })
+          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncioFinal || null })
           .select("id")
           .single();
         if (error) throw error;
