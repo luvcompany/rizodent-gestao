@@ -144,14 +144,15 @@ const Atendimento = () => {
   };
 
   const carregarTratamentos = async (pacienteId: string) => {
-    const [{ data: trats }, { data: pags }] = await Promise.all([
+    const [{ data: pac }, { data: trats }, { data: pags }] = await Promise.all([
+      supabase.from("pacientes").select("valor_orcado").eq("id", pacienteId).maybeSingle(),
       supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
       supabase.from("pagamentos").select("valor").eq("paciente_id", pacienteId),
     ]);
 
     if (trats) {
       setTratamentosExistentes(trats);
-      const totalOrcado = trats.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
+      const totalOrcado = Number(pac?.valor_orcado || 0);
       const totalPago = pags?.reduce((s, p) => s + Number(p.valor), 0) || 0;
       setTotalOrcadoExistente(totalOrcado);
       setTotalPagoExistente(totalPago);
