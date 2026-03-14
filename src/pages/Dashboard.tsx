@@ -185,6 +185,27 @@ const Dashboard = () => {
   { title: "Pacientes", value: String(totalPacientes), icon: Users }];
 
 
+  // Chart: Venda Diária (todos os dias úteis do período)
+  const vendaDiaria = useMemo(() => {
+    const start = new Date(dateFrom + "T12:00:00");
+    const end = new Date(dateTo + "T12:00:00");
+    const pgMap = new Map<string, number>();
+    filtered.pagamentos.forEach((p) => {
+      pgMap.set(p.data_pagamento, (pgMap.get(p.data_pagamento) || 0) + Number(p.valor));
+    });
+    const days: { dia: string; valor: number }[] = [];
+    const current = new Date(start);
+    while (current <= end) {
+      if (current.getDay() !== 0) {
+        const dateStr = current.toISOString().split("T")[0];
+        const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+        days.push({ dia: label, valor: pgMap.get(dateStr) || 0 });
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return days;
+  }, [dateFrom, dateTo, filtered.pagamentos]);
+
   // Chart: Faturamento por Clínica
   const fatClinica = clinicas.map((c) => ({
     name: c.nome.replace("Clínica ", "").replace("Rizodent ", ""),
@@ -339,6 +360,25 @@ const Dashboard = () => {
           </Card>
         )}
       </div>
+
+      {/* Gráfico Venda Diária */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Venda Diária</CardTitle>
+          <p className="text-xs text-muted-foreground">Valor contratado por dia útil no período</p>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={vendaDiaria} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="dia" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-45} textAnchor="end" height={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="valor" fill="hsl(25,100%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       {/* Leads Novos KPI */}
       <Card className="gradient-card border-border shadow-card">
