@@ -199,6 +199,7 @@ const PacienteDetalhe = () => {
   const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
   const totalContratado = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
   const totalNaoContratado = Math.max(0, totalOrcado - totalContratado);
+  const orcamentoConcluido = totalOrcado > 0 && totalContratado >= totalOrcado;
 
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>;
   if (!paciente) return <div className="text-center text-muted-foreground py-12">Paciente não encontrado.</div>;
