@@ -38,6 +38,7 @@ const FILTROS_PERIODO = [
 const Pacientes = () => {
   const [busca, setBusca] = useState("");
   const [periodo, setPeriodo] = useState("todos");
+  const [statusFiltro, setStatusFiltro] = useState("todos");
   const [pacientes, setPacientes] = useState<PacienteView[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -119,14 +120,19 @@ const Pacientes = () => {
     fetchAll();
   }, [periodo]);
 
-  const filtered = useMemo(() =>
-    pacientes.filter(
+  const filtered = useMemo(() => {
+    let result = pacientes.filter(
       (p) =>
         p.nome.toLowerCase().includes(busca.toLowerCase()) ||
         p.telefone.includes(busca)
-    ),
-    [pacientes, busca]
-  );
+    );
+    if (statusFiltro === "concluido") {
+      result = result.filter(p => p.valor_orcado > 0 && p.valor_contratado >= p.valor_orcado);
+    } else if (statusFiltro === "aberto") {
+      result = result.filter(p => p.valor_orcado === 0 || p.valor_contratado < p.valor_orcado);
+    }
+    return result;
+  }, [pacientes, busca, statusFiltro]);
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -162,6 +168,16 @@ const Pacientes = () => {
             {FILTROS_PERIODO.map((f) => (
               <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFiltro} onValueChange={setStatusFiltro}>
+          <SelectTrigger className="w-full sm:w-[180px] bg-secondary border-border">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos</SelectItem>
+            <SelectItem value="aberto">Em aberto</SelectItem>
+            <SelectItem value="concluido">Concluídos</SelectItem>
           </SelectContent>
         </Select>
       </div>

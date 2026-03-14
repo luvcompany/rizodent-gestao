@@ -216,23 +216,17 @@ const Relatorios = () => {
     return Array.from(map.values()).sort((a, b) => b.data.localeCompare(a.data));
   }, [filteredLeads]);
 
-  // ========== POR PROCEDIMENTO ==========
+  // ========== POR PROCEDIMENTO (VOLUME) ==========
   const procedimentoReport = useMemo(() => {
-    const map = new Map<string, { procedimento: string; contratado: number; pago: number; qtd: number }>();
-    const pagosPorTratamento = new Map<string, number>();
-    filteredPagamentos.forEach((p) => {
-      pagosPorTratamento.set(p.tratamento_id, (pagosPorTratamento.get(p.tratamento_id) || 0) + Number(p.valor));
-    });
+    const map = new Map<string, { procedimento: string; qtd: number }>();
     filteredTratamentos.forEach((t) => {
       const key = t.procedimento;
-      const entry = map.get(key) || { procedimento: key, contratado: 0, pago: 0, qtd: 0 };
-      entry.contratado += Number(t.valor_contratado || 0);
-      entry.pago += pagosPorTratamento.get(t.id) || 0;
+      const entry = map.get(key) || { procedimento: key, qtd: 0 };
       entry.qtd += 1;
       map.set(key, entry);
     });
-    return Array.from(map.values()).sort((a, b) => b.contratado - a.contratado);
-  }, [filteredTratamentos, filteredPagamentos]);
+    return Array.from(map.values()).sort((a, b) => b.qtd - a.qtd);
+  }, [filteredTratamentos]);
 
   // ========== POR FORMA DE PAGAMENTO ==========
   const formaPagamentoReport = useMemo(() => {
@@ -379,7 +373,7 @@ const Relatorios = () => {
     { key: "semanal", label: "Relatório Semanal", desc: "Faturamento agrupado por semana", icon: Calendar },
     { key: "funil", label: "Funil de Leads", desc: "Conversão de leads por etapa do funil", icon: Filter },
     { key: "previsibilidade", label: "Previsibilidade", desc: "Projeções de faturamento e leads", icon: TrendingUp },
-    { key: "procedimento", label: "Por Procedimento", desc: "Faturamento agrupado por tipo de procedimento", icon: Stethoscope },
+    { key: "procedimento", label: "Por Procedimento", desc: "Procedimentos mais contratados por volume", icon: Stethoscope },
     { key: "forma_pgto", label: "Forma de Pagamento", desc: "Distribuição por forma de pagamento", icon: CreditCard },
     { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor pago e contratado", icon: Users },
     { key: "especialidade", label: "Por Especialidade", desc: "Faturamento agrupado por especialidade", icon: Stethoscope },
@@ -669,33 +663,29 @@ const Relatorios = () => {
       case "procedimento": return (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Por Procedimento</CardTitle>
-            <ShareButtons title="Relatório por Procedimento" data={procedimentoReport} getSummary={() =>
-              procedimentoReport.slice(0, 10).map((r) => `${r.procedimento}: ${formatCurrency(r.contratado)} contratado, ${formatCurrency(r.pago)} pago (${r.qtd}x)`).join("\n")
+            <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Procedimentos Mais Contratados</CardTitle>
+            <ShareButtons title="Procedimentos Mais Contratados" data={procedimentoReport} getSummary={() =>
+              procedimentoReport.slice(0, 10).map((r) => `${r.procedimento}: ${r.qtd} contratações`).join("\n")
             } />
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={procedimentoReport.slice(0, 10)} layout="vertical" margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis type="number" stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <XAxis type="number" stroke="hsl(0,0%,64%)" allowDecimals={false} />
                 <YAxis type="category" dataKey="procedimento" stroke="hsl(0,0%,64%)" fontSize={10} width={120} />
-                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[0, 6, 6, 0]} activeBar={activeBarStyle} />
-                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[0, 6, 6, 0]} activeBar={activeBarStyle} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Contratações"]} />
+                <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Contratações" radius={[0, 6, 6, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Procedimento</TableHead><TableHead>Qtd</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Procedimento</TableHead><TableHead className="text-center">Contratações</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {procedimentoReport.map((r) => (
                     <TableRow key={r.procedimento}>
                       <TableCell className="font-medium">{r.procedimento}</TableCell>
-                      <TableCell>{r.qtd}</TableCell>
-                      <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                      <TableCell>{formatCurrency(r.pago)}</TableCell>
-                      <TableCell className="text-primary">{formatCurrency(r.contratado - r.pago)}</TableCell>
+                      <TableCell className="text-center font-semibold">{r.qtd}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

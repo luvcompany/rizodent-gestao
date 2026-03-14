@@ -177,13 +177,12 @@ const Dashboard = () => {
     value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0),
   })).filter(d => d.value > 0);
 
-  // Chart: Faturamento por Procedimento
+  // Chart: Procedimentos mais contratados (volume)
   const procMap = new Map<string, number>();
   filtered.tratamentos.forEach((t) => {
-    const paid = filtered.pagamentos.filter((p) => p.tratamento_id === t.id).reduce((s, p) => s + Number(p.valor), 0);
-    procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + paid);
+    procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + 1);
   });
-  const fatProcedimento = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
+  const procVolume = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
 
   // Chart: Faturamento por Especialidade
   const espMap = new Map<string, number>();
@@ -435,14 +434,14 @@ const Dashboard = () => {
         )}
 
         {showProcedimentoChart && (
-          <ChartCard title="Faturamento por Procedimento">
+          <ChartCard title="Procedimentos Mais Contratados">
             <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={fatProcedimento} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
+              <BarChart data={procVolume} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: "hsl(0,0%,64%)" }} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
-                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-                <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
+                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} allowDecimals={false} width={40} tick={{ fill: "hsl(0,0%,64%)" }} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Quantidade"]} />
+                <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
