@@ -172,7 +172,7 @@ const Atendimento = () => {
   const resetForm = () => {
     setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
     setProcedimentos([createEmptyProcedimento()]);
-    setValorPago("");
+    setValorPago(""); setTipoPagamento("primeiro");
     setOrigem(""); setNomeAnuncio(""); setOrigemOutrosDesc(""); setPacienteSelecionadoId(null);
     setDataPagamento(new Date().toISOString().split("T")[0]);
     setValorOrcadoGeral(""); setValorContratadoGeral("");
