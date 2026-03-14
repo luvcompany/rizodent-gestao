@@ -723,7 +723,7 @@ const Relatorios = () => {
       case "ranking": return (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><Users size={18} className="text-primary" /> Ranking de Pacientes (Top 50)</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2"><Users size={18} className="text-primary" /> Ranking de Pacientes ({rankingPacientes.length})</CardTitle>
             <ShareButtons title="Ranking Pacientes" data={rankingPacientes} getSummary={() =>
               rankingPacientes.slice(0, 10).map((r, i) => `${i + 1}. ${r.nome}: ${formatCurrency(r.contratado)} contratado`).join("\n")
             } />
@@ -740,14 +740,14 @@ const Relatorios = () => {
                 <Legend />
               </BarChart>
             </ResponsiveContainer>
-            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
               <Table>
                 <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Tratamentos</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {rankingPacientes.map((r, i) => (
-                    <TableRow key={i}>
+                    <TableRow key={r.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${r.id}`)}>
                       <TableCell className="font-bold text-primary">{i + 1}</TableCell>
-                      <TableCell className="font-medium">{r.nome}</TableCell>
+                      <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{r.nome}</TableCell>
                       <TableCell>{r.qtdTratamentos}</TableCell>
                       <TableCell>{formatCurrency(r.orcado)}</TableCell>
                       <TableCell>{formatCurrency(r.contratado)}</TableCell>
