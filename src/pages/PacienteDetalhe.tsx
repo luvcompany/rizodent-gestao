@@ -250,11 +250,12 @@ const PacienteDetalhe = () => {
             <p className="text-xs text-muted-foreground">Total Orçado</p>
           </CardContent>
         </Card>
-        <Card className="gradient-card border-border shadow-card">
+        <Card className={`gradient-card border-border shadow-card ${orcamentoConcluido ? 'border-green-500/40' : ''}`}>
           <CardContent className="pt-4 pb-3 text-center">
-            <DollarSign size={20} className="mx-auto text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{formatCurrency(totalContratado)}</p>
+            <DollarSign size={20} className={`mx-auto mb-1 ${orcamentoConcluido ? 'text-green-500' : 'text-muted-foreground'}`} />
+            <p className={`text-2xl font-bold ${orcamentoConcluido ? 'text-green-500' : ''}`}>{formatCurrency(totalContratado)}</p>
             <p className="text-xs text-muted-foreground">Total Contratado</p>
+            {orcamentoConcluido && <Badge className="mt-1 bg-green-600/20 text-green-400 border-green-600/30 text-xs">Concluído</Badge>}
           </CardContent>
         </Card>
         <Card className="gradient-card border-border shadow-card">
