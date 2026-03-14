@@ -202,7 +202,7 @@ const Relatorios = () => {
       projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes, projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
       projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
     };
-  }, [filteredTratamentos, filteredPagamentos, filteredLeads, diasUteisMes]);
+  }, [pacientes, filteredPagamentos, filteredLeads, diasUteisMes]);
 
   // ========== FUNNEL ==========
   const funnelReport = useMemo(() => {
