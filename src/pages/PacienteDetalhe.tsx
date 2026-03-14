@@ -203,6 +203,38 @@ const PacienteDetalhe = () => {
     toast.success("Tratamento excluído!");
   };
 
+  const startEditPagamento = (p: any) => {
+    setEditingPagId(p.id);
+    setEditPagValor(formatCurrency(Number(p.valor)));
+    setEditPagForma(p.forma_pagamento);
+    setEditPagData(p.data_pagamento);
+    setEditPagTipo(p.tipo);
+  };
+
+  const handleSavePagamento = async () => {
+    if (!editingPagId) return;
+    const valor = parseCurrency(editPagValor);
+    setSaving(true);
+    const { error } = await supabase.from("pagamentos").update({
+      valor,
+      forma_pagamento: editPagForma,
+      data_pagamento: editPagData,
+      tipo: editPagTipo,
+    }).eq("id", editingPagId);
+    setSaving(false);
+    if (error) { toast.error("Erro: " + error.message); return; }
+    setPagamentos(prev => prev.map(p => p.id === editingPagId ? { ...p, valor, forma_pagamento: editPagForma, data_pagamento: editPagData, tipo: editPagTipo } : p));
+    setEditingPagId(null);
+    toast.success("Pagamento atualizado!");
+  };
+
+  const handleDeletePagamento = async (pagId: string) => {
+    const { error } = await supabase.from("pagamentos").delete().eq("id", pagId);
+    if (error) { toast.error("Erro: " + error.message); return; }
+    setPagamentos(prev => prev.filter(p => p.id !== pagId));
+    toast.success("Pagamento excluído!");
+  };
+
   const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
   const totalContratado = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
   const totalNaoContratado = Math.max(0, totalOrcado - totalContratado);
