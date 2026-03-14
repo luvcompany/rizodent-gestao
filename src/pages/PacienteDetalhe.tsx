@@ -342,8 +342,6 @@ const PacienteDetalhe = () => {
           ) : (
             <div className="space-y-3">
               {tratamentos.map((t) => {
-                const pagsTrat = pagamentos.filter(p => p.tratamento_id === t.id);
-                const totalPagoTrat = pagsTrat.reduce((s, p) => s + Number(p.valor), 0);
                 const isEditing = editingTratId === t.id;
 
                 if (isEditing) {
@@ -409,7 +407,7 @@ const PacienteDetalhe = () => {
                 }
 
                 return (
-                  <div key={t.id} className="rounded-lg border border-border p-3 space-y-2">
+                  <div key={t.id} className="rounded-lg border border-border p-3">
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="font-semibold">{t.procedimento}</span>
@@ -444,24 +442,36 @@ const PacienteDetalhe = () => {
                         </AlertDialog>
                       </div>
                     </div>
-                    {pagsTrat.length > 0 && (
-                      <div className="flex gap-4 text-xs text-muted-foreground">
-                        <span className="text-primary font-medium">Pago: {formatCurrency(totalPagoTrat)}</span>
-                      </div>
-                    )}
-                    {pagsTrat.length > 0 && (
-                      <div className="pl-2 border-l-2 border-primary/20 space-y-1 mt-1">
-                        {pagsTrat.map((p) => (
-                          <div key={p.id} className="flex justify-between text-xs text-muted-foreground">
-                            <span>{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")} — {p.forma_pagamento}</span>
-                            <span className="font-medium text-foreground">{formatCurrency(Number(p.valor))}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 );
               })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Pagamentos */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <DollarSign size={18} className="text-primary" /> Pagamentos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {pagamentos.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Nenhum pagamento registrado.</p>
+          ) : (
+            <div className="space-y-2">
+              {pagamentos.map((p) => (
+                <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                    <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
+                    <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
+                  </div>
+                  <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>

@@ -59,12 +59,16 @@ const Pacientes = () => {
       const clinicaMap = new Map<string, string>();
       clinicas?.forEach((c) => clinicaMap.set(c.id, c.nome));
 
-      // Group tratamentos by paciente_id
+      // Group tratamentos by paciente_id (only orçado)
       const tratOrcadoMap = new Map<string, number>();
-      const tratContratadoMap = new Map<string, number>();
       tratamentos?.forEach((t) => {
         tratOrcadoMap.set(t.paciente_id, (tratOrcadoMap.get(t.paciente_id) || 0) + Number(t.valor_orcado || 0));
-        tratContratadoMap.set(t.paciente_id, (tratContratadoMap.get(t.paciente_id) || 0) + Number(t.valor_contratado || 0));
+      });
+
+      // Group pagamentos value by paciente_id for contratado
+      const pagContratadoMap = new Map<string, number>();
+      pagamentos?.forEach((p) => {
+        pagContratadoMap.set(p.paciente_id, (pagContratadoMap.get(p.paciente_id) || 0) + Number(p.valor || 0));
       });
 
       // Group pagamentos by paciente_id
@@ -85,7 +89,7 @@ const Pacientes = () => {
       const result: PacienteView[] = [];
       for (const p of pacs) {
         const valorOrcado = tratOrcadoMap.get(p.id) || 0;
-        const valorContratado = tratContratadoMap.get(p.id) || 0;
+        const valorContratado = pagContratadoMap.get(p.id) || 0;
         let pags = pagMap.get(p.id) || [];
 
         if (dataMinima) {

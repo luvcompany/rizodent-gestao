@@ -247,12 +247,6 @@ const Atendimento = () => {
           });
         if (pagError) throw pagError;
 
-        // Update valor_contratado on first treatment to reflect new total
-        await supabase
-          .from("tratamentos")
-          .update({ valor_contratado: novoTotalContratado })
-          .eq("id", tratamentoId);
-
         toast.success("Pagamento registrado com sucesso!");
         resetForm();
       } catch (err: any) {
@@ -301,7 +295,7 @@ const Atendimento = () => {
       const totalOrcado = parseCurrency(valorOrcadoGeral);
       const totalContratado = parseCurrency(valorContratadoGeral);
 
-      // Create all treatments - no price on individual procedures
+      // Create all treatments - orçado on first, no price on others
       let firstTratamentoId: string | null = null;
       for (let i = 0; i < procedimentos.length; i++) {
         const proc = procedimentos[i];
@@ -312,7 +306,7 @@ const Atendimento = () => {
             clinica_id: clinicaId,
             procedimento: proc.procedimento,
             especialidade: proc.especialidade || null,
-            valor_orcado: 0,
+            valor_orcado: i === 0 ? totalOrcado : 0,
             valor_contratado: 0,
             created_by: user?.id,
           })
