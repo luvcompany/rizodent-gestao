@@ -62,10 +62,10 @@ const Atendimento = () => {
   const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
   const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
   const [valorContratadoGeral, setValorContratadoGeral] = useState("");
-  const [formaPagamento, setFormaPagamento] = useState("");
   const [origem, setOrigem] = useState("");
   const [valorPago, setValorPago] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
+  const [origemOutrosDesc, setOrigemOutrosDesc] = useState("");
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
