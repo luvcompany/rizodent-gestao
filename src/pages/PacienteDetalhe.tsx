@@ -217,7 +217,7 @@ const PacienteDetalhe = () => {
           <h1 className="text-2xl font-bold">{paciente.nome}</h1>
           <p className="text-sm text-muted-foreground">{paciente.telefone} {paciente.cidade && `• ${paciente.cidade}`}</p>
         </div>
-        <Button onClick={() => navigate("/atendimento")} className="gradient-orange text-primary-foreground shadow-orange hover:opacity-90">
+        <Button onClick={() => navigate("/atendimento", { state: { pacienteId: id, pacienteNome: paciente.nome, pacienteTelefone: paciente.telefone, pacienteCidade: paciente.cidade, pacienteOrigem: paciente.origem, pacienteNomeAnuncio: paciente.nome_anuncio } })} className="gradient-orange text-primary-foreground shadow-orange hover:opacity-90">
           <Plus size={16} className="mr-2" /> Novo Procedimento
         </Button>
         <AlertDialog>

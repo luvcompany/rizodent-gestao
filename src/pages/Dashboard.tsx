@@ -215,7 +215,7 @@ const Dashboard = () => {
   });
   const anuncioData = Array.from(anuncioMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
 
-  // Funnel data
+  // Funnel data - Leads Novos is separate from Atendimentos do Dia
   const funnelTotals = filtered.leads.reduce(
     (acc, l) => ({
       leads: acc.leads + l.leads_novos,
@@ -230,7 +230,6 @@ const Dashboard = () => {
   const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(45, 90%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
 
   const funnelData = [
-    { name: "Leads", value: funnelTotals.leads, fill: FUNNEL_COLORS[0] },
     { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
     { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[2] },
     { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[3] },
@@ -360,13 +359,28 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Funnel */}
+      {/* Leads Novos KPI */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Leads Novos no Período</CardTitle>
+          <div className="rounded-lg bg-primary/10 p-2">
+            <Users size={18} className="text-primary" />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{funnelTotals.leads}</div>
+          <p className="text-xs text-muted-foreground mt-0.5">Total de novos leads que entraram</p>
+        </CardContent>
+      </Card>
+
+      {/* Funnel - Atendimentos do Dia */}
       <Card className="gradient-card border-border shadow-card">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Filter size={18} className="text-primary" />
-            Funil de Vendas (Período Selecionado)
+            Funil de Atendimentos (Período Selecionado)
           </CardTitle>
+          <p className="text-xs text-muted-foreground">Total de leads atendidos no período, independente de quando entraram</p>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="numeros" className="space-y-4">
@@ -375,7 +389,7 @@ const Dashboard = () => {
               <TabsTrigger value="funil">Funil Visual</TabsTrigger>
             </TabsList>
             <TabsContent value="numeros">
-              <div className="grid gap-2 sm:grid-cols-5">
+              <div className="grid gap-2 sm:grid-cols-4">
                 {funnelData.map((item, i) => (
                   <div key={item.name} className="text-center">
                     <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>

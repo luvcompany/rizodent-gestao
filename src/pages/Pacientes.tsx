@@ -99,7 +99,9 @@ const Pacientes = () => {
         }
 
         const totalPago = pags.reduce((sum, pg) => sum + Number(pg.valor), 0);
-        const ultimaVisita = pags[0]?.data_pagamento || null;
+        // ultima_visita = most recent payment date (already sorted desc)
+        const allPags = pagMap.get(p.id) || [];
+        const ultimaVisita = allPags[0]?.data_pagamento || null;
         const clinicaNome = pags[0]?.clinica_id ? clinicaMap.get(pags[0].clinica_id) || null : null;
 
         result.push({

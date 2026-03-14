@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +54,7 @@ const createEmptyProcedimento = (): ProcedimentoEntry => ({
 
 const Atendimento = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [tiposProcedimento, setTiposProcedimento] = useState<TipoProcedimento[]>([]);
   const [telefone, setTelefone] = useState("");
@@ -75,6 +77,7 @@ const Atendimento = () => {
   const [totalOrcadoExistente, setTotalOrcadoExistente] = useState(0);
   const [saving, setSaving] = useState(false);
   const [modo, setModo] = useState<ModoAtendimento>("selecionar");
+  const [initialPatientLoaded, setInitialPatientLoaded] = useState(false);
 
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
@@ -84,6 +87,22 @@ const Atendimento = () => {
       if (data) setTiposProcedimento(data as TipoProcedimento[]);
     });
   }, []);
+
+  // Auto-load patient from navigation state
+  useEffect(() => {
+    const state = location.state as { pacienteId?: string; pacienteNome?: string; pacienteTelefone?: string; pacienteCidade?: string; pacienteOrigem?: string; pacienteNomeAnuncio?: string } | null;
+    if (state?.pacienteId && !initialPatientLoaded) {
+      setInitialPatientLoaded(true);
+      setTelefone(state.pacienteTelefone || "");
+      setNome(state.pacienteNome || "");
+      setCidade(state.pacienteCidade || "");
+      setOrigem(state.pacienteOrigem || "");
+      setNomeAnuncio(state.pacienteNomeAnuncio || "");
+      setPacienteSelecionadoId(state.pacienteId);
+      setSugestoes([]);
+      carregarTratamentos(state.pacienteId);
+    }
+  }, [location.state, initialPatientLoaded]);
 
   const getEspecialidadesDisponiveis = (procNome: string) => {
     if (!procNome) return [];
