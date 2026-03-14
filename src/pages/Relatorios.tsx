@@ -816,7 +816,7 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Megaphone size={18} className="text-primary" /> Por Origem / Anúncio</CardTitle>
             <ShareButtons title="Relatório por Origem" data={[...origemReport.origens, ...origemReport.anuncios]} getSummary={() =>
-              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.contratado)} contratado`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.contratado)} contratado`).join("\n")}`
+              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, Orçado ${formatCurrency(r.orcado)}, Contratado ${formatCurrency(r.contratado)}`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, Orçado ${formatCurrency(r.orcado)}, Contratado ${formatCurrency(r.contratado)}`).join("\n")}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
@@ -824,13 +824,15 @@ const Relatorios = () => {
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📍 Por Origem</h3>
               <div className="overflow-x-auto max-h-64 overflow-y-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {origemReport.origens.map((r) => (
                       <TableRow key={r.label}>
                         <TableCell className="font-medium">{r.label}</TableCell>
                         <TableCell>{r.qtdPacientes}</TableCell>
+                        <TableCell>{formatCurrency(r.orcado)}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
+                        <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}%</Badge></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -841,13 +843,15 @@ const Relatorios = () => {
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📢 Por Anúncio</h3>
               <div className="overflow-x-auto max-h-64 overflow-y-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {origemReport.anuncios.map((r) => (
                       <TableRow key={r.label}>
                         <TableCell className="font-medium">{r.label}</TableCell>
                         <TableCell>{r.qtdPacientes}</TableCell>
+                        <TableCell>{formatCurrency(r.orcado)}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
+                        <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}%</Badge></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
