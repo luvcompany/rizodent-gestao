@@ -288,11 +288,23 @@ const PacienteDetalhe = () => {
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-4">
-        <Card className="gradient-card border-border shadow-card">
+        <Card className="gradient-card border-border shadow-card cursor-pointer hover:border-primary/30 transition-colors" onClick={() => { setEditingValorOrcado(true); setEditValorOrcado(formatCurrency(totalOrcado)); }}>
           <CardContent className="pt-4 pb-3 text-center">
             <DollarSign size={20} className="mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold text-primary">{formatCurrency(totalOrcado)}</p>
-            <p className="text-xs text-muted-foreground">Total Orçado</p>
+            {editingValorOrcado ? (
+              <div className="space-y-2">
+                <Input value={editValorOrcado} onChange={(e) => setEditValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm text-center" autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleSaveValorOrcado(); if (e.key === "Escape") setEditingValorOrcado(false); }} onClick={(e) => e.stopPropagation()} />
+                <div className="flex gap-1 justify-center">
+                  <Button size="sm" className="h-6 text-xs px-2" onClick={(e) => { e.stopPropagation(); handleSaveValorOrcado(); }} disabled={saving}><Check size={12} /></Button>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={(e) => { e.stopPropagation(); setEditingValorOrcado(false); }}><X size={12} /></Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-primary">{formatCurrency(totalOrcado)}</p>
+                <p className="text-xs text-muted-foreground">Total Orçado <Pencil size={10} className="inline ml-1" /></p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card className={`gradient-card border-border shadow-card ${orcamentoConcluido ? 'border-green-500/40' : ''}`}>

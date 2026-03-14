@@ -83,7 +83,7 @@ const Pacientes = () => {
 
       const result: PacienteView[] = [];
       for (const p of pacs) {
-        const valorOrcado = tratOrcadoMap.get(p.id) || 0;
+        const valorOrcado = Number(p.valor_orcado || 0);
         const valorContratado = pagContratadoMap.get(p.id) || 0;
         let pags = pagMap.get(p.id) || [];
 
