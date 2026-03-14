@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Save, Plus, User, FileText, DollarSign, Trash2, Pencil, X } from "lucide-react";
+import { ArrowLeft, Save, Plus, User, FileText, DollarSign, Trash2, Pencil, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -66,6 +66,13 @@ const PacienteDetalhe = () => {
   const [editTratValorContratado, setEditTratValorContratado] = useState("");
   const [editTratStatus, setEditTratStatus] = useState("");
   const [editTratClinicaId, setEditTratClinicaId] = useState("");
+
+  // Payment editing
+  const [editingPagId, setEditingPagId] = useState<string | null>(null);
+  const [editPagValor, setEditPagValor] = useState("");
+  const [editPagForma, setEditPagForma] = useState("");
+  const [editPagData, setEditPagData] = useState("");
+  const [editPagTipo, setEditPagTipo] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -194,6 +201,38 @@ const PacienteDetalhe = () => {
     setTratamentos(prev => prev.filter(t => t.id !== tratId));
     setPagamentos(prev => prev.filter(p => p.tratamento_id !== tratId));
     toast.success("Tratamento excluído!");
+  };
+
+  const startEditPagamento = (p: any) => {
+    setEditingPagId(p.id);
+    setEditPagValor(formatCurrency(Number(p.valor)));
+    setEditPagForma(p.forma_pagamento);
+    setEditPagData(p.data_pagamento);
+    setEditPagTipo(p.tipo);
+  };
+
+  const handleSavePagamento = async () => {
+    if (!editingPagId) return;
+    const valor = parseCurrency(editPagValor);
+    setSaving(true);
+    const { error } = await supabase.from("pagamentos").update({
+      valor,
+      forma_pagamento: editPagForma,
+      data_pagamento: editPagData,
+      tipo: editPagTipo,
+    }).eq("id", editingPagId);
+    setSaving(false);
+    if (error) { toast.error("Erro: " + error.message); return; }
+    setPagamentos(prev => prev.map(p => p.id === editingPagId ? { ...p, valor, forma_pagamento: editPagForma, data_pagamento: editPagData, tipo: editPagTipo } : p));
+    setEditingPagId(null);
+    toast.success("Pagamento atualizado!");
+  };
+
+  const handleDeletePagamento = async (pagId: string) => {
+    const { error } = await supabase.from("pagamentos").delete().eq("id", pagId);
+    if (error) { toast.error("Erro: " + error.message); return; }
+    setPagamentos(prev => prev.filter(p => p.id !== pagId));
+    toast.success("Pagamento excluído!");
   };
 
   const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
@@ -464,16 +503,92 @@ const PacienteDetalhe = () => {
             <p className="text-sm text-muted-foreground text-center py-4">Nenhum pagamento registrado.</p>
           ) : (
             <div className="space-y-2">
-              {pagamentos.map((p) => (
-                <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                    <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
-                    <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
+              {pagamentos.map((p) => {
+                const isEditingPag = editingPagId === p.id;
+
+                if (isEditingPag) {
+                  return (
+                    <div key={p.id} className="rounded-lg border-2 border-primary/40 p-3 space-y-3 bg-primary/5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-primary">Editando Pagamento</span>
+                        <Button variant="ghost" size="sm" onClick={() => setEditingPagId(null)} className="h-7 w-7 p-0">
+                          <X size={14} />
+                        </Button>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Valor</Label>
+                          <Input value={editPagValor} onChange={(e) => setEditPagValor(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Data</Label>
+                          <Input type="date" value={editPagData} onChange={(e) => setEditPagData(e.target.value)} className="bg-secondary border-border h-8 text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Forma</Label>
+                          <Select value={editPagForma} onValueChange={setEditPagForma}>
+                            <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {["Dinheiro", "PIX", "Cartão Crédito", "Cartão Débito", "Boleto", "Cheque", "Não informado"].map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Tipo</Label>
+                          <Select value={editPagTipo} onValueChange={setEditPagTipo}>
+                            <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="primeiro">1º Pagamento</SelectItem>
+                              <SelectItem value="recorrente">Recorrente</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button size="sm" onClick={handleSavePagamento} disabled={saving} className="h-7 text-xs">
+                          <Check size={12} className="mr-1" /> Salvar
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                      <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
+                      <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
+                      <span className="text-xs text-muted-foreground ml-2">· {p.forma_pagamento}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditPagamento(p)}>
+                        <Pencil size={13} />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive">
+                            <Trash2 size={13} />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir pagamento?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Excluir o pagamento de <strong>{formatCurrency(Number(p.valor))}</strong> do dia {new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}? Esta ação não pode ser desfeita.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeletePagamento(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
-                  <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
