@@ -66,10 +66,11 @@ const CadastroLeads = () => {
           setFaltaram(String(existing.faltaram));
           setContrataram(String(existing.contrataram));
           setNaoContrataram(String(existing.nao_contrataram));
+          setRemarcados(String((existing as any).remarcados || 0));
         } else {
           setExistingId(null);
           setLeadsNovos(""); setAgendaram(""); setFaltaram("");
-          setContrataram(""); setNaoContrataram("");
+          setContrataram(""); setNaoContrataram(""); setRemarcados("");
         }
       });
   }, [clinicaId, data]);
