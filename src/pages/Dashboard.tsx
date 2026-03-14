@@ -215,7 +215,7 @@ const Dashboard = () => {
   });
   const anuncioData = Array.from(anuncioMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
 
-  // Funnel data
+  // Funnel data - Leads Novos is separate from Atendimentos do Dia
   const funnelTotals = filtered.leads.reduce(
     (acc, l) => ({
       leads: acc.leads + l.leads_novos,
@@ -230,7 +230,6 @@ const Dashboard = () => {
   const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(45, 90%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
 
   const funnelData = [
-    { name: "Leads", value: funnelTotals.leads, fill: FUNNEL_COLORS[0] },
     { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
     { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[2] },
     { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[3] },
