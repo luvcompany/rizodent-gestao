@@ -503,16 +503,92 @@ const PacienteDetalhe = () => {
             <p className="text-sm text-muted-foreground text-center py-4">Nenhum pagamento registrado.</p>
           ) : (
             <div className="space-y-2">
-              {pagamentos.map((p) => (
-                <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                    <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
-                    <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
+              {pagamentos.map((p) => {
+                const isEditingPag = editingPagId === p.id;
+
+                if (isEditingPag) {
+                  return (
+                    <div key={p.id} className="rounded-lg border-2 border-primary/40 p-3 space-y-3 bg-primary/5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-primary">Editando Pagamento</span>
+                        <Button variant="ghost" size="sm" onClick={() => setEditingPagId(null)} className="h-7 w-7 p-0">
+                          <X size={14} />
+                        </Button>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Valor</Label>
+                          <Input value={editPagValor} onChange={(e) => setEditPagValor(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Data</Label>
+                          <Input type="date" value={editPagData} onChange={(e) => setEditPagData(e.target.value)} className="bg-secondary border-border h-8 text-sm" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Forma</Label>
+                          <Select value={editPagForma} onValueChange={setEditPagForma}>
+                            <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {["Dinheiro", "PIX", "Cartão Crédito", "Cartão Débito", "Boleto", "Cheque", "Não informado"].map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Tipo</Label>
+                          <Select value={editPagTipo} onValueChange={setEditPagTipo}>
+                            <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="primeiro">1º Pagamento</SelectItem>
+                              <SelectItem value="recorrente">Recorrente</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button size="sm" onClick={handleSavePagamento} disabled={saving} className="h-7 text-xs">
+                          <Check size={12} className="mr-1" /> Salvar
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                      <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
+                      <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
+                      <span className="text-xs text-muted-foreground ml-2">· {p.forma_pagamento}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditPagamento(p)}>
+                        <Pencil size={13} />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive">
+                            <Trash2 size={13} />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Excluir pagamento?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Excluir o pagamento de <strong>{formatCurrency(Number(p.valor))}</strong> do dia {new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}? Esta ação não pode ser desfeita.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeletePagamento(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
-                  <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
