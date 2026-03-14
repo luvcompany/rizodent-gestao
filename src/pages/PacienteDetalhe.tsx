@@ -58,12 +58,14 @@ const PacienteDetalhe = () => {
   const [editOrigem, setEditOrigem] = useState("");
   const [editNomeAnuncio, setEditNomeAnuncio] = useState("");
 
+  // Valor orçado editing (patient-level)
+  const [editingValorOrcado, setEditingValorOrcado] = useState(false);
+  const [editValorOrcado, setEditValorOrcado] = useState("");
+
   // Treatment editing
   const [editingTratId, setEditingTratId] = useState<string | null>(null);
   const [editTratProcedimento, setEditTratProcedimento] = useState("");
   const [editTratEspecialidade, setEditTratEspecialidade] = useState("");
-  const [editTratValorOrcado, setEditTratValorOrcado] = useState("");
-  const [editTratValorContratado, setEditTratValorContratado] = useState("");
   const [editTratStatus, setEditTratStatus] = useState("");
   const [editTratClinicaId, setEditTratClinicaId] = useState("");
 
