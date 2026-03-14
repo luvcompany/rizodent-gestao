@@ -67,6 +67,13 @@ const PacienteDetalhe = () => {
   const [editTratStatus, setEditTratStatus] = useState("");
   const [editTratClinicaId, setEditTratClinicaId] = useState("");
 
+  // Payment editing
+  const [editingPagId, setEditingPagId] = useState<string | null>(null);
+  const [editPagValor, setEditPagValor] = useState("");
+  const [editPagForma, setEditPagForma] = useState("");
+  const [editPagData, setEditPagData] = useState("");
+  const [editPagTipo, setEditPagTipo] = useState("");
+
   useEffect(() => {
     if (!id) return;
     const load = async () => {
