@@ -176,14 +176,30 @@ const Dashboard = () => {
     return Math.max(count, 1);
   }, [dateFrom, dateTo]);
 
+  // Total de dias úteis do mês completo
+  const diasUteisMes = useMemo(() => {
+    const refDate = new Date(dateFrom + "T12:00:00");
+    const year = refDate.getFullYear();
+    const month = refDate.getMonth();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    let count = 0;
+    for (let day = 1; day <= totalDays; day++) {
+      const dow = new Date(year, month, day).getDay();
+      if (dow !== 0) count++;
+    }
+    return count;
+  }, [dateFrom]);
+
   // Ticket médio = faturamento / dias úteis passados
   const ticketMedio = fatTotal / diasUteisPassados;
+  const projecaoMensal = ticketMedio * diasUteisMes;
 
   const kpis = [
     { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
     { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
     { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
-    { title: "Ticket Médio", value: formatCurrency(ticketMedio), icon: DollarSign },
+    { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign },
+    { title: "Previsão Mensal", value: formatCurrency(projecaoMensal), icon: TrendingUp, subtitle: `${diasUteisMes} dias úteis no mês` },
     { title: "Pagamentos", value: String(filtered.pagamentos.length), icon: DollarSign },
     { title: "Pacientes", value: String(totalPacientes), icon: Users },
   ];
