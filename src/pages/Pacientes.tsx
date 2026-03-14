@@ -218,7 +218,7 @@ const Pacientes = () => {
                     </p>
                     {pac.ultima_visita && (
                       <p className="text-xs text-muted-foreground">
-                        Última visita: {new Date(pac.ultima_visita).toLocaleDateString("pt-BR")}
+                        Última visita: {new Date(pac.ultima_visita + "T12:00:00").toLocaleDateString("pt-BR")}
                       </p>
                     )}
                   </div>
