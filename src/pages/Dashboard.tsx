@@ -274,7 +274,7 @@ const Dashboard = () => {
       {/* Filters */}
       <Card className="gradient-card border-border shadow-card">
         <CardContent className="pt-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Clínica</Label>
               <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
@@ -286,34 +286,6 @@ const Dashboard = () => {
                   <SelectItem value="todas">Todas as Clínicas</SelectItem>
                   {clinicas.map((c) =>
                   <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Procedimento</Label>
-              <Select value={procedimentoFiltro} onValueChange={setProcedimentoFiltro}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os Procedimentos</SelectItem>
-                  {procedimentosUnicos.map((p) =>
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Especialidade</Label>
-              <Select value={especialidadeFiltro} onValueChange={setEspecialidadeFiltro}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Especialidades</SelectItem>
-                  {especialidadesUnicas.map((e) =>
-                  <SelectItem key={e} value={e}>{e}</SelectItem>
                   )}
                 </SelectContent>
               </Select>
