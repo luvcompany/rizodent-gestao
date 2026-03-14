@@ -9,10 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileBarChart, Download, Share2, MessageCircle, Mail, Calendar, TrendingUp, Filter, DollarSign, Users, Stethoscope, CreditCard, Megaphone, Eye, ArrowLeft } from "lucide-react";
+import { FileBarChart, Download, Share2, MessageCircle, Mail, Calendar, TrendingUp, Filter, DollarSign, Users, Stethoscope, Megaphone, Eye, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import * as XLSX from "xlsx";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -94,22 +94,18 @@ const Relatorios = () => {
     });
   }, [tratamentos, clinicaFiltro]);
 
-  // ========== ORÇADO VS CONTRATADO (using orcamentos table) ==========
+  // ========== ORÇADO VS CONTRATADO ==========
   const contratadoVsPago = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
-
-    // Orcado comes from orcamentos table
     const orcadoPorPaciente = new Map<string, number>();
     orcamentos.forEach((o) => {
       orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
     });
-
     const totalOrcado = Array.from(orcadoPorPaciente.values()).reduce((s, v) => s + v, 0);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
-
     const pacienteMap = new Map<string, { id: string; nome: string; orcado: number; contratado: number; tratamentos: any[] }>();
     pacientes.forEach((pac) => {
       const orcado = orcadoPorPaciente.get(pac.id) || 0;
@@ -120,11 +116,9 @@ const Relatorios = () => {
       });
       pacienteMap.set(pac.id, entry);
     });
-
     const lista = Array.from(pacienteMap.values());
     const emAberto = lista.filter(p => p.contratado < p.orcado).sort((a, b) => (b.orcado - b.contratado) - (a.orcado - a.contratado));
     const concluidos = lista.filter(p => p.contratado >= p.orcado);
-
     return { totalOrcado, totalContratado, emAberto, concluidos };
   }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
 
@@ -173,7 +167,6 @@ const Relatorios = () => {
     return count;
   }, [dateFrom]);
 
-  // Dias úteis já passados no período selecionado (seg-sáb, excluindo domingos)
   const diasUteisPassados = useMemo(() => {
     const start = new Date(dateFrom + "T12:00:00");
     const today = new Date();
@@ -182,14 +175,13 @@ const Relatorios = () => {
     let count = 0;
     const current = new Date(start);
     while (current <= limit) {
-      if (current.getDay() !== 0) count++; // exclui domingo
+      if (current.getDay() !== 0) count++;
       current.setDate(current.getDate() + 1);
     }
     return Math.max(count, 1);
   }, [dateFrom, dateTo]);
 
   const predictability = useMemo(() => {
-    // Orçado from orcamentos table
     const totalOrcado = orcamentos.reduce((s, o) => s + Number(o.valor_orcado || 0), 0);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
     const aReceber = Math.max(0, totalOrcado - totalContratado);
@@ -200,14 +192,12 @@ const Relatorios = () => {
     }), { leads: 0, agendaram: 0, compareceram: 0, faltaram: 0, contrataram: 0, naoContrataram: 0 });
     const taxaConversao = leadsTotals.leads > 0 ? (leadsTotals.contrataram / leadsTotals.leads) * 100 : 0;
     const ticketMedioPgto = filteredPagamentos.length > 0 ? totalContratado / filteredPagamentos.length : 0;
-    // Média diária = total / dias úteis passados (vendeu ou não)
     const ticketMedioDiario = totalContratado / diasUteisPassados;
     const projecaoMensal = ticketMedioDiario * diasUteisMes;
     const txAgendamento = leadsTotals.leads > 0 ? leadsTotals.agendaram / leadsTotals.leads : 0;
     const txComparecimento = leadsTotals.agendaram > 0 ? leadsTotals.compareceram / leadsTotals.agendaram : 0;
     const txContratacao = leadsTotals.leads > 0 ? leadsTotals.contrataram / leadsTotals.leads : 0;
     const txNaoContratacao = leadsTotals.leads > 0 ? leadsTotals.naoContrataram / leadsTotals.leads : 0;
-    // Médias diárias de leads também por dias úteis passados
     const mediaDiariaLeads = leadsTotals.leads / diasUteisPassados;
     const mediaDiariaAgendaram = leadsTotals.agendaram / diasUteisPassados;
     const mediaDiariaCompareceram = leadsTotals.compareceram / diasUteisPassados;
@@ -249,20 +239,7 @@ const Relatorios = () => {
     return Array.from(map.values()).sort((a, b) => b.qtd - a.qtd);
   }, [filteredTratamentos]);
 
-  // ========== POR FORMA DE PAGAMENTO ==========
-  const formaPagamentoReport = useMemo(() => {
-    const map = new Map<string, { forma: string; valor: number; qtd: number }>();
-    filteredPagamentos.forEach((p) => {
-      const key = p.forma_pagamento || "Não informado";
-      const entry = map.get(key) || { forma: key, valor: 0, qtd: 0 };
-      entry.valor += Number(p.valor);
-      entry.qtd += 1;
-      map.set(key, entry);
-    });
-    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [filteredPagamentos]);
-
-  // ========== RANKING PACIENTES (using orcamentos) ==========
+  // ========== RANKING PACIENTES ==========
   const rankingPacientes = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
@@ -288,7 +265,7 @@ const Relatorios = () => {
       .slice(0, 50);
   }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
 
-  // ========== POR ESPECIALIDADE (ONLY QUANTITY - no financials) ==========
+  // ========== POR ESPECIALIDADE (ONLY QUANTITY) ==========
   const especialidadeReport = useMemo(() => {
     const map = new Map<string, { especialidade: string; qtd: number }>();
     filteredTratamentos.forEach((t) => {
@@ -300,7 +277,7 @@ const Relatorios = () => {
     return Array.from(map.values()).sort((a, b) => b.qtd - a.qtd);
   }, [filteredTratamentos]);
 
-  // ========== POR ORIGEM / ANÚNCIO (using orcamentos) ==========
+  // ========== POR ORIGEM / ANÚNCIO ==========
   const origemReport = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
@@ -310,7 +287,6 @@ const Relatorios = () => {
     orcamentos.forEach((o) => {
       orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
     });
-
     const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.origem || "Não informada";
@@ -320,17 +296,15 @@ const Relatorios = () => {
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
       origemMap.set(key, entry);
     });
-
     const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
-    pacientes.forEach((p) => {
-      const key = p.nome_anuncio || "Não informado";
+    pacientes.filter((p) => p.nome_anuncio && p.nome_anuncio.trim() !== "").forEach((p) => {
+      const key = p.nome_anuncio!;
       const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, orcado: 0, contratado: 0 };
       entry.qtdPacientes += 1;
       entry.orcado += orcadoPorPaciente.get(p.id) || 0;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
       anuncioMap.set(key, entry);
     });
-
     return {
       origens: Array.from(origemMap.values()).sort((a, b) => b.contratado - a.contratado),
       anuncios: Array.from(anuncioMap.values()).sort((a, b) => b.contratado - a.contratado),
@@ -395,7 +369,6 @@ const Relatorios = () => {
     { key: "funil", label: "Funil de Leads", desc: "Conversão de leads por etapa do funil", icon: Filter },
     { key: "previsibilidade", label: "Previsibilidade", desc: "Projeções de faturamento e leads", icon: TrendingUp },
     { key: "procedimento", label: "Por Procedimento", desc: "Procedimentos mais contratados por volume", icon: Stethoscope },
-    { key: "forma_pgto", label: "Forma de Pagamento", desc: "Distribuição por forma de pagamento", icon: CreditCard },
     { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor contratado", icon: Users },
     { key: "especialidade", label: "Por Especialidade", desc: "Quantidade de tratamentos por especialidade", icon: Stethoscope },
     { key: "origem", label: "Origem / Anúncio", desc: "Performance por canal de origem e anúncio", icon: Megaphone },
@@ -587,7 +560,25 @@ const Relatorios = () => {
               return `Leads: ${t.leads}\nAgendaram: ${t.agendaram}\nContrataram: ${t.contrataram}\nTaxa: ${t.leads > 0 ? ((t.contrataram / t.leads) * 100).toFixed(1) : 0}%`;
             }} />
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={(() => {
+                const totals = funnelReport.reduce((a, r) => ({ leads: a.leads + r.leads, agendaram: a.agendaram + r.agendaram, compareceram: a.compareceram + (r.agendaram - r.faltaram), contrataram: a.contrataram + r.contrataram, naoContrataram: a.naoContrataram + r.nao_contrataram }), { leads: 0, agendaram: 0, compareceram: 0, contrataram: 0, naoContrataram: 0 });
+                return [
+                  { name: "Leads", value: totals.leads },
+                  { name: "Agendaram", value: totals.agendaram },
+                  { name: "Compareceram", value: totals.compareceram },
+                  { name: "Contrataram", value: totals.contrataram },
+                  { name: "Não Contrataram", value: totals.naoContrataram },
+                ];
+              })()} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} />
+                <YAxis stroke="hsl(0,0%,64%)" allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} />
+                <Bar dataKey="value" fill="hsl(25,100%,50%)" name="Quantidade" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+              </BarChart>
+            </ResponsiveContainer>
             <div className="overflow-x-auto max-h-80 overflow-y-auto">
               <Table>
                 <TableHeader>
@@ -635,6 +626,20 @@ const Relatorios = () => {
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Projeção Mensal ({diasUteisMes} dias úteis)</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.projecaoMensal)}</p></div>
               </div>
             </div>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={[
+                { name: "Orçado", value: predictability.totalOrcado },
+                { name: "Contratado", value: predictability.totalContratado },
+                { name: "A Receber", value: predictability.aReceber },
+                { name: "Projeção", value: predictability.projecaoMensal },
+              ]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} />
+                <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                <Bar dataKey="value" fill="hsl(25,100%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+              </BarChart>
+            </ResponsiveContainer>
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📊 Previsibilidade de Leads</h3>
               <div className="overflow-x-auto">
@@ -714,47 +719,6 @@ const Relatorios = () => {
         </Card>
       );
 
-      case "forma_pgto": return (
-        <Card className="gradient-card border-border shadow-card">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><CreditCard size={18} className="text-primary" /> Por Forma de Pagamento</CardTitle>
-            <ShareButtons title="Relatório por Forma de Pagamento" data={formaPagamentoReport} getSummary={() =>
-              formaPagamentoReport.map((r) => `${r.forma}: ${formatCurrency(r.valor)} (${r.qtd}x)`).join("\n")
-            } />
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 lg:grid-cols-2">
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie data={formaPagamentoReport} dataKey="valor" nameKey="forma" cx="50%" cy="50%" outerRadius={100} label={({ forma, percent }) => `${forma} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
-                    {formaPagamentoReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: number) => formatCurrency(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader><TableRow><TableHead>Forma</TableHead><TableHead>Qtd</TableHead><TableHead>Valor</TableHead><TableHead>%</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {formaPagamentoReport.map((r) => {
-                      const total = formaPagamentoReport.reduce((s, x) => s + x.valor, 0);
-                      return (
-                        <TableRow key={r.forma}>
-                          <TableCell className="font-medium">{r.forma}</TableCell>
-                          <TableCell>{r.qtd}</TableCell>
-                          <TableCell>{formatCurrency(r.valor)}</TableCell>
-                          <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{total > 0 ? ((r.valor / total) * 100).toFixed(1) : 0}%</Badge></TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      );
-
       case "ranking": return (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -763,7 +727,18 @@ const Relatorios = () => {
               rankingPacientes.slice(0, 10).map((r, i) => `${i + 1}. ${r.nome}: ${formatCurrency(r.contratado)} contratado`).join("\n")
             } />
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={rankingPacientes.slice(0, 10)} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="nome" stroke="hsl(0,0%,64%)" fontSize={9} angle={-20} textAnchor="end" height={50} />
+                <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="orcado" fill="hsl(35,100%,55%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Legend />
+              </BarChart>
+            </ResponsiveContainer>
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <Table>
                 <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Tratamentos</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
@@ -793,33 +768,32 @@ const Relatorios = () => {
               especialidadeReport.map((r) => `${r.especialidade}: ${r.qtd} tratamentos`).join("\n")
             } />
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 lg:grid-cols-2">
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie data={especialidadeReport} dataKey="qtd" nameKey="especialidade" cx="50%" cy="50%" outerRadius={100} label={({ especialidade, percent }) => `${especialidade} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
-                    {especialidadeReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: number) => `${v} tratamentos`} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead className="text-center">Tratamentos</TableHead><TableHead className="text-center">%</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {especialidadeReport.map((r) => {
-                      const total = especialidadeReport.reduce((s, x) => s + x.qtd, 0);
-                      return (
-                        <TableRow key={r.especialidade}>
-                          <TableCell className="font-medium">{r.especialidade}</TableCell>
-                          <TableCell className="text-center font-semibold">{r.qtd}</TableCell>
-                          <TableCell className="text-center"><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{total > 0 ? ((r.qtd / total) * 100).toFixed(1) : 0}%</Badge></TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+          <CardContent className="space-y-4">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={especialidadeReport} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="especialidade" stroke="hsl(0,0%,64%)" fontSize={11} />
+                <YAxis stroke="hsl(0,0%,64%)" allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Tratamentos"]} />
+                <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Tratamentos" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead className="text-center">Tratamentos</TableHead><TableHead className="text-center">%</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {especialidadeReport.map((r) => {
+                    const total = especialidadeReport.reduce((s, x) => s + x.qtd, 0);
+                    return (
+                      <TableRow key={r.especialidade}>
+                        <TableCell className="font-medium">{r.especialidade}</TableCell>
+                        <TableCell className="text-center font-semibold">{r.qtd}</TableCell>
+                        <TableCell className="text-center"><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{total > 0 ? ((r.qtd / total) * 100).toFixed(1) : 0}%</Badge></TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>
@@ -836,7 +810,18 @@ const Relatorios = () => {
           <CardContent className="space-y-6">
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📍 Por Origem</h3>
-              <div className="overflow-x-auto max-h-64 overflow-y-auto">
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={origemReport.origens} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                  <XAxis dataKey="label" stroke="hsl(0,0%,64%)" fontSize={11} />
+                  <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                  <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                  <Bar dataKey="orcado" fill="hsl(35,100%,55%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                  <Legend />
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
                 <Table>
                   <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
                   <TableBody>
@@ -853,25 +838,38 @@ const Relatorios = () => {
                 </Table>
               </div>
             </div>
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3">📢 Por Anúncio</h3>
-              <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                <Table>
-                  <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {origemReport.anuncios.map((r) => (
-                      <TableRow key={r.label}>
-                        <TableCell className="font-medium">{r.label}</TableCell>
-                        <TableCell>{r.qtdPacientes}</TableCell>
-                        <TableCell>{formatCurrency(r.orcado)}</TableCell>
-                        <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                        <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}%</Badge></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+            {origemReport.anuncios.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">📢 Por Anúncio</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={origemReport.anuncios} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                    <XAxis dataKey="label" stroke="hsl(0,0%,64%)" fontSize={11} />
+                    <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                    <Bar dataKey="contratado" fill="hsl(180,60%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                    <Bar dataKey="orcado" fill="hsl(280,60%,60%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                    <Legend />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {origemReport.anuncios.map((r) => (
+                        <TableRow key={r.label}>
+                          <TableCell className="font-medium">{r.label}</TableCell>
+                          <TableCell>{r.qtdPacientes}</TableCell>
+                          <TableCell>{formatCurrency(r.orcado)}</TableCell>
+                          <TableCell>{formatCurrency(r.contratado)}</TableCell>
+                          <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}%</Badge></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       );
