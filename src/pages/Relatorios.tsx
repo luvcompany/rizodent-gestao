@@ -734,10 +734,160 @@ const Relatorios = () => {
         </Card>
       );
 
-      case "forma_pgto": return (
+      case "ranking": return (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><CreditCard size={18} className="text-primary" /> Por Forma de Pagamento</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2"><Users size={18} className="text-primary" /> Ranking de Pacientes (Top 50)</CardTitle>
+            <ShareButtons title="Ranking Pacientes" data={rankingPacientes} getSummary={() =>
+              rankingPacientes.slice(0, 10).map((r, i) => `${i + 1}. ${r.nome}: ${formatCurrency(r.contratado)} contratado`).join("\n")
+            } />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={rankingPacientes.slice(0, 10)} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="nome" stroke="hsl(0,0%,64%)" fontSize={9} angle={-20} textAnchor="end" height={50} />
+                <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="orcado" fill="hsl(35,100%,55%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Legend />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Tratamentos</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {rankingPacientes.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-bold text-primary">{i + 1}</TableCell>
+                      <TableCell className="font-medium">{r.nome}</TableCell>
+                      <TableCell>{r.qtdTratamentos}</TableCell>
+                      <TableCell>{formatCurrency(r.orcado)}</TableCell>
+                      <TableCell>{formatCurrency(r.contratado)}</TableCell>
+                      <TableCell className={r.orcado - r.contratado > 0 ? "text-destructive" : "text-green-400"}>{formatCurrency(r.orcado - r.contratado)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      );
+
+      case "especialidade": return (
+        <Card className="gradient-card border-border shadow-card">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Tratamentos por Especialidade</CardTitle>
+            <ShareButtons title="Relatório por Especialidade" data={especialidadeReport} getSummary={() =>
+              especialidadeReport.map((r) => `${r.especialidade}: ${r.qtd} tratamentos`).join("\n")
+            } />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={especialidadeReport} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="especialidade" stroke="hsl(0,0%,64%)" fontSize={11} />
+                <YAxis stroke="hsl(0,0%,64%)" allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Tratamentos"]} />
+                <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Tratamentos" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead className="text-center">Tratamentos</TableHead><TableHead className="text-center">%</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {especialidadeReport.map((r) => {
+                    const total = especialidadeReport.reduce((s, x) => s + x.qtd, 0);
+                    return (
+                      <TableRow key={r.especialidade}>
+                        <TableCell className="font-medium">{r.especialidade}</TableCell>
+                        <TableCell className="text-center font-semibold">{r.qtd}</TableCell>
+                        <TableCell className="text-center"><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{total > 0 ? ((r.qtd / total) * 100).toFixed(1) : 0}%</Badge></TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      );
+
+      case "origem": return (
+        <Card className="gradient-card border-border shadow-card">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-base flex items-center gap-2"><Megaphone size={18} className="text-primary" /> Por Origem / Anúncio</CardTitle>
+            <ShareButtons title="Relatório por Origem" data={[...origemReport.origens, ...origemReport.anuncios]} getSummary={() =>
+              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, Orçado ${formatCurrency(r.orcado)}, Contratado ${formatCurrency(r.contratado)}`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, Orçado ${formatCurrency(r.orcado)}, Contratado ${formatCurrency(r.contratado)}`).join("\n")}`
+            } />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3">📍 Por Origem</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={origemReport.origens} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                  <XAxis dataKey="label" stroke="hsl(0,0%,64%)" fontSize={11} />
+                  <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                  <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                  <Bar dataKey="orcado" fill="hsl(35,100%,55%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                  <Legend />
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
+                <Table>
+                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {origemReport.origens.map((r) => (
+                      <TableRow key={r.label}>
+                        <TableCell className="font-medium">{r.label}</TableCell>
+                        <TableCell>{r.qtdPacientes}</TableCell>
+                        <TableCell>{formatCurrency(r.orcado)}</TableCell>
+                        <TableCell>{formatCurrency(r.contratado)}</TableCell>
+                        <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}%</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+            {origemReport.anuncios.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">📢 Por Anúncio</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={origemReport.anuncios} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                    <XAxis dataKey="label" stroke="hsl(0,0%,64%)" fontSize={11} />
+                    <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
+                    <Bar dataKey="contratado" fill="hsl(180,60%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                    <Bar dataKey="orcado" fill="hsl(280,60%,60%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                    <Legend />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {origemReport.anuncios.map((r) => (
+                        <TableRow key={r.label}>
+                          <TableCell className="font-medium">{r.label}</TableCell>
+                          <TableCell>{r.qtdPacientes}</TableCell>
+                          <TableCell>{formatCurrency(r.orcado)}</TableCell>
+                          <TableCell>{formatCurrency(r.contratado)}</TableCell>
+                          <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}%</Badge></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      );
             <ShareButtons title="Relatório por Forma de Pagamento" data={formaPagamentoReport} getSummary={() =>
               formaPagamentoReport.map((r) => `${r.forma}: ${formatCurrency(r.valor)} (${r.qtd}x)`).join("\n")
             } />
