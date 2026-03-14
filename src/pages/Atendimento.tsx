@@ -240,7 +240,7 @@ const Atendimento = () => {
             paciente_id: pacienteSelecionadoId!,
             clinica_id: clinicaId || tratamentosExistentes[0].clinica_id,
             valor: valorNovoPagamento,
-            forma_pagamento: formaPagamento,
+            forma_pagamento: "Não informado",
             tipo,
             data_pagamento: dataPagamento,
             created_by: user?.id,
