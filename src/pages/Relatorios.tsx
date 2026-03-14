@@ -953,8 +953,6 @@ const Relatorios = () => {
 };
 
 export default Relatorios;
-                  <Pie data={formaPagamentoReport} dataKey="valor" nameKey="forma" cx="50%" cy="50%" outerRadius={100} label={({ forma, percent }) => `${forma} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
-                    {formaPagamentoReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: number) => formatCurrency(v)} />
                 </PieChart>
