@@ -7,15 +7,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { UserPlus, Shield, Users } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserPlus, Shield, Users, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import EditProfileDialog from "@/components/EditProfileDialog";
 
 type Profile = {
   id: string;
   nome: string;
   email: string;
   cargo: string | null;
+  avatar_url: string | null;
   created_at: string;
 };
 
@@ -37,18 +41,23 @@ const roleBadgeClass: Record<string, string> = {
 };
 
 const Usuarios = () => {
+  const { user: currentUser, userRole, refreshProfile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [newNome, setNewNome] = useState("");
   const [newCargo, setNewCargo] = useState("");
   const [newRole, setNewRole] = useState("crc");
   const [newPassword, setNewPassword] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const isAdmin = userRole === "admin";
 
   const fetchData = async () => {
     setLoading(true);
@@ -78,7 +87,7 @@ const Usuarios = () => {
       }
       toast.success("Função atualizada!");
       fetchData();
-      setDialogOpen(false);
+      setRoleDialogOpen(false);
     } catch (err: any) {
       toast.error("Erro: " + err.message);
     }
@@ -89,7 +98,6 @@ const Usuarios = () => {
     if (!newEmail || !newNome || !newPassword) { toast.error("Preencha todos os campos"); return; }
     setCreating(true);
     try {
-      // Use edge function or sign up
       const { data, error } = await supabase.auth.signUp({
         email: newEmail,
         password: newPassword,
@@ -97,9 +105,7 @@ const Usuarios = () => {
       });
       if (error) throw error;
       if (data.user) {
-        // Update profile cargo
         await supabase.from("profiles").update({ cargo: newCargo || null }).eq("id", data.user.id);
-        // Assign role
         await supabase.from("user_roles").insert({ user_id: data.user.id, role: newRole as any });
       }
       toast.success("Usuário criado! O e-mail de confirmação foi enviado.");
@@ -112,6 +118,18 @@ const Usuarios = () => {
     }
   };
 
+  const handleEditClick = (profile: Profile) => {
+    setEditingUser(profile);
+    setEditProfileOpen(true);
+  };
+
+  const handleProfileSaved = () => {
+    fetchData();
+    refreshProfile();
+  };
+
+  const getInitials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+
   return (
     <div className="animate-fade-in space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -121,52 +139,54 @@ const Usuarios = () => {
         </div>
       </div>
 
-      {/* Create user form */}
-      <Card className="gradient-card border-border shadow-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <UserPlus size={18} className="text-primary" />
-            Cadastrar Novo Usuário
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleCreateUser} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input placeholder="Nome completo" value={newNome} onChange={(e) => setNewNome(e.target.value)} className="bg-secondary border-border" required />
-            </div>
-            <div className="space-y-2">
-              <Label>E-mail</Label>
-              <Input type="email" placeholder="email@exemplo.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="bg-secondary border-border" required />
-            </div>
-            <div className="space-y-2">
-              <Label>Senha</Label>
-              <Input type="password" placeholder="Mínimo 6 caracteres" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="bg-secondary border-border" required minLength={6} />
-            </div>
-            <div className="space-y-2">
-              <Label>Cargo</Label>
-              <Input placeholder="Ex: Gerente, Recepcionista" value={newCargo} onChange={(e) => setNewCargo(e.target.value)} className="bg-secondary border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label>Função no Sistema</Label>
-              <Select value={newRole} onValueChange={setNewRole}>
-                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                  <SelectItem value="gerente">Gerente</SelectItem>
-                  <SelectItem value="crc">CRC</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button type="submit" disabled={creating} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90">
-                <UserPlus size={16} className="mr-2" />
-                {creating ? "Criando..." : "Criar Usuário"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+      {/* Create user form - admin only */}
+      {isAdmin && (
+        <Card className="gradient-card border-border shadow-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UserPlus size={18} className="text-primary" />
+              Cadastrar Novo Usuário
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleCreateUser} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Nome</Label>
+                <Input placeholder="Nome completo" value={newNome} onChange={(e) => setNewNome(e.target.value)} className="bg-secondary border-border" required />
+              </div>
+              <div className="space-y-2">
+                <Label>E-mail</Label>
+                <Input type="email" placeholder="email@exemplo.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="bg-secondary border-border" required />
+              </div>
+              <div className="space-y-2">
+                <Label>Senha</Label>
+                <Input type="password" placeholder="Mínimo 6 caracteres" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="bg-secondary border-border" required minLength={6} />
+              </div>
+              <div className="space-y-2">
+                <Label>Cargo</Label>
+                <Input placeholder="Ex: Gerente, Recepcionista" value={newCargo} onChange={(e) => setNewCargo(e.target.value)} className="bg-secondary border-border" />
+              </div>
+              <div className="space-y-2">
+                <Label>Função no Sistema</Label>
+                <Select value={newRole} onValueChange={setNewRole}>
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                    <SelectItem value="gerente">Gerente</SelectItem>
+                    <SelectItem value="crc">CRC</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end">
+                <Button type="submit" disabled={creating} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90">
+                  <UserPlus size={16} className="mr-2" />
+                  {creating ? "Criando..." : "Criar Usuário"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {/* User list */}
       <Card className="gradient-card border-border shadow-card">
@@ -184,6 +204,7 @@ const Usuarios = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12"></TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>E-mail</TableHead>
                     <TableHead>Cargo</TableHead>
@@ -194,8 +215,15 @@ const Usuarios = () => {
                 <TableBody>
                   {profiles.map((p) => {
                     const role = getUserRole(p.id);
+                    const canEdit = isAdmin || p.id === currentUser?.id;
                     return (
                       <TableRow key={p.id}>
+                        <TableCell>
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={p.avatar_url || undefined} />
+                            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{getInitials(p.nome)}</AvatarFallback>
+                          </Avatar>
+                        </TableCell>
                         <TableCell className="font-medium">{p.nome}</TableCell>
                         <TableCell className="text-muted-foreground">{p.email}</TableCell>
                         <TableCell>{p.cargo || "—"}</TableCell>
@@ -209,29 +237,38 @@ const Usuarios = () => {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Dialog open={dialogOpen && selectedUserId === p.id} onOpenChange={(o) => { setDialogOpen(o); if (o) { setSelectedUserId(p.id); setSelectedRole(role?.role || "crc"); } }}>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="sm" className="text-primary hover:text-primary">
-                                <Shield size={14} className="mr-1" /> Função
+                          <div className="flex items-center gap-1">
+                            {canEdit && (
+                              <Button variant="ghost" size="sm" className="text-primary hover:text-primary" onClick={() => handleEditClick(p)}>
+                                <Pencil size={14} className="mr-1" /> Editar
                               </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Alterar Função — {p.nome}</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4 pt-4">
-                                <Select value={selectedRole} onValueChange={setSelectedRole}>
-                                  <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="admin">Administrador</SelectItem>
-                                    <SelectItem value="gerente">Gerente</SelectItem>
-                                    <SelectItem value="crc">CRC</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Button onClick={handleAssignRole} className="w-full gradient-orange text-primary-foreground">Salvar</Button>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+                            )}
+                            {isAdmin && (
+                              <Dialog open={roleDialogOpen && selectedUserId === p.id} onOpenChange={(o) => { setRoleDialogOpen(o); if (o) { setSelectedUserId(p.id); setSelectedRole(role?.role || "crc"); } }}>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="text-primary hover:text-primary">
+                                    <Shield size={14} className="mr-1" /> Função
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Alterar Função — {p.nome}</DialogTitle>
+                                  </DialogHeader>
+                                  <div className="space-y-4 pt-4">
+                                    <Select value={selectedRole} onValueChange={setSelectedRole}>
+                                      <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="admin">Administrador</SelectItem>
+                                        <SelectItem value="gerente">Gerente</SelectItem>
+                                        <SelectItem value="crc">CRC</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <Button onClick={handleAssignRole} className="w-full gradient-orange text-primary-foreground">Salvar</Button>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -242,6 +279,20 @@ const Usuarios = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit profile dialog */}
+      {editingUser && (
+        <EditProfileDialog
+          open={editProfileOpen}
+          onOpenChange={setEditProfileOpen}
+          userId={editingUser.id}
+          currentNome={editingUser.nome}
+          currentCargo={editingUser.cargo}
+          currentAvatarUrl={editingUser.avatar_url}
+          currentEmail={editingUser.email}
+          onSaved={handleProfileSaved}
+        />
+      )}
     </div>
   );
 };

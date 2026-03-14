@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
-  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope,
+  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import EditProfileDialog from "@/components/EditProfileDialog";
 import logo from "@/assets/logo-rizodent.webp";
 
 const navItems = [
@@ -19,13 +21,16 @@ const navItems = [
 
 const AppLayout = () => {
   const navigate = useNavigate();
-  const { signOut, profile } = useAuth();
+  const { signOut, profile, user, refreshProfile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
 
   const handleLogout = async () => {
     await signOut();
     navigate("/");
   };
+
+  const initials = profile?.nome?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
 
   return (
     <div className="flex min-h-screen">
@@ -73,10 +78,20 @@ const AppLayout = () => {
 
         <div className="border-t border-sidebar-border p-4">
           {profile && (
-            <div className="mb-3 px-3">
-              <p className="text-sm font-medium text-sidebar-foreground">{profile.nome}</p>
-              <p className="text-xs text-muted-foreground">{profile.email}</p>
-            </div>
+            <button
+              onClick={() => setEditProfileOpen(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 mb-2 hover:bg-sidebar-accent transition-colors group"
+            >
+              <Avatar className="h-9 w-9 border border-border">
+                <AvatarImage src={profile.avatar_url || undefined} />
+                <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-sidebar-foreground truncate">{profile.nome}</p>
+                <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
+              </div>
+              <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
           )}
           <button
             onClick={handleLogout}
@@ -105,6 +120,20 @@ const AppLayout = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* Self-edit profile dialog */}
+      {user && profile && (
+        <EditProfileDialog
+          open={editProfileOpen}
+          onOpenChange={setEditProfileOpen}
+          userId={user.id}
+          currentNome={profile.nome}
+          currentCargo={profile.cargo}
+          currentAvatarUrl={profile.avatar_url}
+          currentEmail={profile.email}
+          onSaved={refreshProfile}
+        />
+      )}
     </div>
   );
 };
