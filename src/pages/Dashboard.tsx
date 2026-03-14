@@ -192,8 +192,22 @@ const Dashboard = () => {
     value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
   })).filter((d) => d.value > 0);
 
+  // Chart: Procedimentos mais contratados (volume)
+  const procMap = new Map<string, number>();
+  filtered.tratamentos.forEach((t) => {
+    procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + 1);
+  });
+  const procVolume = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
 
-  // Chart: Origem dos pacientes (canal)
+  // Chart: Volume por Especialidade (quantidade de tratamentos, não faturamento)
+  const espMap = new Map<string, number>();
+  filtered.tratamentos.forEach((t) => {
+    const esp = t.especialidade || "Sem Especialidade";
+    espMap.set(esp, (espMap.get(esp) || 0) + 1);
+  });
+  const espVolume = Array.from(espMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+
+
   const origemMap = new Map<string, {qtd: number;fat: number;}>();
   filtered.pacientes.forEach((p) => {
     const o = p.origem || "Outros";
