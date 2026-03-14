@@ -92,35 +92,33 @@ const Relatorios = () => {
     });
   }, [tratamentos, clinicaFiltro]);
 
-  // ========== CONTRATADO VS PAGO ==========
+  // ========== ORÇADO VS CONTRATADO ==========
   const contratadoVsPago = useMemo(() => {
-    // Group pagamentos by tratamento_id
-    const pagosPorTratamento = new Map<string, number>();
+    // Contratado = sum of pagamentos (actual payments)
+    const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
-      pagosPorTratamento.set(p.tratamento_id, (pagosPorTratamento.get(p.tratamento_id) || 0) + Number(p.valor));
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
 
-    const totalContratado = filteredTratamentos.filter(t => t.status === "ativo").reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
-    const totalPago = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
+    const totalOrcado = filteredTratamentos.filter(t => t.status === "ativo").reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
+    const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
 
     // Build per-patient summary
-    const pacienteMap = new Map<string, { id: string; nome: string; contratado: number; pago: number; tratamentos: any[] }>();
+    const pacienteMap = new Map<string, { id: string; nome: string; orcado: number; contratado: number; tratamentos: any[] }>();
     filteredTratamentos.filter(t => t.status === "ativo").forEach((t) => {
       const pid = t.paciente_id;
-      const entry = pacienteMap.get(pid) || { id: pid, nome: t.pacientes?.nome || "—", contratado: 0, pago: 0, tratamentos: [] };
-      const contratado = Number(t.valor_contratado || 0);
-      const pago = pagosPorTratamento.get(t.id) || 0;
-      entry.contratado += contratado;
-      entry.pago += pago;
-      entry.tratamentos.push({ procedimento: t.procedimento, contratado, pago, clinica: t.clinicas?.nome || "—" });
+      const entry = pacienteMap.get(pid) || { id: pid, nome: t.pacientes?.nome || "—", orcado: 0, contratado: 0, tratamentos: [] };
+      entry.orcado += Number(t.valor_orcado || 0);
+      entry.tratamentos.push({ procedimento: t.procedimento, clinica: t.clinicas?.nome || "—" });
+      if (!pacienteMap.has(pid)) entry.contratado = contratadoPorPaciente.get(pid) || 0;
       pacienteMap.set(pid, entry);
     });
 
     const lista = Array.from(pacienteMap.values());
-    const emAberto = lista.filter(p => p.pago < p.contratado).sort((a, b) => (b.contratado - b.pago) - (a.contratado - a.pago));
-    const concluidos = lista.filter(p => p.contratado > 0 && p.pago >= p.contratado);
+    const emAberto = lista.filter(p => p.orcado > 0 && p.contratado < p.orcado).sort((a, b) => (b.orcado - b.contratado) - (a.orcado - a.contratado));
+    const concluidos = lista.filter(p => p.orcado > 0 && p.contratado >= p.orcado);
 
-    return { totalContratado, totalPago, emAberto, concluidos };
+    return { totalOrcado, totalContratado, emAberto, concluidos };
   }, [filteredTratamentos, filteredPagamentos]);
 
   // ========== DAILY REPORT ==========
@@ -243,78 +241,79 @@ const Relatorios = () => {
 
   // ========== RANKING PACIENTES ==========
   const rankingPacientes = useMemo(() => {
-    const map = new Map<string, { nome: string; pago: number; contratado: number; qtdTratamentos: number }>();
-    const pagosPorPaciente = new Map<string, number>();
+    const map = new Map<string, { nome: string; contratado: number; orcado: number; qtdTratamentos: number }>();
+    const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
-      pagosPorPaciente.set(p.paciente_id, (pagosPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
     filteredTratamentos.forEach((t) => {
       const pid = t.paciente_id;
-      const entry = map.get(pid) || { nome: t.pacientes?.nome || "—", pago: 0, contratado: 0, qtdTratamentos: 0 };
-      entry.contratado += Number(t.valor_contratado || 0);
+      const entry = map.get(pid) || { nome: t.pacientes?.nome || "—", contratado: 0, orcado: 0, qtdTratamentos: 0 };
+      entry.orcado += Number(t.valor_orcado || 0);
       entry.qtdTratamentos += 1;
-      if (!map.has(pid)) entry.pago = pagosPorPaciente.get(pid) || 0;
+      if (!map.has(pid)) entry.contratado = contratadoPorPaciente.get(pid) || 0;
       map.set(pid, entry);
     });
-    return Array.from(map.values()).sort((a, b) => b.pago - a.pago).slice(0, 50);
+    return Array.from(map.values()).sort((a, b) => b.contratado - a.contratado).slice(0, 50);
   }, [filteredTratamentos, filteredPagamentos]);
 
   // ========== POR ESPECIALIDADE ==========
   const especialidadeReport = useMemo(() => {
-    const map = new Map<string, { especialidade: string; contratado: number; pago: number; qtd: number }>();
-    const pagosPorTratamento = new Map<string, number>();
-    filteredPagamentos.forEach((p) => {
-      pagosPorTratamento.set(p.tratamento_id, (pagosPorTratamento.get(p.tratamento_id) || 0) + Number(p.valor));
+    // Map pagamentos to tratamento to get especialidade
+    const tratamentoMap = new Map<string, string>();
+    filteredTratamentos.forEach((t) => {
+      tratamentoMap.set(t.id, t.especialidade || "Não informada");
     });
+    const map = new Map<string, { especialidade: string; contratado: number; qtd: number }>();
+    // Count tratamentos per especialidade
     filteredTratamentos.forEach((t) => {
       const key = t.especialidade || "Não informada";
-      const entry = map.get(key) || { especialidade: key, contratado: 0, pago: 0, qtd: 0 };
-      entry.contratado += Number(t.valor_contratado || 0);
-      entry.pago += pagosPorTratamento.get(t.id) || 0;
+      const entry = map.get(key) || { especialidade: key, contratado: 0, qtd: 0 };
       entry.qtd += 1;
       map.set(key, entry);
+    });
+    // Sum pagamentos (contratado) per especialidade
+    filteredPagamentos.forEach((p) => {
+      const esp = tratamentoMap.get(p.tratamento_id) || "Não informada";
+      const entry = map.get(esp) || { especialidade: esp, contratado: 0, qtd: 0 };
+      entry.contratado += Number(p.valor);
+      map.set(esp, entry);
     });
     return Array.from(map.values()).sort((a, b) => b.contratado - a.contratado);
   }, [filteredTratamentos, filteredPagamentos]);
 
   // ========== POR ORIGEM / ANÚNCIO ==========
   const origemReport = useMemo(() => {
-    const pagosPorPaciente = new Map<string, number>();
-    filteredPagamentos.forEach((p) => {
-      pagosPorPaciente.set(p.paciente_id, (pagosPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
-    });
     const contratadoPorPaciente = new Map<string, number>();
-    filteredTratamentos.forEach((t) => {
-      contratadoPorPaciente.set(t.paciente_id, (contratadoPorPaciente.get(t.paciente_id) || 0) + Number(t.valor_contratado || 0));
+    filteredPagamentos.forEach((p) => {
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
 
     // By origem
-    const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number; pago: number }>();
+    const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.origem || "Não informada";
-      const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, contratado: 0, pago: 0 };
+      const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, contratado: 0 };
       entry.qtdPacientes += 1;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
-      entry.pago += pagosPorPaciente.get(p.id) || 0;
       origemMap.set(key, entry);
     });
 
     // By anúncio
-    const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number; pago: number }>();
+    const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.nome_anuncio || "Não informado";
-      const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, contratado: 0, pago: 0 };
+      const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, contratado: 0 };
       entry.qtdPacientes += 1;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
-      entry.pago += pagosPorPaciente.get(p.id) || 0;
       anuncioMap.set(key, entry);
     });
 
     return {
-      origens: Array.from(origemMap.values()).sort((a, b) => b.pago - a.pago),
-      anuncios: Array.from(anuncioMap.values()).sort((a, b) => b.pago - a.pago),
+      origens: Array.from(origemMap.values()).sort((a, b) => b.contratado - a.contratado),
+      anuncios: Array.from(anuncioMap.values()).sort((a, b) => b.contratado - a.contratado),
     };
-  }, [pacientes, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, filteredPagamentos]);
 
   // ========== EXPORT HELPERS ==========
   const exportToExcel = (data: any[], filename: string) => {
@@ -368,14 +367,14 @@ const Relatorios = () => {
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
   const reportTypes = [
-    { key: "contratado", label: "Contratado vs Pago", desc: "Valores contratados versus pagos com lista de pacientes", icon: DollarSign },
+    { key: "contratado", label: "Orçado vs Contratado", desc: "Valores orçados versus contratados com lista de pacientes", icon: DollarSign },
     { key: "diario", label: "Relatório Diário", desc: "Faturamento e pagamentos por dia", icon: Calendar },
     { key: "semanal", label: "Relatório Semanal", desc: "Faturamento agrupado por semana", icon: Calendar },
     { key: "funil", label: "Funil de Leads", desc: "Conversão de leads por etapa do funil", icon: Filter },
     { key: "previsibilidade", label: "Previsibilidade", desc: "Projeções de faturamento e leads", icon: TrendingUp },
     { key: "procedimento", label: "Por Procedimento", desc: "Procedimentos mais contratados por volume", icon: Stethoscope },
     { key: "forma_pgto", label: "Forma de Pagamento", desc: "Distribuição por forma de pagamento", icon: CreditCard },
-    { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor pago e contratado", icon: Users },
+    { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor contratado", icon: Users },
     { key: "especialidade", label: "Por Especialidade", desc: "Faturamento agrupado por especialidade", icon: Stethoscope },
     { key: "origem", label: "Origem / Anúncio", desc: "Performance por canal de origem e anúncio", icon: Megaphone },
   ];
@@ -385,34 +384,34 @@ const Relatorios = () => {
       case "contratado": return (<>
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><DollarSign size={18} className="text-primary" /> Contratado vs Pago</CardTitle>
-            <ShareButtons title="Contratado vs Pago" data={[{ contratado: contratadoVsPago.totalContratado, pago: contratadoVsPago.totalPago }]} getSummary={() =>
-              `Total Contratado: ${formatCurrency(contratadoVsPago.totalContratado)}\nTotal Pago: ${formatCurrency(contratadoVsPago.totalPago)}\nA Receber: ${formatCurrency(contratadoVsPago.totalContratado - contratadoVsPago.totalPago)}\nEm aberto: ${contratadoVsPago.emAberto.length} pacientes\nConcluídos: ${contratadoVsPago.concluidos.length} pacientes`
+            <CardTitle className="text-base flex items-center gap-2"><DollarSign size={18} className="text-primary" /> Orçado vs Contratado</CardTitle>
+            <ShareButtons title="Orçado vs Contratado" data={[{ orcado: contratadoVsPago.totalOrcado, contratado: contratadoVsPago.totalContratado }]} getSummary={() =>
+              `Total Orçado: ${formatCurrency(contratadoVsPago.totalOrcado)}\nTotal Contratado: ${formatCurrency(contratadoVsPago.totalContratado)}\nA Receber: ${formatCurrency(contratadoVsPago.totalOrcado - contratadoVsPago.totalContratado)}\nEm aberto: ${contratadoVsPago.emAberto.length} pacientes\nConcluídos: ${contratadoVsPago.concluidos.length} pacientes`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="rounded-lg bg-secondary p-4">
-                <p className="text-xs text-muted-foreground">Total Contratado</p>
-                <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalContratado)}</p>
+                <p className="text-xs text-muted-foreground">Total Orçado</p>
+                <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalOrcado)}</p>
               </div>
               <div className="rounded-lg bg-secondary p-4">
-                <p className="text-xs text-muted-foreground">Total Pago</p>
-                <p className="text-xl font-bold text-accent-foreground">{formatCurrency(contratadoVsPago.totalPago)}</p>
+                <p className="text-xs text-muted-foreground">Total Contratado</p>
+                <p className="text-xl font-bold text-accent-foreground">{formatCurrency(contratadoVsPago.totalContratado)}</p>
               </div>
               <div className="rounded-lg bg-secondary p-4">
                 <p className="text-xs text-muted-foreground">A Receber</p>
-                <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalContratado - contratadoVsPago.totalPago)}</p>
+                <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalOrcado - contratadoVsPago.totalContratado)}</p>
               </div>
             </div>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={[{ name: "Resumo", contratado: contratadoVsPago.totalContratado, pago: contratadoVsPago.totalPago }]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+              <BarChart data={[{ name: "Resumo", orcado: contratadoVsPago.totalOrcado, contratado: contratadoVsPago.totalContratado }]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" />
                 <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
-                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="orcado" fill="hsl(25,100%,50%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="contratado" fill="hsl(120,50%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -434,15 +433,15 @@ const Relatorios = () => {
             <DialogHeader><DialogTitle>🔴 Pacientes em Aberto ({contratadoVsPago.emAberto.length})</DialogTitle></DialogHeader>
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead><TableHead>Restante</TableHead><TableHead>%</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Restante</TableHead><TableHead>%</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {contratadoVsPago.emAberto.map((p, i) => (
                     <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
+                      <TableCell>{formatCurrency(p.orcado)}</TableCell>
                       <TableCell>{formatCurrency(p.contratado)}</TableCell>
-                      <TableCell>{formatCurrency(p.pago)}</TableCell>
-                      <TableCell className="text-destructive font-medium">{formatCurrency(p.contratado - p.pago)}</TableCell>
-                      <TableCell><Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">{p.contratado > 0 ? ((p.pago / p.contratado) * 100).toFixed(0) : 0}%</Badge></TableCell>
+                      <TableCell className="text-destructive font-medium">{formatCurrency(p.orcado - p.contratado)}</TableCell>
+                      <TableCell><Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">{p.orcado > 0 ? ((p.contratado / p.orcado) * 100).toFixed(0) : 0}%</Badge></TableCell>
                     </TableRow>
                   ))}
                   {contratadoVsPago.emAberto.length === 0 && (
@@ -453,7 +452,7 @@ const Relatorios = () => {
             </div>
             <div className="rounded-lg bg-secondary p-3 mt-2">
               <p className="text-xs text-muted-foreground">Total a receber</p>
-              <p className="text-lg font-bold text-destructive">{formatCurrency(contratadoVsPago.emAberto.reduce((s, p) => s + (p.contratado - p.pago), 0))}</p>
+              <p className="text-lg font-bold text-destructive">{formatCurrency(contratadoVsPago.emAberto.reduce((s, p) => s + (p.orcado - p.contratado), 0))}</p>
             </div>
           </DialogContent>
         </Dialog>
@@ -464,13 +463,13 @@ const Relatorios = () => {
             <DialogHeader><DialogTitle>🟢 Pacientes Concluídos ({contratadoVsPago.concluidos.length})</DialogTitle></DialogHeader>
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {contratadoVsPago.concluidos.map((p, i) => (
                     <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
-                      <TableCell>{formatCurrency(p.contratado)}</TableCell>
-                      <TableCell className="text-green-400">{formatCurrency(p.pago)}</TableCell>
+                      <TableCell>{formatCurrency(p.orcado)}</TableCell>
+                      <TableCell className="text-green-400">{formatCurrency(p.contratado)}</TableCell>
                     </TableRow>
                   ))}
                   {contratadoVsPago.concluidos.length === 0 && (
@@ -480,8 +479,8 @@ const Relatorios = () => {
               </Table>
             </div>
             <div className="rounded-lg bg-secondary p-3 mt-2">
-              <p className="text-xs text-muted-foreground">Total recebido (concluídos)</p>
-              <p className="text-lg font-bold text-green-400">{formatCurrency(contratadoVsPago.concluidos.reduce((s, p) => s + p.pago, 0))}</p>
+              <p className="text-xs text-muted-foreground">Total contratado (concluídos)</p>
+              <p className="text-lg font-bold text-green-400">{formatCurrency(contratadoVsPago.concluidos.reduce((s, p) => s + p.contratado, 0))}</p>
             </div>
           </DialogContent>
         </Dialog>
@@ -741,22 +740,22 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Users size={18} className="text-primary" /> Ranking de Pacientes (Top 50)</CardTitle>
             <ShareButtons title="Ranking Pacientes" data={rankingPacientes} getSummary={() =>
-              rankingPacientes.slice(0, 10).map((r, i) => `${i + 1}. ${r.nome}: ${formatCurrency(r.pago)} pago`).join("\n")
+              rankingPacientes.slice(0, 10).map((r, i) => `${i + 1}. ${r.nome}: ${formatCurrency(r.contratado)} contratado`).join("\n")
             } />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Tratamentos</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Tratamentos</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {rankingPacientes.map((r, i) => (
                     <TableRow key={i}>
                       <TableCell className="font-bold text-primary">{i + 1}</TableCell>
                       <TableCell className="font-medium">{r.nome}</TableCell>
                       <TableCell>{r.qtdTratamentos}</TableCell>
+                      <TableCell>{formatCurrency(r.orcado)}</TableCell>
                       <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                      <TableCell>{formatCurrency(r.pago)}</TableCell>
-                      <TableCell className={r.contratado - r.pago > 0 ? "text-destructive" : "text-green-400"}>{formatCurrency(r.contratado - r.pago)}</TableCell>
+                      <TableCell className={r.orcado - r.contratado > 0 ? "text-destructive" : "text-green-400"}>{formatCurrency(r.orcado - r.contratado)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -771,7 +770,7 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Por Especialidade</CardTitle>
             <ShareButtons title="Relatório por Especialidade" data={especialidadeReport} getSummary={() =>
-              especialidadeReport.map((r) => `${r.especialidade}: ${formatCurrency(r.contratado)} contratado, ${formatCurrency(r.pago)} pago (${r.qtd}x)`).join("\n")
+              especialidadeReport.map((r) => `${r.especialidade}: ${formatCurrency(r.contratado)} contratado (${r.qtd}x)`).join("\n")
             } />
           </CardHeader>
           <CardContent>
@@ -786,14 +785,13 @@ const Relatorios = () => {
               </ResponsiveContainer>
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead>Qtd</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead>Qtd</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {especialidadeReport.map((r) => (
                       <TableRow key={r.especialidade}>
                         <TableCell className="font-medium">{r.especialidade}</TableCell>
                         <TableCell>{r.qtd}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                        <TableCell>{formatCurrency(r.pago)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -809,7 +807,7 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Megaphone size={18} className="text-primary" /> Por Origem / Anúncio</CardTitle>
             <ShareButtons title="Relatório por Origem" data={[...origemReport.origens, ...origemReport.anuncios]} getSummary={() =>
-              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.pago)} pago`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.pago)} pago`).join("\n")}`
+              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.contratado)} contratado`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.contratado)} contratado`).join("\n")}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
@@ -817,14 +815,13 @@ const Relatorios = () => {
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📍 Por Origem</h3>
               <div className="overflow-x-auto max-h-64 overflow-y-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {origemReport.origens.map((r) => (
                       <TableRow key={r.label}>
                         <TableCell className="font-medium">{r.label}</TableCell>
                         <TableCell>{r.qtdPacientes}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                        <TableCell>{formatCurrency(r.pago)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -835,14 +832,13 @@ const Relatorios = () => {
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📢 Por Anúncio</h3>
               <div className="overflow-x-auto max-h-64 overflow-y-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {origemReport.anuncios.map((r) => (
                       <TableRow key={r.label}>
                         <TableCell className="font-medium">{r.label}</TableCell>
                         <TableCell>{r.qtdPacientes}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                        <TableCell>{formatCurrency(r.pago)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
