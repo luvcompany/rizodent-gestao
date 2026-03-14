@@ -160,7 +160,24 @@ const Dashboard = () => {
   const fatNovos = filtered.pagamentos.filter(p => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
   const fatRecorrentes = filtered.pagamentos.filter(p => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
   const totalPacientes = new Set(filtered.tratamentos.map(t => t.paciente_id)).size;
-  const ticketMedio = filtered.pagamentos.length > 0 ? fatTotal / filtered.pagamentos.length : 0;
+
+  // Dias úteis passados no período (seg-sáb, excluindo domingos)
+  const diasUteisPassados = useMemo(() => {
+    const start = new Date(dateFrom + "T12:00:00");
+    const today = new Date();
+    const endDate = new Date(dateTo + "T12:00:00");
+    const limit = endDate < today ? endDate : today;
+    let count = 0;
+    const current = new Date(start);
+    while (current <= limit) {
+      if (current.getDay() !== 0) count++;
+      current.setDate(current.getDate() + 1);
+    }
+    return Math.max(count, 1);
+  }, [dateFrom, dateTo]);
+
+  // Ticket médio = faturamento / dias úteis passados
+  const ticketMedio = fatTotal / diasUteisPassados;
 
   const kpis = [
     { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },

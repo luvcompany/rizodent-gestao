@@ -173,6 +173,21 @@ const Relatorios = () => {
     return count;
   }, [dateFrom]);
 
+  // Dias úteis já passados no período selecionado (seg-sáb, excluindo domingos)
+  const diasUteisPassados = useMemo(() => {
+    const start = new Date(dateFrom + "T12:00:00");
+    const today = new Date();
+    const endDate = new Date(dateTo + "T12:00:00");
+    const limit = endDate < today ? endDate : today;
+    let count = 0;
+    const current = new Date(start);
+    while (current <= limit) {
+      if (current.getDay() !== 0) count++; // exclui domingo
+      current.setDate(current.getDate() + 1);
+    }
+    return Math.max(count, 1);
+  }, [dateFrom, dateTo]);
+
   const predictability = useMemo(() => {
     // Orçado from orcamentos table
     const totalOrcado = orcamentos.reduce((s, o) => s + Number(o.valor_orcado || 0), 0);
@@ -185,19 +200,19 @@ const Relatorios = () => {
     }), { leads: 0, agendaram: 0, compareceram: 0, faltaram: 0, contrataram: 0, naoContrataram: 0 });
     const taxaConversao = leadsTotals.leads > 0 ? (leadsTotals.contrataram / leadsTotals.leads) * 100 : 0;
     const ticketMedioPgto = filteredPagamentos.length > 0 ? totalContratado / filteredPagamentos.length : 0;
-    const diasComFaturamento = new Set(filteredPagamentos.map((p) => p.data_pagamento)).size;
-    const ticketMedioDiario = diasComFaturamento > 0 ? totalContratado / diasComFaturamento : 0;
+    // Média diária = total / dias úteis passados (vendeu ou não)
+    const ticketMedioDiario = totalContratado / diasUteisPassados;
     const projecaoMensal = ticketMedioDiario * diasUteisMes;
-    const diasComLeads = new Set(filteredLeads.map((l) => l.data)).size;
     const txAgendamento = leadsTotals.leads > 0 ? leadsTotals.agendaram / leadsTotals.leads : 0;
     const txComparecimento = leadsTotals.agendaram > 0 ? leadsTotals.compareceram / leadsTotals.agendaram : 0;
     const txContratacao = leadsTotals.leads > 0 ? leadsTotals.contrataram / leadsTotals.leads : 0;
     const txNaoContratacao = leadsTotals.leads > 0 ? leadsTotals.naoContrataram / leadsTotals.leads : 0;
-    const mediaDiariaLeads = diasComLeads > 0 ? leadsTotals.leads / diasComLeads : 0;
-    const mediaDiariaAgendaram = diasComLeads > 0 ? leadsTotals.agendaram / diasComLeads : 0;
-    const mediaDiariaCompareceram = diasComLeads > 0 ? leadsTotals.compareceram / diasComLeads : 0;
-    const mediaDiariaContrataram = diasComLeads > 0 ? leadsTotals.contrataram / diasComLeads : 0;
-    const mediaDiariaNaoContrataram = diasComLeads > 0 ? leadsTotals.naoContrataram / diasComLeads : 0;
+    // Médias diárias de leads também por dias úteis passados
+    const mediaDiariaLeads = leadsTotals.leads / diasUteisPassados;
+    const mediaDiariaAgendaram = leadsTotals.agendaram / diasUteisPassados;
+    const mediaDiariaCompareceram = leadsTotals.compareceram / diasUteisPassados;
+    const mediaDiariaContrataram = leadsTotals.contrataram / diasUteisPassados;
+    const mediaDiariaNaoContrataram = leadsTotals.naoContrataram / diasUteisPassados;
     return {
       totalOrcado, totalContratado, aReceber, taxaConversao, ticketMedioPgto, ticketMedioDiario, projecaoMensal,
       leads: leadsTotals.leads, contrataram: leadsTotals.contrataram,
@@ -207,7 +222,7 @@ const Relatorios = () => {
       projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes, projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
       projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
     };
-  }, [orcamentos, filteredPagamentos, filteredLeads, diasUteisMes]);
+  }, [orcamentos, filteredPagamentos, filteredLeads, diasUteisMes, diasUteisPassados]);
 
   // ========== FUNNEL ==========
   const funnelReport = useMemo(() => {
