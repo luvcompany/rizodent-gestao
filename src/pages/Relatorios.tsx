@@ -129,7 +129,7 @@ const Relatorios = () => {
     const emAberto = lista.filter(p => p.contratado < p.orcado).sort((a, b) => (b.orcado - b.contratado) - (a.orcado - a.contratado));
     const concluidos = lista.filter(p => p.contratado >= p.orcado);
     return { totalOrcado, totalContratado, emAberto, concluidos };
-  }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, filteredOrcamentos, filteredTratamentos, filteredPagamentos]);
 
   // ========== DAILY REPORT ==========
   const dailyReport = useMemo(() => {
