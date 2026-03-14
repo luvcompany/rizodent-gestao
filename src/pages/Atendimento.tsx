@@ -472,9 +472,6 @@ const Atendimento = () => {
                       <p className="text-xs text-muted-foreground mt-1">
                         Orçado: {formatCurrencyDisplay(totalOrcadoExistente)} · Contratado: {formatCurrencyDisplay(totalPagoExistente)} · Restante: {formatCurrencyDisplay(naoContratadoExistente)}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Tipo: {totalPagoExistente === 0 ? "Primeiro pagamento" : "Recorrente"}
-                      </p>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={() => setModo("selecionar")}>
                       Voltar
