@@ -92,35 +92,33 @@ const Relatorios = () => {
     });
   }, [tratamentos, clinicaFiltro]);
 
-  // ========== CONTRATADO VS PAGO ==========
+  // ========== ORÇADO VS CONTRATADO ==========
   const contratadoVsPago = useMemo(() => {
-    // Group pagamentos by tratamento_id
-    const pagosPorTratamento = new Map<string, number>();
+    // Contratado = sum of pagamentos (actual payments)
+    const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
-      pagosPorTratamento.set(p.tratamento_id, (pagosPorTratamento.get(p.tratamento_id) || 0) + Number(p.valor));
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
 
-    const totalContratado = filteredTratamentos.filter(t => t.status === "ativo").reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
-    const totalPago = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
+    const totalOrcado = filteredTratamentos.filter(t => t.status === "ativo").reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
+    const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
 
     // Build per-patient summary
-    const pacienteMap = new Map<string, { id: string; nome: string; contratado: number; pago: number; tratamentos: any[] }>();
+    const pacienteMap = new Map<string, { id: string; nome: string; orcado: number; contratado: number; tratamentos: any[] }>();
     filteredTratamentos.filter(t => t.status === "ativo").forEach((t) => {
       const pid = t.paciente_id;
-      const entry = pacienteMap.get(pid) || { id: pid, nome: t.pacientes?.nome || "—", contratado: 0, pago: 0, tratamentos: [] };
-      const contratado = Number(t.valor_contratado || 0);
-      const pago = pagosPorTratamento.get(t.id) || 0;
-      entry.contratado += contratado;
-      entry.pago += pago;
-      entry.tratamentos.push({ procedimento: t.procedimento, contratado, pago, clinica: t.clinicas?.nome || "—" });
+      const entry = pacienteMap.get(pid) || { id: pid, nome: t.pacientes?.nome || "—", orcado: 0, contratado: 0, tratamentos: [] };
+      entry.orcado += Number(t.valor_orcado || 0);
+      entry.tratamentos.push({ procedimento: t.procedimento, clinica: t.clinicas?.nome || "—" });
+      if (!pacienteMap.has(pid)) entry.contratado = contratadoPorPaciente.get(pid) || 0;
       pacienteMap.set(pid, entry);
     });
 
     const lista = Array.from(pacienteMap.values());
-    const emAberto = lista.filter(p => p.pago < p.contratado).sort((a, b) => (b.contratado - b.pago) - (a.contratado - a.pago));
-    const concluidos = lista.filter(p => p.contratado > 0 && p.pago >= p.contratado);
+    const emAberto = lista.filter(p => p.orcado > 0 && p.contratado < p.orcado).sort((a, b) => (b.orcado - b.contratado) - (a.orcado - a.contratado));
+    const concluidos = lista.filter(p => p.orcado > 0 && p.contratado >= p.orcado);
 
-    return { totalContratado, totalPago, emAberto, concluidos };
+    return { totalOrcado, totalContratado, emAberto, concluidos };
   }, [filteredTratamentos, filteredPagamentos]);
 
   // ========== DAILY REPORT ==========
