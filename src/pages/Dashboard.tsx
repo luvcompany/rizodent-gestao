@@ -361,6 +361,25 @@ const Dashboard = () => {
         )}
       </div>
 
+      {/* Gráfico Venda Diária */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Venda Diária</CardTitle>
+          <p className="text-xs text-muted-foreground">Valor contratado por dia útil no período</p>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={vendaDiaria} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="dia" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-45} textAnchor="end" height={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="valor" fill="hsl(25,100%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
       {/* Leads Novos KPI */}
       <Card className="gradient-card border-border shadow-card">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
