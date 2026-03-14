@@ -255,14 +255,14 @@ const Relatorios = () => {
     });
     return pacientes
       .map(p => ({
+        id: p.id,
         nome: p.nome,
         orcado: orcadoPorPaciente.get(p.id) || 0,
         contratado: contratadoPorPaciente.get(p.id) || 0,
         qtdTratamentos: qtdTratPorPaciente.get(p.id) || 0,
       }))
       .filter(p => p.contratado > 0 || p.orcado > 0)
-      .sort((a, b) => b.contratado - a.contratado)
-      .slice(0, 50);
+      .sort((a, b) => b.contratado - a.contratado);
   }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
 
   // ========== POR ESPECIALIDADE (ONLY QUANTITY) ==========
