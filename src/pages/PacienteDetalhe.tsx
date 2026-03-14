@@ -241,7 +241,7 @@ const PacienteDetalhe = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <Card className="gradient-card border-border shadow-card">
           <CardContent className="pt-4 pb-3 text-center">
             <DollarSign size={20} className="mx-auto text-primary mb-1" />
@@ -254,6 +254,13 @@ const PacienteDetalhe = () => {
             <DollarSign size={20} className="mx-auto text-muted-foreground mb-1" />
             <p className="text-2xl font-bold">{formatCurrency(totalContratado)}</p>
             <p className="text-xs text-muted-foreground">Total Contratado</p>
+          </CardContent>
+        </Card>
+        <Card className="gradient-card border-border shadow-card">
+          <CardContent className="pt-4 pb-3 text-center">
+            <DollarSign size={20} className="mx-auto text-destructive mb-1" />
+            <p className="text-2xl font-bold text-destructive">{formatCurrency(totalNaoContratado)}</p>
+            <p className="text-xs text-muted-foreground">Não Contratado</p>
           </CardContent>
         </Card>
         <Card className="gradient-card border-border shadow-card">
