@@ -90,9 +90,18 @@ const Relatorios = () => {
   const filteredTratamentos = useMemo(() => {
     return tratamentos.filter((t) => {
       const inClinica = clinicaFiltro === "todas" || t.clinica_id === clinicaFiltro;
-      return inClinica;
+      const createdDate = t.created_at?.split("T")[0] || "";
+      const inDate = createdDate >= dateFrom && createdDate <= dateTo;
+      return inClinica && inDate;
     });
-  }, [tratamentos, clinicaFiltro]);
+  }, [tratamentos, clinicaFiltro, dateFrom, dateTo]);
+
+  const filteredOrcamentos = useMemo(() => {
+    return orcamentos.filter((o) => {
+      const createdDate = o.created_at?.split("T")[0] || "";
+      return createdDate >= dateFrom && createdDate <= dateTo;
+    });
+  }, [orcamentos, dateFrom, dateTo]);
 
   // ========== ORÇADO VS CONTRATADO ==========
   const contratadoVsPago = useMemo(() => {
