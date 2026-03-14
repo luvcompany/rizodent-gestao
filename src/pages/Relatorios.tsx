@@ -740,22 +740,22 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Users size={18} className="text-primary" /> Ranking de Pacientes (Top 50)</CardTitle>
             <ShareButtons title="Ranking Pacientes" data={rankingPacientes} getSummary={() =>
-              rankingPacientes.slice(0, 10).map((r, i) => `${i + 1}. ${r.nome}: ${formatCurrency(r.pago)} pago`).join("\n")
+              rankingPacientes.slice(0, 10).map((r, i) => `${i + 1}. ${r.nome}: ${formatCurrency(r.contratado)} contratado`).join("\n")
             } />
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Tratamentos</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Tratamentos</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {rankingPacientes.map((r, i) => (
                     <TableRow key={i}>
                       <TableCell className="font-bold text-primary">{i + 1}</TableCell>
                       <TableCell className="font-medium">{r.nome}</TableCell>
                       <TableCell>{r.qtdTratamentos}</TableCell>
+                      <TableCell>{formatCurrency(r.orcado)}</TableCell>
                       <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                      <TableCell>{formatCurrency(r.pago)}</TableCell>
-                      <TableCell className={r.contratado - r.pago > 0 ? "text-destructive" : "text-green-400"}>{formatCurrency(r.contratado - r.pago)}</TableCell>
+                      <TableCell className={r.orcado - r.contratado > 0 ? "text-destructive" : "text-green-400"}>{formatCurrency(r.orcado - r.contratado)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
