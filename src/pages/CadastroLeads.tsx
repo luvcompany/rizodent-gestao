@@ -25,6 +25,7 @@ const CadastroLeads = () => {
   const [faltaram, setFaltaram] = useState("");
   const [contrataram, setContrataram] = useState("");
   const [naoContrataram, setNaoContrataram] = useState("");
+  const [remarcados, setRemarcados] = useState("");
   const [saving, setSaving] = useState(false);
   const [existingId, setExistingId] = useState<string | null>(null);
   const [registros, setRegistros] = useState<LeadWithClinica[]>([]);
@@ -65,10 +66,11 @@ const CadastroLeads = () => {
           setFaltaram(String(existing.faltaram));
           setContrataram(String(existing.contrataram));
           setNaoContrataram(String(existing.nao_contrataram));
+          setRemarcados(String((existing as any).remarcados || 0));
         } else {
           setExistingId(null);
           setLeadsNovos(""); setAgendaram(""); setFaltaram("");
-          setContrataram(""); setNaoContrataram("");
+          setContrataram(""); setNaoContrataram(""); setRemarcados("");
         }
       });
   }, [clinicaId, data]);
@@ -76,7 +78,7 @@ const CadastroLeads = () => {
   const resetForm = () => {
     setExistingId(null);
     setLeadsNovos(""); setAgendaram(""); setFaltaram("");
-    setContrataram(""); setNaoContrataram("");
+    setContrataram(""); setNaoContrataram(""); setRemarcados("");
     setClinicaId("");
     setData(new Date().toISOString().split("T")[0]);
   };
@@ -94,6 +96,7 @@ const CadastroLeads = () => {
         faltaram: parseInt(faltaram) || 0,
         contrataram: parseInt(contrataram) || 0,
         nao_contrataram: parseInt(naoContrataram) || 0,
+        remarcados: parseInt(remarcados) || 0,
         created_by: user?.id,
       };
 
@@ -123,6 +126,7 @@ const CadastroLeads = () => {
     setFaltaram(String(registro.faltaram));
     setContrataram(String(registro.contrataram));
     setNaoContrataram(String(registro.nao_contrataram));
+    setRemarcados(String((registro as any).remarcados || 0));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -211,6 +215,11 @@ const CadastroLeads = () => {
                   <Label>Não Contrataram</Label>
                   <Input type="number" min="0" placeholder="0" value={naoContrataram} onChange={(e) => setNaoContrataram(e.target.value)} className="bg-secondary border-border" />
                 </div>
+                <div className="space-y-2">
+                  <Label>Remarcados</Label>
+                  <p className="text-xs text-muted-foreground">Pacientes que faltaram e foram remarcados</p>
+                  <Input type="number" min="0" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
+                </div>
               </div>
             </div>
 
@@ -245,6 +254,7 @@ const CadastroLeads = () => {
                     <TableHead className="text-center">Falt.</TableHead>
                     <TableHead className="text-center">Contr.</TableHead>
                     <TableHead className="text-center">Não Contr.</TableHead>
+                    <TableHead className="text-center">Remarc.</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -258,6 +268,7 @@ const CadastroLeads = () => {
                       <TableCell className="text-center">{r.faltaram}</TableCell>
                       <TableCell className="text-center">{r.contrataram}</TableCell>
                       <TableCell className="text-center">{r.nao_contrataram}</TableCell>
+                      <TableCell className="text-center">{(r as any).remarcados || 0}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(r)} title="Editar">

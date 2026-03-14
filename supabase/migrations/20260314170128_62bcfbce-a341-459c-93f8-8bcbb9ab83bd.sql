@@ -1,0 +1,1 @@
+ALTER TABLE public.leads_diarios ADD COLUMN remarcados integer NOT NULL DEFAULT 0;
