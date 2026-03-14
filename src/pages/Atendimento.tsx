@@ -611,11 +611,9 @@ const Atendimento = () => {
 
             {/* Payment-only fields */}
             {showPagamentoFields && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Valor do Pagamento (R$)</Label>
-                  <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-                </div>
+              <div className="space-y-2">
+                <Label>Valor do Pagamento (R$)</Label>
+                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
               </div>
             )}
 
