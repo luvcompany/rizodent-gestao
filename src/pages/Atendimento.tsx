@@ -64,6 +64,7 @@ const Atendimento = () => {
   const [valorContratadoGeral, setValorContratadoGeral] = useState("");
   const [origem, setOrigem] = useState("");
   const [valorPago, setValorPago] = useState("");
+  const [tipoPagamento, setTipoPagamento] = useState("primeiro");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [origemOutrosDesc, setOrigemOutrosDesc] = useState("");
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
