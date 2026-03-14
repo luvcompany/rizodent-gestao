@@ -890,8 +890,6 @@ const Relatorios = () => {
       );
 
 
-          </CardHeader>
-          <CardContent>
             <div className="grid gap-6 lg:grid-cols-2">
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
