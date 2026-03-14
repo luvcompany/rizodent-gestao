@@ -105,9 +105,12 @@ const Dashboard = () => {
     const filterByClinica = (items: any[]) =>
     clinicaFiltro === "todas" ? items : items.filter((i) => i.clinica_id === clinicaFiltro);
     const filterByDate = (items: any[], dateField: string) =>
-    items.filter((i) => i[dateField] >= dateFrom && i[dateField] <= dateTo);
+    items.filter((i) => {
+      const val = i[dateField]?.split("T")[0] || i[dateField];
+      return val >= dateFrom && val <= dateTo;
+    });
 
-    let filteredTratamentos = filterByClinica(tratamentos);
+    let filteredTratamentos = filterByDate(filterByClinica(tratamentos), "created_at");
 
     const tratamentoIds = new Set(filteredTratamentos.map((t) => t.id));
     const pacienteIds = new Set(filteredTratamentos.map((t) => t.paciente_id));

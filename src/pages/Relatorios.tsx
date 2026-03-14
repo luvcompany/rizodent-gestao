@@ -90,9 +90,18 @@ const Relatorios = () => {
   const filteredTratamentos = useMemo(() => {
     return tratamentos.filter((t) => {
       const inClinica = clinicaFiltro === "todas" || t.clinica_id === clinicaFiltro;
-      return inClinica;
+      const createdDate = t.created_at?.split("T")[0] || "";
+      const inDate = createdDate >= dateFrom && createdDate <= dateTo;
+      return inClinica && inDate;
     });
-  }, [tratamentos, clinicaFiltro]);
+  }, [tratamentos, clinicaFiltro, dateFrom, dateTo]);
+
+  const filteredOrcamentos = useMemo(() => {
+    return orcamentos.filter((o) => {
+      const createdDate = o.created_at?.split("T")[0] || "";
+      return createdDate >= dateFrom && createdDate <= dateTo;
+    });
+  }, [orcamentos, dateFrom, dateTo]);
 
   // ========== ORÇADO VS CONTRATADO ==========
   const contratadoVsPago = useMemo(() => {
@@ -101,7 +110,7 @@ const Relatorios = () => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
     const orcadoPorPaciente = new Map<string, number>();
-    orcamentos.forEach((o) => {
+    filteredOrcamentos.forEach((o) => {
       orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
     });
     const totalOrcado = Array.from(orcadoPorPaciente.values()).reduce((s, v) => s + v, 0);
@@ -120,7 +129,7 @@ const Relatorios = () => {
     const emAberto = lista.filter(p => p.contratado < p.orcado).sort((a, b) => (b.orcado - b.contratado) - (a.orcado - a.contratado));
     const concluidos = lista.filter(p => p.contratado >= p.orcado);
     return { totalOrcado, totalContratado, emAberto, concluidos };
-  }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, filteredOrcamentos, filteredTratamentos, filteredPagamentos]);
 
   // ========== DAILY REPORT ==========
   const dailyReport = useMemo(() => {
@@ -182,7 +191,7 @@ const Relatorios = () => {
   }, [dateFrom, dateTo]);
 
   const predictability = useMemo(() => {
-    const totalOrcado = orcamentos.reduce((s, o) => s + Number(o.valor_orcado || 0), 0);
+    const totalOrcado = filteredOrcamentos.reduce((s, o) => s + Number(o.valor_orcado || 0), 0);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
     const aReceber = Math.max(0, totalOrcado - totalContratado);
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
@@ -212,7 +221,7 @@ const Relatorios = () => {
       projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes, projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
       projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
     };
-  }, [orcamentos, filteredPagamentos, filteredLeads, diasUteisMes, diasUteisPassados]);
+  }, [filteredOrcamentos, filteredPagamentos, filteredLeads, diasUteisMes, diasUteisPassados]);
 
   // ========== FUNNEL ==========
   const funnelReport = useMemo(() => {
@@ -246,7 +255,7 @@ const Relatorios = () => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
     const orcadoPorPaciente = new Map<string, number>();
-    orcamentos.forEach((o) => {
+    filteredOrcamentos.forEach((o) => {
       orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
     });
     const qtdTratPorPaciente = new Map<string, number>();
@@ -263,7 +272,7 @@ const Relatorios = () => {
       }))
       .filter(p => p.contratado > 0 || p.orcado > 0)
       .sort((a, b) => b.contratado - a.contratado);
-  }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, filteredOrcamentos, filteredTratamentos, filteredPagamentos]);
 
   // ========== POR ESPECIALIDADE (ONLY QUANTITY) ==========
   const especialidadeReport = useMemo(() => {
@@ -284,7 +293,7 @@ const Relatorios = () => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
     const orcadoPorPaciente = new Map<string, number>();
-    orcamentos.forEach((o) => {
+    filteredOrcamentos.forEach((o) => {
       orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
     });
     const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
@@ -309,7 +318,7 @@ const Relatorios = () => {
       origens: Array.from(origemMap.values()).sort((a, b) => b.contratado - a.contratado),
       anuncios: Array.from(anuncioMap.values()).sort((a, b) => b.contratado - a.contratado),
     };
-  }, [pacientes, orcamentos, filteredPagamentos]);
+  }, [pacientes, filteredOrcamentos, filteredPagamentos]);
 
   // ========== EXPORT HELPERS ==========
   const exportToExcel = (data: any[], filename: string) => {
