@@ -47,23 +47,28 @@ const Pacientes = () => {
     const fetchAll = async () => {
       setLoading(true);
 
-      // Fetch all data in parallel — 4 queries total instead of N*3
-      const [{ data: pacs }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
-        supabase.from("pacientes").select("id, nome, telefone, cidade, created_at, valor_orcado").order("created_at", { ascending: false }),
-        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id").order("data_pagamento", { ascending: false }),
+      const [{ data: pacs }, { data: orcamentos }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
+        supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
+        supabase.from("orcamentos").select("id, paciente_id, valor_orcado"),
+        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id, orcamento_id").order("data_pagamento", { ascending: false }),
         supabase.from("clinicas").select("id, nome"),
       ]);
 
       if (!pacs) { setLoading(false); return; }
 
-      // Index clinicas by id
       const clinicaMap = new Map<string, string>();
       clinicas?.forEach((c) => clinicaMap.set(c.id, c.nome));
 
-      // Group pagamentos value by paciente_id for contratado
-      const pagContratadoMap = new Map<string, number>();
+      // Sum orcado per patient from orcamentos
+      const orcadoMap = new Map<string, number>();
+      orcamentos?.forEach((o) => {
+        orcadoMap.set(o.paciente_id, (orcadoMap.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
+      });
+
+      // Sum contratado per patient from pagamentos
+      const contratadoMap = new Map<string, number>();
       pagamentos?.forEach((p) => {
-        pagContratadoMap.set(p.paciente_id, (pagContratadoMap.get(p.paciente_id) || 0) + Number(p.valor || 0));
+        contratadoMap.set(p.paciente_id, (contratadoMap.get(p.paciente_id) || 0) + Number(p.valor || 0));
       });
 
       // Group pagamentos by paciente_id
@@ -83,8 +88,8 @@ const Pacientes = () => {
 
       const result: PacienteView[] = [];
       for (const p of pacs) {
-        const valorOrcado = Number(p.valor_orcado || 0);
-        const valorContratado = pagContratadoMap.get(p.id) || 0;
+        const valorOrcado = orcadoMap.get(p.id) || 0;
+        const valorContratado = contratadoMap.get(p.id) || 0;
         let pags = pagMap.get(p.id) || [];
 
         if (dataMinima) {
@@ -92,8 +97,6 @@ const Pacientes = () => {
           if (pags.length === 0) continue;
         }
 
-        const totalPago = pags.reduce((sum, pg) => sum + Number(pg.valor), 0);
-        // ultima_visita = most recent payment date (already sorted desc)
         const allPags = pagMap.get(p.id) || [];
         const ultimaVisita = allPags[0]?.data_pagamento || null;
         const clinicaNome = pags[0]?.clinica_id ? clinicaMap.get(pags[0].clinica_id) || null : null;

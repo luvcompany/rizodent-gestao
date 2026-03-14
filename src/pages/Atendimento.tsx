@@ -73,6 +73,7 @@ const Atendimento = () => {
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
   const [tratamentosExistentes, setTratamentosExistentes] = useState<any[]>([]);
+  const [orcamentoAberto, setOrcamentoAberto] = useState<any | null>(null);
   const [totalPagoExistente, setTotalPagoExistente] = useState(0);
   const [totalOrcadoExistente, setTotalOrcadoExistente] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -129,6 +130,7 @@ const Atendimento = () => {
     setModo("selecionar");
     setTotalPagoExistente(0);
     setTotalOrcadoExistente(0);
+    setOrcamentoAberto(null);
 
     const digits = value.replace(/\D/g, "");
     if (digits.length >= 4) {
@@ -144,18 +146,26 @@ const Atendimento = () => {
   };
 
   const carregarTratamentos = async (pacienteId: string) => {
-    const [{ data: pac }, { data: trats }, { data: pags }] = await Promise.all([
-      supabase.from("pacientes").select("valor_orcado").eq("id", pacienteId).maybeSingle(),
+    const [{ data: orcs }, { data: trats }, { data: pags }] = await Promise.all([
+      supabase.from("orcamentos").select("*").eq("paciente_id", pacienteId).eq("status", "aberto").order("created_at", { ascending: false }).limit(1),
       supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
-      supabase.from("pagamentos").select("valor").eq("paciente_id", pacienteId),
+      supabase.from("pagamentos").select("valor, orcamento_id").eq("paciente_id", pacienteId),
     ]);
 
     if (trats) {
       setTratamentosExistentes(trats);
-      const totalOrcado = Number(pac?.valor_orcado || 0);
-      const totalPago = pags?.reduce((s, p) => s + Number(p.valor), 0) || 0;
-      setTotalOrcadoExistente(totalOrcado);
-      setTotalPagoExistente(totalPago);
+      const openOrc = orcs && orcs.length > 0 ? orcs[0] : null;
+      setOrcamentoAberto(openOrc);
+
+      if (openOrc) {
+        const totalOrcado = Number(openOrc.valor_orcado || 0);
+        const totalPago = pags?.filter(p => p.orcamento_id === openOrc.id).reduce((s, p) => s + Number(p.valor), 0) || 0;
+        setTotalOrcadoExistente(totalOrcado);
+        setTotalPagoExistente(totalPago);
+      } else {
+        setTotalOrcadoExistente(0);
+        setTotalPagoExistente(0);
+      }
     }
   };
 
@@ -174,7 +184,6 @@ const Atendimento = () => {
 
   const iniciarNovoPagamento = () => {
     setModo("novo_pagamento");
-    // Use the clinica from first treatment
     if (tratamentosExistentes.length > 0) {
       setClinicaId(tratamentosExistentes[0].clinica_id);
       const cl = clinicas.find(c => c.id === tratamentosExistentes[0].clinica_id);
@@ -200,6 +209,7 @@ const Atendimento = () => {
     setTotalPagoExistente(0);
     setTotalOrcadoExistente(0);
     setTratamentosExistentes([]);
+    setOrcamentoAberto(null);
   };
 
   const updateProcedimento = (index: number, field: keyof ProcedimentoEntry, value: string) => {
@@ -231,9 +241,13 @@ const Atendimento = () => {
     e.preventDefault();
 
     if (modo === "novo_pagamento") {
-      // Register payment for existing patient (grouped - linked to first treatment)
       if (!valorPago || parseCurrency(valorPago) <= 0) {
         toast.error("Preencha o valor do pagamento.");
+        return;
+      }
+
+      if (!orcamentoAberto) {
+        toast.error("Nenhum orçamento em aberto encontrado para registrar pagamento.");
         return;
       }
 
@@ -248,9 +262,9 @@ const Atendimento = () => {
       setSaving(true);
       try {
         const tipo = tipoPagamento;
-
-        // Link to first treatment
-        const tratamentoId = tratamentosExistentes[0]?.id;
+        // Link to first treatment of the open orcamento
+        const orcTrats = tratamentosExistentes.filter(t => t.orcamento_id === orcamentoAberto.id);
+        const tratamentoId = orcTrats[0]?.id || tratamentosExistentes[0]?.id;
         if (!tratamentoId) throw new Error("Nenhum tratamento encontrado.");
 
         const { error: pagError } = await supabase
@@ -264,8 +278,14 @@ const Atendimento = () => {
             tipo,
             data_pagamento: dataPagamento,
             created_by: user?.id,
+            orcamento_id: orcamentoAberto.id,
           });
         if (pagError) throw pagError;
+
+        // Check if orcamento is now complete
+        if (novoTotalContratado >= totalOrcadoExistente) {
+          await supabase.from("orcamentos").update({ status: "concluido" }).eq("id", orcamentoAberto.id);
+        }
 
         toast.success("Pagamento registrado com sucesso!");
         resetForm();
@@ -308,17 +328,25 @@ const Atendimento = () => {
         const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
         const { data: newPac, error } = await supabase
           .from("pacientes")
-          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncioFinal || null, valor_orcado: totalOrcado })
+          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncioFinal || null })
           .select("id")
           .single();
         if (error) throw error;
         pacienteId = newPac.id;
-      } else {
-        // Update valor_orcado on existing patient (add to current)
-        const { data: currentPac } = await supabase.from("pacientes").select("valor_orcado").eq("id", pacienteId).maybeSingle();
-        const currentOrcado = Number(currentPac?.valor_orcado || 0);
-        await supabase.from("pacientes").update({ valor_orcado: currentOrcado + totalOrcado }).eq("id", pacienteId);
       }
+
+      // Always create a new orcamento for new treatments
+      const { data: newOrc, error: orcError } = await supabase
+        .from("orcamentos")
+        .insert({
+          paciente_id: pacienteId,
+          valor_orcado: totalOrcado,
+          status: totalOrcado > 0 && totalContratado >= totalOrcado ? "concluido" : "aberto",
+        })
+        .select("id")
+        .single();
+      if (orcError) throw orcError;
+      const orcamentoId = newOrc.id;
 
       // Create all treatments
       let firstTratamentoId: string | null = null;
@@ -332,6 +360,7 @@ const Atendimento = () => {
             procedimento: proc.procedimento,
             especialidade: proc.especialidade || null,
             created_by: user?.id,
+            orcamento_id: orcamentoId,
           })
           .select("id")
           .single();
@@ -352,6 +381,7 @@ const Atendimento = () => {
             tipo: tipoPagamento,
             data_pagamento: dataPagamento,
             created_by: user?.id,
+            orcamento_id: orcamentoId,
           });
         if (pagError) throw pagError;
       }
@@ -426,7 +456,7 @@ const Atendimento = () => {
                     <FileText size={14} /> Procedimentos do paciente
                   </p>
 
-                  {/* List all procedures grouped */}
+                  {/* List procedures */}
                   <div className="space-y-1 mb-3">
                     {tratamentosExistentes.map((t) => (
                       <div key={t.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded bg-background/50">
@@ -437,24 +467,32 @@ const Atendimento = () => {
                     ))}
                   </div>
 
-                  {/* Financial summary */}
-                  <div className="grid grid-cols-3 gap-2 mb-3 text-center">
-                    <div className="rounded-lg bg-background p-2">
-                      <p className="text-xs text-muted-foreground">Orçado</p>
-                      <p className="text-sm font-semibold">{formatCurrencyDisplay(totalOrcadoExistente)}</p>
+                  {/* Financial summary of open orcamento */}
+                  {orcamentoAberto && (
+                    <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                      <div className="rounded-lg bg-background p-2">
+                        <p className="text-xs text-muted-foreground">Orçado</p>
+                        <p className="text-sm font-semibold">{formatCurrencyDisplay(totalOrcadoExistente)}</p>
+                      </div>
+                      <div className="rounded-lg bg-background p-2">
+                        <p className="text-xs text-muted-foreground">Contratado</p>
+                        <p className="text-sm font-semibold text-primary">{formatCurrencyDisplay(totalPagoExistente)}</p>
+                      </div>
+                      <div className="rounded-lg bg-background p-2">
+                        <p className="text-xs text-muted-foreground">Não Contratado</p>
+                        <p className="text-sm font-semibold text-destructive">{formatCurrencyDisplay(naoContratadoExistente)}</p>
+                      </div>
                     </div>
-                    <div className="rounded-lg bg-background p-2">
-                      <p className="text-xs text-muted-foreground">Contratado</p>
-                      <p className="text-sm font-semibold text-primary">{formatCurrencyDisplay(totalPagoExistente)}</p>
+                  )}
+
+                  {!orcamentoAberto && (
+                    <div className="rounded-lg bg-background p-3 mb-3 text-center">
+                      <p className="text-sm text-muted-foreground">Todos os orçamentos estão concluídos.</p>
                     </div>
-                    <div className="rounded-lg bg-background p-2">
-                      <p className="text-xs text-muted-foreground">Não Contratado</p>
-                      <p className="text-sm font-semibold text-destructive">{formatCurrencyDisplay(naoContratadoExistente)}</p>
-                    </div>
-                  </div>
+                  )}
 
                   <div className="space-y-2">
-                    {naoContratadoExistente > 0 && (
+                    {orcamentoAberto && naoContratadoExistente > 0 && (
                       <button
                         type="button"
                         onClick={iniciarNovoPagamento}
@@ -675,7 +713,6 @@ const Atendimento = () => {
 
             {(showNovoTratamentoFields || showPagamentoFields) && (
               <>
-
                 {showNovoTratamentoFields && (
                   <>
                     <div className="space-y-2">
