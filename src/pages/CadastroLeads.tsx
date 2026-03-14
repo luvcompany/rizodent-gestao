@@ -96,6 +96,7 @@ const CadastroLeads = () => {
         faltaram: parseInt(faltaram) || 0,
         contrataram: parseInt(contrataram) || 0,
         nao_contrataram: parseInt(naoContrataram) || 0,
+        remarcados: parseInt(remarcados) || 0,
         created_by: user?.id,
       };
 
