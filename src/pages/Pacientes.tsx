@@ -160,26 +160,32 @@ const Pacientes = () => {
             className="bg-secondary border-border pl-10"
           />
         </div>
-        <Select value={periodo} onValueChange={setPeriodo}>
-          <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border">
-            <SelectValue placeholder="Período" />
-          </SelectTrigger>
-          <SelectContent>
-            {FILTROS_PERIODO.map((f) => (
-              <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={statusFiltro} onValueChange={setStatusFiltro}>
-          <SelectTrigger className="w-full sm:w-[180px] bg-secondary border-border">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos</SelectItem>
-            <SelectItem value="aberto">Em aberto</SelectItem>
-            <SelectItem value="concluido">Concluídos</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Período</span>
+          <Select value={periodo} onValueChange={setPeriodo}>
+            <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border">
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent>
+              {FILTROS_PERIODO.map((f) => (
+                <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Status</span>
+          <Select value={statusFiltro} onValueChange={setStatusFiltro}>
+            <SelectTrigger className="w-full sm:w-[180px] bg-secondary border-border">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="aberto">Em aberto</SelectItem>
+              <SelectItem value="concluido">Concluídos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {loading ? (
