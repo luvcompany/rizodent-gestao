@@ -63,8 +63,6 @@ const ChartCard = ({ title, children }: {title: string;children: React.ReactNode
 const Dashboard = () => {
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaFiltro, setClinicaFiltro] = useState("todas");
-  const [procedimentoFiltro, setProcedimentoFiltro] = useState("todos");
-  const [especialidadeFiltro, setEspecialidadeFiltro] = useState("todas");
   const [canalFiltro, setCanalFiltro] = useState("todos");
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
@@ -97,15 +95,6 @@ const Dashboard = () => {
   }, []);
 
   // Unique values for filter dropdowns
-  const procedimentosUnicos = useMemo(() => {
-    const set = new Set(tratamentos.map((t) => t.procedimento).filter(Boolean));
-    return Array.from(set).sort();
-  }, [tratamentos]);
-
-  const especialidadesUnicas = useMemo(() => {
-    const set = new Set(tratamentos.map((t) => t.especialidade).filter(Boolean));
-    return Array.from(set).sort();
-  }, [tratamentos]);
 
   const canaisUnicos = useMemo(() => {
     const set = new Set(pacientes.map((p) => p.origem).filter(Boolean));
@@ -118,14 +107,7 @@ const Dashboard = () => {
     const filterByDate = (items: any[], dateField: string) =>
     items.filter((i) => i[dateField] >= dateFrom && i[dateField] <= dateTo);
 
-    // Filter tratamentos by clinica, procedimento, especialidade
     let filteredTratamentos = filterByClinica(tratamentos);
-    if (procedimentoFiltro !== "todos") {
-      filteredTratamentos = filteredTratamentos.filter((t) => t.procedimento === procedimentoFiltro);
-    }
-    if (especialidadeFiltro !== "todas") {
-      filteredTratamentos = filteredTratamentos.filter((t) => t.especialidade === especialidadeFiltro);
-    }
 
     const tratamentoIds = new Set(filteredTratamentos.map((t) => t.id));
     const pacienteIds = new Set(filteredTratamentos.map((t) => t.paciente_id));
@@ -144,7 +126,7 @@ const Dashboard = () => {
 
     let filteredPagamentos = filterByDate(filterByClinica(pagamentos), "data_pagamento");
     // Only include pagamentos linked to filtered tratamentos
-    if (procedimentoFiltro !== "todos" || especialidadeFiltro !== "todas" || canalFiltro !== "todos") {
+    if (canalFiltro !== "todos") {
       filteredPagamentos = filteredPagamentos.filter((p) => finalTratamentoIds.has(p.tratamento_id));
     }
 
@@ -154,7 +136,7 @@ const Dashboard = () => {
       leads: filterByDate(filterByClinica(leadsData), "data"),
       pacientes: filteredPacientes
     };
-  }, [clinicaFiltro, procedimentoFiltro, especialidadeFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo]);
+  }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo]);
 
   const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
   const fatNovos = filtered.pagamentos.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
@@ -210,21 +192,6 @@ const Dashboard = () => {
     value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
   })).filter((d) => d.value > 0);
 
-  // Chart: Procedimentos mais contratados (volume)
-  const procMap = new Map<string, number>();
-  filtered.tratamentos.forEach((t) => {
-    procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + 1);
-  });
-  const procVolume = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
-
-  // Chart: Faturamento por Especialidade
-  const espMap = new Map<string, number>();
-  filtered.tratamentos.forEach((t) => {
-    const esp = t.especialidade || "Sem Especialidade";
-    const paid = filtered.pagamentos.filter((p) => p.tratamento_id === t.id).reduce((s, p) => s + Number(p.valor), 0);
-    espMap.set(esp, (espMap.get(esp) || 0) + paid);
-  });
-  const fatEspecialidade = Array.from(espMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
 
   // Chart: Origem dos pacientes (canal)
   const origemMap = new Map<string, {qtd: number;fat: number;}>();
@@ -268,10 +235,7 @@ const Dashboard = () => {
   { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[4] }];
 
 
-  // Which filters are active — hide corresponding chart
   const showClinicaChart = clinicaFiltro === "todas";
-  const showProcedimentoChart = procedimentoFiltro === "todos";
-  const showEspecialidadeChart = especialidadeFiltro === "todas";
   const showCanalChart = canalFiltro === "todos";
 
   if (loading) {
@@ -310,7 +274,7 @@ const Dashboard = () => {
       {/* Filters */}
       <Card className="gradient-card border-border shadow-card">
         <CardContent className="pt-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Clínica</Label>
               <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
@@ -322,34 +286,6 @@ const Dashboard = () => {
                   <SelectItem value="todas">Todas as Clínicas</SelectItem>
                   {clinicas.map((c) =>
                   <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Procedimento</Label>
-              <Select value={procedimentoFiltro} onValueChange={setProcedimentoFiltro}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos os Procedimentos</SelectItem>
-                  {procedimentosUnicos.map((p) =>
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Especialidade</Label>
-              <Select value={especialidadeFiltro} onValueChange={setEspecialidadeFiltro}>
-                <SelectTrigger className="bg-secondary border-border">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Especialidades</SelectItem>
-                  {especialidadesUnicas.map((e) =>
-                  <SelectItem key={e} value={e}>{e}</SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -466,35 +402,6 @@ const Dashboard = () => {
           </ChartCard>
         }
 
-        {showProcedimentoChart &&
-        <ChartCard title="Procedimentos Mais Contratados">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={procVolume} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: "hsl(0,0%,64%)" }} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} allowDecimals={false} width={40} tick={{ fill: "hsl(0,0%,64%)" }} />
-                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Quantidade"]} />
-                <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        }
-
-        {showEspecialidadeChart &&
-        <ChartCard title="Faturamento por Especialidade">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={fatEspecialidade} margin={{ top: 30, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} tick={{ fill: "hsl(0,0%,64%)" }} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
-                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
-                  {fatEspecialidade.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        }
 
         <ChartCard title="Faturamento por Anúncio">
           <ResponsiveContainer width="100%" height={280}>
