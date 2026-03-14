@@ -63,8 +63,6 @@ const ChartCard = ({ title, children }: {title: string;children: React.ReactNode
 const Dashboard = () => {
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaFiltro, setClinicaFiltro] = useState("todas");
-  const [procedimentoFiltro, setProcedimentoFiltro] = useState("todos");
-  const [especialidadeFiltro, setEspecialidadeFiltro] = useState("todas");
   const [canalFiltro, setCanalFiltro] = useState("todos");
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
