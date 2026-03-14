@@ -215,10 +215,6 @@ const Atendimento = () => {
         toast.error("Preencha o valor do pagamento.");
         return;
       }
-      if (!formaPagamento) {
-        toast.error("Selecione a forma de pagamento.");
-        return;
-      }
 
       const valorNovoPagamento = parseCurrency(valorPago);
       const novoTotalContratado = totalPagoExistente + valorNovoPagamento;
