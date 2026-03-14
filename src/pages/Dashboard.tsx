@@ -177,13 +177,12 @@ const Dashboard = () => {
     value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0),
   })).filter(d => d.value > 0);
 
-  // Chart: Faturamento por Procedimento
+  // Chart: Procedimentos mais contratados (volume)
   const procMap = new Map<string, number>();
   filtered.tratamentos.forEach((t) => {
-    const paid = filtered.pagamentos.filter((p) => p.tratamento_id === t.id).reduce((s, p) => s + Number(p.valor), 0);
-    procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + paid);
+    procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + 1);
   });
-  const fatProcedimento = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
+  const procVolume = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter(d => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
 
   // Chart: Faturamento por Especialidade
   const espMap = new Map<string, number>();
