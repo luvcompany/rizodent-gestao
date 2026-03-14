@@ -307,7 +307,12 @@ const PacienteDetalhe = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2"><Label>Nome do Anúncio</Label><Input value={editNomeAnuncio} onChange={(e) => setEditNomeAnuncio(e.target.value)} className="bg-secondary border-border" /></div>
+              {editOrigem === "Anúncio" && (
+                <div className="space-y-2"><Label>Nome do Anúncio</Label><Input value={editNomeAnuncio} onChange={(e) => setEditNomeAnuncio(e.target.value)} className="bg-secondary border-border" /></div>
+              )}
+              {editOrigem === "Outros" && (
+                <div className="space-y-2"><Label>De onde veio o lead?</Label><Input value={editNomeAnuncio} onChange={(e) => setEditNomeAnuncio(e.target.value)} className="bg-secondary border-border" /></div>
+              )}
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 text-sm">
