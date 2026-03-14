@@ -227,8 +227,7 @@ const Atendimento = () => {
 
       setSaving(true);
       try {
-        // Auto-detect tipo: primeiro if no prior payments, recorrente otherwise
-        const tipo = totalPagoExistente === 0 ? "primeiro" : "recorrente";
+        const tipo = tipoPagamento;
 
         // Link to first treatment
         const tratamentoId = tratamentosExistentes[0]?.id;
