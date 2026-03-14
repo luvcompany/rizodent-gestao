@@ -284,42 +284,36 @@ const Relatorios = () => {
 
   // ========== POR ORIGEM / ANÚNCIO ==========
   const origemReport = useMemo(() => {
-    const pagosPorPaciente = new Map<string, number>();
-    filteredPagamentos.forEach((p) => {
-      pagosPorPaciente.set(p.paciente_id, (pagosPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
-    });
     const contratadoPorPaciente = new Map<string, number>();
-    filteredTratamentos.forEach((t) => {
-      contratadoPorPaciente.set(t.paciente_id, (contratadoPorPaciente.get(t.paciente_id) || 0) + Number(t.valor_contratado || 0));
+    filteredPagamentos.forEach((p) => {
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
 
     // By origem
-    const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number; pago: number }>();
+    const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.origem || "Não informada";
-      const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, contratado: 0, pago: 0 };
+      const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, contratado: 0 };
       entry.qtdPacientes += 1;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
-      entry.pago += pagosPorPaciente.get(p.id) || 0;
       origemMap.set(key, entry);
     });
 
     // By anúncio
-    const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number; pago: number }>();
+    const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.nome_anuncio || "Não informado";
-      const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, contratado: 0, pago: 0 };
+      const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, contratado: 0 };
       entry.qtdPacientes += 1;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
-      entry.pago += pagosPorPaciente.get(p.id) || 0;
       anuncioMap.set(key, entry);
     });
 
     return {
-      origens: Array.from(origemMap.values()).sort((a, b) => b.pago - a.pago),
-      anuncios: Array.from(anuncioMap.values()).sort((a, b) => b.pago - a.pago),
+      origens: Array.from(origemMap.values()).sort((a, b) => b.contratado - a.contratado),
+      anuncios: Array.from(anuncioMap.values()).sort((a, b) => b.contratado - a.contratado),
     };
-  }, [pacientes, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, filteredPagamentos]);
 
   // ========== EXPORT HELPERS ==========
   const exportToExcel = (data: any[], filename: string) => {
