@@ -40,6 +40,7 @@ const Relatorios = () => {
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
+  const [orcamentos, setOrcamentos] = useState<any[]>([]);
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState(() => {
@@ -55,15 +56,16 @@ const Relatorios = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: orcs }] = await Promise.all([
         supabase.from("clinicas").select("*").eq("ativa", true),
         supabase.from("pagamentos").select("*, clinicas(nome), pacientes(nome)"),
         supabase.from("tratamentos").select("*, clinicas(nome), pacientes(nome)"),
         supabase.from("pacientes").select("*"),
         supabase.from("leads_diarios").select("*, clinicas(nome)"),
+        supabase.from("orcamentos").select("*"),
       ]);
       setClinicas(cl || []); setPagamentos(pg || []); setTratamentos(tr || []);
-      setPacientes(pc || []); setLeadsData(ld || []);
+      setPacientes(pc || []); setLeadsData(ld || []); setOrcamentos(orcs || []);
       setLoading(false);
     };
     fetchAll();
@@ -92,23 +94,27 @@ const Relatorios = () => {
     });
   }, [tratamentos, clinicaFiltro]);
 
-  // ========== ORÇADO VS CONTRATADO ==========
+  // ========== ORÇADO VS CONTRATADO (using orcamentos table) ==========
   const contratadoVsPago = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
 
-    const totalOrcado = pacientes.reduce((s, p) => s + Number(p.valor_orcado || 0), 0);
+    // Orcado comes from orcamentos table
+    const orcadoPorPaciente = new Map<string, number>();
+    orcamentos.forEach((o) => {
+      orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
+    });
+
+    const totalOrcado = Array.from(orcadoPorPaciente.values()).reduce((s, v) => s + v, 0);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
 
     const pacienteMap = new Map<string, { id: string; nome: string; orcado: number; contratado: number; tratamentos: any[] }>();
-    // Build from pacientes (valor_orcado is on patient now)
     pacientes.forEach((pac) => {
-      const orcado = Number(pac.valor_orcado || 0);
+      const orcado = orcadoPorPaciente.get(pac.id) || 0;
       if (orcado <= 0) return;
       const entry = { id: pac.id, nome: pac.nome, orcado, contratado: contratadoPorPaciente.get(pac.id) || 0, tratamentos: [] as any[] };
-      // Add tratamentos info
       filteredTratamentos.filter(t => t.paciente_id === pac.id).forEach(t => {
         entry.tratamentos.push({ procedimento: t.procedimento, clinica: t.clinicas?.nome || "—" });
       });
@@ -120,7 +126,7 @@ const Relatorios = () => {
     const concluidos = lista.filter(p => p.contratado >= p.orcado);
 
     return { totalOrcado, totalContratado, emAberto, concluidos };
-  }, [pacientes, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
 
   // ========== DAILY REPORT ==========
   const dailyReport = useMemo(() => {
@@ -168,9 +174,8 @@ const Relatorios = () => {
   }, [dateFrom]);
 
   const predictability = useMemo(() => {
-    // Orçado = patient-level (stored on pacientes table)
-    const totalOrcado = pacientes.reduce((s, p) => s + Number(p.valor_orcado || 0), 0);
-    // Contratado = sum of pagamentos (actual payments made)
+    // Orçado from orcamentos table
+    const totalOrcado = orcamentos.reduce((s, o) => s + Number(o.valor_orcado || 0), 0);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
     const aReceber = Math.max(0, totalOrcado - totalContratado);
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
@@ -202,7 +207,7 @@ const Relatorios = () => {
       projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes, projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
       projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
     };
-  }, [pacientes, filteredPagamentos, filteredLeads, diasUteisMes]);
+  }, [orcamentos, filteredPagamentos, filteredLeads, diasUteisMes]);
 
   // ========== FUNNEL ==========
   const funnelReport = useMemo(() => {
@@ -242,11 +247,15 @@ const Relatorios = () => {
     return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
   }, [filteredPagamentos]);
 
-  // ========== RANKING PACIENTES ==========
+  // ========== RANKING PACIENTES (using orcamentos) ==========
   const rankingPacientes = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
+    });
+    const orcadoPorPaciente = new Map<string, number>();
+    orcamentos.forEach((o) => {
+      orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
     });
     const qtdTratPorPaciente = new Map<string, number>();
     filteredTratamentos.forEach((t) => {
@@ -255,84 +264,54 @@ const Relatorios = () => {
     return pacientes
       .map(p => ({
         nome: p.nome,
-        orcado: Number(p.valor_orcado || 0),
+        orcado: orcadoPorPaciente.get(p.id) || 0,
         contratado: contratadoPorPaciente.get(p.id) || 0,
         qtdTratamentos: qtdTratPorPaciente.get(p.id) || 0,
       }))
       .filter(p => p.contratado > 0 || p.orcado > 0)
       .sort((a, b) => b.contratado - a.contratado)
       .slice(0, 50);
-  }, [pacientes, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
 
-  // ========== POR ESPECIALIDADE ==========
+  // ========== POR ESPECIALIDADE (ONLY QUANTITY - no financials) ==========
   const especialidadeReport = useMemo(() => {
-    // Map pagamentos to tratamento to get especialidade
-    const tratamentoMap = new Map<string, string>();
-    filteredTratamentos.forEach((t) => {
-      tratamentoMap.set(t.id, t.especialidade || "Não informada");
-    });
-    const map = new Map<string, { especialidade: string; orcado: number; contratado: number; qtd: number }>();
-    // Orcado: we need to distribute patient-level orcado to especialidades proportionally
-    // Simple approach: use tratamento count per especialidade to distribute
-    const tratCountByEsp = new Map<string, number>();
-    const tratCountByPaciente = new Map<string, number>();
+    const map = new Map<string, { especialidade: string; qtd: number }>();
     filteredTratamentos.forEach((t) => {
       const key = t.especialidade || "Não informada";
-      tratCountByEsp.set(key, (tratCountByEsp.get(key) || 0) + 1);
-      tratCountByPaciente.set(t.paciente_id, (tratCountByPaciente.get(t.paciente_id) || 0) + 1);
-      const entry = map.get(key) || { especialidade: key, orcado: 0, contratado: 0, qtd: 0 };
+      const entry = map.get(key) || { especialidade: key, qtd: 0 };
       entry.qtd += 1;
       map.set(key, entry);
     });
-    // Distribute orcado proportionally per patient's tratamentos
-    pacientes.forEach((pac) => {
-      const orcado = Number(pac.valor_orcado || 0);
-      if (orcado <= 0) return;
-      const pacTrats = filteredTratamentos.filter(t => t.paciente_id === pac.id);
-      if (pacTrats.length === 0) return;
-      const perTrat = orcado / pacTrats.length;
-      pacTrats.forEach(t => {
-        const key = t.especialidade || "Não informada";
-        const entry = map.get(key);
-        if (entry) entry.orcado += perTrat;
-      });
-    });
-    // Sum pagamentos (contratado) per especialidade
-    filteredPagamentos.forEach((p) => {
-      const esp = tratamentoMap.get(p.tratamento_id) || "Não informada";
-      const entry = map.get(esp) || { especialidade: esp, orcado: 0, contratado: 0, qtd: 0 };
-      entry.contratado += Number(p.valor);
-      map.set(esp, entry);
-    });
-    return Array.from(map.values()).sort((a, b) => b.contratado - a.contratado);
-  }, [filteredTratamentos, filteredPagamentos]);
+    return Array.from(map.values()).sort((a, b) => b.qtd - a.qtd);
+  }, [filteredTratamentos]);
 
-  // ========== POR ORIGEM / ANÚNCIO ==========
+  // ========== POR ORIGEM / ANÚNCIO (using orcamentos) ==========
   const origemReport = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
-    // By origem - orcado comes from pacientes.valor_orcado directly
+    const orcadoPorPaciente = new Map<string, number>();
+    orcamentos.forEach((o) => {
+      orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
+    });
 
-    // By origem
     const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.origem || "Não informada";
       const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, orcado: 0, contratado: 0 };
       entry.qtdPacientes += 1;
-      entry.orcado += Number(p.valor_orcado || 0);
+      entry.orcado += orcadoPorPaciente.get(p.id) || 0;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
       origemMap.set(key, entry);
     });
 
-    // By anúncio
     const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.nome_anuncio || "Não informado";
       const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, orcado: 0, contratado: 0 };
       entry.qtdPacientes += 1;
-      entry.orcado += Number(p.valor_orcado || 0);
+      entry.orcado += orcadoPorPaciente.get(p.id) || 0;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
       anuncioMap.set(key, entry);
     });
@@ -341,7 +320,7 @@ const Relatorios = () => {
       origens: Array.from(origemMap.values()).sort((a, b) => b.contratado - a.contratado),
       anuncios: Array.from(anuncioMap.values()).sort((a, b) => b.contratado - a.contratado),
     };
-  }, [pacientes, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, orcamentos, filteredPagamentos]);
 
   // ========== EXPORT HELPERS ==========
   const exportToExcel = (data: any[], filename: string) => {
@@ -403,7 +382,7 @@ const Relatorios = () => {
     { key: "procedimento", label: "Por Procedimento", desc: "Procedimentos mais contratados por volume", icon: Stethoscope },
     { key: "forma_pgto", label: "Forma de Pagamento", desc: "Distribuição por forma de pagamento", icon: CreditCard },
     { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor contratado", icon: Users },
-    { key: "especialidade", label: "Por Especialidade", desc: "Faturamento agrupado por especialidade", icon: Stethoscope },
+    { key: "especialidade", label: "Por Especialidade", desc: "Quantidade de tratamentos por especialidade", icon: Stethoscope },
     { key: "origem", label: "Origem / Anúncio", desc: "Performance por canal de origem e anúncio", icon: Megaphone },
   ];
 
@@ -455,7 +434,6 @@ const Relatorios = () => {
           </CardContent>
         </Card>
 
-        {/* Dialog Em Aberto */}
         <Dialog open={showEmAbertoDialog} onOpenChange={setShowEmAbertoDialog}>
           <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
             <DialogHeader><DialogTitle>🔴 Pacientes em Aberto ({contratadoVsPago.emAberto.length})</DialogTitle></DialogHeader>
@@ -485,7 +463,6 @@ const Relatorios = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Dialog Concluídos */}
         <Dialog open={showConcluidosDialog} onOpenChange={setShowConcluidosDialog}>
           <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
             <DialogHeader><DialogTitle>🟢 Pacientes Concluídos ({contratadoVsPago.concluidos.length})</DialogTitle></DialogHeader>
@@ -796,34 +773,35 @@ const Relatorios = () => {
       case "especialidade": return (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Por Especialidade</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Tratamentos por Especialidade</CardTitle>
             <ShareButtons title="Relatório por Especialidade" data={especialidadeReport} getSummary={() =>
-              especialidadeReport.map((r) => `${r.especialidade}: Orçado ${formatCurrency(r.orcado)}, Contratado ${formatCurrency(r.contratado)}, Taxa ${r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}% (${r.qtd}x)`).join("\n")
+              especialidadeReport.map((r) => `${r.especialidade}: ${r.qtd} tratamentos`).join("\n")
             } />
           </CardHeader>
           <CardContent>
             <div className="grid gap-6 lg:grid-cols-2">
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
-                  <Pie data={especialidadeReport} dataKey="contratado" nameKey="especialidade" cx="50%" cy="50%" outerRadius={100} label={({ especialidade, percent }) => `${especialidade} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
+                  <Pie data={especialidadeReport} dataKey="qtd" nameKey="especialidade" cx="50%" cy="50%" outerRadius={100} label={({ especialidade, percent }) => `${especialidade} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
                     {especialidadeReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: number) => formatCurrency(v)} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: number) => `${v} tratamentos`} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead>Qtd</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead className="text-center">Tratamentos</TableHead><TableHead className="text-center">%</TableHead></TableRow></TableHeader>
                   <TableBody>
-                    {especialidadeReport.map((r) => (
-                      <TableRow key={r.especialidade}>
-                        <TableCell className="font-medium">{r.especialidade}</TableCell>
-                        <TableCell>{r.qtd}</TableCell>
-                        <TableCell>{formatCurrency(r.orcado)}</TableCell>
-                        <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                        <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.orcado > 0 ? ((r.contratado / r.orcado) * 100).toFixed(1) : 0}%</Badge></TableCell>
-                      </TableRow>
-                    ))}
+                    {especialidadeReport.map((r) => {
+                      const total = especialidadeReport.reduce((s, x) => s + x.qtd, 0);
+                      return (
+                        <TableRow key={r.especialidade}>
+                          <TableCell className="font-medium">{r.especialidade}</TableCell>
+                          <TableCell className="text-center font-semibold">{r.qtd}</TableCell>
+                          <TableCell className="text-center"><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{total > 0 ? ((r.qtd / total) * 100).toFixed(1) : 0}%</Badge></TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -895,57 +873,45 @@ const Relatorios = () => {
           <p className="text-sm text-muted-foreground">Selecione o tipo de relatório que deseja visualizar</p>
         </div>
         {selectedReport && (
-          <Button variant="outline" onClick={() => setSelectedReport(null)} className="gap-2">
-            <ArrowLeft size={16} /> Voltar aos relatórios
+          <Button variant="outline" size="sm" onClick={() => setSelectedReport(null)}>
+            <ArrowLeft size={14} className="mr-1" /> Voltar
           </Button>
         )}
       </div>
 
       {/* Filters */}
-      <Card className="gradient-card border-border shadow-card">
-        <CardContent className="pt-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Clínica</Label>
-              <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
-                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas</SelectItem>
-                  {clinicas.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>De</Label>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border" />
-            </div>
-            <div className="space-y-2">
-              <Label>Até</Label>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Clínica</span>
+          <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
+            <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas</SelectItem>
+              {clinicas.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">De</span>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border w-full sm:w-[160px]" />
+        </div>
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Até</span>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border w-full sm:w-[160px]" />
+        </div>
+      </div>
 
-      {/* Grid selector or report content */}
+      {/* Report selection or content */}
       {!selectedReport ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {reportTypes.map((rt) => (
-            <Card
-              key={rt.key}
-              className="gradient-card border-border shadow-card cursor-pointer hover:border-primary/30 transition-all hover:shadow-lg"
-              onClick={() => setSelectedReport(rt.key)}
-            >
-              <CardHeader className="flex flex-row items-center gap-3">
-                <div className="rounded-lg bg-primary/10 p-2.5">
-                  <rt.icon size={22} className="text-primary" />
-                </div>
+            <Card key={rt.key} className="gradient-card border-border shadow-card cursor-pointer hover:border-primary/30 transition-colors" onClick={() => setSelectedReport(rt.key)}>
+              <CardContent className="p-4 flex items-start gap-3">
+                <rt.icon size={20} className="text-primary mt-0.5 flex-shrink-0" />
                 <div>
-                  <CardTitle className="text-sm font-medium">{rt.label}</CardTitle>
+                  <p className="font-semibold text-sm">{rt.label}</p>
+                  <p className="text-xs text-muted-foreground">{rt.desc}</p>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <p className="text-xs text-muted-foreground">{rt.desc}</p>
               </CardContent>
             </Card>
           ))}

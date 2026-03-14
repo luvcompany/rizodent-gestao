@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Save, Plus, User, FileText, DollarSign, Trash2, Pencil, X, Check } from "lucide-react";
+import { ArrowLeft, Save, Plus, User, FileText, DollarSign, Trash2, Pencil, X, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -42,12 +42,14 @@ const PacienteDetalhe = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [paciente, setPaciente] = useState<any>(null);
+  const [orcamentos, setOrcamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tiposProcedimento, setTiposProcedimento] = useState<TipoProcedimento[]>([]);
   const [clinicas, setClinicas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [expandedOrcamento, setExpandedOrcamento] = useState<string | null>(null);
 
   // Patient editing
   const [editing, setEditing] = useState(false);
@@ -58,8 +60,8 @@ const PacienteDetalhe = () => {
   const [editOrigem, setEditOrigem] = useState("");
   const [editNomeAnuncio, setEditNomeAnuncio] = useState("");
 
-  // Valor orçado editing (patient-level)
-  const [editingValorOrcado, setEditingValorOrcado] = useState(false);
+  // Valor orçado editing (orcamento-level)
+  const [editingValorOrcadoId, setEditingValorOrcadoId] = useState<string | null>(null);
   const [editValorOrcado, setEditValorOrcado] = useState("");
 
   // Treatment editing
@@ -80,14 +82,16 @@ const PacienteDetalhe = () => {
     if (!id) return;
     const load = async () => {
       setLoading(true);
-      const [{ data: pac }, { data: trats }, { data: pags }, { data: tipos }, { data: cls }] = await Promise.all([
+      const [{ data: pac }, { data: orcs }, { data: trats }, { data: pags }, { data: tipos }, { data: cls }] = await Promise.all([
         supabase.from("pacientes").select("*").eq("id", id).maybeSingle(),
+        supabase.from("orcamentos").select("*").eq("paciente_id", id).order("created_at", { ascending: false }),
         supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", id).order("created_at", { ascending: false }),
         supabase.from("pagamentos").select("*, clinicas(nome)").eq("paciente_id", id).order("data_pagamento", { ascending: false }),
         supabase.from("tipos_procedimento").select("id, nome, especialidade, especialidade_secundaria, valor_referencia").eq("ativo", true).order("nome"),
         supabase.from("clinicas").select("*").eq("ativa", true),
       ]);
       setPaciente(pac);
+      setOrcamentos(orcs || []);
       setTratamentos(trats || []);
       setPagamentos(pags || []);
       setTiposProcedimento((tipos as TipoProcedimento[]) || []);
@@ -100,6 +104,10 @@ const PacienteDetalhe = () => {
         setEditOrigem(pac.origem || "");
         setEditNomeAnuncio(pac.nome_anuncio || "");
       }
+      // Auto-expand the first open orcamento
+      const openOrc = (orcs || []).find((o: any) => o.status === "aberto");
+      if (openOrc) setExpandedOrcamento(openOrc.id);
+      else if (orcs && orcs.length > 0) setExpandedOrcamento(orcs[0].id);
       setLoading(false);
     };
     load();
@@ -125,9 +133,9 @@ const PacienteDetalhe = () => {
 
   const handleDeletePaciente = async () => {
     if (!id) return;
-    // Delete pagamentos, then tratamentos, then paciente
     await supabase.from("pagamentos").delete().eq("paciente_id", id);
     await supabase.from("tratamentos").delete().eq("paciente_id", id);
+    await supabase.from("orcamentos").delete().eq("paciente_id", id);
     const { error } = await supabase.from("pacientes").delete().eq("id", id);
     if (error) { toast.error("Erro: " + error.message); return; }
     toast.success("Paciente excluído!");
@@ -142,9 +150,7 @@ const PacienteDetalhe = () => {
     setEditTratClinicaId(t.clinica_id);
   };
 
-  const cancelEditTratamento = () => {
-    setEditingTratId(null);
-  };
+  const cancelEditTratamento = () => { setEditingTratId(null); };
 
   const getEspecialidadesDisponiveis = (procNome: string) => {
     const tp = tiposProcedimento.find(t => t.nome === procNome);
@@ -189,14 +195,14 @@ const PacienteDetalhe = () => {
   };
 
   const handleSaveValorOrcado = async () => {
-    if (!id) return;
+    if (!editingValorOrcadoId) return;
     const valor = parseCurrency(editValorOrcado);
     setSaving(true);
-    const { error } = await supabase.from("pacientes").update({ valor_orcado: valor }).eq("id", id);
+    const { error } = await supabase.from("orcamentos").update({ valor_orcado: valor }).eq("id", editingValorOrcadoId);
     setSaving(false);
     if (error) { toast.error("Erro: " + error.message); return; }
-    setPaciente({ ...paciente, valor_orcado: valor });
-    setEditingValorOrcado(false);
+    setOrcamentos(prev => prev.map(o => o.id === editingValorOrcadoId ? { ...o, valor_orcado: valor } : o));
+    setEditingValorOrcadoId(null);
     toast.success("Valor orçado atualizado!");
   };
 
@@ -241,10 +247,22 @@ const PacienteDetalhe = () => {
     toast.success("Pagamento excluído!");
   };
 
-  const totalOrcado = Number(paciente?.valor_orcado || 0);
-  const totalContratado = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
-  const totalNaoContratado = Math.max(0, totalOrcado - totalContratado);
-  const orcamentoConcluido = totalOrcado > 0 && totalContratado >= totalOrcado;
+  const handleDeleteOrcamento = async (orcId: string) => {
+    // Delete pagamentos and tratamentos linked to this orcamento
+    await supabase.from("pagamentos").delete().eq("orcamento_id", orcId);
+    await supabase.from("tratamentos").delete().eq("orcamento_id", orcId);
+    const { error } = await supabase.from("orcamentos").delete().eq("id", orcId);
+    if (error) { toast.error("Erro: " + error.message); return; }
+    setOrcamentos(prev => prev.filter(o => o.id !== orcId));
+    setTratamentos(prev => prev.filter(t => t.orcamento_id !== orcId));
+    setPagamentos(prev => prev.filter(p => p.orcamento_id !== orcId));
+    toast.success("Orçamento excluído!");
+  };
+
+  // Global totals
+  const totalGlobalOrcado = orcamentos.reduce((s, o) => s + Number(o.valor_orcado || 0), 0);
+  const totalGlobalContratado = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
+  const totalGlobalNaoContratado = Math.max(0, totalGlobalOrcado - totalGlobalContratado);
 
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>;
   if (!paciente) return <div className="text-center text-muted-foreground py-12">Paciente não encontrado.</div>;
@@ -267,16 +285,12 @@ const PacienteDetalhe = () => {
         </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="destructive" size="icon">
-              <Trash2 size={16} />
-            </Button>
+            <Button variant="destructive" size="icon"><Trash2 size={16} /></Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Excluir paciente?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Isso excluirá permanentemente o paciente <strong>{paciente.nome}</strong>, todos os seus tratamentos e pagamentos. Esta ação não pode ser desfeita.
-              </AlertDialogDescription>
+              <AlertDialogDescription>Isso excluirá permanentemente o paciente <strong>{paciente.nome}</strong>, todos os seus orçamentos, tratamentos e pagamentos.</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
@@ -286,47 +300,34 @@ const PacienteDetalhe = () => {
         </AlertDialog>
       </div>
 
-      {/* KPIs */}
+      {/* Global KPIs */}
       <div className="grid gap-4 sm:grid-cols-4">
-        <Card className="gradient-card border-border shadow-card cursor-pointer hover:border-primary/30 transition-colors" onClick={() => { setEditingValorOrcado(true); setEditValorOrcado(formatCurrency(totalOrcado)); }}>
+        <Card className="gradient-card border-border shadow-card">
           <CardContent className="pt-4 pb-3 text-center">
             <DollarSign size={20} className="mx-auto text-primary mb-1" />
-            {editingValorOrcado ? (
-              <div className="space-y-2">
-                <Input value={editValorOrcado} onChange={(e) => setEditValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm text-center" autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleSaveValorOrcado(); if (e.key === "Escape") setEditingValorOrcado(false); }} onClick={(e) => e.stopPropagation()} />
-                <div className="flex gap-1 justify-center">
-                  <Button size="sm" className="h-6 text-xs px-2" onClick={(e) => { e.stopPropagation(); handleSaveValorOrcado(); }} disabled={saving}><Check size={12} /></Button>
-                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={(e) => { e.stopPropagation(); setEditingValorOrcado(false); }}><X size={12} /></Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <p className="text-2xl font-bold text-primary">{formatCurrency(totalOrcado)}</p>
-                <p className="text-xs text-muted-foreground">Total Orçado <Pencil size={10} className="inline ml-1" /></p>
-              </>
-            )}
+            <p className="text-2xl font-bold text-primary">{formatCurrency(totalGlobalOrcado)}</p>
+            <p className="text-xs text-muted-foreground">Total Orçado</p>
           </CardContent>
         </Card>
-        <Card className={`gradient-card border-border shadow-card ${orcamentoConcluido ? 'border-green-500/40' : ''}`}>
+        <Card className={`gradient-card border-border shadow-card ${totalGlobalOrcado > 0 && totalGlobalContratado >= totalGlobalOrcado ? 'border-green-500/40' : ''}`}>
           <CardContent className="pt-4 pb-3 text-center">
-            <DollarSign size={20} className={`mx-auto mb-1 ${orcamentoConcluido ? 'text-green-500' : 'text-muted-foreground'}`} />
-            <p className={`text-2xl font-bold ${orcamentoConcluido ? 'text-green-500' : ''}`}>{formatCurrency(totalContratado)}</p>
+            <DollarSign size={20} className={`mx-auto mb-1 ${totalGlobalContratado >= totalGlobalOrcado && totalGlobalOrcado > 0 ? 'text-green-500' : 'text-muted-foreground'}`} />
+            <p className={`text-2xl font-bold ${totalGlobalContratado >= totalGlobalOrcado && totalGlobalOrcado > 0 ? 'text-green-500' : ''}`}>{formatCurrency(totalGlobalContratado)}</p>
             <p className="text-xs text-muted-foreground">Total Contratado</p>
-            {orcamentoConcluido && <Badge className="mt-1 bg-green-600/20 text-green-400 border-green-600/30 text-xs">Concluído</Badge>}
           </CardContent>
         </Card>
         <Card className="gradient-card border-border shadow-card">
           <CardContent className="pt-4 pb-3 text-center">
             <DollarSign size={20} className="mx-auto text-destructive mb-1" />
-            <p className="text-2xl font-bold text-destructive">{formatCurrency(totalNaoContratado)}</p>
+            <p className="text-2xl font-bold text-destructive">{formatCurrency(totalGlobalNaoContratado)}</p>
             <p className="text-xs text-muted-foreground">Não Contratado</p>
           </CardContent>
         </Card>
         <Card className="gradient-card border-border shadow-card">
           <CardContent className="pt-4 pb-3 text-center">
             <FileText size={20} className="mx-auto text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{tratamentos.length}</p>
-            <p className="text-xs text-muted-foreground">Tratamentos</p>
+            <p className="text-2xl font-bold">{orcamentos.length}</p>
+            <p className="text-xs text-muted-foreground">Orçamentos</p>
           </CardContent>
         </Card>
       </div>
@@ -361,9 +362,7 @@ const PacienteDetalhe = () => {
                 <Label>Origem</Label>
                 <Select value={editOrigem} onValueChange={setEditOrigem}>
                   <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    {origens.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                  </SelectContent>
+                  <SelectContent>{origens.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               {editOrigem === "Anúncio" && (
@@ -388,229 +387,281 @@ const PacienteDetalhe = () => {
         </CardContent>
       </Card>
 
-      {/* Treatments */}
-      <Card className="gradient-card border-border shadow-card">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileText size={18} className="text-primary" /> Tratamentos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {tratamentos.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">Nenhum tratamento registrado.</p>
-          ) : (
-            <div className="space-y-3">
-              {tratamentos.map((t) => {
-                const isEditing = editingTratId === t.id;
+      {/* Orçamentos (each one independently) */}
+      {orcamentos.length === 0 ? (
+        <Card className="gradient-card border-border shadow-card">
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Nenhum orçamento registrado para este paciente.
+          </CardContent>
+        </Card>
+      ) : (
+        orcamentos.map((orc, orcIndex) => {
+          const orcTratamentos = tratamentos.filter(t => t.orcamento_id === orc.id);
+          const orcPagamentos = pagamentos.filter(p => p.orcamento_id === orc.id);
+          const orcOrcado = Number(orc.valor_orcado || 0);
+          const orcContratado = orcPagamentos.reduce((s: number, p: any) => s + Number(p.valor || 0), 0);
+          const orcNaoContratado = Math.max(0, orcOrcado - orcContratado);
+          const concluido = orcOrcado > 0 && orcContratado >= orcOrcado;
+          const isExpanded = expandedOrcamento === orc.id;
+          const isEditingOrcado = editingValorOrcadoId === orc.id;
 
-                if (isEditing) {
-                  return (
-                    <div key={t.id} className="rounded-lg border-2 border-primary/40 p-4 space-y-3 bg-primary/5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-primary">Editando Tratamento</span>
-                        <Button variant="ghost" size="sm" onClick={cancelEditTratamento} className="h-7 w-7 p-0">
-                          <X size={14} />
-                        </Button>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Procedimento</Label>
-                          <Select value={editTratProcedimento} onValueChange={handleEditTratProcedimentoChange}>
-                            <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {tiposProcedimento.map(p => <SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Especialidade</Label>
-                          {editTratMultEsp ? (
-                            <Select value={editTratEspecialidade} onValueChange={setEditTratEspecialidade}>
-                              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                              <SelectContent>
-                                {editTratEspDisp.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Input readOnly value={editTratEspecialidade || "—"} className="bg-muted border-border cursor-not-allowed text-sm" />
-                          )}
-                        </div>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Clínica</Label>
-                          <Select value={editTratClinicaId} onValueChange={setEditTratClinicaId}>
-                            <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {clinicas.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Status</Label>
-                          <Select value={editTratStatus} onValueChange={setEditTratStatus}>
-                            <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ativo">Ativo</SelectItem>
-                              <SelectItem value="concluido">Concluído</SelectItem>
-                              <SelectItem value="cancelado">Cancelado</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <Button size="sm" onClick={handleSaveTratamento} disabled={saving} className="w-full">
-                        <Save size={14} className="mr-1" /> Salvar Tratamento
-                      </Button>
+          return (
+            <Card key={orc.id} className={`gradient-card border-border shadow-card ${concluido ? 'border-green-500/30' : ''}`}>
+              <CardHeader className="cursor-pointer" onClick={() => setExpandedOrcamento(isExpanded ? null : orc.id)}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <DollarSign size={18} className="text-primary" />
+                      Orçamento #{orcamentos.length - orcIndex}
+                    </CardTitle>
+                    {concluido && <Badge className="bg-green-600/20 text-green-400 border-green-600/30 text-xs">Concluído</Badge>}
+                    {!concluido && <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">Aberto</Badge>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-sm font-semibold">{formatCurrency(orcOrcado)}</p>
+                      <p className="text-xs text-muted-foreground">Contratado: {formatCurrency(orcContratado)}</p>
                     </div>
-                  );
-                }
-
-                return (
-                  <div key={t.id} className="rounded-lg border border-border p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-semibold">{t.procedimento}</span>
-                        <span className="text-xs text-muted-foreground ml-2">{(t.clinicas as any)?.nome}</span>
-                        {t.especialidade && <span className="text-xs text-muted-foreground ml-2">· {t.especialidade}</span>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={t.status === "ativo" ? "default" : "secondary"} className={t.status === "ativo" ? "bg-green-600/20 text-green-400 border-green-600/30" : ""}>
-                          {t.status}
-                        </Badge>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditTratamento(t)}>
-                          <Pencil size={13} />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive">
-                              <Trash2 size={13} />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Excluir tratamento?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Isso excluirá o tratamento <strong>{t.procedimento}</strong> e todos os pagamentos vinculados. Esta ação não pode ser desfeita.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteTratamento(t.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
+                    {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                  </div>
+                </div>
+              </CardHeader>
+              {isExpanded && (
+                <CardContent className="space-y-4 pt-0">
+                  {/* Orcamento KPIs */}
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-lg bg-secondary p-3 cursor-pointer hover:bg-secondary/80 transition-colors" onClick={(e) => { e.stopPropagation(); setEditingValorOrcadoId(orc.id); setEditValorOrcado(formatCurrency(orcOrcado)); }}>
+                      {isEditingOrcado ? (
+                        <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                          <Input value={editValorOrcado} onChange={(e) => setEditValorOrcado(formatCurrencyInput(e.target.value))} className="bg-background border-border h-8 text-sm text-center" autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleSaveValorOrcado(); if (e.key === "Escape") setEditingValorOrcadoId(null); }} />
+                          <div className="flex gap-1 justify-center">
+                            <Button size="sm" className="h-6 text-xs px-2" onClick={() => handleSaveValorOrcado()} disabled={saving}><Check size={12} /></Button>
+                            <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setEditingValorOrcadoId(null)}><X size={12} /></Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">Orçado <Pencil size={10} className="inline ml-1" /></p>
+                          <p className="text-lg font-bold text-primary">{formatCurrency(orcOrcado)}</p>
+                        </>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-secondary p-3">
+                      <p className="text-xs text-muted-foreground">Contratado</p>
+                      <p className={`text-lg font-bold ${concluido ? 'text-green-500' : ''}`}>{formatCurrency(orcContratado)}</p>
+                    </div>
+                    <div className="rounded-lg bg-secondary p-3">
+                      <p className="text-xs text-muted-foreground">Restante</p>
+                      <p className="text-lg font-bold text-destructive">{formatCurrency(orcNaoContratado)}</p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Pagamentos */}
-      <Card className="gradient-card border-border shadow-card">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <DollarSign size={18} className="text-primary" /> Pagamentos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {pagamentos.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">Nenhum pagamento registrado.</p>
-          ) : (
-            <div className="space-y-2">
-              {pagamentos.map((p) => {
-                const isEditingPag = editingPagId === p.id;
+                  {/* Tratamentos deste orçamento */}
+                  <div>
+                    <p className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                      <FileText size={14} /> Tratamentos ({orcTratamentos.length})
+                    </p>
+                    {orcTratamentos.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-2">Nenhum tratamento neste orçamento.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {orcTratamentos.map((t) => {
+                          const isEditing = editingTratId === t.id;
+                          if (isEditing) {
+                            return (
+                              <div key={t.id} className="rounded-lg border-2 border-primary/40 p-4 space-y-3 bg-primary/5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-semibold text-primary">Editando Tratamento</span>
+                                  <Button variant="ghost" size="sm" onClick={cancelEditTratamento} className="h-7 w-7 p-0"><X size={14} /></Button>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs">Procedimento</Label>
+                                    <Select value={editTratProcedimento} onValueChange={handleEditTratProcedimentoChange}>
+                                      <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                                      <SelectContent>{tiposProcedimento.map(p => <SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs">Especialidade</Label>
+                                    {editTratMultEsp ? (
+                                      <Select value={editTratEspecialidade} onValueChange={setEditTratEspecialidade}>
+                                        <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                        <SelectContent>{editTratEspDisp.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}</SelectContent>
+                                      </Select>
+                                    ) : (
+                                      <Input readOnly value={editTratEspecialidade || "—"} className="bg-muted border-border cursor-not-allowed text-sm" />
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs">Clínica</Label>
+                                    <Select value={editTratClinicaId} onValueChange={setEditTratClinicaId}>
+                                      <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                                      <SelectContent>{clinicas.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs">Status</Label>
+                                    <Select value={editTratStatus} onValueChange={setEditTratStatus}>
+                                      <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="ativo">Ativo</SelectItem>
+                                        <SelectItem value="concluido">Concluído</SelectItem>
+                                        <SelectItem value="cancelado">Cancelado</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                <Button size="sm" onClick={handleSaveTratamento} disabled={saving} className="w-full">
+                                  <Save size={14} className="mr-1" /> Salvar Tratamento
+                                </Button>
+                              </div>
+                            );
+                          }
 
-                if (isEditingPag) {
-                  return (
-                    <div key={p.id} className="rounded-lg border-2 border-primary/40 p-3 space-y-3 bg-primary/5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-primary">Editando Pagamento</span>
-                        <Button variant="ghost" size="sm" onClick={() => setEditingPagId(null)} className="h-7 w-7 p-0">
-                          <X size={14} />
-                        </Button>
+                          return (
+                            <div key={t.id} className="rounded-lg border border-border p-3">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <span className="font-semibold">{t.procedimento}</span>
+                                  <span className="text-xs text-muted-foreground ml-2">{(t.clinicas as any)?.nome}</span>
+                                  {t.especialidade && <span className="text-xs text-muted-foreground ml-2">· {t.especialidade}</span>}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={t.status === "ativo" ? "default" : "secondary"} className={t.status === "ativo" ? "bg-green-600/20 text-green-400 border-green-600/30" : ""}>{t.status}</Badge>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditTratamento(t)}><Pencil size={13} /></Button>
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive"><Trash2 size={13} /></Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Excluir tratamento?</AlertDialogTitle>
+                                        <AlertDialogDescription>Isso excluirá o tratamento <strong>{t.procedimento}</strong> e todos os pagamentos vinculados.</AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeleteTratamento(t.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Valor</Label>
-                          <Input value={editPagValor} onChange={(e) => setEditPagValor(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Data</Label>
-                          <Input type="date" value={editPagData} onChange={(e) => setEditPagData(e.target.value)} className="bg-secondary border-border h-8 text-sm" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Forma</Label>
-                          <Select value={editPagForma} onValueChange={setEditPagForma}>
-                            <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {["Dinheiro", "PIX", "Cartão Crédito", "Cartão Débito", "Boleto", "Cheque", "Não informado"].map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Tipo</Label>
-                          <Select value={editPagTipo} onValueChange={setEditPagTipo}>
-                            <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="primeiro">1º Pagamento</SelectItem>
-                              <SelectItem value="recorrente">Recorrente</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="flex justify-end">
-                        <Button size="sm" onClick={handleSavePagamento} disabled={saving} className="h-7 text-xs">
-                          <Check size={12} className="mr-1" /> Salvar
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                      <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
-                      <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
-                      <span className="text-xs text-muted-foreground ml-2">· {p.forma_pagamento}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditPagamento(p)}>
-                        <Pencil size={13} />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive">
-                            <Trash2 size={13} />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Excluir pagamento?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Excluir o pagamento de <strong>{formatCurrency(Number(p.valor))}</strong> do dia {new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}? Esta ação não pode ser desfeita.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeletePagamento(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+
+                  {/* Pagamentos deste orçamento */}
+                  <div>
+                    <p className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                      <DollarSign size={14} /> Pagamentos ({orcPagamentos.length})
+                    </p>
+                    {orcPagamentos.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-2">Nenhum pagamento neste orçamento.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {orcPagamentos.map((p) => {
+                          const isEditingPag = editingPagId === p.id;
+                          if (isEditingPag) {
+                            return (
+                              <div key={p.id} className="rounded-lg border-2 border-primary/40 p-3 space-y-3 bg-primary/5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-semibold text-primary">Editando Pagamento</span>
+                                  <Button variant="ghost" size="sm" onClick={() => setEditingPagId(null)} className="h-7 w-7 p-0"><X size={14} /></Button>
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="space-y-1"><Label className="text-xs">Valor</Label><Input value={editPagValor} onChange={(e) => setEditPagValor(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm" /></div>
+                                  <div className="space-y-1"><Label className="text-xs">Data</Label><Input type="date" value={editPagData} onChange={(e) => setEditPagData(e.target.value)} className="bg-secondary border-border h-8 text-sm" /></div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Forma</Label>
+                                    <Select value={editPagForma} onValueChange={setEditPagForma}>
+                                      <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
+                                      <SelectContent>{["Dinheiro", "PIX", "Cartão Crédito", "Cartão Débito", "Boleto", "Cheque", "Não informado"].map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Tipo</Label>
+                                    <Select value={editPagTipo} onValueChange={setEditPagTipo}>
+                                      <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="primeiro">1º Pagamento</SelectItem>
+                                        <SelectItem value="recorrente">Recorrente</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                <div className="flex justify-end">
+                                  <Button size="sm" onClick={handleSavePagamento} disabled={saving} className="h-7 text-xs"><Check size={12} className="mr-1" /> Salvar</Button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                                <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
+                                <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
+                                <span className="text-xs text-muted-foreground ml-2">· {p.forma_pagamento}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
+                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditPagamento(p)}><Pencil size={13} /></Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive"><Trash2 size={13} /></Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Excluir pagamento?</AlertDialogTitle>
+                                      <AlertDialogDescription>Excluir o pagamento de <strong>{formatCurrency(Number(p.valor))}</strong>?</AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDeletePagamento(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Delete orcamento */}
+                  <div className="flex justify-end pt-2 border-t border-border">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive text-xs">
+                          <Trash2 size={12} className="mr-1" /> Excluir orçamento
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir orçamento?</AlertDialogTitle>
+                          <AlertDialogDescription>Isso excluirá o orçamento #{orcamentos.length - orcIndex} e todos os tratamentos e pagamentos vinculados.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDeleteOrcamento(orc.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          );
+        })
+      )}
     </div>
   );
 };
