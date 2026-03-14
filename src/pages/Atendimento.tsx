@@ -64,6 +64,7 @@ const Atendimento = () => {
   const [valorContratadoGeral, setValorContratadoGeral] = useState("");
   const [origem, setOrigem] = useState("");
   const [valorPago, setValorPago] = useState("");
+  const [tipoPagamento, setTipoPagamento] = useState("primeiro");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [origemOutrosDesc, setOrigemOutrosDesc] = useState("");
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
@@ -171,7 +172,7 @@ const Atendimento = () => {
   const resetForm = () => {
     setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
     setProcedimentos([createEmptyProcedimento()]);
-    setValorPago("");
+    setValorPago(""); setTipoPagamento("primeiro");
     setOrigem(""); setNomeAnuncio(""); setOrigemOutrosDesc(""); setPacienteSelecionadoId(null);
     setDataPagamento(new Date().toISOString().split("T")[0]);
     setValorOrcadoGeral(""); setValorContratadoGeral("");
@@ -226,8 +227,7 @@ const Atendimento = () => {
 
       setSaving(true);
       try {
-        // Auto-detect tipo: primeiro if no prior payments, recorrente otherwise
-        const tipo = totalPagoExistente === 0 ? "primeiro" : "recorrente";
+        const tipo = tipoPagamento;
 
         // Link to first treatment
         const tratamentoId = tratamentosExistentes[0]?.id;
@@ -326,7 +326,7 @@ const Atendimento = () => {
             clinica_id: clinicaId,
             valor: totalContratado,
             forma_pagamento: "Não informado",
-            tipo: "primeiro",
+            tipo: tipoPagamento,
             data_pagamento: dataPagamento,
             created_by: user?.id,
           });
@@ -472,9 +472,6 @@ const Atendimento = () => {
                       <p className="text-xs text-muted-foreground mt-1">
                         Orçado: {formatCurrencyDisplay(totalOrcadoExistente)} · Contratado: {formatCurrencyDisplay(totalPagoExistente)} · Restante: {formatCurrencyDisplay(naoContratadoExistente)}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Tipo: {totalPagoExistente === 0 ? "Primeiro pagamento" : "Recorrente"}
-                      </p>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={() => setModo("selecionar")}>
                       Voltar
@@ -605,15 +602,7 @@ const Atendimento = () => {
 
             {/* Payment-only fields */}
             {showPagamentoFields && (
-              <div className="space-y-2">
-                <Label>Valor do Pagamento (R$)</Label>
-                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-              </div>
-            )}
-
-            {/* Payment details */}
-            {(showNovoTratamentoFields || showPagamentoFields) && (
-              <>
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Data do Pagamento</Label>
                   <div className="relative">
@@ -621,6 +610,48 @@ const Atendimento = () => {
                     <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <Label>Tipo de Pagamento</Label>
+                  <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
+                    <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
+                      <SelectItem value="recorrente">Recorrente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor do Pagamento (R$)</Label>
+                  <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
+                </div>
+              </div>
+            )}
+
+            {/* New treatment: date + origin */}
+            {showNovoTratamentoFields && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Data do Pagamento</Label>
+                  <div className="relative">
+                    <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo de Pagamento</Label>
+                  <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
+                    <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
+                      <SelectItem value="recorrente">Recorrente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {(showNovoTratamentoFields || showPagamentoFields) && (
+              <>
 
                 {showNovoTratamentoFields && (
                   <>

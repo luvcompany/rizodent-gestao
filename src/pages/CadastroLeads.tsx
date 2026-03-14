@@ -183,26 +183,34 @@ const CadastroLeads = () => {
               </div>
             )}
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Leads Novos</Label>
-                <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
+            <div className="space-y-2">
+              <Label>Leads Novos</Label>
+              <p className="text-xs text-muted-foreground">Quantidade de leads novos que entraram no dia</p>
+              <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
+            </div>
+
+            <div className="border-t border-border pt-4 space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Atendimentos do Dia</p>
+                <p className="text-xs text-muted-foreground">Total de leads atendidos no dia, independente de quando entraram</p>
               </div>
-              <div className="space-y-2">
-                <Label>Agendaram</Label>
-                <Input type="number" min="0" placeholder="0" value={agendaram} onChange={(e) => setAgendaram(e.target.value)} className="bg-secondary border-border" />
-              </div>
-              <div className="space-y-2">
-                <Label>Faltaram</Label>
-                <Input type="number" min="0" placeholder="0" value={faltaram} onChange={(e) => setFaltaram(e.target.value)} className="bg-secondary border-border" />
-              </div>
-              <div className="space-y-2">
-                <Label>Contrataram</Label>
-                <Input type="number" min="0" placeholder="0" value={contrataram} onChange={(e) => setContrataram(e.target.value)} className="bg-secondary border-border" />
-              </div>
-              <div className="space-y-2">
-                <Label>Não Contrataram</Label>
-                <Input type="number" min="0" placeholder="0" value={naoContrataram} onChange={(e) => setNaoContrataram(e.target.value)} className="bg-secondary border-border" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Agendaram</Label>
+                  <Input type="number" min="0" placeholder="0" value={agendaram} onChange={(e) => setAgendaram(e.target.value)} className="bg-secondary border-border" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Faltaram</Label>
+                  <Input type="number" min="0" placeholder="0" value={faltaram} onChange={(e) => setFaltaram(e.target.value)} className="bg-secondary border-border" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contrataram</Label>
+                  <Input type="number" min="0" placeholder="0" value={contrataram} onChange={(e) => setContrataram(e.target.value)} className="bg-secondary border-border" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Não Contrataram</Label>
+                  <Input type="number" min="0" placeholder="0" value={naoContrataram} onChange={(e) => setNaoContrataram(e.target.value)} className="bg-secondary border-border" />
+                </div>
               </div>
             </div>
 
