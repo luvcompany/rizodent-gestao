@@ -311,8 +311,8 @@ const Relatorios = () => {
     });
 
     const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
-    pacientes.forEach((p) => {
-      const key = p.nome_anuncio || "Não informado";
+    pacientes.filter((p) => p.nome_anuncio && p.nome_anuncio.trim() !== "").forEach((p) => {
+      const key = p.nome_anuncio!;
       const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, orcado: 0, contratado: 0 };
       entry.qtdPacientes += 1;
       entry.orcado += orcadoPorPaciente.get(p.id) || 0;
