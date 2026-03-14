@@ -602,15 +602,7 @@ const Atendimento = () => {
 
             {/* Payment-only fields */}
             {showPagamentoFields && (
-              <div className="space-y-2">
-                <Label>Valor do Pagamento (R$)</Label>
-                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-              </div>
-            )}
-
-            {/* Payment details */}
-            {(showNovoTratamentoFields || showPagamentoFields) && (
-              <>
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Data do Pagamento</Label>
                   <div className="relative">
@@ -618,6 +610,48 @@ const Atendimento = () => {
                     <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <Label>Tipo de Pagamento</Label>
+                  <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
+                    <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
+                      <SelectItem value="recorrente">Recorrente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor do Pagamento (R$)</Label>
+                  <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
+                </div>
+              </div>
+            )}
+
+            {/* New treatment: date + origin */}
+            {showNovoTratamentoFields && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Data do Pagamento</Label>
+                  <div className="relative">
+                    <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo de Pagamento</Label>
+                  <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
+                    <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
+                      <SelectItem value="recorrente">Recorrente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {(showNovoTratamentoFields || showPagamentoFields) && (
+              <>
 
                 {showNovoTratamentoFields && (
                   <>
