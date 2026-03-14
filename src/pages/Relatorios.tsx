@@ -876,6 +876,134 @@ const Relatorios = () => {
         </Card>
       );
 
+      case "pagamentos": {
+        const pgByClinica = new Map<string, { clinica: string; qtd: number; total: number }>();
+        filteredPagamentos.forEach((p) => {
+          const clinicaNome = p.clinicas?.nome || "Sem clínica";
+          const entry = pgByClinica.get(clinicaNome) || { clinica: clinicaNome, qtd: 0, total: 0 };
+          entry.qtd += 1;
+          entry.total += Number(p.valor);
+          pgByClinica.set(clinicaNome, entry);
+        });
+        const pgClinicaData = Array.from(pgByClinica.values()).sort((a, b) => b.total - a.total);
+        const pgByForma = new Map<string, { forma: string; qtd: number; total: number }>();
+        filteredPagamentos.forEach((p) => {
+          const forma = p.forma_pagamento || "Não informado";
+          const entry = pgByForma.get(forma) || { forma, qtd: 0, total: 0 };
+          entry.qtd += 1;
+          entry.total += Number(p.valor);
+          pgByForma.set(forma, entry);
+        });
+        const pgFormaData = Array.from(pgByForma.values()).sort((a, b) => b.total - a.total);
+        const totalPagamentos = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
+
+        return (
+          <Card className="gradient-card border-border shadow-card">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-base flex items-center gap-2"><CreditCard size={18} className="text-primary" /> Relatório de Pagamentos</CardTitle>
+              <ShareButtons title="Relatório de Pagamentos" data={filteredPagamentos.map(p => ({ data: p.data_pagamento, paciente: p.pacientes?.nome, valor: p.valor, forma: p.forma_pagamento, tipo: p.tipo }))} getSummary={() =>
+                `Total: ${formatCurrency(totalPagamentos)}\nQuantidade: ${filteredPagamentos.length} pagamentos\n\nPor forma:\n${pgFormaData.map(f => `${f.forma}: ${f.qtd}x - ${formatCurrency(f.total)}`).join("\n")}`
+              } />
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Total de Pagamentos</p>
+                  <p className="text-xl font-bold text-primary">{filteredPagamentos.length}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Valor Total</p>
+                  <p className="text-xl font-bold text-accent-foreground">{formatCurrency(totalPagamentos)}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Ticket Médio</p>
+                  <p className="text-xl font-bold text-primary">{formatCurrency(filteredPagamentos.length > 0 ? totalPagamentos / filteredPagamentos.length : 0)}</p>
+                </div>
+              </div>
+
+              <Tabs defaultValue="clinica" className="space-y-4">
+                <TabsList className="bg-secondary">
+                  <TabsTrigger value="clinica">Por Clínica</TabsTrigger>
+                  <TabsTrigger value="forma">Por Forma de Pgto</TabsTrigger>
+                  <TabsTrigger value="lista">Lista Completa</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="clinica">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={pgClinicaData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                      <XAxis dataKey="clinica" stroke="hsl(0,0%,64%)" fontSize={11} />
+                      <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number, name: string) => [name === "total" ? formatCurrency(v) : v, name === "total" ? "Valor" : "Quantidade"]} />
+                      <Bar dataKey="total" fill="hsl(25,100%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="mt-4 overflow-x-auto">
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Clínica</TableHead><TableHead>Qtd</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {pgClinicaData.map((r) => (
+                          <TableRow key={r.clinica}>
+                            <TableCell className="font-medium">{r.clinica}</TableCell>
+                            <TableCell>{r.qtd}</TableCell>
+                            <TableCell>{formatCurrency(r.total)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="forma">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={pgFormaData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                      <XAxis dataKey="forma" stroke="hsl(0,0%,64%)" fontSize={11} />
+                      <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number, name: string) => [name === "total" ? formatCurrency(v) : v, name === "total" ? "Valor" : "Quantidade"]} />
+                      <Bar dataKey="total" fill="hsl(35,100%,55%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="mt-4 overflow-x-auto">
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Forma</TableHead><TableHead>Qtd</TableHead><TableHead>Total</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {pgFormaData.map((r) => (
+                          <TableRow key={r.forma}>
+                            <TableCell className="font-medium">{r.forma}</TableCell>
+                            <TableCell>{r.qtd}</TableCell>
+                            <TableCell>{formatCurrency(r.total)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="lista">
+                  <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Data</TableHead><TableHead>Paciente</TableHead><TableHead>Valor</TableHead><TableHead>Forma</TableHead><TableHead>Tipo</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {filteredPagamentos.sort((a, b) => b.data_pagamento.localeCompare(a.data_pagamento)).map((p) => (
+                          <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.paciente_id}`)}>
+                            <TableCell>{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</TableCell>
+                            <TableCell className="font-medium text-primary hover:underline">{p.pacientes?.nome || "—"}</TableCell>
+                            <TableCell>{formatCurrency(Number(p.valor))}</TableCell>
+                            <TableCell>{p.forma_pagamento}</TableCell>
+                            <TableCell><Badge variant="outline" className={p.tipo === "primeiro" ? "bg-primary/10 text-primary border-primary/30" : "bg-secondary"}>{p.tipo === "primeiro" ? "Novo" : "Recorrente"}</Badge></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        );
+      }
+
       default: return null;
     }
   };

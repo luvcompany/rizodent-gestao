@@ -182,7 +182,6 @@ const Dashboard = () => {
   { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
   { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign },
   { title: "Previsão Mensal", value: formatCurrency(projecaoMensal), icon: TrendingUp, subtitle: `${diasUteisMes} dias úteis no mês` },
-  { title: "Pagamentos", value: String(filtered.pagamentos.length), icon: DollarSign },
   { title: "Pacientes", value: String(totalPacientes), icon: Users }];
 
 
