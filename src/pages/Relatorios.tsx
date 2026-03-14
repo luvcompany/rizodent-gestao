@@ -241,20 +241,20 @@ const Relatorios = () => {
 
   // ========== RANKING PACIENTES ==========
   const rankingPacientes = useMemo(() => {
-    const map = new Map<string, { nome: string; pago: number; contratado: number; qtdTratamentos: number }>();
-    const pagosPorPaciente = new Map<string, number>();
+    const map = new Map<string, { nome: string; contratado: number; orcado: number; qtdTratamentos: number }>();
+    const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
-      pagosPorPaciente.set(p.paciente_id, (pagosPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
     filteredTratamentos.forEach((t) => {
       const pid = t.paciente_id;
-      const entry = map.get(pid) || { nome: t.pacientes?.nome || "—", pago: 0, contratado: 0, qtdTratamentos: 0 };
-      entry.contratado += Number(t.valor_contratado || 0);
+      const entry = map.get(pid) || { nome: t.pacientes?.nome || "—", contratado: 0, orcado: 0, qtdTratamentos: 0 };
+      entry.orcado += Number(t.valor_orcado || 0);
       entry.qtdTratamentos += 1;
-      if (!map.has(pid)) entry.pago = pagosPorPaciente.get(pid) || 0;
+      if (!map.has(pid)) entry.contratado = contratadoPorPaciente.get(pid) || 0;
       map.set(pid, entry);
     });
-    return Array.from(map.values()).sort((a, b) => b.pago - a.pago).slice(0, 50);
+    return Array.from(map.values()).sort((a, b) => b.contratado - a.contratado).slice(0, 50);
   }, [filteredTratamentos, filteredPagamentos]);
 
   // ========== POR ESPECIALIDADE ==========
