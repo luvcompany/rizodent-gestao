@@ -107,14 +107,7 @@ const Dashboard = () => {
     const filterByDate = (items: any[], dateField: string) =>
     items.filter((i) => i[dateField] >= dateFrom && i[dateField] <= dateTo);
 
-    // Filter tratamentos by clinica, procedimento, especialidade
     let filteredTratamentos = filterByClinica(tratamentos);
-    if (procedimentoFiltro !== "todos") {
-      filteredTratamentos = filteredTratamentos.filter((t) => t.procedimento === procedimentoFiltro);
-    }
-    if (especialidadeFiltro !== "todas") {
-      filteredTratamentos = filteredTratamentos.filter((t) => t.especialidade === especialidadeFiltro);
-    }
 
     const tratamentoIds = new Set(filteredTratamentos.map((t) => t.id));
     const pacienteIds = new Set(filteredTratamentos.map((t) => t.paciente_id));
