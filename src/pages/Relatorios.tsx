@@ -272,13 +272,30 @@ const Relatorios = () => {
       tratamentoMap.set(t.id, t.especialidade || "Não informada");
     });
     const map = new Map<string, { especialidade: string; orcado: number; contratado: number; qtd: number }>();
-    // Count tratamentos per especialidade + sum orçado
+    // Orcado: we need to distribute patient-level orcado to especialidades proportionally
+    // Simple approach: use tratamento count per especialidade to distribute
+    const tratCountByEsp = new Map<string, number>();
+    const tratCountByPaciente = new Map<string, number>();
     filteredTratamentos.forEach((t) => {
       const key = t.especialidade || "Não informada";
+      tratCountByEsp.set(key, (tratCountByEsp.get(key) || 0) + 1);
+      tratCountByPaciente.set(t.paciente_id, (tratCountByPaciente.get(t.paciente_id) || 0) + 1);
       const entry = map.get(key) || { especialidade: key, orcado: 0, contratado: 0, qtd: 0 };
-      entry.orcado += Number(t.valor_orcado || 0);
       entry.qtd += 1;
       map.set(key, entry);
+    });
+    // Distribute orcado proportionally per patient's tratamentos
+    pacientes.forEach((pac) => {
+      const orcado = Number(pac.valor_orcado || 0);
+      if (orcado <= 0) return;
+      const pacTrats = filteredTratamentos.filter(t => t.paciente_id === pac.id);
+      if (pacTrats.length === 0) return;
+      const perTrat = orcado / pacTrats.length;
+      pacTrats.forEach(t => {
+        const key = t.especialidade || "Não informada";
+        const entry = map.get(key);
+        if (entry) entry.orcado += perTrat;
+      });
     });
     // Sum pagamentos (contratado) per especialidade
     filteredPagamentos.forEach((p) => {
