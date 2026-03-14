@@ -191,7 +191,7 @@ const Relatorios = () => {
   }, [dateFrom, dateTo]);
 
   const predictability = useMemo(() => {
-    const totalOrcado = orcamentos.reduce((s, o) => s + Number(o.valor_orcado || 0), 0);
+    const totalOrcado = filteredOrcamentos.reduce((s, o) => s + Number(o.valor_orcado || 0), 0);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
     const aReceber = Math.max(0, totalOrcado - totalContratado);
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
