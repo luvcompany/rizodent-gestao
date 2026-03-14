@@ -367,7 +367,7 @@ const Relatorios = () => {
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
   const reportTypes = [
-    { key: "contratado", label: "Contratado vs Pago", desc: "Valores contratados versus pagos com lista de pacientes", icon: DollarSign },
+    { key: "contratado", label: "Orçado vs Contratado", desc: "Valores orçados versus contratados com lista de pacientes", icon: DollarSign },
     { key: "diario", label: "Relatório Diário", desc: "Faturamento e pagamentos por dia", icon: Calendar },
     { key: "semanal", label: "Relatório Semanal", desc: "Faturamento agrupado por semana", icon: Calendar },
     { key: "funil", label: "Funil de Leads", desc: "Conversão de leads por etapa do funil", icon: Filter },
