@@ -289,23 +289,29 @@ const Relatorios = () => {
     filteredPagamentos.forEach((p) => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
+    const orcadoPorPaciente = new Map<string, number>();
+    filteredTratamentos.forEach((t) => {
+      orcadoPorPaciente.set(t.paciente_id, (orcadoPorPaciente.get(t.paciente_id) || 0) + Number(t.valor_orcado || 0));
+    });
 
     // By origem
-    const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
+    const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.origem || "Não informada";
-      const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, contratado: 0 };
+      const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, orcado: 0, contratado: 0 };
       entry.qtdPacientes += 1;
+      entry.orcado += orcadoPorPaciente.get(p.id) || 0;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
       origemMap.set(key, entry);
     });
 
     // By anúncio
-    const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
+    const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
     pacientes.forEach((p) => {
       const key = p.nome_anuncio || "Não informado";
-      const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, contratado: 0 };
+      const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, orcado: 0, contratado: 0 };
       entry.qtdPacientes += 1;
+      entry.orcado += orcadoPorPaciente.get(p.id) || 0;
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
       anuncioMap.set(key, entry);
     });
@@ -314,7 +320,7 @@ const Relatorios = () => {
       origens: Array.from(origemMap.values()).sort((a, b) => b.contratado - a.contratado),
       anuncios: Array.from(anuncioMap.values()).sort((a, b) => b.contratado - a.contratado),
     };
-  }, [pacientes, filteredPagamentos]);
+  }, [pacientes, filteredTratamentos, filteredPagamentos]);
 
   // ========== EXPORT HELPERS ==========
   const exportToExcel = (data: any[], filename: string) => {
