@@ -48,9 +48,8 @@ const Pacientes = () => {
       setLoading(true);
 
       // Fetch all data in parallel — 4 queries total instead of N*3
-      const [{ data: pacs }, { data: tratamentos }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
-        supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
-        supabase.from("tratamentos").select("paciente_id, valor_orcado, valor_contratado"),
+      const [{ data: pacs }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
+        supabase.from("pacientes").select("id, nome, telefone, cidade, created_at, valor_orcado").order("created_at", { ascending: false }),
         supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id").order("data_pagamento", { ascending: false }),
         supabase.from("clinicas").select("id, nome"),
       ]);
@@ -60,12 +59,6 @@ const Pacientes = () => {
       // Index clinicas by id
       const clinicaMap = new Map<string, string>();
       clinicas?.forEach((c) => clinicaMap.set(c.id, c.nome));
-
-      // Group tratamentos by paciente_id (only orçado)
-      const tratOrcadoMap = new Map<string, number>();
-      tratamentos?.forEach((t) => {
-        tratOrcadoMap.set(t.paciente_id, (tratOrcadoMap.get(t.paciente_id) || 0) + Number(t.valor_orcado || 0));
-      });
 
       // Group pagamentos value by paciente_id for contratado
       const pagContratadoMap = new Map<string, number>();
@@ -90,7 +83,7 @@ const Pacientes = () => {
 
       const result: PacienteView[] = [];
       for (const p of pacs) {
-        const valorOrcado = tratOrcadoMap.get(p.id) || 0;
+        const valorOrcado = Number(p.valor_orcado || 0);
         const valorContratado = pagContratadoMap.get(p.id) || 0;
         let pags = pagMap.get(p.id) || [];
 

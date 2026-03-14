@@ -144,14 +144,15 @@ const Atendimento = () => {
   };
 
   const carregarTratamentos = async (pacienteId: string) => {
-    const [{ data: trats }, { data: pags }] = await Promise.all([
+    const [{ data: pac }, { data: trats }, { data: pags }] = await Promise.all([
+      supabase.from("pacientes").select("valor_orcado").eq("id", pacienteId).maybeSingle(),
       supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
       supabase.from("pagamentos").select("valor").eq("paciente_id", pacienteId),
     ]);
 
     if (trats) {
       setTratamentosExistentes(trats);
-      const totalOrcado = trats.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
+      const totalOrcado = Number(pac?.valor_orcado || 0);
       const totalPago = pags?.reduce((s, p) => s + Number(p.valor), 0) || 0;
       setTotalOrcadoExistente(totalOrcado);
       setTotalPagoExistente(totalPago);
@@ -300,21 +301,26 @@ const Atendimento = () => {
     try {
       let pacienteId = pacienteSelecionadoId;
 
+      const totalOrcado = parseCurrency(valorOrcadoGeral);
+      const totalContratado = parseCurrency(valorContratadoGeral);
+
       if (!pacienteId) {
         const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
         const { data: newPac, error } = await supabase
           .from("pacientes")
-          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncioFinal || null })
+          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncioFinal || null, valor_orcado: totalOrcado })
           .select("id")
           .single();
         if (error) throw error;
         pacienteId = newPac.id;
+      } else {
+        // Update valor_orcado on existing patient (add to current)
+        const { data: currentPac } = await supabase.from("pacientes").select("valor_orcado").eq("id", pacienteId).maybeSingle();
+        const currentOrcado = Number(currentPac?.valor_orcado || 0);
+        await supabase.from("pacientes").update({ valor_orcado: currentOrcado + totalOrcado }).eq("id", pacienteId);
       }
 
-      const totalOrcado = parseCurrency(valorOrcadoGeral);
-      const totalContratado = parseCurrency(valorContratadoGeral);
-
-      // Create all treatments - orçado on first, no price on others
+      // Create all treatments
       let firstTratamentoId: string | null = null;
       for (let i = 0; i < procedimentos.length; i++) {
         const proc = procedimentos[i];
@@ -325,8 +331,6 @@ const Atendimento = () => {
             clinica_id: clinicaId,
             procedimento: proc.procedimento,
             especialidade: proc.especialidade || null,
-            valor_orcado: i === 0 ? totalOrcado : 0,
-            valor_contratado: 0,
             created_by: user?.id,
           })
           .select("id")

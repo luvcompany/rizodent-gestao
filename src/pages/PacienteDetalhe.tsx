@@ -58,12 +58,14 @@ const PacienteDetalhe = () => {
   const [editOrigem, setEditOrigem] = useState("");
   const [editNomeAnuncio, setEditNomeAnuncio] = useState("");
 
+  // Valor orçado editing (patient-level)
+  const [editingValorOrcado, setEditingValorOrcado] = useState(false);
+  const [editValorOrcado, setEditValorOrcado] = useState("");
+
   // Treatment editing
   const [editingTratId, setEditingTratId] = useState<string | null>(null);
   const [editTratProcedimento, setEditTratProcedimento] = useState("");
   const [editTratEspecialidade, setEditTratEspecialidade] = useState("");
-  const [editTratValorOrcado, setEditTratValorOrcado] = useState("");
-  const [editTratValorContratado, setEditTratValorContratado] = useState("");
   const [editTratStatus, setEditTratStatus] = useState("");
   const [editTratClinicaId, setEditTratClinicaId] = useState("");
 
@@ -136,8 +138,6 @@ const PacienteDetalhe = () => {
     setEditingTratId(t.id);
     setEditTratProcedimento(t.procedimento);
     setEditTratEspecialidade(t.especialidade || "");
-    setEditTratValorOrcado(formatCurrency(Number(t.valor_orcado || 0)));
-    setEditTratValorContratado(formatCurrency(Number(t.valor_contratado || 0)));
     setEditTratStatus(t.status);
     setEditTratClinicaId(t.clinica_id);
   };
@@ -167,14 +167,10 @@ const PacienteDetalhe = () => {
 
   const handleSaveTratamento = async () => {
     if (!editingTratId) return;
-    const valorOrcado = parseCurrency(editTratValorOrcado);
-    const valorContratado = parseCurrency(editTratValorContratado);
     setSaving(true);
     const { error } = await supabase.from("tratamentos").update({
       procedimento: editTratProcedimento,
       especialidade: editTratEspecialidade || null,
-      valor_orcado: valorOrcado,
-      valor_contratado: valorContratado,
       status: editTratStatus,
       clinica_id: editTratClinicaId,
     }).eq("id", editingTratId);
@@ -184,14 +180,24 @@ const PacienteDetalhe = () => {
       ...t,
       procedimento: editTratProcedimento,
       especialidade: editTratEspecialidade || null,
-      valor_orcado: valorOrcado,
-      valor_contratado: valorContratado,
       status: editTratStatus,
       clinica_id: editTratClinicaId,
       clinicas: clinicas.find(c => c.id === editTratClinicaId) || t.clinicas,
     } : t));
     setEditingTratId(null);
     toast.success("Tratamento atualizado!");
+  };
+
+  const handleSaveValorOrcado = async () => {
+    if (!id) return;
+    const valor = parseCurrency(editValorOrcado);
+    setSaving(true);
+    const { error } = await supabase.from("pacientes").update({ valor_orcado: valor }).eq("id", id);
+    setSaving(false);
+    if (error) { toast.error("Erro: " + error.message); return; }
+    setPaciente({ ...paciente, valor_orcado: valor });
+    setEditingValorOrcado(false);
+    toast.success("Valor orçado atualizado!");
   };
 
   const handleDeleteTratamento = async (tratId: string) => {
@@ -235,7 +241,7 @@ const PacienteDetalhe = () => {
     toast.success("Pagamento excluído!");
   };
 
-  const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
+  const totalOrcado = Number(paciente?.valor_orcado || 0);
   const totalContratado = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
   const totalNaoContratado = Math.max(0, totalOrcado - totalContratado);
   const orcamentoConcluido = totalOrcado > 0 && totalContratado >= totalOrcado;
@@ -282,11 +288,23 @@ const PacienteDetalhe = () => {
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-4">
-        <Card className="gradient-card border-border shadow-card">
+        <Card className="gradient-card border-border shadow-card cursor-pointer hover:border-primary/30 transition-colors" onClick={() => { setEditingValorOrcado(true); setEditValorOrcado(formatCurrency(totalOrcado)); }}>
           <CardContent className="pt-4 pb-3 text-center">
             <DollarSign size={20} className="mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold text-primary">{formatCurrency(totalOrcado)}</p>
-            <p className="text-xs text-muted-foreground">Total Orçado</p>
+            {editingValorOrcado ? (
+              <div className="space-y-2">
+                <Input value={editValorOrcado} onChange={(e) => setEditValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm text-center" autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleSaveValorOrcado(); if (e.key === "Escape") setEditingValorOrcado(false); }} onClick={(e) => e.stopPropagation()} />
+                <div className="flex gap-1 justify-center">
+                  <Button size="sm" className="h-6 text-xs px-2" onClick={(e) => { e.stopPropagation(); handleSaveValorOrcado(); }} disabled={saving}><Check size={12} /></Button>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={(e) => { e.stopPropagation(); setEditingValorOrcado(false); }}><X size={12} /></Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-2xl font-bold text-primary">{formatCurrency(totalOrcado)}</p>
+                <p className="text-xs text-muted-foreground">Total Orçado <Pencil size={10} className="inline ml-1" /></p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card className={`gradient-card border-border shadow-card ${orcamentoConcluido ? 'border-green-500/40' : ''}`}>

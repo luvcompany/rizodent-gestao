@@ -105,6 +105,7 @@ export type Database = {
           origem: string | null
           telefone: string
           updated_at: string
+          valor_orcado: number | null
         }
         Insert: {
           cidade?: string | null
@@ -116,6 +117,7 @@ export type Database = {
           origem?: string | null
           telefone: string
           updated_at?: string
+          valor_orcado?: number | null
         }
         Update: {
           cidade?: string | null
@@ -127,6 +129,7 @@ export type Database = {
           origem?: string | null
           telefone?: string
           updated_at?: string
+          valor_orcado?: number | null
         }
         Relationships: []
       }
@@ -265,8 +268,6 @@ export type Database = {
           procedimento: string
           status: string
           updated_at: string
-          valor_contratado: number | null
-          valor_orcado: number | null
         }
         Insert: {
           clinica_id: string
@@ -278,8 +279,6 @@ export type Database = {
           procedimento: string
           status?: string
           updated_at?: string
-          valor_contratado?: number | null
-          valor_orcado?: number | null
         }
         Update: {
           clinica_id?: string
@@ -291,8 +290,6 @@ export type Database = {
           procedimento?: string
           status?: string
           updated_at?: string
-          valor_contratado?: number | null
-          valor_orcado?: number | null
         }
         Relationships: [
           {
