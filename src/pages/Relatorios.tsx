@@ -807,7 +807,7 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Megaphone size={18} className="text-primary" /> Por Origem / Anúncio</CardTitle>
             <ShareButtons title="Relatório por Origem" data={[...origemReport.origens, ...origemReport.anuncios]} getSummary={() =>
-              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.pago)} pago`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.pago)} pago`).join("\n")}`
+              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.contratado)} contratado`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, ${formatCurrency(r.contratado)} contratado`).join("\n")}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
@@ -815,14 +815,13 @@ const Relatorios = () => {
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📍 Por Origem</h3>
               <div className="overflow-x-auto max-h-64 overflow-y-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {origemReport.origens.map((r) => (
                       <TableRow key={r.label}>
                         <TableCell className="font-medium">{r.label}</TableCell>
                         <TableCell>{r.qtdPacientes}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                        <TableCell>{formatCurrency(r.pago)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -833,14 +832,13 @@ const Relatorios = () => {
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📢 Por Anúncio</h3>
               <div className="overflow-x-auto max-h-64 overflow-y-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {origemReport.anuncios.map((r) => (
                       <TableRow key={r.label}>
                         <TableCell className="font-medium">{r.label}</TableCell>
                         <TableCell>{r.qtdPacientes}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                        <TableCell>{formatCurrency(r.pago)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
