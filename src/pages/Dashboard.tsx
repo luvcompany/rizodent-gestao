@@ -192,8 +192,22 @@ const Dashboard = () => {
     value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
   })).filter((d) => d.value > 0);
 
+  // Chart: Procedimentos mais contratados (volume)
+  const procMap = new Map<string, number>();
+  filtered.tratamentos.forEach((t) => {
+    procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + 1);
+  });
+  const procVolume = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
 
-  // Chart: Origem dos pacientes (canal)
+  // Chart: Volume por Especialidade (quantidade de tratamentos, não faturamento)
+  const espMap = new Map<string, number>();
+  filtered.tratamentos.forEach((t) => {
+    const esp = t.especialidade || "Sem Especialidade";
+    espMap.set(esp, (espMap.get(esp) || 0) + 1);
+  });
+  const espVolume = Array.from(espMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+
+
   const origemMap = new Map<string, {qtd: number;fat: number;}>();
   filtered.pacientes.forEach((p) => {
     const o = p.origem || "Outros";
@@ -402,6 +416,31 @@ const Dashboard = () => {
           </ChartCard>
         }
 
+        <ChartCard title="Procedimentos Mais Contratados">
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={procVolume} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} allowDecimals={false} width={40} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Quantidade"]} />
+              <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Tratamentos por Especialidade">
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={espVolume} margin={{ top: 30, right: 10, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+              <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <YAxis stroke="hsl(0,0%,64%)" fontSize={11} allowDecimals={false} width={40} tick={{ fill: "hsl(0,0%,64%)" }} />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Quantidade"]} />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} label={{ position: "top", fill: "hsl(0,0%,75%)", fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle}>
+                {espVolume.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
         <ChartCard title="Faturamento por Anúncio">
           <ResponsiveContainer width="100%" height={280}>
