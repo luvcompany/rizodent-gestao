@@ -394,20 +394,6 @@ const PacienteDetalhe = () => {
                           </Select>
                         </div>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Valor Orçado</Label>
-                          <Input inputMode="numeric" value={editTratValorOrcado} onChange={e => setEditTratValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Valor Contratado</Label>
-                          <Input inputMode="numeric" value={editTratValorContratado} onChange={e => setEditTratValorContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Não Contratado</Label>
-                          <Input readOnly value={formatCurrency(Math.max(0, parseCurrency(editTratValorOrcado) - parseCurrency(editTratValorContratado)))} className="bg-muted border-border cursor-not-allowed text-sm" />
-                        </div>
-                      </div>
                       <Button size="sm" onClick={handleSaveTratamento} disabled={saving} className="w-full">
                         <Save size={14} className="mr-1" /> Salvar Tratamento
                       </Button>
