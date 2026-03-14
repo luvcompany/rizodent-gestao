@@ -332,7 +332,7 @@ const Relatorios = () => {
       const key = p.nome_anuncio || "Não informado";
       const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, orcado: 0, contratado: 0 };
       entry.qtdPacientes += 1;
-      entry.orcado += orcadoPorPaciente.get(p.id) || 0;
+      entry.orcado += Number(p.valor_orcado || 0);
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
       anuncioMap.set(key, entry);
     });
