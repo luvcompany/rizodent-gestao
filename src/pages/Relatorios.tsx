@@ -216,23 +216,17 @@ const Relatorios = () => {
     return Array.from(map.values()).sort((a, b) => b.data.localeCompare(a.data));
   }, [filteredLeads]);
 
-  // ========== POR PROCEDIMENTO ==========
+  // ========== POR PROCEDIMENTO (VOLUME) ==========
   const procedimentoReport = useMemo(() => {
-    const map = new Map<string, { procedimento: string; contratado: number; pago: number; qtd: number }>();
-    const pagosPorTratamento = new Map<string, number>();
-    filteredPagamentos.forEach((p) => {
-      pagosPorTratamento.set(p.tratamento_id, (pagosPorTratamento.get(p.tratamento_id) || 0) + Number(p.valor));
-    });
+    const map = new Map<string, { procedimento: string; qtd: number }>();
     filteredTratamentos.forEach((t) => {
       const key = t.procedimento;
-      const entry = map.get(key) || { procedimento: key, contratado: 0, pago: 0, qtd: 0 };
-      entry.contratado += Number(t.valor_contratado || 0);
-      entry.pago += pagosPorTratamento.get(t.id) || 0;
+      const entry = map.get(key) || { procedimento: key, qtd: 0 };
       entry.qtd += 1;
       map.set(key, entry);
     });
-    return Array.from(map.values()).sort((a, b) => b.contratado - a.contratado);
-  }, [filteredTratamentos, filteredPagamentos]);
+    return Array.from(map.values()).sort((a, b) => b.qtd - a.qtd);
+  }, [filteredTratamentos]);
 
   // ========== POR FORMA DE PAGAMENTO ==========
   const formaPagamentoReport = useMemo(() => {
