@@ -384,34 +384,34 @@ const Relatorios = () => {
       case "contratado": return (<>
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><DollarSign size={18} className="text-primary" /> Contratado vs Pago</CardTitle>
-            <ShareButtons title="Contratado vs Pago" data={[{ contratado: contratadoVsPago.totalContratado, pago: contratadoVsPago.totalPago }]} getSummary={() =>
-              `Total Contratado: ${formatCurrency(contratadoVsPago.totalContratado)}\nTotal Pago: ${formatCurrency(contratadoVsPago.totalPago)}\nA Receber: ${formatCurrency(contratadoVsPago.totalContratado - contratadoVsPago.totalPago)}\nEm aberto: ${contratadoVsPago.emAberto.length} pacientes\nConcluídos: ${contratadoVsPago.concluidos.length} pacientes`
+            <CardTitle className="text-base flex items-center gap-2"><DollarSign size={18} className="text-primary" /> Orçado vs Contratado</CardTitle>
+            <ShareButtons title="Orçado vs Contratado" data={[{ orcado: contratadoVsPago.totalOrcado, contratado: contratadoVsPago.totalContratado }]} getSummary={() =>
+              `Total Orçado: ${formatCurrency(contratadoVsPago.totalOrcado)}\nTotal Contratado: ${formatCurrency(contratadoVsPago.totalContratado)}\nA Receber: ${formatCurrency(contratadoVsPago.totalOrcado - contratadoVsPago.totalContratado)}\nEm aberto: ${contratadoVsPago.emAberto.length} pacientes\nConcluídos: ${contratadoVsPago.concluidos.length} pacientes`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="rounded-lg bg-secondary p-4">
-                <p className="text-xs text-muted-foreground">Total Contratado</p>
-                <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalContratado)}</p>
+                <p className="text-xs text-muted-foreground">Total Orçado</p>
+                <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalOrcado)}</p>
               </div>
               <div className="rounded-lg bg-secondary p-4">
-                <p className="text-xs text-muted-foreground">Total Pago</p>
-                <p className="text-xl font-bold text-accent-foreground">{formatCurrency(contratadoVsPago.totalPago)}</p>
+                <p className="text-xs text-muted-foreground">Total Contratado</p>
+                <p className="text-xl font-bold text-accent-foreground">{formatCurrency(contratadoVsPago.totalContratado)}</p>
               </div>
               <div className="rounded-lg bg-secondary p-4">
                 <p className="text-xs text-muted-foreground">A Receber</p>
-                <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalContratado - contratadoVsPago.totalPago)}</p>
+                <p className="text-xl font-bold text-primary">{formatCurrency(contratadoVsPago.totalOrcado - contratadoVsPago.totalContratado)}</p>
               </div>
             </div>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={[{ name: "Resumo", contratado: contratadoVsPago.totalContratado, pago: contratadoVsPago.totalPago }]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+              <BarChart data={[{ name: "Resumo", orcado: contratadoVsPago.totalOrcado, contratado: contratadoVsPago.totalContratado }]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
                 <XAxis dataKey="name" stroke="hsl(0,0%,64%)" />
                 <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
-                <Bar dataKey="pago" fill="hsl(120,50%,50%)" name="Pago" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="orcado" fill="hsl(25,100%,50%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="contratado" fill="hsl(120,50%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -433,15 +433,15 @@ const Relatorios = () => {
             <DialogHeader><DialogTitle>🔴 Pacientes em Aberto ({contratadoVsPago.emAberto.length})</DialogTitle></DialogHeader>
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead><TableHead>Restante</TableHead><TableHead>%</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Restante</TableHead><TableHead>%</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {contratadoVsPago.emAberto.map((p, i) => (
                     <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
+                      <TableCell>{formatCurrency(p.orcado)}</TableCell>
                       <TableCell>{formatCurrency(p.contratado)}</TableCell>
-                      <TableCell>{formatCurrency(p.pago)}</TableCell>
-                      <TableCell className="text-destructive font-medium">{formatCurrency(p.contratado - p.pago)}</TableCell>
-                      <TableCell><Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">{p.contratado > 0 ? ((p.pago / p.contratado) * 100).toFixed(0) : 0}%</Badge></TableCell>
+                      <TableCell className="text-destructive font-medium">{formatCurrency(p.orcado - p.contratado)}</TableCell>
+                      <TableCell><Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">{p.orcado > 0 ? ((p.contratado / p.orcado) * 100).toFixed(0) : 0}%</Badge></TableCell>
                     </TableRow>
                   ))}
                   {contratadoVsPago.emAberto.length === 0 && (
@@ -452,7 +452,7 @@ const Relatorios = () => {
             </div>
             <div className="rounded-lg bg-secondary p-3 mt-2">
               <p className="text-xs text-muted-foreground">Total a receber</p>
-              <p className="text-lg font-bold text-destructive">{formatCurrency(contratadoVsPago.emAberto.reduce((s, p) => s + (p.contratado - p.pago), 0))}</p>
+              <p className="text-lg font-bold text-destructive">{formatCurrency(contratadoVsPago.emAberto.reduce((s, p) => s + (p.orcado - p.contratado), 0))}</p>
             </div>
           </DialogContent>
         </Dialog>
@@ -463,13 +463,13 @@ const Relatorios = () => {
             <DialogHeader><DialogTitle>🟢 Pacientes Concluídos ({contratadoVsPago.concluidos.length})</DialogTitle></DialogHeader>
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {contratadoVsPago.concluidos.map((p, i) => (
                     <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
-                      <TableCell>{formatCurrency(p.contratado)}</TableCell>
-                      <TableCell className="text-green-400">{formatCurrency(p.pago)}</TableCell>
+                      <TableCell>{formatCurrency(p.orcado)}</TableCell>
+                      <TableCell className="text-green-400">{formatCurrency(p.contratado)}</TableCell>
                     </TableRow>
                   ))}
                   {contratadoVsPago.concluidos.length === 0 && (
@@ -479,8 +479,8 @@ const Relatorios = () => {
               </Table>
             </div>
             <div className="rounded-lg bg-secondary p-3 mt-2">
-              <p className="text-xs text-muted-foreground">Total recebido (concluídos)</p>
-              <p className="text-lg font-bold text-green-400">{formatCurrency(contratadoVsPago.concluidos.reduce((s, p) => s + p.pago, 0))}</p>
+              <p className="text-xs text-muted-foreground">Total contratado (concluídos)</p>
+              <p className="text-lg font-bold text-green-400">{formatCurrency(contratadoVsPago.concluidos.reduce((s, p) => s + p.contratado, 0))}</p>
             </div>
           </DialogContent>
         </Dialog>
