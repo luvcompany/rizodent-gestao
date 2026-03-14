@@ -770,7 +770,7 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Por Especialidade</CardTitle>
             <ShareButtons title="Relatório por Especialidade" data={especialidadeReport} getSummary={() =>
-              especialidadeReport.map((r) => `${r.especialidade}: ${formatCurrency(r.contratado)} contratado, ${formatCurrency(r.pago)} pago (${r.qtd}x)`).join("\n")
+              especialidadeReport.map((r) => `${r.especialidade}: ${formatCurrency(r.contratado)} contratado (${r.qtd}x)`).join("\n")
             } />
           </CardHeader>
           <CardContent>
@@ -785,14 +785,13 @@ const Relatorios = () => {
               </ResponsiveContainer>
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead>Qtd</TableHead><TableHead>Contratado</TableHead><TableHead>Pago</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead>Qtd</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {especialidadeReport.map((r) => (
                       <TableRow key={r.especialidade}>
                         <TableCell className="font-medium">{r.especialidade}</TableCell>
                         <TableCell>{r.qtd}</TableCell>
                         <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                        <TableCell>{formatCurrency(r.pago)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
