@@ -890,9 +890,69 @@ const Relatorios = () => {
       );
 
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="animate-fade-in space-y-6" ref={reportRef}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Relatórios</h1>
+          <p className="text-sm text-muted-foreground">Selecione o tipo de relatório que deseja visualizar</p>
+        </div>
+        {selectedReport && (
+          <Button variant="outline" size="sm" onClick={() => setSelectedReport(null)}>
+            <ArrowLeft size={14} className="mr-1" /> Voltar
+          </Button>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Clínica</span>
+          <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
+            <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas</SelectItem>
+              {clinicas.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">De</span>
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border w-full sm:w-[160px]" />
+        </div>
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Até</span>
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border w-full sm:w-[160px]" />
+        </div>
+      </div>
+
+      {/* Report selection or content */}
+      {!selectedReport ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {reportTypes.map((rt) => (
+            <Card key={rt.key} className="gradient-card border-border shadow-card cursor-pointer hover:border-primary/30 transition-colors" onClick={() => setSelectedReport(rt.key)}>
+              <CardContent className="p-4 flex items-start gap-3">
+                <rt.icon size={20} className="text-primary mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-sm">{rt.label}</p>
+                  <p className="text-xs text-muted-foreground">{rt.desc}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        renderReportContent()
+      )}
+    </div>
+  );
+};
+
+export default Relatorios;
                   <Pie data={formaPagamentoReport} dataKey="valor" nameKey="forma" cx="50%" cy="50%" outerRadius={100} label={({ forma, percent }) => `${forma} ${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
                     {formaPagamentoReport.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
