@@ -247,12 +247,6 @@ const Atendimento = () => {
           });
         if (pagError) throw pagError;
 
-        // Update valor_contratado on first treatment to reflect new total
-        await supabase
-          .from("tratamentos")
-          .update({ valor_contratado: novoTotalContratado })
-          .eq("id", tratamentoId);
-
         toast.success("Pagamento registrado com sucesso!");
         resetForm();
       } catch (err: any) {
