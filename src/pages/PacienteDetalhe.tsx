@@ -451,12 +451,11 @@ const PacienteDetalhe = () => {
                         </AlertDialog>
                       </div>
                     </div>
-                    <div className="flex gap-4 text-xs text-muted-foreground">
-                      <span>Orçado: {formatCurrency(Number(t.valor_orcado || 0))}</span>
-                      <span>Contratado: {formatCurrency(Number(t.valor_contratado || 0))}</span>
-                      <span>Não Contratado: {formatCurrency(Math.max(0, Number(t.valor_orcado || 0) - Number(t.valor_contratado || 0)))}</span>
-                      <span className="text-primary font-medium">Pago: {formatCurrency(totalPagoTrat)}</span>
-                    </div>
+                    {pagsTrat.length > 0 && (
+                      <div className="flex gap-4 text-xs text-muted-foreground">
+                        <span className="text-primary font-medium">Pago: {formatCurrency(totalPagoTrat)}</span>
+                      </div>
+                    )}
                     {pagsTrat.length > 0 && (
                       <div className="pl-2 border-l-2 border-primary/20 space-y-1 mt-1">
                         {pagsTrat.map((p) => (
