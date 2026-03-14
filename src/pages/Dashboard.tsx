@@ -126,7 +126,7 @@ const Dashboard = () => {
 
     let filteredPagamentos = filterByDate(filterByClinica(pagamentos), "data_pagamento");
     // Only include pagamentos linked to filtered tratamentos
-    if (procedimentoFiltro !== "todos" || especialidadeFiltro !== "todas" || canalFiltro !== "todos") {
+    if (canalFiltro !== "todos") {
       filteredPagamentos = filteredPagamentos.filter((p) => finalTratamentoIds.has(p.tratamento_id));
     }
 
