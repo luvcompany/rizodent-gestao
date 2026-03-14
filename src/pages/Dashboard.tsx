@@ -398,7 +398,7 @@ const Dashboard = () => {
               <XAxis dataKey="dia" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-45} textAnchor="end" height={50} tick={{ fill: "hsl(0,0%,64%)" }} />
               <YAxis stroke="hsl(0,0%,64%)" fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: "hsl(0,0%,64%)" }} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="valor" fill="hsl(25,100%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} />
+              <Bar dataKey="valor" fill="hsl(25,100%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} label={renderBarLabel} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
@@ -431,7 +431,7 @@ const Dashboard = () => {
               <XAxis dataKey="dia" stroke="hsl(0,0%,64%)" fontSize={10} interval={0} angle={-45} textAnchor="end" height={50} tick={{ fill: "hsl(0,0%,64%)" }} />
               <YAxis stroke="hsl(0,0%,64%)" fontSize={11} allowDecimals={false} width={40} tick={{ fill: "hsl(0,0%,64%)" }} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Leads"]} />
-              <Bar dataKey="leads" fill="hsl(200,70%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} />
+              <Bar dataKey="leads" fill="hsl(200,70%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} label={renderBarLabel} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
