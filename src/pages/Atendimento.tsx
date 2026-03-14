@@ -10,8 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 
-const formasPagamento = ["Dinheiro", "Pix", "Cartão de Crédito", "Cartão de Débito", "Boleto", "Financiamento"];
-const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
+const origens = ["Anúncio", "Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
 const formatCurrencyInput = (value: string): string => {
   const digits = value.replace(/\D/g, "");
@@ -63,10 +62,10 @@ const Atendimento = () => {
   const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
   const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
   const [valorContratadoGeral, setValorContratadoGeral] = useState("");
-  const [formaPagamento, setFormaPagamento] = useState("");
   const [origem, setOrigem] = useState("");
   const [valorPago, setValorPago] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
+  const [origemOutrosDesc, setOrigemOutrosDesc] = useState("");
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
@@ -172,8 +171,8 @@ const Atendimento = () => {
   const resetForm = () => {
     setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
     setProcedimentos([createEmptyProcedimento()]);
-    setValorPago(""); setFormaPagamento("");
-    setOrigem(""); setNomeAnuncio(""); setPacienteSelecionadoId(null);
+    setValorPago("");
+    setOrigem(""); setNomeAnuncio(""); setOrigemOutrosDesc(""); setPacienteSelecionadoId(null);
     setDataPagamento(new Date().toISOString().split("T")[0]);
     setValorOrcadoGeral(""); setValorContratadoGeral("");
     setModo("selecionar");
@@ -216,10 +215,6 @@ const Atendimento = () => {
         toast.error("Preencha o valor do pagamento.");
         return;
       }
-      if (!formaPagamento) {
-        toast.error("Selecione a forma de pagamento.");
-        return;
-      }
 
       const valorNovoPagamento = parseCurrency(valorPago);
       const novoTotalContratado = totalPagoExistente + valorNovoPagamento;
@@ -245,7 +240,7 @@ const Atendimento = () => {
             paciente_id: pacienteSelecionadoId!,
             clinica_id: clinicaId || tratamentosExistentes[0].clinica_id,
             valor: valorNovoPagamento,
-            forma_pagamento: formaPagamento,
+            forma_pagamento: "Não informado",
             tipo,
             data_pagamento: dataPagamento,
             created_by: user?.id,
@@ -293,9 +288,10 @@ const Atendimento = () => {
       let pacienteId = pacienteSelecionadoId;
 
       if (!pacienteId) {
+        const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
         const { data: newPac, error } = await supabase
           .from("pacientes")
-          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncio || null })
+          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncioFinal || null })
           .select("id")
           .single();
         if (error) throw error;
@@ -305,7 +301,7 @@ const Atendimento = () => {
       const totalOrcado = parseCurrency(valorOrcadoGeral);
       const totalContratado = parseCurrency(valorContratadoGeral);
 
-      // Create all treatments - valor_orcado goes on FIRST treatment only, rest get 0
+      // Create all treatments - no price on individual procedures
       let firstTratamentoId: string | null = null;
       for (let i = 0; i < procedimentos.length; i++) {
         const proc = procedimentos[i];
@@ -316,8 +312,8 @@ const Atendimento = () => {
             clinica_id: clinicaId,
             procedimento: proc.procedimento,
             especialidade: proc.especialidade || null,
-            valor_orcado: i === 0 ? totalOrcado : 0,
-            valor_contratado: i === 0 ? totalContratado : 0,
+            valor_orcado: 0,
+            valor_contratado: 0,
             created_by: user?.id,
           })
           .select("id")
@@ -335,7 +331,7 @@ const Atendimento = () => {
             paciente_id: pacienteId,
             clinica_id: clinicaId,
             valor: totalContratado,
-            forma_pagamento: formaPagamento || "Pix",
+            forma_pagamento: "Não informado",
             tipo: "primeiro",
             data_pagamento: dataPagamento,
             created_by: user?.id,
@@ -615,52 +611,47 @@ const Atendimento = () => {
 
             {/* Payment-only fields */}
             {showPagamentoFields && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Valor do Pagamento (R$)</Label>
-                  <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-                </div>
+              <div className="space-y-2">
+                <Label>Valor do Pagamento (R$)</Label>
+                <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
               </div>
             )}
 
             {/* Payment details */}
             {(showNovoTratamentoFields || showPagamentoFields) && (
               <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Data do Pagamento</Label>
-                    <div className="relative">
-                      <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Forma de Pagamento</Label>
-                    <Select value={formaPagamento} onValueChange={setFormaPagamento}>
-                      <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        {formasPagamento.map((f) => (<SelectItem key={f} value={f}>{f}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-2">
+                  <Label>Data do Pagamento</Label>
+                  <div className="relative">
+                    <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
                   </div>
                 </div>
 
                 {showNovoTratamentoFields && (
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <>
                     <div className="space-y-2">
                       <Label>Origem do Lead</Label>
-                      <Select value={origem} onValueChange={setOrigem}>
+                      <Select value={origem} onValueChange={(v) => { setOrigem(v); setNomeAnuncio(""); setOrigemOutrosDesc(""); }}>
                         <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
                         <SelectContent>
                           {origens.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Nome do Anúncio</Label>
-                      <Input placeholder="Ex: Campanha Implante Jan" value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} className="bg-secondary border-border" />
-                    </div>
-                  </div>
+                    {origem === "Anúncio" && (
+                      <div className="space-y-2">
+                        <Label>Nome do Anúncio</Label>
+                        <Input placeholder="Ex: Campanha Implante Jan" value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} className="bg-secondary border-border" />
+                      </div>
+                    )}
+                    {origem === "Outros" && (
+                      <div className="space-y-2">
+                        <Label>De onde veio o lead?</Label>
+                        <Input placeholder="Descreva a origem do lead" value={origemOutrosDesc} onChange={(e) => setOrigemOutrosDesc(e.target.value)} className="bg-secondary border-border" />
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <Button

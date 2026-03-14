@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-const origens = ["Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
+const origens = ["Anúncio", "Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
@@ -197,7 +197,8 @@ const PacienteDetalhe = () => {
   };
 
   const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
-  const totalContratado = tratamentos.reduce((s, t) => s + Number(t.valor_contratado || 0), 0);
+  const totalContratado = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
+  const totalNaoContratado = Math.max(0, totalOrcado - totalContratado);
 
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>;
   if (!paciente) return <div className="text-center text-muted-foreground py-12">Paciente não encontrado.</div>;
@@ -240,7 +241,7 @@ const PacienteDetalhe = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <Card className="gradient-card border-border shadow-card">
           <CardContent className="pt-4 pb-3 text-center">
             <DollarSign size={20} className="mx-auto text-primary mb-1" />
@@ -253,6 +254,13 @@ const PacienteDetalhe = () => {
             <DollarSign size={20} className="mx-auto text-muted-foreground mb-1" />
             <p className="text-2xl font-bold">{formatCurrency(totalContratado)}</p>
             <p className="text-xs text-muted-foreground">Total Contratado</p>
+          </CardContent>
+        </Card>
+        <Card className="gradient-card border-border shadow-card">
+          <CardContent className="pt-4 pb-3 text-center">
+            <DollarSign size={20} className="mx-auto text-destructive mb-1" />
+            <p className="text-2xl font-bold text-destructive">{formatCurrency(totalNaoContratado)}</p>
+            <p className="text-xs text-muted-foreground">Não Contratado</p>
           </CardContent>
         </Card>
         <Card className="gradient-card border-border shadow-card">
@@ -299,7 +307,12 @@ const PacienteDetalhe = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2"><Label>Nome do Anúncio</Label><Input value={editNomeAnuncio} onChange={(e) => setEditNomeAnuncio(e.target.value)} className="bg-secondary border-border" /></div>
+              {editOrigem === "Anúncio" && (
+                <div className="space-y-2"><Label>Nome do Anúncio</Label><Input value={editNomeAnuncio} onChange={(e) => setEditNomeAnuncio(e.target.value)} className="bg-secondary border-border" /></div>
+              )}
+              {editOrigem === "Outros" && (
+                <div className="space-y-2"><Label>De onde veio o lead?</Label><Input value={editNomeAnuncio} onChange={(e) => setEditNomeAnuncio(e.target.value)} className="bg-secondary border-border" /></div>
+              )}
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 text-sm">
@@ -308,7 +321,9 @@ const PacienteDetalhe = () => {
               <div><span className="text-muted-foreground">Cidade:</span> <span className="font-medium">{paciente.cidade || "—"}</span></div>
               <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{paciente.email || "—"}</span></div>
               <div><span className="text-muted-foreground">Origem:</span> <span className="font-medium">{paciente.origem || "—"}</span></div>
-              <div><span className="text-muted-foreground">Anúncio:</span> <span className="font-medium">{paciente.nome_anuncio || "—"}</span></div>
+              {(paciente.origem === "Anúncio" || paciente.origem === "Outros") && paciente.nome_anuncio && (
+                <div><span className="text-muted-foreground">{paciente.origem === "Anúncio" ? "Anúncio:" : "Detalhe:"}</span> <span className="font-medium">{paciente.nome_anuncio}</span></div>
+              )}
             </div>
           )}
         </CardContent>
@@ -386,20 +401,6 @@ const PacienteDetalhe = () => {
                           </Select>
                         </div>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Valor Orçado</Label>
-                          <Input inputMode="numeric" value={editTratValorOrcado} onChange={e => setEditTratValorOrcado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Valor Contratado</Label>
-                          <Input inputMode="numeric" value={editTratValorContratado} onChange={e => setEditTratValorContratado(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">Não Contratado</Label>
-                          <Input readOnly value={formatCurrency(Math.max(0, parseCurrency(editTratValorOrcado) - parseCurrency(editTratValorContratado)))} className="bg-muted border-border cursor-not-allowed text-sm" />
-                        </div>
-                      </div>
                       <Button size="sm" onClick={handleSaveTratamento} disabled={saving} className="w-full">
                         <Save size={14} className="mr-1" /> Salvar Tratamento
                       </Button>
@@ -443,12 +444,11 @@ const PacienteDetalhe = () => {
                         </AlertDialog>
                       </div>
                     </div>
-                    <div className="flex gap-4 text-xs text-muted-foreground">
-                      <span>Orçado: {formatCurrency(Number(t.valor_orcado || 0))}</span>
-                      <span>Contratado: {formatCurrency(Number(t.valor_contratado || 0))}</span>
-                      <span>Não Contratado: {formatCurrency(Math.max(0, Number(t.valor_orcado || 0) - Number(t.valor_contratado || 0)))}</span>
-                      <span className="text-primary font-medium">Pago: {formatCurrency(totalPagoTrat)}</span>
-                    </div>
+                    {pagsTrat.length > 0 && (
+                      <div className="flex gap-4 text-xs text-muted-foreground">
+                        <span className="text-primary font-medium">Pago: {formatCurrency(totalPagoTrat)}</span>
+                      </div>
+                    )}
                     {pagsTrat.length > 0 && (
                       <div className="pl-2 border-l-2 border-primary/20 space-y-1 mt-1">
                         {pagsTrat.map((p) => (
