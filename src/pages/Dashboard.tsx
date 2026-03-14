@@ -185,6 +185,27 @@ const Dashboard = () => {
   { title: "Pacientes", value: String(totalPacientes), icon: Users }];
 
 
+  // Chart: Venda Diária (todos os dias úteis do período)
+  const vendaDiaria = useMemo(() => {
+    const start = new Date(dateFrom + "T12:00:00");
+    const end = new Date(dateTo + "T12:00:00");
+    const pgMap = new Map<string, number>();
+    filtered.pagamentos.forEach((p) => {
+      pgMap.set(p.data_pagamento, (pgMap.get(p.data_pagamento) || 0) + Number(p.valor));
+    });
+    const days: { dia: string; valor: number }[] = [];
+    const current = new Date(start);
+    while (current <= end) {
+      if (current.getDay() !== 0) {
+        const dateStr = current.toISOString().split("T")[0];
+        const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+        days.push({ dia: label, valor: pgMap.get(dateStr) || 0 });
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return days;
+  }, [dateFrom, dateTo, filtered.pagamentos]);
+
   // Chart: Faturamento por Clínica
   const fatClinica = clinicas.map((c) => ({
     name: c.nome.replace("Clínica ", "").replace("Rizodent ", ""),
