@@ -272,7 +272,7 @@ const Relatorios = () => {
       }))
       .filter(p => p.contratado > 0 || p.orcado > 0)
       .sort((a, b) => b.contratado - a.contratado);
-  }, [pacientes, orcamentos, filteredTratamentos, filteredPagamentos]);
+  }, [pacientes, filteredOrcamentos, filteredTratamentos, filteredPagamentos]);
 
   // ========== POR ESPECIALIDADE (ONLY QUANTITY) ==========
   const especialidadeReport = useMemo(() => {
