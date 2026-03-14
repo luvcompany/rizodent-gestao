@@ -259,18 +259,25 @@ const Relatorios = () => {
 
   // ========== POR ESPECIALIDADE ==========
   const especialidadeReport = useMemo(() => {
-    const map = new Map<string, { especialidade: string; contratado: number; pago: number; qtd: number }>();
-    const pagosPorTratamento = new Map<string, number>();
-    filteredPagamentos.forEach((p) => {
-      pagosPorTratamento.set(p.tratamento_id, (pagosPorTratamento.get(p.tratamento_id) || 0) + Number(p.valor));
+    // Map pagamentos to tratamento to get especialidade
+    const tratamentoMap = new Map<string, string>();
+    filteredTratamentos.forEach((t) => {
+      tratamentoMap.set(t.id, t.especialidade || "Não informada");
     });
+    const map = new Map<string, { especialidade: string; contratado: number; qtd: number }>();
+    // Count tratamentos per especialidade
     filteredTratamentos.forEach((t) => {
       const key = t.especialidade || "Não informada";
-      const entry = map.get(key) || { especialidade: key, contratado: 0, pago: 0, qtd: 0 };
-      entry.contratado += Number(t.valor_contratado || 0);
-      entry.pago += pagosPorTratamento.get(t.id) || 0;
+      const entry = map.get(key) || { especialidade: key, contratado: 0, qtd: 0 };
       entry.qtd += 1;
       map.set(key, entry);
+    });
+    // Sum pagamentos (contratado) per especialidade
+    filteredPagamentos.forEach((p) => {
+      const esp = tratamentoMap.get(p.tratamento_id) || "Não informada";
+      const entry = map.get(esp) || { especialidade: esp, contratado: 0, qtd: 0 };
+      entry.contratado += Number(p.valor);
+      map.set(esp, entry);
     });
     return Array.from(map.values()).sort((a, b) => b.contratado - a.contratado);
   }, [filteredTratamentos, filteredPagamentos]);
