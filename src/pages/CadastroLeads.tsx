@@ -25,6 +25,7 @@ const CadastroLeads = () => {
   const [faltaram, setFaltaram] = useState("");
   const [contrataram, setContrataram] = useState("");
   const [naoContrataram, setNaoContrataram] = useState("");
+  const [remarcados, setRemarcados] = useState("");
   const [saving, setSaving] = useState(false);
   const [existingId, setExistingId] = useState<string | null>(null);
   const [registros, setRegistros] = useState<LeadWithClinica[]>([]);
