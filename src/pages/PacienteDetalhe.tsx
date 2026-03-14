@@ -241,7 +241,7 @@ const PacienteDetalhe = () => {
     toast.success("Pagamento excluído!");
   };
 
-  const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
+  const totalOrcado = Number(paciente?.valor_orcado || 0);
   const totalContratado = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
   const totalNaoContratado = Math.max(0, totalOrcado - totalContratado);
   const orcamentoConcluido = totalOrcado > 0 && totalContratado >= totalOrcado;
