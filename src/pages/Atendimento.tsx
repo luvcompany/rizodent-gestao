@@ -326,7 +326,7 @@ const Atendimento = () => {
             clinica_id: clinicaId,
             valor: totalContratado,
             forma_pagamento: "Não informado",
-            tipo: "primeiro",
+            tipo: tipoPagamento,
             data_pagamento: dataPagamento,
             created_by: user?.id,
           });
