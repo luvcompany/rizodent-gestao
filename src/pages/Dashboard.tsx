@@ -235,10 +235,7 @@ const Dashboard = () => {
   { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[4] }];
 
 
-  // Which filters are active — hide corresponding chart
   const showClinicaChart = clinicaFiltro === "todas";
-  const showProcedimentoChart = procedimentoFiltro === "todos";
-  const showEspecialidadeChart = especialidadeFiltro === "todas";
   const showCanalChart = canalFiltro === "todos";
 
   if (loading) {
