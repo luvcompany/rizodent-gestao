@@ -321,7 +321,7 @@ const Relatorios = () => {
       const key = p.origem || "Não informada";
       const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, orcado: 0, contratado: 0 };
       entry.qtdPacientes += 1;
-      entry.orcado += orcadoPorPaciente.get(p.id) || 0;
+      entry.orcado += Number(p.valor_orcado || 0);
       entry.contratado += contratadoPorPaciente.get(p.id) || 0;
       origemMap.set(key, entry);
     });
