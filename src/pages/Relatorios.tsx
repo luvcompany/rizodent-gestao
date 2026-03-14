@@ -293,7 +293,7 @@ const Relatorios = () => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
     });
     const orcadoPorPaciente = new Map<string, number>();
-    orcamentos.forEach((o) => {
+    filteredOrcamentos.forEach((o) => {
       orcadoPorPaciente.set(o.paciente_id, (orcadoPorPaciente.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
     });
     const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; orcado: number; contratado: number }>();
