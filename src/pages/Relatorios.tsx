@@ -575,7 +575,25 @@ const Relatorios = () => {
               return `Leads: ${t.leads}\nAgendaram: ${t.agendaram}\nContrataram: ${t.contrataram}\nTaxa: ${t.leads > 0 ? ((t.contrataram / t.leads) * 100).toFixed(1) : 0}%`;
             }} />
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={(() => {
+                const totals = funnelReport.reduce((a, r) => ({ leads: a.leads + r.leads, agendaram: a.agendaram + r.agendaram, compareceram: a.compareceram + (r.agendaram - r.faltaram), contrataram: a.contrataram + r.contrataram, naoContrataram: a.naoContrataram + r.nao_contrataram }), { leads: 0, agendaram: 0, compareceram: 0, contrataram: 0, naoContrataram: 0 });
+                return [
+                  { name: "Leads", value: totals.leads },
+                  { name: "Agendaram", value: totals.agendaram },
+                  { name: "Compareceram", value: totals.compareceram },
+                  { name: "Contrataram", value: totals.contrataram },
+                  { name: "Não Contrataram", value: totals.naoContrataram },
+                ];
+              })()} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
+                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} />
+                <YAxis stroke="hsl(0,0%,64%)" allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} />
+                <Bar dataKey="value" fill="hsl(25,100%,50%)" name="Quantidade" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+              </BarChart>
+            </ResponsiveContainer>
             <div className="overflow-x-auto max-h-80 overflow-y-auto">
               <Table>
                 <TableHeader>
