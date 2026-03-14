@@ -199,6 +199,7 @@ const PacienteDetalhe = () => {
   const totalOrcado = tratamentos.reduce((s, t) => s + Number(t.valor_orcado || 0), 0);
   const totalContratado = pagamentos.reduce((s, p) => s + Number(p.valor || 0), 0);
   const totalNaoContratado = Math.max(0, totalOrcado - totalContratado);
+  const orcamentoConcluido = totalOrcado > 0 && totalContratado >= totalOrcado;
 
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>;
   if (!paciente) return <div className="text-center text-muted-foreground py-12">Paciente não encontrado.</div>;
@@ -249,11 +250,12 @@ const PacienteDetalhe = () => {
             <p className="text-xs text-muted-foreground">Total Orçado</p>
           </CardContent>
         </Card>
-        <Card className="gradient-card border-border shadow-card">
+        <Card className={`gradient-card border-border shadow-card ${orcamentoConcluido ? 'border-green-500/40' : ''}`}>
           <CardContent className="pt-4 pb-3 text-center">
-            <DollarSign size={20} className="mx-auto text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{formatCurrency(totalContratado)}</p>
+            <DollarSign size={20} className={`mx-auto mb-1 ${orcamentoConcluido ? 'text-green-500' : 'text-muted-foreground'}`} />
+            <p className={`text-2xl font-bold ${orcamentoConcluido ? 'text-green-500' : ''}`}>{formatCurrency(totalContratado)}</p>
             <p className="text-xs text-muted-foreground">Total Contratado</p>
+            {orcamentoConcluido && <Badge className="mt-1 bg-green-600/20 text-green-400 border-green-600/30 text-xs">Concluído</Badge>}
           </CardContent>
         </Card>
         <Card className="gradient-card border-border shadow-card">

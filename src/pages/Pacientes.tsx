@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Eye, Plus } from "lucide-react";
+import { Search, Eye, Plus, CheckCircle2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -169,11 +170,16 @@ const Pacientes = () => {
         <div className="text-center text-muted-foreground py-12">Nenhum paciente encontrado.</div>
       ) : (
         <div className="grid gap-3">
-          {filtered.map((pac) => (
-            <Card key={pac.id} className="gradient-card border-border shadow-card hover:border-primary/30 transition-colors">
+          {filtered.map((pac) => {
+            const concluido = pac.valor_orcado > 0 && pac.valor_contratado >= pac.valor_orcado;
+            return (
+            <Card key={pac.id} className={`gradient-card border-border shadow-card hover:border-primary/30 transition-colors ${concluido ? 'border-green-500/30' : ''}`}>
               <CardContent className="flex items-center justify-between p-4">
                 <div className="space-y-1">
-                  <p className="font-semibold">{pac.nome}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold">{pac.nome}</p>
+                    {concluido && <Badge className="bg-green-600/20 text-green-400 border-green-600/30 text-xs gap-1"><CheckCircle2 size={12} />Concluído</Badge>}
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {pac.telefone} {pac.clinica_nome && `• ${pac.clinica_nome}`}
                   </p>
@@ -183,7 +189,7 @@ const Pacientes = () => {
                     <p className="text-xs text-muted-foreground">
                       Orçado: R$ {pac.valor_orcado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
-                    <p className="text-sm font-semibold text-primary">
+                    <p className={`text-sm font-semibold ${concluido ? 'text-green-500' : 'text-primary'}`}>
                       Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     {pac.ultima_visita && (
@@ -198,7 +204,8 @@ const Pacientes = () => {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
