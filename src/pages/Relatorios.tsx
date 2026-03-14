@@ -249,18 +249,7 @@ const Relatorios = () => {
     return Array.from(map.values()).sort((a, b) => b.qtd - a.qtd);
   }, [filteredTratamentos]);
 
-  // ========== POR FORMA DE PAGAMENTO ==========
-  const formaPagamentoReport = useMemo(() => {
-    const map = new Map<string, { forma: string; valor: number; qtd: number }>();
-    filteredPagamentos.forEach((p) => {
-      const key = p.forma_pagamento || "Não informado";
-      const entry = map.get(key) || { forma: key, valor: 0, qtd: 0 };
-      entry.valor += Number(p.valor);
-      entry.qtd += 1;
-      map.set(key, entry);
-    });
-    return Array.from(map.values()).sort((a, b) => b.valor - a.valor);
-  }, [filteredPagamentos]);
+  // (Forma de pagamento report removed)
 
   // ========== RANKING PACIENTES (using orcamentos) ==========
   const rankingPacientes = useMemo(() => {
