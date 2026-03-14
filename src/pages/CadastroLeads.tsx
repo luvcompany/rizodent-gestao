@@ -215,6 +215,11 @@ const CadastroLeads = () => {
                   <Label>Não Contrataram</Label>
                   <Input type="number" min="0" placeholder="0" value={naoContrataram} onChange={(e) => setNaoContrataram(e.target.value)} className="bg-secondary border-border" />
                 </div>
+                <div className="space-y-2">
+                  <Label>Remarcados</Label>
+                  <p className="text-xs text-muted-foreground">Pacientes que faltaram e foram remarcados</p>
+                  <Input type="number" min="0" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
+                </div>
               </div>
             </div>
 
