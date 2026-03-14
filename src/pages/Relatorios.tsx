@@ -817,8 +817,8 @@ const Relatorios = () => {
                   <XAxis dataKey="label" stroke="hsl(0,0%,64%)" fontSize={11} />
                   <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
-                  <Bar dataKey="contratado" fill="hsl(25,100%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
-                  <Bar dataKey="orcado" fill="hsl(35,100%,55%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                  <Bar dataKey="orcado" fill="hsl(25,100%,50%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                  <Bar dataKey="contratado" fill="hsl(120,50%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                   <Legend />
                 </BarChart>
               </ResponsiveContainer>
