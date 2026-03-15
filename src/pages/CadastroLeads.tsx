@@ -130,6 +130,7 @@ const CadastroLeads = () => {
     setContrataram(String(registro.contrataram));
     setNaoContrataram(String(registro.nao_contrataram));
     setRemarcados(String((registro as any).remarcados || 0));
+    setCompareceram(String((registro as any).compareceram || 0));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
