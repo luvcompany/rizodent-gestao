@@ -48,6 +48,7 @@ export type Database = {
         Row: {
           agendaram: number
           clinica_id: string
+          compareceram: number
           contrataram: number
           created_at: string
           created_by: string | null
@@ -62,6 +63,7 @@ export type Database = {
         Insert: {
           agendaram?: number
           clinica_id: string
+          compareceram?: number
           contrataram?: number
           created_at?: string
           created_by?: string | null
@@ -76,6 +78,7 @@ export type Database = {
         Update: {
           agendaram?: number
           clinica_id?: string
+          compareceram?: number
           contrataram?: number
           created_at?: string
           created_by?: string | null

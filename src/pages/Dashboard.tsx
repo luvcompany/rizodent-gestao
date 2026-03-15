@@ -279,28 +279,27 @@ const Dashboard = () => {
       agendaram: acc.agendaram + l.agendaram,
       faltaram: acc.faltaram + l.faltaram,
       remarcados: acc.remarcados + (l.remarcados || 0),
+      compareceram: acc.compareceram + ((l as any).compareceram || 0),
       contrataram: acc.contrataram + l.contrataram,
       naoContrataram: acc.naoContrataram + l.nao_contrataram
     }),
-    { leads: 0, agendaram: 0, faltaram: 0, remarcados: 0, contrataram: 0, naoContrataram: 0 }
+    { leads: 0, agendaram: 0, faltaram: 0, remarcados: 0, compareceram: 0, contrataram: 0, naoContrataram: 0 }
   );
 
   const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(0, 60%, 50%)", "hsl(200, 70%, 50%)", "hsl(45, 90%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
-
-  const compareceram = funnelTotals.agendaram - funnelTotals.faltaram;
 
   const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao">("agendamentos");
 
   const funnelDataAgendamentos = [
     { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
-    { name: "Compareceram", value: compareceram, fill: FUNNEL_COLORS[4] },
+    { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4] },
     { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
     { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
   ];
 
   const funnelDataConversao = [
     { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
-    { name: "Compareceram", value: compareceram, fill: FUNNEL_COLORS[4] },
+    { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4] },
     { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5] },
     { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[6] },
   ];

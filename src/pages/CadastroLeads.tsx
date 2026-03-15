@@ -26,6 +26,7 @@ const CadastroLeads = () => {
   const [contrataram, setContrataram] = useState("");
   const [naoContrataram, setNaoContrataram] = useState("");
   const [remarcados, setRemarcados] = useState("");
+  const [compareceram, setCompareceram] = useState("");
   const [saving, setSaving] = useState(false);
   const [existingId, setExistingId] = useState<string | null>(null);
   const [registros, setRegistros] = useState<LeadWithClinica[]>([]);
@@ -67,10 +68,11 @@ const CadastroLeads = () => {
           setContrataram(String(existing.contrataram));
           setNaoContrataram(String(existing.nao_contrataram));
           setRemarcados(String((existing as any).remarcados || 0));
+          setCompareceram(String((existing as any).compareceram || 0));
         } else {
           setExistingId(null);
           setLeadsNovos(""); setAgendaram(""); setFaltaram("");
-          setContrataram(""); setNaoContrataram(""); setRemarcados("");
+          setContrataram(""); setNaoContrataram(""); setRemarcados(""); setCompareceram("");
         }
       });
   }, [clinicaId, data]);
@@ -78,7 +80,7 @@ const CadastroLeads = () => {
   const resetForm = () => {
     setExistingId(null);
     setLeadsNovos(""); setAgendaram(""); setFaltaram("");
-    setContrataram(""); setNaoContrataram(""); setRemarcados("");
+    setContrataram(""); setNaoContrataram(""); setRemarcados(""); setCompareceram("");
     setClinicaId("");
     setData(new Date().toISOString().split("T")[0]);
   };
@@ -97,6 +99,7 @@ const CadastroLeads = () => {
         contrataram: parseInt(contrataram) || 0,
         nao_contrataram: parseInt(naoContrataram) || 0,
         remarcados: parseInt(remarcados) || 0,
+        compareceram: parseInt(compareceram) || 0,
         created_by: user?.id,
       };
 
@@ -127,6 +130,7 @@ const CadastroLeads = () => {
     setContrataram(String(registro.contrataram));
     setNaoContrataram(String(registro.nao_contrataram));
     setRemarcados(String((registro as any).remarcados || 0));
+    setCompareceram(String((registro as any).compareceram || 0));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -216,6 +220,11 @@ const CadastroLeads = () => {
                   <Input type="number" min="0" placeholder="0" value={naoContrataram} onChange={(e) => setNaoContrataram(e.target.value)} className="bg-secondary border-border" />
                 </div>
                 <div className="space-y-2">
+                  <Label>Compareceram</Label>
+                  <p className="text-xs text-muted-foreground">Pacientes que compareceram à consulta</p>
+                  <Input type="number" min="0" placeholder="0" value={compareceram} onChange={(e) => setCompareceram(e.target.value)} className="bg-secondary border-border" />
+                </div>
+                <div className="space-y-2">
                   <Label>Reagendados</Label>
                   <p className="text-xs text-muted-foreground">Pacientes que faltaram e foram reagendados</p>
                   <Input type="number" min="0" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
@@ -254,6 +263,7 @@ const CadastroLeads = () => {
                     <TableHead className="text-center">Falt.</TableHead>
                     <TableHead className="text-center">Contr.</TableHead>
                     <TableHead className="text-center">Não Contr.</TableHead>
+                    <TableHead className="text-center">Comp.</TableHead>
                     <TableHead className="text-center">Reag.</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -268,6 +278,7 @@ const CadastroLeads = () => {
                       <TableCell className="text-center">{r.faltaram}</TableCell>
                       <TableCell className="text-center">{r.contrataram}</TableCell>
                       <TableCell className="text-center">{r.nao_contrataram}</TableCell>
+                      <TableCell className="text-center">{(r as any).compareceram || 0}</TableCell>
                       <TableCell className="text-center">{(r as any).remarcados || 0}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
