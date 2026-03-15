@@ -277,20 +277,22 @@ const Dashboard = () => {
     (acc, l) => ({
       leads: acc.leads + l.leads_novos,
       agendaram: acc.agendaram + l.agendaram,
-      compareceram: acc.compareceram + (l.agendaram - l.faltaram),
+      faltaram: acc.faltaram + l.faltaram,
+      remarcados: acc.remarcados + (l.remarcados || 0),
       contrataram: acc.contrataram + l.contrataram,
       naoContrataram: acc.naoContrataram + l.nao_contrataram
     }),
-    { leads: 0, agendaram: 0, compareceram: 0, contrataram: 0, naoContrataram: 0 }
+    { leads: 0, agendaram: 0, faltaram: 0, remarcados: 0, contrataram: 0, naoContrataram: 0 }
   );
 
-  const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(45, 90%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
+  const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(0, 60%, 50%)", "hsl(200, 70%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
 
   const funnelData = [
   { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
-  { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[2] },
-  { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[3] },
-  { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[4] }];
+  { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
+  { name: "Remarcados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
+  { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[4] },
+  { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[5] }];
 
 
   const showClinicaChart = clinicaFiltro === "todas";
@@ -453,7 +455,7 @@ const Dashboard = () => {
               <TabsTrigger value="funil">Funil Visual</TabsTrigger>
             </TabsList>
             <TabsContent value="numeros">
-              <div className="grid gap-2 sm:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-5">
                 {funnelData.map((item, i) =>
                 <div key={item.name} className="text-center">
                     <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
