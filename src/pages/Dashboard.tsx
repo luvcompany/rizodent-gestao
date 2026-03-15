@@ -455,11 +455,33 @@ const Dashboard = () => {
       {/* Funnel - Atendimentos do Dia */}
       <Card className="gradient-card border-border shadow-card">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Filter size={18} className="text-primary" />
-            Funil de Atendimentos (Período Selecionado)
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">Total de leads atendidos no período</p>
+           <CardTitle className="text-base flex items-center gap-2">
+             <Filter size={18} className="text-primary" />
+             Funil de Atendimentos (Período Selecionado)
+           </CardTitle>
+           <div className="flex items-center gap-2 mt-2">
+             <Button
+               variant={funnelView === "agendamentos" ? "default" : "outline"}
+               size="sm"
+               onClick={() => setFunnelView("agendamentos")}
+               className="text-xs"
+             >
+               Agendamentos
+             </Button>
+             <Button
+               variant={funnelView === "conversao" ? "default" : "outline"}
+               size="sm"
+               onClick={() => setFunnelView("conversao")}
+               className="text-xs"
+             >
+               Conversão
+             </Button>
+           </div>
+           <p className="text-xs text-muted-foreground mt-1">
+             {funnelView === "agendamentos"
+               ? "Agendaram → Compareceram → Faltaram → Reagendados"
+               : "Agendaram → Compareceram → Contrataram → Não Contrataram"}
+           </p>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="numeros" className="space-y-4">
