@@ -80,7 +80,7 @@ const CadastroLeads = () => {
   const resetForm = () => {
     setExistingId(null);
     setLeadsNovos(""); setAgendaram(""); setFaltaram("");
-    setContrataram(""); setNaoContrataram(""); setRemarcados("");
+    setContrataram(""); setNaoContrataram(""); setRemarcados(""); setCompareceram("");
     setClinicaId("");
     setData(new Date().toISOString().split("T")[0]);
   };
