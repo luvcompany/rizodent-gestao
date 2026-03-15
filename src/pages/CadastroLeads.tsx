@@ -220,6 +220,11 @@ const CadastroLeads = () => {
                   <Input type="number" min="0" placeholder="0" value={naoContrataram} onChange={(e) => setNaoContrataram(e.target.value)} className="bg-secondary border-border" />
                 </div>
                 <div className="space-y-2">
+                  <Label>Compareceram</Label>
+                  <p className="text-xs text-muted-foreground">Pacientes que compareceram à consulta</p>
+                  <Input type="number" min="0" placeholder="0" value={compareceram} onChange={(e) => setCompareceram(e.target.value)} className="bg-secondary border-border" />
+                </div>
+                <div className="space-y-2">
                   <Label>Reagendados</Label>
                   <p className="text-xs text-muted-foreground">Pacientes que faltaram e foram reagendados</p>
                   <Input type="number" min="0" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
