@@ -490,7 +490,7 @@ const Dashboard = () => {
               <TabsTrigger value="funil">Funil Visual</TabsTrigger>
             </TabsList>
             <TabsContent value="numeros">
-              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {funnelData.map((item, i) =>
                 <div key={item.name} className="text-center">
                     <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
