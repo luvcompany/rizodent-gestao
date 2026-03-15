@@ -99,6 +99,7 @@ const CadastroLeads = () => {
         contrataram: parseInt(contrataram) || 0,
         nao_contrataram: parseInt(naoContrataram) || 0,
         remarcados: parseInt(remarcados) || 0,
+        compareceram: parseInt(compareceram) || 0,
         created_by: user?.id,
       };
 
