@@ -254,7 +254,7 @@ const CadastroLeads = () => {
                     <TableHead className="text-center">Falt.</TableHead>
                     <TableHead className="text-center">Contr.</TableHead>
                     <TableHead className="text-center">Não Contr.</TableHead>
-                    <TableHead className="text-center">Remarc.</TableHead>
+                    <TableHead className="text-center">Reag.</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
