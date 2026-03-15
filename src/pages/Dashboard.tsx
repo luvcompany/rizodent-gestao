@@ -289,13 +289,23 @@ const Dashboard = () => {
 
   const compareceram = funnelTotals.agendaram - funnelTotals.faltaram;
 
-  const funnelData = [
-  { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
-  { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
-  { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
-  { name: "Compareceram", value: compareceram, fill: FUNNEL_COLORS[4] },
-  { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5] },
-  { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[6] }];
+  const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao">("agendamentos");
+
+  const funnelDataAgendamentos = [
+    { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
+    { name: "Compareceram", value: compareceram, fill: FUNNEL_COLORS[4] },
+    { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
+    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
+  ];
+
+  const funnelDataConversao = [
+    { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
+    { name: "Compareceram", value: compareceram, fill: FUNNEL_COLORS[4] },
+    { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5] },
+    { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[6] },
+  ];
+
+  const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelDataConversao;
 
 
   const showClinicaChart = clinicaFiltro === "todas";
