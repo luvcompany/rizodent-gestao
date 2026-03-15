@@ -289,13 +289,23 @@ const Dashboard = () => {
 
   const compareceram = funnelTotals.agendaram - funnelTotals.faltaram;
 
-  const funnelData = [
-  { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
-  { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
-  { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
-  { name: "Compareceram", value: compareceram, fill: FUNNEL_COLORS[4] },
-  { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5] },
-  { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[6] }];
+  const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao">("agendamentos");
+
+  const funnelDataAgendamentos = [
+    { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
+    { name: "Compareceram", value: compareceram, fill: FUNNEL_COLORS[4] },
+    { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
+    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
+  ];
+
+  const funnelDataConversao = [
+    { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
+    { name: "Compareceram", value: compareceram, fill: FUNNEL_COLORS[4] },
+    { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5] },
+    { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[6] },
+  ];
+
+  const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelDataConversao;
 
 
   const showClinicaChart = clinicaFiltro === "todas";
@@ -445,11 +455,33 @@ const Dashboard = () => {
       {/* Funnel - Atendimentos do Dia */}
       <Card className="gradient-card border-border shadow-card">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Filter size={18} className="text-primary" />
-            Funil de Atendimentos (Período Selecionado)
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">Total de leads atendidos no período</p>
+           <CardTitle className="text-base flex items-center gap-2">
+             <Filter size={18} className="text-primary" />
+             Funil de Atendimentos (Período Selecionado)
+           </CardTitle>
+           <div className="flex items-center gap-2 mt-2">
+             <Button
+               variant={funnelView === "agendamentos" ? "default" : "outline"}
+               size="sm"
+               onClick={() => setFunnelView("agendamentos")}
+               className="text-xs"
+             >
+               Agendamentos
+             </Button>
+             <Button
+               variant={funnelView === "conversao" ? "default" : "outline"}
+               size="sm"
+               onClick={() => setFunnelView("conversao")}
+               className="text-xs"
+             >
+               Conversão
+             </Button>
+           </div>
+           <p className="text-xs text-muted-foreground mt-1">
+             {funnelView === "agendamentos"
+               ? "Agendaram → Compareceram → Faltaram → Reagendados"
+               : "Agendaram → Compareceram → Contrataram → Não Contrataram"}
+           </p>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="numeros" className="space-y-4">
@@ -458,7 +490,7 @@ const Dashboard = () => {
               <TabsTrigger value="funil">Funil Visual</TabsTrigger>
             </TabsList>
             <TabsContent value="numeros">
-              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {funnelData.map((item, i) =>
                 <div key={item.name} className="text-center">
                     <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
