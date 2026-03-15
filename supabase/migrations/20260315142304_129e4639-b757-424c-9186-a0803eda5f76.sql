@@ -1,0 +1,1 @@
+ALTER TABLE public.leads_diarios ADD COLUMN compareceram integer NOT NULL DEFAULT 0;
