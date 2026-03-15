@@ -290,7 +290,7 @@ const Dashboard = () => {
   const funnelData = [
   { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
   { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
-  { name: "Remarcados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
+  { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
   { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[4] },
   { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[5] }];
 

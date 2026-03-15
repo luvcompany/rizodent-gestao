@@ -216,8 +216,8 @@ const CadastroLeads = () => {
                   <Input type="number" min="0" placeholder="0" value={naoContrataram} onChange={(e) => setNaoContrataram(e.target.value)} className="bg-secondary border-border" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Remarcados</Label>
-                  <p className="text-xs text-muted-foreground">Pacientes que faltaram e foram remarcados</p>
+                  <Label>Reagendados</Label>
+                  <p className="text-xs text-muted-foreground">Pacientes que faltaram e foram reagendados</p>
                   <Input type="number" min="0" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
                 </div>
               </div>
@@ -254,7 +254,7 @@ const CadastroLeads = () => {
                     <TableHead className="text-center">Falt.</TableHead>
                     <TableHead className="text-center">Contr.</TableHead>
                     <TableHead className="text-center">Não Contr.</TableHead>
-                    <TableHead className="text-center">Remarc.</TableHead>
+                    <TableHead className="text-center">Reag.</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
