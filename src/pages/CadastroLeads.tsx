@@ -278,6 +278,7 @@ const CadastroLeads = () => {
                       <TableCell className="text-center">{r.faltaram}</TableCell>
                       <TableCell className="text-center">{r.contrataram}</TableCell>
                       <TableCell className="text-center">{r.nao_contrataram}</TableCell>
+                      <TableCell className="text-center">{(r as any).compareceram || 0}</TableCell>
                       <TableCell className="text-center">{(r as any).remarcados || 0}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">

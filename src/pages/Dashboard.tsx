@@ -279,15 +279,14 @@ const Dashboard = () => {
       agendaram: acc.agendaram + l.agendaram,
       faltaram: acc.faltaram + l.faltaram,
       remarcados: acc.remarcados + (l.remarcados || 0),
+      compareceram: acc.compareceram + ((l as any).compareceram || 0),
       contrataram: acc.contrataram + l.contrataram,
       naoContrataram: acc.naoContrataram + l.nao_contrataram
     }),
-    { leads: 0, agendaram: 0, faltaram: 0, remarcados: 0, contrataram: 0, naoContrataram: 0 }
+    { leads: 0, agendaram: 0, faltaram: 0, remarcados: 0, compareceram: 0, contrataram: 0, naoContrataram: 0 }
   );
 
   const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(0, 60%, 50%)", "hsl(200, 70%, 50%)", "hsl(45, 90%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
-
-  const compareceram = funnelTotals.agendaram - funnelTotals.faltaram;
 
   const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao">("agendamentos");
 
