@@ -432,12 +432,6 @@ const CadastroLeads = () => {
           )}
         </CardContent>
       </Card>
-        </TabsContent>
-
-        <TabsContent value="registro" className="mt-4">
-          <RegistroDiarioTab />
-        </TabsContent>
-      </Tabs>
     </div>
   );
 };
