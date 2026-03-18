@@ -222,7 +222,8 @@ const Atendimento = () => {
     setTotalPagoExistente(0);
     setTotalOrcadoExistente(0);
     setTratamentosExistentes([]);
-    setOrcamentoAberto(null);
+    setOrcamentosAbertos([]);
+    setOrcamentoSelecionado(null);
   };
 
   const updateProcedimento = (index: number, field: keyof ProcedimentoEntry, value: string) => {
