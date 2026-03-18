@@ -260,8 +260,8 @@ const Atendimento = () => {
         return;
       }
 
-      if (!orcamentoAberto) {
-        toast.error("Nenhum orçamento em aberto encontrado para registrar pagamento.");
+      if (!orcamentoSelecionado) {
+        toast.error("Selecione um orçamento para registrar o pagamento.");
         return;
       }
 
