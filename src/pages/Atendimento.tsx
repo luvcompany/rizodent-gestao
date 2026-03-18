@@ -298,7 +298,7 @@ const Atendimento = () => {
 
         // Check if orcamento is now complete
         if (novoTotalContratado >= totalOrcadoExistente) {
-          await supabase.from("orcamentos").update({ status: "concluido" }).eq("id", orcamentoAberto.id);
+          await supabase.from("orcamentos").update({ status: "concluido" }).eq("id", orcamentoSelecionado.id);
         }
 
         toast.success("Pagamento registrado com sucesso!");
