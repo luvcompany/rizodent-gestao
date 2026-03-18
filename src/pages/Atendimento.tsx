@@ -73,7 +73,8 @@ const Atendimento = () => {
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
   const [tratamentosExistentes, setTratamentosExistentes] = useState<any[]>([]);
-  const [orcamentoAberto, setOrcamentoAberto] = useState<any | null>(null);
+  const [orcamentosAbertos, setOrcamentosAbertos] = useState<any[]>([]);
+  const [orcamentoSelecionado, setOrcamentoSelecionado] = useState<any | null>(null);
   const [totalPagoExistente, setTotalPagoExistente] = useState(0);
   const [totalOrcadoExistente, setTotalOrcadoExistente] = useState(0);
   const [saving, setSaving] = useState(false);
