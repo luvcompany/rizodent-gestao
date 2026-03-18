@@ -5,13 +5,15 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw } from "lucide-react";
+import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
+import RegistroDiarioTab from "@/components/RegistroDiarioTab";
 
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
@@ -196,10 +198,22 @@ const CadastroLeads = () => {
 
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Cadastro de Leads Diário</h1>
-        <p className="text-sm text-muted-foreground">Preencha os dados do funil de vendas</p>
+      <div className="mb-2">
+        <h1 className="text-2xl font-bold">Leads & Atendimento</h1>
+        <p className="text-sm text-muted-foreground">Gerencie o funil de vendas e registros diários</p>
       </div>
+
+      <Tabs defaultValue="leads" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="leads" className="flex items-center gap-2">
+            <TrendingUp size={16} /> Cadastro de Leads
+          </TabsTrigger>
+          <TabsTrigger value="registro" className="flex items-center gap-2">
+            <ClipboardList size={16} /> Registro Diário
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="leads" className="mt-4 space-y-6">
 
       <Card className="gradient-card border-border shadow-card">
         <CardHeader>
@@ -430,6 +444,12 @@ const CadastroLeads = () => {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="registro" className="mt-4">
+          <RegistroDiarioTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
