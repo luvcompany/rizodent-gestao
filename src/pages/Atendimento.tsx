@@ -131,7 +131,8 @@ const Atendimento = () => {
     setModo("selecionar");
     setTotalPagoExistente(0);
     setTotalOrcadoExistente(0);
-    setOrcamentoAberto(null);
+    setOrcamentosAbertos([]);
+    setOrcamentoSelecionado(null);
 
     const digits = value.replace(/\D/g, "");
     if (digits.length >= 4) {
