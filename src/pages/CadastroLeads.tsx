@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
-import RegistroDiarioTab from "@/components/RegistroDiarioTab";
+
 
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
