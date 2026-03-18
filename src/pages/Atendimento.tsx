@@ -148,26 +148,37 @@ const Atendimento = () => {
 
   const carregarTratamentos = async (pacienteId: string) => {
     const [{ data: orcs }, { data: trats }, { data: pags }] = await Promise.all([
-      supabase.from("orcamentos").select("*").eq("paciente_id", pacienteId).eq("status", "aberto").order("created_at", { ascending: false }).limit(1),
+      supabase.from("orcamentos").select("*").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
       supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
       supabase.from("pagamentos").select("valor, orcamento_id").eq("paciente_id", pacienteId),
     ]);
 
     if (trats) {
       setTratamentosExistentes(trats);
-      const openOrc = orcs && orcs.length > 0 ? orcs[0] : null;
-      setOrcamentoAberto(openOrc);
+      const openOrcs = (orcs || []).filter((o: any) => o.status === "aberto");
+      
+      // Enrich with pago info
+      const enriched = openOrcs.map((o: any) => {
+        const totalPago = pags?.filter(p => p.orcamento_id === o.id).reduce((s, p) => s + Number(p.valor), 0) || 0;
+        return { ...o, totalPago, restante: Math.max(0, Number(o.valor_orcado || 0) - totalPago) };
+      }).filter((o: any) => o.restante > 0);
 
-      if (openOrc) {
-        const totalOrcado = Number(openOrc.valor_orcado || 0);
-        const totalPago = pags?.filter(p => p.orcamento_id === openOrc.id).reduce((s, p) => s + Number(p.valor), 0) || 0;
-        setTotalOrcadoExistente(totalOrcado);
-        setTotalPagoExistente(totalPago);
+      setOrcamentosAbertos(enriched);
+
+      if (enriched.length === 1) {
+        selecionarOrcamento(enriched[0]);
       } else {
+        setOrcamentoSelecionado(null);
         setTotalOrcadoExistente(0);
         setTotalPagoExistente(0);
       }
     }
+  };
+
+  const selecionarOrcamento = (orc: any) => {
+    setOrcamentoSelecionado(orc);
+    setTotalOrcadoExistente(Number(orc.valor_orcado || 0));
+    setTotalPagoExistente(orc.totalPago || 0);
   };
 
   const selecionarPaciente = async (pac: Tables<"pacientes">) => {
