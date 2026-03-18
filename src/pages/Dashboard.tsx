@@ -299,23 +299,29 @@ const Dashboard = () => {
   const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao" | "reagendados">("agendamentos");
 
   const funnelDataAgendamentos = [
-    { name: "Agendados", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
-    { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4] },
-    { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
-    { name: "Faltas Líquidas", value: faltasLiquidas, fill: FUNNEL_COLORS[6] },
+    { name: "Agendados", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1], refValue: funnelTotals.agendaram },
+    { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4], refValue: funnelTotals.agendaram },
+    { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5], refValue: funnelTotals.compareceram },
+    { name: "Não Contrataram", value: Math.max(funnelTotals.compareceram - funnelTotals.contrataram, 0), fill: FUNNEL_COLORS[6], refValue: funnelTotals.compareceram },
+    { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.agendaram },
+  ];
+
+  const reagFaltaram = Math.max(funnelTotals.remarcados - funnelTotals.reagendadosCompareceram, 0);
+  const reagNaoContrataram = Math.max(funnelTotals.reagendadosCompareceram - funnelTotals.reagendadosContrataram, 0);
+
+  const funnelDataReagendados = [
+    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3], refValue: funnelTotals.remarcados },
+    { name: "Compareceram", value: funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[4], refValue: funnelTotals.remarcados },
+    { name: "Contrataram", value: funnelTotals.reagendadosContrataram, fill: FUNNEL_COLORS[5], refValue: funnelTotals.reagendadosCompareceram },
+    { name: "Não Contrataram", value: reagNaoContrataram, fill: FUNNEL_COLORS[6], refValue: funnelTotals.reagendadosCompareceram },
+    { name: "Faltaram", value: reagFaltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.remarcados },
   ];
 
   const funnelDataConversao = [
-    { name: "Total Compareceram", value: totalCompareceram, fill: FUNNEL_COLORS[1] },
-    { name: "Total Contrataram", value: totalContrataram, fill: FUNNEL_COLORS[5] },
-    { name: "Total Não Contrat.", value: Math.max(totalNaoContrataram, 0), fill: FUNNEL_COLORS[6] },
-  ];
-
-  const funnelDataReagendados = [
-    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
-    { name: "Compareceram", value: funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[4] },
-    { name: "Contrataram", value: funnelTotals.reagendadosContrataram, fill: FUNNEL_COLORS[5] },
-    { name: "Faltaram", value: funnelTotals.remarcados - funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[2] },
+    { name: "Total Compareceram", value: totalCompareceram, fill: FUNNEL_COLORS[1], refValue: totalCompareceram },
+    { name: "Total Contrataram", value: totalContrataram, fill: FUNNEL_COLORS[5], refValue: totalCompareceram },
+    { name: "Total Não Contrat.", value: Math.max(totalNaoContrataram, 0), fill: FUNNEL_COLORS[6], refValue: totalCompareceram },
+    { name: "Faltas Líquidas", value: faltasLiquidas, fill: FUNNEL_COLORS[2], refValue: funnelTotals.agendaram + funnelTotals.remarcados },
   ];
 
   const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelView === "conversao" ? funnelDataConversao : funnelDataReagendados;
@@ -500,10 +506,10 @@ const Dashboard = () => {
            </div>
            <p className="text-xs text-muted-foreground mt-1">
              {funnelView === "agendamentos"
-               ? "Agendados → Compareceram → Faltaram → Faltas Líquidas"
+               ? "Agendados → Compareceram → Contrataram → Não Contrataram → Faltaram"
                : funnelView === "reagendados"
-               ? "Reagendados → Compareceram → Contrataram → Faltaram"
-               : "Total Compareceram → Total Contrataram → Total Não Contrataram"}
+               ? "Reagendados → Compareceram → Contrataram → Não Contrataram → Faltaram"
+               : "Total Compareceram → Contrataram → Não Contrataram → Faltas Líquidas"}
            </p>
         </CardHeader>
         <CardContent>
@@ -513,18 +519,17 @@ const Dashboard = () => {
               <TabsTrigger value="funil">Funil Visual</TabsTrigger>
             </TabsList>
             <TabsContent value="numeros">
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                {funnelData.map((item, i) =>
-                <div key={item.name} className="text-center">
-                    <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{item.name}</div>
-                    {i > 0 && funnelData[0].value > 0 &&
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                        {(item.value / funnelData[0].value * 100).toFixed(1)}%
-                      </div>
-                  }
-                  </div>
-                )}
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                {funnelData.map((item, i) => {
+                  const pct = i > 0 && item.refValue > 0 ? (item.value / item.refValue * 100).toFixed(1) : null;
+                  return (
+                    <div key={item.name} className="text-center">
+                      <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{item.name}</div>
+                      {pct && <div className="text-xs text-muted-foreground mt-0.5">{pct}%</div>}
+                    </div>
+                  );
+                })}
               </div>
               <div className="mt-4 flex h-8 overflow-hidden rounded-lg">
                 {funnelData.filter((d) => d.value > 0).map((item) => {

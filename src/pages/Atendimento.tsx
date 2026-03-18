@@ -73,7 +73,8 @@ const Atendimento = () => {
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
   const [tratamentosExistentes, setTratamentosExistentes] = useState<any[]>([]);
-  const [orcamentoAberto, setOrcamentoAberto] = useState<any | null>(null);
+  const [orcamentosAbertos, setOrcamentosAbertos] = useState<any[]>([]);
+  const [orcamentoSelecionado, setOrcamentoSelecionado] = useState<any | null>(null);
   const [totalPagoExistente, setTotalPagoExistente] = useState(0);
   const [totalOrcadoExistente, setTotalOrcadoExistente] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -130,7 +131,8 @@ const Atendimento = () => {
     setModo("selecionar");
     setTotalPagoExistente(0);
     setTotalOrcadoExistente(0);
-    setOrcamentoAberto(null);
+    setOrcamentosAbertos([]);
+    setOrcamentoSelecionado(null);
 
     const digits = value.replace(/\D/g, "");
     if (digits.length >= 4) {
@@ -147,26 +149,37 @@ const Atendimento = () => {
 
   const carregarTratamentos = async (pacienteId: string) => {
     const [{ data: orcs }, { data: trats }, { data: pags }] = await Promise.all([
-      supabase.from("orcamentos").select("*").eq("paciente_id", pacienteId).eq("status", "aberto").order("created_at", { ascending: false }).limit(1),
+      supabase.from("orcamentos").select("*").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
       supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
       supabase.from("pagamentos").select("valor, orcamento_id").eq("paciente_id", pacienteId),
     ]);
 
     if (trats) {
       setTratamentosExistentes(trats);
-      const openOrc = orcs && orcs.length > 0 ? orcs[0] : null;
-      setOrcamentoAberto(openOrc);
+      const openOrcs = (orcs || []).filter((o: any) => o.status === "aberto");
+      
+      // Enrich with pago info
+      const enriched = openOrcs.map((o: any) => {
+        const totalPago = pags?.filter(p => p.orcamento_id === o.id).reduce((s, p) => s + Number(p.valor), 0) || 0;
+        return { ...o, totalPago, restante: Math.max(0, Number(o.valor_orcado || 0) - totalPago) };
+      }).filter((o: any) => o.restante > 0);
 
-      if (openOrc) {
-        const totalOrcado = Number(openOrc.valor_orcado || 0);
-        const totalPago = pags?.filter(p => p.orcamento_id === openOrc.id).reduce((s, p) => s + Number(p.valor), 0) || 0;
-        setTotalOrcadoExistente(totalOrcado);
-        setTotalPagoExistente(totalPago);
+      setOrcamentosAbertos(enriched);
+
+      if (enriched.length === 1) {
+        selecionarOrcamento(enriched[0]);
       } else {
+        setOrcamentoSelecionado(null);
         setTotalOrcadoExistente(0);
         setTotalPagoExistente(0);
       }
     }
+  };
+
+  const selecionarOrcamento = (orc: any) => {
+    setOrcamentoSelecionado(orc);
+    setTotalOrcadoExistente(Number(orc.valor_orcado || 0));
+    setTotalPagoExistente(orc.totalPago || 0);
   };
 
   const selecionarPaciente = async (pac: Tables<"pacientes">) => {
@@ -209,7 +222,8 @@ const Atendimento = () => {
     setTotalPagoExistente(0);
     setTotalOrcadoExistente(0);
     setTratamentosExistentes([]);
-    setOrcamentoAberto(null);
+    setOrcamentosAbertos([]);
+    setOrcamentoSelecionado(null);
   };
 
   const updateProcedimento = (index: number, field: keyof ProcedimentoEntry, value: string) => {
@@ -246,8 +260,8 @@ const Atendimento = () => {
         return;
       }
 
-      if (!orcamentoAberto) {
-        toast.error("Nenhum orçamento em aberto encontrado para registrar pagamento.");
+      if (!orcamentoSelecionado) {
+        toast.error("Selecione um orçamento para registrar o pagamento.");
         return;
       }
 
@@ -262,8 +276,8 @@ const Atendimento = () => {
       setSaving(true);
       try {
         const tipo = tipoPagamento;
-        // Link to first treatment of the open orcamento
-        const orcTrats = tratamentosExistentes.filter(t => t.orcamento_id === orcamentoAberto.id);
+        // Link to first treatment of the selected orcamento
+        const orcTrats = tratamentosExistentes.filter(t => t.orcamento_id === orcamentoSelecionado.id);
         const tratamentoId = orcTrats[0]?.id || tratamentosExistentes[0]?.id;
         if (!tratamentoId) throw new Error("Nenhum tratamento encontrado.");
 
@@ -278,13 +292,13 @@ const Atendimento = () => {
             tipo,
             data_pagamento: dataPagamento,
             created_by: user?.id,
-            orcamento_id: orcamentoAberto.id,
+            orcamento_id: orcamentoSelecionado.id,
           });
         if (pagError) throw pagError;
 
         // Check if orcamento is now complete
         if (novoTotalContratado >= totalOrcadoExistente) {
-          await supabase.from("orcamentos").update({ status: "concluido" }).eq("id", orcamentoAberto.id);
+          await supabase.from("orcamentos").update({ status: "concluido" }).eq("id", orcamentoSelecionado.id);
         }
 
         toast.success("Pagamento registrado com sucesso!");
@@ -467,32 +481,62 @@ const Atendimento = () => {
                     ))}
                   </div>
 
-                  {/* Financial summary of open orcamento */}
-                  {orcamentoAberto && (
-                    <div className="grid grid-cols-3 gap-2 mb-3 text-center">
-                      <div className="rounded-lg bg-background p-2">
-                        <p className="text-xs text-muted-foreground">Orçado</p>
-                        <p className="text-sm font-semibold">{formatCurrencyDisplay(totalOrcadoExistente)}</p>
-                      </div>
-                      <div className="rounded-lg bg-background p-2">
-                        <p className="text-xs text-muted-foreground">Contratado</p>
-                        <p className="text-sm font-semibold text-primary">{formatCurrencyDisplay(totalPagoExistente)}</p>
-                      </div>
-                      <div className="rounded-lg bg-background p-2">
-                        <p className="text-xs text-muted-foreground">Não Contratado</p>
-                        <p className="text-sm font-semibold text-destructive">{formatCurrencyDisplay(naoContratadoExistente)}</p>
-                      </div>
-                    </div>
-                  )}
+                   {/* Orçamentos abertos - seleção */}
+                   {orcamentosAbertos.length > 1 && (
+                     <div className="space-y-2 mb-3">
+                       <p className="text-xs font-semibold text-muted-foreground">Selecione o orçamento:</p>
+                       {orcamentosAbertos.map((orc, i) => {
+                         const isSelected = orcamentoSelecionado?.id === orc.id;
+                         const orcTrats = tratamentosExistentes.filter((t: any) => t.orcamento_id === orc.id);
+                         return (
+                           <button
+                             key={orc.id}
+                             type="button"
+                             onClick={() => selecionarOrcamento(orc)}
+                             className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors ${isSelected ? 'border-primary bg-primary/10' : 'border-border bg-background hover:border-primary/50'}`}
+                           >
+                             <div className="text-left">
+                               <p className="font-medium">Orçamento #{orcamentosAbertos.length - i}</p>
+                               <p className="text-xs text-muted-foreground">
+                                 {orcTrats.map((t: any) => t.procedimento).join(", ") || "Sem tratamentos"}
+                               </p>
+                             </div>
+                             <div className="text-right">
+                               <p className="text-xs text-muted-foreground">Orçado: {formatCurrencyDisplay(Number(orc.valor_orcado || 0))}</p>
+                               <p className="text-xs text-primary font-semibold">Restante: {formatCurrencyDisplay(orc.restante)}</p>
+                             </div>
+                           </button>
+                         );
+                       })}
+                     </div>
+                   )}
 
-                  {!orcamentoAberto && (
-                    <div className="rounded-lg bg-background p-3 mb-3 text-center">
-                      <p className="text-sm text-muted-foreground">Todos os orçamentos estão concluídos.</p>
-                    </div>
-                  )}
+                   {/* Financial summary of selected orcamento */}
+                   {orcamentoSelecionado && (
+                     <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                       <div className="rounded-lg bg-background p-2">
+                         <p className="text-xs text-muted-foreground">Orçado</p>
+                         <p className="text-sm font-semibold">{formatCurrencyDisplay(totalOrcadoExistente)}</p>
+                       </div>
+                       <div className="rounded-lg bg-background p-2">
+                         <p className="text-xs text-muted-foreground">Contratado</p>
+                         <p className="text-sm font-semibold text-primary">{formatCurrencyDisplay(totalPagoExistente)}</p>
+                       </div>
+                       <div className="rounded-lg bg-background p-2">
+                         <p className="text-xs text-muted-foreground">Não Contratado</p>
+                         <p className="text-sm font-semibold text-destructive">{formatCurrencyDisplay(naoContratadoExistente)}</p>
+                       </div>
+                     </div>
+                   )}
+
+                   {orcamentosAbertos.length === 0 && (
+                     <div className="rounded-lg bg-background p-3 mb-3 text-center">
+                       <p className="text-sm text-muted-foreground">Todos os orçamentos estão concluídos.</p>
+                     </div>
+                   )}
 
                   <div className="space-y-2">
-                    {orcamentoAberto && naoContratadoExistente > 0 && (
+                    {orcamentosAbertos.length > 0 && (
                       <button
                         type="button"
                         onClick={iniciarNovoPagamento}
