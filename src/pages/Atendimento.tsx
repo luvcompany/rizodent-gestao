@@ -536,7 +536,7 @@ const Atendimento = () => {
                    )}
 
                   <div className="space-y-2">
-                    {orcamentoAberto && naoContratadoExistente > 0 && (
+                    {orcamentosAbertos.length > 0 && (
                       <button
                         type="button"
                         onClick={iniciarNovoPagamento}
