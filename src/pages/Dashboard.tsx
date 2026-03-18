@@ -519,18 +519,17 @@ const Dashboard = () => {
               <TabsTrigger value="funil">Funil Visual</TabsTrigger>
             </TabsList>
             <TabsContent value="numeros">
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                {funnelData.map((item, i) =>
-                <div key={item.name} className="text-center">
-                    <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{item.name}</div>
-                    {i > 0 && funnelData[0].value > 0 &&
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                        {(item.value / funnelData[0].value * 100).toFixed(1)}%
-                      </div>
-                  }
-                  </div>
-                )}
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                {funnelData.map((item, i) => {
+                  const pct = i > 0 && item.refValue > 0 ? (item.value / item.refValue * 100).toFixed(1) : null;
+                  return (
+                    <div key={item.name} className="text-center">
+                      <div className="text-3xl font-bold" style={{ color: item.fill }}>{item.value}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{item.name}</div>
+                      {pct && <div className="text-xs text-muted-foreground mt-0.5">{pct}%</div>}
+                    </div>
+                  );
+                })}
               </div>
               <div className="mt-4 flex h-8 overflow-hidden rounded-lg">
                 {funnelData.filter((d) => d.value > 0).map((item) => {
