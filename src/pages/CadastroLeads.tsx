@@ -198,10 +198,22 @@ const CadastroLeads = () => {
 
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Cadastro de Leads Diário</h1>
-        <p className="text-sm text-muted-foreground">Preencha os dados do funil de vendas</p>
+      <div className="mb-2">
+        <h1 className="text-2xl font-bold">Leads & Atendimento</h1>
+        <p className="text-sm text-muted-foreground">Gerencie o funil de vendas e registros diários</p>
       </div>
+
+      <Tabs defaultValue="leads" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="leads" className="flex items-center gap-2">
+            <TrendingUp size={16} /> Cadastro de Leads
+          </TabsTrigger>
+          <TabsTrigger value="registro" className="flex items-center gap-2">
+            <ClipboardList size={16} /> Registro Diário
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="leads" className="mt-4 space-y-6">
 
       <Card className="gradient-card border-border shadow-card">
         <CardHeader>
