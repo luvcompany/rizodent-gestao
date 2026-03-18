@@ -5,13 +5,15 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw } from "lucide-react";
+import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
+import RegistroDiarioTab from "@/components/RegistroDiarioTab";
 
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
