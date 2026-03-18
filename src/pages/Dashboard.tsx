@@ -299,23 +299,22 @@ const Dashboard = () => {
   const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao" | "reagendados">("agendamentos");
 
   const funnelDataAgendamentos = [
-    { name: "Agendados", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
-    { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4] },
-    { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
-    { name: "Faltas Líquidas", value: faltasLiquidas, fill: FUNNEL_COLORS[6] },
+    { name: "Agendados", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1], refValue: funnelTotals.agendaram },
+    { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4], refValue: funnelTotals.agendaram },
+    { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5], refValue: funnelTotals.compareceram },
+    { name: "Não Contrataram", value: Math.max(funnelTotals.compareceram - funnelTotals.contrataram, 0), fill: FUNNEL_COLORS[6], refValue: funnelTotals.compareceram },
+    { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.agendaram },
   ];
 
-  const funnelDataConversao = [
-    { name: "Total Compareceram", value: totalCompareceram, fill: FUNNEL_COLORS[1] },
-    { name: "Total Contrataram", value: totalContrataram, fill: FUNNEL_COLORS[5] },
-    { name: "Total Não Contrat.", value: Math.max(totalNaoContrataram, 0), fill: FUNNEL_COLORS[6] },
-  ];
+  const reagFaltaram = Math.max(funnelTotals.remarcados - funnelTotals.reagendadosCompareceram, 0);
+  const reagNaoContrataram = Math.max(funnelTotals.reagendadosCompareceram - funnelTotals.reagendadosContrataram, 0);
 
   const funnelDataReagendados = [
-    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
-    { name: "Compareceram", value: funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[4] },
-    { name: "Contrataram", value: funnelTotals.reagendadosContrataram, fill: FUNNEL_COLORS[5] },
-    { name: "Faltaram", value: funnelTotals.remarcados - funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[2] },
+    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3], refValue: funnelTotals.remarcados },
+    { name: "Compareceram", value: funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[4], refValue: funnelTotals.remarcados },
+    { name: "Contrataram", value: funnelTotals.reagendadosContrataram, fill: FUNNEL_COLORS[5], refValue: funnelTotals.reagendadosCompareceram },
+    { name: "Não Contrataram", value: reagNaoContrataram, fill: FUNNEL_COLORS[6], refValue: funnelTotals.reagendadosCompareceram },
+    { name: "Faltaram", value: reagFaltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.remarcados },
   ];
 
   const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelView === "conversao" ? funnelDataConversao : funnelDataReagendados;
