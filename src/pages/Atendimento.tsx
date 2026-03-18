@@ -276,8 +276,8 @@ const Atendimento = () => {
       setSaving(true);
       try {
         const tipo = tipoPagamento;
-        // Link to first treatment of the open orcamento
-        const orcTrats = tratamentosExistentes.filter(t => t.orcamento_id === orcamentoAberto.id);
+        // Link to first treatment of the selected orcamento
+        const orcTrats = tratamentosExistentes.filter(t => t.orcamento_id === orcamentoSelecionado.id);
         const tratamentoId = orcTrats[0]?.id || tratamentosExistentes[0]?.id;
         if (!tratamentoId) throw new Error("Nenhum tratamento encontrado.");
 
