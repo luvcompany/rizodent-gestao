@@ -277,34 +277,48 @@ const Dashboard = () => {
     (acc, l) => ({
       leads: acc.leads + l.leads_novos,
       agendaram: acc.agendaram + l.agendaram,
-      faltaram: acc.faltaram + l.faltaram,
-      remarcados: acc.remarcados + (l.remarcados || 0),
-      compareceram: acc.compareceram + ((l as any).compareceram || 0),
+      compareceram: acc.compareceram + l.compareceram,
       contrataram: acc.contrataram + l.contrataram,
-      naoContrataram: acc.naoContrataram + l.nao_contrataram
+      faltaram: acc.faltaram + l.faltaram,
+      naoContrataram: acc.naoContrataram + l.nao_contrataram,
+      remarcados: acc.remarcados + l.remarcados,
+      reagendadosCompareceram: acc.reagendadosCompareceram + ((l as any).reagendados_compareceram || 0),
+      reagendadosContrataram: acc.reagendadosContrataram + ((l as any).reagendados_contrataram || 0),
     }),
-    { leads: 0, agendaram: 0, faltaram: 0, remarcados: 0, compareceram: 0, contrataram: 0, naoContrataram: 0 }
+    { leads: 0, agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0, naoContrataram: 0, remarcados: 0, reagendadosCompareceram: 0, reagendadosContrataram: 0 }
   );
+
+  // Faltas líquidas: brutas - reagendados + faltas no reagendamento
+  const faltasLiquidas = Math.max(funnelTotals.faltaram - funnelTotals.remarcados + (funnelTotals.remarcados - funnelTotals.reagendadosCompareceram), 0);
+  const totalCompareceram = funnelTotals.compareceram + funnelTotals.reagendadosCompareceram;
+  const totalContrataram = funnelTotals.contrataram + funnelTotals.reagendadosContrataram;
+  const totalNaoContrataram = totalCompareceram - totalContrataram;
 
   const FUNNEL_COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(0, 60%, 50%)", "hsl(200, 70%, 50%)", "hsl(45, 90%, 50%)", "hsl(120, 60%, 45%)", "hsl(0, 70%, 50%)"];
 
-  const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao">("agendamentos");
+  const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao" | "reagendados">("agendamentos");
 
   const funnelDataAgendamentos = [
-    { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
+    { name: "Agendados", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
     { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4] },
     { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2] },
-    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
+    { name: "Faltas Líquidas", value: faltasLiquidas, fill: FUNNEL_COLORS[6] },
   ];
 
   const funnelDataConversao = [
-    { name: "Agendaram", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1] },
-    { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4] },
-    { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5] },
-    { name: "Não Contrataram", value: funnelTotals.naoContrataram, fill: FUNNEL_COLORS[6] },
+    { name: "Total Compareceram", value: totalCompareceram, fill: FUNNEL_COLORS[1] },
+    { name: "Total Contrataram", value: totalContrataram, fill: FUNNEL_COLORS[5] },
+    { name: "Total Não Contrat.", value: Math.max(totalNaoContrataram, 0), fill: FUNNEL_COLORS[6] },
   ];
 
-  const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelDataConversao;
+  const funnelDataReagendados = [
+    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3] },
+    { name: "Compareceram", value: funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[4] },
+    { name: "Contrataram", value: funnelTotals.reagendadosContrataram, fill: FUNNEL_COLORS[5] },
+    { name: "Faltaram", value: funnelTotals.remarcados - funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[2] },
+  ];
+
+  const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelView === "conversao" ? funnelDataConversao : funnelDataReagendados;
 
 
   const showClinicaChart = clinicaFiltro === "todas";
@@ -468,18 +482,28 @@ const Dashboard = () => {
                Agendamentos
              </Button>
              <Button
+               variant={funnelView === "reagendados" ? "default" : "outline"}
+               size="sm"
+               onClick={() => setFunnelView("reagendados")}
+               className="text-xs"
+             >
+               Reagendados
+             </Button>
+             <Button
                variant={funnelView === "conversao" ? "default" : "outline"}
                size="sm"
                onClick={() => setFunnelView("conversao")}
                className="text-xs"
              >
-               Conversão
+               Conversão Total
              </Button>
            </div>
            <p className="text-xs text-muted-foreground mt-1">
              {funnelView === "agendamentos"
-               ? "Agendaram → Compareceram → Faltaram → Reagendados"
-               : "Agendaram → Compareceram → Contrataram → Não Contrataram"}
+               ? "Agendados → Compareceram → Faltaram → Faltas Líquidas"
+               : funnelView === "reagendados"
+               ? "Reagendados → Compareceram → Contrataram → Faltaram"
+               : "Total Compareceram → Total Contrataram → Total Não Contrataram"}
            </p>
         </CardHeader>
         <CardContent>
