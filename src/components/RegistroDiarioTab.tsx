@@ -338,9 +338,9 @@ const RegistroDiarioTab = () => {
                     <span className="text-xl font-bold text-primary">{vReagLigacao}</span>
                     <span className="text-xs text-muted-foreground">{taxaReagLigacao.toFixed(1)}%</span>
                   </div>
-                  <div className="flex flex-col items-center rounded-lg bg-accent p-3">
+                  <div className="flex flex-col items-center rounded-lg bg-secondary p-3">
                     <span className="text-xs text-muted-foreground">Total convertidos</span>
-                    <span className="text-xl font-bold text-foreground">{totalConvertidosLigacao}</span>
+                    <span className="text-xl font-bold text-primary">{totalConvertidosLigacao}</span>
                     <span className="text-xs text-muted-foreground">{taxaConversaoAtendidas.toFixed(1)}%</span>
                   </div>
                 </div>
