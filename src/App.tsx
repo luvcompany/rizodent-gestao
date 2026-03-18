@@ -15,6 +15,7 @@ import Marketing from "./pages/Marketing";
 import CadastroLeads from "./pages/CadastroLeads";
 import Usuarios from "./pages/Usuarios";
 import TiposProcedimento from "./pages/TiposProcedimento";
+import RegistroDiario from "./pages/RegistroDiario";
 import AppLayout from "./components/AppLayout";
 import NotFound from "./pages/NotFound";
 
@@ -45,6 +46,7 @@ const App = () => (
               <Route path="/leads" element={<CadastroLeads />} />
               <Route path="/usuarios" element={<Usuarios />} />
               <Route path="/procedimentos" element={<TiposProcedimento />} />
+              <Route path="/registro-diario" element={<RegistroDiario />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

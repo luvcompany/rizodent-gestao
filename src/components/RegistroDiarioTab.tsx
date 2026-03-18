@@ -95,19 +95,30 @@ const RegistroDiarioTab = () => {
     setAgendamentosPorLigacao("");
   };
 
-  const taxaConversaoLigacao = (() => {
-    const total = parseInt(totalLigacoes) || 0;
-    const agend = parseInt(agendamentosPorLigacao) || 0;
-    if (total === 0) return 0;
-    return ((agend / total) * 100);
-  })();
+  // Parsed values
+  const vAgendados = parseInt(leadsAgendadosFuturo) || 0;
+  const vReagendados = parseInt(leadsReagendados) || 0;
+  const vReagLigacao = parseInt(leadsReagendadosLigacao) || 0;
+  const vTotalLig = parseInt(totalLigacoes) || 0;
+  const vAtendidas = parseInt(ligacoesAtendidas) || 0;
+  const vAgendLigacao = parseInt(agendamentosPorLigacao) || 0;
 
-  const taxaAtendimento = (() => {
-    const total = parseInt(totalLigacoes) || 0;
-    const atend = parseInt(ligacoesAtendidas) || 0;
-    if (total === 0) return 0;
-    return ((atend / total) * 100);
-  })();
+  // Derived: agendamentos espontâneos (não por ligação)
+  const agendEspontaneos = Math.max(vAgendados - vAgendLigacao, 0);
+  const reagEspontaneos = Math.max(vReagendados - vReagLigacao, 0);
+
+  // Taxa de atendimento de ligações
+  const taxaAtendimento = vTotalLig > 0 ? (vAtendidas / vTotalLig) * 100 : 0;
+
+  // Taxa de conversão sobre ligações atendidas
+  const totalConvertidosLigacao = vAgendLigacao + vReagLigacao;
+  const taxaConversaoAtendidas = vAtendidas > 0 ? (totalConvertidosLigacao / vAtendidas) * 100 : 0;
+
+  // Taxa de agendamento por ligação atendida
+  const taxaAgendLigacao = vAtendidas > 0 ? (vAgendLigacao / vAtendidas) * 100 : 0;
+
+  // Taxa de reagendamento por ligação atendida
+  const taxaReagLigacao = vAtendidas > 0 ? (vReagLigacao / vAtendidas) * 100 : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,12 +128,12 @@ const RegistroDiarioTab = () => {
       const payload = {
         data,
         clinica_id: clinicaId,
-        leads_agendados_futuro: parseInt(leadsAgendadosFuturo) || 0,
-        leads_reagendados: parseInt(leadsReagendados) || 0,
-        leads_reagendados_ligacao: parseInt(leadsReagendadosLigacao) || 0,
-        total_ligacoes: parseInt(totalLigacoes) || 0,
-        ligacoes_atendidas: parseInt(ligacoesAtendidas) || 0,
-        agendamentos_por_ligacao: parseInt(agendamentosPorLigacao) || 0,
+        leads_agendados_futuro: vAgendados,
+        leads_reagendados: vReagendados,
+        leads_reagendados_ligacao: vReagLigacao,
+        total_ligacoes: vTotalLig,
+        ligacoes_atendidas: vAtendidas,
+        agendamentos_por_ligacao: vAgendLigacao,
         created_by: user?.id,
       };
 
@@ -217,16 +228,60 @@ const RegistroDiarioTab = () => {
               </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Leads agendados (datas futuras)</Label>
-                  <p className="text-xs text-muted-foreground">Agendamentos feitos hoje para datas futuras</p>
+                  <Label>Total de leads agendados (datas futuras)</Label>
+                  <p className="text-xs text-muted-foreground">Total de agendamentos feitos hoje para datas futuras (inclui os por ligação)</p>
                   <Input type="number" min="0" placeholder="0" value={leadsAgendadosFuturo} onChange={(e) => setLeadsAgendadosFuturo(e.target.value)} className="bg-secondary border-border" required />
                 </div>
                 <div className="space-y-2">
-                  <Label>Leads reagendados</Label>
-                  <p className="text-xs text-muted-foreground">Reagendamentos realizados no dia</p>
-                  <Input type="number" min="0" placeholder="0" value={leadsReagendados} onChange={(e) => setLeadsReagendados(e.target.value)} className="bg-secondary border-border" required />
+                  <Label>Desses, quantos por ligação?</Label>
+                  <p className="text-xs text-muted-foreground">Dos {vAgendados} agendados, quantos foram via ligação</p>
+                  <Input type="number" min="0" placeholder="0" value={agendamentosPorLigacao} onChange={(e) => setAgendamentosPorLigacao(e.target.value)} className="bg-secondary border-border" required />
                 </div>
               </div>
+              {vAgendados > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-lg bg-primary/10 p-3">
+                    <span className="text-sm text-muted-foreground">📞 Por ligação</span>
+                    <span className="text-lg font-bold text-primary">{vAgendLigacao}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-muted p-3">
+                    <span className="text-sm text-muted-foreground">📋 Espontâneos / outros canais</span>
+                    <span className="text-lg font-bold text-foreground">{agendEspontaneos}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Reagendamentos */}
+            <div className="border-t border-border pt-4 space-y-4">
+              <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <CalendarCheck size={16} className="text-primary" />
+                Reagendamentos
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Total de leads reagendados</Label>
+                  <p className="text-xs text-muted-foreground">Total de reagendamentos realizados no dia (inclui os por ligação)</p>
+                  <Input type="number" min="0" placeholder="0" value={leadsReagendados} onChange={(e) => setLeadsReagendados(e.target.value)} className="bg-secondary border-border" required />
+                </div>
+                <div className="space-y-2">
+                  <Label>Desses, quantos por ligação?</Label>
+                  <p className="text-xs text-muted-foreground">Dos {vReagendados} reagendados, quantos foram via ligação</p>
+                  <Input type="number" min="0" placeholder="0" value={leadsReagendadosLigacao} onChange={(e) => setLeadsReagendadosLigacao(e.target.value)} className="bg-secondary border-border" required />
+                </div>
+              </div>
+              {vReagendados > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-lg bg-primary/10 p-3">
+                    <span className="text-sm text-muted-foreground">📞 Por ligação</span>
+                    <span className="text-lg font-bold text-primary">{vReagLigacao}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-muted p-3">
+                    <span className="text-sm text-muted-foreground">📋 Espontâneos / outros canais</span>
+                    <span className="text-lg font-bold text-foreground">{reagEspontaneos}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Ligações */}
@@ -245,35 +300,49 @@ const RegistroDiarioTab = () => {
                   <Input type="number" min="0" placeholder="0" value={ligacoesAtendidas} onChange={(e) => setLigacoesAtendidas(e.target.value)} className="bg-secondary border-border" required />
                 </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Reagendados por ligação</Label>
-                  <p className="text-xs text-muted-foreground">Leads reagendados via ligação</p>
-                  <Input type="number" min="0" placeholder="0" value={leadsReagendadosLigacao} onChange={(e) => setLeadsReagendadosLigacao(e.target.value)} className="bg-secondary border-border" required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Agendamentos por ligação</Label>
-                  <p className="text-xs text-muted-foreground">Novos agendamentos via ligação</p>
-                  <Input type="number" min="0" placeholder="0" value={agendamentosPorLigacao} onChange={(e) => setAgendamentosPorLigacao(e.target.value)} className="bg-secondary border-border" required />
-                </div>
-              </div>
             </div>
 
             {/* Indicadores */}
-            <div className="border-t border-border pt-4 space-y-3">
+            <div className="border-t border-border pt-4 space-y-4">
               <p className="text-sm font-semibold text-foreground">📊 Indicadores</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex items-center justify-between rounded-lg bg-primary/10 p-3">
-                  <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    <PhoneCall size={14} /> Taxa de Atendimento
-                  </span>
-                  <span className="text-lg font-bold text-primary">{taxaAtendimento.toFixed(1)}%</span>
+              
+              {/* Taxa de atendimento */}
+              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ligações</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-lg bg-primary/10 p-3">
+                    <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <PhoneCall size={14} /> Taxa de Atendimento
+                    </span>
+                    <span className="text-lg font-bold text-primary">{taxaAtendimento.toFixed(1)}%</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground flex items-center">
+                    {vAtendidas} atendidas de {vTotalLig} ligações
+                  </div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg bg-primary/10 p-3">
-                  <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                    <CalendarCheck size={14} /> Conversão Ligação → Agend.
-                  </span>
-                  <span className="text-lg font-bold text-primary">{taxaConversaoLigacao.toFixed(1)}%</span>
+              </div>
+
+              {/* Conversão das ligações atendidas */}
+              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Conversão das {vAtendidas} ligações atendidas
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="flex flex-col items-center rounded-lg bg-primary/10 p-3">
+                    <span className="text-xs text-muted-foreground">Agendaram</span>
+                    <span className="text-xl font-bold text-primary">{vAgendLigacao}</span>
+                    <span className="text-xs text-muted-foreground">{taxaAgendLigacao.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex flex-col items-center rounded-lg bg-primary/10 p-3">
+                    <span className="text-xs text-muted-foreground">Reagendaram</span>
+                    <span className="text-xl font-bold text-primary">{vReagLigacao}</span>
+                    <span className="text-xs text-muted-foreground">{taxaReagLigacao.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex flex-col items-center rounded-lg bg-accent p-3">
+                    <span className="text-xs text-muted-foreground">Total convertidos</span>
+                    <span className="text-xl font-bold text-foreground">{totalConvertidosLigacao}</span>
+                    <span className="text-xs text-muted-foreground">{taxaConversaoAtendidas.toFixed(1)}%</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -304,29 +373,30 @@ const RegistroDiarioTab = () => {
                   <TableRow>
                     <TableHead>Data</TableHead>
                     <TableHead>Clínica</TableHead>
-                    <TableHead className="text-center">Agend. Futuro</TableHead>
-                    <TableHead className="text-center">Reagend.</TableHead>
+                    <TableHead className="text-center">Agend.</TableHead>
+                    <TableHead className="text-center">Ag. Lig.</TableHead>
+                    <TableHead className="text-center">Reag.</TableHead>
+                    <TableHead className="text-center">Re. Lig.</TableHead>
                     <TableHead className="text-center">Ligações</TableHead>
-                    <TableHead className="text-center">Atendidas</TableHead>
-                    <TableHead className="text-center">Reag. Lig.</TableHead>
-                    <TableHead className="text-center">Agend. Lig.</TableHead>
+                    <TableHead className="text-center">Atend.</TableHead>
                     <TableHead className="text-center">Conv. %</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {registros.map((r) => {
-                    const conv = r.total_ligacoes > 0 ? ((r.agendamentos_por_ligacao / r.total_ligacoes) * 100).toFixed(1) : "0.0";
+                    const totalConv = r.agendamentos_por_ligacao + r.leads_reagendados_ligacao;
+                    const conv = r.ligacoes_atendidas > 0 ? ((totalConv / r.ligacoes_atendidas) * 100).toFixed(1) : "0.0";
                     return (
                       <TableRow key={r.id}>
                         <TableCell className="font-medium">{format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy")}</TableCell>
                         <TableCell>{r.clinicas?.nome || "—"}</TableCell>
                         <TableCell className="text-center">{r.leads_agendados_futuro}</TableCell>
+                        <TableCell className="text-center text-primary font-medium">{r.agendamentos_por_ligacao}</TableCell>
                         <TableCell className="text-center">{r.leads_reagendados}</TableCell>
+                        <TableCell className="text-center text-primary font-medium">{r.leads_reagendados_ligacao}</TableCell>
                         <TableCell className="text-center">{r.total_ligacoes}</TableCell>
                         <TableCell className="text-center">{r.ligacoes_atendidas}</TableCell>
-                        <TableCell className="text-center">{r.leads_reagendados_ligacao}</TableCell>
-                        <TableCell className="text-center">{r.agendamentos_por_ligacao}</TableCell>
                         <TableCell className="text-center font-medium text-primary">{conv}%</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
