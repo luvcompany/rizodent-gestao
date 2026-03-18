@@ -482,18 +482,28 @@ const Dashboard = () => {
                Agendamentos
              </Button>
              <Button
+               variant={funnelView === "reagendados" ? "default" : "outline"}
+               size="sm"
+               onClick={() => setFunnelView("reagendados")}
+               className="text-xs"
+             >
+               Reagendados
+             </Button>
+             <Button
                variant={funnelView === "conversao" ? "default" : "outline"}
                size="sm"
                onClick={() => setFunnelView("conversao")}
                className="text-xs"
              >
-               Conversão
+               Conversão Total
              </Button>
            </div>
            <p className="text-xs text-muted-foreground mt-1">
              {funnelView === "agendamentos"
-               ? "Agendaram → Compareceram → Faltaram → Reagendados"
-               : "Agendaram → Compareceram → Contrataram → Não Contrataram"}
+               ? "Agendados → Compareceram → Faltaram → Faltas Líquidas"
+               : funnelView === "reagendados"
+               ? "Reagendados → Compareceram → Contrataram → Faltaram"
+               : "Total Compareceram → Total Contrataram → Total Não Contrataram"}
            </p>
         </CardHeader>
         <CardContent>
