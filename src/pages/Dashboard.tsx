@@ -317,6 +317,13 @@ const Dashboard = () => {
     { name: "Faltaram", value: reagFaltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.remarcados },
   ];
 
+  const funnelDataConversao = [
+    { name: "Total Compareceram", value: totalCompareceram, fill: FUNNEL_COLORS[1], refValue: totalCompareceram },
+    { name: "Total Contrataram", value: totalContrataram, fill: FUNNEL_COLORS[5], refValue: totalCompareceram },
+    { name: "Total Não Contrat.", value: Math.max(totalNaoContrataram, 0), fill: FUNNEL_COLORS[6], refValue: totalCompareceram },
+    { name: "Faltas Líquidas", value: faltasLiquidas, fill: FUNNEL_COLORS[2], refValue: funnelTotals.agendaram + funnelTotals.remarcados },
+  ];
+
   const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelView === "conversao" ? funnelDataConversao : funnelDataReagendados;
 
 
