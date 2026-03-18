@@ -481,29 +481,59 @@ const Atendimento = () => {
                     ))}
                   </div>
 
-                  {/* Financial summary of open orcamento */}
-                  {orcamentoAberto && (
-                    <div className="grid grid-cols-3 gap-2 mb-3 text-center">
-                      <div className="rounded-lg bg-background p-2">
-                        <p className="text-xs text-muted-foreground">Orçado</p>
-                        <p className="text-sm font-semibold">{formatCurrencyDisplay(totalOrcadoExistente)}</p>
-                      </div>
-                      <div className="rounded-lg bg-background p-2">
-                        <p className="text-xs text-muted-foreground">Contratado</p>
-                        <p className="text-sm font-semibold text-primary">{formatCurrencyDisplay(totalPagoExistente)}</p>
-                      </div>
-                      <div className="rounded-lg bg-background p-2">
-                        <p className="text-xs text-muted-foreground">Não Contratado</p>
-                        <p className="text-sm font-semibold text-destructive">{formatCurrencyDisplay(naoContratadoExistente)}</p>
-                      </div>
-                    </div>
-                  )}
+                   {/* Orçamentos abertos - seleção */}
+                   {orcamentosAbertos.length > 1 && (
+                     <div className="space-y-2 mb-3">
+                       <p className="text-xs font-semibold text-muted-foreground">Selecione o orçamento:</p>
+                       {orcamentosAbertos.map((orc, i) => {
+                         const isSelected = orcamentoSelecionado?.id === orc.id;
+                         const orcTrats = tratamentosExistentes.filter((t: any) => t.orcamento_id === orc.id);
+                         return (
+                           <button
+                             key={orc.id}
+                             type="button"
+                             onClick={() => selecionarOrcamento(orc)}
+                             className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors ${isSelected ? 'border-primary bg-primary/10' : 'border-border bg-background hover:border-primary/50'}`}
+                           >
+                             <div className="text-left">
+                               <p className="font-medium">Orçamento #{orcamentosAbertos.length - i}</p>
+                               <p className="text-xs text-muted-foreground">
+                                 {orcTrats.map((t: any) => t.procedimento).join(", ") || "Sem tratamentos"}
+                               </p>
+                             </div>
+                             <div className="text-right">
+                               <p className="text-xs text-muted-foreground">Orçado: {formatCurrencyDisplay(Number(orc.valor_orcado || 0))}</p>
+                               <p className="text-xs text-primary font-semibold">Restante: {formatCurrencyDisplay(orc.restante)}</p>
+                             </div>
+                           </button>
+                         );
+                       })}
+                     </div>
+                   )}
 
-                  {!orcamentoAberto && (
-                    <div className="rounded-lg bg-background p-3 mb-3 text-center">
-                      <p className="text-sm text-muted-foreground">Todos os orçamentos estão concluídos.</p>
-                    </div>
-                  )}
+                   {/* Financial summary of selected orcamento */}
+                   {orcamentoSelecionado && (
+                     <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                       <div className="rounded-lg bg-background p-2">
+                         <p className="text-xs text-muted-foreground">Orçado</p>
+                         <p className="text-sm font-semibold">{formatCurrencyDisplay(totalOrcadoExistente)}</p>
+                       </div>
+                       <div className="rounded-lg bg-background p-2">
+                         <p className="text-xs text-muted-foreground">Contratado</p>
+                         <p className="text-sm font-semibold text-primary">{formatCurrencyDisplay(totalPagoExistente)}</p>
+                       </div>
+                       <div className="rounded-lg bg-background p-2">
+                         <p className="text-xs text-muted-foreground">Não Contratado</p>
+                         <p className="text-sm font-semibold text-destructive">{formatCurrencyDisplay(naoContratadoExistente)}</p>
+                       </div>
+                     </div>
+                   )}
+
+                   {orcamentosAbertos.length === 0 && (
+                     <div className="rounded-lg bg-background p-3 mb-3 text-center">
+                       <p className="text-sm text-muted-foreground">Todos os orçamentos estão concluídos.</p>
+                     </div>
+                   )}
 
                   <div className="space-y-2">
                     {orcamentoAberto && naoContratadoExistente > 0 && (
