@@ -278,6 +278,59 @@ export type Database = {
         }
         Relationships: []
       }
+      registros_diarios_atendimento: {
+        Row: {
+          agendamentos_por_ligacao: number
+          clinica_id: string
+          created_at: string
+          created_by: string | null
+          data: string
+          id: string
+          leads_agendados_futuro: number
+          leads_reagendados: number
+          leads_reagendados_ligacao: number
+          ligacoes_atendidas: number
+          total_ligacoes: number
+          updated_at: string
+        }
+        Insert: {
+          agendamentos_por_ligacao?: number
+          clinica_id: string
+          created_at?: string
+          created_by?: string | null
+          data?: string
+          id?: string
+          leads_agendados_futuro?: number
+          leads_reagendados?: number
+          leads_reagendados_ligacao?: number
+          ligacoes_atendidas?: number
+          total_ligacoes?: number
+          updated_at?: string
+        }
+        Update: {
+          agendamentos_por_ligacao?: number
+          clinica_id?: string
+          created_at?: string
+          created_by?: string | null
+          data?: string
+          id?: string
+          leads_agendados_futuro?: number
+          leads_reagendados?: number
+          leads_reagendados_ligacao?: number
+          ligacoes_atendidas?: number
+          total_ligacoes?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registros_diarios_atendimento_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tipos_procedimento: {
         Row: {
           ativo: boolean
