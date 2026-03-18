@@ -57,6 +57,8 @@ export type Database = {
           id: string
           leads_novos: number
           nao_contrataram: number
+          reagendados_compareceram: number
+          reagendados_contrataram: number
           remarcados: number
           updated_at: string
         }
@@ -72,6 +74,8 @@ export type Database = {
           id?: string
           leads_novos?: number
           nao_contrataram?: number
+          reagendados_compareceram?: number
+          reagendados_contrataram?: number
           remarcados?: number
           updated_at?: string
         }
@@ -87,6 +91,8 @@ export type Database = {
           id?: string
           leads_novos?: number
           nao_contrataram?: number
+          reagendados_compareceram?: number
+          reagendados_contrataram?: number
           remarcados?: number
           updated_at?: string
         }
