@@ -292,7 +292,7 @@ const Atendimento = () => {
             tipo,
             data_pagamento: dataPagamento,
             created_by: user?.id,
-            orcamento_id: orcamentoAberto.id,
+            orcamento_id: orcamentoSelecionado.id,
           });
         if (pagError) throw pagError;
 
