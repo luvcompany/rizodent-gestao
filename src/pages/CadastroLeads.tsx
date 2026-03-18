@@ -452,5 +452,6 @@ const CadastroLeads = () => {
       </Tabs>
     </div>
   );
+};
 
 export default CadastroLeads;
