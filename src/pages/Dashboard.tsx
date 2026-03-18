@@ -506,10 +506,10 @@ const Dashboard = () => {
            </div>
            <p className="text-xs text-muted-foreground mt-1">
              {funnelView === "agendamentos"
-               ? "Agendados → Compareceram → Faltaram → Faltas Líquidas"
+               ? "Agendados → Compareceram → Contrataram → Não Contrataram → Faltaram"
                : funnelView === "reagendados"
-               ? "Reagendados → Compareceram → Contrataram → Faltaram"
-               : "Total Compareceram → Total Contrataram → Total Não Contrataram"}
+               ? "Reagendados → Compareceram → Contrataram → Não Contrataram → Faltaram"
+               : "Total Compareceram → Contrataram → Não Contrataram → Faltas Líquidas"}
            </p>
         </CardHeader>
         <CardContent>
