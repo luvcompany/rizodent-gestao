@@ -57,7 +57,6 @@ export default function CrmKanban() {
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // New lead form
   const [newLead, setNewLead] = useState({
     name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: ""
   });
@@ -68,7 +67,6 @@ export default function CrmKanban() {
     if (pipelines && pipelines.length > 0) {
       const p = pipelines[0] as Pipeline;
       setPipeline(p);
-
       const [stagesRes, leadsRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", p.id).order("position"),
         supabase.from("crm_leads").select("*").eq("pipeline_id", p.id).order("position"),
@@ -86,13 +84,10 @@ export default function CrmKanban() {
     const leadId = result.draggableId;
     const newStageId = result.destination.droppableId;
     const newPosition = result.destination.index;
-
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage_id: newStageId, position: newPosition } : l));
-
     const { error } = await supabase.from("crm_leads").update({
       stage_id: newStageId, position: newPosition, updated_at: new Date().toISOString()
     }).eq("id", leadId);
-
     if (error) { toast.error("Erro ao mover lead"); fetchData(); }
   };
 
@@ -142,30 +137,40 @@ export default function CrmKanban() {
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen bg-[#f5f5f5]"><div className="text-gray-500">Carregando CRM...</div></div>;
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <div className="text-muted-foreground">Carregando CRM...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col h-full min-h-screen bg-[#f5f5f5]">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+    <div className="flex flex-col h-screen overflow-hidden bg-background">
+      {/* Header - FIXED */}
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4">
-          <h1 className="text-lg font-bold text-gray-900">{pipeline?.name || "CRM"}</h1>
-          <div className="flex items-center gap-1 border rounded-md">
-            <button onClick={() => setViewMode("kanban")} className={`p-1.5 rounded-l-md ${viewMode === "kanban" ? "bg-blue-50 text-blue-600" : "text-gray-400"}`}>
+          <h1 className="text-lg font-bold text-foreground">{pipeline?.name || "CRM"}</h1>
+          <div className="flex items-center gap-0 border border-border rounded-md">
+            <button
+              onClick={() => setViewMode("kanban")}
+              className={`p-1.5 rounded-l-md transition-colors ${viewMode === "kanban" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            >
               <LayoutGrid size={16} />
             </button>
-            <button onClick={() => setViewMode("list")} className={`p-1.5 rounded-r-md ${viewMode === "list" ? "bg-blue-50 text-blue-600" : "text-gray-400"}`}>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`p-1.5 rounded-r-md transition-colors ${viewMode === "list" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            >
               <List size={16} />
             </button>
           </div>
-          <button className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 border rounded-md px-2 py-1">
+          <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 transition-colors">
             <Filter size={14} /> Filtro
           </button>
           <div className="relative">
-            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
-              className="pl-7 pr-3 py-1 text-sm border rounded-md bg-white text-gray-700 w-48 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              className="pl-7 pr-3 py-1 text-sm border border-border rounded-md bg-secondary text-foreground w-48 focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground"
               placeholder="Buscar lead..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
@@ -173,62 +178,60 @@ export default function CrmKanban() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-600 font-medium">{totalLeads} leads: {formatCurrency(totalValue)}</span>
-          <Button variant="outline" size="sm" className="text-gray-700 border-gray-300" onClick={() => navigate("/crm/automacoes")}>
+          <span className="text-sm text-muted-foreground font-medium">{totalLeads} leads: <span className="text-primary font-semibold">{formatCurrency(totalValue)}</span></span>
+          <Button variant="outline" size="sm" onClick={() => navigate("/crm/automacoes")}>
             <Zap size={14} className="mr-1" /> AUTOMATIZE
           </Button>
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => { if (stages.length) { setNewLead(p => ({ ...p, stage_id: stages[0].id })); } setNewLeadOpen(true); }}>
+          <Button size="sm" onClick={() => { if (stages.length) { setNewLead(p => ({ ...p, stage_id: stages[0].id })); } setNewLeadOpen(true); }}>
             <Plus size={14} className="mr-1" /> NOVO LEAD
           </Button>
         </div>
       </div>
 
-      {/* Metrics bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-2 flex items-center gap-6 overflow-x-auto text-sm">
-        <MetricBadge icon={<Calendar size={14} />} label="Com tarefas para hoje" value={withTaskToday} color="text-blue-600" />
-        <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} color="text-gray-500" />
-        <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} color="text-red-500" />
-        <MetricBadge icon={<Clock size={14} />} label="Novo hoje / ontem" value={`${newToday} / ${newYesterday}`} color="text-green-600" />
-        <MetricBadge icon={<TrendingUp size={14} />} label="Vendas em potencial" value={formatCurrency(totalValue)} color="text-orange-500" />
+      {/* Metrics bar - FIXED */}
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2 flex items-center gap-6 overflow-x-auto text-sm">
+        <MetricBadge icon={<Calendar size={14} />} label="Com tarefas para hoje" value={withTaskToday} variant="info" />
+        <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} variant="muted" />
+        <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} variant="destructive" />
+        <MetricBadge icon={<Clock size={14} />} label="Novo hoje / ontem" value={`${newToday} / ${newYesterday}`} variant="success" />
+        <MetricBadge icon={<TrendingUp size={14} />} label="Vendas em potencial" value={formatCurrency(totalValue)} variant="primary" />
       </div>
 
-      {/* Kanban area */}
-      <div className="flex-1 overflow-x-auto p-4">
+      {/* Kanban area - SCROLLABLE */}
+      <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex gap-3 h-full min-h-[calc(100vh-180px)]">
+          <div className="flex gap-3 h-full">
             {stages.map((stage, idx) => {
               const stageLeads = getLeadsForStage(stage.id);
               const stageValue = stageLeads.reduce((a, l) => a + (l.value || 0), 0);
               return (
                 <div key={stage.id} className="flex items-start gap-1">
-                  <div className="w-[280px] flex-shrink-0 flex flex-col bg-gray-100 rounded-lg overflow-hidden">
+                  <div className="w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
                     {/* Stage header */}
-                    <div className="h-1" style={{ backgroundColor: stage.color }} />
-                    <div className="px-3 py-2">
-                      <div className="font-semibold text-sm text-gray-800">{stage.name}</div>
-                      <div className="text-xs text-gray-500">{stageLeads.length} leads · {formatCurrency(stageValue)}</div>
+                    <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
+                    <div className="px-3 py-2 flex-shrink-0">
+                      <div className="font-semibold text-sm text-foreground">{stage.name}</div>
+                      <div className="text-xs text-muted-foreground">{stageLeads.length} leads · {formatCurrency(stageValue)}</div>
                     </div>
 
-                    {/* Quick add for first stage */}
                     {idx === 0 && (
-                      <div className="px-2 pb-1">
+                      <div className="px-2 pb-1 flex-shrink-0">
                         <button
                           onClick={() => { setNewLead(p => ({ ...p, stage_id: stage.id })); setNewLeadOpen(true); }}
-                          className="w-full text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded py-1 flex items-center justify-center gap-1"
+                          className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1 flex items-center justify-center gap-1 transition-colors"
                         >
                           <Plus size={12} /> Adição rápida
                         </button>
                       </div>
                     )}
 
-                    {/* Lead cards */}
+                    {/* Lead cards - scrollable */}
                     <Droppable droppableId={stage.id}>
                       {(provided, snapshot) => (
                         <div
                           ref={provided.innerRef}
                           {...provided.droppableProps}
-                          className={`flex-1 overflow-y-auto px-2 pb-2 min-h-[100px] ${snapshot.isDraggingOver ? "bg-blue-50" : ""}`}
-                          style={{ maxHeight: "calc(100vh - 280px)" }}
+                          className={`flex-1 overflow-y-auto px-2 pb-2 min-h-[100px] ${snapshot.isDraggingOver ? "bg-primary/5" : ""}`}
                         >
                           {stageLeads.map((lead, lIdx) => (
                             <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
@@ -238,27 +241,27 @@ export default function CrmKanban() {
                                   {...prov.draggableProps}
                                   {...prov.dragHandleProps}
                                   onClick={() => setDetailLead(lead)}
-                                  className={`bg-white rounded-lg shadow-sm border border-gray-100 p-3 mb-2 cursor-pointer hover:shadow-md transition-shadow ${snap.isDragging ? "shadow-lg ring-2 ring-blue-300" : ""}`}
+                                  className={`bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
                                 >
                                   <div className="flex items-start justify-between mb-1">
-                                    <span className="font-medium text-sm text-gray-900 leading-tight">{lead.name}</span>
-                                    <span className="text-[10px] text-gray-400 whitespace-nowrap ml-2">
+                                    <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
+                                    <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
                                       {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
                                     </span>
                                   </div>
-                                  <div className="text-xs text-blue-600 mb-1.5 cursor-pointer hover:underline">
+                                  <div className="text-xs text-primary mb-1.5 cursor-pointer hover:underline">
                                     Lead #{lead.id.slice(0, 8)}
                                   </div>
                                   {lead.tags && lead.tags.length > 0 && (
                                     <div className="flex flex-wrap gap-1 mb-2">
                                       {lead.tags.map(tag => (
-                                        <span key={tag} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">#{tag}</span>
+                                        <span key={tag} className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">#{tag}</span>
                                       ))}
                                     </div>
                                   )}
                                   <div className="flex items-center justify-between">
-                                    {lead.value ? <span className="text-xs font-medium text-gray-700">{formatCurrency(lead.value)}</span> : <span />}
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-red-50 text-red-600" : lead.has_task ? "bg-green-50 text-green-600" : "bg-orange-50 text-orange-500"}`}>
+                                    {lead.value ? <span className="text-xs font-medium text-primary">{formatCurrency(lead.value)}</span> : <span />}
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
                                       {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
                                     </span>
                                   </div>
@@ -272,9 +275,8 @@ export default function CrmKanban() {
                     </Droppable>
                   </div>
 
-                  {/* Add stage button between columns */}
                   {idx < stages.length - 1 && (
-                    <button className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-gray-300 text-gray-400 hover:text-blue-500 hover:border-blue-400 flex items-center justify-center text-xs transition-colors">
+                    <button className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors">
                       +
                     </button>
                   )}
@@ -287,69 +289,69 @@ export default function CrmKanban() {
 
       {/* New Lead Modal */}
       <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
-        <DialogContent className="bg-white text-gray-900 max-w-md">
+        <DialogContent>
           <DialogHeader><DialogTitle>Novo Lead</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label className="text-gray-700">Nome *</Label><Input className="bg-white border-gray-300 text-gray-900" value={newLead.name} onChange={e => setNewLead(p => ({ ...p, name: e.target.value }))} /></div>
-            <div><Label className="text-gray-700">Telefone</Label><Input className="bg-white border-gray-300 text-gray-900" value={newLead.phone} onChange={e => setNewLead(p => ({ ...p, phone: e.target.value }))} /></div>
+            <div><Label>Nome *</Label><Input value={newLead.name} onChange={e => setNewLead(p => ({ ...p, name: e.target.value }))} /></div>
+            <div><Label>Telefone</Label><Input value={newLead.phone} onChange={e => setNewLead(p => ({ ...p, phone: e.target.value }))} /></div>
             <div>
-              <Label className="text-gray-700">Etapa Inicial *</Label>
+              <Label>Etapa Inicial *</Label>
               <Select value={newLead.stage_id} onValueChange={v => setNewLead(p => ({ ...p, stage_id: v }))}>
-                <SelectTrigger className="bg-white border-gray-300 text-gray-900"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-white text-gray-900">
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
                   {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-gray-700">Origem</Label>
+              <Label>Origem</Label>
               <Select value={newLead.source} onValueChange={v => setNewLead(p => ({ ...p, source: v }))}>
-                <SelectTrigger className="bg-white border-gray-300 text-gray-900"><SelectValue placeholder="Selecionar" /></SelectTrigger>
-                <SelectContent className="bg-white text-gray-900">
+                <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                <SelectContent>
                   {["instagram", "whatsapp", "facebook", "manual", "indicação", "google"].map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div><Label className="text-gray-700">Tags (separadas por vírgula)</Label><Input className="bg-white border-gray-300 text-gray-900" placeholder="implante, clareamento" value={newLead.tags} onChange={e => setNewLead(p => ({ ...p, tags: e.target.value }))} /></div>
-            <div><Label className="text-gray-700">Valor (R$)</Label><Input className="bg-white border-gray-300 text-gray-900" type="number" value={newLead.value} onChange={e => setNewLead(p => ({ ...p, value: e.target.value }))} /></div>
-            <div><Label className="text-gray-700">Observações</Label><Textarea className="bg-white border-gray-300 text-gray-900" rows={3} value={newLead.notes} onChange={e => setNewLead(p => ({ ...p, notes: e.target.value }))} /></div>
-            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" onClick={handleCreateLead}>Salvar Lead</Button>
+            <div><Label>Tags (separadas por vírgula)</Label><Input placeholder="implante, clareamento" value={newLead.tags} onChange={e => setNewLead(p => ({ ...p, tags: e.target.value }))} /></div>
+            <div><Label>Valor (R$)</Label><Input type="number" value={newLead.value} onChange={e => setNewLead(p => ({ ...p, value: e.target.value }))} /></div>
+            <div><Label>Observações</Label><Textarea rows={3} value={newLead.notes} onChange={e => setNewLead(p => ({ ...p, notes: e.target.value }))} /></div>
+            <Button className="w-full" onClick={handleCreateLead}>Salvar Lead</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Lead Detail Sheet */}
       <Sheet open={!!detailLead} onOpenChange={() => setDetailLead(null)}>
-        <SheetContent className="bg-white text-gray-900 w-[400px]">
-          <SheetHeader><SheetTitle className="text-gray-900">{detailLead?.name}</SheetTitle></SheetHeader>
+        <SheetContent className="w-[400px]">
+          <SheetHeader><SheetTitle>{detailLead?.name}</SheetTitle></SheetHeader>
           {detailLead && (
             <div className="mt-4 space-y-4">
               <div>
-                <span className="text-xs text-gray-500">Telefone</span>
-                <p className="text-sm text-gray-800">{detailLead.phone || "—"}</p>
+                <span className="text-xs text-muted-foreground">Telefone</span>
+                <p className="text-sm text-foreground">{detailLead.phone || "—"}</p>
               </div>
               <div>
-                <span className="text-xs text-gray-500">Origem</span>
-                <p className="text-sm text-gray-800">{detailLead.source || "—"}</p>
+                <span className="text-xs text-muted-foreground">Origem</span>
+                <p className="text-sm text-foreground">{detailLead.source || "—"}</p>
               </div>
               <div>
-                <span className="text-xs text-gray-500">Valor</span>
-                <p className="text-sm text-gray-800">{detailLead.value ? formatCurrency(detailLead.value) : "—"}</p>
+                <span className="text-xs text-muted-foreground">Valor</span>
+                <p className="text-sm text-primary font-medium">{detailLead.value ? formatCurrency(detailLead.value) : "—"}</p>
               </div>
               <div>
-                <span className="text-xs text-gray-500">Tags</span>
+                <span className="text-xs text-muted-foreground">Tags</span>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  {detailLead.tags?.map(t => <Badge key={t} variant="secondary" className="bg-gray-100 text-gray-700 text-xs">#{t}</Badge>)}
-                  {(!detailLead.tags || detailLead.tags.length === 0) && <span className="text-sm text-gray-400">Nenhuma</span>}
+                  {detailLead.tags?.map(t => <Badge key={t} variant="secondary" className="text-xs">#{t}</Badge>)}
+                  {(!detailLead.tags || detailLead.tags.length === 0) && <span className="text-sm text-muted-foreground">Nenhuma</span>}
                 </div>
               </div>
               <div>
-                <span className="text-xs text-gray-500">Observações</span>
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{detailLead.notes || "Sem observações"}</p>
+                <span className="text-xs text-muted-foreground">Observações</span>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{detailLead.notes || "Sem observações"}</p>
               </div>
               <div>
-                <span className="text-xs text-gray-500">Criado em</span>
-                <p className="text-sm text-gray-800">{new Date(detailLead.created_at).toLocaleString("pt-BR")}</p>
+                <span className="text-xs text-muted-foreground">Criado em</span>
+                <p className="text-sm text-foreground">{new Date(detailLead.created_at).toLocaleString("pt-BR")}</p>
               </div>
             </div>
           )}
@@ -359,11 +361,19 @@ export default function CrmKanban() {
   );
 }
 
-function MetricBadge({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string | number; color: string }) {
+function MetricBadge({ icon, label, value, variant }: { icon: React.ReactNode; label: string; value: string | number; variant: "info" | "muted" | "destructive" | "success" | "primary" }) {
+  const colorMap = {
+    info: "text-blue-400",
+    muted: "text-muted-foreground",
+    destructive: "text-destructive",
+    success: "text-green-400",
+    primary: "text-primary",
+  };
+  const color = colorMap[variant];
   return (
     <div className="flex items-center gap-2 whitespace-nowrap">
       <span className={color}>{icon}</span>
-      <span className="text-gray-500">{label}:</span>
+      <span className="text-muted-foreground">{label}:</span>
       <span className={`font-semibold ${color}`}>{value}</span>
     </div>
   );
