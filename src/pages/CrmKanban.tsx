@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
@@ -236,13 +236,13 @@ export default function CrmKanban() {
                           {stageLeads.map((lead, lIdx) => (
                             <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
                               {(prov, snap) => (
-                                <div
-                                  ref={prov.innerRef}
-                                  {...prov.draggableProps}
-                                  {...prov.dragHandleProps}
-                                  onClick={() => setDetailLead(lead)}
-                                  className={`bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
-                                >
+                                                <Link
+                                                  to={`/crm/conversa/${lead.id}`}
+                                                  ref={prov.innerRef}
+                                                  {...prov.draggableProps}
+                                                  {...prov.dragHandleProps}
+                                                  className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
+                                                >
                                   <div className="flex items-start justify-between mb-1">
                                     <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
                                     <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
@@ -265,7 +265,7 @@ export default function CrmKanban() {
                                       {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
                                     </span>
                                   </div>
-                                </div>
+                                                </Link>
                               )}
                             </Draggable>
                           ))}

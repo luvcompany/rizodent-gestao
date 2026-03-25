@@ -19,6 +19,8 @@ import RegistroDiario from "./pages/RegistroDiario";
 import CrmKanban from "./pages/CrmKanban";
 import CrmAutomacoes from "./pages/CrmAutomacoes";
 import CrmModelos from "./pages/CrmModelos";
+import CrmConversa from "./pages/CrmConversa";
+import CrmIntegracoes from "./pages/CrmIntegracoes";
 import AppLayout from "./components/AppLayout";
 import NotFound from "./pages/NotFound";
 
@@ -51,8 +53,10 @@ const App = () => (
               <Route path="/procedimentos" element={<TiposProcedimento />} />
               <Route path="/registro-diario" element={<RegistroDiario />} />
               <Route path="/crm" element={<CrmKanban />} />
+              <Route path="/crm/conversa/:id" element={<CrmConversa />} />
               <Route path="/crm/automacoes" element={<CrmAutomacoes />} />
               <Route path="/crm/modelos" element={<CrmModelos />} />
+              <Route path="/crm/integracoes" element={<CrmIntegracoes />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
