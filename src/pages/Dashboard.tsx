@@ -144,7 +144,7 @@ const Dashboard = () => {
   const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
   const fatNovos = filtered.pagamentos.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
   const fatRecorrentes = filtered.pagamentos.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
-  const totalPacientes = new Set(filtered.tratamentos.map((t) => t.paciente_id)).size;
+  const totalPacientes = new Set(filtered.pagamentos.map((p) => p.paciente_id)).size;
 
   // Dias úteis passados no período (seg-sáb, excluindo domingos)
   const diasUteisPassados = useMemo(() => {
