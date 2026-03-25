@@ -44,6 +44,211 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_automations: {
+        Row: {
+          action_config: Json | null
+          action_type: string
+          created_at: string
+          id: string
+          is_active: boolean
+          stage_id: string
+          trigger_type: string
+        }
+        Insert: {
+          action_config?: Json | null
+          action_type: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          stage_id: string
+          trigger_type?: string
+        }
+        Update: {
+          action_config?: Json | null
+          action_type?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          stage_id?: string
+          trigger_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_automations_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_leads: {
+        Row: {
+          created_at: string
+          has_task: boolean
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          pipeline_id: string
+          position: number
+          source: string | null
+          stage_id: string
+          tags: string[] | null
+          task_overdue: boolean
+          updated_at: string
+          value: number | null
+        }
+        Insert: {
+          created_at?: string
+          has_task?: boolean
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          pipeline_id: string
+          position?: number
+          source?: string | null
+          stage_id: string
+          tags?: string[] | null
+          task_overdue?: boolean
+          updated_at?: string
+          value?: number | null
+        }
+        Update: {
+          created_at?: string
+          has_task?: boolean
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          pipeline_id?: string
+          position?: number
+          source?: string | null
+          stage_id?: string
+          tags?: string[] | null
+          task_overdue?: boolean
+          updated_at?: string
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_leads_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "crm_pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_leads_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_pipelines: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      crm_stages: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          pipeline_id: string
+          position: number
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          pipeline_id: string
+          position?: number
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          pipeline_id?: string
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_stages_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "crm_pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_whatsapp_templates: {
+        Row: {
+          body_text: string | null
+          buttons: Json | null
+          category: string
+          created_at: string
+          footer_text: string | null
+          header_content: string | null
+          header_type: string | null
+          id: string
+          language: string
+          meta_template_id: string | null
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          body_text?: string | null
+          buttons?: Json | null
+          category?: string
+          created_at?: string
+          footer_text?: string | null
+          header_content?: string | null
+          header_type?: string | null
+          id?: string
+          language?: string
+          meta_template_id?: string | null
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          body_text?: string | null
+          buttons?: Json | null
+          category?: string
+          created_at?: string
+          footer_text?: string | null
+          header_content?: string | null
+          header_type?: string | null
+          id?: string
+          language?: string
+          meta_template_id?: string | null
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leads_diarios: {
         Row: {
           agendaram: number
