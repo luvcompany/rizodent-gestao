@@ -94,16 +94,12 @@ export default function CrmAutomacoes() {
       stage_id: autoForm.stage_id,
       trigger_type: autoForm.trigger_type,
       action_type: autoForm.action_type,
-      action_config: autoForm.action_config,
-    };
-    const jsonPayload = {
-      ...payload,
-      action_config: payload.action_config as Record<string, string>,
+      action_config: autoForm.action_config as unknown as import("@/integrations/supabase/types").Json,
     };
     if (autoForm.editId) {
-      await supabase.from("crm_automations").update(jsonPayload).eq("id", autoForm.editId);
+      await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId);
     } else {
-      await supabase.from("crm_automations").insert(jsonPayload);
+      await supabase.from("crm_automations").insert(payload);
     }
     toast.success("Automação salva");
     setAutoModalOpen(false);
