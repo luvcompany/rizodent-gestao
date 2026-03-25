@@ -145,7 +145,7 @@ export default function CrmKanban() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background">
+    <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED */}
       <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4">
