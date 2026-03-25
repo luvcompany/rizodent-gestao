@@ -16,6 +16,9 @@ import CadastroLeads from "./pages/CadastroLeads";
 import Usuarios from "./pages/Usuarios";
 import TiposProcedimento from "./pages/TiposProcedimento";
 import RegistroDiario from "./pages/RegistroDiario";
+import CrmKanban from "./pages/CrmKanban";
+import CrmAutomacoes from "./pages/CrmAutomacoes";
+import CrmModelos from "./pages/CrmModelos";
 import AppLayout from "./components/AppLayout";
 import NotFound from "./pages/NotFound";
 
