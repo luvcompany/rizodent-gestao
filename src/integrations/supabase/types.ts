@@ -87,6 +87,8 @@ export type Database = {
           created_at: string
           has_task: boolean
           id: string
+          last_message: string | null
+          last_message_at: string | null
           name: string
           notes: string | null
           phone: string | null
@@ -103,6 +105,8 @@ export type Database = {
           created_at?: string
           has_task?: boolean
           id?: string
+          last_message?: string | null
+          last_message_at?: string | null
           name: string
           notes?: string | null
           phone?: string | null
@@ -119,6 +123,8 @@ export type Database = {
           created_at?: string
           has_task?: boolean
           id?: string
+          last_message?: string | null
+          last_message_at?: string | null
           name?: string
           notes?: string | null
           phone?: string | null
@@ -249,6 +255,33 @@ export type Database = {
         }
         Relationships: []
       }
+      integrations: {
+        Row: {
+          config: Json | null
+          created_at: string
+          id: string
+          key: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string
+          id?: string
+          key: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string
+          id?: string
+          key?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leads_diarios: {
         Row: {
           agendaram: number
@@ -307,6 +340,47 @@ export type Database = {
             columns: ["clinica_id"]
             isOneToOne: false
             referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          content: string | null
+          created_at: string
+          direction: string
+          id: string
+          lead_id: string
+          media_url: string | null
+          status: string
+          type: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          lead_id: string
+          media_url?: string | null
+          status?: string
+          type?: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          lead_id?: string
+          media_url?: string | null
+          status?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
         ]
