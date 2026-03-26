@@ -21,6 +21,7 @@ import CrmAutomacoes from "./pages/CrmAutomacoes";
 import CrmModelos from "./pages/CrmModelos";
 import CrmConversa from "./pages/CrmConversa";
 import CrmIntegracoes from "./pages/CrmIntegracoes";
+import CrmRelatorios from "./pages/CrmRelatorios";
 import AppLayout from "./components/AppLayout";
 import NotFound from "./pages/NotFound";
 
@@ -57,6 +58,7 @@ const App = () => (
               <Route path="/crm/automacoes" element={<CrmAutomacoes />} />
               <Route path="/crm/modelos" element={<CrmModelos />} />
               <Route path="/crm/integracoes" element={<CrmIntegracoes />} />
+              <Route path="/crm/relatorios" element={<CrmRelatorios />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
