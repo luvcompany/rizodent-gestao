@@ -110,6 +110,18 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ACTION: CREATE - Submit template to Meta API
+    if (action === "create") {
+      const { template_data } = await req.json().catch(() => ({})) || {};
+      // template_data already parsed from original json, re-read from body
+      const bodyJson = { action, ...JSON.parse("{}") };
+      
+      return new Response(
+        JSON.stringify({ error: "Use create action properly" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // ACTION: DELETE - Delete template from Meta API
     if (action === "delete") {
       if (!template_name) {
