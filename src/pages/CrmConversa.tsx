@@ -5,13 +5,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import ChatInput from "@/components/chat/ChatInput";
 import {
-  ArrowLeft, Send, Paperclip, Mic, FileText, Phone,
-  MoreVertical, Check, CheckCheck, Clock, Plus, Tag
+  ArrowLeft, FileText, Phone, Mic,
+  MoreVertical, Check, CheckCheck, Clock, Plus, Tag, File as FileIcon
 } from "lucide-react";
 
 type Message = {
@@ -52,7 +52,7 @@ export default function CrmConversa() {
   const [lead, setLead] = useState<Lead | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
-  const [newMessage, setNewMessage] = useState("");
+  const [templateMessage, setTemplateMessage] = useState("");
   const [newNote, setNewNote] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
@@ -98,40 +98,7 @@ export default function CrmConversa() {
     return () => { supabase.removeChannel(channel); };
   }, [id]);
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !id || !lead?.phone) return;
-    try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: {
-          lead_id: id,
-          to: lead.phone,
-          message: newMessage.trim(),
-        },
-      });
-      if (error) {
-        toast.error(`Erro ao enviar: ${error.message}`);
-        console.error("Send error:", error);
-        return;
-      }
-      if (data?.error) {
-        toast.error(`Erro WhatsApp: ${JSON.stringify(data.details || data.error)}`);
-        console.error("WhatsApp API error:", data);
-        return;
-      }
-      setNewMessage("");
-      toast.success("Mensagem enviada via WhatsApp");
-    } catch (err: any) {
-      toast.error(`Erro inesperado: ${err.message}`);
-      console.error("Unexpected error:", err);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
+  // Message sending is now handled by ChatInput component
 
   const handleStageChange = async (stageId: string) => {
     if (!id) return;
@@ -160,7 +127,7 @@ export default function CrmConversa() {
   };
 
   const insertTemplate = (text: string) => {
-    setNewMessage(text);
+    setTemplateMessage(text);
     setTemplatesOpen(false);
   };
 
@@ -241,13 +208,26 @@ export default function CrmConversa() {
                   : "bg-card border border-border text-foreground rounded-bl-none"
               }`}>
                 {msg.type === "image" && msg.media_url && (
-                  <img src={msg.media_url} alt="Imagem" className="rounded mb-1 max-w-full" />
+                  <img src={msg.media_url} alt="Imagem" className="rounded mb-1 max-w-full max-h-64 cursor-pointer" onClick={() => window.open(msg.media_url!, "_blank")} />
                 )}
-                {msg.type === "audio" && (
+                {msg.type === "video" && msg.media_url && (
+                  <video src={msg.media_url} controls className="rounded mb-1 max-w-full max-h-64" />
+                )}
+                {msg.type === "audio" && msg.media_url ? (
+                  <audio src={msg.media_url} controls className="max-w-full" />
+                ) : msg.type === "audio" && (
                   <div className="flex items-center gap-2 text-sm">
                     <Mic size={14} className="text-primary" />
                     <span>Mensagem de áudio</span>
                   </div>
+                )}
+                {msg.type === "sticker" && msg.media_url && (
+                  <img src={msg.media_url} alt="Figurinha" className="max-w-[150px]" />
+                )}
+                {msg.type === "document" && msg.media_url && (
+                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                    <FileIcon size={16} /> {msg.content || "Documento"}
+                  </a>
                 )}
                 {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
                 <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
@@ -263,31 +243,7 @@ export default function CrmConversa() {
         </div>
 
         {/* Input Area */}
-        <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <button className="p-2 text-muted-foreground hover:text-primary transition-colors">
-              <Paperclip size={20} />
-            </button>
-            <div className="flex-1 relative">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Digite uma mensagem..."
-                className="pr-10 bg-secondary border-border"
-              />
-            </div>
-            <button onClick={loadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
-              <FileText size={20} />
-            </button>
-            <button className="p-2 text-muted-foreground hover:text-primary transition-colors">
-              <Mic size={20} />
-            </button>
-            <Button size="icon" onClick={handleSendMessage} disabled={!newMessage.trim()}>
-              <Send size={18} />
-            </Button>
-          </div>
-        </div>
+        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} />}
       </div>
 
       {/* RIGHT COLUMN - Lead Panel (30%) */}
