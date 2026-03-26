@@ -271,17 +271,23 @@ export type Database = {
       }
       crm_pipelines: {
         Row: {
+          color: string | null
           created_at: string
+          description: string | null
           id: string
           name: string
         }
         Insert: {
+          color?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           name: string
         }
         Update: {
+          color?: string | null
           created_at?: string
+          description?: string | null
           id?: string
           name?: string
         }
@@ -369,6 +375,38 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      funnel_channels: {
+        Row: {
+          channel_config: Json | null
+          channel_type: string
+          created_at: string | null
+          id: string
+          pipeline_id: string
+        }
+        Insert: {
+          channel_config?: Json | null
+          channel_type: string
+          created_at?: string | null
+          id?: string
+          pipeline_id: string
+        }
+        Update: {
+          channel_config?: Json | null
+          channel_type?: string
+          created_at?: string | null
+          id?: string
+          pipeline_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_channels_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "crm_pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       integrations: {
         Row: {
