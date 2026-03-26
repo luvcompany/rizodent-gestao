@@ -91,39 +91,30 @@ export default function CrmConversa() {
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Realtime messages
+  // Polling for new messages every 3 seconds
   useEffect(() => {
     if (!id) return;
-    const channel = supabase
-      .channel(`messages-${id}`)
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "messages",
-        filter: `lead_id=eq.${id}`,
-      }, (payload) => {
-        console.log("[CRM] Realtime INSERT recebido:", payload.new);
+    const interval = setInterval(async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("lead_id", id)
+        .order("created_at", { ascending: true });
+      if (error) {
+        console.error("[CRM] Polling erro:", error);
+        return;
+      }
+      if (data) {
         setMessages((prev) => {
-          // Avoid duplicates
-          if (prev.some((m) => m.id === (payload.new as Message).id)) return prev;
-          return [...prev, payload.new as Message];
+          if (data.length !== prev.length || JSON.stringify(data.map(m => m.id)) !== JSON.stringify(prev.map(m => m.id))) {
+            console.log(`[CRM] Polling: ${data.length} mensagens (antes: ${prev.length})`);
+            return data as Message[];
+          }
+          return prev;
         });
-      })
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "messages",
-        filter: `lead_id=eq.${id}`,
-      }, (payload) => {
-        console.log("[CRM] Realtime UPDATE recebido:", payload.new);
-        setMessages((prev) =>
-          prev.map((m) => m.id === (payload.new as Message).id ? (payload.new as Message) : m)
-        );
-      })
-      .subscribe((status) => {
-        console.log(`[CRM] Realtime subscription status: ${status}`);
-      });
-    return () => { supabase.removeChannel(channel); };
+      }
+    }, 3000);
+    return () => clearInterval(interval);
   }, [id]);
 
   // Message sending is now handled by ChatInput component
