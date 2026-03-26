@@ -171,11 +171,41 @@ Deno.serve(async (req) => {
               case "sticker":
                 mediaId = msg.sticker?.id || null;
                 break;
+              case "button":
+                content = msg.button?.text || msg.button?.payload || "";
+                break;
+              case "interactive":
+                if (msg.interactive?.type === "button_reply") {
+                  content = msg.interactive.button_reply?.title || "";
+                } else if (msg.interactive?.type === "list_reply") {
+                  content = msg.interactive.list_reply?.title || msg.interactive.list_reply?.description || "";
+                } else {
+                  content = msg.interactive?.body?.text || JSON.stringify(msg.interactive || {});
+                }
+                break;
+              case "reaction":
+                content = msg.reaction?.emoji || "👍";
+                break;
+              case "location":
+                content = `📍 Localização: ${msg.location?.latitude}, ${msg.location?.longitude}`;
+                if (msg.location?.name) content = `📍 ${msg.location.name}`;
+                break;
+              case "contacts":
+                const contactInfo = msg.contacts?.[0];
+                content = contactInfo?.name?.formatted_name || "Contato compartilhado";
+                if (contactInfo?.phones?.[0]?.phone) content += ` (${contactInfo.phones[0].phone})`;
+                break;
+              case "order":
+                content = "📦 Pedido recebido";
+                break;
+              case "referral":
+                content = msg.referral?.body || "Referência de anúncio";
+                break;
               case "template":
                 content = "[template]";
                 break;
               default:
-                content = `[${msgType}]`;
+                content = msg[msgType]?.body || msg[msgType]?.text || msg[msgType]?.caption || `[${msgType}]`;
                 break;
             }
 
