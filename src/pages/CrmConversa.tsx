@@ -5,13 +5,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import ChatInput from "@/components/chat/ChatInput";
 import {
-  ArrowLeft, Send, Paperclip, Mic, FileText, Phone,
-  MoreVertical, Check, CheckCheck, Clock, Plus, Tag
+  ArrowLeft, FileText, Phone, Mic,
+  MoreVertical, Check, CheckCheck, Clock, Plus, Tag, File as FileIcon
 } from "lucide-react";
 
 type Message = {
@@ -98,40 +98,7 @@ export default function CrmConversa() {
     return () => { supabase.removeChannel(channel); };
   }, [id]);
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !id || !lead?.phone) return;
-    try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: {
-          lead_id: id,
-          to: lead.phone,
-          message: newMessage.trim(),
-        },
-      });
-      if (error) {
-        toast.error(`Erro ao enviar: ${error.message}`);
-        console.error("Send error:", error);
-        return;
-      }
-      if (data?.error) {
-        toast.error(`Erro WhatsApp: ${JSON.stringify(data.details || data.error)}`);
-        console.error("WhatsApp API error:", data);
-        return;
-      }
-      setNewMessage("");
-      toast.success("Mensagem enviada via WhatsApp");
-    } catch (err: any) {
-      toast.error(`Erro inesperado: ${err.message}`);
-      console.error("Unexpected error:", err);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
+  // Message sending is now handled by ChatInput component
 
   const handleStageChange = async (stageId: string) => {
     if (!id) return;
