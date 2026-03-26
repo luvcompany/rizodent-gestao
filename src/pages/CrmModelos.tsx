@@ -30,6 +30,7 @@ export default function CrmModelos() {
   const [page, setPage] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
@@ -119,6 +120,7 @@ export default function CrmModelos() {
   };
 
   const handleSave = async (submit: boolean) => {
+    if (submitting) return;
     const nameRegex = /^[a-z0-9_]+$/;
     if (!form.name || !nameRegex.test(form.name)) {
       toast.error("Nome deve conter apenas letras minúsculas, números e underscore");
@@ -127,6 +129,10 @@ export default function CrmModelos() {
     if (!form.body_text) {
       toast.error("O corpo da mensagem é obrigatório");
       return;
+    }
+    if (submit) {
+      setSubmitting(true);
+      setModalOpen(false);
     }
 
     // If editing, just update locally
@@ -167,6 +173,7 @@ export default function CrmModelos() {
 
         if (fnError) {
           toast.error("Erro ao enviar para Meta: " + fnError.message);
+          setSubmitting(false);
           return;
         }
 
@@ -174,14 +181,17 @@ export default function CrmModelos() {
         if (data?.error) {
           const details = data.details ? JSON.stringify(data.details, null, 2) : "";
           toast.error(`Erro da Meta: ${data.error}\n${details}`, { duration: 10000 });
+          setSubmitting(false);
           return;
         }
 
         toast.success(`Template submetido! Status: ${data?.status || "PENDING"}`);
       } catch (e: any) {
         toast.error("Erro ao enviar: " + (e?.message || String(e)));
+        setSubmitting(false);
         return;
       }
+      setSubmitting(false);
     } else {
       // Save as draft locally only
       const payload = {
