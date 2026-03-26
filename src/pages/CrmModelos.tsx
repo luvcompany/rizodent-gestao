@@ -173,6 +173,7 @@ export default function CrmModelos() {
 
         if (fnError) {
           toast.error("Erro ao enviar para Meta: " + fnError.message);
+          setSubmitting(false);
           return;
         }
 
