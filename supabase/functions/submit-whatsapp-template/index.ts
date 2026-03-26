@@ -33,6 +33,7 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "API do WhatsApp não configurada. Adicione WHATSAPP_TOKEN e WABA_ID." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
 
     const { template_name } = await req.json();
     if (!template_name) {
@@ -41,8 +42,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { data: template, error: fetchErr } = await supabase
       .from("crm_whatsapp_templates")
