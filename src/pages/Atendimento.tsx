@@ -95,7 +95,10 @@ const Atendimento = () => {
     const state = location.state as { pacienteId?: string; pacienteNome?: string; pacienteTelefone?: string; pacienteCidade?: string; pacienteOrigem?: string; pacienteNomeAnuncio?: string } | null;
     if (state?.pacienteId && !initialPatientLoaded) {
       setInitialPatientLoaded(true);
-      setTelefone(state.pacienteTelefone || "");
+      // Format phone for display and search compatibility
+      const rawPhone = state.pacienteTelefone || "";
+      const formatted = rawPhone.includes("(") ? rawPhone : formatPhone(rawPhone);
+      setTelefone(formatted);
       setNome(state.pacienteNome || "");
       setCidade(state.pacienteCidade || "");
       setOrigem(state.pacienteOrigem || "");
@@ -139,7 +142,7 @@ const Atendimento = () => {
       const { data } = await supabase
         .from("pacientes")
         .select("*")
-        .ilike("telefone", `%${formatted}%`)
+        .or(`telefone.ilike.%${digits}%,telefone.ilike.%${formatted}%`)
         .limit(5);
       setSugestoes(data || []);
     } else {
