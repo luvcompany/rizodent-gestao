@@ -20,9 +20,10 @@ type ChatInputProps = {
   onLoadTemplates: () => void;
   externalMessage?: string;
   onExternalMessageConsumed?: () => void;
+  onApiLog?: (log: { type: "success" | "error"; payload: any }) => void;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onApiLog }: ChatInputProps) {
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -83,14 +84,18 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       });
 
       if (error) {
+        const errPayload = { edge_error: error.message, raw: error };
+        onApiLog?.({ type: "error", payload: errPayload });
         toast.error(`Erro ao enviar: ${error.message}`);
         return;
       }
       if (data?.error) {
+        onApiLog?.({ type: "error", payload: data });
         toast.error(`Erro WhatsApp: ${JSON.stringify(data.details || data.error)}`);
         return;
       }
 
+      onApiLog?.({ type: "success", payload: data });
       setNewMessage("");
       setAttachedFile(null);
       toast.success("Mensagem enviada");
@@ -160,8 +165,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         });
 
         if (error || data?.error) {
+          const errPayload = error ? { edge_error: error.message, raw: error } : data;
+          onApiLog?.({ type: "error", payload: errPayload });
           toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
         } else {
+          onApiLog?.({ type: "success", payload: data });
           toast.success("Áudio enviado");
         }
         setSending(false);
