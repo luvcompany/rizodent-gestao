@@ -500,7 +500,7 @@ export default function CrmConversa() {
             {templates.map((t) => (
               <button
                 key={t.id}
-                onClick={() => insertTemplate(t.body_text || t.name)}
+                onClick={() => sendTemplate(t)}
                 className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/30 bg-secondary/50 hover:bg-secondary transition-colors"
               >
                 <div className="font-medium text-sm text-foreground">{t.name}</div>
