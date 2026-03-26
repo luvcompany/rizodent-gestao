@@ -249,12 +249,11 @@ export default function CrmModelos() {
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED */}
       <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/crm")}>
-            <ArrowLeft size={16} className="mr-1" /> Voltar
-          </Button>
-          <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
-        </div>
+        <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
+        <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
+          <Plus size={14} className="mr-1" /> Novo Modelo
+        </Button>
+      </div>
         <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
           <Plus size={14} className="mr-1" /> Novo Modelo
         </Button>
