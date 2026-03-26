@@ -78,12 +78,48 @@ Deno.serve(async (req) => {
                 break;
             }
 
-            // Find lead by phone
-            const { data: lead } = await supabase
+            // Find or create lead by phone
+            let { data: lead } = await supabase
               .from("crm_leads")
               .select("id")
               .eq("phone", from)
               .maybeSingle();
+
+            if (!lead) {
+              // Get first pipeline and its first stage to assign the new lead
+              const { data: pipeline } = await supabase
+                .from("crm_pipelines")
+                .select("id")
+                .limit(1)
+                .single();
+
+              if (pipeline) {
+                const { data: stage } = await supabase
+                  .from("crm_stages")
+                  .select("id")
+                  .eq("pipeline_id", pipeline.id)
+                  .order("position", { ascending: true })
+                  .limit(1)
+                  .single();
+
+                if (stage) {
+                  const { data: newLead } = await supabase
+                    .from("crm_leads")
+                    .insert({
+                      name: `Lead WhatsApp ${from}`,
+                      phone: from,
+                      pipeline_id: pipeline.id,
+                      stage_id: stage.id,
+                      source: "whatsapp",
+                    })
+                    .select("id")
+                    .single();
+
+                  lead = newLead;
+                  console.log(`Auto-created lead for phone: ${from}, id: ${newLead?.id}`);
+                }
+              }
+            }
 
             if (lead) {
               await supabase.from("messages").insert({
@@ -102,7 +138,7 @@ Deno.serve(async (req) => {
 
               console.log(`Message received from ${from}, lead ${lead.id}, type: ${msgType}`);
             } else {
-              console.log(`No lead found for phone: ${from}`);
+              console.log(`Could not find or create lead for phone: ${from}`);
             }
           }
 
