@@ -87,10 +87,16 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     toast.success("Paciente vinculado ao lead");
   };
 
+  const stripCountryCode = (phone: string) => {
+    let clean = phone.replace(/\D/g, "");
+    if (clean.startsWith("55") && clean.length >= 12) clean = clean.slice(2);
+    return clean;
+  };
+
   const createAndLinkPaciente = async () => {
     const { data, error } = await supabase.from("pacientes").insert({
       nome: lead.name,
-      telefone: lead.phone || "",
+      telefone: stripCountryCode(lead.phone || ""),
     }).select("id").single();
     if (error || !data) { toast.error("Erro ao criar paciente"); return; }
     await linkPaciente(data.id);
