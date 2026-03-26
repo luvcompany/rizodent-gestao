@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { lead_id, to, message, type = "text", media_url } = await req.json();
+    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components } = await req.json();
 
     if (!lead_id || !to) {
       return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
@@ -30,7 +30,14 @@ Deno.serve(async (req) => {
 
     let waBody: any = { messaging_product: "whatsapp", to };
 
-    if (type === "text") {
+    if (type === "template") {
+      waBody.type = "template";
+      waBody.template = {
+        name: template_name,
+        language: { code: template_language || "pt_BR" },
+        components: template_components || [],
+      };
+    } else if (type === "text") {
       if (!message) {
         return new Response(JSON.stringify({ error: "Missing message for text type" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
