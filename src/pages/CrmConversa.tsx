@@ -99,20 +99,31 @@ export default function CrmConversa() {
   }, [id]);
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !id) return;
-    const { error } = await supabase.from("messages").insert({
-      lead_id: id,
-      direction: "outbound",
-      type: "text",
-      content: newMessage.trim(),
-      status: "sent",
-    });
-    if (error) { toast.error("Erro ao enviar mensagem"); return; }
-    await supabase.from("crm_leads").update({
-      last_message: newMessage.trim(),
-      last_message_at: new Date().toISOString(),
-    }).eq("id", id);
-    setNewMessage("");
+    if (!newMessage.trim() || !id || !lead?.phone) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          lead_id: id,
+          to: lead.phone,
+          message: newMessage.trim(),
+        },
+      });
+      if (error) {
+        toast.error(`Erro ao enviar: ${error.message}`);
+        console.error("Send error:", error);
+        return;
+      }
+      if (data?.error) {
+        toast.error(`Erro WhatsApp: ${JSON.stringify(data.details || data.error)}`);
+        console.error("WhatsApp API error:", data);
+        return;
+      }
+      setNewMessage("");
+      toast.success("Mensagem enviada via WhatsApp");
+    } catch (err: any) {
+      toast.error(`Erro inesperado: ${err.message}`);
+      console.error("Unexpected error:", err);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
