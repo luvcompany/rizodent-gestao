@@ -40,6 +40,15 @@ export default function CrmModelos() {
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
+    // First try to sync from Meta API
+    try {
+      await supabase.functions.invoke("manage-whatsapp-templates", {
+        body: { action: "list" },
+      });
+    } catch (e) {
+      console.log("[Templates] Meta sync skipped:", e);
+    }
+    // Then load from local DB
     const { data, error } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
     if (!error) setTemplates((data as WhatsAppTemplate[]) || []);
     setLoading(false);
@@ -86,6 +95,23 @@ export default function CrmModelos() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
+    const template = templates.find(t => t.id === deleteId);
+    if (!template) return;
+
+    // Try to delete from Meta API first
+    if (template.meta_template_id) {
+      try {
+        const { error } = await supabase.functions.invoke("manage-whatsapp-templates", {
+          body: { action: "delete", template_name: template.name },
+        });
+        if (error) {
+          toast.error("Erro ao deletar na Meta. Removendo apenas localmente.");
+        }
+      } catch {
+        toast.warning("API Meta indisponível. Removendo apenas localmente.");
+      }
+    }
+
     await supabase.from("crm_whatsapp_templates").delete().eq("id", deleteId);
     toast.success("Template excluído");
     setDeleteId(null);
