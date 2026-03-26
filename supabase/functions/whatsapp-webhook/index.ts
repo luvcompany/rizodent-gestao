@@ -137,6 +137,10 @@ Deno.serve(async (req) => {
             }
           }
 
+          // Extract contact name from payload
+          const contacts = value?.contacts || [];
+          const contactName = contacts[0]?.profile?.name || null;
+
           // Handle incoming messages
           const messages = value?.messages || [];
           for (const msg of messages) {
@@ -185,12 +189,14 @@ Deno.serve(async (req) => {
             // Find or create lead by phone
             let { data: lead } = await supabase
               .from("crm_leads")
-              .select("id")
+              .select("id, name")
               .eq("phone", from)
               .maybeSingle();
 
             if (!lead) {
-              // Get first pipeline and its first stage to assign the new lead
+              // Use contact name from Meta payload, fallback to phone
+              const leadName = contactName || `Lead WhatsApp ${from}`;
+
               const { data: pipeline } = await supabase
                 .from("crm_pipelines")
                 .select("id")
@@ -210,19 +216,24 @@ Deno.serve(async (req) => {
                   const { data: newLead } = await supabase
                     .from("crm_leads")
                     .insert({
-                      name: `Lead WhatsApp ${from}`,
+                      name: leadName,
                       phone: from,
                       pipeline_id: pipeline.id,
                       stage_id: stage.id,
                       source: "whatsapp",
                     })
-                    .select("id")
+                    .select("id, name")
                     .single();
 
                   lead = newLead;
-                  console.log(`Auto-created lead for phone: ${from}, id: ${newLead?.id}`);
+                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), id: ${newLead?.id}`);
                 }
               }
+            } else if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
+              // Update auto-generated name with real contact name (don't overwrite manual edits)
+              await supabase.from("crm_leads").update({ name: contactName }).eq("id", lead.id);
+              console.log(`[WEBHOOK] Nome do lead atualizado: "${lead.name}" → "${contactName}"`);
+              lead = { ...lead, name: contactName };
             }
 
             if (lead) {
