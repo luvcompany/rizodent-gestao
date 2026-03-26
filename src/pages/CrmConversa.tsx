@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import ChatInput from "@/components/chat/ChatInput";
+import ChatMessageContent from "@/components/chat/ChatMessageContent";
 import {
-  ArrowLeft, FileText, Phone, Mic,
-  MoreVertical, Check, CheckCheck, Clock, Plus, Tag, File as FileIcon
+  ArrowLeft, FileText, Phone,
+  MoreVertical, Check, CheckCheck, Clock, Plus, Tag
 } from "lucide-react";
 
 type Message = {
@@ -91,6 +92,32 @@ export default function CrmConversa() {
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  useEffect(() => {
+    if (!id) return;
+
+    const repairLegacyMedia = async () => {
+      const { data, error } = await supabase.functions.invoke("repair-chat-media", {
+        body: { leadId: id },
+      });
+
+      if (error) {
+        console.error("[CRM] Erro ao reparar mídias antigas:", error);
+        return;
+      }
+
+      if (data?.repaired?.length) {
+        console.log(`[CRM] Mídias antigas reparadas: ${data.repaired.length}`);
+        fetchData();
+      }
+
+      if (data?.failed?.length) {
+        console.error("[CRM] Falhas ao reparar mídias antigas:", data.failed);
+      }
+    };
+
+    repairLegacyMedia();
+  }, [id, fetchData]);
+
   // Realtime subscription for new/updated messages
   useEffect(() => {
     if (!id) return;
@@ -132,8 +159,8 @@ export default function CrmConversa() {
         .from("messages").select("*").eq("lead_id", id).order("created_at", { ascending: true });
       if (data) {
         setMessages((prev) => {
-          const newIds = data.map(m => m.id).join();
-          const oldIds = prev.map(m => m.id).join();
+          const newIds = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
+          const oldIds = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
           return newIds !== oldIds ? (data as Message[]) : prev;
         });
       }
