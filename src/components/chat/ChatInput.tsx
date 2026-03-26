@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +32,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (externalMessage) {
+      setNewMessage(externalMessage);
+      onExternalMessageConsumed?.();
+    }
+  }, [externalMessage, onExternalMessageConsumed]);
 
   const uploadFile = async (file: File, folder: string): Promise<string | null> => {
     const ext = file.name.split(".").pop() || "bin";
