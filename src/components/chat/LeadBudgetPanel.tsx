@@ -70,10 +70,14 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const handleSearch = async () => {
     if (!searchTerm.trim()) return;
     setSearching(true);
+    const cleanSearch = searchTerm.replace(/\D/g, "");
+    const isPhoneSearch = cleanSearch.length >= 4;
     const { data } = await supabase
       .from("pacientes")
       .select("id, nome, telefone, email")
-      .or(`nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`)
+      .or(isPhoneSearch
+        ? `telefone.ilike.%${cleanSearch}%,nome.ilike.%${searchTerm}%`
+        : `nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`)
       .limit(10);
     setSearchResults(data || []);
     setSearching(false);
@@ -142,7 +146,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       ) : (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">Nenhum paciente vinculado</p>
-          <Button size="sm" variant="outline" className="w-full" onClick={() => { setLinkOpen(true); setSearchTerm(lead.phone || lead.name); setSearchResults([]); }}>
+          <Button size="sm" variant="outline" className="w-full" onClick={() => { setLinkOpen(true); setSearchTerm(stripCountryCode(lead.phone || "") || lead.name); setSearchResults([]); }}>
             <UserPlus size={14} className="mr-1" /> Vincular Paciente
           </Button>
         </div>
