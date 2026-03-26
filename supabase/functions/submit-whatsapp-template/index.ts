@@ -33,7 +33,8 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "API do WhatsApp não configurada. Adicione WHATSAPP_TOKEN e WABA_ID." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    }
+
+    const { template_name } = await req.json();
     if (!template_name) {
       return new Response(
         JSON.stringify({ error: "template_name é obrigatório" }),
