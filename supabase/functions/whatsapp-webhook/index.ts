@@ -210,21 +210,28 @@ Deno.serve(async (req) => {
             }
 
             if (lead) {
-              await supabase.from("messages").insert({
+              const insertPayload = {
                 lead_id: lead.id,
                 direction: "inbound",
                 type: msgType,
                 content: content || null,
                 media_url: mediaUrl,
                 status: "received",
-              });
+              };
+              const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
+
+              if (insertErr) {
+                console.error(`[WEBHOOK] ERRO ao salvar mensagem: ${JSON.stringify(insertErr)}`);
+              } else {
+                console.log(`[WEBHOOK] Mensagem salva: ${JSON.stringify(savedMsg)}`);
+              }
 
               await supabase.from("crm_leads").update({
                 last_message: content || `[${msgType}]`,
                 last_message_at: new Date().toISOString(),
               }).eq("id", lead.id);
 
-              console.log(`Message received from ${from}, lead ${lead.id}, type: ${msgType}`);
+              console.log(`[WEBHOOK] Message received from ${from}, lead ${lead.id}, type: ${msgType}, media_url: ${mediaUrl}`);
             } else {
               console.log(`Could not find or create lead for phone: ${from}`);
             }
