@@ -155,11 +155,12 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    const dbContent = type === "template" ? `📋 Template: ${template_name}` : (message || null);
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,
       direction: "outbound",
-      type,
-      content: message || null,
+      type: type === "template" ? "text" : type,
+      content: dbContent,
       media_url: media_url || null,
       status: "sent",
     }).select().single();
