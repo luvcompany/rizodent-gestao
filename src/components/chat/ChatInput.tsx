@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Send, Paperclip, Mic, FileText, Image, File, Video,
-  Square, X
+  Square, X, Loader2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -13,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { compressImage } from "./imageCompressor";
 
 type ChatInputProps = {
   leadId: string;
@@ -28,7 +29,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [attachedFile, setAttachedFile] = useState<{ file: File; type: string } | null>(null);
+  const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -41,7 +43,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
   }, [externalMessage, onExternalMessageConsumed]);
 
-  const uploadFile = async (file: File, folder: string): Promise<string | null> => {
+  const uploadFile = async (file: globalThis.File, folder: string): Promise<string | null> => {
     const ext = file.name.split(".").pop() || "bin";
     const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error } = await supabase.storage.from("chat-media").upload(path, file);
@@ -53,7 +55,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     return data.publicUrl;
   };
 
-  const getMessageType = (file: File): string => {
+  const getMessageType = (file: globalThis.File): string => {
     if (file.type.startsWith("image/")) return "image";
     if (file.type.startsWith("audio/")) return "audio";
     if (file.type.startsWith("video/")) return "video";
@@ -68,10 +70,22 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       let type = "text";
       let media_url: string | undefined;
       let message = newMessage.trim();
+      let fileToUpload = attachedFile?.file;
 
-      if (attachedFile) {
+      if (attachedFile && fileToUpload) {
         type = attachedFile.type;
-        const url = await uploadFile(attachedFile.file, type);
+
+        // Compress images if needed
+        if (type === "image") {
+          setOptimizing(true);
+          try {
+            fileToUpload = await compressImage(fileToUpload);
+          } finally {
+            setOptimizing(false);
+          }
+        }
+
+        const url = await uploadFile(fileToUpload, type);
         if (!url) { setSending(false); return; }
         media_url = url;
         if (!message && type === "document") message = attachedFile.file.name;
@@ -103,6 +117,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       toast.error(`Erro inesperado: ${err.message}`);
     } finally {
       setSending(false);
+      setOptimizing(false);
     }
   };
 
@@ -120,27 +135,62 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 16 * 1024 * 1024) {
-      toast.error("Arquivo muito grande. Máximo: 16MB");
+    e.target.value = "";
+
+    const type = getMessageType(file);
+
+    // Validation per type
+    if (type === "audio" && file.size > 15 * 1024 * 1024) {
+      toast.warning("Áudio muito longo. Considere enviar em partes menores.");
       return;
     }
-    const type = getMessageType(file);
-    // Treat webp stickers separately
+
+    if (type === "document" && file.size > 100 * 1024 * 1024) {
+      toast.error("Documento muito grande. Máximo: 100MB");
+      return;
+    }
+
+    // Webp stickers
     if (file.type === "image/webp" && file.size < 512 * 1024) {
       setAttachedFile({ file, type: "sticker" });
-    } else {
-      setAttachedFile({ file, type });
+      return;
     }
-    e.target.value = "";
+
+    // Images: compress on attach if needed
+    if (type === "image" && file.size > 4 * 1024 * 1024) {
+      setOptimizing(true);
+      try {
+        const compressed = await compressImage(file);
+        setAttachedFile({ file: compressed, type });
+        const saved = ((file.size - compressed.size) / 1024 / 1024).toFixed(1);
+        toast.success(`Imagem otimizada (${saved}MB reduzidos)`);
+      } catch {
+        toast.error("Erro ao otimizar imagem");
+        setAttachedFile({ file, type });
+      } finally {
+        setOptimizing(false);
+      }
+      return;
+    }
+
+    setAttachedFile({ file, type });
   };
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+      // Prefer ogg/opus for smaller files
+      const mimeType = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+        ? "audio/ogg;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -155,6 +205,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/ogg" });
         const audioFile = new globalThis.File([audioBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
+
+        if (audioFile.size > 15 * 1024 * 1024) {
+          toast.warning("Áudio muito longo. Considere enviar em partes menores.");
+          return;
+        }
 
         setSending(true);
         const url = await uploadFile(audioFile, "audio");
@@ -208,14 +263,27 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
+      {/* Optimizing indicator */}
+      {optimizing && (
+        <div className="flex items-center gap-2 mb-2 bg-primary/10 rounded-lg px-3 py-2 text-sm text-primary">
+          <Loader2 size={16} className="animate-spin" />
+          <span>Otimizando arquivo...</span>
+        </div>
+      )}
+
       {/* Attached file preview */}
-      {attachedFile && (
+      {attachedFile && !optimizing && (
         <div className="flex items-center gap-2 mb-2 bg-secondary rounded-lg px-3 py-2 text-sm">
           {attachedFile.type === "image" ? <Image size={16} className="text-primary" /> :
            attachedFile.type === "video" ? <Video size={16} className="text-primary" /> :
            attachedFile.type === "sticker" ? <span className="text-lg">🎨</span> :
            <File size={16} className="text-primary" />}
-          <span className="flex-1 truncate text-foreground">{attachedFile.file.name}</span>
+          <span className="flex-1 truncate text-foreground">
+            {attachedFile.file.name}
+            <span className="text-muted-foreground ml-1">
+              ({(attachedFile.file.size / 1024 / 1024).toFixed(1)}MB)
+            </span>
+          </span>
           <button onClick={() => setAttachedFile(null)} className="text-muted-foreground hover:text-foreground">
             <X size={16} />
           </button>
@@ -239,7 +307,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="p-2 text-muted-foreground hover:text-primary transition-colors">
+              <button className="p-2 text-muted-foreground hover:text-primary transition-colors" disabled={optimizing}>
                 <Paperclip size={20} />
               </button>
             </DropdownMenuTrigger>
@@ -266,7 +334,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               onKeyDown={handleKeyDown}
               placeholder="Digite uma mensagem..."
               className="pr-10 bg-secondary border-border"
-              disabled={sending}
+              disabled={sending || optimizing}
             />
           </div>
 
@@ -275,14 +343,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </button>
 
           {newMessage.trim() || attachedFile ? (
-            <Button size="icon" onClick={handleSendMessage} disabled={sending}>
+            <Button size="icon" onClick={handleSendMessage} disabled={sending || optimizing}>
               <Send size={18} />
             </Button>
           ) : (
             <button
               onClick={startRecording}
               className="p-2 text-muted-foreground hover:text-primary transition-colors"
-              disabled={sending}
+              disabled={sending || optimizing}
             >
               <Mic size={20} />
             </button>
