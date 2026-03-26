@@ -91,29 +91,53 @@ export default function CrmConversa() {
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Polling for new messages every 3 seconds
+  // Realtime subscription for new/updated messages
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel('messages-' + id)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `lead_id=eq.${id}`,
+      }, (payload) => {
+        console.log("[CRM] Realtime INSERT:", payload.new);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === (payload.new as Message).id)) return prev;
+          return [...prev, payload.new as Message];
+        });
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `lead_id=eq.${id}`,
+      }, (payload) => {
+        setMessages((prev) =>
+          prev.map((m) => m.id === (payload.new as Message).id ? (payload.new as Message) : m)
+        );
+      })
+      .subscribe((status) => {
+        console.log(`[CRM] Realtime status: ${status}`);
+      });
+    return () => { supabase.removeChannel(channel); };
+  }, [id]);
+
+  // Fallback polling every 5s
   useEffect(() => {
     if (!id) return;
     const interval = setInterval(async () => {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("lead_id", id)
-        .order("created_at", { ascending: true });
-      if (error) {
-        console.error("[CRM] Polling erro:", error);
-        return;
-      }
+      const { data } = await supabase
+        .from("messages").select("*").eq("lead_id", id).order("created_at", { ascending: true });
       if (data) {
         setMessages((prev) => {
-          if (data.length !== prev.length || JSON.stringify(data.map(m => m.id)) !== JSON.stringify(prev.map(m => m.id))) {
-            console.log(`[CRM] Polling: ${data.length} mensagens (antes: ${prev.length})`);
-            return data as Message[];
-          }
-          return prev;
+          const newIds = data.map(m => m.id).join();
+          const oldIds = prev.map(m => m.id).join();
+          return newIds !== oldIds ? (data as Message[]) : prev;
         });
       }
-    }, 3000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [id]);
 
