@@ -140,7 +140,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates }: ChatIn
         setRecordingTime(0);
 
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/ogg" });
-        const audioFile = new File([audioBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
+        const audioFile = new globalThis.File([audioBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
 
         setSending(true);
         const url = await uploadFile(audioFile, "audio");
