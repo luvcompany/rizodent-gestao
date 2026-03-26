@@ -90,22 +90,47 @@ const Atendimento = () => {
     });
   }, []);
 
+  const preencherPacienteSelecionado = async (paciente: {
+    id: string;
+    nome?: string;
+    telefone?: string;
+    cidade?: string | null;
+    origem?: string | null;
+    nome_anuncio?: string | null;
+  }) => {
+    const rawPhone = paciente.telefone || "";
+    const formatted = rawPhone.includes("(") ? rawPhone : formatPhone(rawPhone);
+
+    setTelefone(formatted);
+    setNome(paciente.nome || "");
+    setCidade(paciente.cidade || "");
+    setOrigem(paciente.origem || "");
+    setNomeAnuncio(paciente.nome_anuncio || "");
+    setPacienteSelecionadoId(paciente.id);
+    setSugestoes([]);
+    setValorPago("");
+    setValorOrcadoGeral("");
+    setValorContratadoGeral("");
+    setProcedimentos([createEmptyProcedimento()]);
+    setClinicaId("");
+    setModo("selecionar");
+
+    await carregarTratamentos(paciente.id);
+  };
+
   // Auto-load patient from navigation state
   useEffect(() => {
     const state = location.state as { pacienteId?: string; pacienteNome?: string; pacienteTelefone?: string; pacienteCidade?: string; pacienteOrigem?: string; pacienteNomeAnuncio?: string } | null;
     if (state?.pacienteId && !initialPatientLoaded) {
       setInitialPatientLoaded(true);
-      // Format phone for display and search compatibility
-      const rawPhone = state.pacienteTelefone || "";
-      const formatted = rawPhone.includes("(") ? rawPhone : formatPhone(rawPhone);
-      setTelefone(formatted);
-      setNome(state.pacienteNome || "");
-      setCidade(state.pacienteCidade || "");
-      setOrigem(state.pacienteOrigem || "");
-      setNomeAnuncio(state.pacienteNomeAnuncio || "");
-      setPacienteSelecionadoId(state.pacienteId);
-      setSugestoes([]);
-      carregarTratamentos(state.pacienteId);
+      void preencherPacienteSelecionado({
+        id: state.pacienteId,
+        nome: state.pacienteNome,
+        telefone: state.pacienteTelefone,
+        cidade: state.pacienteCidade,
+        origem: state.pacienteOrigem,
+        nome_anuncio: state.pacienteNomeAnuncio,
+      });
     }
   }, [location.state, initialPatientLoaded]);
 
@@ -169,9 +194,16 @@ const Atendimento = () => {
 
       setOrcamentosAbertos(enriched);
 
-      if (enriched.length === 1) {
+      if (trats.length === 0) {
+        setModo("novo_tratamento");
+        setOrcamentoSelecionado(null);
+        setTotalOrcadoExistente(0);
+        setTotalPagoExistente(0);
+      } else if (enriched.length === 1) {
+        setModo("selecionar");
         selecionarOrcamento(enriched[0]);
       } else {
+        setModo("selecionar");
         setOrcamentoSelecionado(null);
         setTotalOrcadoExistente(0);
         setTotalPagoExistente(0);
@@ -186,15 +218,7 @@ const Atendimento = () => {
   };
 
   const selecionarPaciente = async (pac: Tables<"pacientes">) => {
-    setTelefone(pac.telefone);
-    setNome(pac.nome);
-    setCidade(pac.cidade || "");
-    setOrigem(pac.origem || "");
-    setNomeAnuncio(pac.nome_anuncio || "");
-    setPacienteSelecionadoId(pac.id);
-    setSugestoes([]);
-    setModo("selecionar");
-    await carregarTratamentos(pac.id);
+    await preencherPacienteSelecionado(pac);
     toast.success(`Paciente ${pac.nome} selecionado!`);
   };
 
@@ -413,7 +437,7 @@ const Atendimento = () => {
   };
 
   const showTratamentoSelector = pacienteSelecionadoId && tratamentosExistentes.length > 0 && modo === "selecionar";
-  const showNovoTratamentoFields = !pacienteSelecionadoId || modo === "novo_tratamento";
+  const showNovoTratamentoFields = !pacienteSelecionadoId || modo === "novo_tratamento" || (pacienteSelecionadoId && tratamentosExistentes.length === 0);
   const showPagamentoFields = modo === "novo_pagamento";
   const naoContratadoExistente = Math.max(0, totalOrcadoExistente - totalPagoExistente);
 
