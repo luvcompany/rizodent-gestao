@@ -5,6 +5,74 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
+
+async function downloadAndStoreMedia(
+  mediaId: string,
+  msgType: string,
+  whatsappToken: string,
+  supabase: any
+): Promise<string | null> {
+  try {
+    // Step 1: Get temporary URL from Meta
+    const metaRes = await fetch(`https://graph.facebook.com/v25.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${whatsappToken}` },
+    });
+    if (!metaRes.ok) {
+      console.error("Failed to get media URL from Meta:", await metaRes.text());
+      return null;
+    }
+    const metaData = await metaRes.json();
+    const downloadUrl = metaData.url;
+    const mimeType = metaData.mime_type || "application/octet-stream";
+
+    if (!downloadUrl) {
+      console.error("No download URL in Meta response:", metaData);
+      return null;
+    }
+
+    // Step 2: Download the file
+    const fileRes = await fetch(downloadUrl, {
+      headers: { Authorization: `Bearer ${whatsappToken}` },
+    });
+    if (!fileRes.ok) {
+      console.error("Failed to download media file:", fileRes.status);
+      return null;
+    }
+    const fileBlob = await fileRes.blob();
+
+    // Determine extension from mime type
+    const extMap: Record<string, string> = {
+      "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+      "audio/ogg": "ogg", "audio/ogg; codecs=opus": "ogg", "audio/mpeg": "mp3",
+      "audio/mp4": "m4a", "audio/amr": "amr",
+      "video/mp4": "mp4", "video/3gpp": "3gp",
+      "application/pdf": "pdf",
+      "application/vnd.ms-excel": "xls",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    };
+    const ext = extMap[mimeType] || mimeType.split("/").pop() || "bin";
+    const path = `${msgType}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+    // Step 3: Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from("chat-media")
+      .upload(path, fileBlob, { contentType: mimeType });
+
+    if (uploadError) {
+      console.error("Storage upload error:", uploadError.message);
+      return null;
+    }
+
+    const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
+    console.log(`Media stored: ${path}, public URL: ${data.publicUrl}`);
+    return data.publicUrl;
+  } catch (err) {
+    console.error("Error downloading/storing media:", err);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
