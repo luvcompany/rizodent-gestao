@@ -13,9 +13,20 @@ Deno.serve(async (req) => {
 
   try {
     const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN");
-    const WABA_ID = Deno.env.get("WABA_ID");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Get WABA_ID from integrations table
+    const { data: integration } = await supabase
+      .from("integrations")
+      .select("config")
+      .eq("key", "whatsapp_config")
+      .maybeSingle();
+
+    const config = integration?.config as Record<string, string> | null;
+    const WABA_ID = config?.waba_id || Deno.env.get("WABA_ID");
 
     if (!WHATSAPP_TOKEN || !WABA_ID) {
       return new Response(
@@ -23,8 +34,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const { template_name } = await req.json();
     if (!template_name) {
       return new Response(
         JSON.stringify({ error: "template_name é obrigatório" }),
