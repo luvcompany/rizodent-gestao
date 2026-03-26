@@ -18,10 +18,12 @@ type ChatInputProps = {
   leadId: string;
   leadPhone: string | null;
   onLoadTemplates: () => void;
+  externalMessage?: string;
+  onExternalMessageConsumed?: () => void;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates }: ChatInputProps) {
-  const [newMessage, setNewMessage] = useState("");
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed }: ChatInputProps) {
+  const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
