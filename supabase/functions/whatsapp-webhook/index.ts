@@ -14,32 +14,41 @@ async function downloadAndStoreMedia(
   supabase: any
 ): Promise<string | null> {
   try {
+    console.log(`[MEDIA] Buscando media_id: ${mediaId}`);
+
     // Step 1: Get temporary URL from Meta
     const metaRes = await fetch(`https://graph.facebook.com/v25.0/${mediaId}`, {
       headers: { Authorization: `Bearer ${whatsappToken}` },
     });
+    const metaText = await metaRes.text();
+    let metaData: any;
+    try { metaData = JSON.parse(metaText); } catch { metaData = metaText; }
+    console.log(`[MEDIA] Resposta da Meta ao buscar mídia: ${JSON.stringify(metaData)}`);
+
     if (!metaRes.ok) {
-      console.error("Failed to get media URL from Meta:", await metaRes.text());
+      console.error(`[MEDIA] ERRO ao buscar media_id ${mediaId}: status ${metaRes.status}`);
       return null;
     }
-    const metaData = await metaRes.json();
+
     const downloadUrl = metaData.url;
     const mimeType = metaData.mime_type || "application/octet-stream";
 
     if (!downloadUrl) {
-      console.error("No download URL in Meta response:", metaData);
+      console.error(`[MEDIA] Sem URL de download na resposta da Meta: ${JSON.stringify(metaData)}`);
       return null;
     }
 
     // Step 2: Download the file
+    console.log(`[MEDIA] Fazendo download da URL: ${downloadUrl}`);
     const fileRes = await fetch(downloadUrl, {
       headers: { Authorization: `Bearer ${whatsappToken}` },
     });
     if (!fileRes.ok) {
-      console.error("Failed to download media file:", fileRes.status);
+      console.error(`[MEDIA] ERRO ao baixar arquivo: status ${fileRes.status}, body: ${await fileRes.text()}`);
       return null;
     }
     const fileBlob = await fileRes.blob();
+    console.log(`[MEDIA] Download concluído: ${fileBlob.size} bytes, tipo: ${mimeType}`);
 
     // Determine extension from mime type
     const extMap: Record<string, string> = {
@@ -60,15 +69,15 @@ async function downloadAndStoreMedia(
       .upload(path, fileBlob, { contentType: mimeType });
 
     if (uploadError) {
-      console.error("Storage upload error:", uploadError.message);
+      console.error(`[MEDIA] ERRO upload Supabase Storage: ${JSON.stringify(uploadError)}`);
       return null;
     }
 
     const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
-    console.log(`Media stored: ${path}, public URL: ${data.publicUrl}`);
+    console.log(`[MEDIA] Upload para Supabase: sucesso, path=${path}, URL=${data.publicUrl}`);
     return data.publicUrl;
   } catch (err) {
-    console.error("Error downloading/storing media:", err);
+    console.error(`[MEDIA] ERRO inesperado ao processar media_id ${mediaId}: ${err.message}`, err);
     return null;
   }
 }
@@ -201,21 +210,28 @@ Deno.serve(async (req) => {
             }
 
             if (lead) {
-              await supabase.from("messages").insert({
+              const insertPayload = {
                 lead_id: lead.id,
                 direction: "inbound",
                 type: msgType,
                 content: content || null,
                 media_url: mediaUrl,
                 status: "received",
-              });
+              };
+              const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
+
+              if (insertErr) {
+                console.error(`[WEBHOOK] ERRO ao salvar mensagem: ${JSON.stringify(insertErr)}`);
+              } else {
+                console.log(`[WEBHOOK] Mensagem salva: ${JSON.stringify(savedMsg)}`);
+              }
 
               await supabase.from("crm_leads").update({
                 last_message: content || `[${msgType}]`,
                 last_message_at: new Date().toISOString(),
               }).eq("id", lead.id);
 
-              console.log(`Message received from ${from}, lead ${lead.id}, type: ${msgType}`);
+              console.log(`[WEBHOOK] Message received from ${from}, lead ${lead.id}, type: ${msgType}, media_url: ${mediaUrl}`);
             } else {
               console.log(`Could not find or create lead for phone: ${from}`);
             }
