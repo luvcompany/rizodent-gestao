@@ -179,6 +179,9 @@ export default function CrmKanban() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground font-medium">{totalLeads} leads: <span className="text-primary font-semibold">{formatCurrency(totalValue)}</span></span>
+          <Button variant="outline" size="sm" onClick={() => navigate("/crm/relatorios")}>
+            <TrendingUp size={14} className="mr-1" /> RELATÓRIOS
+          </Button>
           <Button variant="outline" size="sm" onClick={() => navigate("/crm/automacoes")}>
             <Zap size={14} className="mr-1" /> AUTOMATIZE
           </Button>
