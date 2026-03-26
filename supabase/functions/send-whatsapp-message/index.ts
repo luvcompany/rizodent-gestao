@@ -47,11 +47,32 @@ Deno.serve(async (req) => {
         });
       }
       const fileBlob = await fileResponse.blob();
-      const contentType = fileResponse.headers.get("content-type") || "application/octet-stream";
       
       // Extract filename from URL
       const urlParts = media_url.split("/");
       const filename = urlParts[urlParts.length - 1] || "file";
+      const ext = filename.split(".").pop()?.toLowerCase() || "";
+
+      // Map correct content-type based on extension (storage may return generic types)
+      const contentTypeMap: Record<string, string> = {
+        ogg: "audio/ogg",
+        opus: "audio/ogg",
+        mp3: "audio/mpeg",
+        m4a: "audio/mp4",
+        wav: "audio/wav",
+        webm: type === "audio" ? "audio/webm" : "video/webm",
+        mp4: type === "video" ? "video/mp4" : "audio/mp4",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        webp: "image/webp",
+        pdf: "application/pdf",
+        doc: "application/msword",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      };
+      const contentType = contentTypeMap[ext] || fileResponse.headers.get("content-type") || "application/octet-stream";
 
       // Step 2: Upload to Meta's media API
       const formData = new FormData();
