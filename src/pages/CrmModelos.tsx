@@ -124,36 +124,77 @@ export default function CrmModelos() {
       toast.error("Nome deve conter apenas letras minúsculas, números e underscore");
       return;
     }
-    const payload = {
-      name: form.name, category: form.category, language: form.language,
-      header_type: form.hasHeader ? form.header_type : null,
-      header_content: form.hasHeader ? form.header_content : null,
-      body_text: form.body_text, footer_text: form.footer_text || null,
-      buttons: form.buttons.length > 0 ? form.buttons : null,
-      status: "PENDING",
-      updated_at: new Date().toISOString(),
-    };
-
-    let error;
-    if (form.id) {
-      ({ error } = await supabase.from("crm_whatsapp_templates").update(payload).eq("id", form.id));
-    } else {
-      ({ error } = await supabase.from("crm_whatsapp_templates").insert(payload));
+    if (!form.body_text) {
+      toast.error("O corpo da mensagem é obrigatório");
+      return;
     }
 
-    if (error) { toast.error("Erro ao salvar"); return; }
+    // If editing, just update locally
+    if (form.id) {
+      const payload = {
+        name: form.name, category: form.category, language: form.language,
+        header_type: form.hasHeader ? form.header_type : null,
+        header_content: form.hasHeader ? form.header_content : null,
+        body_text: form.body_text, footer_text: form.footer_text || null,
+        buttons: form.buttons.length > 0 ? form.buttons : null,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from("crm_whatsapp_templates").update(payload).eq("id", form.id);
+      if (error) { toast.error("Erro ao salvar"); return; }
+      toast.success("Template atualizado");
+      setModalOpen(false);
+      resetForm();
+      fetchTemplates();
+      return;
+    }
 
+    // New template: if submit, send directly to Meta via edge function
     if (submit) {
       try {
-        const { error: fnError } = await supabase.functions.invoke("submit-whatsapp-template", {
-          body: { template_name: form.name },
+        const { data, error: fnError } = await supabase.functions.invoke("manage-whatsapp-templates", {
+          body: {
+            action: "create",
+            name: form.name,
+            category: form.category,
+            language: form.language,
+            header_type: form.hasHeader ? form.header_type : null,
+            header_content: form.hasHeader ? form.header_content : null,
+            body_text: form.body_text,
+            footer_text: form.footer_text || null,
+            buttons: form.buttons.length > 0 ? form.buttons : null,
+          },
         });
-        if (fnError) throw fnError;
-        toast.success("Template submetido para aprovação");
-      } catch {
-        toast.warning("Template salvo mas API não configurada ainda");
+
+        if (fnError) {
+          toast.error("Erro ao enviar para Meta: " + fnError.message);
+          return;
+        }
+
+        // Check if the response contains an error from Meta
+        if (data?.error) {
+          const details = data.details ? JSON.stringify(data.details, null, 2) : "";
+          toast.error(`Erro da Meta: ${data.error}\n${details}`, { duration: 10000 });
+          return;
+        }
+
+        toast.success(`Template submetido! Status: ${data?.status || "PENDING"}`);
+      } catch (e: any) {
+        toast.error("Erro ao enviar: " + (e?.message || String(e)));
+        return;
       }
     } else {
+      // Save as draft locally only
+      const payload = {
+        name: form.name, category: form.category, language: form.language,
+        header_type: form.hasHeader ? form.header_type : null,
+        header_content: form.hasHeader ? form.header_content : null,
+        body_text: form.body_text, footer_text: form.footer_text || null,
+        buttons: form.buttons.length > 0 ? form.buttons : null,
+        status: "DRAFT",
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from("crm_whatsapp_templates").insert(payload);
+      if (error) { toast.error("Erro ao salvar rascunho"); return; }
       toast.success("Rascunho salvo");
     }
 
