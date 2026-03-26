@@ -20,7 +20,6 @@ type WhatsAppTemplate = {
 const PAGE_SIZE = 10;
 
 export default function CrmModelos() {
-  const navigate = useNavigate();
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("todos");
