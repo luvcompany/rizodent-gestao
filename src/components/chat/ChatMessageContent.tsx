@@ -156,6 +156,14 @@ export default function ChatMessageContent({ message }: { message: ChatMessage }
     );
   }
 
+  // Button replies, interactive replies, and other text-like types
+  if (["button", "interactive", "reaction", "contacts", "location", "order", "referral", "system"].includes(message.type)) {
+    if (message.content?.trim()) {
+      return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
+    }
+    return <p className="text-sm text-muted-foreground italic">[{message.type}]</p>;
+  }
+
   if (message.content?.trim()) {
     return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
   }
@@ -164,6 +172,7 @@ export default function ChatMessageContent({ message }: { message: ChatMessage }
     return <p className="text-sm text-muted-foreground italic">[{message.type}] carregando mídia antiga...</p>;
   }
 
+  // Fallback: show content if available, otherwise show type label
   if (message.type !== "text") {
     return <p className="text-sm text-muted-foreground italic">[{message.type}]</p>;
   }
