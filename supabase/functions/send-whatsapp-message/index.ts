@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       formData.append("type", contentType);
 
       const uploadResponse = await fetch(
-        `https://graph.facebook.com/v19.0/${phoneNumberId}/media`,
+        `https://graph.facebook.com/v25.0/${phoneNumberId}/media`,
         {
           method: "POST",
           headers: { Authorization: `Bearer ${whatsappToken}` },
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
 
     // Send message via WhatsApp API
     const waResponse = await fetch(
-      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
