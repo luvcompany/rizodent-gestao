@@ -208,13 +208,26 @@ export default function CrmConversa() {
                   : "bg-card border border-border text-foreground rounded-bl-none"
               }`}>
                 {msg.type === "image" && msg.media_url && (
-                  <img src={msg.media_url} alt="Imagem" className="rounded mb-1 max-w-full" />
+                  <img src={msg.media_url} alt="Imagem" className="rounded mb-1 max-w-full max-h-64 cursor-pointer" onClick={() => window.open(msg.media_url!, "_blank")} />
                 )}
-                {msg.type === "audio" && (
+                {msg.type === "video" && msg.media_url && (
+                  <video src={msg.media_url} controls className="rounded mb-1 max-w-full max-h-64" />
+                )}
+                {msg.type === "audio" && msg.media_url ? (
+                  <audio src={msg.media_url} controls className="max-w-full" />
+                ) : msg.type === "audio" && (
                   <div className="flex items-center gap-2 text-sm">
                     <Mic size={14} className="text-primary" />
                     <span>Mensagem de áudio</span>
                   </div>
+                )}
+                {msg.type === "sticker" && msg.media_url && (
+                  <img src={msg.media_url} alt="Figurinha" className="max-w-[150px]" />
+                )}
+                {msg.type === "document" && msg.media_url && (
+                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                    <FileIcon size={16} /> {msg.content || "Documento"}
+                  </a>
                 )}
                 {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
                 <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
