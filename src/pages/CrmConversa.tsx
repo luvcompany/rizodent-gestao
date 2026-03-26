@@ -52,7 +52,6 @@ export default function CrmConversa() {
   const [lead, setLead] = useState<Lead | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
-  const [newMessage, setNewMessage] = useState("");
   const [newNote, setNewNote] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
