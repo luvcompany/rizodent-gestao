@@ -230,7 +230,7 @@ export default function CrmConversa() {
         </div>
 
         {/* Input Area */}
-        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} />}
+        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} />}
       </div>
 
       {/* RIGHT COLUMN - Lead Panel (30%) */}
