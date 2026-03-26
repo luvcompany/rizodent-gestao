@@ -20,10 +20,42 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { lead_id, to, message } = await req.json();
+    const { lead_id, to, message, type = "text", media_url } = await req.json();
 
-    if (!lead_id || !to || !message) {
-      return new Response(JSON.stringify({ error: "Missing lead_id, to, or message" }), {
+    if (!lead_id || !to) {
+      return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Build WhatsApp API body based on type
+    let waBody: any = { messaging_product: "whatsapp", to };
+
+    if (type === "text") {
+      if (!message) {
+        return new Response(JSON.stringify({ error: "Missing message for text type" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      waBody.type = "text";
+      waBody.text = { body: message };
+    } else if (type === "image") {
+      waBody.type = "image";
+      waBody.image = { link: media_url, caption: message || undefined };
+    } else if (type === "audio") {
+      waBody.type = "audio";
+      waBody.audio = { link: media_url };
+    } else if (type === "document") {
+      waBody.type = "document";
+      waBody.document = { link: media_url, caption: message || undefined, filename: message || "document" };
+    } else if (type === "sticker") {
+      waBody.type = "sticker";
+      waBody.sticker = { link: media_url };
+    } else if (type === "video") {
+      waBody.type = "video";
+      waBody.video = { link: media_url, caption: message || undefined };
+    } else {
+      return new Response(JSON.stringify({ error: `Unsupported type: ${type}` }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -37,12 +69,7 @@ Deno.serve(async (req) => {
           Authorization: `Bearer ${whatsappToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to,
-          type: "text",
-          text: { body: message },
-        }),
+        body: JSON.stringify(waBody),
       }
     );
 
@@ -63,8 +90,9 @@ Deno.serve(async (req) => {
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,
       direction: "outbound",
-      type: "text",
-      content: message,
+      type,
+      content: message || null,
+      media_url: media_url || null,
       status: "sent",
     }).select().single();
 
@@ -76,7 +104,7 @@ Deno.serve(async (req) => {
 
     // Update lead
     await supabase.from("crm_leads").update({
-      last_message: message,
+      last_message: message || `[${type}]`,
       last_message_at: new Date().toISOString(),
     }).eq("id", lead_id);
 
