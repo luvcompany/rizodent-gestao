@@ -196,6 +196,7 @@ export type Database = {
           last_message_at: string | null
           name: string
           notes: string | null
+          paciente_id: string | null
           phone: string | null
           pipeline_id: string
           position: number
@@ -214,6 +215,7 @@ export type Database = {
           last_message_at?: string | null
           name: string
           notes?: string | null
+          paciente_id?: string | null
           phone?: string | null
           pipeline_id: string
           position?: number
@@ -232,6 +234,7 @@ export type Database = {
           last_message_at?: string | null
           name?: string
           notes?: string | null
+          paciente_id?: string | null
           phone?: string | null
           pipeline_id?: string
           position?: number
@@ -243,6 +246,13 @@ export type Database = {
           value?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "crm_leads_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "crm_leads_pipeline_id_fkey"
             columns: ["pipeline_id"]

@@ -13,6 +13,8 @@ import ChatMessageContent from "@/components/chat/ChatMessageContent";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
+import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
+import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import {
   ArrowLeft, FileText, Phone,
   MoreVertical, Check, CheckCheck, Clock, Plus, Tag, ArrowRight
@@ -386,13 +388,6 @@ export default function CrmConversa() {
             </Select>
           </div>
 
-          {/* Value */}
-          {lead.value ? (
-            <div className="mt-2">
-              <span className="text-xs text-muted-foreground">Valor</span>
-              <p className="text-primary font-semibold">{formatCurrency(lead.value)}</p>
-            </div>
-          ) : null}
 
           {/* Source */}
           {lead.source && (
@@ -419,6 +414,15 @@ export default function CrmConversa() {
             )}
           </div>
         </div>
+
+        {/* Budget Panel */}
+        <LeadBudgetPanel
+          lead={lead as any}
+          onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
+        />
+
+        {/* Response Times */}
+        <LeadResponseTimes messages={messages} />
 
         {/* Stage History Timeline */}
         <LeadStageTimeline
