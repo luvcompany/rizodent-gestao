@@ -44,10 +44,12 @@ type Lead = {
 type Pipeline = {
   id: string;
   name: string;
+  color?: string;
 };
 
 export default function CrmKanban() {
   const navigate = useNavigate();
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -61,11 +63,15 @@ export default function CrmKanban() {
     name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: ""
   });
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (selectedPipelineId?: string) => {
     setLoading(true);
-    const { data: pipelines } = await supabase.from("crm_pipelines").select("*").limit(1);
-    if (pipelines && pipelines.length > 0) {
-      const p = pipelines[0] as Pipeline;
+    const { data: allPipelines } = await supabase.from("crm_pipelines").select("*").order("created_at");
+    const pList = (allPipelines as Pipeline[]) || [];
+    setPipelines(pList);
+    const p = selectedPipelineId
+      ? pList.find(pp => pp.id === selectedPipelineId) || pList[0]
+      : pList[0];
+    if (p) {
       setPipeline(p);
       const [stagesRes, leadsRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", p.id).order("position"),
@@ -148,7 +154,18 @@ export default function CrmKanban() {
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED */}
       <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4">
+         <div className="flex items-center gap-4">
+          {pipelines.length > 1 && (
+            <select
+              className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              value={pipeline?.id || ""}
+              onChange={(e) => fetchData(e.target.value)}
+            >
+              {pipelines.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
           <h1 className="text-lg font-bold text-foreground">{pipeline?.name || "CRM"}</h1>
           <div className="flex items-center gap-0 border border-border rounded-md">
             <button

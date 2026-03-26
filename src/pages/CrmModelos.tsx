@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, ArrowLeft, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
@@ -21,7 +20,6 @@ type WhatsAppTemplate = {
 const PAGE_SIZE = 10;
 
 export default function CrmModelos() {
-  const navigate = useNavigate();
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("todos");
@@ -249,12 +247,7 @@ export default function CrmModelos() {
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED */}
       <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/crm")}>
-            <ArrowLeft size={16} className="mr-1" /> Voltar
-          </Button>
-          <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
-        </div>
+        <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
         <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
           <Plus size={14} className="mr-1" /> Novo Modelo
         </Button>

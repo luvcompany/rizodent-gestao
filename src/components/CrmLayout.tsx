@@ -1,0 +1,99 @@
+import { useState } from "react";
+import { NavLink, useNavigate, Outlet } from "react-router-dom";
+import {
+  LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
+  ArrowLeft, Menu, X,
+} from "lucide-react";
+
+const crmNavItems = [
+  { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
+  { to: "/crm/conversas", icon: MessageSquare, label: "Conversas" },
+  { to: "/crm/automacoes", icon: Bot, label: "Automações" },
+  { to: "/crm/modelos", icon: FileText, label: "Modelos" },
+  { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
+  { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
+];
+
+const CrmLayout = () => {
+  const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  return (
+    <div className="flex min-h-screen">
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground hover:text-primary transition-colors"
+          >
+            <ArrowLeft size={16} />
+            Voltar ao Sistema
+          </button>
+          <button
+            className="ml-auto text-sidebar-foreground lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="px-4 py-3 border-b border-sidebar-border">
+          <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
+          <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
+        </div>
+
+        <nav className="flex-1 space-y-1 p-4">
+          {crmNavItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "gradient-orange text-primary-foreground shadow-orange"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                }`
+              }
+            >
+              <item.icon size={18} />
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+
+      <div className="flex flex-1 flex-col lg:ml-64">
+        <header className="flex h-16 items-center gap-4 border-b border-border px-6">
+          <button
+            className="text-foreground lg:hidden"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={22} />
+          </button>
+          <div className="ml-auto text-sm text-muted-foreground">
+            CRM — Gestão de Leads
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-auto p-6">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default CrmLayout;

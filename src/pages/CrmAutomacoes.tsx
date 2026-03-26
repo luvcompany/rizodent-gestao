@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,8 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, Save, Plus, Trash2, Bot, Zap } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Save, Plus, Trash2, Bot, Zap } from "lucide-react";
 
+type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
 type Automation = {
   id: string; stage_id: string; trigger_type: string; action_type: string;
@@ -18,11 +19,11 @@ type Automation = {
 type Template = { id: string; name: string; status: string };
 
 export default function CrmAutomacoes() {
-  const navigate = useNavigate();
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [pipelineId, setPipelineId] = useState("");
   const [loading, setLoading] = useState(true);
 
   const [newStageOpen, setNewStageOpen] = useState(false);
@@ -36,13 +37,18 @@ export default function CrmAutomacoes() {
   });
 
   const [deleteStageId, setDeleteStageId] = useState<string | null>(null);
+  const [newPipelineOpen, setNewPipelineOpen] = useState(false);
+  const [newPipelineName, setNewPipelineName] = useState("");
+  const [newPipelineColor, setNewPipelineColor] = useState("#6366f1");
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
-    const { data: pipelines } = await supabase.from("crm_pipelines").select("*").limit(1);
-    if (pipelines && pipelines.length > 0) {
-      const pid = pipelines[0].id;
-      setPipelineId(pid);
+    const { data: pipeData } = await supabase.from("crm_pipelines").select("*").order("created_at");
+    const pipes = (pipeData as Pipeline[]) || [];
+    setPipelines(pipes);
+    const pid = pipeId || selectedPipelineId || pipes[0]?.id;
+    if (pid) {
+      setSelectedPipelineId(pid);
       const [stagesRes, autoRes, tplRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
@@ -53,9 +59,9 @@ export default function CrmAutomacoes() {
       setTemplates((tplRes.data as Template[]) || []);
     }
     setLoading(false);
-  }, []);
+  }, [selectedPipelineId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); }, []);
 
   const handleSaveOrder = async () => {
     for (let i = 0; i < stages.length; i++) {
@@ -65,16 +71,28 @@ export default function CrmAutomacoes() {
   };
 
   const handleAddStage = async () => {
-    if (!newStageName) return;
+    if (!newStageName || !selectedPipelineId) return;
     const { error } = await supabase.from("crm_stages").insert({
-      pipeline_id: pipelineId, name: newStageName, color: newStageColor,
+      pipeline_id: selectedPipelineId, name: newStageName, color: newStageColor,
       position: stages.length,
     });
     if (error) { toast.error("Erro ao criar etapa"); return; }
     toast.success("Etapa criada");
     setNewStageOpen(false);
     setNewStageName("");
-    fetchData();
+    fetchData(selectedPipelineId);
+  };
+
+  const handleAddPipeline = async () => {
+    if (!newPipelineName) return;
+    const { data, error } = await supabase.from("crm_pipelines").insert({
+      name: newPipelineName, color: newPipelineColor,
+    }).select().single();
+    if (error) { toast.error("Erro ao criar funil"); return; }
+    toast.success("Funil criado");
+    setNewPipelineOpen(false);
+    setNewPipelineName("");
+    fetchData(data.id);
   };
 
   const handleDeleteStage = async () => {
@@ -83,7 +101,7 @@ export default function CrmAutomacoes() {
     if (error) { toast.error("Erro ao excluir etapa. Mova os leads primeiro."); }
     else { toast.success("Etapa excluída"); }
     setDeleteStageId(null);
-    fetchData();
+    fetchData(selectedPipelineId);
   };
 
   const handleSaveAutomation = async () => {
@@ -100,13 +118,13 @@ export default function CrmAutomacoes() {
     }
     toast.success("Automação salva");
     setAutoModalOpen(false);
-    fetchData();
+    fetchData(selectedPipelineId);
   };
 
   const handleDeleteAutomation = async (id: string) => {
     await supabase.from("crm_automations").delete().eq("id", id);
     toast.success("Automação removida");
-    fetchData();
+    fetchData(selectedPipelineId);
   };
 
   const getAutomationsForStage = (stageId: string) => automations.filter(a => a.stage_id === stageId);
@@ -128,14 +146,25 @@ export default function CrmAutomacoes() {
       {/* Header - FIXED */}
       <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/crm")}>
-            <ArrowLeft size={16} className="mr-1" /> Voltar
-          </Button>
           <h1 className="text-lg font-bold text-foreground">Configuração do Funil</h1>
+          {pipelines.length > 0 && (
+            <select
+              className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              value={selectedPipelineId}
+              onChange={(e) => fetchData(e.target.value)}
+            >
+              {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
         </div>
-        <Button size="sm" onClick={handleSaveOrder}>
-          <Save size={14} className="mr-1" /> Salvar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setNewPipelineOpen(true)}>
+            <Plus size={14} className="mr-1" /> Novo Funil
+          </Button>
+          <Button size="sm" onClick={handleSaveOrder}>
+            <Save size={14} className="mr-1" /> Salvar
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -331,6 +360,18 @@ export default function CrmAutomacoes() {
             )}
 
             <Button className="w-full" onClick={handleSaveAutomation}>Salvar Automação</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Pipeline Modal */}
+      <Dialog open={newPipelineOpen} onOpenChange={setNewPipelineOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Novo Funil</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nome</Label><Input value={newPipelineName} onChange={e => setNewPipelineName(e.target.value)} placeholder="Ex: Funil de Vendas" /></div>
+            <div><Label>Cor</Label><input type="color" value={newPipelineColor} onChange={e => setNewPipelineColor(e.target.value)} className="w-full h-10 rounded cursor-pointer" /></div>
+            <Button className="w-full" onClick={handleAddPipeline}>Criar Funil</Button>
           </div>
         </DialogContent>
       </Dialog>
