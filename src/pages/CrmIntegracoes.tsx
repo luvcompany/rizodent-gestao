@@ -285,10 +285,13 @@ export default function CrmIntegracoes() {
                   <li>Acesse o Meta Business Manager → Configurações da conta → WhatsApp</li>
                   <li>Vá para Configuração → Webhook</li>
                   <li>Cole a URL do webhook acima no campo "URL de retorno"</li>
-                  <li>Cole o token de verificação no campo "Token de verificação"</li>
+                  <li>Cole o token de verificação no campo "Token de verificação" (mesmo valor do secret WHATSAPP_VERIFY_TOKEN)</li>
                   <li>Clique em "Verificar e salvar"</li>
-                  <li>Assine os campos: messages, message_status</li>
+                  <li>Assine os campos: <strong>messages</strong>, <strong>message_status</strong></li>
                 </ol>
+                <p className="text-xs text-muted-foreground mt-2">
+                  ⚠️ Os secrets <code>WHATSAPP_VERIFY_TOKEN</code>, <code>WHATSAPP_TOKEN</code> e <code>WHATSAPP_PHONE_NUMBER_ID</code> já estão configurados no backend.
+                </p>
               </div>
             </TabsContent>
 
