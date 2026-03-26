@@ -1,0 +1,1 @@
+ALTER TABLE public.crm_leads ADD COLUMN IF NOT EXISTS paciente_id uuid REFERENCES public.pacientes(id) ON DELETE SET NULL;
