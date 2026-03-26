@@ -142,7 +142,7 @@ const Atendimento = () => {
       const { data } = await supabase
         .from("pacientes")
         .select("*")
-        .ilike("telefone", `%${formatted}%`)
+        .or(`telefone.ilike.%${digits}%,telefone.ilike.%${formatted}%`)
         .limit(5);
       setSugestoes(data || []);
     } else {
