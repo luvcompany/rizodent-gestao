@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
             const from = msg.from; // sender phone number
             const msgType = msg.type || "text";
             let content = "";
-            let mediaUrl: string | null = null;
+            let mediaId: string | null = null;
 
             switch (msgType) {
               case "text":
