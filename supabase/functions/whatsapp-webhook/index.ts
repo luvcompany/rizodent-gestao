@@ -121,6 +121,22 @@ Deno.serve(async (req) => {
           const value = change?.value;
           if (!value) continue;
 
+          // Filter by configured phone_number_id
+          const incomingPhoneNumberId = value?.metadata?.phone_number_id;
+          if (incomingPhoneNumberId) {
+            const { data: integration } = await supabase
+              .from("integrations")
+              .select("config")
+              .eq("key", "whatsapp_config")
+              .maybeSingle();
+
+            const configuredPhoneNumberId = (integration?.config as any)?.phone_number_id;
+            if (configuredPhoneNumberId && configuredPhoneNumberId !== incomingPhoneNumberId) {
+              console.log(`[WEBHOOK] Ignorando: phone_number_id ${incomingPhoneNumberId} != configurado ${configuredPhoneNumberId}`);
+              continue;
+            }
+          }
+
           // Handle incoming messages
           const messages = value?.messages || [];
           for (const msg of messages) {
