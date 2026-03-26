@@ -28,7 +28,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build WhatsApp API body based on type
     let waBody: any = { messaging_product: "whatsapp", to };
 
     if (type === "text") {
@@ -39,28 +38,69 @@ Deno.serve(async (req) => {
       }
       waBody.type = "text";
       waBody.text = { body: message };
-    } else if (type === "image") {
-      waBody.type = "image";
-      waBody.image = { link: media_url, caption: message || undefined };
-    } else if (type === "audio") {
-      waBody.type = "audio";
-      waBody.audio = { link: media_url };
-    } else if (type === "document") {
-      waBody.type = "document";
-      waBody.document = { link: media_url, caption: message || undefined, filename: message || "document" };
-    } else if (type === "sticker") {
-      waBody.type = "sticker";
-      waBody.sticker = { link: media_url };
-    } else if (type === "video") {
-      waBody.type = "video";
-      waBody.video = { link: media_url, caption: message || undefined };
+    } else if (media_url) {
+      // Step 1: Download the file from Supabase Storage
+      const fileResponse = await fetch(media_url);
+      if (!fileResponse.ok) {
+        return new Response(JSON.stringify({ error: "Failed to download file from storage", status: fileResponse.status }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const fileBlob = await fileResponse.blob();
+      const contentType = fileResponse.headers.get("content-type") || "application/octet-stream";
+      
+      // Extract filename from URL
+      const urlParts = media_url.split("/");
+      const filename = urlParts[urlParts.length - 1] || "file";
+
+      // Step 2: Upload to Meta's media API
+      const formData = new FormData();
+      formData.append("messaging_product", "whatsapp");
+      formData.append("file", new File([fileBlob], filename, { type: contentType }));
+      formData.append("type", contentType);
+
+      const uploadResponse = await fetch(
+        `https://graph.facebook.com/v19.0/${phoneNumberId}/media`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${whatsappToken}` },
+          body: formData,
+        }
+      );
+      const uploadData = await uploadResponse.json();
+
+      if (!uploadResponse.ok || !uploadData.id) {
+        return new Response(JSON.stringify({ error: "Meta media upload failed", details: uploadData }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const mediaId = uploadData.id;
+
+      // Step 3: Build message body with media_id
+      waBody.type = type;
+      if (type === "image") {
+        waBody.image = { id: mediaId, caption: message || undefined };
+      } else if (type === "audio") {
+        waBody.audio = { id: mediaId };
+      } else if (type === "video") {
+        waBody.video = { id: mediaId, caption: message || undefined };
+      } else if (type === "document") {
+        waBody.document = { id: mediaId, caption: message || undefined, filename: message || filename };
+      } else if (type === "sticker") {
+        waBody.sticker = { id: mediaId };
+      } else {
+        return new Response(JSON.stringify({ error: `Unsupported media type: ${type}` }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     } else {
-      return new Response(JSON.stringify({ error: `Unsupported type: ${type}` }), {
+      return new Response(JSON.stringify({ error: "Missing media_url for non-text message" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Send via WhatsApp API
+    // Send message via WhatsApp API
     const waResponse = await fetch(
       `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
       {
@@ -102,7 +142,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Update lead
     await supabase.from("crm_leads").update({
       last_message: message || `[${type}]`,
       last_message_at: new Date().toISOString(),
