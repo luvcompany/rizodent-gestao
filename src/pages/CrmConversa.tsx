@@ -209,14 +209,19 @@ export default function CrmConversa() {
                   : "bg-card border border-border text-foreground rounded-bl-none"
               }`}>
                 {msg.type === "image" && msg.media_url && (
-                  <img src={msg.media_url} alt="Imagem" className="rounded mb-1 max-w-full max-h-64 cursor-pointer" onClick={() => window.open(msg.media_url!, "_blank")} />
+                  <img
+                    src={msg.media_url}
+                    alt="Imagem"
+                    className="rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => window.open(msg.media_url!, "_blank")}
+                  />
                 )}
                 {msg.type === "video" && msg.media_url && (
                   <video src={msg.media_url} controls className="rounded mb-1 max-w-full max-h-64" />
                 )}
                 {msg.type === "audio" && msg.media_url ? (
-                  <audio src={msg.media_url} controls className="max-w-full" />
-                ) : msg.type === "audio" && (
+                  <audio src={msg.media_url} controls className="max-w-full min-w-[200px]" />
+                ) : msg.type === "audio" && !msg.media_url && (
                   <div className="flex items-center gap-2 text-sm">
                     <Mic size={14} className="text-primary" />
                     <span>Mensagem de áudio</span>
@@ -226,11 +231,14 @@ export default function CrmConversa() {
                   <img src={msg.media_url} alt="Figurinha" className="max-w-[150px]" />
                 )}
                 {msg.type === "document" && msg.media_url && (
-                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
-                    <FileIcon size={16} /> {msg.content || "Documento"}
+                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline p-2 bg-secondary/50 rounded">
+                    <FileIcon size={18} />
+                    <span className="truncate">{msg.content || "Documento"}</span>
                   </a>
                 )}
-                {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
+                {msg.content && msg.type !== "document" && (
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                )}
                 <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
                   <span className="text-[10px] text-muted-foreground">
                     {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
