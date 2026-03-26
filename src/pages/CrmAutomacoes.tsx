@@ -363,6 +363,18 @@ export default function CrmAutomacoes() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* New Pipeline Modal */}
+      <Dialog open={newPipelineOpen} onOpenChange={setNewPipelineOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Novo Funil</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nome</Label><Input value={newPipelineName} onChange={e => setNewPipelineName(e.target.value)} placeholder="Ex: Funil de Vendas" /></div>
+            <div><Label>Cor</Label><input type="color" value={newPipelineColor} onChange={e => setNewPipelineColor(e.target.value)} className="w-full h-10 rounded cursor-pointer" /></div>
+            <Button className="w-full" onClick={handleAddPipeline}>Criar Funil</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
