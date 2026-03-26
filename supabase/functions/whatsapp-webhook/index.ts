@@ -22,18 +22,13 @@ Deno.serve(async (req) => {
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
-    // Load verify token from integrations table
-    const { data: integration } = await supabase
-      .from("integrations")
-      .select("config")
-      .eq("key", "whatsapp_config")
-      .maybeSingle();
-
-    const verifyToken = (integration?.config as any)?.webhook_verify_token || "";
+    const verifyToken = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "";
 
     if (mode === "subscribe" && token === verifyToken) {
+      console.log("Webhook verified successfully");
       return new Response(challenge, { status: 200, headers: corsHeaders });
     }
+    console.log("Webhook verification failed", { mode, tokenMatch: token === verifyToken });
     return new Response("Forbidden", { status: 403, headers: corsHeaders });
   }
 
@@ -55,17 +50,32 @@ Deno.serve(async (req) => {
             const from = msg.from; // sender phone number
             const msgType = msg.type || "text";
             let content = "";
-            let mediaUrl = null;
+            let mediaUrl: string | null = null;
 
-            if (msgType === "text") {
-              content = msg.text?.body || "";
-            } else if (msgType === "image") {
-              content = msg.image?.caption || "";
-              mediaUrl = msg.image?.id || null;
-            } else if (msgType === "audio") {
-              mediaUrl = msg.audio?.id || null;
-            } else if (msgType === "sticker") {
-              mediaUrl = msg.sticker?.id || null;
+            switch (msgType) {
+              case "text":
+                content = msg.text?.body || "";
+                break;
+              case "image":
+                content = msg.image?.caption || "";
+                mediaUrl = msg.image?.id || null;
+                break;
+              case "audio":
+                mediaUrl = msg.audio?.id || null;
+                break;
+              case "document":
+                content = msg.document?.caption || msg.document?.filename || "";
+                mediaUrl = msg.document?.id || null;
+                break;
+              case "sticker":
+                mediaUrl = msg.sticker?.id || null;
+                break;
+              case "template":
+                content = "[template]";
+                break;
+              default:
+                content = `[${msgType}]`;
+                break;
             }
 
             // Find lead by phone
@@ -89,13 +99,19 @@ Deno.serve(async (req) => {
                 last_message: content || `[${msgType}]`,
                 last_message_at: new Date().toISOString(),
               }).eq("id", lead.id);
+
+              console.log(`Message received from ${from}, lead ${lead.id}, type: ${msgType}`);
+            } else {
+              console.log(`No lead found for phone: ${from}`);
             }
           }
 
           // Handle status updates
           const statuses = value?.statuses || [];
           for (const status of statuses) {
-            // Could update message status here if we store wamid
+            const messageId = status.id;
+            const statusValue = status.status; // sent, delivered, read, failed
+            console.log(`Status update: ${messageId} -> ${statusValue}`);
           }
         }
       }
@@ -105,6 +121,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     } catch (err) {
+      console.error("Error processing webhook:", err);
       return new Response(JSON.stringify({ error: err.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
