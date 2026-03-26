@@ -82,6 +82,111 @@ export type Database = {
           },
         ]
       }
+      crm_custom_fields: {
+        Row: {
+          created_at: string
+          field_type: string
+          id: string
+          name: string
+          options: Json | null
+          position: number
+        }
+        Insert: {
+          created_at?: string
+          field_type?: string
+          id?: string
+          name: string
+          options?: Json | null
+          position?: number
+        }
+        Update: {
+          created_at?: string
+          field_type?: string
+          id?: string
+          name?: string
+          options?: Json | null
+          position?: number
+        }
+        Relationships: []
+      }
+      crm_lead_custom_values: {
+        Row: {
+          field_id: string
+          id: string
+          lead_id: string
+          value: string | null
+        }
+        Insert: {
+          field_id: string
+          id?: string
+          lead_id: string
+          value?: string | null
+        }
+        Update: {
+          field_id?: string
+          id?: string
+          lead_id?: string
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_lead_custom_values_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "crm_custom_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_lead_custom_values_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_lead_stage_history: {
+        Row: {
+          changed_by: string | null
+          entered_at: string
+          exited_at: string | null
+          id: string
+          lead_id: string
+          stage_id: string
+        }
+        Insert: {
+          changed_by?: string | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: string
+          lead_id: string
+          stage_id: string
+        }
+        Update: {
+          changed_by?: string | null
+          entered_at?: string
+          exited_at?: string | null
+          id?: string
+          lead_id?: string
+          stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_lead_stage_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_lead_stage_history_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_leads: {
         Row: {
           created_at: string
