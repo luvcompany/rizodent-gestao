@@ -235,9 +235,32 @@ export default function CrmConversa() {
     setTemplatesOpen(true);
   };
 
-  const insertTemplate = (text: string) => {
-    setTemplateMessage(text);
+  const sendTemplate = async (template: any) => {
+    if (!lead?.phone) {
+      toast.error("Lead sem telefone configurado");
+      return;
+    }
     setTemplatesOpen(false);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          lead_id: id,
+          to: lead.phone,
+          type: "template",
+          template_name: template.name,
+          template_language: template.language,
+        },
+      });
+      if (error || data?.error) {
+        toast.error("Erro ao enviar template");
+        setApiLog({ type: "error", payload: data || error });
+        return;
+      }
+      toast.success("Template enviado");
+      setApiLog({ type: "success", payload: data });
+    } catch {
+      toast.error("Erro inesperado ao enviar template");
+    }
   };
 
   const getStatusIcon = (status: string) => {
@@ -477,7 +500,7 @@ export default function CrmConversa() {
             {templates.map((t) => (
               <button
                 key={t.id}
-                onClick={() => insertTemplate(t.body_text || t.name)}
+                onClick={() => sendTemplate(t)}
                 className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/30 bg-secondary/50 hover:bg-secondary transition-colors"
               >
                 <div className="font-medium text-sm text-foreground">{t.name}</div>
