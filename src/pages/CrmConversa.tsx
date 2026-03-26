@@ -353,14 +353,21 @@ export default function CrmConversa() {
                 {lead.name.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            <div>
+            <div className="flex-1 min-w-0">
               <h2 className="font-bold text-foreground">{lead.name}</h2>
               <p className="text-sm text-muted-foreground">{lead.phone || "Sem telefone"}</p>
             </div>
           </div>
 
+          {/* Edit / Delete buttons */}
+          <LeadEditPanel
+            lead={lead}
+            onLeadUpdated={(updated) => setLead(updated as any)}
+            onLeadDeleted={() => navigate("/crm")}
+          />
+
           {/* Stage selector */}
-          <div className="mb-3">
+          <div className="mt-3 mb-3">
             <label className="text-xs text-muted-foreground mb-1 block">Etapa do Funil</label>
             <Select value={lead.stage_id} onValueChange={handleStageChange}>
               <SelectTrigger className="bg-secondary border-border">
@@ -378,14 +385,6 @@ export default function CrmConversa() {
               </SelectContent>
             </Select>
           </div>
-
-          {/* Current stage badge */}
-          {currentStage && (
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentStage.color }} />
-              <span className="text-sm font-medium text-foreground">{currentStage.name}</span>
-            </div>
-          )}
 
           {/* Value */}
           {lead.value ? (
@@ -421,8 +420,20 @@ export default function CrmConversa() {
           </div>
         </div>
 
+        {/* Stage History Timeline */}
+        <LeadStageTimeline
+          leadId={lead.id}
+          stages={stages}
+          lastInboundAt={
+            [...messages].reverse().find((m) => m.direction === "inbound")?.created_at || null
+          }
+        />
+
+        {/* Custom Fields */}
+        <LeadCustomFields leadId={lead.id} />
+
         {/* Notes / Activity */}
-        <div className="p-4 border-b border-border flex-1">
+        <div className="p-4 border-b border-border">
           <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Notas & Atividades</h3>
           <div className="text-sm text-foreground whitespace-pre-wrap mb-3 max-h-40 overflow-y-auto">
             {lead.notes || "Sem notas"}
@@ -441,12 +452,9 @@ export default function CrmConversa() {
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Footer */}
         <div className="p-4">
-          <Button variant="outline" className="w-full mb-2" size="sm">
-            <Plus size={14} className="mr-1" /> Adicionar Tarefa
-          </Button>
-          <div className="text-xs text-muted-foreground text-center mt-2">
+          <div className="text-xs text-muted-foreground text-center">
             Criado em {new Date(lead.created_at).toLocaleDateString("pt-BR")}
           </div>
         </div>
