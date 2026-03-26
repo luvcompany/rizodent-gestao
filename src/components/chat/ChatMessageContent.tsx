@@ -1,4 +1,6 @@
-import { Mic, File as FileIcon } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Mic, File as FileIcon, Image } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 type ChatMessage = {
   type: string;
@@ -6,12 +8,19 @@ type ChatMessage = {
   media_url: string | null;
 };
 
+type TemplateData = {
+  header_type: string | null;
+  header_content: string | null;
+  body_text: string | null;
+  footer_text: string | null;
+  buttons: { type: string; text: string; url?: string }[] | null;
+};
+
 const isPublicMediaUrl = (mediaUrl: string | null) => Boolean(mediaUrl?.startsWith("http"));
 
 const getDocumentLabel = (message: ChatMessage) => {
   if (message.content?.trim()) return message.content;
   if (!message.media_url || !isPublicMediaUrl(message.media_url)) return "Documento";
-
   try {
     const pathname = new URL(message.media_url).pathname;
     return decodeURIComponent(pathname.split("/").pop() || "Documento");
@@ -20,8 +29,88 @@ const getDocumentLabel = (message: ChatMessage) => {
   }
 };
 
+function TemplateMessageBubble({ templateName }: { templateName: string }) {
+  const [template, setTemplate] = useState<TemplateData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from("crm_whatsapp_templates")
+      .select("header_type, header_content, body_text, footer_text, buttons")
+      .eq("name", templateName)
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setTemplate({
+            ...data,
+            buttons: data.buttons as TemplateData["buttons"],
+          });
+        }
+        setLoading(false);
+      });
+  }, [templateName]);
+
+  if (loading) {
+    return <p className="text-sm text-muted-foreground italic">Carregando template...</p>;
+  }
+
+  if (!template) {
+    return <p className="text-sm whitespace-pre-wrap">📋 Template: {templateName}</p>;
+  }
+
+  return (
+    <div className="min-w-[220px] max-w-[280px]">
+      {/* Header */}
+      {template.header_type && template.header_content && (
+        <div className="mb-1">
+          {template.header_type === "IMAGE" ? (
+            <div className="bg-muted rounded-t-lg h-[120px] flex items-center justify-center">
+              <Image size={32} className="text-muted-foreground" />
+            </div>
+          ) : (
+            <p className="text-sm font-bold text-foreground">{template.header_content}</p>
+          )}
+        </div>
+      )}
+
+      {/* Body */}
+      <p className="text-sm whitespace-pre-wrap text-foreground">{template.body_text}</p>
+
+      {/* Footer */}
+      {template.footer_text && (
+        <p className="text-[11px] text-muted-foreground mt-1">{template.footer_text}</p>
+      )}
+
+      {/* Buttons */}
+      {template.buttons && template.buttons.length > 0 && (
+        <div className="mt-2 border-t border-border pt-1 space-y-1">
+          {template.buttons.map((btn, i) => (
+            <div
+              key={i}
+              className="text-center text-xs font-medium text-primary py-1.5 border border-border rounded-lg bg-background cursor-default select-none"
+            >
+              {btn.text}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ChatMessageContent({ message }: { message: ChatMessage }) {
   const hasResolvedMedia = isPublicMediaUrl(message.media_url);
+
+  // Template messages
+  if (message.type === "template" || message.content?.startsWith("📋 Template:")) {
+    const name = message.type === "template"
+      ? message.content?.replace("📋 Template: ", "").trim() || ""
+      : message.content?.replace("📋 Template: ", "").trim() || "";
+    if (name) {
+      return <TemplateMessageBubble templateName={name} />;
+    }
+  }
 
   if (["image", "sticker"].includes(message.type) && hasResolvedMedia) {
     return (
@@ -42,7 +131,6 @@ export default function ChatMessageContent({ message }: { message: ChatMessage }
     if (hasResolvedMedia) {
       return <audio src={message.media_url!} controls className="max-w-full min-w-[200px]" />;
     }
-
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Mic size={14} className="text-primary" />
@@ -60,7 +148,6 @@ export default function ChatMessageContent({ message }: { message: ChatMessage }
         </a>
       );
     }
-
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground p-2 bg-secondary/50 rounded">
         <FileIcon size={18} />
