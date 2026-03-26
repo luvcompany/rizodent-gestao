@@ -230,31 +230,7 @@ export default function CrmConversa() {
         </div>
 
         {/* Input Area */}
-        <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <button className="p-2 text-muted-foreground hover:text-primary transition-colors">
-              <Paperclip size={20} />
-            </button>
-            <div className="flex-1 relative">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Digite uma mensagem..."
-                className="pr-10 bg-secondary border-border"
-              />
-            </div>
-            <button onClick={loadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
-              <FileText size={20} />
-            </button>
-            <button className="p-2 text-muted-foreground hover:text-primary transition-colors">
-              <Mic size={20} />
-            </button>
-            <Button size="icon" onClick={handleSendMessage} disabled={!newMessage.trim()}>
-              <Send size={18} />
-            </Button>
-          </div>
-        </div>
+        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} />}
       </div>
 
       {/* RIGHT COLUMN - Lead Panel (30%) */}
