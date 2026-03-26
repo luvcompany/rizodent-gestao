@@ -22,7 +22,9 @@ import CrmModelos from "./pages/CrmModelos";
 import CrmConversa from "./pages/CrmConversa";
 import CrmIntegracoes from "./pages/CrmIntegracoes";
 import CrmRelatorios from "./pages/CrmRelatorios";
+import CrmConversas from "./pages/CrmConversas";
 import AppLayout from "./components/AppLayout";
+import CrmLayout from "./components/CrmLayout";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,7 +55,16 @@ const App = () => (
               <Route path="/usuarios" element={<Usuarios />} />
               <Route path="/procedimentos" element={<TiposProcedimento />} />
               <Route path="/registro-diario" element={<RegistroDiario />} />
+            </Route>
+            <Route
+              element={
+                <ProtectedRoute>
+                  <CrmLayout />
+                </ProtectedRoute>
+              }
+            >
               <Route path="/crm" element={<CrmKanban />} />
+              <Route path="/crm/conversas" element={<CrmConversas />} />
               <Route path="/crm/conversa/:id" element={<CrmConversa />} />
               <Route path="/crm/automacoes" element={<CrmAutomacoes />} />
               <Route path="/crm/modelos" element={<CrmModelos />} />
