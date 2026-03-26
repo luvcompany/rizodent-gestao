@@ -254,10 +254,6 @@ export default function CrmModelos() {
           <Plus size={14} className="mr-1" /> Novo Modelo
         </Button>
       </div>
-        <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
-          <Plus size={14} className="mr-1" /> Novo Modelo
-        </Button>
-      </div>
 
       {/* Tabs + Filters - FIXED */}
       <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2">
