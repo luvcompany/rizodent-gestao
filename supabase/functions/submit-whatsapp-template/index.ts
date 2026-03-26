@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
     };
 
     const metaRes = await fetch(
-      `https://graph.facebook.com/v18.0/${WABA_ID}/message_templates`,
+      `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates`,
       {
         method: "POST",
         headers: {
