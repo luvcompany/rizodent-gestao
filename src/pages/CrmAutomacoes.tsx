@@ -7,8 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Save, Plus, Trash2, Bot, Zap } from "lucide-react";
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import { Save, Plus, Trash2, Bot, Zap, GripVertical } from "lucide-react";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -17,6 +17,13 @@ type Automation = {
   action_config: Record<string, unknown>; is_active: boolean;
 };
 type Template = { id: string; name: string; status: string };
+
+const PRESET_COLORS = [
+  "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
+  "#22c55e", "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9",
+  "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
+  "#ec4899", "#f43f5e", "#78716c", "#64748b", "#1e293b",
+];
 
 export default function CrmAutomacoes() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -29,6 +36,7 @@ export default function CrmAutomacoes() {
   const [newStageOpen, setNewStageOpen] = useState(false);
   const [newStageName, setNewStageName] = useState("");
   const [newStageColor, setNewStageColor] = useState("#6366f1");
+  const [useCustomStageColor, setUseCustomStageColor] = useState(false);
 
   const [autoModalOpen, setAutoModalOpen] = useState(false);
   const [autoForm, setAutoForm] = useState({
@@ -40,6 +48,7 @@ export default function CrmAutomacoes() {
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
   const [newPipelineName, setNewPipelineName] = useState("");
   const [newPipelineColor, setNewPipelineColor] = useState("#6366f1");
+  const [useCustomPipelineColor, setUseCustomPipelineColor] = useState(false);
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
@@ -63,11 +72,20 @@ export default function CrmAutomacoes() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleSaveOrder = async () => {
-    for (let i = 0; i < stages.length; i++) {
-      await supabase.from("crm_stages").update({ position: i }).eq("id", stages[i].id);
+  const handleStageDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+    const fromIdx = result.source.index;
+    const toIdx = result.destination.index;
+    if (fromIdx === toIdx) return;
+    const reordered = [...stages];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    setStages(reordered);
+    // Save all positions
+    for (let i = 0; i < reordered.length; i++) {
+      await supabase.from("crm_stages").update({ position: i }).eq("id", reordered[i].id);
     }
-    toast.success("Ordem salva com sucesso");
+    toast.success("Ordem das etapas atualizada");
   };
 
   const handleAddStage = async () => {
@@ -80,6 +98,8 @@ export default function CrmAutomacoes() {
     toast.success("Etapa criada");
     setNewStageOpen(false);
     setNewStageName("");
+    setNewStageColor("#6366f1");
+    setUseCustomStageColor(false);
     fetchData(selectedPipelineId);
   };
 
@@ -92,6 +112,8 @@ export default function CrmAutomacoes() {
     toast.success("Funil criado");
     setNewPipelineOpen(false);
     setNewPipelineName("");
+    setNewPipelineColor("#6366f1");
+    setUseCustomPipelineColor(false);
     fetchData(data.id);
   };
 
@@ -143,10 +165,10 @@ export default function CrmAutomacoes() {
 
   return (
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
-      {/* Header - FIXED */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-foreground">Configuração do Funil</h1>
+      {/* Header - FIXED, no horizontal scroll */}
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-2 flex-wrap overflow-hidden min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-wrap">
+          <h1 className="text-lg font-bold text-foreground whitespace-nowrap">Configuração do Funil</h1>
           {pipelines.length > 0 && (
             <select
               className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -157,12 +179,12 @@ export default function CrmAutomacoes() {
             </select>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => setNewPipelineOpen(true)}>
             <Plus size={14} className="mr-1" /> Novo Funil
           </Button>
-          <Button size="sm" onClick={handleSaveOrder}>
-            <Save size={14} className="mr-1" /> Salvar
+          <Button variant="outline" size="sm" onClick={() => setNewStageOpen(true)}>
+            <Plus size={14} className="mr-1" /> Nova Etapa
           </Button>
         </div>
       </div>
@@ -214,74 +236,104 @@ export default function CrmAutomacoes() {
           </div>
         </div>
 
-        {/* Main - Stages horizontal */}
+        {/* Main - Stages horizontal with drag reorder */}
         <div className="flex-1 overflow-x-auto p-6">
-          <div className="flex gap-4 items-start">
-            {stages.map((stage, idx) => {
-              const stageAutos = getAutomationsForStage(stage.id);
-              return (
-                <div key={stage.id} className="flex items-start gap-2">
-                  <div className="w-[240px] flex-shrink-0 bg-card rounded-lg border border-border overflow-hidden">
-                    <div className="h-1.5" style={{ backgroundColor: stage.color }} />
-                    <div className="p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-semibold text-sm text-foreground">{stage.name}</span>
-                        <button onClick={() => setDeleteStageId(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                      <div className="text-xs text-primary cursor-pointer mb-3">{stageAutos.length} automação(ões)</div>
+          <DragDropContext onDragEnd={handleStageDragEnd}>
+            <Droppable droppableId="stages-list" direction="horizontal">
+              {(provided) => (
+                <div ref={provided.innerRef} {...provided.droppableProps} className="flex gap-4 items-start min-w-max">
+                  {stages.map((stage, idx) => {
+                    const stageAutos = getAutomationsForStage(stage.id);
+                    return (
+                      <Draggable key={stage.id} draggableId={stage.id} index={idx}>
+                        {(prov, snap) => (
+                          <div
+                            ref={prov.innerRef}
+                            {...prov.draggableProps}
+                            className={`w-[240px] flex-shrink-0 bg-card rounded-lg border border-border overflow-hidden ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
+                          >
+                            <div className="h-1.5" style={{ backgroundColor: stage.color }} />
+                            <div className="p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-1">
+                                  <span {...prov.dragHandleProps} className="cursor-grab text-muted-foreground hover:text-foreground">
+                                    <GripVertical size={14} />
+                                  </span>
+                                  <span className="font-semibold text-sm text-foreground">{stage.name}</span>
+                                </div>
+                                <button onClick={() => setDeleteStageId(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                              <div className="text-xs text-primary cursor-pointer mb-3">{stageAutos.length} automação(ões)</div>
 
-                      <div className="space-y-2">
-                        {stageAutos.map(auto => (
-                          <div key={auto.id} className="bg-primary/10 border border-primary/20 rounded p-2 text-xs">
-                            <div className="flex items-center gap-1 text-primary mb-1">
-                              <Bot size={12} />
-                              <span className="font-medium">{auto.trigger_type === "on_enter" ? "Ao mover" : "Ao criar"}</span>
-                            </div>
-                            <div className="text-foreground">{actionLabel(auto.action_type)}</div>
-                            <div className="flex items-center gap-1 mt-1">
-                              <button onClick={() => handleDeleteAutomation(auto.id)} className="text-destructive/70 hover:text-destructive">
-                                <Trash2 size={10} />
-                              </button>
+                              <div className="space-y-2">
+                                {stageAutos.map(auto => (
+                                  <div key={auto.id} className="bg-primary/10 border border-primary/20 rounded p-2 text-xs">
+                                    <div className="flex items-center gap-1 text-primary mb-1">
+                                      <Bot size={12} />
+                                      <span className="font-medium">{auto.trigger_type === "on_enter" ? "Ao mover" : "Ao criar"}</span>
+                                    </div>
+                                    <div className="text-foreground">{actionLabel(auto.action_type)}</div>
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <button onClick={() => handleDeleteAutomation(auto.id)} className="text-destructive/70 hover:text-destructive">
+                                        <Trash2 size={10} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                                <button
+                                  onClick={() => { setAutoForm({ stage_id: stage.id, trigger_type: "on_enter", action_type: "send_template", action_config: {}, editId: "" }); setAutoModalOpen(true); }}
+                                  className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1.5 flex items-center justify-center gap-1 transition-colors"
+                                >
+                                  <Plus size={12} /> Adicionar gatilho
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        ))}
-                        <button
-                          onClick={() => { setAutoForm({ stage_id: stage.id, trigger_type: "on_enter", action_type: "send_template", action_config: {}, editId: "" }); setAutoModalOpen(true); }}
-                          className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1.5 flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <Plus size={12} /> Adicionar gatilho
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {idx < stages.length - 1 && (
-                    <button
-                      onClick={() => setNewStageOpen(true)}
-                      className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors"
-                    >+</button>
-                  )}
+                        )}
+                      </Draggable>
+                    );
+                  })}
+                  {provided.placeholder}
+                  <button
+                    onClick={() => setNewStageOpen(true)}
+                    className="mt-8 w-10 h-10 rounded-full border-2 border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center flex-shrink-0 transition-colors"
+                  >
+                    <Plus size={18} />
+                  </button>
                 </div>
-              );
-            })}
-            <button
-              onClick={() => setNewStageOpen(true)}
-              className="mt-8 w-10 h-10 rounded-full border-2 border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center flex-shrink-0 transition-colors"
-            >
-              <Plus size={18} />
-            </button>
-          </div>
+              )}
+            </Droppable>
+          </DragDropContext>
         </div>
       </div>
 
       {/* New Stage Modal */}
-      <Dialog open={newStageOpen} onOpenChange={setNewStageOpen}>
+      <Dialog open={newStageOpen} onOpenChange={(open) => { setNewStageOpen(open); if (!open) setUseCustomStageColor(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Nova Etapa</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label>Nome</Label><Input value={newStageName} onChange={e => setNewStageName(e.target.value)} /></div>
-            <div><Label>Cor</Label><input type="color" value={newStageColor} onChange={e => setNewStageColor(e.target.value)} className="w-full h-10 rounded cursor-pointer" /></div>
+            <div><Label>Nome</Label><Input value={newStageName} onChange={e => setNewStageName(e.target.value)} placeholder="Ex: Qualificação" /></div>
+            <div>
+              <Label>Cor</Label>
+              <div className="grid grid-cols-10 gap-1.5 mt-1">
+                {PRESET_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => { setNewStageColor(c); setUseCustomStageColor(false); }}
+                    className={`w-7 h-7 rounded-md border-2 transition-all ${newStageColor === c && !useCustomStageColor ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <button onClick={() => setUseCustomStageColor(true)} className="text-xs text-muted-foreground hover:text-foreground mt-2 underline">
+                Cor personalizada
+              </button>
+              {useCustomStageColor && (
+                <input type="color" value={newStageColor} onChange={e => setNewStageColor(e.target.value)} className="w-full h-8 rounded cursor-pointer mt-1" />
+              )}
+            </div>
             <Button className="w-full" onClick={handleAddStage}>Criar Etapa</Button>
           </div>
         </DialogContent>
@@ -365,12 +417,30 @@ export default function CrmAutomacoes() {
       </Dialog>
 
       {/* New Pipeline Modal */}
-      <Dialog open={newPipelineOpen} onOpenChange={setNewPipelineOpen}>
+      <Dialog open={newPipelineOpen} onOpenChange={(open) => { setNewPipelineOpen(open); if (!open) setUseCustomPipelineColor(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Novo Funil</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Nome</Label><Input value={newPipelineName} onChange={e => setNewPipelineName(e.target.value)} placeholder="Ex: Funil de Vendas" /></div>
-            <div><Label>Cor</Label><input type="color" value={newPipelineColor} onChange={e => setNewPipelineColor(e.target.value)} className="w-full h-10 rounded cursor-pointer" /></div>
+            <div>
+              <Label>Cor</Label>
+              <div className="grid grid-cols-10 gap-1.5 mt-1">
+                {PRESET_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => { setNewPipelineColor(c); setUseCustomPipelineColor(false); }}
+                    className={`w-7 h-7 rounded-md border-2 transition-all ${newPipelineColor === c && !useCustomPipelineColor ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <button onClick={() => setUseCustomPipelineColor(true)} className="text-xs text-muted-foreground hover:text-foreground mt-2 underline">
+                Cor personalizada
+              </button>
+              {useCustomPipelineColor && (
+                <input type="color" value={newPipelineColor} onChange={e => setNewPipelineColor(e.target.value)} className="w-full h-8 rounded cursor-pointer mt-1" />
+              )}
+            </div>
             <Button className="w-full" onClick={handleAddPipeline}>Criar Funil</Button>
           </div>
         </DialogContent>

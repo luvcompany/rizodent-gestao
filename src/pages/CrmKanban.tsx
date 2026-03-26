@@ -47,6 +47,13 @@ type Pipeline = {
   color?: string;
 };
 
+const PRESET_COLORS = [
+  "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
+  "#22c55e", "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9",
+  "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
+  "#ec4899", "#f43f5e", "#78716c", "#64748b", "#1e293b",
+];
+
 export default function CrmKanban() {
   const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -58,6 +65,13 @@ export default function CrmKanban() {
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [searchTerm, setSearchTerm] = useState("");
+
+  // New stage between columns
+  const [newStageOpen, setNewStageOpen] = useState(false);
+  const [newStageInsertIdx, setNewStageInsertIdx] = useState<number | null>(null);
+  const [newStageName, setNewStageName] = useState("");
+  const [newStageColor, setNewStageColor] = useState("#6366f1");
+  const [useCustomColor, setUseCustomColor] = useState(false);
 
   const [newLead, setNewLead] = useState({
     name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: ""
@@ -121,6 +135,31 @@ export default function CrmKanban() {
     fetchData();
   };
 
+  const handleAddStage = async () => {
+    if (!newStageName || !pipeline) return;
+    // If inserting between columns, shift positions
+    const insertPos = newStageInsertIdx !== null ? newStageInsertIdx + 1 : stages.length;
+    // Update positions of stages after insert point
+    if (newStageInsertIdx !== null) {
+      for (const s of stages) {
+        if (s.position >= insertPos) {
+          await supabase.from("crm_stages").update({ position: s.position + 1 }).eq("id", s.id);
+        }
+      }
+    }
+    const { error } = await supabase.from("crm_stages").insert({
+      pipeline_id: pipeline.id, name: newStageName, color: newStageColor, position: insertPos,
+    });
+    if (error) { toast.error("Erro ao criar etapa"); return; }
+    toast.success("Etapa criada");
+    setNewStageOpen(false);
+    setNewStageName("");
+    setNewStageColor("#6366f1");
+    setNewStageInsertIdx(null);
+    setUseCustomColor(false);
+    fetchData(pipeline.id);
+  };
+
   const getLeadsForStage = (stageId: string) => {
     let filtered = leads.filter(l => l.stage_id === stageId);
     if (searchTerm) {
@@ -152,9 +191,9 @@ export default function CrmKanban() {
 
   return (
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
-      {/* Header - FIXED */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
-         <div className="flex items-center gap-4">
+      {/* Header - FIXED, no horizontal scroll */}
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap min-w-0 overflow-hidden">
+         <div className="flex items-center gap-3 min-w-0 flex-wrap">
           {pipelines.length > 1 && (
             <select
               className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -166,7 +205,7 @@ export default function CrmKanban() {
               ))}
             </select>
           )}
-          <h1 className="text-lg font-bold text-foreground">{pipeline?.name || "CRM"}</h1>
+          <h1 className="text-lg font-bold text-foreground whitespace-nowrap">{pipeline?.name || "CRM"}</h1>
           <div className="flex items-center gap-0 border border-border rounded-md">
             <button
               onClick={() => setViewMode("kanban")}
@@ -194,8 +233,8 @@ export default function CrmKanban() {
             />
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground font-medium">{totalLeads} leads: <span className="text-primary font-semibold">{formatCurrency(totalValue)}</span></span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{totalLeads} leads: <span className="text-primary font-semibold">{formatCurrency(totalValue)}</span></span>
           <Button variant="outline" size="sm" onClick={() => navigate("/crm/relatorios")}>
             <TrendingUp size={14} className="mr-1" /> RELATÓRIOS
           </Button>
@@ -208,8 +247,8 @@ export default function CrmKanban() {
         </div>
       </div>
 
-      {/* Metrics bar - FIXED */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2 flex items-center gap-6 overflow-x-auto text-sm">
+      {/* Metrics bar - FIXED, no horizontal scroll */}
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2 flex items-center gap-6 overflow-hidden text-sm flex-wrap">
         <MetricBadge icon={<Calendar size={14} />} label="Com tarefas para hoje" value={withTaskToday} variant="info" />
         <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} variant="muted" />
         <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} variant="destructive" />
@@ -217,17 +256,16 @@ export default function CrmKanban() {
         <MetricBadge icon={<TrendingUp size={14} />} label="Vendas em potencial" value={formatCurrency(totalValue)} variant="primary" />
       </div>
 
-      {/* Kanban area - SCROLLABLE */}
+      {/* Kanban area - SCROLLABLE horizontally */}
       <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex gap-3 h-full">
+          <div className="flex gap-3 h-full min-w-max">
             {stages.map((stage, idx) => {
               const stageLeads = getLeadsForStage(stage.id);
               const stageValue = stageLeads.reduce((a, l) => a + (l.value || 0), 0);
               return (
                 <div key={stage.id} className="flex items-start gap-1">
                   <div className="w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
-                    {/* Stage header */}
                     <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
                     <div className="px-3 py-2 flex-shrink-0">
                       <div className="font-semibold text-sm text-foreground">{stage.name}</div>
@@ -245,7 +283,6 @@ export default function CrmKanban() {
                       </div>
                     )}
 
-                    {/* Lead cards - scrollable */}
                     <Droppable droppableId={stage.id}>
                       {(provided, snapshot) => (
                         <div
@@ -256,13 +293,13 @@ export default function CrmKanban() {
                           {stageLeads.map((lead, lIdx) => (
                             <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
                               {(prov, snap) => (
-                                                <Link
-                                                  to={`/crm/conversa/${lead.id}`}
-                                                  ref={prov.innerRef}
-                                                  {...prov.draggableProps}
-                                                  {...prov.dragHandleProps}
-                                                  className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
-                                                >
+                                <Link
+                                  to={`/crm/conversa/${lead.id}`}
+                                  ref={prov.innerRef}
+                                  {...prov.draggableProps}
+                                  {...prov.dragHandleProps}
+                                  className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
+                                >
                                   <div className="flex items-start justify-between mb-1">
                                     <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
                                     <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
@@ -285,7 +322,7 @@ export default function CrmKanban() {
                                       {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
                                     </span>
                                   </div>
-                                                </Link>
+                                </Link>
                               )}
                             </Draggable>
                           ))}
@@ -296,7 +333,10 @@ export default function CrmKanban() {
                   </div>
 
                   {idx < stages.length - 1 && (
-                    <button className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors">
+                    <button
+                      onClick={() => { setNewStageInsertIdx(idx); setNewStageOpen(true); }}
+                      className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors"
+                    >
                       +
                     </button>
                   )}
@@ -336,6 +376,39 @@ export default function CrmKanban() {
             <div><Label>Valor (R$)</Label><Input type="number" value={newLead.value} onChange={e => setNewLead(p => ({ ...p, value: e.target.value }))} /></div>
             <div><Label>Observações</Label><Textarea rows={3} value={newLead.notes} onChange={e => setNewLead(p => ({ ...p, notes: e.target.value }))} /></div>
             <Button className="w-full" onClick={handleCreateLead}>Salvar Lead</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Stage Modal */}
+      <Dialog open={newStageOpen} onOpenChange={(open) => { setNewStageOpen(open); if (!open) { setNewStageInsertIdx(null); setUseCustomColor(false); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Nova Etapa</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nome</Label><Input value={newStageName} onChange={e => setNewStageName(e.target.value)} placeholder="Ex: Qualificação" /></div>
+            <div>
+              <Label>Cor</Label>
+              <div className="grid grid-cols-10 gap-1.5 mt-1">
+                {PRESET_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => { setNewStageColor(c); setUseCustomColor(false); }}
+                    className={`w-7 h-7 rounded-md border-2 transition-all ${newStageColor === c && !useCustomColor ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+              <button
+                onClick={() => setUseCustomColor(true)}
+                className="text-xs text-muted-foreground hover:text-foreground mt-2 underline"
+              >
+                Cor personalizada
+              </button>
+              {useCustomColor && (
+                <input type="color" value={newStageColor} onChange={e => setNewStageColor(e.target.value)} className="w-full h-8 rounded cursor-pointer mt-1" />
+              )}
+            </div>
+            <Button className="w-full" onClick={handleAddStage}>Criar Etapa</Button>
           </div>
         </DialogContent>
       </Dialog>
