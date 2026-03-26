@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import ChatInput from "@/components/chat/ChatInput";
+import ChatMessageContent from "@/components/chat/ChatMessageContent";
 import {
-  ArrowLeft, FileText, Phone, Mic,
-  MoreVertical, Check, CheckCheck, Clock, Plus, Tag, File as FileIcon
+  ArrowLeft, FileText, Phone,
+  MoreVertical, Check, CheckCheck, Clock, Plus, Tag
 } from "lucide-react";
 
 type Message = {
@@ -91,6 +92,32 @@ export default function CrmConversa() {
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  useEffect(() => {
+    if (!id) return;
+
+    const repairLegacyMedia = async () => {
+      const { data, error } = await supabase.functions.invoke("repair-chat-media", {
+        body: { leadId: id },
+      });
+
+      if (error) {
+        console.error("[CRM] Erro ao reparar mídias antigas:", error);
+        return;
+      }
+
+      if (data?.repaired?.length) {
+        console.log(`[CRM] Mídias antigas reparadas: ${data.repaired.length}`);
+        fetchData();
+      }
+
+      if (data?.failed?.length) {
+        console.error("[CRM] Falhas ao reparar mídias antigas:", data.failed);
+      }
+    };
+
+    repairLegacyMedia();
+  }, [id, fetchData]);
+
   // Realtime subscription for new/updated messages
   useEffect(() => {
     if (!id) return;
@@ -132,8 +159,8 @@ export default function CrmConversa() {
         .from("messages").select("*").eq("lead_id", id).order("created_at", { ascending: true });
       if (data) {
         setMessages((prev) => {
-          const newIds = data.map(m => m.id).join();
-          const oldIds = prev.map(m => m.id).join();
+          const newIds = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
+          const oldIds = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
           return newIds !== oldIds ? (data as Message[]) : prev;
         });
       }
@@ -251,47 +278,7 @@ export default function CrmConversa() {
                   : "bg-card border border-border text-foreground rounded-bl-none"
               }`}>
                 {/* IMAGE */}
-                {msg.type === "image" && msg.media_url && (
-                  <img
-                    src={msg.media_url}
-                    alt="Imagem"
-                    className="rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"
-                    onClick={() => window.open(msg.media_url!, "_blank")}
-                  />
-                )}
-                {/* VIDEO */}
-                {msg.type === "video" && msg.media_url && (
-                  <video src={msg.media_url} controls className="rounded mb-1 max-w-full max-h-64" />
-                )}
-                {/* AUDIO */}
-                {msg.type === "audio" && msg.media_url && (
-                  <audio src={msg.media_url} controls className="max-w-full min-w-[200px]" />
-                )}
-                {msg.type === "audio" && !msg.media_url && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Mic size={14} className="text-primary" />
-                    <span>Mensagem de áudio</span>
-                  </div>
-                )}
-                {/* STICKER */}
-                {msg.type === "sticker" && msg.media_url && (
-                  <img src={msg.media_url} alt="Figurinha" className="max-w-[150px]" />
-                )}
-                {/* DOCUMENT */}
-                {msg.type === "document" && msg.media_url && (
-                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline p-2 bg-secondary/50 rounded">
-                    <FileIcon size={18} />
-                    <span className="truncate">{msg.content || "Documento"}</span>
-                  </a>
-                )}
-                {/* TEXT CONTENT (for text msgs, captions on image/video, and fallback for unknown types) */}
-                {msg.content && msg.type !== "document" && (
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                )}
-                {/* FALLBACK: unknown type with no media and no content */}
-                {!msg.content && !msg.media_url && msg.type !== "text" && (
-                  <p className="text-sm text-muted-foreground italic">[{msg.type}]</p>
-                )}
+                <ChatMessageContent message={msg} />
                 <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
                   <span className="text-[10px] text-muted-foreground">
                     {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
