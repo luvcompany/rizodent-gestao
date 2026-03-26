@@ -10,9 +10,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessageContent from "@/components/chat/ChatMessageContent";
+import LeadEditPanel from "@/components/chat/LeadEditPanel";
+import LeadCustomFields from "@/components/chat/LeadCustomFields";
+import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import {
   ArrowLeft, FileText, Phone,
-  MoreVertical, Check, CheckCheck, Clock, Plus, Tag
+  MoreVertical, Check, CheckCheck, Clock, Plus, Tag, ArrowRight
 } from "lucide-react";
 
 type Message = {
@@ -171,9 +174,43 @@ export default function CrmConversa() {
   // Message sending is now handled by ChatInput component
 
   const handleStageChange = async (stageId: string) => {
-    if (!id) return;
+    if (!id || !lead) return;
+    const previousStageId = lead.stage_id;
+
     const { error } = await supabase.from("crm_leads").update({ stage_id: stageId, updated_at: new Date().toISOString() }).eq("id", id);
     if (error) { toast.error("Erro ao mover lead"); return; }
+
+    // Close previous stage history entry
+    const { data: openEntry } = await supabase
+      .from("crm_lead_stage_history")
+      .select("id")
+      .eq("lead_id", id)
+      .eq("stage_id", previousStageId)
+      .is("exited_at", null)
+      .maybeSingle();
+
+    if (openEntry) {
+      await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() }).eq("id", openEntry.id);
+    }
+
+    // Insert new stage history entry
+    await supabase.from("crm_lead_stage_history").insert({
+      lead_id: id,
+      stage_id: stageId,
+      entered_at: new Date().toISOString(),
+    });
+
+    // Insert a system message in the chat showing the stage change
+    const fromStageName = stages.find(s => s.id === previousStageId)?.name || "?";
+    const toStageName = stages.find(s => s.id === stageId)?.name || "?";
+    await supabase.from("messages").insert({
+      lead_id: id,
+      direction: "outbound",
+      type: "text",
+      content: `📋 Etapa alterada: ${fromStageName} → ${toStageName}`,
+      status: "system",
+    });
+
     setLead((prev) => prev ? { ...prev, stage_id: stageId } : prev);
     toast.success("Etapa atualizada");
   };
