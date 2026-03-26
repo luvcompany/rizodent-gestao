@@ -67,14 +67,23 @@ export default function CrmConversa() {
   const fetchData = useCallback(async () => {
     if (!id) return;
     setLoading(true);
-    const [leadRes, messagesRes, stagesRes] = await Promise.all([
-      supabase.from("crm_leads").select("*").eq("id", id).single(),
-      supabase.from("messages").select("*").eq("lead_id", id).order("created_at", { ascending: true }),
-      supabase.from("crm_stages").select("*").order("position"),
-    ]);
-    if (leadRes.data) setLead(leadRes.data as Lead);
-    setMessages((messagesRes.data as Message[]) || []);
-    setStages((stagesRes.data as Stage[]) || []);
+    try {
+      const [leadRes, messagesRes, stagesRes] = await Promise.all([
+        supabase.from("crm_leads").select("*").eq("id", id).single(),
+        supabase.from("messages").select("*").eq("lead_id", id).order("created_at", { ascending: true }),
+        supabase.from("crm_stages").select("*").order("position"),
+      ]);
+      if (leadRes.error) console.error("[CRM] Erro ao buscar lead:", leadRes.error);
+      if (messagesRes.error) console.error("[CRM] Erro ao buscar mensagens:", messagesRes.error);
+      if (stagesRes.error) console.error("[CRM] Erro ao buscar stages:", stagesRes.error);
+
+      if (leadRes.data) setLead(leadRes.data as Lead);
+      console.log(`[CRM] Mensagens carregadas: ${messagesRes.data?.length ?? 0} para lead_id=${id}`);
+      setMessages((messagesRes.data as Message[]) || []);
+      setStages((stagesRes.data as Stage[]) || []);
+    } catch (err) {
+      console.error("[CRM] Erro inesperado ao buscar dados:", err);
+    }
     setLoading(false);
   }, [id]);
 
@@ -93,9 +102,27 @@ export default function CrmConversa() {
         table: "messages",
         filter: `lead_id=eq.${id}`,
       }, (payload) => {
-        setMessages((prev) => [...prev, payload.new as Message]);
+        console.log("[CRM] Realtime INSERT recebido:", payload.new);
+        setMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some((m) => m.id === (payload.new as Message).id)) return prev;
+          return [...prev, payload.new as Message];
+        });
       })
-      .subscribe();
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "messages",
+        filter: `lead_id=eq.${id}`,
+      }, (payload) => {
+        console.log("[CRM] Realtime UPDATE recebido:", payload.new);
+        setMessages((prev) =>
+          prev.map((m) => m.id === (payload.new as Message).id ? (payload.new as Message) : m)
+        );
+      })
+      .subscribe((status) => {
+        console.log(`[CRM] Realtime subscription status: ${status}`);
+      });
     return () => { supabase.removeChannel(channel); };
   }, [id]);
 
