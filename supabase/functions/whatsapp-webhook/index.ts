@@ -126,17 +126,21 @@ Deno.serve(async (req) => {
                 break;
               case "image":
                 content = msg.image?.caption || "";
-                mediaUrl = msg.image?.id || null;
+                mediaId = msg.image?.id || null;
                 break;
               case "audio":
-                mediaUrl = msg.audio?.id || null;
+                mediaId = msg.audio?.id || null;
+                break;
+              case "video":
+                content = msg.video?.caption || "";
+                mediaId = msg.video?.id || null;
                 break;
               case "document":
                 content = msg.document?.caption || msg.document?.filename || "";
-                mediaUrl = msg.document?.id || null;
+                mediaId = msg.document?.id || null;
                 break;
               case "sticker":
-                mediaUrl = msg.sticker?.id || null;
+                mediaId = msg.sticker?.id || null;
                 break;
               case "template":
                 content = "[template]";
@@ -144,6 +148,13 @@ Deno.serve(async (req) => {
               default:
                 content = `[${msgType}]`;
                 break;
+            }
+
+            // Download and store media if present
+            let mediaUrl: string | null = null;
+            const whatsappToken = Deno.env.get("WHATSAPP_TOKEN") || "";
+            if (mediaId && MEDIA_TYPES.has(msgType)) {
+              mediaUrl = await downloadAndStoreMedia(mediaId, msgType, whatsappToken, supabase);
             }
 
             // Find or create lead by phone
