@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 Deno.serve(async (req) => {
@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id } = await req.json();
+    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id } = await req.json();
 
     if (!lead_id || !to) {
       return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
@@ -28,15 +28,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Create Supabase client early - needed for wamid lookup
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    let waBody: any = { messaging_product: "whatsapp", to };
-
-    // Add reply context - resolve wamid from DB if not provided directly
+    // Resolve reply context wamid
     let resolvedWamid = reply_to_wamid || null;
     if (!resolvedWamid && reply_to_message_id) {
       const { data: origMsg } = await supabase
@@ -46,6 +43,63 @@ Deno.serve(async (req) => {
         .single();
       resolvedWamid = origMsg?.whatsapp_message_id || null;
     }
+
+    // Handle reaction type
+    if (type === "reaction") {
+      // Resolve the wamid of the message being reacted to
+      let reactionWamid = null;
+      if (reaction_to_message_id) {
+        const { data: reactMsg } = await supabase
+          .from("messages")
+          .select("whatsapp_message_id")
+          .eq("id", reaction_to_message_id)
+          .single();
+        reactionWamid = reactMsg?.whatsapp_message_id || null;
+      }
+
+      if (!reactionWamid) {
+        return new Response(JSON.stringify({ error: "Cannot react: original message has no WhatsApp ID" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const reactionBody = {
+        messaging_product: "whatsapp",
+        to,
+        type: "reaction",
+        reaction: {
+          message_id: reactionWamid,
+          emoji: reaction_emoji || "👍",
+        },
+      };
+
+      const waResponse = await fetch(
+        `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${whatsappToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(reactionBody),
+        }
+      );
+      const waData = await waResponse.json();
+
+      if (!waResponse.ok) {
+        return new Response(JSON.stringify({ error: "WhatsApp reaction error", details: waData }), {
+          status: waResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true, whatsapp: waData }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let waBody: any = { messaging_product: "whatsapp", to };
+
+    // Add reply context
     if (resolvedWamid) {
       waBody.context = { message_id: resolvedWamid };
     }
@@ -66,7 +120,7 @@ Deno.serve(async (req) => {
       waBody.type = "text";
       waBody.text = { body: message };
     } else if (media_url) {
-      // Step 1: Download the file from Supabase Storage
+      // Download file from storage
       const fileResponse = await fetch(media_url);
       if (!fileResponse.ok) {
         return new Response(JSON.stringify({ error: "Failed to download file from storage", status: fileResponse.status }), {
@@ -75,12 +129,10 @@ Deno.serve(async (req) => {
       }
       const fileBlob = await fileResponse.blob();
       
-      // Extract filename from URL
       const urlParts = media_url.split("/");
       const filename = urlParts[urlParts.length - 1] || "file";
       const ext = filename.split(".").pop()?.toLowerCase() || "";
 
-      // Map correct content-type based on extension (storage may return generic types)
       const contentTypeMap: Record<string, string> = {
         ogg: "audio/ogg",
         opus: "audio/ogg",
@@ -101,7 +153,7 @@ Deno.serve(async (req) => {
       };
       const contentType = contentTypeMap[ext] || fileResponse.headers.get("content-type") || "application/octet-stream";
 
-      // Step 2: Upload to Meta's media API
+      // Upload to Meta
       const formData = new FormData();
       formData.append("messaging_product", "whatsapp");
       formData.append("file", new File([fileBlob], filename, { type: contentType }));
@@ -125,7 +177,6 @@ Deno.serve(async (req) => {
 
       const mediaId = uploadData.id;
 
-      // Step 3: Build message body with media_id
       waBody.type = type;
       if (type === "image") {
         waBody.image = { id: mediaId, caption: message || undefined };
@@ -170,10 +221,7 @@ Deno.serve(async (req) => {
     }
 
     // Save message to DB
-
-    // Extract the wamid from Meta's response
     const sentWamid = waData?.messages?.[0]?.id || null;
-
     const dbContent = type === "template" ? `📋 Template: ${template_name}` : (message || null);
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,
