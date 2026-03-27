@@ -28,11 +28,26 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Create Supabase client early - needed for wamid lookup
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
     let waBody: any = { messaging_product: "whatsapp", to };
 
-    // Add reply context if replying to a specific message
-    if (reply_to_wamid) {
-      waBody.context = { message_id: reply_to_wamid };
+    // Add reply context - resolve wamid from DB if not provided directly
+    let resolvedWamid = reply_to_wamid || null;
+    if (!resolvedWamid && reply_to_message_id) {
+      const { data: origMsg } = await supabase
+        .from("messages")
+        .select("whatsapp_message_id")
+        .eq("id", reply_to_message_id)
+        .single();
+      resolvedWamid = origMsg?.whatsapp_message_id || null;
+    }
+    if (resolvedWamid) {
+      waBody.context = { message_id: resolvedWamid };
     }
 
     if (type === "template") {
@@ -155,10 +170,6 @@ Deno.serve(async (req) => {
     }
 
     // Save message to DB
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Extract the wamid from Meta's response
     const sentWamid = waData?.messages?.[0]?.id || null;

@@ -104,9 +104,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       if (type === "text" && !message) { setSending(false); return; }
 
       const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url };
-      if (replyTo?.whatsapp_message_id) {
-        body.reply_to_wamid = replyTo.whatsapp_message_id;
+      if (replyTo) {
         body.reply_to_message_id = replyTo.id;
+        if (replyTo.whatsapp_message_id) {
+          body.reply_to_wamid = replyTo.whatsapp_message_id;
+        }
       }
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
 
