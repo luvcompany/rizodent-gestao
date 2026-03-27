@@ -505,8 +505,10 @@ export type Database = {
           id: string
           lead_id: string
           media_url: string | null
+          reply_to_message_id: string | null
           status: string
           type: string
+          whatsapp_message_id: string | null
         }
         Insert: {
           content?: string | null
@@ -515,8 +517,10 @@ export type Database = {
           id?: string
           lead_id: string
           media_url?: string | null
+          reply_to_message_id?: string | null
           status?: string
           type?: string
+          whatsapp_message_id?: string | null
         }
         Update: {
           content?: string | null
@@ -525,8 +529,10 @@ export type Database = {
           id?: string
           lead_id?: string
           media_url?: string | null
+          reply_to_message_id?: string | null
           status?: string
           type?: string
+          whatsapp_message_id?: string | null
         }
         Relationships: [
           {
