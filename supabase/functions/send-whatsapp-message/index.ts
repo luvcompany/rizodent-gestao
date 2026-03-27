@@ -170,10 +170,6 @@ Deno.serve(async (req) => {
     }
 
     // Save message to DB
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Extract the wamid from Meta's response
     const sentWamid = waData?.messages?.[0]?.id || null;
