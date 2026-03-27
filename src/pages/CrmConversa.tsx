@@ -71,7 +71,6 @@ export default function CrmConversa() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Reply state
@@ -279,11 +278,9 @@ export default function CrmConversa() {
       });
       if (error || data?.error) {
         toast.error("Erro ao enviar template");
-        setApiLog({ type: "error", payload: data || error });
         return;
       }
       toast.success("Template enviado");
-      setApiLog({ type: "success", payload: data });
     } catch {
       toast.error("Erro inesperado ao enviar template");
     }
@@ -437,17 +434,6 @@ export default function CrmConversa() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* API Debug Log */}
-        {apiLog && (
-          <div className={`mx-4 mb-2 p-3 rounded-lg text-xs font-mono max-h-40 overflow-auto border ${apiLog.type === "error" ? "bg-destructive/10 border-destructive/30 text-destructive" : "bg-primary/10 border-primary/30 text-primary"}`}>
-            <div className="flex justify-between items-center mb-1">
-              <span className="font-semibold uppercase">{apiLog.type === "error" ? "❌ Erro API" : "✅ Sucesso API"}</span>
-              <button onClick={() => setApiLog(null)} className="text-muted-foreground hover:text-foreground text-xs">Fechar</button>
-            </div>
-            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(apiLog.payload, null, 2)}</pre>
-          </div>
-        )}
-
         {/* Reply preview */}
         {replyTo && (
           <div className="flex-shrink-0 bg-secondary/80 border-t border-border px-4 py-2 flex items-center gap-3">
@@ -465,7 +451,7 @@ export default function CrmConversa() {
         )}
 
         {/* Input Area */}
-        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} onApiLog={setApiLog} replyTo={replyTo} onReplySent={() => setReplyTo(null)} />}
+        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} replyTo={replyTo} onReplySent={() => setReplyTo(null)} onMessageSent={(msg) => setMessages(prev => [...prev, msg])} onMessageError={(tempId) => setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "error" } : m))} />}
       </div>
 
       {/* RIGHT COLUMN - Lead Panel (30%) */}

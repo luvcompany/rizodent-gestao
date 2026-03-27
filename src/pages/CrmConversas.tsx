@@ -337,7 +337,6 @@ export default function CrmConversas() {
             onLoadTemplates={loadTemplates}
             externalMessage=""
             onExternalMessageConsumed={() => {}}
-            onApiLog={setApiLog}
           />
         </div>
       ) : (
