@@ -394,11 +394,15 @@ export default function CrmConversa() {
           {messages.map((msg) => {
             // System messages render as activity separators
             if (isSystemMessage(msg)) {
+              // Extract destination stage color from content "→ StageName"
+              const destName = msg.content?.split("→").pop()?.trim();
+              const destStage = destName ? stages.find(s => s.name === destName) : null;
               return (
                 <ChatActivitySeparator
                   key={msg.id}
                   content={msg.content || ""}
                   timestamp={msg.created_at}
+                  stageColor={destStage?.color}
                 />
               );
             }
