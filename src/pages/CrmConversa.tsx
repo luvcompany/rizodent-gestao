@@ -10,6 +10,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessageContent from "@/components/chat/ChatMessageContent";
+import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
+import ChatActivityToast from "@/components/chat/ChatActivityToast";
+import MessageActions from "@/components/chat/MessageActions";
+import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
@@ -17,7 +21,7 @@ import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import {
   ArrowLeft, FileText, Phone,
-  MoreVertical, Check, CheckCheck, Clock, Plus, Tag, ArrowRight
+  MoreVertical, Check, CheckCheck, Clock, Plus, Tag, ArrowRight, X
 } from "lucide-react";
 
 type Message = {
@@ -52,6 +56,8 @@ type Stage = {
   pipeline_id: string;
 };
 
+type ActivityToast = { id: string; content: string };
+
 export default function CrmConversa() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -65,6 +71,22 @@ export default function CrmConversa() {
   const [loading, setLoading] = useState(true);
   const [apiLog, setApiLog] = useState<{ type: "success" | "error"; payload: any } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Reply state
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+
+  // Forward state
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+
+  // Activity toasts
+  const [activityToasts, setActivityToasts] = useState<ActivityToast[]>([]);
+  const dismissToast = useCallback((toastId: string) => {
+    setActivityToasts((prev) => prev.filter((t) => t.id !== toastId));
+  }, []);
+  const showActivityToast = useCallback((content: string) => {
+    const toastItem: ActivityToast = { id: Date.now().toString(), content };
+    setActivityToasts((prev) => [...prev, toastItem]);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -173,8 +195,6 @@ export default function CrmConversa() {
     return () => clearInterval(interval);
   }, [id]);
 
-  // Message sending is now handled by ChatInput component
-
   const handleStageChange = async (stageId: string) => {
     if (!id || !lead) return;
     const previousStageId = lead.stage_id;
@@ -202,16 +222,20 @@ export default function CrmConversa() {
       entered_at: new Date().toISOString(),
     });
 
-    // Insert a system message in the chat showing the stage change
+    // Insert a system message to show as activity separator
     const fromStageName = stages.find(s => s.id === previousStageId)?.name || "?";
     const toStageName = stages.find(s => s.id === stageId)?.name || "?";
+    const systemContent = `📋 Etapa alterada: ${fromStageName} → ${toStageName}`;
     await supabase.from("messages").insert({
       lead_id: id,
       direction: "outbound",
-      type: "text",
-      content: `📋 Etapa alterada: ${fromStageName} → ${toStageName}`,
+      type: "system",
+      content: systemContent,
       status: "system",
     });
+
+    // Show activity toast
+    showActivityToast(`📋 Lead movido para ${toStageName}`);
 
     setLead((prev) => prev ? { ...prev, stage_id: stageId } : prev);
     toast.success("Etapa atualizada");
@@ -272,6 +296,22 @@ export default function CrmConversa() {
     }
   };
 
+  // Message interactions
+  const handleReply = (msg: Message) => {
+    setReplyTo(msg);
+  };
+
+  const handleReact = async (msg: Message, emoji: string) => {
+    // For now, show a toast — full reaction support requires WhatsApp API reaction endpoint
+    toast.success(`Reação ${emoji} enviada`);
+  };
+
+  const handleForward = (msg: Message) => {
+    setForwardMsg(msg);
+  };
+
+  const isSystemMessage = (msg: Message) => msg.type === "system" || msg.status === "system";
+
   const currentStage = stages.find((s) => s.id === lead?.stage_id);
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -326,30 +366,55 @@ export default function CrmConversa() {
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
+        <div className="flex-1 overflow-y-auto p-4 space-y-2 relative" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
+          {/* Activity toasts */}
+          <ChatActivityToast activities={activityToasts} onDismiss={dismissToast} />
+
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
               Nenhuma mensagem ainda. Inicie a conversa!
             </div>
           )}
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[65%] rounded-lg px-3 py-2 ${
-                msg.direction === "outbound"
-                  ? "bg-primary/20 text-foreground rounded-br-none"
-                  : "bg-card border border-border text-foreground rounded-bl-none"
-              }`}>
-                {/* IMAGE */}
-                <ChatMessageContent message={msg} />
-                <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
-                  <span className="text-[10px] text-muted-foreground">
-                    {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                  {msg.direction === "outbound" && getStatusIcon(msg.status)}
+          {messages.map((msg) => {
+            // System messages render as activity separators
+            if (isSystemMessage(msg)) {
+              return (
+                <ChatActivitySeparator
+                  key={msg.id}
+                  content={msg.content || ""}
+                  timestamp={msg.created_at}
+                />
+              );
+            }
+
+            return (
+              <div key={msg.id} className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}>
+                <div className="relative group">
+                  {/* Message actions on hover */}
+                  <MessageActions
+                    message={msg}
+                    direction={msg.direction}
+                    onReply={handleReply}
+                    onForward={handleForward}
+                    onReact={handleReact}
+                  />
+                  <div className={`max-w-[65%] min-w-[120px] rounded-lg px-3 py-2 ${
+                    msg.direction === "outbound"
+                      ? "bg-primary/20 text-foreground rounded-br-none"
+                      : "bg-card border border-border text-foreground rounded-bl-none"
+                  }`}>
+                    <ChatMessageContent message={msg} />
+                    <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
+                      <span className="text-[10px] text-muted-foreground">
+                        {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      {msg.direction === "outbound" && getStatusIcon(msg.status)}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={messagesEndRef} />
         </div>
 
@@ -361,6 +426,22 @@ export default function CrmConversa() {
               <button onClick={() => setApiLog(null)} className="text-muted-foreground hover:text-foreground text-xs">Fechar</button>
             </div>
             <pre className="whitespace-pre-wrap break-all">{JSON.stringify(apiLog.payload, null, 2)}</pre>
+          </div>
+        )}
+
+        {/* Reply preview */}
+        {replyTo && (
+          <div className="flex-shrink-0 bg-secondary/80 border-t border-border px-4 py-2 flex items-center gap-3">
+            <div className="w-1 h-8 rounded-full bg-primary flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-primary">
+                {replyTo.direction === "inbound" ? lead.name : "Você"}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">{replyTo.content || `[${replyTo.type}]`}</div>
+            </div>
+            <button onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground">
+              <X size={16} />
+            </button>
           </div>
         )}
 
@@ -410,7 +491,6 @@ export default function CrmConversa() {
               </SelectContent>
             </Select>
           </div>
-
 
           {/* Source */}
           {lead.source && (
@@ -486,6 +566,15 @@ export default function CrmConversa() {
           </div>
         </div>
       </div>
+
+      {/* Forward Dialog */}
+      <ForwardMessageDialog
+        open={!!forwardMsg}
+        onOpenChange={(open) => { if (!open) setForwardMsg(null); }}
+        messageContent={forwardMsg?.content || null}
+        messageType={forwardMsg?.type || "text"}
+        fromLeadId={id || ""}
+      />
 
       {/* Templates Sheet */}
       <Sheet open={templatesOpen} onOpenChange={setTemplatesOpen}>
