@@ -15,6 +15,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { compressImage } from "./imageCompressor";
 
+type ReplyMessage = {
+  id: string;
+  whatsapp_message_id?: string | null;
+  content: string | null;
+  type: string;
+  direction: string;
+};
+
 type ChatInputProps = {
   leadId: string;
   leadPhone: string | null;
@@ -22,9 +30,11 @@ type ChatInputProps = {
   externalMessage?: string;
   onExternalMessageConsumed?: () => void;
   onApiLog?: (log: { type: "success" | "error"; payload: any }) => void;
+  replyTo?: ReplyMessage | null;
+  onReplySent?: () => void;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onApiLog }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onApiLog, replyTo, onReplySent }: ChatInputProps) {
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -93,9 +103,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       if (type === "text" && !message) { setSending(false); return; }
 
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url },
-      });
+      const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url };
+      if (replyTo?.whatsapp_message_id) {
+        body.reply_to_wamid = replyTo.whatsapp_message_id;
+        body.reply_to_message_id = replyTo.id;
+      }
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
 
       if (error) {
         const errPayload = { edge_error: error.message, raw: error };
@@ -112,6 +125,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       onApiLog?.({ type: "success", payload: data });
       setNewMessage("");
       setAttachedFile(null);
+      onReplySent?.();
       toast.success("Mensagem enviada");
     } catch (err: any) {
       toast.error(`Erro inesperado: ${err.message}`);

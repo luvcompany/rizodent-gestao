@@ -33,6 +33,8 @@ type Message = {
   media_url: string | null;
   status: string;
   created_at: string;
+  whatsapp_message_id?: string | null;
+  reply_to_message_id?: string | null;
 };
 
 type Lead = {
@@ -446,7 +448,7 @@ export default function CrmConversa() {
         )}
 
         {/* Input Area */}
-        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} onApiLog={setApiLog} />}
+        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} onApiLog={setApiLog} replyTo={replyTo} onReplySent={() => setReplyTo(null)} />}
       </div>
 
       {/* RIGHT COLUMN - Lead Panel (30%) */}

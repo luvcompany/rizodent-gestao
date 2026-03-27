@@ -192,7 +192,7 @@ export default function CrmKanban() {
   return (
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED, no horizontal scroll */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap w-full max-w-full overflow-hidden" style={{ position: "sticky", left: 0 }}>
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap overflow-hidden">
          <div className="flex items-center gap-3 min-w-0 flex-wrap">
           {pipelines.length > 1 && (
             <select
@@ -248,7 +248,7 @@ export default function CrmKanban() {
       </div>
 
       {/* Metrics bar - FIXED, no horizontal scroll */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2 flex items-center gap-6 overflow-hidden text-sm flex-wrap w-full max-w-full" style={{ position: "sticky", left: 0 }}>
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2 flex items-center gap-6 overflow-hidden text-sm flex-wrap">
         <MetricBadge icon={<Calendar size={14} />} label="Com tarefas para hoje" value={withTaskToday} variant="info" />
         <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} variant="muted" />
         <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} variant="destructive" />
