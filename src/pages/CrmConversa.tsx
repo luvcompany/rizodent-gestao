@@ -71,7 +71,7 @@ export default function CrmConversa() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [apiLog, setApiLog] = useState<{ type: "success" | "error"; payload: any } | null>(null);
+  const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Reply state
@@ -304,8 +304,25 @@ export default function CrmConversa() {
   };
 
   const handleReact = async (msg: Message, emoji: string) => {
-    // For now, show a toast — full reaction support requires WhatsApp API reaction endpoint
-    toast.success(`Reação ${emoji} enviada`);
+    if (!lead?.phone) { toast.error("Lead sem telefone"); return; }
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          lead_id: id,
+          to: lead.phone,
+          type: "reaction",
+          reaction_emoji: emoji,
+          reaction_to_message_id: msg.id,
+        },
+      });
+      if (error || data?.error) {
+        toast.error("Erro ao enviar reação");
+      } else {
+        toast.success(`Reação ${emoji} enviada`);
+      }
+    } catch {
+      toast.error("Erro ao enviar reação");
+    }
   };
 
   const handleForward = (msg: Message) => {
