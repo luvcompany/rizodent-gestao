@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components } = await req.json();
+    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id } = await req.json();
 
     if (!lead_id || !to) {
       return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
@@ -29,6 +29,11 @@ Deno.serve(async (req) => {
     }
 
     let waBody: any = { messaging_product: "whatsapp", to };
+
+    // Add reply context if replying to a specific message
+    if (reply_to_wamid) {
+      waBody.context = { message_id: reply_to_wamid };
+    }
 
     if (type === "template") {
       waBody.type = "template";
@@ -155,6 +160,9 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // Extract the wamid from Meta's response
+    const sentWamid = waData?.messages?.[0]?.id || null;
+
     const dbContent = type === "template" ? `📋 Template: ${template_name}` : (message || null);
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,
@@ -163,6 +171,8 @@ Deno.serve(async (req) => {
       content: dbContent,
       media_url: media_url || null,
       status: "sent",
+      whatsapp_message_id: sentWamid,
+      reply_to_message_id: reply_to_message_id || null,
     }).select().single();
 
     if (insertError) {

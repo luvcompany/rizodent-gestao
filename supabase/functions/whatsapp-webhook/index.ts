@@ -274,6 +274,7 @@ Deno.serve(async (req) => {
                 content: content || null,
                 media_url: mediaUrl,
                 status: "received",
+                whatsapp_message_id: msg.id || null,
               };
               const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
 
