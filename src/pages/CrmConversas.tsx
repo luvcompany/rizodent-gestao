@@ -66,7 +66,7 @@ export default function CrmConversas() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [newNote, setNewNote] = useState("");
-  const [apiLog, setApiLog] = useState<{ type: "success" | "error"; payload: any } | null>(null);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -178,9 +178,8 @@ export default function CrmConversas() {
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
         body: { lead_id: selectedLeadId, to: selectedLead.phone, type: "template", template_name: template.name, template_language: template.language },
       });
-      if (error || data?.error) { toast.error("Erro ao enviar template"); setApiLog({ type: "error", payload: data || error }); return; }
+      if (error || data?.error) { toast.error("Erro ao enviar template"); return; }
       toast.success("Template enviado");
-      setApiLog({ type: "success", payload: data });
     } catch { toast.error("Erro inesperado"); }
   };
 
@@ -321,15 +320,6 @@ export default function CrmConversas() {
             <div ref={messagesEndRef} />
           </div>
 
-          {apiLog && (
-            <div className={`mx-4 mb-2 p-3 rounded-lg text-xs font-mono max-h-40 overflow-auto border ${apiLog.type === "error" ? "bg-destructive/10 border-destructive/30 text-destructive" : "bg-primary/10 border-primary/30 text-primary"}`}>
-              <div className="flex justify-between items-center mb-1">
-                <span className="font-semibold uppercase">{apiLog.type === "error" ? "❌ Erro API" : "✅ Sucesso API"}</span>
-                <button onClick={() => setApiLog(null)} className="text-muted-foreground hover:text-foreground text-xs">Fechar</button>
-              </div>
-              <pre className="whitespace-pre-wrap break-all">{JSON.stringify(apiLog.payload, null, 2)}</pre>
-            </div>
-          )}
 
           <ChatInput
             leadId={selectedLeadId}
@@ -337,7 +327,6 @@ export default function CrmConversas() {
             onLoadTemplates={loadTemplates}
             externalMessage=""
             onExternalMessageConsumed={() => {}}
-            onApiLog={setApiLog}
           />
         </div>
       ) : (

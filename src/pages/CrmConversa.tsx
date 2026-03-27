@@ -71,7 +71,6 @@ export default function CrmConversa() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [apiLog, setApiLog] = useState<{ type: "success" | "error"; payload: any } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Reply state
@@ -279,11 +278,9 @@ export default function CrmConversa() {
       });
       if (error || data?.error) {
         toast.error("Erro ao enviar template");
-        setApiLog({ type: "error", payload: data || error });
         return;
       }
       toast.success("Template enviado");
-      setApiLog({ type: "success", payload: data });
     } catch {
       toast.error("Erro inesperado ao enviar template");
     }
@@ -304,8 +301,25 @@ export default function CrmConversa() {
   };
 
   const handleReact = async (msg: Message, emoji: string) => {
-    // For now, show a toast — full reaction support requires WhatsApp API reaction endpoint
-    toast.success(`Reação ${emoji} enviada`);
+    if (!lead?.phone) { toast.error("Lead sem telefone"); return; }
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          lead_id: id,
+          to: lead.phone,
+          type: "reaction",
+          reaction_emoji: emoji,
+          reaction_to_message_id: msg.id,
+        },
+      });
+      if (error || data?.error) {
+        toast.error("Erro ao enviar reação");
+      } else {
+        toast.success(`Reação ${emoji} enviada`);
+      }
+    } catch {
+      toast.error("Erro ao enviar reação");
+    }
   };
 
   const handleForward = (msg: Message) => {
@@ -380,11 +394,15 @@ export default function CrmConversa() {
           {messages.map((msg) => {
             // System messages render as activity separators
             if (isSystemMessage(msg)) {
+              // Extract destination stage color from content "→ StageName"
+              const destName = msg.content?.split("→").pop()?.trim();
+              const destStage = destName ? stages.find(s => s.name === destName) : null;
               return (
                 <ChatActivitySeparator
                   key={msg.id}
                   content={msg.content || ""}
                   timestamp={msg.created_at}
+                  stageColor={destStage?.color}
                 />
               );
             }
@@ -420,17 +438,6 @@ export default function CrmConversa() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* API Debug Log */}
-        {apiLog && (
-          <div className={`mx-4 mb-2 p-3 rounded-lg text-xs font-mono max-h-40 overflow-auto border ${apiLog.type === "error" ? "bg-destructive/10 border-destructive/30 text-destructive" : "bg-primary/10 border-primary/30 text-primary"}`}>
-            <div className="flex justify-between items-center mb-1">
-              <span className="font-semibold uppercase">{apiLog.type === "error" ? "❌ Erro API" : "✅ Sucesso API"}</span>
-              <button onClick={() => setApiLog(null)} className="text-muted-foreground hover:text-foreground text-xs">Fechar</button>
-            </div>
-            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(apiLog.payload, null, 2)}</pre>
-          </div>
-        )}
-
         {/* Reply preview */}
         {replyTo && (
           <div className="flex-shrink-0 bg-secondary/80 border-t border-border px-4 py-2 flex items-center gap-3">
@@ -448,7 +455,7 @@ export default function CrmConversa() {
         )}
 
         {/* Input Area */}
-        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} onApiLog={setApiLog} replyTo={replyTo} onReplySent={() => setReplyTo(null)} />}
+        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} replyTo={replyTo} onReplySent={() => setReplyTo(null)} onMessageSent={(msg) => setMessages(prev => [...prev, msg])} onMessageError={(tempId) => setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "error" } : m))} />}
       </div>
 
       {/* RIGHT COLUMN - Lead Panel (30%) */}

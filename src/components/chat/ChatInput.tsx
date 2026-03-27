@@ -29,18 +29,19 @@ type ChatInputProps = {
   onLoadTemplates: () => void;
   externalMessage?: string;
   onExternalMessageConsumed?: () => void;
-  onApiLog?: (log: { type: "success" | "error"; payload: any }) => void;
+  onMessageSent?: (optimisticMsg: any) => void;
+  onMessageError?: (tempId: string) => void;
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onApiLog, replyTo, onReplySent }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent }: ChatInputProps) {
   const [newMessage, setNewMessage] = useState(externalMessage || "");
-  const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -74,66 +75,75 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !attachedFile) || !leadPhone) return;
-    setSending(true);
+
+    let type = "text";
+    let media_url: string | undefined;
+    let message = newMessage.trim();
+    let fileToUpload = attachedFile?.file;
+
+    // Clear input immediately for optimistic UX
+    const currentReplyTo = replyTo;
+    setNewMessage("");
+    onReplySent?.();
+
+    if (attachedFile && fileToUpload) {
+      type = attachedFile.type;
+      setAttachedFile(null);
+
+      // Compress images if needed
+      if (type === "image") {
+        setOptimizing(true);
+        try {
+          fileToUpload = await compressImage(fileToUpload);
+        } finally {
+          setOptimizing(false);
+        }
+      }
+
+      setUploading(true);
+      const url = await uploadFile(fileToUpload, type);
+      setUploading(false);
+      if (!url) return;
+      media_url = url;
+      if (!message && type === "document") message = attachedFile.file.name;
+    }
+
+    if (type === "text" && !message) return;
+
+    // Create optimistic message
+    const tempId = crypto.randomUUID();
+    const optimisticMsg = {
+      id: tempId,
+      lead_id: leadId,
+      direction: "outbound",
+      type,
+      content: message || null,
+      media_url: media_url || null,
+      status: "sending",
+      created_at: new Date().toISOString(),
+      whatsapp_message_id: null,
+      reply_to_message_id: currentReplyTo?.id || null,
+    };
+    onMessageSent?.(optimisticMsg);
+
+    // Send in background
+    const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url };
+    if (currentReplyTo) {
+      body.reply_to_message_id = currentReplyTo.id;
+      if (currentReplyTo.whatsapp_message_id) {
+        body.reply_to_wamid = currentReplyTo.whatsapp_message_id;
+      }
+    }
 
     try {
-      let type = "text";
-      let media_url: string | undefined;
-      let message = newMessage.trim();
-      let fileToUpload = attachedFile?.file;
-
-      if (attachedFile && fileToUpload) {
-        type = attachedFile.type;
-
-        // Compress images if needed
-        if (type === "image") {
-          setOptimizing(true);
-          try {
-            fileToUpload = await compressImage(fileToUpload);
-          } finally {
-            setOptimizing(false);
-          }
-        }
-
-        const url = await uploadFile(fileToUpload, type);
-        if (!url) { setSending(false); return; }
-        media_url = url;
-        if (!message && type === "document") message = attachedFile.file.name;
-      }
-
-      if (type === "text" && !message) { setSending(false); return; }
-
-      const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url };
-      if (replyTo) {
-        body.reply_to_message_id = replyTo.id;
-        if (replyTo.whatsapp_message_id) {
-          body.reply_to_wamid = replyTo.whatsapp_message_id;
-        }
-      }
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
-
-      if (error) {
-        const errPayload = { edge_error: error.message, raw: error };
-        onApiLog?.({ type: "error", payload: errPayload });
-        toast.error(`Erro ao enviar: ${error.message}`);
-        return;
+      if (error || data?.error) {
+        onMessageError?.(tempId);
+        toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
       }
-      if (data?.error) {
-        onApiLog?.({ type: "error", payload: data });
-        toast.error(`Erro WhatsApp: ${JSON.stringify(data.details || data.error)}`);
-        return;
-      }
-
-      onApiLog?.({ type: "success", payload: data });
-      setNewMessage("");
-      setAttachedFile(null);
-      onReplySent?.();
-      toast.success("Mensagem enviada");
     } catch (err: any) {
+      onMessageError?.(tempId);
       toast.error(`Erro inesperado: ${err.message}`);
-    } finally {
-      setSending(false);
-      setOptimizing(false);
     }
   };
 
@@ -158,7 +168,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
     const type = getMessageType(file);
 
-    // Validation per type
     if (type === "audio" && file.size > 15 * 1024 * 1024) {
       toast.warning("Áudio muito longo. Considere enviar em partes menores.");
       return;
@@ -169,13 +178,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       return;
     }
 
-    // Webp stickers
     if (file.type === "image/webp" && file.size < 512 * 1024) {
       setAttachedFile({ file, type: "sticker" });
       return;
     }
 
-    // Images: compress on attach if needed
     if (type === "image" && file.size > 4 * 1024 * 1024) {
       setOptimizing(true);
       try {
@@ -198,8 +205,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // Prefer ogg/opus for smaller files
       const mimeType = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
         ? "audio/ogg;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -227,23 +232,38 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           return;
         }
 
-        setSending(true);
+        // Optimistic audio message
+        setUploading(true);
         const url = await uploadFile(audioFile, "audio");
-        if (!url) { setSending(false); return; }
+        setUploading(false);
+        if (!url) return;
 
-        const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-          body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url },
+        const tempId = crypto.randomUUID();
+        onMessageSent?.({
+          id: tempId,
+          lead_id: leadId,
+          direction: "outbound",
+          type: "audio",
+          content: null,
+          media_url: url,
+          status: "sending",
+          created_at: new Date().toISOString(),
+          whatsapp_message_id: null,
+          reply_to_message_id: null,
         });
 
-        if (error || data?.error) {
-          const errPayload = error ? { edge_error: error.message, raw: error } : data;
-          onApiLog?.({ type: "error", payload: errPayload });
-          toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
-        } else {
-          onApiLog?.({ type: "success", payload: data });
-          toast.success("Áudio enviado");
+        try {
+          const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+            body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url },
+          });
+          if (error || data?.error) {
+            onMessageError?.(tempId);
+            toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
+          }
+        } catch {
+          onMessageError?.(tempId);
+          toast.error("Erro ao enviar áudio");
         }
-        setSending(false);
       };
 
       mediaRecorder.start();
@@ -279,11 +299,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
-      {/* Optimizing indicator */}
-      {optimizing && (
+      {/* Optimizing/uploading indicator */}
+      {(optimizing || uploading) && (
         <div className="flex items-center gap-2 mb-2 bg-primary/10 rounded-lg px-3 py-2 text-sm text-primary">
           <Loader2 size={16} className="animate-spin" />
-          <span>Otimizando arquivo...</span>
+          <span>{optimizing ? "Otimizando arquivo..." : "Enviando arquivo..."}</span>
         </div>
       )}
 
@@ -323,7 +343,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="p-2 text-muted-foreground hover:text-primary transition-colors" disabled={optimizing}>
+              <button className="p-2 text-muted-foreground hover:text-primary transition-colors" disabled={optimizing || uploading}>
                 <Paperclip size={20} />
               </button>
             </DropdownMenuTrigger>
@@ -350,7 +370,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               onKeyDown={handleKeyDown}
               placeholder="Digite uma mensagem..."
               className="pr-10 bg-secondary border-border"
-              disabled={sending || optimizing}
+              disabled={optimizing || uploading}
             />
           </div>
 
@@ -359,14 +379,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </button>
 
           {newMessage.trim() || attachedFile ? (
-            <Button size="icon" onClick={handleSendMessage} disabled={sending || optimizing}>
+            <Button size="icon" onClick={handleSendMessage} disabled={optimizing || uploading}>
               <Send size={18} />
             </Button>
           ) : (
             <button
               onClick={startRecording}
               className="p-2 text-muted-foreground hover:text-primary transition-colors"
-              disabled={sending || optimizing}
+              disabled={optimizing || uploading}
             >
               <Mic size={20} />
             </button>
