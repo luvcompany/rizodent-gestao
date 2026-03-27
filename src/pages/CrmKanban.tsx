@@ -190,9 +190,9 @@ export default function CrmKanban() {
   }
 
   return (
-    <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
+    <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}>
       {/* Header - FIXED, no horizontal scroll */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap overflow-hidden">
+      <div style={{ flexShrink: 0, width: "100%", overflowX: "hidden" }} className="bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
          <div className="flex items-center gap-3 min-w-0 flex-wrap">
           {pipelines.length > 1 && (
             <select
@@ -248,7 +248,7 @@ export default function CrmKanban() {
       </div>
 
       {/* Metrics bar - FIXED, no horizontal scroll */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2 flex items-center gap-6 overflow-hidden text-sm flex-wrap">
+      <div style={{ flexShrink: 0, width: "100%", overflowX: "hidden" }} className="bg-card border-b border-border px-6 py-2 flex items-center gap-6 text-sm flex-wrap">
         <MetricBadge icon={<Calendar size={14} />} label="Com tarefas para hoje" value={withTaskToday} variant="info" />
         <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} variant="muted" />
         <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} variant="destructive" />
@@ -257,7 +257,7 @@ export default function CrmKanban() {
       </div>
 
       {/* Kanban area - SCROLLABLE horizontally */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
+      <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }} className="p-4">
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex gap-3 h-full min-w-max">
             {stages.map((stage, idx) => {
