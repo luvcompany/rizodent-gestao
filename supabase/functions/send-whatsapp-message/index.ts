@@ -99,7 +99,9 @@ Deno.serve(async (req) => {
         .single();
 
       const existingReactions = Array.isArray(targetMsg?.reactions) ? targetMsg.reactions : [];
-      const updatedReactions = [...existingReactions, { emoji: reaction_emoji || "👍", from: "me" }];
+      // Replace existing reaction from "me" instead of appending
+      const filtered = existingReactions.filter((r: any) => r.from !== "me");
+      const updatedReactions = [...filtered, { emoji: reaction_emoji || "👍", from: "me" }];
 
       await supabase
         .from("messages")
