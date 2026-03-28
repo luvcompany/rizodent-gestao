@@ -99,7 +99,7 @@ function TemplateMessageBubble({ templateName }: { templateName: string }) {
   );
 }
 
-export default function ChatMessageContent({ message }: { message: ChatMessage }) {
+export default function ChatMessageContent({ message, onMediaClick }: { message: ChatMessage; onMediaClick?: (url: string, type: "image" | "video") => void }) {
   const hasResolvedMedia = isPublicMediaUrl(message.media_url);
 
   // Template messages
@@ -118,13 +118,22 @@ export default function ChatMessageContent({ message }: { message: ChatMessage }
         src={message.media_url!}
         alt={message.type === "sticker" ? "Figurinha" : "Imagem"}
         className={message.type === "sticker" ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
-        onClick={() => message.type === "image" && window.open(message.media_url!, "_blank")}
+        onClick={() => message.type === "image" && onMediaClick ? onMediaClick(message.media_url!, "image") : undefined}
       />
     );
   }
 
   if (message.type === "video" && hasResolvedMedia) {
-    return <video src={message.media_url!} controls className="rounded mb-1 max-w-full max-h-64" />;
+    return (
+      <div className="relative cursor-pointer" onClick={() => onMediaClick?.(message.media_url!, "video")}>
+        <video src={message.media_url!} className="rounded mb-1 max-w-full max-h-64" />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center">
+            <span className="text-foreground text-lg ml-0.5">▶</span>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (message.type === "audio") {
