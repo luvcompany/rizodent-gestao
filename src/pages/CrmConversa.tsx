@@ -425,8 +425,8 @@ export default function CrmConversa() {
             const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
 
             return (
-              <div key={msg.id} className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-                <div className="relative group">
+              <div key={msg.id} className="w-full flex">
+                <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
                   {/* Message actions on hover */}
                   <MessageActions
                     message={msg}
@@ -435,7 +435,7 @@ export default function CrmConversa() {
                     onForward={handleForward}
                     onReact={handleReact}
                   />
-                  <div className={`max-w-[65%] min-w-[120px] rounded-lg px-3 py-2 ${
+                  <div className={`rounded-lg px-3 py-2 ${
                     msg.direction === "outbound"
                       ? "bg-primary/20 text-foreground rounded-br-none"
                       : "bg-card border border-border text-foreground rounded-bl-none"
@@ -447,7 +447,7 @@ export default function CrmConversa() {
                           <div className="text-[11px] font-semibold text-primary">
                             {quotedMsg.direction === "inbound" ? lead.name : "Você"}
                           </div>
-                          <div className="text-xs text-muted-foreground truncate max-w-[250px]">
+                          <div className="text-xs text-muted-foreground truncate">
                             {["image", "sticker"].includes(quotedMsg.type)
                               ? "📷 Foto"
                               : quotedMsg.type === "video"
