@@ -439,7 +439,7 @@ export default function CrmConversa() {
             const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
 
             return (
-              <div key={msg.id} className="w-full flex">
+              <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className="w-full flex transition-all duration-300 rounded-lg">
                 <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
                   {/* Message actions on hover */}
                   <MessageActions
@@ -456,7 +456,10 @@ export default function CrmConversa() {
                   }`}>
                     {/* Quoted message block */}
                     {quotedMsg && (
-                      <div className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2">
+                      <div
+                        onClick={() => scrollToMessage(quotedMsg.id)}
+                        className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2"
+                      >
                         <div className="flex-1 min-w-0">
                           <div className="text-[11px] font-semibold text-primary">
                             {quotedMsg.direction === "inbound" ? lead.name : "Você"}
@@ -483,7 +486,10 @@ export default function CrmConversa() {
                         )}
                       </div>
                     )}
-                    <ChatMessageContent message={msg} />
+                    <ChatMessageContent
+                      message={msg}
+                      onMediaClick={(url, type) => setMediaPreview({ url, type })}
+                    />
                     <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
                       <span className="text-[10px] text-muted-foreground">
                         {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
