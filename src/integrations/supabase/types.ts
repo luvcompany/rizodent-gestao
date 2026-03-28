@@ -505,6 +505,7 @@ export type Database = {
           id: string
           lead_id: string
           media_url: string | null
+          reactions: Json | null
           reply_to_message_id: string | null
           status: string
           type: string
@@ -517,6 +518,7 @@ export type Database = {
           id?: string
           lead_id: string
           media_url?: string | null
+          reactions?: Json | null
           reply_to_message_id?: string | null
           status?: string
           type?: string
@@ -529,6 +531,7 @@ export type Database = {
           id?: string
           lead_id?: string
           media_url?: string | null
+          reactions?: Json | null
           reply_to_message_id?: string | null
           status?: string
           type?: string
