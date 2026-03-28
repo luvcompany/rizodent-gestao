@@ -341,6 +341,15 @@ export default function CrmConversa() {
     setForwardMsg(msg);
   };
 
+  const scrollToMessage = (msgId: string) => {
+    const el = messageRefs.current[msgId];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/50");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
+    }
+  };
+
   const isSystemMessage = (msg: Message) => msg.type === "system" || msg.status === "system";
 
   const currentStage = stages.find((s) => s.id === lead?.stage_id);
