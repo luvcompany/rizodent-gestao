@@ -7,8 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessageContent from "@/components/chat/ChatMessageContent";
+import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
+import MessageActions from "@/components/chat/MessageActions";
+import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
@@ -16,7 +20,7 @@ import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import {
   Search, MessageSquare, Clock, Phone, MoreVertical,
-  Check, CheckCheck, Plus, Tag, ArrowRight
+  Check, CheckCheck, Plus, Tag, ArrowRight, X
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -45,6 +49,8 @@ type Message = {
   media_url: string | null;
   status: string;
   created_at: string;
+  whatsapp_message_id?: string | null;
+  reply_to_message_id?: string | null;
 };
 
 type Stage = {
@@ -68,9 +74,28 @@ export default function CrmConversas() {
   const [newNote, setNewNote] = useState("");
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Reply state
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+
+  // Forward state
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+
+  // Media preview modal
+  const [mediaPreview, setMediaPreview] = useState<{ url: string; type: "image" | "video" } | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const scrollToMessage = (msgId: string) => {
+    const el = messageRefs.current[msgId];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/50");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
+    }
   };
 
   // Fetch leads list
@@ -105,6 +130,7 @@ export default function CrmConversas() {
     const lead = leads.find((l) => l.id === selectedLeadId) || null;
     setSelectedLead(lead);
     fetchMessages(selectedLeadId);
+    setReplyTo(null);
   }, [selectedLeadId, leads, fetchMessages]);
 
   useEffect(() => { scrollToBottom(); }, [messages]);
@@ -146,7 +172,7 @@ export default function CrmConversas() {
 
     const fromName = stages.find((s) => s.id === previousStageId)?.name || "?";
     const toName = stages.find((s) => s.id === stageId)?.name || "?";
-    await supabase.from("messages").insert({ lead_id: selectedLeadId, direction: "outbound", type: "text", content: `📋 Etapa alterada: ${fromName} → ${toName}`, status: "system" });
+    await supabase.from("messages").insert({ lead_id: selectedLeadId, direction: "outbound", type: "system", content: `📋 Etapa alterada: ${fromName} → ${toName}`, status: "system" });
 
     setSelectedLead((prev) => prev ? { ...prev, stage_id: stageId } : prev);
     setLeads((prev) => prev.map((l) => l.id === selectedLeadId ? { ...l, stage_id: stageId } : l));
@@ -190,6 +216,42 @@ export default function CrmConversas() {
       case "sent": return <Check size={14} className="text-muted-foreground" />;
       default: return <Clock size={14} className="text-muted-foreground" />;
     }
+  };
+
+  // Message interactions
+  const handleReply = (msg: Message) => setReplyTo(msg);
+
+  const handleReact = async (msg: Message, emoji: string) => {
+    if (!selectedLead?.phone) { toast.error("Lead sem telefone"); return; }
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msg.id) return m;
+        const existing = Array.isArray((m as any).reactions) ? (m as any).reactions as any[] : [];
+        const filtered = existing.filter((r: any) => r.from !== "me");
+        return { ...m, reactions: [...filtered, { emoji, from: "me" }] } as any;
+      })
+    );
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: { lead_id: selectedLeadId, to: selectedLead.phone, type: "reaction", reaction_emoji: emoji, reaction_to_message_id: msg.id },
+      });
+      if (error || data?.error) toast.error("Erro ao enviar reação");
+    } catch { toast.error("Erro ao enviar reação"); }
+  };
+
+  const handleForward = (msg: Message) => setForwardMsg(msg);
+
+  const isSystemMessage = (msg: Message) => msg.type === "system" || msg.status === "system";
+
+  const handleOptimisticMessage = (optimisticMsg: any) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === optimisticMsg.id)) return prev;
+      return [...prev, optimisticMsg];
+    });
+  };
+
+  const handleMessageError = (tempId: string) => {
+    setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: "error" } : m));
   };
 
   const filtered = leads.filter((l) => {
@@ -304,22 +366,112 @@ export default function CrmConversas() {
             {messages.length === 0 && (
               <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Nenhuma mensagem ainda</div>
             )}
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[65%] rounded-lg px-3 py-2 ${msg.direction === "outbound" ? "bg-primary/20 text-foreground rounded-br-none" : "bg-card border border-border text-foreground rounded-bl-none"}`}>
-                  <ChatMessageContent message={msg} />
-                  <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
-                    <span className="text-[10px] text-muted-foreground">
-                      {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                    {msg.direction === "outbound" && getStatusIcon(msg.status)}
+            {messages.map((msg) => {
+              if (isSystemMessage(msg)) {
+                const destName = msg.content?.split("→").pop()?.trim();
+                const destStage = destName ? stages.find(s => s.name === destName) : null;
+                return (
+                  <ChatActivitySeparator
+                    key={msg.id}
+                    content={msg.content || ""}
+                    timestamp={msg.created_at}
+                    stageColor={destStage?.color}
+                  />
+                );
+              }
+
+              const quotedMsg = msg.reply_to_message_id
+                ? messages.find((m) => m.id === msg.reply_to_message_id)
+                : null;
+
+              const rawReactions = Array.isArray((msg as any).reactions) ? (msg as any).reactions as { emoji: string; from: string }[] : [];
+              const reactionsMap = new Map<string, string>();
+              rawReactions.forEach((r) => reactionsMap.set(r.from, r.emoji));
+              const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
+
+              return (
+                <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className="w-full flex transition-all duration-300 rounded-lg">
+                  <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
+                    <MessageActions
+                      message={msg}
+                      direction={msg.direction}
+                      onReply={handleReply}
+                      onForward={handleForward}
+                      onReact={handleReact}
+                    />
+                    <div className={`rounded-lg px-3 py-2 ${
+                      msg.direction === "outbound"
+                        ? "bg-primary/20 text-foreground rounded-br-none"
+                        : "bg-card border border-border text-foreground rounded-bl-none"
+                    }`}>
+                      {quotedMsg && (
+                        <div
+                          onClick={() => scrollToMessage(quotedMsg.id)}
+                          className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[11px] font-semibold text-primary">
+                              {quotedMsg.direction === "inbound" ? selectedLead.name : "Você"}
+                            </div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {["image", "sticker"].includes(quotedMsg.type)
+                                ? "📷 Foto"
+                                : quotedMsg.type === "video"
+                                  ? "🎥 Vídeo"
+                                  : quotedMsg.type === "audio"
+                                    ? "🎤 Áudio"
+                                    : quotedMsg.type === "document"
+                                      ? "📄 Documento"
+                                      : quotedMsg.content || `[${quotedMsg.type}]`}
+                            </div>
+                          </div>
+                          {["image", "sticker", "video"].includes(quotedMsg.type) && quotedMsg.media_url?.startsWith("http") && (
+                            <img src={quotedMsg.media_url} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                          )}
+                        </div>
+                      )}
+                      <ChatMessageContent
+                        message={msg}
+                        onMediaClick={(url, type) => setMediaPreview({ url, type })}
+                      />
+                      <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        {msg.direction === "outbound" && getStatusIcon(msg.status)}
+                      </div>
+                    </div>
+                    {reactions.length > 0 && (
+                      <div className={`flex gap-0.5 mt-[-8px] ${msg.direction === "outbound" ? "justify-end mr-1" : "justify-start ml-1"}`}>
+                        {reactions.map((r, i) => (
+                          <span key={i} className="text-sm bg-card border border-border rounded-full px-1.5 py-0.5 shadow-sm">
+                            {r.emoji}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Reply preview */}
+          {replyTo && (
+            <div className="flex-shrink-0 bg-secondary/80 border-t border-border px-4 py-2 flex items-center gap-3">
+              <div className="w-1 h-8 rounded-full bg-primary flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-primary">
+                  {replyTo.direction === "inbound" ? selectedLead.name : "Você"}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">{replyTo.content || `[${replyTo.type}]`}</div>
+              </div>
+              <button onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground">
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           <ChatInput
             leadId={selectedLeadId}
@@ -327,6 +479,10 @@ export default function CrmConversas() {
             onLoadTemplates={loadTemplates}
             externalMessage=""
             onExternalMessageConsumed={() => {}}
+            onMessageSent={handleOptimisticMessage}
+            onMessageError={handleMessageError}
+            replyTo={replyTo}
+            onReplySent={() => setReplyTo(null)}
           />
         </div>
       ) : (
@@ -461,6 +617,27 @@ export default function CrmConversas() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Forward Dialog */}
+      {forwardMsg && (
+        <ForwardMessageDialog
+          open={!!forwardMsg}
+          onOpenChange={(open) => { if (!open) setForwardMsg(null); }}
+          message={forwardMsg}
+          currentLeadId={selectedLeadId || ""}
+        />
+      )}
+
+      {/* Media Preview Modal */}
+      <Dialog open={!!mediaPreview} onOpenChange={() => setMediaPreview(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-2 bg-background/95 border-border">
+          {mediaPreview?.type === "image" ? (
+            <img src={mediaPreview.url} alt="" className="w-full h-auto max-h-[85vh] object-contain rounded" />
+          ) : mediaPreview?.type === "video" ? (
+            <video src={mediaPreview.url} controls autoPlay className="w-full max-h-[85vh] rounded" />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
