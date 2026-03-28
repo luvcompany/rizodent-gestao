@@ -307,8 +307,10 @@ export default function CrmConversa() {
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msg.id) return m;
-        const existing = Array.isArray((m as any).reactions) ? (m as any).reactions : [];
-        return { ...m, reactions: [...existing, { emoji, from: "me" }] } as any;
+        const existing = Array.isArray((m as any).reactions) ? (m as any).reactions as any[] : [];
+        // Replace existing reaction from "me" instead of appending
+        const filtered = existing.filter((r: any) => r.from !== "me");
+        return { ...m, reactions: [...filtered, { emoji, from: "me" }] } as any;
       })
     );
 
@@ -416,7 +418,11 @@ export default function CrmConversa() {
               ? messages.find((m) => m.id === msg.reply_to_message_id)
               : null;
 
-            const reactions = Array.isArray((msg as any).reactions) ? (msg as any).reactions as { emoji: string; from: string }[] : [];
+            // Deduplicate reactions: keep only the last reaction per sender
+            const rawReactions = Array.isArray((msg as any).reactions) ? (msg as any).reactions as { emoji: string; from: string }[] : [];
+            const reactionsMap = new Map<string, string>();
+            rawReactions.forEach((r) => reactionsMap.set(r.from, r.emoji));
+            const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
 
             return (
               <div key={msg.id} className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}>
