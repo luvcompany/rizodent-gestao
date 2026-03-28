@@ -183,9 +183,32 @@ Deno.serve(async (req) => {
                   content = msg.interactive?.body?.text || JSON.stringify(msg.interactive || {});
                 }
                 break;
-              case "reaction":
-                content = msg.reaction?.emoji || "👍";
-                break;
+              case "reaction": {
+                // Handle reactions: update the target message's reactions column instead of inserting a new message
+                const reactionEmoji = msg.reaction?.emoji || "";
+                const reactionWamid = msg.reaction?.message_id;
+                if (reactionWamid) {
+                  const { data: targetMsg } = await supabase
+                    .from("messages")
+                    .select("id, reactions")
+                    .eq("whatsapp_message_id", reactionWamid)
+                    .maybeSingle();
+                  if (targetMsg) {
+                    const existing = Array.isArray(targetMsg.reactions) ? targetMsg.reactions : [];
+                    if (reactionEmoji) {
+                      // Add reaction
+                      const updated = [...existing, { emoji: reactionEmoji, from: from }];
+                      await supabase.from("messages").update({ reactions: updated }).eq("id", targetMsg.id);
+                    } else {
+                      // Empty emoji = remove reaction from this sender
+                      const updated = existing.filter((r: any) => r.from !== from);
+                      await supabase.from("messages").update({ reactions: updated }).eq("id", targetMsg.id);
+                    }
+                    console.log(`[WEBHOOK] Reaction ${reactionEmoji || "removed"} on message ${targetMsg.id}`);
+                  }
+                }
+                continue; // Skip normal message insertion for reactions
+              }
               case "location":
                 content = `📍 Localização: ${msg.location?.latitude}, ${msg.location?.longitude}`;
                 if (msg.location?.name) content = `📍 ${msg.location.name}`;
