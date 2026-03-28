@@ -436,13 +436,31 @@ export default function CrmConversa() {
                   }`}>
                     {/* Quoted message block */}
                     {quotedMsg && (
-                      <div className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors">
-                        <div className="text-[11px] font-semibold text-primary">
-                          {quotedMsg.direction === "inbound" ? lead.name : "Você"}
+                      <div className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[11px] font-semibold text-primary">
+                            {quotedMsg.direction === "inbound" ? lead.name : "Você"}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate max-w-[250px]">
+                            {["image", "sticker"].includes(quotedMsg.type)
+                              ? "📷 Foto"
+                              : quotedMsg.type === "video"
+                                ? "🎥 Vídeo"
+                                : quotedMsg.type === "audio"
+                                  ? "🎤 Áudio"
+                                  : quotedMsg.type === "document"
+                                    ? "📄 Documento"
+                                    : quotedMsg.content || `[${quotedMsg.type}]`}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground truncate max-w-[250px]">
-                          {quotedMsg.content || `[${quotedMsg.type}]`}
-                        </div>
+                        {/* Thumbnail for media */}
+                        {["image", "sticker", "video"].includes(quotedMsg.type) && quotedMsg.media_url?.startsWith("http") && (
+                          <img
+                            src={quotedMsg.media_url}
+                            alt=""
+                            className="w-10 h-10 rounded object-cover flex-shrink-0"
+                          />
+                        )}
                       </div>
                     )}
                     <ChatMessageContent message={msg} />
