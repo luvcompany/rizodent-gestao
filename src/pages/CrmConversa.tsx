@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessageContent from "@/components/chat/ChatMessageContent";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
@@ -72,12 +73,16 @@ export default function CrmConversa() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Reply state
   const [replyTo, setReplyTo] = useState<Message | null>(null);
 
   // Forward state
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+
+  // Media preview modal
+  const [mediaPreview, setMediaPreview] = useState<{ url: string; type: "image" | "video" } | null>(null);
 
   // Activity toasts
   const [activityToasts, setActivityToasts] = useState<ActivityToast[]>([]);
