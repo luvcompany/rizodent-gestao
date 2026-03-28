@@ -623,8 +623,9 @@ export default function CrmConversas() {
         <ForwardMessageDialog
           open={!!forwardMsg}
           onOpenChange={(open) => { if (!open) setForwardMsg(null); }}
-          message={forwardMsg}
-          currentLeadId={selectedLeadId || ""}
+          messageContent={forwardMsg.content}
+          messageType={forwardMsg.type}
+          fromLeadId={selectedLeadId || ""}
         />
       )}
 
