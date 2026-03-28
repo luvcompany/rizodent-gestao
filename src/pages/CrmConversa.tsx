@@ -684,6 +684,17 @@ export default function CrmConversa() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Media Preview Modal */}
+      <Dialog open={!!mediaPreview} onOpenChange={() => setMediaPreview(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-2 bg-background/95 border-border">
+          {mediaPreview?.type === "image" ? (
+            <img src={mediaPreview.url} alt="" className="w-full h-auto max-h-[85vh] object-contain rounded" />
+          ) : mediaPreview?.type === "video" ? (
+            <video src={mediaPreview.url} controls autoPlay className="w-full max-h-[85vh] rounded" />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
