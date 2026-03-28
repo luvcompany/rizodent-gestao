@@ -307,8 +307,10 @@ export default function CrmConversa() {
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msg.id) return m;
-        const existing = Array.isArray((m as any).reactions) ? (m as any).reactions : [];
-        return { ...m, reactions: [...existing, { emoji, from: "me" }] } as any;
+        const existing = Array.isArray((m as any).reactions) ? (m as any).reactions as any[] : [];
+        // Replace existing reaction from "me" instead of appending
+        const filtered = existing.filter((r: any) => r.from !== "me");
+        return { ...m, reactions: [...filtered, { emoji, from: "me" }] } as any;
       })
     );
 
