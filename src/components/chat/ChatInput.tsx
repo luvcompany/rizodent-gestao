@@ -77,9 +77,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     if ((!newMessage.trim() && !attachedFile) || !leadPhone) return;
 
     let type = "text";
-    let media_url: string | undefined;
     let message = newMessage.trim();
     let fileToUpload = attachedFile?.file;
+    const originalFileName = attachedFile?.file.name;
 
     // Clear input immediately for optimistic UX
     const currentReplyTo = replyTo;
@@ -90,27 +90,56 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       type = attachedFile.type;
       setAttachedFile(null);
 
-      // Compress images if needed
-      if (type === "image") {
-        setOptimizing(true);
-        try {
-          fileToUpload = await compressImage(fileToUpload);
-        } finally {
-          setOptimizing(false);
-        }
-      }
+      // Create optimistic message immediately with blob URL
+      const blobUrl = URL.createObjectURL(fileToUpload);
+      const tempId = crypto.randomUUID();
+      const optimisticMsg = {
+        id: tempId,
+        lead_id: leadId,
+        direction: "outbound",
+        type,
+        content: message || (type === "document" ? originalFileName : null) || null,
+        media_url: blobUrl,
+        status: "sending",
+        created_at: new Date().toISOString(),
+        whatsapp_message_id: null,
+        reply_to_message_id: currentReplyTo?.id || null,
+      };
+      onMessageSent?.(optimisticMsg);
 
-      setUploading(true);
-      const url = await uploadFile(fileToUpload, type);
-      setUploading(false);
-      if (!url) return;
-      media_url = url;
-      if (!message && type === "document") message = attachedFile.file.name;
+      // Upload and send in background (non-blocking)
+      (async () => {
+        try {
+          // Compress images if needed
+          if (type === "image") {
+            try { fileToUpload = await compressImage(fileToUpload!); } catch {}
+          }
+
+          const url = await uploadFile(fileToUpload!, type);
+          if (!url) { onMessageError?.(tempId); return; }
+
+          const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url: url };
+          if (currentReplyTo) {
+            body.reply_to_message_id = currentReplyTo.id;
+            if (currentReplyTo.whatsapp_message_id) body.reply_to_wamid = currentReplyTo.whatsapp_message_id;
+          }
+
+          const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
+          if (error || data?.error) {
+            onMessageError?.(tempId);
+            toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+          }
+        } catch (err: any) {
+          onMessageError?.(tempId);
+          toast.error(`Erro inesperado: ${err.message}`);
+        }
+      })();
+      return;
     }
 
     if (type === "text" && !message) return;
 
-    // Create optimistic message
+    // Text-only optimistic message
     const tempId = crypto.randomUUID();
     const optimisticMsg = {
       id: tempId,
@@ -118,7 +147,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       direction: "outbound",
       type,
       content: message || null,
-      media_url: media_url || null,
+      media_url: null,
       status: "sending",
       created_at: new Date().toISOString(),
       whatsapp_message_id: null,
@@ -127,12 +156,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     onMessageSent?.(optimisticMsg);
 
     // Send in background
-    const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url };
+    const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type };
     if (currentReplyTo) {
       body.reply_to_message_id = currentReplyTo.id;
-      if (currentReplyTo.whatsapp_message_id) {
-        body.reply_to_wamid = currentReplyTo.whatsapp_message_id;
-      }
+      if (currentReplyTo.whatsapp_message_id) body.reply_to_wamid = currentReplyTo.whatsapp_message_id;
     }
 
     try {

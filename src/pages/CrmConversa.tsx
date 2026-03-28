@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatMessageContent from "@/components/chat/ChatMessageContent";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
@@ -72,12 +73,16 @@ export default function CrmConversa() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Reply state
   const [replyTo, setReplyTo] = useState<Message | null>(null);
 
   // Forward state
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+
+  // Media preview modal
+  const [mediaPreview, setMediaPreview] = useState<{ url: string; type: "image" | "video" } | null>(null);
 
   // Activity toasts
   const [activityToasts, setActivityToasts] = useState<ActivityToast[]>([]);
@@ -336,6 +341,15 @@ export default function CrmConversa() {
     setForwardMsg(msg);
   };
 
+  const scrollToMessage = (msgId: string) => {
+    const el = messageRefs.current[msgId];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/50");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
+    }
+  };
+
   const isSystemMessage = (msg: Message) => msg.type === "system" || msg.status === "system";
 
   const currentStage = stages.find((s) => s.id === lead?.stage_id);
@@ -425,7 +439,7 @@ export default function CrmConversa() {
             const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
 
             return (
-              <div key={msg.id} className="w-full flex">
+              <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className="w-full flex transition-all duration-300 rounded-lg">
                 <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
                   {/* Message actions on hover */}
                   <MessageActions
@@ -442,7 +456,10 @@ export default function CrmConversa() {
                   }`}>
                     {/* Quoted message block */}
                     {quotedMsg && (
-                      <div className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2">
+                      <div
+                        onClick={() => scrollToMessage(quotedMsg.id)}
+                        className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2"
+                      >
                         <div className="flex-1 min-w-0">
                           <div className="text-[11px] font-semibold text-primary">
                             {quotedMsg.direction === "inbound" ? lead.name : "Você"}
@@ -469,7 +486,10 @@ export default function CrmConversa() {
                         )}
                       </div>
                     )}
-                    <ChatMessageContent message={msg} />
+                    <ChatMessageContent
+                      message={msg}
+                      onMediaClick={(url, type) => setMediaPreview({ url, type })}
+                    />
                     <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
                       <span className="text-[10px] text-muted-foreground">
                         {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
@@ -664,6 +684,17 @@ export default function CrmConversa() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Media Preview Modal */}
+      <Dialog open={!!mediaPreview} onOpenChange={() => setMediaPreview(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-2 bg-background/95 border-border">
+          {mediaPreview?.type === "image" ? (
+            <img src={mediaPreview.url} alt="" className="w-full h-auto max-h-[85vh] object-contain rounded" />
+          ) : mediaPreview?.type === "video" ? (
+            <video src={mediaPreview.url} controls autoPlay className="w-full max-h-[85vh] rounded" />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
