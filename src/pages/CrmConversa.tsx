@@ -302,6 +302,16 @@ export default function CrmConversa() {
 
   const handleReact = async (msg: Message, emoji: string) => {
     if (!lead?.phone) { toast.error("Lead sem telefone"); return; }
+
+    // Optimistic: update local reactions immediately
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msg.id) return m;
+        const existing = Array.isArray((m as any).reactions) ? (m as any).reactions : [];
+        return { ...m, reactions: [...existing, { emoji, from: "me" }] } as any;
+      })
+    );
+
     try {
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
         body: {
@@ -314,8 +324,6 @@ export default function CrmConversa() {
       });
       if (error || data?.error) {
         toast.error("Erro ao enviar reação");
-      } else {
-        toast.success(`Reação ${emoji} enviada`);
       }
     } catch {
       toast.error("Erro ao enviar reação");
@@ -363,12 +371,8 @@ export default function CrmConversa() {
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-foreground truncate">{lead.name}</div>
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
+            <div className="text-xs text-muted-foreground">
               {lead.phone && <span>{lead.phone}</span>}
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-green-500" />
-                Online
-              </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -407,6 +411,13 @@ export default function CrmConversa() {
               );
             }
 
+            {/* Find quoted message if this is a reply */}
+            const quotedMsg = msg.reply_to_message_id
+              ? messages.find((m) => m.id === msg.reply_to_message_id)
+              : null;
+
+            const reactions = Array.isArray((msg as any).reactions) ? (msg as any).reactions as { emoji: string; from: string }[] : [];
+
             return (
               <div key={msg.id} className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}>
                 <div className="relative group">
@@ -423,6 +434,17 @@ export default function CrmConversa() {
                       ? "bg-primary/20 text-foreground rounded-br-none"
                       : "bg-card border border-border text-foreground rounded-bl-none"
                   }`}>
+                    {/* Quoted message block */}
+                    {quotedMsg && (
+                      <div className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors">
+                        <div className="text-[11px] font-semibold text-primary">
+                          {quotedMsg.direction === "inbound" ? lead.name : "Você"}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate max-w-[250px]">
+                          {quotedMsg.content || `[${quotedMsg.type}]`}
+                        </div>
+                      </div>
+                    )}
                     <ChatMessageContent message={msg} />
                     <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
                       <span className="text-[10px] text-muted-foreground">
@@ -431,6 +453,16 @@ export default function CrmConversa() {
                       {msg.direction === "outbound" && getStatusIcon(msg.status)}
                     </div>
                   </div>
+                  {/* Reactions */}
+                  {reactions.length > 0 && (
+                    <div className={`flex gap-0.5 mt-[-8px] ${msg.direction === "outbound" ? "justify-end mr-1" : "justify-start ml-1"}`}>
+                      {reactions.map((r, i) => (
+                        <span key={i} className="text-sm bg-card border border-border rounded-full px-1.5 py-0.5 shadow-sm">
+                          {r.emoji}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );

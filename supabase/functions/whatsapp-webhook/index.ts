@@ -183,9 +183,32 @@ Deno.serve(async (req) => {
                   content = msg.interactive?.body?.text || JSON.stringify(msg.interactive || {});
                 }
                 break;
-              case "reaction":
-                content = msg.reaction?.emoji || "👍";
-                break;
+              case "reaction": {
+                // Handle reactions: update the target message's reactions column instead of inserting a new message
+                const reactionEmoji = msg.reaction?.emoji || "";
+                const reactionWamid = msg.reaction?.message_id;
+                if (reactionWamid) {
+                  const { data: targetMsg } = await supabase
+                    .from("messages")
+                    .select("id, reactions")
+                    .eq("whatsapp_message_id", reactionWamid)
+                    .maybeSingle();
+                  if (targetMsg) {
+                    const existing = Array.isArray(targetMsg.reactions) ? targetMsg.reactions : [];
+                    if (reactionEmoji) {
+                      // Add reaction
+                      const updated = [...existing, { emoji: reactionEmoji, from: from }];
+                      await supabase.from("messages").update({ reactions: updated }).eq("id", targetMsg.id);
+                    } else {
+                      // Empty emoji = remove reaction from this sender
+                      const updated = existing.filter((r: any) => r.from !== from);
+                      await supabase.from("messages").update({ reactions: updated }).eq("id", targetMsg.id);
+                    }
+                    console.log(`[WEBHOOK] Reaction ${reactionEmoji || "removed"} on message ${targetMsg.id}`);
+                  }
+                }
+                continue; // Skip normal message insertion for reactions
+              }
               case "location":
                 content = `📍 Localização: ${msg.location?.latitude}, ${msg.location?.longitude}`;
                 if (msg.location?.name) content = `📍 ${msg.location.name}`;
@@ -267,6 +290,17 @@ Deno.serve(async (req) => {
             }
 
             if (lead) {
+              // Resolve reply_to_message_id from WhatsApp context
+              let replyToMessageId = null;
+              if (msg.context?.id) {
+                const { data: replyTarget } = await supabase
+                  .from("messages")
+                  .select("id")
+                  .eq("whatsapp_message_id", msg.context.id)
+                  .maybeSingle();
+                replyToMessageId = replyTarget?.id || null;
+              }
+
               const insertPayload = {
                 lead_id: lead.id,
                 direction: "inbound",
@@ -275,6 +309,7 @@ Deno.serve(async (req) => {
                 media_url: mediaUrl,
                 status: "received",
                 whatsapp_message_id: msg.id || null,
+                reply_to_message_id: replyToMessageId,
               };
               const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
 

@@ -46,7 +46,6 @@ Deno.serve(async (req) => {
 
     // Handle reaction type
     if (type === "reaction") {
-      // Resolve the wamid of the message being reacted to
       let reactionWamid = null;
       if (reaction_to_message_id) {
         const { data: reactMsg } = await supabase
@@ -92,6 +91,21 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Save reaction to the target message's reactions column
+      const { data: targetMsg } = await supabase
+        .from("messages")
+        .select("reactions")
+        .eq("id", reaction_to_message_id)
+        .single();
+
+      const existingReactions = Array.isArray(targetMsg?.reactions) ? targetMsg.reactions : [];
+      const updatedReactions = [...existingReactions, { emoji: reaction_emoji || "👍", from: "me" }];
+
+      await supabase
+        .from("messages")
+        .update({ reactions: updatedReactions })
+        .eq("id", reaction_to_message_id);
+
       return new Response(JSON.stringify({ success: true, whatsapp: waData }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -134,19 +148,11 @@ Deno.serve(async (req) => {
       const ext = filename.split(".").pop()?.toLowerCase() || "";
 
       const contentTypeMap: Record<string, string> = {
-        ogg: "audio/ogg",
-        opus: "audio/ogg",
-        mp3: "audio/mpeg",
-        m4a: "audio/mp4",
-        wav: "audio/wav",
-        webm: type === "audio" ? "audio/webm" : "video/webm",
+        ogg: "audio/ogg", opus: "audio/ogg", mp3: "audio/mpeg", m4a: "audio/mp4",
+        wav: "audio/wav", webm: type === "audio" ? "audio/webm" : "video/webm",
         mp4: type === "video" ? "video/mp4" : "audio/mp4",
-        jpg: "image/jpeg",
-        jpeg: "image/jpeg",
-        png: "image/png",
-        webp: "image/webp",
-        pdf: "application/pdf",
-        doc: "application/msword",
+        jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+        pdf: "application/pdf", doc: "application/msword",
         docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         xls: "application/vnd.ms-excel",
         xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
