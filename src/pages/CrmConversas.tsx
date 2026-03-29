@@ -24,7 +24,7 @@ import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import TaskPanel from "@/components/chat/TaskPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen
 } from "lucide-react";
 import { formatDistanceToNow, isToday, isYesterday, subDays, isAfter } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -78,6 +78,7 @@ export default function CrmConversas() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
+  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [filters, setFilters] = useState<ConversationFilterValues>(emptyFilters);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
 
@@ -313,7 +314,8 @@ export default function CrmConversas() {
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* LEFT PANEL - Leads list */}
-        <ResizablePanel defaultSize={22} minSize={18} maxSize={35}>
+        {leftPanelVisible && (
+        <><ResizablePanel defaultSize={22} minSize={20} maxSize={35}>
           <div className="flex flex-col h-full bg-card">
             <div className="flex-shrink-0 px-4 py-3 border-b border-border">
               <div className="flex items-center justify-between mb-2">
@@ -360,9 +362,9 @@ export default function CrmConversas() {
                         onClick={() => setSelectedLeadId(lead.id)}
                         className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
                           isActive
-                            ? "bg-primary/10 border-l-2 border-l-primary"
+                            ? "bg-primary/15 border-l-2 border-l-primary"
                             : isInbound
-                              ? "bg-blue-500/8 hover:bg-blue-500/12 border-l-2 border-l-blue-400"
+                              ? "bg-primary/5 hover:bg-primary/10"
                               : "hover:bg-secondary/50"
                         }`}
                       >
@@ -383,9 +385,6 @@ export default function CrmConversas() {
                             {lead.source && (
                               <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{lead.source}</Badge>
                             )}
-                            {isInbound && (
-                              <Badge className="text-[9px] px-1 py-0 h-4 bg-blue-500/20 text-blue-600 border-0">Aguardando</Badge>
-                            )}
                           </div>
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.last_message || "Sem mensagens"}</p>
                         </div>
@@ -397,8 +396,8 @@ export default function CrmConversas() {
             </div>
           </div>
         </ResizablePanel>
-
-        <ResizableHandle />
+        <ResizableHandle /></>
+        )}
 
         {/* CENTER PANEL - Chat */}
         <ResizablePanel defaultSize={rightPanelVisible ? 50 : 78} minSize={30}>
@@ -406,6 +405,9 @@ export default function CrmConversas() {
             <div className="flex flex-col h-full">
               {/* Chat header */}
               <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
+                  {leftPanelVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+                </Button>
                 <Avatar className="h-9 w-9">
                   <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
                     {selectedLead.name.charAt(0).toUpperCase()}
@@ -497,7 +499,7 @@ export default function CrmConversas() {
         {rightPanelVisible && selectedLeadId && selectedLead && (
           <>
             <ResizableHandle />
-            <ResizablePanel defaultSize={28} minSize={18} maxSize={32}>
+            <ResizablePanel defaultSize={28} minSize={20} maxSize={35}>
               <div className="flex flex-col h-full bg-card overflow-y-auto">
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center gap-3 mb-3">
