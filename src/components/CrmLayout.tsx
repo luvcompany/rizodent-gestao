@@ -2,13 +2,14 @@ import { useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
-  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight,
+  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, Cpu,
 } from "lucide-react";
 
 const crmNavItems = [
   { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
   { to: "/crm/conversas", icon: MessageSquare, label: "Conversas" },
   { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
+  { to: "/crm/bots", icon: Cpu, label: "Bots" },
   { to: "/crm/automacoes", icon: Bot, label: "Automações" },
   { to: "/crm/modelos", icon: FileText, label: "Modelos" },
   { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
