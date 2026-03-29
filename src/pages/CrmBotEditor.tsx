@@ -659,7 +659,61 @@ const CrmBotEditor = () => {
   );
 };
 
-// ── Connector line ──
+// ── Orthogonal Connector Line (Kommo style) ──
+
+const OrthogonalConnector = ({ targetOffset }: { targetOffset?: { x: number; y: number } }) => {
+  const dy = targetOffset?.y || 0;
+  const dx = targetOffset?.x || 0;
+  const baseLen = 40;
+  const totalW = baseLen + dx + 12;
+  const absH = Math.abs(dy) + 12;
+
+  if (Math.abs(dy) < 3 && Math.abs(dx) < 3) {
+    // Straight line
+    return (
+      <div className="flex items-center shrink-0 mx-0">
+        <div className="w-10 h-px bg-border" />
+        <div className="w-2 h-2 rounded-full border-2 border-border bg-card -ml-1" />
+      </div>
+    );
+  }
+
+  // Orthogonal path: go right half, then down/up, then right to target
+  const midX = baseLen / 2;
+  const endX = baseLen + dx;
+  const endY = dy;
+
+  return (
+    <div className="flex items-center shrink-0 mx-0" style={{ position: "relative" }}>
+      <svg
+        width={Math.max(totalW, 44)}
+        height={absH + 6}
+        className="shrink-0 overflow-visible"
+        style={{
+          minWidth: 44,
+          minHeight: 10,
+          position: "relative",
+          top: dy > 0 ? 0 : dy,
+        }}
+      >
+        <path
+          d={`M 0,${dy < 0 ? -dy + 3 : 3} L ${midX},${dy < 0 ? -dy + 3 : 3} L ${midX},${dy < 0 ? 3 : dy + 3} L ${endX},${dy < 0 ? 3 : dy + 3}`}
+          fill="none"
+          stroke="hsl(var(--border))"
+          strokeWidth={1.5}
+        />
+        <circle
+          cx={endX}
+          cy={dy < 0 ? 3 : dy + 3}
+          r={3}
+          fill="hsl(var(--card))"
+          stroke="hsl(var(--border))"
+          strokeWidth={2}
+        />
+      </svg>
+    </div>
+  );
+};
 
 const ConnectorLine = () => (
   <div className="flex items-center shrink-0 mx-0">
