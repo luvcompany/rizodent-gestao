@@ -649,11 +649,15 @@ const ConnectorLine = () => (
   </div>
 );
 
-// ── Add Step Button ──
+// ── Add Step Button (draggable) ──
 
 const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId: string, type: string) => void }) => {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
 
   useEffect(() => {
     if (!open) return;
@@ -664,19 +668,68 @@ const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  const handleDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+    dragStartRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - dragStartRef.current.x;
+      const dy = ev.clientY - dragStartRef.current.y;
+      setOffset({ x: dragStartRef.current.ox + dx, y: dragStartRef.current.oy + dy });
+    };
+    const onUp = () => {
+      setDragging(false);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   return (
     <div className="relative flex items-center" ref={menuRef} style={{ touchAction: "none" }}>
-      <ConnectorLine />
+      {/* Connector line stretches to the dragged position */}
+      <div className="flex items-center shrink-0 mx-0">
+        <svg
+          width={Math.abs(offset.x) + 42}
+          height={Math.abs(offset.y) + 10}
+          className="shrink-0 overflow-visible"
+          style={{ minWidth: 42, minHeight: 10 }}
+        >
+          <line
+            x1={0} y1={5}
+            x2={40 + offset.x} y2={5 + offset.y}
+            stroke="hsl(var(--border))" strokeWidth={1}
+          />
+          <circle cx={40 + offset.x} cy={5 + offset.y} r={4} fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth={2} />
+        </svg>
+      </div>
       <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-dashed border-border bg-card text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors whitespace-nowrap shadow-sm"
-        style={{ touchAction: "none" }}
+        ref={btnRef}
+        onMouseDown={handleDragStart}
+        onClick={(e) => { if (!dragging) setOpen(!open); }}
+        className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-dashed border-border bg-card text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors whitespace-nowrap shadow-sm select-none"
+        style={{
+          touchAction: "none",
+          cursor: dragging ? "grabbing" : "grab",
+          transform: `translate(${offset.x}px, ${offset.y}px)`,
+          position: "relative",
+          zIndex: dragging ? 50 : "auto",
+        }}
       >
         <Plus size={12} /> Adicionar próximo passo
       </button>
 
       {open && (
-        <div className="absolute left-12 bottom-0 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64" style={{ touchAction: "auto" }}>
+        <div
+          className="absolute left-12 top-full mt-1 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64"
+          style={{
+            touchAction: "auto",
+            transform: `translate(${offset.x}px, ${offset.y}px)`,
+          }}
+        >
           <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens</div>
           {STEP_TYPES.filter(s => s.category === "main").map(st => (
             <button key={st.type} className="w-full text-left px-3 py-2 text-sm hover:bg-muted/80 transition-colors flex items-center gap-2"
