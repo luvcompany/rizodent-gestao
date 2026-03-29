@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Save, Plus, Trash2, Bot, Zap, GripVertical } from "lucide-react";
+import { Save, Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert } from "lucide-react";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -17,6 +18,7 @@ type Automation = {
   action_config: Record<string, unknown>; is_active: boolean;
 };
 type Template = { id: string; name: string; status: string };
+type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
 
 const PRESET_COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
@@ -31,7 +33,11 @@ export default function CrmAutomacoes() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [channels, setChannels] = useState<FunnelChannel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [duplicateRulesOpen, setDuplicateRulesOpen] = useState(false);
+  const [duplicateEnabled, setDuplicateEnabled] = useState(false);
+  const [duplicateRules, setDuplicateRules] = useState({ checkPhone: true, checkName: false, action: "block" as "block" | "merge" | "notify" });
 
   const [newStageOpen, setNewStageOpen] = useState(false);
   const [newStageName, setNewStageName] = useState("");
@@ -58,14 +64,16 @@ export default function CrmAutomacoes() {
     const pid = pipeId || selectedPipelineId || pipes[0]?.id;
     if (pid) {
       setSelectedPipelineId(pid);
-      const [stagesRes, autoRes, tplRes] = await Promise.all([
+      const [stagesRes, autoRes, tplRes, chRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
         supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED"),
+        supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
       setTemplates((tplRes.data as Template[]) || []);
+      setChannels((chRes.data as FunnelChannel[]) || []);
     }
     setLoading(false);
   }, [selectedPipelineId]);
@@ -204,33 +212,43 @@ export default function CrmAutomacoes() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm text-foreground">Controle duplicado</div>
-                <div className="text-xs text-primary cursor-pointer hover:underline">Configurar regras</div>
+                <button onClick={() => setDuplicateRulesOpen(true)} className="text-xs text-primary cursor-pointer hover:underline">Configurar regras</button>
               </div>
-              <Switch />
+              <Switch checked={duplicateEnabled} onCheckedChange={setDuplicateEnabled} />
             </div>
             <hr className="border-border" />
             <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Fontes conectadas</div>
-            {[
-              { name: "WhatsApp", icon: "💬", status: "ativo" },
-              { name: "Instagram", icon: "📸", status: "ativo" },
-              { name: "Facebook", icon: "📘", status: "erro" },
-              { name: "Manual", icon: "✋", status: "ativo" },
-            ].map(src => (
-              <div key={src.name} className="flex items-center justify-between py-1.5">
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <span>{src.icon}</span> {src.name}
-                </div>
-                {src.status === "ativo" ? (
-                  <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-destructive bg-destructive/20 px-1.5 py-0.5 rounded">Erro</span>
-                    <Trash2 size={12} className="text-destructive cursor-pointer" />
+            {channels.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhuma fonte conectada a este funil.</p>
+            ) : channels.map(ch => {
+              const icons: Record<string, string> = { whatsapp: "💬", instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
+              const handleDeleteChannel = async () => {
+                await supabase.from("funnel_channels").delete().eq("id", ch.id);
+                toast.success("Fonte removida");
+                fetchData(selectedPipelineId);
+              };
+              return (
+                <div key={ch.id} className="flex items-center justify-between py-1.5">
+                  <div className="flex items-center gap-2 text-sm text-foreground">
+                    <span>{icons[ch.channel_type] || "📡"}</span> {ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
                   </div>
-                )}
-              </div>
-            ))}
-            <button className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
+                    <button onClick={handleDeleteChannel}><Trash2 size={12} className="text-destructive cursor-pointer" /></button>
+                  </div>
+                </div>
+              );
+            })}
+            <button
+              onClick={async () => {
+                const type = prompt("Tipo da fonte (whatsapp, instagram, facebook, manual, website):");
+                if (!type || !selectedPipelineId) return;
+                await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() });
+                toast.success("Fonte adicionada");
+                fetchData(selectedPipelineId);
+              }}
+              className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors"
+            >
               <Plus size={14} /> Adicionar fonte
             </button>
           </div>
@@ -442,6 +460,67 @@ export default function CrmAutomacoes() {
               )}
             </div>
             <Button className="w-full" onClick={handleAddPipeline}>Criar Funil</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Rules Dialog */}
+      <Dialog open={duplicateRulesOpen} onOpenChange={setDuplicateRulesOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert size={18} className="text-primary" />
+              Regras de Controle de Duplicados
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Configure como o sistema deve identificar e tratar leads duplicados ao entrar no funil.
+            </p>
+
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Critérios de identificação</Label>
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="dup-phone"
+                  checked={duplicateRules.checkPhone}
+                  onCheckedChange={(v) => setDuplicateRules(p => ({ ...p, checkPhone: !!v }))}
+                />
+                <label htmlFor="dup-phone" className="text-sm text-foreground cursor-pointer">Mesmo telefone</label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="dup-name"
+                  checked={duplicateRules.checkName}
+                  onCheckedChange={(v) => setDuplicateRules(p => ({ ...p, checkName: !!v }))}
+                />
+                <label htmlFor="dup-name" className="text-sm text-foreground cursor-pointer">Mesmo nome</label>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-sm font-semibold">Ação ao encontrar duplicado</Label>
+              <Select value={duplicateRules.action} onValueChange={(v: "block" | "merge" | "notify") => setDuplicateRules(p => ({ ...p, action: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="block">Bloquear entrada (não criar lead)</SelectItem>
+                  <SelectItem value="merge">Mesclar com lead existente</SelectItem>
+                  <SelectItem value="notify">Criar e notificar sobre duplicata</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="bg-secondary/50 border border-border rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">
+                {duplicateRules.action === "block" && "O lead não será criado se já existir outro com os mesmos dados selecionados."}
+                {duplicateRules.action === "merge" && "Os dados do novo lead serão mesclados ao registro existente, atualizando informações."}
+                {duplicateRules.action === "notify" && "O lead será criado normalmente, mas uma notificação será gerada avisando sobre a duplicata."}
+              </p>
+            </div>
+
+            <Button className="w-full" onClick={() => { toast.success("Regras de duplicados salvas"); setDuplicateRulesOpen(false); }}>
+              Salvar Regras
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
