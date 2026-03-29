@@ -10,10 +10,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ChatInput from "@/components/chat/ChatInput";
-import ChatMessageContent from "@/components/chat/ChatMessageContent";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
-import MessageActions from "@/components/chat/MessageActions";
+import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
+import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
+import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
@@ -22,7 +23,7 @@ import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import {
   ArrowLeft, FileText, Phone,
-  MoreVertical, Check, CheckCheck, Clock, Plus, Tag, ArrowRight, X
+  MoreVertical, Plus, Tag, X
 } from "lucide-react";
 
 type Message = {
