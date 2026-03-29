@@ -292,14 +292,6 @@ export default function CrmConversa() {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "read": return <CheckCheck size={14} className="text-blue-400" />;
-      case "delivered": return <CheckCheck size={14} className="text-muted-foreground" />;
-      case "sent": return <Check size={14} className="text-muted-foreground" />;
-      default: return <Clock size={14} className="text-muted-foreground" />;
-    }
-  };
 
   // Message interactions
   const handleReply = (msg: Message) => {
@@ -413,9 +405,7 @@ export default function CrmConversa() {
             </div>
           )}
           {messages.map((msg) => {
-            // System messages render as activity separators
             if (isSystemMessage(msg)) {
-              // Extract destination stage color from content "→ StageName"
               const destName = msg.content?.split("→").pop()?.trim();
               const destStage = destName ? stages.find(s => s.name === destName) : null;
               return (
@@ -428,88 +418,19 @@ export default function CrmConversa() {
               );
             }
 
-            {/* Find quoted message if this is a reply */}
-            const quotedMsg = msg.reply_to_message_id
-              ? messages.find((m) => m.id === msg.reply_to_message_id)
-              : null;
-
-            // Deduplicate reactions: keep only the last reaction per sender
-            const rawReactions = Array.isArray((msg as any).reactions) ? (msg as any).reactions as { emoji: string; from: string }[] : [];
-            const reactionsMap = new Map<string, string>();
-            rawReactions.forEach((r) => reactionsMap.set(r.from, r.emoji));
-            const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
-
             return (
-              <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className="w-full flex transition-all duration-300 rounded-lg">
-                <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
-                  {/* Message actions on hover */}
-                  <MessageActions
-                    message={msg}
-                    direction={msg.direction}
-                    onReply={handleReply}
-                    onForward={handleForward}
-                    onReact={handleReact}
-                  />
-                  <div className={`rounded-lg px-3 py-2 ${
-                    msg.direction === "outbound"
-                      ? "bg-primary/20 text-foreground rounded-br-none"
-                      : "bg-card border border-border text-foreground rounded-bl-none"
-                  }`}>
-                    {/* Quoted message block */}
-                    {quotedMsg && (
-                      <div
-                        onClick={() => scrollToMessage(quotedMsg.id)}
-                        className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[11px] font-semibold text-primary">
-                            {quotedMsg.direction === "inbound" ? lead.name : "Você"}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {["image", "sticker"].includes(quotedMsg.type)
-                              ? "📷 Foto"
-                              : quotedMsg.type === "video"
-                                ? "🎥 Vídeo"
-                                : quotedMsg.type === "audio"
-                                  ? "🎤 Áudio"
-                                  : quotedMsg.type === "document"
-                                    ? "📄 Documento"
-                                    : quotedMsg.content || `[${quotedMsg.type}]`}
-                          </div>
-                        </div>
-                        {/* Thumbnail for media */}
-                        {["image", "sticker", "video"].includes(quotedMsg.type) && quotedMsg.media_url?.startsWith("http") && (
-                          <img
-                            src={quotedMsg.media_url}
-                            alt=""
-                            className="w-10 h-10 rounded object-cover flex-shrink-0"
-                          />
-                        )}
-                      </div>
-                    )}
-                    <ChatMessageContent
-                      message={msg}
-                      onMediaClick={(url, type) => setMediaPreview({ url, type })}
-                    />
-                    <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
-                      <span className="text-[10px] text-muted-foreground">
-                        {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      {msg.direction === "outbound" && getStatusIcon(msg.status)}
-                    </div>
-                  </div>
-                  {/* Reactions */}
-                  {reactions.length > 0 && (
-                    <div className={`flex gap-0.5 mt-[-8px] ${msg.direction === "outbound" ? "justify-end mr-1" : "justify-start ml-1"}`}>
-                      {reactions.map((r, i) => (
-                        <span key={i} className="text-sm bg-card border border-border rounded-full px-1.5 py-0.5 shadow-sm">
-                          {r.emoji}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <ChatMessageBubble
+                key={msg.id}
+                ref={(el) => { messageRefs.current[msg.id] = el; }}
+                msg={msg}
+                leadName={lead.name}
+                allMessages={messages}
+                onReply={handleReply}
+                onForward={handleForward}
+                onReact={handleReact}
+                onMediaClick={(url, type) => setMediaPreview({ url, type })}
+                onScrollToMessage={scrollToMessage}
+              />
             );
           })}
           <div ref={messagesEndRef} />
