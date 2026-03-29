@@ -108,13 +108,25 @@ export const SendMessageConfig = ({ config, onChange, templates, outputs, onUpda
 
   return (
     <div className="space-y-2">
+      {/* Top bar: WhatsApp channel + Escolher modelo side by side */}
       <div className="flex items-center gap-2">
         <Select value={config.channel || "whatsapp"} onValueChange={v => onChange({ ...config, channel: v })}>
-          <SelectTrigger className="h-7 text-xs w-32"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-8 text-xs flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm">💬</span>
+              <SelectValue />
+            </div>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="whatsapp">WhatsApp</SelectItem>
           </SelectContent>
         </Select>
+        <button
+          onClick={() => setShowTemplateModal(true)}
+          className="h-8 px-3 rounded-md border border-border bg-muted/50 text-xs text-foreground hover:bg-muted hover:border-primary transition-colors flex items-center gap-1.5 whitespace-nowrap"
+        >
+          <FileText size={12} className="text-primary" /> Modelo
+        </button>
       </div>
 
       {config.useTemplate && config.template_name ? (
@@ -153,12 +165,6 @@ export const SendMessageConfig = ({ config, onChange, templates, outputs, onUpda
       <div className="flex items-center gap-2">
         <button className="text-muted-foreground hover:text-foreground"><Mic size={14} /></button>
         <button className="text-muted-foreground hover:text-foreground"><Paperclip size={14} /></button>
-        <button
-          onClick={() => setShowTemplateModal(true)}
-          className="text-[10px] text-primary hover:underline flex items-center gap-1"
-        >
-          <FileText size={10} /> Escolher modelo
-        </button>
       </div>
 
       {buttons.map((btn: any, i: number) => (
