@@ -32,6 +32,7 @@ interface Trigger {
   id: string;
   type: string;
   label: string;
+  config?: { pipeline_id?: string; stage_id?: string };
 }
 
 const STEP_TYPES = [
@@ -50,11 +51,11 @@ const STEP_TYPES = [
 ];
 
 const TRIGGER_OPTIONS = [
-  { type: "stage_enter", label: "Quando lead entra na etapa" },
-  { type: "lead_created", label: "Quando lead é criado" },
-  { type: "tag_added", label: "Quando tag é adicionada" },
-  { type: "message_received", label: "Quando mensagem é recebida" },
-  { type: "no_response", label: "Quando lead não responde (timeout)" },
+  { type: "stage_enter", label: "Quando lead é movido para esta etapa", needsStage: true },
+  { type: "lead_created", label: "Quando lead é criado nesta etapa", needsStage: true },
+  { type: "tag_added", label: "Quando tag é adicionada", needsStage: false },
+  { type: "message_received", label: "Quando mensagem é recebida", needsStage: false },
+  { type: "no_response", label: "Quando lead não responde (timeout)", needsStage: false },
 ];
 
 const uid = () => `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -372,7 +373,6 @@ const CrmBotEditor = () => {
   // ── Pan & Zoom handlers ──
 
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only pan when clicking on the canvas background, not on cards
     if (e.target !== canvasRef.current) return;
     e.preventDefault();
     setIsPanning(true);
@@ -396,14 +396,44 @@ const CrmBotEditor = () => {
     setZoom(prev => Math.min(2, Math.max(0.3, prev + delta)));
   }, []);
 
+  // Prevent browser zoom on pinch gestures
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const preventGesture = (e: Event) => e.preventDefault();
+    const preventWheelPassive = (e: WheelEvent) => {
+      if (e.ctrlKey) e.preventDefault();
+    };
+    el.addEventListener("gesturestart", preventGesture, { passive: false });
+    el.addEventListener("gesturechange", preventGesture, { passive: false });
+    el.addEventListener("gestureend", preventGesture, { passive: false });
+    el.addEventListener("wheel", preventWheelPassive, { passive: false });
+    return () => {
+      el.removeEventListener("gesturestart", preventGesture);
+      el.removeEventListener("gesturechange", preventGesture);
+      el.removeEventListener("gestureend", preventGesture);
+      el.removeEventListener("wheel", preventWheelPassive);
+    };
+  }, []);
+
   const zoomIn = () => setZoom(prev => Math.min(2, prev + 0.1));
   const zoomOut = () => setZoom(prev => Math.max(0.3, prev - 0.1));
   const zoomFit = () => { setZoom(1); setPan({ x: 40, y: 40 }); };
 
+  // ── Trigger helpers ──
+
+  const updateTriggerConfig = (triggerId: string, config: Partial<Trigger["config"]>) => {
+    setTriggers(prev => prev.map(t =>
+      t.id === triggerId ? { ...t, config: { ...t.config, ...config } } : t
+    ));
+  };
+
+  const getStagesForPipeline = (pipelineId: string) => stages.filter(s => s.pipeline_id === pipelineId);
+
   if (!bot) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] -m-6 bg-muted/30">
+    <div className="flex flex-col h-[calc(100vh-8rem)] -m-6 bg-muted/30" style={{ touchAction: "none" }}>
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-card shrink-0 z-10">
         <Button variant="ghost" size="sm" onClick={() => navigate("/crm/bots")}>
@@ -438,17 +468,33 @@ const CrmBotEditor = () => {
       </div>
 
       {/* Canvas area */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-hidden" style={{ touchAction: "none" }}>
         {/* Canvas background (pannable) */}
         <div
           ref={canvasRef}
           className="absolute inset-0"
-          style={{ cursor: isPanning ? "grabbing" : "grab" }}
+          style={{ cursor: isPanning ? "grabbing" : "grab", touchAction: "none" }}
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseUp={handleCanvasMouseUp}
           onMouseLeave={handleCanvasMouseUp}
           onWheel={handleWheel}
+          onTouchStart={(e) => {
+            if (e.target !== canvasRef.current) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            setIsPanning(true);
+            panStartRef.current = { x: touch.clientX, y: touch.clientY, panX: pan.x, panY: pan.y };
+          }}
+          onTouchMove={(e) => {
+            if (!isPanning) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const dx = touch.clientX - panStartRef.current.x;
+            const dy = touch.clientY - panStartRef.current.y;
+            setPan({ x: panStartRef.current.panX + dx, y: panStartRef.current.panY + dy });
+          }}
+          onTouchEnd={() => setIsPanning(false)}
         >
           {/* Transformed content */}
           <div
@@ -457,11 +503,12 @@ const CrmBotEditor = () => {
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: "0 0",
               pointerEvents: "auto",
+              touchAction: "none",
             }}
           >
             <div className="flex items-start gap-6 min-w-max p-2">
               {/* Triggers panel */}
-              <div className="w-72 shrink-0" onMouseDown={e => e.stopPropagation()}>
+              <div className="w-72 shrink-0" onMouseDown={e => e.stopPropagation()} style={{ touchAction: "auto" }}>
                 <div className="bg-card rounded-xl border border-border shadow-sm p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-semibold text-foreground">Gatilhos</h3>
@@ -469,14 +516,51 @@ const CrmBotEditor = () => {
                   <p className="text-xs text-muted-foreground mb-3">
                     Defina quando este bot deve ser iniciado automaticamente.
                   </p>
-                  {triggers.map(t => (
-                    <div key={t.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2 mb-2 text-xs">
-                      <span>{t.label}</span>
-                      <button onClick={() => setTriggers(prev => prev.filter(tr => tr.id !== t.id))} className="text-muted-foreground hover:text-destructive">
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
+                  {triggers.map(t => {
+                    const opt = TRIGGER_OPTIONS.find(o => o.type === t.type);
+                    const needsStage = opt?.needsStage ?? false;
+                    return (
+                      <div key={t.id} className="bg-muted/50 rounded-lg px-3 py-2 mb-2 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span>{t.label}</span>
+                          <button onClick={() => setTriggers(prev => prev.filter(tr => tr.id !== t.id))} className="text-muted-foreground hover:text-destructive">
+                            <X size={12} />
+                          </button>
+                        </div>
+                        {needsStage && (
+                          <div className="space-y-1.5">
+                            <Select
+                              value={t.config?.pipeline_id || ""}
+                              onValueChange={v => updateTriggerConfig(t.id, { pipeline_id: v, stage_id: "" })}
+                            >
+                              <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Selecione o funil" /></SelectTrigger>
+                              <SelectContent>
+                                {pipelines.map(p => (
+                                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {t.config?.pipeline_id && (
+                              <Select
+                                value={t.config?.stage_id || ""}
+                                onValueChange={v => updateTriggerConfig(t.id, { stage_id: v })}
+                              >
+                                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Selecione a etapa" /></SelectTrigger>
+                                <SelectContent>
+                                  {getStagesForPipeline(t.config.pipeline_id).map(s => (
+                                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                            {!t.config?.stage_id && (
+                              <p className="text-[10px] text-amber-500">⚠ Selecione a etapa para ativar este gatilho</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   <div className="relative">
                     <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => setShowTriggerMenu(!showTriggerMenu)}>
                       <Plus size={12} className="mr-1" /> Gatilho
@@ -488,7 +572,10 @@ const CrmBotEditor = () => {
                             key={opt.type}
                             className="w-full text-left px-3 py-2 text-xs hover:bg-muted/80 transition-colors"
                             onClick={() => {
-                              setTriggers(prev => [...prev, { id: uid(), type: opt.type, label: opt.label }]);
+                              setTriggers(prev => [...prev, {
+                                id: uid(), type: opt.type, label: opt.label,
+                                config: opt.needsStage ? { pipeline_id: "", stage_id: "" } : undefined,
+                              }]);
                               setShowTriggerMenu(false);
                             }}
                           >
@@ -502,7 +589,7 @@ const CrmBotEditor = () => {
               </div>
 
               {/* Flow chain */}
-              <div className="flex items-start" onMouseDown={e => e.stopPropagation()}>
+              <div className="flex items-start" onMouseDown={e => e.stopPropagation()} style={{ touchAction: "none" }}>
                 {/* Start card */}
                 <div className="shrink-0">
                   <div className="bg-emerald-500 text-white rounded-xl px-5 py-3 flex items-center gap-2 shadow-sm border border-emerald-400">
@@ -578,17 +665,18 @@ const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId
   }, [open]);
 
   return (
-    <div className="relative flex items-center" ref={menuRef}>
+    <div className="relative flex items-center" ref={menuRef} style={{ touchAction: "none" }}>
       <ConnectorLine />
       <button
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-dashed border-border bg-card text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors whitespace-nowrap shadow-sm"
+        style={{ touchAction: "none" }}
       >
         <Plus size={12} /> Adicionar próximo passo
       </button>
 
       {open && (
-        <div className="absolute left-12 top-full mt-1 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64 max-h-80 overflow-y-auto">
+        <div className="absolute left-12 top-full mt-1 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64 max-h-80 overflow-y-auto" style={{ touchAction: "auto" }}>
           <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens</div>
           {STEP_TYPES.filter(s => s.category === "main").map(st => (
             <button key={st.type} className="w-full text-left px-3 py-2 text-sm hover:bg-muted/80 transition-colors flex items-center gap-2"
@@ -737,7 +825,7 @@ const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pip
   };
 
   return (
-    <div className="bg-card rounded-xl border border-border shadow-sm w-80 overflow-hidden">
+    <div className="bg-card rounded-xl border border-border shadow-sm w-80 overflow-hidden" style={{ touchAction: "none" }}>
       <div className={`${headerColors[step.type] || "bg-muted"} px-3 py-2 flex items-center justify-between`}>
         <div className="flex items-center gap-2 text-white">
           <span className="text-xs font-bold bg-white/20 rounded-full w-5 h-5 flex items-center justify-center">{number}</span>
@@ -746,7 +834,7 @@ const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pip
         <button onClick={onRemove} className="text-white/70 hover:text-white"><X size={14} /></button>
       </div>
 
-      <div className="p-3 space-y-2">
+      <div className="p-3 space-y-2" style={{ touchAction: "auto" }}>
         {step.type === "send_message" && (
           <SendMessageConfig config={config} onChange={onUpdateConfig} templates={templates} outputs={step.outputs} onUpdateOutputs={onUpdateOutputs} />
         )}
