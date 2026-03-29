@@ -252,6 +252,16 @@ export default function CrmConversa() {
     // Show activity toast
     showActivityToast(`📋 Lead movido para ${toStageName}`);
 
+    // Trigger bot-engine for stage change
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      fetch(`https://${projectId}.supabase.co/functions/v1/bot-trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ leadId: id, newStageId: stageId }),
+      }).catch(() => {});
+    } catch {}
+
     setLead((prev) => prev ? { ...prev, stage_id: stageId } : prev);
     toast.success("Etapa atualizada");
   };

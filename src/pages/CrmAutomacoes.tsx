@@ -334,9 +334,98 @@ export default function CrmAutomacoes() {
             </Droppable>
           </DragDropContext>
         </div>
-      </div>
 
-      {/* New Stage Modal */}
+        {/* Bot Config per Stage */}
+        <div className="border-t border-border p-6 overflow-y-auto max-h-[40vh]">
+          <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+            <Cpu size={16} className="text-primary" /> Configuração de Bots por Etapa
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {stages.map(stage => {
+              const sbc = stageBotConfigs.find(c => c.stage_id === stage.id);
+              const isFinal = sbc?.is_final_stage || false;
+              const botId = sbc?.bot_id || "";
+              const triggerType = sbc?.trigger_type || "on_enter";
+              const isActive = sbc?.active ?? true;
+
+              const FINAL_NAMES = ["agendado", "contratado", "fechado", "lead desqualificado"];
+              const isDefaultFinal = FINAL_NAMES.includes(stage.name.toLowerCase());
+
+              const handleSaveSbc = async (updates: Partial<StageBotConfig>) => {
+                const payload = {
+                  stage_id: stage.id,
+                  bot_id: updates.bot_id !== undefined ? (updates.bot_id || null) : (botId || null),
+                  trigger_type: updates.trigger_type || triggerType,
+                  active: updates.active !== undefined ? updates.active : isActive,
+                  is_final_stage: updates.is_final_stage !== undefined ? updates.is_final_stage : isFinal,
+                };
+                if (sbc) {
+                  await supabase.from("stage_bot_config").update(payload).eq("id", sbc.id);
+                } else {
+                  await supabase.from("stage_bot_config").insert(payload);
+                }
+                toast.success(`Config da etapa "${stage.name}" salva`);
+                fetchData(selectedPipelineId);
+              };
+
+              return (
+                <Card key={stage.id} className="overflow-hidden">
+                  <div className="h-1" style={{ backgroundColor: stage.color }} />
+                  <CardContent className="p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">{stage.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-muted-foreground">Etapa Final</span>
+                        <Switch
+                          checked={isFinal || isDefaultFinal}
+                          onCheckedChange={(v) => handleSaveSbc({ is_final_stage: v })}
+                        />
+                      </div>
+                    </div>
+
+                    {(isFinal || isDefaultFinal) ? (
+                      <div className="flex items-start gap-2 bg-destructive/10 border border-destructive/20 rounded p-2">
+                        <AlertTriangle size={14} className="text-destructive shrink-0 mt-0.5" />
+                        <p className="text-xs text-destructive">Nenhum bot será disparado nesta etapa</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <Label className="text-xs">Bot de entrada</Label>
+                          <Select value={botId} onValueChange={(v) => handleSaveSbc({ bot_id: v === "none" ? "" : v })}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Nenhum bot" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nenhum bot</SelectItem>
+                              {allBots.filter(b => b.active).map(b => (
+                                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Disparar quando</Label>
+                          <Select value={triggerType} onValueChange={(v) => handleSaveSbc({ trigger_type: v })}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="on_enter">Movido para esta etapa</SelectItem>
+                              <SelectItem value="on_create">Criado nesta etapa</SelectItem>
+                              <SelectItem value="both">Ambos</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Ativo</span>
+                          <Switch checked={isActive} onCheckedChange={(v) => handleSaveSbc({ active: v })} />
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      </div>
       <Dialog open={newStageOpen} onOpenChange={(open) => { setNewStageOpen(open); if (!open) setUseCustomStageColor(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Nova Etapa</DialogTitle></DialogHeader>
