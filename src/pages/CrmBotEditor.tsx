@@ -195,6 +195,7 @@ const CrmBotEditor = () => {
       wait: "pause", condition: "condition",
       action_move_stage: "action", action_set_field: "action", action_add_tag: "action",
       action_end_bot: "stop_bot",
+      set_field: "action", move_stage: "action",
     };
     return map[dbType] || dbType;
   };
