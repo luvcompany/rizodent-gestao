@@ -319,12 +319,34 @@ Deno.serve(async (req) => {
                 console.log(`[WEBHOOK] Mensagem salva: ${JSON.stringify(savedMsg)}`);
               }
 
+              // Update lead with last message info + last_inbound_at + reset follow_up_count
               await supabase.from("crm_leads").update({
                 last_message: content || `[${msgType}]`,
                 last_message_at: new Date().toISOString(),
+                last_inbound_at: new Date().toISOString(),
+                follow_up_count: 0,
               }).eq("id", lead.id);
 
               console.log(`[WEBHOOK] Message received from ${from}, lead ${lead.id}, type: ${msgType}, media_url: ${mediaUrl}`);
+
+              // Trigger bot-engine for inbound message (fire-and-forget)
+              try {
+                const botUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/bot-engine`;
+                fetch(botUrl, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                  },
+                  body: JSON.stringify({
+                    leadId: lead.id,
+                    trigger: "inbound_message",
+                    message: content || "",
+                  }),
+                }).catch(e => console.error("[WEBHOOK] Erro ao chamar bot-engine:", e));
+              } catch (botErr) {
+                console.error("[WEBHOOK] Erro ao preparar chamada bot-engine:", botErr);
+              }
             } else {
               console.log(`Could not find or create lead for phone: ${from}`);
             }
