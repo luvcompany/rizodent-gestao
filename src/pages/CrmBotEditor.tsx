@@ -630,6 +630,8 @@ const CrmBotEditor = () => {
                       stages={stages}
                       templates={templates}
                       allBots={bots}
+                      nodePositions={nodePositions}
+                      onUpdateNodePosition={updateNodePosition}
                     />
                   ))}
                 </div>
