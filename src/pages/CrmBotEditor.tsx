@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  ArrowLeft, ZoomIn, ZoomOut, Maximize2, Save, Plus,
-  MessageSquare, FileText, Mic, Clock, GitBranch, ArrowRightLeft,
-  Tag, Settings2, XCircle, Trash2, GripVertical,
+  ArrowLeft, Save, Play, Plus, X, MessageSquare, Pause, Zap, GitBranch,
+  CheckCircle2, Bot, StopCircle, Mic, Paperclip, Link2, ChevronDown,
+  Heart, MessageCircle, Send, Smartphone, Shuffle, Square, RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -13,32 +13,23 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 // ── Types ──
 
-interface BotNode {
+interface FlowStep {
   id: string;
-  bot_id: string;
   type: string;
   config: any;
-  position_x: number;
-  position_y: number;
-  is_start_node: boolean;
-  created_at?: string;
-  _temp?: boolean;
+  outputs: FlowOutput[];
 }
 
-interface BotNodeOutput {
+interface FlowOutput {
   id: string;
-  node_id: string;
   label: string;
-  condition_type: string;
-  condition_value: string | null;
-  next_node_id: string | null;
-  _temp?: boolean;
+  conditionType: string;
+  conditionValue: string | null;
+  nextSteps: FlowStep[];
 }
 
 interface Bot {
@@ -48,77 +39,59 @@ interface Bot {
   active: boolean;
 }
 
-const NODE_COLORS: Record<string, string> = {
-  message_text: "hsl(270, 60%, 50%)",
-  message_template: "hsl(220, 70%, 40%)",
-  message_audio: "hsl(30, 90%, 50%)",
-  wait: "hsl(45, 90%, 50%)",
-  condition: "hsl(45, 90%, 50%)",
-  action_move_stage: "hsl(140, 50%, 45%)",
-  action_set_field: "hsl(140, 50%, 45%)",
-  action_add_tag: "hsl(140, 50%, 45%)",
-  action_end_bot: "hsl(0, 70%, 50%)",
-};
+interface Trigger {
+  id: string;
+  type: string;
+  label: string;
+}
 
-const NODE_LABELS: Record<string, string> = {
-  message_text: "Texto",
-  message_template: "Template WhatsApp",
-  message_audio: "Áudio",
-  wait: "Espera",
-  condition: "Condição",
-  action_move_stage: "Mover Etapa",
-  action_set_field: "Definir Campo",
-  action_add_tag: "Adicionar Tag",
-  action_end_bot: "Encerrar Bot",
-};
+const STEP_TYPES = [
+  { type: "send_message", label: "Enviar mensagem", icon: MessageSquare, emoji: "🤖", category: "main" },
+  { type: "reaction", label: "Reação", icon: Heart, emoji: "❤️", category: "main" },
+  { type: "comment", label: "Comentário", icon: MessageCircle, emoji: "💬", category: "main" },
+  { type: "internal_message", label: "Enviar mensagem interna", icon: Send, emoji: "💭", category: "main" },
+  { type: "list_message", label: "List Message (WhatsApp)", icon: Smartphone, emoji: "📱", category: "main" },
+  { type: "pause", label: "Pausar", icon: Pause, emoji: "⏸️", category: "main" },
+  { type: "condition", label: "Condição", icon: GitBranch, emoji: "🟣", category: "logic" },
+  { type: "validation", label: "Validação", icon: CheckCircle2, emoji: "✔️", category: "logic" },
+  { type: "action", label: "Ação", icon: Zap, emoji: "✅", category: "action" },
+  { type: "start_bot", label: "Iniciar outro bot", icon: Bot, emoji: "▶️", category: "action" },
+  { type: "round_robin", label: "Round Robin", icon: Shuffle, emoji: "🔄", category: "action" },
+  { type: "stop_bot", label: "Parar bot", icon: StopCircle, emoji: "⏹️", category: "action" },
+];
 
-const NODE_ICONS: Record<string, any> = {
-  message_text: MessageSquare,
-  message_template: FileText,
-  message_audio: Mic,
-  wait: Clock,
-  condition: GitBranch,
-  action_move_stage: ArrowRightLeft,
-  action_set_field: Settings2,
-  action_add_tag: Tag,
-  action_end_bot: XCircle,
-};
+const TRIGGER_OPTIONS = [
+  { type: "stage_enter", label: "Quando lead entra na etapa" },
+  { type: "lead_created", label: "Quando lead é criado" },
+  { type: "tag_added", label: "Quando tag é adicionada" },
+  { type: "message_received", label: "Quando mensagem é recebida" },
+  { type: "no_response", label: "Quando lead não responde (timeout)" },
+];
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 120;
+const uid = () => `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 const CrmBotEditor = () => {
   const { id: botId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [bot, setBot] = useState<Bot | null>(null);
-  const [nodes, setNodes] = useState<BotNode[]>([]);
-  const [outputs, setOutputs] = useState<BotNodeOutput[]>([]);
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState(false);
   const [botName, setBotName] = useState("");
+  const [editingName, setEditingName] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [triggers, setTriggers] = useState<Trigger[]>([]);
+  const [showTriggerMenu, setShowTriggerMenu] = useState(false);
 
-  // Canvas state
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const canvasRef = useRef<HTMLDivElement>(null);
+  // The flow is a tree starting from a root
+  const [rootOutputs, setRootOutputs] = useState<FlowOutput[]>([
+    { id: uid(), label: "Início", conditionType: "start", conditionValue: null, nextSteps: [] },
+  ]);
 
-  // Drag node state
-  const [draggingNode, setDraggingNode] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-
-  // Connection drawing state
-  const [connecting, setConnecting] = useState<{ outputId: string; fromX: number; fromY: number } | null>(null);
-  const [connectMouse, setConnectMouse] = useState({ x: 0, y: 0 });
-
-  // Extra data for config panels
   const [pipelines, setPipelines] = useState<any[]>([]);
   const [stages, setStages] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [bots, setBots] = useState<any[]>([]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!botId) return;
@@ -132,153 +105,216 @@ const CrmBotEditor = () => {
     setBot(b);
     setBotName(b.name);
 
-    const { data: n } = await supabase.from("bot_nodes").select("*").eq("bot_id", botId).order("created_at");
-    setNodes(n || []);
+    // Load nodes and rebuild tree
+    const { data: nodes } = await supabase.from("bot_nodes").select("*").eq("bot_id", botId).order("created_at");
+    if (!nodes || nodes.length === 0) return;
 
-    const nodeIds = (n || []).map((nd: any) => nd.id);
-    if (nodeIds.length > 0) {
-      const { data: o } = await supabase.from("bot_node_outputs").select("*").in("node_id", nodeIds);
-      setOutputs(o || []);
+    const nodeIds = nodes.map((n: any) => n.id);
+    const { data: outs } = await supabase.from("bot_node_outputs").select("*").in("node_id", nodeIds);
+
+    // Rebuild tree from flat structure
+    const tree = rebuildTree(nodes, outs || []);
+    setRootOutputs(tree);
+  };
+
+  const rebuildTree = (nodes: any[], outs: any[]): FlowOutput[] => {
+    const startNode = nodes.find((n: any) => n.is_start_node);
+    if (!startNode) {
+      return [{ id: uid(), label: "Início", conditionType: "start", conditionValue: null, nextSteps: [] }];
     }
+
+    const buildStep = (nodeId: string, visited: Set<string>): FlowStep | null => {
+      if (visited.has(nodeId)) return null;
+      visited.add(nodeId);
+      const node = nodes.find((n: any) => n.id === nodeId);
+      if (!node) return null;
+
+      const nodeOuts = outs.filter((o: any) => o.node_id === nodeId);
+      const stepOutputs: FlowOutput[] = nodeOuts.map((o: any) => ({
+        id: o.id,
+        label: o.label,
+        conditionType: o.condition_type,
+        conditionValue: o.condition_value,
+        nextSteps: o.next_node_id ? (() => {
+          const child = buildStep(o.next_node_id, visited);
+          return child ? [child] : [];
+        })() : [],
+      }));
+
+      // If no outputs defined but node type should have them, create defaults
+      if (stepOutputs.length === 0) {
+        stepOutputs.push({ id: uid(), label: "Próximo", conditionType: "default", conditionValue: null, nextSteps: [] });
+      }
+
+      return {
+        id: node.id,
+        type: mapNodeType(node.type),
+        config: node.config || {},
+        outputs: stepOutputs,
+      };
+    };
+
+    const firstStep = buildStep(startNode.id, new Set());
+    return [{
+      id: uid(),
+      label: "Início",
+      conditionType: "start",
+      conditionValue: null,
+      nextSteps: firstStep ? [firstStep] : [],
+    }];
+  };
+
+  const mapNodeType = (dbType: string): string => {
+    const map: Record<string, string> = {
+      message_text: "send_message",
+      message_template: "send_message",
+      message_audio: "send_message",
+      wait: "pause",
+      condition: "condition",
+      action_move_stage: "action",
+      action_set_field: "action",
+      action_add_tag: "action",
+      action_end_bot: "stop_bot",
+    };
+    return map[dbType] || dbType;
   };
 
   const loadExtras = async () => {
-    const [{ data: p }, { data: s }, { data: t }] = await Promise.all([
+    const [{ data: p }, { data: s }, { data: t }, { data: b }] = await Promise.all([
       supabase.from("crm_pipelines").select("*"),
       supabase.from("crm_stages").select("*").order("position"),
       supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED"),
+      supabase.from("bots").select("id, name").neq("id", botId || ""),
     ]);
     setPipelines(p || []);
     setStages(s || []);
     setTemplates(t || []);
+    setBots(b || []);
   };
 
-  // ── Canvas interactions ──
+  // ── Tree operations ──
 
-  const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (e.target === canvasRef.current || (e.target as HTMLElement).classList.contains("canvas-bg")) {
-      setIsPanning(true);
-      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-      setSelectedNode(null);
-    }
-  };
-
-  const handleCanvasMouseMove = (e: React.MouseEvent) => {
-    if (isPanning) {
-      setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
-    }
-    if (draggingNode) {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const x = (e.clientX - rect.left - pan.x) / zoom - dragOffset.x;
-      const y = (e.clientY - rect.top - pan.y) / zoom - dragOffset.y;
-      setNodes(prev => prev.map(n => n.id === draggingNode ? { ...n, position_x: x, position_y: y } : n));
-    }
-    if (connecting) {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setConnectMouse({
-        x: (e.clientX - rect.left - pan.x) / zoom,
-        y: (e.clientY - rect.top - pan.y) / zoom,
-      });
-    }
-  };
-
-  const handleCanvasMouseUp = () => {
-    setIsPanning(false);
-    setDraggingNode(null);
-    if (connecting) setConnecting(null);
-  };
-
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setZoom(z => Math.max(0.3, Math.min(2, z + delta)));
-  };
-
-  const centerCanvas = () => {
-    if (nodes.length === 0) { setPan({ x: 0, y: 0 }); return; }
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const avgX = nodes.reduce((s, n) => s + n.position_x, 0) / nodes.length;
-    const avgY = nodes.reduce((s, n) => s + n.position_y, 0) / nodes.length;
-    setPan({ x: rect.width / 2 - avgX * zoom, y: rect.height / 2 - avgY * zoom });
-  };
-
-  // ── Node operations ──
-
-  const addNode = (type: string) => {
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const isFirst = nodes.length === 0;
-    const newNode: BotNode = {
-      id: tempId,
-      bot_id: botId!,
-      type,
-      config: getDefaultConfig(type),
-      position_x: 100 + Math.random() * 200,
-      position_y: 100 + Math.random() * 200,
-      is_start_node: isFirst,
-      _temp: true,
+  const addStepToOutput = (outputId: string, stepType: string) => {
+    const newStep: FlowStep = {
+      id: uid(),
+      type: stepType,
+      config: getDefaultConfig(stepType),
+      outputs: getDefaultOutputs(stepType),
     };
 
-    // Auto-create outputs based on type
-    const newOutputs: BotNodeOutput[] = [];
-    if (type === "wait") {
-      newOutputs.push({ id: `to_${Date.now()}_1`, node_id: tempId, label: "Respondeu", condition_type: "any_reply", condition_value: null, next_node_id: null, _temp: true });
-      newOutputs.push({ id: `to_${Date.now()}_2`, node_id: tempId, label: "Timeout", condition_type: "timeout", condition_value: null, next_node_id: null, _temp: true });
-    } else if (type === "condition") {
-      newOutputs.push({ id: `to_${Date.now()}_1`, node_id: tempId, label: "Corresponde", condition_type: "field_match", condition_value: null, next_node_id: null, _temp: true });
-      newOutputs.push({ id: `to_${Date.now()}_2`, node_id: tempId, label: "Não corresponde", condition_type: "field_no_match", condition_value: null, next_node_id: null, _temp: true });
-    } else if (type !== "action_end_bot") {
-      newOutputs.push({ id: `to_${Date.now()}_d`, node_id: tempId, label: "Próximo", condition_type: "default", condition_value: null, next_node_id: null, _temp: true });
+    setRootOutputs(prev => addStepInTree(prev, outputId, newStep));
+  };
+
+  const addStepInTree = (outs: FlowOutput[], targetOutputId: string, newStep: FlowStep): FlowOutput[] => {
+    return outs.map(o => {
+      if (o.id === targetOutputId) {
+        return { ...o, nextSteps: [...o.nextSteps, newStep] };
+      }
+      return {
+        ...o,
+        nextSteps: o.nextSteps.map(step => ({
+          ...step,
+          outputs: addStepInTree(step.outputs, targetOutputId, newStep),
+        })),
+      };
+    });
+  };
+
+  const removeStep = (stepId: string) => {
+    setRootOutputs(prev => removeStepInTree(prev, stepId));
+  };
+
+  const removeStepInTree = (outs: FlowOutput[]): FlowOutput[] => {
+    return outs.map(o => ({
+      ...o,
+      nextSteps: o.nextSteps
+        .filter(step => step.id !== stepId)
+        .map(step => ({
+          ...step,
+          outputs: removeStepInTree(step.outputs),
+        })),
+    }));
+  };
+
+  const updateStepConfig = (stepId: string, config: any) => {
+    setRootOutputs(prev => updateConfigInTree(prev, stepId, config));
+  };
+
+  const updateConfigInTree = (outs: FlowOutput[], stepId: string, config: any): FlowOutput[] => {
+    return outs.map(o => ({
+      ...o,
+      nextSteps: o.nextSteps.map(step => {
+        if (step.id === stepId) return { ...step, config };
+        return { ...step, outputs: updateConfigInTree(step.outputs, stepId, config) };
+      }),
+    }));
+  };
+
+  const updateStepOutputs = (stepId: string, newOutputs: FlowOutput[]) => {
+    setRootOutputs(prev => updateOutputsInTree(prev, stepId, newOutputs));
+  };
+
+  const updateOutputsInTree = (outs: FlowOutput[], stepId: string, newOutputs: FlowOutput[]): FlowOutput[] => {
+    return outs.map(o => ({
+      ...o,
+      nextSteps: o.nextSteps.map(step => {
+        if (step.id === stepId) return { ...step, outputs: newOutputs };
+        return { ...step, outputs: updateOutputsInTree(step.outputs, stepId, newOutputs) };
+      }),
+    }));
+  };
+
+  const getDefaultConfig = (type: string): any => {
+    switch (type) {
+      case "send_message": return { message: "", channel: "whatsapp", buttons: [] };
+      case "pause": return { conditions: [{ type: "message_received", hours: 0, minutes: 0, seconds: 0 }] };
+      case "condition": return { field: "tags", operator: "equals", value: "" };
+      case "action": return { actionType: "move_stage", pipeline_id: "", stage_id: "", field: "", value: "", tag: "", tagAction: "add" };
+      case "stop_bot": return {};
+      case "start_bot": return { bot_id: "" };
+      case "reaction": return { emoji: "👍" };
+      case "comment": return { text: "" };
+      case "internal_message": return { message: "" };
+      case "list_message": return { title: "", sections: [] };
+      case "validation": return { field: "", rule: "not_empty" };
+      case "round_robin": return { users: [] };
+      default: return {};
     }
-
-    setNodes(prev => [...prev, newNode]);
-    setOutputs(prev => [...prev, ...newOutputs]);
-    setShowAddMenu(false);
-    setSelectedNode(tempId);
   };
 
-  const deleteNode = (nodeId: string) => {
-    setNodes(prev => prev.filter(n => n.id !== nodeId));
-    setOutputs(prev => prev.filter(o => o.node_id !== nodeId && o.next_node_id !== nodeId).map(o => o.next_node_id === nodeId ? { ...o, next_node_id: null } : o));
-    if (selectedNode === nodeId) setSelectedNode(null);
+  const getDefaultOutputs = (type: string): FlowOutput[] => {
+    switch (type) {
+      case "pause":
+        return [
+          { id: uid(), label: "Mensagem recebida", conditionType: "reply", conditionValue: null, nextSteps: [] },
+          { id: uid(), label: "Cronômetro expirado", conditionType: "timeout", conditionValue: null, nextSteps: [] },
+        ];
+      case "condition":
+        return [
+          { id: uid(), label: "Sim", conditionType: "match", conditionValue: null, nextSteps: [] },
+          { id: uid(), label: "Não", conditionType: "no_match", conditionValue: null, nextSteps: [] },
+        ];
+      case "send_message":
+        return [
+          { id: uid(), label: "Próximo", conditionType: "default", conditionValue: null, nextSteps: [] },
+          { id: uid(), label: "Falha ao enviar", conditionType: "failure", conditionValue: null, nextSteps: [] },
+        ];
+      case "stop_bot":
+        return [];
+      default:
+        return [{ id: uid(), label: "Próximo", conditionType: "default", conditionValue: null, nextSteps: [] }];
+    }
   };
 
-  const setStartNode = (nodeId: string) => {
-    setNodes(prev => prev.map(n => ({ ...n, is_start_node: n.id === nodeId })));
-  };
-
-  const updateNodeConfig = (nodeId: string, config: any) => {
-    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, config } : n));
-  };
-
-  // ── Connection operations ──
-
-  const startConnection = (outputId: string, fromX: number, fromY: number) => {
-    setConnecting({ outputId, fromX, fromY });
-  };
-
-  const completeConnection = (targetNodeId: string) => {
-    if (!connecting) return;
-    setOutputs(prev => prev.map(o => o.id === connecting.outputId ? { ...o, next_node_id: targetNodeId } : o));
-    setConnecting(null);
-  };
-
-  const deleteConnection = (outputId: string) => {
-    setOutputs(prev => prev.map(o => o.id === outputId ? { ...o, next_node_id: null } : o));
-  };
-
-  // ── Save ──
+  // ── Save (flatten tree → DB) ──
 
   const saveBot = async () => {
     if (!botId) return;
     setSaving(true);
     try {
-      // Update bot name
       await supabase.from("bots").update({ name: botName }).eq("id", botId);
 
-      // Delete existing nodes/outputs and re-insert
+      // Delete existing
       const { data: existingNodes } = await supabase.from("bot_nodes").select("id").eq("bot_id", botId);
       if (existingNodes?.length) {
         const existingIds = existingNodes.map((n: any) => n.id);
@@ -286,44 +322,64 @@ const CrmBotEditor = () => {
         await supabase.from("bot_nodes").delete().eq("bot_id", botId);
       }
 
-      if (nodes.length === 0) { toast.success("Bot salvo!"); setSaving(false); return; }
-
-      // Map temp IDs to real UUIDs
+      // Flatten tree to nodes + outputs
+      const flatNodes: any[] = [];
+      const flatOutputs: any[] = [];
       const idMap: Record<string, string> = {};
-      const nodesForInsert = nodes.map(n => {
+      let stepIndex = 0;
+
+      const flattenStep = (step: FlowStep, isFirst: boolean) => {
         const realId = crypto.randomUUID();
-        idMap[n.id] = realId;
-        return {
+        idMap[step.id] = realId;
+        const dbType = mapToDbType(step.type, step.config);
+        flatNodes.push({
           id: realId,
           bot_id: botId,
-          type: n.type,
-          config: n.config,
-          position_x: n.position_x,
-          position_y: n.position_y,
-          is_start_node: n.is_start_node,
-        };
+          type: dbType,
+          config: step.config,
+          position_x: stepIndex * 300,
+          position_y: 0,
+          is_start_node: isFirst,
+        });
+        stepIndex++;
+
+        step.outputs.forEach(o => {
+          const outId = crypto.randomUUID();
+          const nextId = o.nextSteps.length > 0 ? o.nextSteps[0] : null;
+          flatOutputs.push({
+            id: outId,
+            node_id: realId,
+            label: o.label,
+            condition_type: o.conditionType,
+            condition_value: o.conditionValue,
+            next_node_id: nextId ? "__pending__" + o.nextSteps[0].id : null,
+          });
+          o.nextSteps.forEach(child => flattenStep(child, false));
+        });
+      };
+
+      rootOutputs.forEach(o => {
+        o.nextSteps.forEach((step, i) => flattenStep(step, i === 0 && rootOutputs.indexOf(o) === 0));
       });
 
-      const { error: nodesErr } = await supabase.from("bot_nodes").insert(nodesForInsert);
-      if (nodesErr) throw nodesErr;
+      // Resolve pending references
+      flatOutputs.forEach(o => {
+        if (o.next_node_id && o.next_node_id.startsWith("__pending__")) {
+          const tempId = o.next_node_id.replace("__pending__", "");
+          o.next_node_id = idMap[tempId] || null;
+        }
+      });
 
-      // Insert outputs with mapped IDs
-      const outputsForInsert = outputs.map(o => ({
-        id: crypto.randomUUID(),
-        node_id: idMap[o.node_id] || o.node_id,
-        label: o.label,
-        condition_type: o.condition_type,
-        condition_value: o.condition_value,
-        next_node_id: o.next_node_id ? (idMap[o.next_node_id] || o.next_node_id) : null,
-      }));
+      if (flatNodes.length > 0) {
+        const { error: nodesErr } = await supabase.from("bot_nodes").insert(flatNodes);
+        if (nodesErr) throw nodesErr;
+      }
 
-      if (outputsForInsert.length > 0) {
-        const { error: outErr } = await supabase.from("bot_node_outputs").insert(outputsForInsert);
+      if (flatOutputs.length > 0) {
+        const { error: outErr } = await supabase.from("bot_node_outputs").insert(flatOutputs);
         if (outErr) throw outErr;
       }
 
-      // Reload with real IDs
-      await loadBot();
       toast.success("Bot salvo com sucesso!");
     } catch (err: any) {
       toast.error("Erro ao salvar: " + err.message);
@@ -331,49 +387,39 @@ const CrmBotEditor = () => {
     setSaving(false);
   };
 
-  const getDefaultConfig = (type: string): any => {
+  const mapToDbType = (type: string, config: any): string => {
     switch (type) {
-      case "message_text": return { message: "" };
-      case "message_template": return { template_name: "", template_language: "pt_BR", template_components: [] };
-      case "message_audio": return { audio_url: "" };
-      case "wait": return { type: "both", hours: 4 };
-      case "condition": return { field: "tags", operator: "equals", value: "" };
-      case "action_move_stage": return { pipeline_id: "", stage_id: "" };
-      case "action_set_field": return { field: "", value: "" };
-      case "action_add_tag": return { tag: "", action: "add" };
-      case "action_end_bot": return {};
-      default: return {};
+      case "send_message": return "message_text";
+      case "pause": return "wait";
+      case "condition": return "condition";
+      case "action":
+        if (config?.actionType === "move_stage") return "action_move_stage";
+        if (config?.actionType === "set_field") return "action_set_field";
+        if (config?.actionType === "add_tag") return "action_add_tag";
+        return "action_move_stage";
+      case "stop_bot": return "action_end_bot";
+      default: return type;
     }
   };
 
-  // ── Render helpers ──
-
-  const getNodeSummary = (node: BotNode): string => {
-    const c = node.config || {};
-    switch (node.type) {
-      case "message_text": return c.message ? c.message.substring(0, 60) + (c.message.length > 60 ? "…" : "") : "Sem texto";
-      case "message_template": return c.template_name || "Sem template";
-      case "message_audio": return c.audio_url ? "Áudio configurado" : "Sem áudio";
-      case "wait": return c.type === "reply" ? "Aguardar resposta" : c.type === "timeout" ? `Timeout: ${c.hours}h` : `Resposta ou ${c.hours}h`;
-      case "condition": return `${c.field} ${c.operator} ${c.value}`;
-      case "action_move_stage": { const st = stages.find(s => s.id === c.stage_id); return st ? `→ ${st.name}` : "Sem etapa"; }
-      case "action_set_field": return c.field ? `${c.field} = ${c.value}` : "Sem campo";
-      case "action_add_tag": return c.tag || "Sem tag";
-      case "action_end_bot": return "Encerra o fluxo";
-      default: return "";
-    }
+  // ── Step count helper ──
+  const countSteps = (outs: FlowOutput[]): number => {
+    let count = 0;
+    outs.forEach(o => {
+      o.nextSteps.forEach(step => {
+        count++;
+        count += countSteps(step.outputs);
+      });
+    });
+    return count;
   };
-
-  const nodeOutputs = (nodeId: string) => outputs.filter(o => o.node_id === nodeId);
-
-  const selectedNodeData = nodes.find(n => n.id === selectedNode);
 
   if (!bot) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] -m-6">
+    <div className="flex flex-col h-[calc(100vh-8rem)] -m-6 bg-muted/30">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-card shrink-0">
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-card shrink-0 z-10">
         <Button variant="ghost" size="sm" onClick={() => navigate("/crm/bots")}>
           <ArrowLeft size={16} />
         </Button>
@@ -391,15 +437,10 @@ const CrmBotEditor = () => {
             {botName}
           </button>
         )}
-        <div className="flex items-center gap-1 ml-auto">
-          <Button variant="ghost" size="icon" onClick={() => setZoom(z => Math.min(2, z + 0.1))} title="Zoom In"><ZoomIn size={16} /></Button>
-          <span className="text-xs text-muted-foreground w-10 text-center">{Math.round(zoom * 100)}%</span>
-          <Button variant="ghost" size="icon" onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} title="Zoom Out"><ZoomOut size={16} /></Button>
-          <Button variant="ghost" size="icon" onClick={centerCanvas} title="Centralizar"><Maximize2 size={16} /></Button>
-          <div className="w-px h-6 bg-border mx-1" />
-          <div className="flex items-center gap-2 mr-2">
+        <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-2 mr-3">
             <span className="text-xs text-muted-foreground">Ativo</span>
-            <Switch checked={bot.active} onCheckedChange={async (v) => {
+            <Switch checked={bot.active ?? true} onCheckedChange={async (v) => {
               await supabase.from("bots").update({ active: v }).eq("id", bot.id);
               setBot(prev => prev ? { ...prev, active: v } : prev);
             }} />
@@ -410,233 +451,385 @@ const CrmBotEditor = () => {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Canvas */}
-        <div
-          ref={canvasRef}
-          className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing relative"
-          onMouseDown={handleCanvasMouseDown}
-          onMouseMove={handleCanvasMouseMove}
-          onMouseUp={handleCanvasMouseUp}
-          onMouseLeave={handleCanvasMouseUp}
-          onWheel={handleWheel}
-          style={{ userSelect: "none" }}
-        >
-          {/* Grid background */}
-          <svg className="absolute inset-0 w-full h-full canvas-bg pointer-events-none" style={{ zIndex: 0 }}>
-            <defs>
-              <pattern id="grid" width={20 * zoom} height={20 * zoom} patternUnits="userSpaceOnUse" x={pan.x % (20 * zoom)} y={pan.y % (20 * zoom)}>
-                <circle cx={1} cy={1} r={1} fill="hsl(var(--muted-foreground) / 0.15)" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-          </svg>
-
-          {/* Transformed content */}
-          <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0", position: "absolute", top: 0, left: 0 }}>
-            {/* Connection lines */}
-            <svg className="absolute" style={{ width: 5000, height: 5000, top: -2500, left: -2500, pointerEvents: "none", overflow: "visible" }}>
-              {outputs.filter(o => o.next_node_id).map(o => {
-                const fromNode = nodes.find(n => n.id === o.node_id);
-                const toNode = nodes.find(n => n.id === o.next_node_id);
-                if (!fromNode || !toNode) return null;
-                // Calculate Y based on output index
-                const nodeOuts = outputs.filter(out => out.node_id === o.node_id);
-                const idx = nodeOuts.findIndex(out => out.id === o.id);
-                const headerH = 34;
-                const bodyH = 36;
-                const outputRowH = 22;
-                const outputStartY = headerH + bodyH + 8;
-                const fromX = fromNode.position_x + NODE_WIDTH;
-                const fromY = fromNode.position_y + outputStartY + idx * outputRowH + outputRowH / 2;
-                const toX = toNode.position_x;
-                const toInputY = toNode.position_y + headerH + bodyH / 2 + headerH / 2;
-                const midX = (fromX + toX) / 2;
-                return (
-                  <g key={o.id}>
-                    <path
-                      d={`M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toInputY}, ${toX} ${toInputY}`}
-                      fill="none"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      markerEnd="url(#arrowhead)"
-                    />
-                    <text x={midX} y={(fromY + toInputY) / 2 - 8} textAnchor="middle" fontSize={10} fill="hsl(var(--muted-foreground))">{o.label}</text>
-                    <circle
-                      cx={midX}
-                      cy={(fromY + toInputY) / 2}
-                      r={8}
-                      fill="hsl(var(--destructive))"
-                      opacity={0}
-                      className="hover:opacity-100 cursor-pointer transition-opacity"
-                      style={{ pointerEvents: "all" }}
-                      onClick={() => deleteConnection(o.id)}
-                    />
-                  </g>
-                );
-              })}
-              {/* Drawing connection */}
-              {connecting && (
-                <line x1={connecting.fromX} y1={connecting.fromY} x2={connectMouse.x} y2={connectMouse.y} stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="6 4" />
-              )}
-              <defs>
-                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                  <polygon points="0 0, 10 3.5, 0 7" fill="hsl(var(--primary))" />
-                </marker>
-              </defs>
-            </svg>
-
-            {/* Nodes */}
-            {nodes.map(node => {
-              const Icon = NODE_ICONS[node.type] || Settings2;
-              const color = NODE_COLORS[node.type] || "hsl(var(--muted))";
-              const nodeOuts = nodeOutputs(node.id);
-              // Calculate output Y positions relative to node top
-              const headerH = 34;
-              const bodyH = 36;
-              const outputRowH = 22;
-              const outputStartY = headerH + bodyH + 8;
-              return (
-                <div
-                  key={node.id}
-                  className="absolute select-none"
-                  style={{ left: node.position_x, top: node.position_y, width: NODE_WIDTH }}
-                >
-                  {/* Input handle (left side) - not on start node */}
-                  {!node.is_start_node && (
-                    <div
-                      className="absolute z-30 rounded-full border-2 bg-card transition-all cursor-crosshair"
-                      style={{
-                        width: 12, height: 12,
-                        left: -6, top: headerH + bodyH / 2 + headerH / 2 - 6,
-                        borderColor: color,
-                      }}
-                      onMouseUp={(e) => {
-                        e.stopPropagation();
-                        if (connecting) completeConnection(node.id);
-                      }}
-                      onMouseEnter={(e) => { (e.target as HTMLElement).style.width = "16px"; (e.target as HTMLElement).style.height = "16px"; (e.target as HTMLElement).style.left = "-8px"; (e.target as HTMLElement).style.top = `${headerH + bodyH / 2 + headerH / 2 - 8}px`; }}
-                      onMouseLeave={(e) => { (e.target as HTMLElement).style.width = "12px"; (e.target as HTMLElement).style.height = "12px"; (e.target as HTMLElement).style.left = "-6px"; (e.target as HTMLElement).style.top = `${headerH + bodyH / 2 + headerH / 2 - 6}px`; }}
-                    />
-                  )}
-
-                  {/* Output handles (right side) */}
-                  {nodeOuts.map((o, idx) => {
-                    const handleY = outputStartY + idx * outputRowH + outputRowH / 2;
-                    return (
-                      <div
-                        key={`handle-${o.id}`}
-                        className="absolute z-30 rounded-full border-2 bg-card transition-all cursor-crosshair"
-                        style={{
-                          width: 12, height: 12,
-                          right: -6, top: handleY - 6,
-                          borderColor: color,
-                        }}
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          startConnection(o.id, node.position_x + NODE_WIDTH, node.position_y + handleY);
-                        }}
-                        onMouseEnter={(e) => { (e.target as HTMLElement).style.width = "16px"; (e.target as HTMLElement).style.height = "16px"; (e.target as HTMLElement).style.right = "-8px"; }}
-                        onMouseLeave={(e) => { (e.target as HTMLElement).style.width = "12px"; (e.target as HTMLElement).style.height = "12px"; (e.target as HTMLElement).style.right = "-6px"; }}
-                      />
-                    );
-                  })}
-
-                  {/* Card body */}
-                  <div
-                    className={`rounded-lg border shadow-md bg-card cursor-move overflow-hidden transition-shadow ${selectedNode === node.id ? "ring-2 ring-primary shadow-lg" : ""}`}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      if (connecting) { completeConnection(node.id); return; }
-                      setDraggingNode(node.id);
-                      const rect = canvasRef.current?.getBoundingClientRect();
-                      if (rect) {
-                        setDragOffset({
-                          x: (e.clientX - rect.left - pan.x) / zoom - node.position_x,
-                          y: (e.clientY - rect.top - pan.y) / zoom - node.position_y,
-                        });
-                      }
-                    }}
-                    onClick={(e) => { e.stopPropagation(); setSelectedNode(node.id); }}
-                  >
-                    {/* Header */}
-                    <div className="flex items-center gap-2 px-3 py-2 text-white text-xs font-medium" style={{ backgroundColor: color, height: headerH }}>
-                      <Icon size={14} />
-                      <span className="flex-1 truncate">{NODE_LABELS[node.type]}</span>
-                      {node.is_start_node && <Badge className="bg-white/20 text-white text-[9px] px-1">INÍCIO</Badge>}
-                      <button onClick={(e) => { e.stopPropagation(); deleteNode(node.id); }} className="opacity-60 hover:opacity-100">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                    {/* Body */}
-                    <div className="px-3 py-2 text-xs text-muted-foreground line-clamp-2" style={{ height: bodyH }}>
-                      {getNodeSummary(node)}
-                    </div>
-                    {/* Outputs list */}
-                    <div className="px-2 pb-2 space-y-0">
-                      {nodeOuts.map(o => (
-                        <div key={o.id} className="flex items-center gap-1 pr-4" style={{ height: outputRowH }}>
-                          <span className="text-[10px] text-muted-foreground truncate">{o.label}</span>
-                          {o.next_node_id && (
-                            <button onClick={(e) => { e.stopPropagation(); deleteConnection(o.id); }} className="text-destructive opacity-50 hover:opacity-100 ml-auto">
-                              <XCircle size={10} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+      {/* Main area */}
+      <div ref={scrollRef} className="flex-1 overflow-auto p-6">
+        <div className="flex items-start gap-6 min-w-max">
+          {/* Left: Triggers panel */}
+          <div className="w-72 shrink-0">
+            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-foreground">Gatilhos</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                Defina quando este bot deve ser iniciado automaticamente.
+              </p>
+              {triggers.map(t => (
+                <div key={t.id} className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2 mb-2 text-xs">
+                  <span>{t.label}</span>
+                  <button onClick={() => setTriggers(prev => prev.filter(tr => tr.id !== t.id))} className="text-muted-foreground hover:text-destructive">
+                    <X size={12} />
+                  </button>
                 </div>
-              );
-            })}
+              ))}
+              <div className="relative">
+                <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => setShowTriggerMenu(!showTriggerMenu)}>
+                  <Plus size={12} className="mr-1" /> Gatilho
+                </Button>
+                {showTriggerMenu && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-card rounded-lg border border-border shadow-lg z-20 py-1">
+                    {TRIGGER_OPTIONS.map(opt => (
+                      <button
+                        key={opt.type}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted/80 transition-colors"
+                        onClick={() => {
+                          setTriggers(prev => [...prev, { id: uid(), type: opt.type, label: opt.label }]);
+                          setShowTriggerMenu(false);
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Add button */}
-          <div className="absolute bottom-4 right-4 z-10">
-            <div className="relative">
-              <Button size="lg" className="rounded-full w-12 h-12 shadow-lg" onClick={() => setShowAddMenu(!showAddMenu)}>
-                <Plus size={24} />
-              </Button>
-              {showAddMenu && (
-                <div className="absolute bottom-14 right-0 bg-card border border-border rounded-lg shadow-xl p-3 w-56 space-y-2">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens</p>
-                  <button onClick={() => addNode("message_text")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><MessageSquare size={14} style={{ color: NODE_COLORS.message_text }} /> Texto</button>
-                  <button onClick={() => addNode("message_template")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><FileText size={14} style={{ color: NODE_COLORS.message_template }} /> Template WhatsApp</button>
-                  <button onClick={() => addNode("message_audio")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><Mic size={14} style={{ color: NODE_COLORS.message_audio }} /> Áudio</button>
-                  <div className="border-t border-border my-1" />
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Lógica</p>
-                  <button onClick={() => addNode("wait")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><Clock size={14} style={{ color: NODE_COLORS.wait }} /> Espera / Condição</button>
-                  <button onClick={() => addNode("condition")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><GitBranch size={14} style={{ color: NODE_COLORS.condition }} /> Condição de Campo</button>
-                  <div className="border-t border-border my-1" />
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Ações</p>
-                  <button onClick={() => addNode("action_move_stage")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><ArrowRightLeft size={14} style={{ color: NODE_COLORS.action_move_stage }} /> Mover Etapa</button>
-                  <button onClick={() => addNode("action_set_field")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><Settings2 size={14} style={{ color: NODE_COLORS.action_set_field }} /> Definir Campo</button>
-                  <button onClick={() => addNode("action_add_tag")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><Tag size={14} style={{ color: NODE_COLORS.action_add_tag }} /> Adicionar Tag</button>
-                  <div className="border-t border-border my-1" />
-                  <button onClick={() => addNode("action_end_bot")} className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-muted transition-colors"><XCircle size={14} style={{ color: NODE_COLORS.action_end_bot }} /> Encerrar Bot</button>
-                </div>
-              )}
+          {/* Flow chain */}
+          <div className="flex items-start">
+            {/* Start card */}
+            <div className="shrink-0">
+              <StartCard />
+            </div>
+
+            {/* Flow outputs from root */}
+            <div className="flex flex-col gap-4">
+              {rootOutputs.map(output => (
+                <FlowBranch
+                  key={output.id}
+                  output={output}
+                  stepNumber={1}
+                  onAddStep={addStepToOutput}
+                  onRemoveStep={removeStep}
+                  onUpdateConfig={updateStepConfig}
+                  onUpdateOutputs={updateStepOutputs}
+                  pipelines={pipelines}
+                  stages={stages}
+                  templates={templates}
+                  allBots={bots}
+                />
+              ))}
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
 
-        {/* Config Panel */}
-        {selectedNodeData && (
-          <div className="w-80 border-l border-border bg-card shrink-0 flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-semibold">{NODE_LABELS[selectedNodeData.type]}</h3>
-              <Button variant="ghost" size="icon" onClick={() => setSelectedNode(null)}><XCircle size={16} /></Button>
-            </div>
-            <ScrollArea className="flex-1 p-4">
-              <NodeConfigPanel
-                node={selectedNodeData}
-                onUpdate={(config) => updateNodeConfig(selectedNodeData.id, config)}
-                onSetStart={() => setStartNode(selectedNodeData.id)}
+// ── Start Card ──
+
+const StartCard = () => (
+  <div className="flex items-center">
+    <div className="bg-emerald-500 text-white rounded-xl px-5 py-3 flex items-center gap-2 shadow-sm border border-emerald-400">
+      <Play size={16} fill="white" />
+      <span className="text-sm font-semibold">Iniciar robô</span>
+    </div>
+  </div>
+);
+
+// ── Connector line ──
+
+const ConnectorLine = () => (
+  <div className="flex items-center shrink-0 mx-0">
+    <div className="w-10 h-px bg-border" />
+    <div className="w-2 h-2 rounded-full border-2 border-border bg-card -ml-1" />
+  </div>
+);
+
+// ── Add Step Button ──
+
+const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId: string, type: string) => void }) => {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="relative flex items-center" ref={menuRef}>
+      <ConnectorLine />
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-dashed border-border bg-card text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors whitespace-nowrap shadow-sm"
+      >
+        <Plus size={12} /> Adicionar próximo passo
+      </button>
+
+      {open && (
+        <div className="absolute left-12 top-full mt-1 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64 max-h-80 overflow-y-auto">
+          <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens</div>
+          {STEP_TYPES.filter(s => s.category === "main").map(st => (
+            <button
+              key={st.type}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/80 transition-colors flex items-center gap-2"
+              onClick={() => { onAdd(outputId, st.type); setOpen(false); }}
+            >
+              <span>{st.emoji}</span> {st.label}
+            </button>
+          ))}
+          <div className="border-t border-border my-1" />
+          <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Lógica</div>
+          {STEP_TYPES.filter(s => s.category === "logic").map(st => (
+            <button
+              key={st.type}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/80 transition-colors flex items-center gap-2"
+              onClick={() => { onAdd(outputId, st.type); setOpen(false); }}
+            >
+              <span>{st.emoji}</span> {st.label}
+            </button>
+          ))}
+          <div className="border-t border-border my-1" />
+          <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Ações</div>
+          {STEP_TYPES.filter(s => s.category === "action").map(st => (
+            <button
+              key={st.type}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/80 transition-colors flex items-center gap-2"
+              onClick={() => { onAdd(outputId, st.type); setOpen(false); }}
+            >
+              <span>{st.emoji}</span> {st.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Flow Branch (recursive) ──
+
+interface FlowBranchProps {
+  output: FlowOutput;
+  stepNumber: number;
+  onAddStep: (outputId: string, type: string) => void;
+  onRemoveStep: (stepId: string) => void;
+  onUpdateConfig: (stepId: string, config: any) => void;
+  onUpdateOutputs: (stepId: string, outputs: FlowOutput[]) => void;
+  pipelines: any[];
+  stages: any[];
+  templates: any[];
+  allBots: any[];
+  branchLabel?: string;
+}
+
+const FlowBranch = ({
+  output, stepNumber, onAddStep, onRemoveStep, onUpdateConfig, onUpdateOutputs,
+  pipelines, stages, templates, allBots, branchLabel,
+}: FlowBranchProps) => {
+  if (output.nextSteps.length === 0) {
+    return (
+      <div className="flex items-center">
+        {branchLabel && (
+          <>
+            <ConnectorLine />
+            <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded whitespace-nowrap mr-1">{branchLabel}</span>
+          </>
+        )}
+        <AddStepButton outputId={output.id} onAdd={onAddStep} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {output.nextSteps.map((step, idx) => {
+        const currentNum = stepNumber + idx;
+        const hasMultipleOutputs = step.outputs.length > 1;
+
+        return (
+          <div key={step.id} className="flex items-start">
+            {/* Connector from previous */}
+            {branchLabel ? (
+              <>
+                <ConnectorLine />
+                <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded whitespace-nowrap mr-1 self-center">{branchLabel}</span>
+                <ConnectorLine />
+              </>
+            ) : (
+              <ConnectorLine />
+            )}
+
+            {/* Step card */}
+            <div className="flex flex-col shrink-0">
+              <StepCard
+                step={step}
+                number={currentNum}
+                onRemove={() => onRemoveStep(step.id)}
+                onUpdateConfig={(cfg) => onUpdateConfig(step.id, cfg)}
+                onUpdateOutputs={(outs) => onUpdateOutputs(step.id, outs)}
                 pipelines={pipelines}
                 stages={stages}
                 templates={templates}
+                allBots={allBots}
               />
-            </ScrollArea>
+            </div>
+
+            {/* Outputs */}
+            {hasMultipleOutputs ? (
+              <div className="flex flex-col gap-3 self-center">
+                {step.outputs.map((o, oIdx) => (
+                  <FlowBranch
+                    key={o.id}
+                    output={o}
+                    stepNumber={currentNum + 1}
+                    onAddStep={onAddStep}
+                    onRemoveStep={onRemoveStep}
+                    onUpdateConfig={onUpdateConfig}
+                    onUpdateOutputs={onUpdateOutputs}
+                    pipelines={pipelines}
+                    stages={stages}
+                    templates={templates}
+                    allBots={allBots}
+                    branchLabel={o.label}
+                  />
+                ))}
+              </div>
+            ) : step.outputs.length === 1 ? (
+              <FlowBranch
+                output={step.outputs[0]}
+                stepNumber={currentNum + 1}
+                onAddStep={onAddStep}
+                onRemoveStep={onRemoveStep}
+                onUpdateConfig={onUpdateConfig}
+                onUpdateOutputs={onUpdateOutputs}
+                pipelines={pipelines}
+                stages={stages}
+                templates={templates}
+                allBots={allBots}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </>
+  );
+};
+
+// ── Step Card ──
+
+interface StepCardProps {
+  step: FlowStep;
+  number: number;
+  onRemove: () => void;
+  onUpdateConfig: (config: any) => void;
+  onUpdateOutputs: (outputs: FlowOutput[]) => void;
+  pipelines: any[];
+  stages: any[];
+  templates: any[];
+  allBots: any[];
+}
+
+const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pipelines, stages, templates, allBots }: StepCardProps) => {
+  const stepInfo = STEP_TYPES.find(s => s.type === step.type);
+  const config = step.config || {};
+
+  const headerColors: Record<string, string> = {
+    send_message: "bg-blue-500",
+    pause: "bg-amber-500",
+    condition: "bg-purple-500",
+    action: "bg-emerald-500",
+    stop_bot: "bg-red-500",
+    start_bot: "bg-indigo-500",
+    reaction: "bg-pink-500",
+    comment: "bg-sky-500",
+    internal_message: "bg-teal-500",
+    list_message: "bg-cyan-500",
+    validation: "bg-orange-500",
+    round_robin: "bg-violet-500",
+  };
+
+  return (
+    <div className="bg-card rounded-xl border border-border shadow-sm w-80 overflow-hidden">
+      {/* Header */}
+      <div className={`${headerColors[step.type] || "bg-muted"} px-3 py-2 flex items-center justify-between`}>
+        <div className="flex items-center gap-2 text-white">
+          <span className="text-xs font-bold bg-white/20 rounded-full w-5 h-5 flex items-center justify-center">{number}</span>
+          <span className="text-xs font-semibold">{stepInfo?.label || step.type}</span>
+        </div>
+        <button onClick={onRemove} className="text-white/70 hover:text-white">
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Body - inline config */}
+      <div className="p-3 space-y-2">
+        {step.type === "send_message" && (
+          <SendMessageConfig config={config} onChange={onUpdateConfig} templates={templates} outputs={step.outputs} onUpdateOutputs={onUpdateOutputs} />
+        )}
+        {step.type === "pause" && (
+          <PauseConfig config={config} onChange={onUpdateConfig} outputs={step.outputs} onUpdateOutputs={onUpdateOutputs} />
+        )}
+        {step.type === "condition" && (
+          <ConditionConfig config={config} onChange={onUpdateConfig} />
+        )}
+        {step.type === "action" && (
+          <ActionConfig config={config} onChange={onUpdateConfig} pipelines={pipelines} stages={stages} />
+        )}
+        {step.type === "stop_bot" && (
+          <p className="text-xs text-muted-foreground">O bot será encerrado neste ponto.</p>
+        )}
+        {step.type === "start_bot" && (
+          <div>
+            <Label className="text-xs">Bot a iniciar</Label>
+            <Select value={config.bot_id || ""} onValueChange={v => onUpdateConfig({ ...config, bot_id: v })}>
+              <SelectTrigger className="h-8 text-xs mt-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <SelectContent>
+                {allBots.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {step.type === "reaction" && (
+          <div>
+            <Label className="text-xs">Emoji</Label>
+            <Input className="h-8 text-xs mt-1" value={config.emoji || ""} onChange={e => onUpdateConfig({ ...config, emoji: e.target.value })} placeholder="👍" />
+          </div>
+        )}
+        {step.type === "comment" && (
+          <div>
+            <Label className="text-xs">Comentário</Label>
+            <Textarea className="text-xs min-h-[60px] mt-1" value={config.text || ""} onChange={e => onUpdateConfig({ ...config, text: e.target.value })} placeholder="Escreva um comentário..." />
+          </div>
+        )}
+        {step.type === "internal_message" && (
+          <div>
+            <Label className="text-xs">Mensagem interna</Label>
+            <Textarea className="text-xs min-h-[60px] mt-1" value={config.message || ""} onChange={e => onUpdateConfig({ ...config, message: e.target.value })} placeholder="Escreva uma mensagem..." />
+          </div>
+        )}
+        {step.type === "validation" && (
+          <div className="space-y-2">
+            <div>
+              <Label className="text-xs">Campo</Label>
+              <Input className="h-8 text-xs mt-1" value={config.field || ""} onChange={e => onUpdateConfig({ ...config, field: e.target.value })} placeholder="email, telefone..." />
+            </div>
+            <div>
+              <Label className="text-xs">Regra</Label>
+              <Select value={config.rule || "not_empty"} onValueChange={v => onUpdateConfig({ ...config, rule: v })}>
+                <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="not_empty">Não está vazio</SelectItem>
+                  <SelectItem value="is_email">É um email válido</SelectItem>
+                  <SelectItem value="is_phone">É um telefone válido</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         )}
       </div>
@@ -644,195 +837,239 @@ const CrmBotEditor = () => {
   );
 };
 
-// ── Node Config Panel ──
+// ── Inline Configs ──
 
-function NodeConfigPanel({ node, onUpdate, onSetStart, pipelines, stages, templates }: {
-  node: BotNode;
-  onUpdate: (config: any) => void;
-  onSetStart: () => void;
-  pipelines: any[];
-  stages: any[];
-  templates: any[];
-}) {
-  const config = node.config || {};
+const SendMessageConfig = ({ config, onChange, templates, outputs, onUpdateOutputs }: {
+  config: any; onChange: (c: any) => void; templates: any[];
+  outputs: FlowOutput[]; onUpdateOutputs: (o: FlowOutput[]) => void;
+}) => {
+  const buttons = config.buttons || [];
 
-  const update = (key: string, value: any) => {
-    onUpdate({ ...config, [key]: value });
+  const addButton = (type: "action" | "url") => {
+    const newBtn = { id: uid(), type, label: type === "action" ? "Botão de ação" : "URL", value: "" };
+    const newButtons = [...buttons, newBtn];
+    onChange({ ...config, buttons: newButtons });
+
+    // Add output for action buttons
+    if (type === "action") {
+      const newOutput: FlowOutput = {
+        id: uid(), label: newBtn.label, conditionType: "button_click", conditionValue: newBtn.id, nextSteps: [],
+      };
+      onUpdateOutputs([...outputs, newOutput]);
+    }
   };
 
   return (
-    <div className="space-y-4">
-      {!node.is_start_node && (
-        <Button variant="outline" size="sm" className="w-full" onClick={onSetStart}>
-          Definir como nó inicial
-        </Button>
-      )}
-
-      {node.type === "message_text" && (
-        <>
-          <div>
-            <Label className="text-xs">Mensagem</Label>
-            <Textarea value={config.message || ""} onChange={e => update("message", e.target.value)} rows={5} placeholder="Digite a mensagem..." />
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {["{{nome}}", "{{telefone}}"].map(v => (
-              <Badge key={v} variant="secondary" className="cursor-pointer text-xs" onClick={() => update("message", (config.message || "") + " " + v)}>
-                {v}
-              </Badge>
-            ))}
-          </div>
-          {config.message && (
-            <div className="bg-muted rounded p-2 text-xs">
-              <p className="text-muted-foreground mb-1">Preview:</p>
-              <p>{config.message.replace(/\{\{nome\}\}/g, "João").replace(/\{\{telefone\}\}/g, "5511999999999")}</p>
-            </div>
-          )}
-        </>
-      )}
-
-      {node.type === "message_template" && (
-        <>
-          <div>
-            <Label className="text-xs">Template aprovado</Label>
-            <Select value={config.template_name || ""} onValueChange={v => update("template_name", v)}>
-              <SelectTrigger><SelectValue placeholder="Selecionar template" /></SelectTrigger>
-              <SelectContent>
-                {templates.map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          {config.template_name && (
-            <div className="bg-muted rounded p-2 text-xs">
-              <p className="text-muted-foreground">Template: {config.template_name}</p>
-            </div>
-          )}
-        </>
-      )}
-
-      {node.type === "message_audio" && (
-        <div>
-          <Label className="text-xs">URL do áudio</Label>
-          <Input value={config.audio_url || ""} onChange={e => update("audio_url", e.target.value)} placeholder="https://..." />
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Select value={config.channel || "whatsapp"} onValueChange={v => onChange({ ...config, channel: v })}>
+          <SelectTrigger className="h-7 text-xs w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="whatsapp">WhatsApp</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <Textarea
+        className="text-xs min-h-[60px]"
+        value={config.message || ""}
+        onChange={e => onChange({ ...config, message: e.target.value })}
+        placeholder="Escreva algo ou escolha um modelo..."
+      />
+      <div className="flex items-center gap-1 flex-wrap">
+        {["{{nome}}", "{{telefone}}", "{{email}}"].map(v => (
+          <button
+            key={v}
+            className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded hover:bg-primary/20 transition-colors"
+            onClick={() => onChange({ ...config, message: (config.message || "") + " " + v })}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button className="text-muted-foreground hover:text-foreground"><Mic size={14} /></button>
+        <button className="text-muted-foreground hover:text-foreground"><Paperclip size={14} /></button>
+      </div>
+      {buttons.map((btn: any, i: number) => (
+        <div key={btn.id} className="flex items-center gap-1 bg-muted/50 rounded px-2 py-1">
+          <span className="text-[10px] text-muted-foreground">{btn.type === "action" ? "🔘" : "🔗"}</span>
+          <Input
+            className="h-6 text-xs flex-1 bg-transparent border-0 p-0"
+            value={btn.label}
+            onChange={e => {
+              const newBtns = [...buttons];
+              newBtns[i] = { ...btn, label: e.target.value };
+              onChange({ ...config, buttons: newBtns });
+            }}
+          />
+          <button onClick={() => {
+            onChange({ ...config, buttons: buttons.filter((_: any, j: number) => j !== i) });
+          }} className="text-muted-foreground hover:text-destructive"><X size={10} /></button>
         </div>
-      )}
+      ))}
+      <div className="flex items-center gap-2">
+        <button onClick={() => addButton("action")} className="text-[10px] text-primary hover:underline">+ Botão de ação</button>
+        <button onClick={() => addButton("url")} className="text-[10px] text-primary hover:underline">+ Botão de URL</button>
+      </div>
+    </div>
+  );
+};
 
-      {node.type === "wait" && (
-        <>
-          <div>
-            <Label className="text-xs">Tipo de espera</Label>
-            <RadioGroup value={config.type || "both"} onValueChange={v => update("type", v)} className="mt-2 space-y-2">
-              <div className="flex items-center gap-2"><RadioGroupItem value="reply" id="wr" /><Label htmlFor="wr" className="text-xs">Aguardar resposta</Label></div>
-              <div className="flex items-center gap-2"><RadioGroupItem value="timeout" id="wt" /><Label htmlFor="wt" className="text-xs">Aguardar timeout</Label></div>
-              <div className="flex items-center gap-2"><RadioGroupItem value="both" id="wb" /><Label htmlFor="wb" className="text-xs">Ambos (o que vier primeiro)</Label></div>
-            </RadioGroup>
-          </div>
-          {(config.type === "timeout" || config.type === "both") && (
-            <div>
-              <Label className="text-xs">Horas de timeout</Label>
-              <Input type="number" min={0.5} step={0.5} value={config.hours || 4} onChange={e => update("hours", parseFloat(e.target.value))} />
+const PauseConfig = ({ config, onChange, outputs, onUpdateOutputs }: {
+  config: any; onChange: (c: any) => void;
+  outputs: FlowOutput[]; onUpdateOutputs: (o: FlowOutput[]) => void;
+}) => {
+  const conditions = config.conditions || [{ type: "message_received" }];
+
+  const addCondition = () => {
+    const types = ["message_received", "timer"];
+    const existing = conditions.map((c: any) => c.type);
+    const next = types.find((t: string) => !existing.includes(t));
+    if (!next) return;
+    const newConds = [...conditions, { type: next, hours: 1, minutes: 0, seconds: 0 }];
+    onChange({ ...config, conditions: newConds });
+
+    // Ensure matching output exists
+    if (next === "message_received" && !outputs.find(o => o.conditionType === "reply")) {
+      onUpdateOutputs([...outputs, { id: uid(), label: "Mensagem recebida", conditionType: "reply", conditionValue: null, nextSteps: [] }]);
+    }
+    if (next === "timer" && !outputs.find(o => o.conditionType === "timeout")) {
+      onUpdateOutputs([...outputs, { id: uid(), label: "Cronômetro expirado", conditionType: "timeout", conditionValue: null, nextSteps: [] }]);
+    }
+  };
+
+  const removeCondition = (idx: number) => {
+    const removed = conditions[idx];
+    const newConds = conditions.filter((_: any, i: number) => i !== idx);
+    onChange({ ...config, conditions: newConds });
+
+    // Remove matching output
+    if (removed.type === "message_received") {
+      onUpdateOutputs(outputs.filter(o => o.conditionType !== "reply"));
+    }
+    if (removed.type === "timer") {
+      onUpdateOutputs(outputs.filter(o => o.conditionType !== "timeout"));
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {conditions.map((cond: any, i: number) => (
+        <div key={i} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
+          <span className="text-xs flex-1">
+            {cond.type === "message_received" ? "Até a mensagem recebida" :
+              `Cronômetro: ${cond.hours || 0}h ${cond.minutes || 0}min ${cond.seconds || 0}seg`}
+          </span>
+          {cond.type === "timer" && (
+            <div className="flex items-center gap-1">
+              <Input className="h-6 w-10 text-xs text-center p-0" type="number" value={cond.hours || 0}
+                onChange={e => {
+                  const c = [...conditions]; c[i] = { ...cond, hours: +e.target.value };
+                  onChange({ ...config, conditions: c });
+                }} />
+              <span className="text-[10px]">h</span>
+              <Input className="h-6 w-10 text-xs text-center p-0" type="number" value={cond.minutes || 0}
+                onChange={e => {
+                  const c = [...conditions]; c[i] = { ...cond, minutes: +e.target.value };
+                  onChange({ ...config, conditions: c });
+                }} />
+              <span className="text-[10px]">m</span>
             </div>
           )}
-        </>
-      )}
-
-      {node.type === "condition" && (
-        <>
-          <div>
-            <Label className="text-xs">Campo</Label>
-            <Select value={config.field || ""} onValueChange={v => update("field", v)}>
-              <SelectTrigger><SelectValue placeholder="Campo" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="tags">Tags</SelectItem>
-                <SelectItem value="name">Nome</SelectItem>
-                <SelectItem value="phone">Telefone</SelectItem>
-                <SelectItem value="source">Origem</SelectItem>
-                <SelectItem value="value">Valor</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Operador</Label>
-            <Select value={config.operator || "equals"} onValueChange={v => update("operator", v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="equals">É igual a</SelectItem>
-                <SelectItem value="not_equals">Não é igual a</SelectItem>
-                <SelectItem value="contains">Contém</SelectItem>
-                <SelectItem value="greater_than">Maior que</SelectItem>
-                <SelectItem value="less_than">Menor que</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Valor</Label>
-            <Input value={config.value || ""} onChange={e => update("value", e.target.value)} placeholder="Valor para comparar" />
-          </div>
-        </>
-      )}
-
-      {node.type === "action_move_stage" && (
-        <>
-          <div>
-            <Label className="text-xs">Funil</Label>
-            <Select value={config.pipeline_id || ""} onValueChange={v => update("pipeline_id", v)}>
-              <SelectTrigger><SelectValue placeholder="Selecionar funil" /></SelectTrigger>
-              <SelectContent>
-                {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Etapa destino</Label>
-            <Select value={config.stage_id || ""} onValueChange={v => update("stage_id", v)}>
-              <SelectTrigger><SelectValue placeholder="Selecionar etapa" /></SelectTrigger>
-              <SelectContent>
-                {stages.filter(s => s.pipeline_id === config.pipeline_id).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-2 text-xs text-yellow-600">
-            ⚠️ O bot atual será cancelado e o bot da etapa destino será iniciado.
-          </div>
-        </>
-      )}
-
-      {node.type === "action_set_field" && (
-        <>
-          <div>
-            <Label className="text-xs">Campo</Label>
-            <Select value={config.field || ""} onValueChange={v => update("field", v)}>
-              <SelectTrigger><SelectValue placeholder="Campo" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">Nome</SelectItem>
-                <SelectItem value="source">Origem</SelectItem>
-                <SelectItem value="notes">Observações</SelectItem>
-                <SelectItem value="value">Valor</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs">Valor</Label>
-            <Input value={config.value || ""} onChange={e => update("value", e.target.value)} placeholder="Valor" />
-          </div>
-        </>
-      )}
-
-      {node.type === "action_add_tag" && (
-        <>
-          <div>
-            <Label className="text-xs">Tag</Label>
-            <Input value={config.tag || ""} onChange={e => update("tag", e.target.value)} placeholder="Nome da tag" />
-          </div>
-        </>
-      )}
-
-      {node.type === "action_end_bot" && (
-        <div className="bg-muted rounded p-3 text-xs text-muted-foreground">
-          Este nó encerra completamente a execução do bot para o lead. Nenhuma ação adicional será executada.
+          {conditions.length > 1 && (
+            <button onClick={() => removeCondition(i)} className="text-muted-foreground hover:text-destructive"><X size={12} /></button>
+          )}
         </div>
+      ))}
+      {conditions.length < 2 && (
+        <button onClick={addCondition} className="text-[10px] text-primary hover:underline">+ Adicionar próxima condição</button>
       )}
     </div>
   );
-}
+};
+
+const ConditionConfig = ({ config, onChange }: { config: any; onChange: (c: any) => void }) => (
+  <div className="space-y-2">
+    <div>
+      <Label className="text-xs">Campo</Label>
+      <Select value={config.field || "tags"} onValueChange={v => onChange({ ...config, field: v })}>
+        <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="tags">Tags</SelectItem>
+          <SelectItem value="name">Nome</SelectItem>
+          <SelectItem value="phone">Telefone</SelectItem>
+          <SelectItem value="source">Origem</SelectItem>
+          <SelectItem value="stage">Etapa</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+    <div>
+      <Label className="text-xs">Operador</Label>
+      <Select value={config.operator || "equals"} onValueChange={v => onChange({ ...config, operator: v })}>
+        <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="equals">É igual a</SelectItem>
+          <SelectItem value="contains">Contém</SelectItem>
+          <SelectItem value="not_empty">Está preenchido</SelectItem>
+          <SelectItem value="is_empty">Está vazio</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+    <div>
+      <Label className="text-xs">Valor</Label>
+      <Input className="h-8 text-xs mt-1" value={config.value || ""} onChange={e => onChange({ ...config, value: e.target.value })} placeholder="Valor..." />
+    </div>
+  </div>
+);
+
+const ActionConfig = ({ config, onChange, pipelines, stages }: { config: any; onChange: (c: any) => void; pipelines: any[]; stages: any[] }) => (
+  <div className="space-y-2">
+    <div>
+      <Label className="text-xs">Tipo de ação</Label>
+      <Select value={config.actionType || "move_stage"} onValueChange={v => onChange({ ...config, actionType: v })}>
+        <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="move_stage">Mover etapa</SelectItem>
+          <SelectItem value="set_field">Definir campo</SelectItem>
+          <SelectItem value="add_tag">Adicionar/remover tag</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+    {config.actionType === "move_stage" && (
+      <>
+        <Select value={config.pipeline_id || ""} onValueChange={v => onChange({ ...config, pipeline_id: v })}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Funil..." /></SelectTrigger>
+          <SelectContent>
+            {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={config.stage_id || ""} onValueChange={v => onChange({ ...config, stage_id: v })}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Etapa..." /></SelectTrigger>
+          <SelectContent>
+            {stages.filter(s => s.pipeline_id === config.pipeline_id).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </>
+    )}
+    {config.actionType === "set_field" && (
+      <>
+        <Input className="h-8 text-xs" value={config.field || ""} onChange={e => onChange({ ...config, field: e.target.value })} placeholder="Campo..." />
+        <Input className="h-8 text-xs" value={config.value || ""} onChange={e => onChange({ ...config, value: e.target.value })} placeholder="Valor..." />
+      </>
+    )}
+    {config.actionType === "add_tag" && (
+      <>
+        <Input className="h-8 text-xs" value={config.tag || ""} onChange={e => onChange({ ...config, tag: e.target.value })} placeholder="Nome da tag..." />
+        <Select value={config.tagAction || "add"} onValueChange={v => onChange({ ...config, tagAction: v })}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="add">Adicionar</SelectItem>
+            <SelectItem value="remove">Remover</SelectItem>
+          </SelectContent>
+        </Select>
+      </>
+    )}
+  </div>
+);
 
 export default CrmBotEditor;
