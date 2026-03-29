@@ -328,6 +328,53 @@ export type Database = {
           },
         ]
       }
+      crm_tasks: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          due_date: string
+          id: string
+          lead_id: string
+          notes: string | null
+          status: string
+          title: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          due_date: string
+          id?: string
+          lead_id: string
+          notes?: string | null
+          status?: string
+          title: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          due_date?: string
+          id?: string
+          lead_id?: string
+          notes?: string | null
+          status?: string
+          title?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_tasks_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_whatsapp_templates: {
         Row: {
           body_text: string | null
