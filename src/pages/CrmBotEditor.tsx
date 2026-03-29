@@ -440,25 +440,31 @@ const CrmBotEditor = () => {
                 const fromNode = nodes.find(n => n.id === o.node_id);
                 const toNode = nodes.find(n => n.id === o.next_node_id);
                 if (!fromNode || !toNode) return null;
+                // Calculate Y based on output index
+                const nodeOuts = outputs.filter(out => out.node_id === o.node_id);
+                const idx = nodeOuts.findIndex(out => out.id === o.id);
+                const headerH = 34;
+                const bodyH = 36;
+                const outputRowH = 22;
+                const outputStartY = headerH + bodyH + 8;
                 const fromX = fromNode.position_x + NODE_WIDTH;
-                const fromY = fromNode.position_y + NODE_HEIGHT / 2;
+                const fromY = fromNode.position_y + outputStartY + idx * outputRowH + outputRowH / 2;
                 const toX = toNode.position_x;
-                const toY = toNode.position_y + NODE_HEIGHT / 2;
+                const toInputY = toNode.position_y + headerH + bodyH / 2 + headerH / 2;
                 const midX = (fromX + toX) / 2;
                 return (
                   <g key={o.id}>
                     <path
-                      d={`M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`}
+                      d={`M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toInputY}, ${toX} ${toInputY}`}
                       fill="none"
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       markerEnd="url(#arrowhead)"
                     />
-                    <text x={midX} y={(fromY + toY) / 2 - 8} textAnchor="middle" fontSize={10} fill="hsl(var(--muted-foreground))">{o.label}</text>
-                    {/* Delete connection click area */}
+                    <text x={midX} y={(fromY + toInputY) / 2 - 8} textAnchor="middle" fontSize={10} fill="hsl(var(--muted-foreground))">{o.label}</text>
                     <circle
                       cx={midX}
-                      cy={(fromY + toY) / 2}
+                      cy={(fromY + toInputY) / 2}
                       r={8}
                       fill="hsl(var(--destructive))"
                       opacity={0}
