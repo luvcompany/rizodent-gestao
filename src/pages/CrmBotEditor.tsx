@@ -763,22 +763,57 @@ const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId
 
   return (
     <div className="relative flex items-center" ref={menuRef} style={{ touchAction: "none" }}>
-      {/* Connector line stretches to the dragged position */}
-      <div className="flex items-center shrink-0 mx-0">
-        <svg
-          width={Math.abs(offset.x) + 42}
-          height={Math.abs(offset.y) + 10}
-          className="shrink-0 overflow-visible"
-          style={{ minWidth: 42, minHeight: 10 }}
-        >
-          <line
-            x1={0} y1={5}
-            x2={40 + offset.x} y2={5 + offset.y}
-            stroke="hsl(var(--border))" strokeWidth={1}
-          />
-          <circle cx={40 + offset.x} cy={5 + offset.y} r={4} fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth={2} />
-        </svg>
-      </div>
+      {/* Orthogonal connector line to the dragged position */}
+      {(() => {
+        const dy = offset.y;
+        const dx = offset.x;
+        const baseLen = 40;
+
+        if (Math.abs(dy) < 3 && Math.abs(dx) < 3) {
+          return (
+            <div className="flex items-center shrink-0 mx-0">
+              <div className="w-10 h-px bg-border" />
+              <div className="w-2 h-2 rounded-full border-2 border-border bg-card -ml-1" />
+            </div>
+          );
+        }
+
+        const midX = baseLen / 2;
+        const endX = baseLen + dx;
+        const absH = Math.abs(dy) + 12;
+        const totalW = baseLen + dx + 12;
+
+        return (
+          <div className="flex items-center shrink-0 mx-0" style={{ position: "relative" }}>
+            <svg
+              width={Math.max(totalW, 44)}
+              height={absH + 6}
+              className="shrink-0 overflow-visible"
+              style={{
+                minWidth: 44,
+                minHeight: 10,
+                position: "relative",
+                top: dy > 0 ? 0 : dy,
+              }}
+            >
+              <path
+                d={`M 0,${dy < 0 ? -dy + 3 : 3} L ${midX},${dy < 0 ? -dy + 3 : 3} L ${midX},${dy < 0 ? 3 : dy + 3} L ${endX},${dy < 0 ? 3 : dy + 3}`}
+                fill="none"
+                stroke="hsl(var(--border))"
+                strokeWidth={1.5}
+              />
+              <circle
+                cx={endX}
+                cy={dy < 0 ? 3 : dy + 3}
+                r={3}
+                fill="hsl(var(--card))"
+                stroke="hsl(var(--border))"
+                strokeWidth={2}
+              />
+            </svg>
+          </div>
+        );
+      })()}
       <button
         ref={btnRef}
         onMouseDown={handleDragStart}
