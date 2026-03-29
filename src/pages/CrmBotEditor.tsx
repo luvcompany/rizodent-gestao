@@ -751,12 +751,17 @@ const AddStepButton = ({ outputId, onAdd, restrictToType }: { outputId: string; 
 
   useEffect(() => {
     if (!open) return;
+    if (restrictToType) {
+      onAdd(outputId, restrictToType);
+      setOpen(false);
+      return;
+    }
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, restrictToType, outputId, onAdd]);
 
   const handleDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
