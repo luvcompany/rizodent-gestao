@@ -212,10 +212,27 @@ const CrmBotEditor = () => {
   // ── Tree operations ──
 
   const addStepToOutput = (outputId: string, stepType: string) => {
-    const newStep: FlowStep = {
-      id: uid(), type: stepType, config: getDefaultConfig(stepType), outputs: getDefaultOutputs(stepType),
-    };
+    // Check if this output is a "no_response" type - if so, pause should only have timer
+    const isNoResponse = findOutputConditionType(rootOutputs, outputId) === "no_response";
+    const config = stepType === "pause" && isNoResponse
+      ? { conditions: [{ type: "timer", hours: 1, minutes: 0, seconds: 0 }] }
+      : getDefaultConfig(stepType);
+    const outputs = stepType === "pause" && isNoResponse
+      ? [{ id: uid(), label: "Cronômetro expirado", conditionType: "timeout", conditionValue: null, nextSteps: [] as FlowStep[] }]
+      : getDefaultOutputs(stepType);
+    const newStep: FlowStep = { id: uid(), type: stepType, config, outputs };
     setRootOutputs(prev => addStepInTree(prev, outputId, newStep));
+  };
+
+  const findOutputConditionType = (outs: FlowOutput[], targetId: string): string | null => {
+    for (const o of outs) {
+      if (o.id === targetId) return o.conditionType;
+      for (const step of o.nextSteps) {
+        const found = findOutputConditionType(step.outputs, targetId);
+        if (found) return found;
+      }
+    }
+    return null;
   };
 
   const addStepInTree = (outs: FlowOutput[], targetOutputId: string, newStep: FlowStep): FlowOutput[] => {
@@ -724,7 +741,7 @@ const ConnectorLine = () => (
 
 // ── Add Step Button (draggable) ──
 
-const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId: string, type: string) => void }) => {
+const AddStepButton = ({ outputId, onAdd, restrictToType }: { outputId: string; onAdd: (outputId: string, type: string) => void; restrictToType?: string }) => {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -734,12 +751,17 @@ const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId
 
   useEffect(() => {
     if (!open) return;
+    if (restrictToType) {
+      onAdd(outputId, restrictToType);
+      setOpen(false);
+      return;
+    }
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, restrictToType, outputId, onAdd]);
 
   const handleDragStart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -763,22 +785,57 @@ const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId
 
   return (
     <div className="relative flex items-center" ref={menuRef} style={{ touchAction: "none" }}>
-      {/* Connector line stretches to the dragged position */}
-      <div className="flex items-center shrink-0 mx-0">
-        <svg
-          width={Math.abs(offset.x) + 42}
-          height={Math.abs(offset.y) + 10}
-          className="shrink-0 overflow-visible"
-          style={{ minWidth: 42, minHeight: 10 }}
-        >
-          <line
-            x1={0} y1={5}
-            x2={40 + offset.x} y2={5 + offset.y}
-            stroke="hsl(var(--border))" strokeWidth={1}
-          />
-          <circle cx={40 + offset.x} cy={5 + offset.y} r={4} fill="hsl(var(--card))" stroke="hsl(var(--border))" strokeWidth={2} />
-        </svg>
-      </div>
+      {/* Orthogonal connector line to the dragged position */}
+      {(() => {
+        const dy = offset.y;
+        const dx = offset.x;
+        const baseLen = 40;
+
+        if (Math.abs(dy) < 3 && Math.abs(dx) < 3) {
+          return (
+            <div className="flex items-center shrink-0 mx-0">
+              <div className="w-10 h-px bg-border" />
+              <div className="w-2 h-2 rounded-full border-2 border-border bg-card -ml-1" />
+            </div>
+          );
+        }
+
+        const midX = baseLen / 2;
+        const endX = baseLen + dx;
+        const absH = Math.abs(dy) + 12;
+        const totalW = baseLen + dx + 12;
+
+        return (
+          <div className="flex items-center shrink-0 mx-0" style={{ position: "relative" }}>
+            <svg
+              width={Math.max(totalW, 44)}
+              height={absH + 6}
+              className="shrink-0 overflow-visible"
+              style={{
+                minWidth: 44,
+                minHeight: 10,
+                position: "relative",
+                top: dy > 0 ? 0 : dy,
+              }}
+            >
+              <path
+                d={`M 0,${dy < 0 ? -dy + 3 : 3} L ${midX},${dy < 0 ? -dy + 3 : 3} L ${midX},${dy < 0 ? 3 : dy + 3} L ${endX},${dy < 0 ? 3 : dy + 3}`}
+                fill="none"
+                stroke="hsl(var(--border))"
+                strokeWidth={1.5}
+              />
+              <circle
+                cx={endX}
+                cy={dy < 0 ? 3 : dy + 3}
+                r={3}
+                fill="hsl(var(--card))"
+                stroke="hsl(var(--border))"
+                strokeWidth={2}
+              />
+            </svg>
+          </div>
+        );
+      })()}
       <button
         ref={btnRef}
         onMouseDown={handleDragStart}
@@ -795,7 +852,7 @@ const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId
         <Plus size={12} /> Adicionar próximo passo
       </button>
 
-      {open && (
+      {open && !restrictToType && (
         <div
           className="absolute left-12 top-full mt-1 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64"
           style={{
@@ -863,7 +920,7 @@ const FlowBranch = ({
             <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded whitespace-nowrap mr-1">{branchLabel}</span>
           </>
         )}
-        <AddStepButton outputId={output.id} onAdd={onAddStep} />
+        <AddStepButton outputId={output.id} onAdd={onAddStep} restrictToType={output.conditionType === "no_response" ? "pause" : undefined} />
       </div>
     );
   }

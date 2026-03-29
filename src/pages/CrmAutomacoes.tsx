@@ -9,9 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent } from "@/components/ui/card";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Save, Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, Cpu, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, AlertTriangle } from "lucide-react";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -31,7 +30,7 @@ const PRESET_COLORS = [
   "#ec4899", "#f43f5e", "#78716c", "#64748b", "#1e293b",
 ];
 
-const FINAL_NAMES = ["agendado", "contratado", "fechado", "lead desqualificado"];
+// No auto-final names - user controls is_final_stage manually
 
 export default function CrmAutomacoes() {
   const navigate = useNavigate();
@@ -377,11 +376,125 @@ export default function CrmAutomacoes() {
                                     </div>
                                   ))}
                                   <button
-                                    onClick={() => { setAutoForm({ stage_id: stage.id, trigger_type: "on_enter", action_type: "send_template", action_config: {}, editId: "" }); setAutoModalOpen(true); }}
+                                    onClick={() => {
+                                      setExpandedStageId(expandedStageId === stage.id ? null : stage.id);
+                                    }}
                                     className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1.5 flex items-center justify-center gap-1 transition-colors"
                                   >
                                     <Plus size={12} /> Adicionar gatilho
                                   </button>
+
+                                  {/* Inline bot config when expanded */}
+                                  {expandedStageId === stage.id && (() => {
+                                    const sbc = stageBotConfigs.find(c => c.stage_id === stage.id);
+                                    const isFinal = sbc?.is_final_stage ?? false;
+                                    const botId = sbc?.bot_id || "";
+                                    const triggerType = sbc?.trigger_type || "on_enter";
+                                    const isActive = sbc?.active ?? true;
+
+                                    return (
+                                      <div className="space-y-3 border-t border-border pt-3 mt-2">
+                                        {/* Final stage toggle */}
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] text-muted-foreground">Etapa Final</span>
+                                          <Switch
+                                            checked={isFinal}
+                                            onCheckedChange={(v) => handleSaveSbcFull(stage.id, { is_final_stage: v }, false)}
+                                          />
+                                        </div>
+
+                                        {isFinal ? (
+                                          <div className="flex items-start gap-2 bg-destructive/10 border border-destructive/20 rounded-lg p-2">
+                                            <AlertTriangle size={12} className="text-destructive shrink-0 mt-0.5" />
+                                            <p className="text-[10px] text-destructive">Bots de outras etapas não interferem nesta etapa. Você ainda pode criar bots específicos para ela.</p>
+                                          </div>
+                                        ) : null}
+
+                                        {/* Salesbot */}
+                                        <div>
+                                          <Label className="text-xs font-semibold flex items-center gap-1 mb-1">
+                                            <Bot size={10} className="text-primary" /> Salesbot / Robô
+                                          </Label>
+                                          <Select value={botId || "none"} onValueChange={(v) => handleSaveSbcFull(stage.id, { bot_id: v === "none" ? "" : v }, false)}>
+                                            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Nenhum robô" /></SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="none">Nenhum robô</SelectItem>
+                                              {allBots.filter(b => b.active).map(b => (
+                                                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                          <button
+                                            onClick={() => navigate("/crm/bots")}
+                                            className="text-[10px] text-primary hover:underline mt-1 flex items-center gap-1"
+                                          >
+                                            ou <Plus size={8} /> Criar robô
+                                          </button>
+                                        </div>
+
+                                        {/* Trigger */}
+                                        <div>
+                                          <Label className="text-xs font-semibold mb-1">Executar</Label>
+                                          <Select value={triggerType} onValueChange={(v) => handleSaveSbcFull(stage.id, { trigger_type: v }, false)}>
+                                            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="on_enter">Quando movido para esta etapa</SelectItem>
+                                              <SelectItem value="on_create">Quando criado nesta etapa</SelectItem>
+                                              <SelectItem value="both">Quando movido ou criado</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+
+                                        {/* Active */}
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-foreground">Ativo</span>
+                                          <Switch checked={isActive} onCheckedChange={(v) => handleSaveSbcFull(stage.id, { active: v }, false)} />
+                                        </div>
+
+                                        {/* Leave unread */}
+                                        <div className="flex items-start gap-2">
+                                          <Switch
+                                            checked={leaveUnread[stage.id] ?? false}
+                                            onCheckedChange={v => setLeaveUnread(prev => ({ ...prev, [stage.id]: v }))}
+                                            className="mt-0.5"
+                                          />
+                                          <div>
+                                            <span className="text-[10px] text-foreground">Deixar mensagem sem resposta</span>
+                                            <p className="text-[9px] text-muted-foreground">Mensagens do robô marcadas como não respondidas</p>
+                                          </div>
+                                        </div>
+
+                                        {/* Apply to all */}
+                                        <div className="flex items-start gap-2 bg-muted/50 rounded-lg p-2">
+                                          <Checkbox
+                                            checked={applyToAll[stage.id] ?? false}
+                                            onCheckedChange={v => setApplyToAll(prev => ({ ...prev, [stage.id]: !!v }))}
+                                            className="mt-0.5"
+                                          />
+                                          <span className="text-[10px] text-foreground">Aplicar a todos os leads já nesta etapa</span>
+                                        </div>
+
+                                        {/* Action buttons */}
+                                        <div className="flex items-center gap-2">
+                                          <Button
+                                            size="sm"
+                                            className="flex-1 text-xs h-7"
+                                            onClick={() => handleSaveSbcFull(stage.id, {
+                                              bot_id: botId || "",
+                                              trigger_type: triggerType,
+                                              active: isActive,
+                                              is_final_stage: isFinal,
+                                            }, applyToAll[stage.id] ?? false)}
+                                          >
+                                            Finalizado
+                                          </Button>
+                                          <Button variant="outline" size="sm" className="flex-1 text-xs h-7" onClick={() => setExpandedStageId(null)}>
+                                            Cancelar
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
@@ -402,192 +515,8 @@ export default function CrmAutomacoes() {
             </DragDropContext>
           </div>
 
-          {/* Bot Config per Stage - Kommo style */}
-          <div className="flex-1 overflow-y-auto p-6">
-            <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
-              <Cpu size={16} className="text-primary" /> Configuração de Bots por Etapa
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {stages.map(stage => {
-                const sbc = stageBotConfigs.find(c => c.stage_id === stage.id);
-                const isFinal = sbc?.is_final_stage || FINAL_NAMES.includes(stage.name.toLowerCase());
-                const botId = sbc?.bot_id || "";
-                const triggerType = sbc?.trigger_type || "on_enter";
-                const isActive = sbc?.active ?? true;
-                const isExpanded = expandedStageId === stage.id;
-
-                const handleQuickSave = async (updates: Partial<StageBotConfig>) => {
-                  const payload = {
-                    stage_id: stage.id,
-                    bot_id: updates.bot_id !== undefined ? (updates.bot_id || null) : (botId || null),
-                    trigger_type: updates.trigger_type || triggerType,
-                    active: updates.active !== undefined ? updates.active : isActive,
-                    is_final_stage: updates.is_final_stage !== undefined ? updates.is_final_stage : isFinal,
-                  };
-                  if (sbc) {
-                    await supabase.from("stage_bot_config").update(payload).eq("id", sbc.id);
-                  } else {
-                    await supabase.from("stage_bot_config").insert(payload);
-                  }
-                  fetchData(selectedPipelineId);
-                };
-
-                return (
-                  <Card key={stage.id} className="overflow-hidden">
-                    <div className="h-1.5" style={{ backgroundColor: stage.color }} />
-                    <CardContent className="p-4 space-y-3">
-                      {/* Header */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color }} />
-                          <span className="text-sm font-semibold text-foreground">{stage.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-muted-foreground">Etapa Final</span>
-                          <Switch
-                            checked={isFinal}
-                            onCheckedChange={(v) => handleQuickSave({ is_final_stage: v })}
-                          />
-                        </div>
-                      </div>
-
-                      {isFinal ? (
-                        <div className="flex items-start gap-2 bg-destructive/10 border border-destructive/20 rounded-lg p-3">
-                          <AlertTriangle size={14} className="text-destructive shrink-0 mt-0.5" />
-                          <p className="text-xs text-destructive">Nenhum bot será disparado nesta etapa</p>
-                        </div>
-                      ) : isExpanded ? (
-                        /* Expanded Kommo-style editor */
-                        <div className="space-y-3 border-t border-border pt-3">
-                          {/* Salesbot / Robô */}
-                          <div>
-                            <Label className="text-xs font-semibold flex items-center gap-1 mb-1.5">
-                              <Bot size={12} className="text-primary" /> Salesbot / Robô
-                            </Label>
-                            <Select value={botId || "none"} onValueChange={(v) => handleQuickSave({ bot_id: v === "none" ? "" : v })}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Nenhum robô" /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Nenhum robô</SelectItem>
-                                {allBots.filter(b => b.active).map(b => (
-                                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <button
-                              onClick={() => navigate("/crm/bots")}
-                              className="text-[11px] text-primary hover:underline mt-1.5 flex items-center gap-1"
-                            >
-                              ou <Plus size={10} /> Criar um novo robô
-                            </button>
-                          </div>
-
-                          {/* Executar (trigger) */}
-                          <div>
-                            <Label className="text-xs font-semibold mb-1.5">Executar</Label>
-                            <Select value={triggerType} onValueChange={(v) => handleQuickSave({ trigger_type: v })}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="on_enter">Quando movido para esta etapa</SelectItem>
-                                <SelectItem value="on_create">Quando criado nesta etapa</SelectItem>
-                                <SelectItem value="both">Quando movido ou criado nesta etapa</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Ativo */}
-                          <div>
-                            <Label className="text-xs font-semibold mb-1.5">Ativo</Label>
-                            <Select value={isActive ? "always" : "never"} onValueChange={(v) => handleQuickSave({ active: v === "always" })}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="always">Sempre</SelectItem>
-                                <SelectItem value="never">Desativado</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Deixar mensagem sem resposta */}
-                          <div className="flex items-start gap-2">
-                            <Switch
-                              checked={leaveUnread[stage.id] ?? false}
-                              onCheckedChange={v => setLeaveUnread(prev => ({ ...prev, [stage.id]: v }))}
-                              className="mt-0.5"
-                            />
-                            <div>
-                              <span className="text-xs text-foreground">Deixar mensagem sem resposta</span>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                As mensagens às quais o robô responde serão marcadas como não respondidas
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Apply to all leads */}
-                          <div className="flex items-start gap-2 bg-muted/50 rounded-lg p-2">
-                            <Checkbox
-                              checked={applyToAll[stage.id] ?? false}
-                              onCheckedChange={v => setApplyToAll(prev => ({ ...prev, [stage.id]: !!v }))}
-                              className="mt-0.5"
-                            />
-                            <span className="text-[11px] text-foreground">
-                              Aplicar o gatilho a todos os leads já nesta etapa
-                            </span>
-                          </div>
-
-                          {/* Buttons */}
-                          <div className="flex items-center gap-2 pt-1">
-                            <Button
-                              size="sm"
-                              className="flex-1 text-xs"
-                              onClick={() => handleSaveSbcFull(stage.id, {
-                                bot_id: botId || "",
-                                trigger_type: triggerType,
-                                active: isActive,
-                                is_final_stage: false,
-                              }, applyToAll[stage.id] ?? false)}
-                            >
-                              Finalizado
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="flex-1 text-xs"
-                              onClick={() => setExpandedStageId(null)}
-                            >
-                              Cancelar
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        /* Collapsed view */
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <Bot size={12} />
-                              <span>{botId ? allBots.find(b => b.id === botId)?.name || "Robô" : "Nenhum robô"}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {isActive && botId && (
-                                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded">Ativo</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {triggerType === "on_enter" ? "Ao mover" : triggerType === "on_create" ? "Ao criar" : "Ao mover ou criar"}
-                          </div>
-                          <button
-                            onClick={() => setExpandedStageId(stage.id)}
-                            className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1.5 flex items-center justify-center gap-1 transition-colors"
-                          >
-                            <Zap size={12} /> Configurar
-                          </button>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
+          {/* Empty spacer */}
+          <div className="flex-1" />
         </div>
       </div>
 
