@@ -212,33 +212,43 @@ export default function CrmAutomacoes() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm text-foreground">Controle duplicado</div>
-                <div className="text-xs text-primary cursor-pointer hover:underline">Configurar regras</div>
+                <button onClick={() => setDuplicateRulesOpen(true)} className="text-xs text-primary cursor-pointer hover:underline">Configurar regras</button>
               </div>
-              <Switch />
+              <Switch checked={duplicateEnabled} onCheckedChange={setDuplicateEnabled} />
             </div>
             <hr className="border-border" />
             <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Fontes conectadas</div>
-            {[
-              { name: "WhatsApp", icon: "💬", status: "ativo" },
-              { name: "Instagram", icon: "📸", status: "ativo" },
-              { name: "Facebook", icon: "📘", status: "erro" },
-              { name: "Manual", icon: "✋", status: "ativo" },
-            ].map(src => (
-              <div key={src.name} className="flex items-center justify-between py-1.5">
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <span>{src.icon}</span> {src.name}
-                </div>
-                {src.status === "ativo" ? (
-                  <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-destructive bg-destructive/20 px-1.5 py-0.5 rounded">Erro</span>
-                    <Trash2 size={12} className="text-destructive cursor-pointer" />
+            {channels.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhuma fonte conectada a este funil.</p>
+            ) : channels.map(ch => {
+              const icons: Record<string, string> = { whatsapp: "💬", instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
+              const handleDeleteChannel = async () => {
+                await supabase.from("funnel_channels").delete().eq("id", ch.id);
+                toast.success("Fonte removida");
+                fetchData(selectedPipelineId);
+              };
+              return (
+                <div key={ch.id} className="flex items-center justify-between py-1.5">
+                  <div className="flex items-center gap-2 text-sm text-foreground">
+                    <span>{icons[ch.channel_type] || "📡"}</span> {ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
                   </div>
-                )}
-              </div>
-            ))}
-            <button className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
+                    <button onClick={handleDeleteChannel}><Trash2 size={12} className="text-destructive cursor-pointer" /></button>
+                  </div>
+                </div>
+              );
+            })}
+            <button
+              onClick={async () => {
+                const type = prompt("Tipo da fonte (whatsapp, instagram, facebook, manual, website):");
+                if (!type || !selectedPipelineId) return;
+                await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() });
+                toast.success("Fonte adicionada");
+                fetchData(selectedPipelineId);
+              }}
+              className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors"
+            >
               <Plus size={14} /> Adicionar fonte
             </button>
           </div>
