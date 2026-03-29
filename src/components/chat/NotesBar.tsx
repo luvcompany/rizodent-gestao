@@ -1,70 +1,80 @@
 import { useState } from "react";
-import { StickyNote, Plus, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { StickyNote, Pencil, Trash2 } from "lucide-react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 type Props = {
   notes: string | null;
-  onAddNote: (note: string) => void;
+  onUpdateNotes: (newNotesRaw: string) => void;
 };
 
-function parseNotes(raw: string | null): { timestamp: string; text: string }[] {
+export type ParsedNote = { timestamp: string; text: string; raw: string };
+
+export function parseNotes(raw: string | null): ParsedNote[] {
   if (!raw?.trim()) return [];
   const lines = raw.split("\n").filter(Boolean);
   return lines.map((line) => {
     const match = line.match(/^\[(.+?)\]\s*(.*)$/);
-    if (match) return { timestamp: match[1], text: match[2] };
-    return { timestamp: "", text: line };
+    if (match) return { timestamp: match[1], text: match[2], raw: line };
+    return { timestamp: "", text: line, raw: line };
   });
 }
 
-export default function NotesBar({ notes, onAddNote }: Props) {
+export default function NotesBar({ notes, onUpdateNotes }: Props) {
   const [allOpen, setAllOpen] = useState(false);
-  const [newNote, setNewNote] = useState("");
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
   const parsed = parseNotes(notes);
   const latest = parsed.length > 0 ? parsed[parsed.length - 1] : null;
 
-  const handleAdd = () => {
-    if (!newNote.trim()) return;
-    onAddNote(newNote.trim());
-    setNewNote("");
+  if (!latest) return null;
+
+  const handleDelete = (idx: number) => {
+    const updated = parsed.filter((_, i) => i !== idx).map((n) => n.raw).join("\n");
+    onUpdateNotes(updated);
+  };
+
+  const handleEdit = (idx: number) => {
+    setEditIdx(idx);
+    setEditText(parsed[idx].text);
+  };
+
+  const saveEdit = () => {
+    if (editIdx === null) return;
+    const note = parsed[editIdx];
+    const newRaw = note.timestamp ? `[${note.timestamp}] ${editText.trim()}` : editText.trim();
+    const updated = parsed.map((n, i) => (i === editIdx ? newRaw : n.raw)).join("\n");
+    onUpdateNotes(updated);
+    setEditIdx(null);
+    setEditText("");
   };
 
   return (
     <>
-      <div className="flex-shrink-0 bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center gap-2">
-        <StickyNote size={14} className="text-amber-600 flex-shrink-0" />
-        {latest ? (
-          <button onClick={() => setAllOpen(true)} className="flex-1 text-left min-w-0 hover:underline">
-            <span className="text-xs text-foreground truncate block">{latest.text}</span>
-            {latest.timestamp && <span className="text-[10px] text-muted-foreground">{latest.timestamp}</span>}
-          </button>
-        ) : (
-          <span className="text-xs text-muted-foreground flex-1">Sem notas</span>
-        )}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <Input
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            placeholder="Nota rápida..."
-            className="h-7 text-xs w-32 bg-background"
-            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-          />
-          <Button size="sm" variant="ghost" onClick={handleAdd} disabled={!newNote.trim()} className="h-7 w-7 p-0">
-            <Plus size={12} />
-          </Button>
+      {/* Pinned latest note bar */}
+      <button
+        onClick={() => setAllOpen(true)}
+        className="flex-shrink-0 w-full border-b border-border bg-card px-4 py-2.5 flex items-start gap-3 text-left hover:bg-secondary/30 transition-colors"
+      >
+        <div className="flex-shrink-0 mt-0.5 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+          <StickyNote size={14} className="text-muted-foreground" />
         </div>
-        {parsed.length > 0 && (
-          <button onClick={() => setAllOpen(true)} className="text-[10px] text-primary hover:underline flex-shrink-0">
-            {parsed.length} nota(s)
-          </button>
+        <div className="flex-1 min-w-0">
+          {latest.timestamp && (
+            <p className="text-[11px] text-muted-foreground">{latest.timestamp}</p>
+          )}
+          <p className="text-sm text-foreground line-clamp-2">{latest.text}</p>
+        </div>
+        {parsed.length > 1 && (
+          <span className="text-[10px] text-primary flex-shrink-0 mt-1">+{parsed.length - 1}</span>
         )}
-      </div>
+      </button>
 
+      {/* All notes modal */}
       <Dialog open={allOpen} onOpenChange={setAllOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -77,9 +87,34 @@ export default function NotesBar({ notes, onAddNote }: Props) {
                 <p className="text-sm text-muted-foreground text-center py-4">Nenhuma nota registrada.</p>
               ) : (
                 parsed.map((n, i) => (
-                  <div key={i} className="border-l-2 border-primary/30 pl-3 py-1">
-                    <p className="text-sm text-foreground">{n.text}</p>
-                    {n.timestamp && <p className="text-[10px] text-muted-foreground mt-0.5">{n.timestamp}</p>}
+                  <div key={i} className="border-l-2 border-primary/30 pl-3 py-1.5 group/note">
+                    {editIdx === i ? (
+                      <div className="flex gap-2">
+                        <Input
+                          autoFocus
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditIdx(null); }}
+                          className="h-8 text-sm"
+                        />
+                        <Button size="sm" onClick={saveEdit} className="h-8">Salvar</Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm text-foreground flex-1">{n.text}</p>
+                          <div className="flex gap-1 opacity-0 group-hover/note:opacity-100 transition-opacity flex-shrink-0">
+                            <button onClick={() => handleEdit(i)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+                              <Pencil size={12} />
+                            </button>
+                            <button onClick={() => handleDelete(i)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                        {n.timestamp && <p className="text-[10px] text-muted-foreground mt-0.5">{n.timestamp}</p>}
+                      </>
+                    )}
                   </div>
                 ))
               )}

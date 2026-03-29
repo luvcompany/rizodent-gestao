@@ -72,6 +72,7 @@ export default function CrmConversas() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [newNote, setNewNote] = useState("");
   
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -193,10 +194,14 @@ export default function CrmConversas() {
     const existingNotes = selectedLead.notes || "";
     const timestamp = new Date().toLocaleString("pt-BR");
     const updatedNotes = `${existingNotes}\n[${timestamp}] ${noteText.trim()}`.trim();
+    await saveNotes(updatedNotes);
+  };
+
+  const saveNotes = async (updatedNotes: string) => {
+    if (!selectedLead) return;
     const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", selectedLead.id);
     if (error) { toast.error("Erro ao salvar nota"); return; }
     setSelectedLead((prev) => prev ? { ...prev, notes: updatedNotes } : prev);
-    toast.success("Nota adicionada");
   };
 
   const loadTemplates = async () => {
@@ -354,7 +359,7 @@ export default function CrmConversas() {
           </div>
 
           {/* Notes Bar */}
-          <NotesBar notes={selectedLead.notes} onAddNote={handleAddNote} />
+          <NotesBar notes={selectedLead.notes} onUpdateNotes={saveNotes} />
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
@@ -488,6 +493,23 @@ export default function CrmConversas() {
           />
 
           <LeadCustomFields leadId={selectedLead.id} />
+
+          {/* Notes input */}
+          <div className="p-4 border-b border-border">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Adicionar Nota</h3>
+            <div className="flex gap-2">
+              <Input
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="Adicionar nota..."
+                className="bg-secondary border-border text-xs h-8"
+                onKeyDown={(e) => { if (e.key === "Enter" && newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }}
+              />
+              <Button size="sm" variant="outline" onClick={() => { if (newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }} disabled={!newNote.trim()} className="h-8 px-2">
+                +
+              </Button>
+            </div>
+          </div>
 
           <div className="p-4">
             <div className="text-[10px] text-muted-foreground text-center">
