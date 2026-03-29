@@ -61,7 +61,7 @@ function TemplateMessageBubble({ templateName }: { templateName: string }) {
   }
 
   return (
-    <div className="min-w-[220px] max-w-[280px]">
+    <div className="min-w-[220px]">
       {/* Header */}
       {template.header_type && template.header_content && (
         <div className="mb-1">
@@ -83,13 +83,15 @@ function TemplateMessageBubble({ templateName }: { templateName: string }) {
         <p className="text-[11px] text-muted-foreground mt-1">{template.footer_text}</p>
       )}
 
-      {/* Buttons */}
+      {/* Buttons - inside the bubble */}
       {template.buttons && template.buttons.length > 0 && (
-        <div className="mt-2 border-t border-border pt-1 space-y-1">
+        <div className="mt-2 -mx-3 -mb-2 border-t border-border/50">
           {template.buttons.map((btn, i) => (
             <div
               key={i}
-              className="text-center text-xs font-medium text-primary py-1.5 border border-border rounded-lg bg-background cursor-default select-none"
+              className={`text-center text-xs font-medium text-primary py-2.5 cursor-default select-none ${
+                i < template.buttons!.length - 1 ? "border-b border-border/50" : ""
+              }`}
             >
               {btn.text}
             </div>
