@@ -212,10 +212,27 @@ const CrmBotEditor = () => {
   // ── Tree operations ──
 
   const addStepToOutput = (outputId: string, stepType: string) => {
-    const newStep: FlowStep = {
-      id: uid(), type: stepType, config: getDefaultConfig(stepType), outputs: getDefaultOutputs(stepType),
-    };
+    // Check if this output is a "no_response" type - if so, pause should only have timer
+    const isNoResponse = findOutputConditionType(rootOutputs, outputId) === "no_response";
+    const config = stepType === "pause" && isNoResponse
+      ? { conditions: [{ type: "timer", hours: 1, minutes: 0, seconds: 0 }] }
+      : getDefaultConfig(stepType);
+    const outputs = stepType === "pause" && isNoResponse
+      ? [{ id: uid(), label: "Cronômetro expirado", conditionType: "timeout", conditionValue: null, nextSteps: [] as FlowStep[] }]
+      : getDefaultOutputs(stepType);
+    const newStep: FlowStep = { id: uid(), type: stepType, config, outputs };
     setRootOutputs(prev => addStepInTree(prev, outputId, newStep));
+  };
+
+  const findOutputConditionType = (outs: FlowOutput[], targetId: string): string | null => {
+    for (const o of outs) {
+      if (o.id === targetId) return o.conditionType;
+      for (const step of o.nextSteps) {
+        const found = findOutputConditionType(step.outputs, targetId);
+        if (found) return found;
+      }
+    }
+    return null;
   };
 
   const addStepInTree = (outs: FlowOutput[], targetOutputId: string, newStep: FlowStep): FlowOutput[] => {
