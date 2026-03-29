@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Save, Plus, Trash2, Bot, Zap, GripVertical } from "lucide-react";
+import { Save, Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert } from "lucide-react";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -17,6 +18,7 @@ type Automation = {
   action_config: Record<string, unknown>; is_active: boolean;
 };
 type Template = { id: string; name: string; status: string };
+type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
 
 const PRESET_COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
