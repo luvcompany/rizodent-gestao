@@ -193,10 +193,14 @@ export default function CrmConversas() {
     const existingNotes = selectedLead.notes || "";
     const timestamp = new Date().toLocaleString("pt-BR");
     const updatedNotes = `${existingNotes}\n[${timestamp}] ${noteText.trim()}`.trim();
+    await saveNotes(updatedNotes);
+  };
+
+  const saveNotes = async (updatedNotes: string) => {
+    if (!selectedLead) return;
     const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", selectedLead.id);
     if (error) { toast.error("Erro ao salvar nota"); return; }
     setSelectedLead((prev) => prev ? { ...prev, notes: updatedNotes } : prev);
-    toast.success("Nota adicionada");
   };
 
   const loadTemplates = async () => {
@@ -354,7 +358,7 @@ export default function CrmConversas() {
           </div>
 
           {/* Notes Bar */}
-          <NotesBar notes={selectedLead.notes} onAddNote={handleAddNote} />
+          <NotesBar notes={selectedLead.notes} onUpdateNotes={saveNotes} />
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
