@@ -18,9 +18,10 @@ import LeadCustomFields from "@/components/chat/LeadCustomFields";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
+import NotesBar from "@/components/chat/NotesBar";
+import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import {
-  Search, MessageSquare, Phone, MoreVertical,
-  Plus, Tag, X
+  Search, MessageSquare
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -71,7 +72,7 @@ export default function CrmConversas() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [newNote, setNewNote] = useState("");
+  
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -187,15 +188,14 @@ export default function CrmConversas() {
     toast.success("Etapa atualizada");
   };
 
-  const handleAddNote = async () => {
-    if (!newNote.trim() || !selectedLead) return;
+  const handleAddNote = async (noteText: string) => {
+    if (!noteText.trim() || !selectedLead) return;
     const existingNotes = selectedLead.notes || "";
     const timestamp = new Date().toLocaleString("pt-BR");
-    const updatedNotes = `${existingNotes}\n[${timestamp}] ${newNote.trim()}`.trim();
+    const updatedNotes = `${existingNotes}\n[${timestamp}] ${noteText.trim()}`.trim();
     const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", selectedLead.id);
     if (error) { toast.error("Erro ao salvar nota"); return; }
     setSelectedLead((prev) => prev ? { ...prev, notes: updatedNotes } : prev);
-    setNewNote("");
     toast.success("Nota adicionada");
   };
 
