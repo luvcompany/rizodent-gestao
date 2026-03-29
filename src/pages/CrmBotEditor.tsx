@@ -485,59 +485,100 @@ const CrmBotEditor = () => {
               const Icon = NODE_ICONS[node.type] || Settings2;
               const color = NODE_COLORS[node.type] || "hsl(var(--muted))";
               const nodeOuts = nodeOutputs(node.id);
+              // Calculate output Y positions relative to node top
+              const headerH = 34;
+              const bodyH = 36;
+              const outputRowH = 22;
+              const outputStartY = headerH + bodyH + 8;
               return (
                 <div
                   key={node.id}
-                  className={`absolute rounded-lg border shadow-md bg-card cursor-move select-none transition-shadow ${selectedNode === node.id ? "ring-2 ring-primary shadow-lg" : ""}`}
-                  style={{ left: node.position_x, top: node.position_y, width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    if (connecting) { completeConnection(node.id); return; }
-                    setDraggingNode(node.id);
-                    const rect = canvasRef.current?.getBoundingClientRect();
-                    if (rect) {
-                      setDragOffset({
-                        x: (e.clientX - rect.left - pan.x) / zoom - node.position_x,
-                        y: (e.clientY - rect.top - pan.y) / zoom - node.position_y,
-                      });
-                    }
-                  }}
-                  onClick={(e) => { e.stopPropagation(); setSelectedNode(node.id); }}
+                  className="absolute select-none"
+                  style={{ left: node.position_x, top: node.position_y, width: NODE_WIDTH }}
                 >
-                  {/* Header */}
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-white text-xs font-medium" style={{ backgroundColor: color }}>
-                    <Icon size={14} />
-                    <span className="flex-1 truncate">{NODE_LABELS[node.type]}</span>
-                    {node.is_start_node && <Badge className="bg-white/20 text-white text-[9px] px-1">INÍCIO</Badge>}
-                    <button onClick={(e) => { e.stopPropagation(); deleteNode(node.id); }} className="opacity-60 hover:opacity-100">
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                  {/* Body */}
-                  <div className="px-3 py-2 text-xs text-muted-foreground line-clamp-2">
-                    {getNodeSummary(node)}
-                  </div>
-                  {/* Outputs */}
-                  <div className="px-2 pb-2 space-y-1">
-                    {nodeOuts.map(o => (
-                      <div key={o.id} className="flex items-center gap-1">
-                        <div
-                          className="w-3 h-3 rounded-full border-2 border-primary bg-card cursor-crosshair shrink-0"
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            const rect = canvasRef.current?.getBoundingClientRect();
-                            if (!rect) return;
-                            startConnection(o.id, node.position_x + NODE_WIDTH, node.position_y + NODE_HEIGHT / 2);
-                          }}
-                        />
-                        <span className="text-[10px] text-muted-foreground truncate">{o.label}</span>
-                        {o.next_node_id && (
-                          <button onClick={(e) => { e.stopPropagation(); deleteConnection(o.id); }} className="text-destructive opacity-50 hover:opacity-100 ml-auto">
-                            <XCircle size={10} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                  {/* Input handle (left side) - not on start node */}
+                  {!node.is_start_node && (
+                    <div
+                      className="absolute z-30 rounded-full border-2 bg-card transition-all cursor-crosshair"
+                      style={{
+                        width: 12, height: 12,
+                        left: -6, top: headerH + bodyH / 2 + headerH / 2 - 6,
+                        borderColor: color,
+                      }}
+                      onMouseUp={(e) => {
+                        e.stopPropagation();
+                        if (connecting) completeConnection(node.id);
+                      }}
+                      onMouseEnter={(e) => { (e.target as HTMLElement).style.width = "16px"; (e.target as HTMLElement).style.height = "16px"; (e.target as HTMLElement).style.left = "-8px"; (e.target as HTMLElement).style.top = `${headerH + bodyH / 2 + headerH / 2 - 8}px`; }}
+                      onMouseLeave={(e) => { (e.target as HTMLElement).style.width = "12px"; (e.target as HTMLElement).style.height = "12px"; (e.target as HTMLElement).style.left = "-6px"; (e.target as HTMLElement).style.top = `${headerH + bodyH / 2 + headerH / 2 - 6}px`; }}
+                    />
+                  )}
+
+                  {/* Output handles (right side) */}
+                  {nodeOuts.map((o, idx) => {
+                    const handleY = outputStartY + idx * outputRowH + outputRowH / 2;
+                    return (
+                      <div
+                        key={`handle-${o.id}`}
+                        className="absolute z-30 rounded-full border-2 bg-card transition-all cursor-crosshair"
+                        style={{
+                          width: 12, height: 12,
+                          right: -6, top: handleY - 6,
+                          borderColor: color,
+                        }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          startConnection(o.id, node.position_x + NODE_WIDTH, node.position_y + handleY);
+                        }}
+                        onMouseEnter={(e) => { (e.target as HTMLElement).style.width = "16px"; (e.target as HTMLElement).style.height = "16px"; (e.target as HTMLElement).style.right = "-8px"; }}
+                        onMouseLeave={(e) => { (e.target as HTMLElement).style.width = "12px"; (e.target as HTMLElement).style.height = "12px"; (e.target as HTMLElement).style.right = "-6px"; }}
+                      />
+                    );
+                  })}
+
+                  {/* Card body */}
+                  <div
+                    className={`rounded-lg border shadow-md bg-card cursor-move overflow-hidden transition-shadow ${selectedNode === node.id ? "ring-2 ring-primary shadow-lg" : ""}`}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      if (connecting) { completeConnection(node.id); return; }
+                      setDraggingNode(node.id);
+                      const rect = canvasRef.current?.getBoundingClientRect();
+                      if (rect) {
+                        setDragOffset({
+                          x: (e.clientX - rect.left - pan.x) / zoom - node.position_x,
+                          y: (e.clientY - rect.top - pan.y) / zoom - node.position_y,
+                        });
+                      }
+                    }}
+                    onClick={(e) => { e.stopPropagation(); setSelectedNode(node.id); }}
+                  >
+                    {/* Header */}
+                    <div className="flex items-center gap-2 px-3 py-2 text-white text-xs font-medium" style={{ backgroundColor: color, height: headerH }}>
+                      <Icon size={14} />
+                      <span className="flex-1 truncate">{NODE_LABELS[node.type]}</span>
+                      {node.is_start_node && <Badge className="bg-white/20 text-white text-[9px] px-1">INÍCIO</Badge>}
+                      <button onClick={(e) => { e.stopPropagation(); deleteNode(node.id); }} className="opacity-60 hover:opacity-100">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                    {/* Body */}
+                    <div className="px-3 py-2 text-xs text-muted-foreground line-clamp-2" style={{ height: bodyH }}>
+                      {getNodeSummary(node)}
+                    </div>
+                    {/* Outputs list */}
+                    <div className="px-2 pb-2 space-y-0">
+                      {nodeOuts.map(o => (
+                        <div key={o.id} className="flex items-center gap-1 pr-4" style={{ height: outputRowH }}>
+                          <span className="text-[10px] text-muted-foreground truncate">{o.label}</span>
+                          {o.next_node_id && (
+                            <button onClick={(e) => { e.stopPropagation(); deleteConnection(o.id); }} className="text-destructive opacity-50 hover:opacity-100 ml-auto">
+                              <XCircle size={10} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               );
