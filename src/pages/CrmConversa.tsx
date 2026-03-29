@@ -124,7 +124,14 @@ export default function CrmConversa() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
+  // Only scroll to bottom on initial load
+  const initialLoadDone = useRef(false);
+  useEffect(() => {
+    if (!initialLoadDone.current && messages.length > 0) {
+      scrollToBottom();
+      initialLoadDone.current = true;
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (!id) return;
@@ -383,14 +390,6 @@ export default function CrmConversa() {
             <div className="text-xs text-muted-foreground">
               {lead.phone && <span>{lead.phone}</span>}
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary">
-              <Phone size={18} />
-            </button>
-            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary">
-              <MoreVertical size={18} />
-            </button>
           </div>
         </div>
 

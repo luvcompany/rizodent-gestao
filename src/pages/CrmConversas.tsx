@@ -133,7 +133,15 @@ export default function CrmConversas() {
     setReplyTo(null);
   }, [selectedLeadId, leads, fetchMessages]);
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
+  const initialLoadDone = useRef(false);
+  useEffect(() => {
+    if (!initialLoadDone.current && messages.length > 0) {
+      scrollToBottom();
+      initialLoadDone.current = true;
+    }
+  }, [messages]);
+  // Reset on lead change
+  useEffect(() => { initialLoadDone.current = false; }, [selectedLeadId]);
 
   // Realtime for selected lead
   useEffect(() => {
@@ -342,14 +350,6 @@ export default function CrmConversas() {
                   </span>
                 )}
               </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <button className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary">
-                <Phone size={16} />
-              </button>
-              <button className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary">
-                <MoreVertical size={16} />
-              </button>
             </div>
           </div>
 
