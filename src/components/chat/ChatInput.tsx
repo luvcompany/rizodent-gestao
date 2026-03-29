@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Send, Paperclip, Mic, FileText, Image, File, Video,
-  Square, X, Loader2
+  Square, X, Loader2, Clock, AlertTriangle
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,9 +33,10 @@ type ChatInputProps = {
   onMessageError?: (tempId: string) => void;
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
+  lastInboundAt?: string | null;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -75,6 +76,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !attachedFile) || !leadPhone) return;
+
+    // Block if 24h window expired
+    if (windowInfo.expired) {
+      toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
+      return;
+    }
 
     let type = "text";
     let message = newMessage.trim();
@@ -321,6 +328,26 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   };
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  // 24h window logic
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30000); // update every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  const windowInfo = useMemo(() => {
+    if (!lastInboundAt) return { expired: true, remaining: "" };
+    const inboundTime = new Date(lastInboundAt).getTime();
+    const expiresAt = inboundTime + 24 * 60 * 60 * 1000;
+    const diff = expiresAt - now;
+    if (diff <= 0) return { expired: true, remaining: "" };
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return { expired: false, remaining: `${hours}h ${mins.toString().padStart(2, "0")}m` };
+  }, [lastInboundAt, now]);
+
+  const isWindowExpired = windowInfo.expired;
 
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
