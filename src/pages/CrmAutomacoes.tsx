@@ -31,7 +31,7 @@ const PRESET_COLORS = [
   "#ec4899", "#f43f5e", "#78716c", "#64748b", "#1e293b",
 ];
 
-const FINAL_NAMES = ["agendado", "contratado", "fechado", "lead desqualificado"];
+// No auto-final names - user controls is_final_stage manually
 
 export default function CrmAutomacoes() {
   const navigate = useNavigate();
