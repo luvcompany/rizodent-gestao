@@ -493,6 +493,12 @@ export default function CrmConversas() {
 
           <LeadCustomFields leadId={selectedLead.id} />
 
+          {/* Notes input */}
+          <div className="p-4 border-b border-border">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Adicionar Nota</h3>
+            <NoteInput onAdd={handleAddNote} />
+          </div>
+
           <div className="p-4">
             <div className="text-[10px] text-muted-foreground text-center">
               Criado em {new Date(selectedLead.created_at).toLocaleDateString("pt-BR")}
