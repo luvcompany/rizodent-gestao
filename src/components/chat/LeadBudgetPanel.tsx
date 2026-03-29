@@ -7,13 +7,19 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { DollarSign, Plus, ExternalLink, Search, UserPlus } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin } from "lucide-react";
+
+const CIDADES = ["Vitória da Conquista", "Itabuna", "Ipiaú", "Guanambi"];
 
 type Lead = {
   id: string;
   name: string;
   phone: string | null;
   paciente_id: string | null;
+  value: number | null;
 };
 
 type Paciente = {
@@ -21,11 +27,13 @@ type Paciente = {
   nome: string;
   telefone: string;
   email: string | null;
+  cidade: string | null;
 };
 
-type Orcamento = {
+type OrcamentoComPago = {
   id: string;
   valor_orcado: number;
+  valor_pago: number;
   status: string;
   created_at: string;
 };
@@ -38,8 +46,10 @@ type Props = {
 export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const navigate = useNavigate();
   const [paciente, setPaciente] = useState<Paciente | null>(null);
-  const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
-  const [totalValue, setTotalValue] = useState(0);
+  const [orcamentos, setOrcamentos] = useState<OrcamentoComPago[]>([]);
+  const [totalPaid, setTotalPaid] = useState(0);
+  const [totalBudgeted, setTotalBudgeted] = useState(0);
+  const [cidade, setCidade] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<Paciente[]>([]);
@@ -51,28 +61,48 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     } else {
       setPaciente(null);
       setOrcamentos([]);
-      setTotalValue(0);
+      setTotalPaid(0);
+      setTotalBudgeted(0);
     }
   }, [lead.paciente_id]);
 
   const fetchPacienteAndBudgets = async (pacienteId: string) => {
     const [pRes, oRes, pagRes] = await Promise.all([
-      supabase.from("pacientes").select("id, nome, telefone, email").eq("id", pacienteId).single(),
-      supabase.from("orcamentos").select("id, valor_orcado, status, created_at").eq("paciente_id", pacienteId).eq("status", "aberto"),
-      supabase.from("pagamentos").select("valor").eq("paciente_id", pacienteId),
+      supabase.from("pacientes").select("id, nome, telefone, email, cidade").eq("id", pacienteId).single(),
+      supabase.from("orcamentos").select("id, valor_orcado, status, created_at").eq("paciente_id", pacienteId),
+      supabase.from("pagamentos").select("valor, orcamento_id").eq("paciente_id", pacienteId),
     ]);
-    if (pRes.data) setPaciente(pRes.data);
-    if (oRes.data) {
-      setOrcamentos(oRes.data);
-      setTotalValue(oRes.data.reduce((sum, o) => sum + Number(o.valor_orcado), 0));
+
+    if (pRes.data) {
+      setPaciente(pRes.data);
+      if (pRes.data.cidade) setCidade(pRes.data.cidade);
     }
+
+    const payments = pagRes.data || [];
+    const paid = payments.reduce((sum, p) => sum + Number(p.valor), 0);
+    setTotalPaid(paid);
+
+    if (oRes.data) {
+      const withPago = oRes.data.map(o => {
+        const oPaid = payments.filter(p => p.orcamento_id === o.id).reduce((s, p) => s + Number(p.valor), 0);
+        return { ...o, valor_pago: oPaid };
+      });
+      setOrcamentos(withPago);
+      setTotalBudgeted(oRes.data.reduce((sum, o) => sum + Number(o.valor_orcado), 0));
+    }
+
     // Sync lead value with total payments
-    if (pagRes.data) {
-      const totalPaid = pagRes.data.reduce((sum, p) => sum + Number(p.valor), 0);
-      if (totalPaid > 0) {
-        await supabase.from("crm_leads").update({ value: totalPaid }).eq("id", lead.id);
-        onLeadUpdated({ paciente_id: pacienteId } as any);
-      }
+    if (paid !== (lead.value || 0)) {
+      await supabase.from("crm_leads").update({ value: paid }).eq("id", lead.id);
+      onLeadUpdated({ value: paid });
+    }
+  };
+
+  const handleCidadeChange = async (val: string) => {
+    setCidade(val);
+    // Save to paciente if linked
+    if (lead.paciente_id) {
+      await supabase.from("pacientes").update({ cidade: val }).eq("id", lead.paciente_id);
     }
   };
 
@@ -83,7 +113,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     const isPhoneSearch = cleanSearch.length >= 4;
     const { data } = await supabase
       .from("pacientes")
-      .select("id, nome, telefone, email")
+      .select("id, nome, telefone, email, cidade")
       .or(isPhoneSearch
         ? `telefone.ilike.%${cleanSearch}%,nome.ilike.%${searchTerm}%`
         : `nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`)
@@ -110,9 +140,24 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     const { data, error } = await supabase.from("pacientes").insert({
       nome: lead.name,
       telefone: stripCountryCode(lead.phone || ""),
+      cidade: cidade || null,
     }).select("id").single();
     if (error || !data) { toast.error("Erro ao criar paciente"); return; }
-    await linkPaciente(data.id);
+
+    // Link lead to patient
+    await supabase.from("crm_leads").update({ paciente_id: data.id }).eq("id", lead.id);
+    onLeadUpdated({ paciente_id: data.id });
+    setLinkOpen(false);
+    toast.success("Paciente criado e vinculado!");
+
+    // Navigate to atendimento page with new patient data
+    navigate("/atendimento", {
+      state: {
+        pacienteId: data.id,
+        pacienteNome: lead.name,
+        pacienteTelefone: stripCountryCode(lead.phone || ""),
+      },
+    });
   };
 
   const goToAtendimento = () => {
@@ -134,19 +179,59 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         <span className="text-xs font-medium text-muted-foreground uppercase">Orçamento & Valor</span>
       </div>
 
+      {/* City selector - always visible */}
+      <div className="mb-3">
+        <div className="flex items-center gap-1 mb-1">
+          <MapPin size={12} className="text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Cidade</span>
+        </div>
+        <Select value={cidade} onValueChange={handleCidadeChange}>
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue placeholder="Selecionar cidade..." />
+          </SelectTrigger>
+          <SelectContent>
+            {CIDADES.map(c => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {lead.paciente_id && paciente ? (
         <div className="space-y-2">
           <div className="p-2 bg-secondary/50 rounded text-sm">
             <p className="font-medium text-foreground">{paciente.nome}</p>
             <p className="text-xs text-muted-foreground">{paciente.telefone}</p>
           </div>
+
+          {/* Payment totals */}
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-xs text-muted-foreground">Valor (orçamentos abertos)</span>
-              <p className="text-primary font-bold text-lg">{formatCurrency(totalValue)}</p>
+              <span className="text-xs text-muted-foreground">Valor Contratado (pago)</span>
+              <p className="text-primary font-bold text-lg">{formatCurrency(totalPaid)}</p>
             </div>
-            <span className="text-xs text-muted-foreground">{orcamentos.length} orçamento(s)</span>
+            <div className="text-right">
+              <span className="text-xs text-muted-foreground">Orçado</span>
+              <p className="text-sm text-muted-foreground">{formatCurrency(totalBudgeted)}</p>
+            </div>
           </div>
+
+          {/* Budget list with contracted values */}
+          {orcamentos.length > 0 && (
+            <div className="space-y-1">
+              {orcamentos.map(o => (
+                <div key={o.id} className="flex items-center justify-between text-xs p-1.5 bg-muted/30 rounded">
+                  <span className="text-muted-foreground">
+                    Orç. {formatCurrency(o.valor_orcado)}
+                  </span>
+                  <span className={o.valor_pago > 0 ? "text-primary font-medium" : "text-muted-foreground"}>
+                    Pago: {formatCurrency(o.valor_pago)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <Button size="sm" variant="outline" className="w-full" onClick={goToAtendimento}>
             <Plus size={14} className="mr-1" /> Novo Orçamento / Atendimento
             <ExternalLink size={12} className="ml-auto" />
@@ -198,6 +283,21 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
             {searchResults.length === 0 && searchTerm && !searching && (
               <p className="text-sm text-muted-foreground text-center">Nenhum paciente encontrado.</p>
             )}
+
+            {/* City selection before creating */}
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Cidade do Lead</label>
+              <Select value={cidade} onValueChange={setCidade}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Selecionar cidade..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {CIDADES.map(c => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setLinkOpen(false)}>Cancelar</Button>
