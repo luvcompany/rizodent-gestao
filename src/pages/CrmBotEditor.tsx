@@ -676,7 +676,7 @@ const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId
       </button>
 
       {open && (
-        <div className="absolute left-12 top-full mt-1 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64 max-h-80 overflow-y-auto" style={{ touchAction: "auto" }}>
+        <div className="absolute left-12 bottom-0 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64" style={{ touchAction: "auto" }}>
           <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mensagens</div>
           {STEP_TYPES.filter(s => s.category === "main").map(st => (
             <button key={st.type} className="w-full text-left px-3 py-2 text-sm hover:bg-muted/80 transition-colors flex items-center gap-2"
