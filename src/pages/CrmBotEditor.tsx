@@ -80,6 +80,13 @@ const CrmBotEditor = () => {
   const [templates, setTemplates] = useState<any[]>([]);
   const [bots, setBots] = useState<any[]>([]);
 
+  // Node positions (draggable offsets)
+  const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
+
+  const updateNodePosition = useCallback((nodeId: string, pos: { x: number; y: number }) => {
+    setNodePositions(prev => ({ ...prev, [nodeId]: pos }));
+  }, []);
+
   // Pan & Zoom state
   const canvasRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -90,6 +97,7 @@ const CrmBotEditor = () => {
 
   // Load/save canvas state from localStorage
   const storageKey = `bot-canvas-${botId}`;
+  const positionsKey = `bot-positions-${botId}`;
 
   useEffect(() => {
     if (!botId) return;
@@ -101,12 +109,21 @@ const CrmBotEditor = () => {
         if (sz) setZoom(sz);
       } catch {}
     }
+    const savedPos = localStorage.getItem(positionsKey);
+    if (savedPos) {
+      try { setNodePositions(JSON.parse(savedPos)); } catch {}
+    }
   }, [botId]);
 
   useEffect(() => {
     if (!botId) return;
     localStorage.setItem(storageKey, JSON.stringify({ pan, zoom }));
   }, [pan, zoom, botId]);
+
+  useEffect(() => {
+    if (!botId) return;
+    localStorage.setItem(positionsKey, JSON.stringify(nodePositions));
+  }, [nodePositions, botId]);
 
   useEffect(() => {
     if (!botId) return;
@@ -613,6 +630,8 @@ const CrmBotEditor = () => {
                       stages={stages}
                       templates={templates}
                       allBots={bots}
+                      nodePositions={nodePositions}
+                      onUpdateNodePosition={updateNodePosition}
                     />
                   ))}
                 </div>
@@ -640,7 +659,61 @@ const CrmBotEditor = () => {
   );
 };
 
-// ── Connector line ──
+// ── Orthogonal Connector Line (Kommo style) ──
+
+const OrthogonalConnector = ({ targetOffset }: { targetOffset?: { x: number; y: number } }) => {
+  const dy = targetOffset?.y || 0;
+  const dx = targetOffset?.x || 0;
+  const baseLen = 40;
+  const totalW = baseLen + dx + 12;
+  const absH = Math.abs(dy) + 12;
+
+  if (Math.abs(dy) < 3 && Math.abs(dx) < 3) {
+    // Straight line
+    return (
+      <div className="flex items-center shrink-0 mx-0">
+        <div className="w-10 h-px bg-border" />
+        <div className="w-2 h-2 rounded-full border-2 border-border bg-card -ml-1" />
+      </div>
+    );
+  }
+
+  // Orthogonal path: go right half, then down/up, then right to target
+  const midX = baseLen / 2;
+  const endX = baseLen + dx;
+  const endY = dy;
+
+  return (
+    <div className="flex items-center shrink-0 mx-0" style={{ position: "relative" }}>
+      <svg
+        width={Math.max(totalW, 44)}
+        height={absH + 6}
+        className="shrink-0 overflow-visible"
+        style={{
+          minWidth: 44,
+          minHeight: 10,
+          position: "relative",
+          top: dy > 0 ? 0 : dy,
+        }}
+      >
+        <path
+          d={`M 0,${dy < 0 ? -dy + 3 : 3} L ${midX},${dy < 0 ? -dy + 3 : 3} L ${midX},${dy < 0 ? 3 : dy + 3} L ${endX},${dy < 0 ? 3 : dy + 3}`}
+          fill="none"
+          stroke="hsl(var(--border))"
+          strokeWidth={1.5}
+        />
+        <circle
+          cx={endX}
+          cy={dy < 0 ? 3 : dy + 3}
+          r={3}
+          fill="hsl(var(--card))"
+          stroke="hsl(var(--border))"
+          strokeWidth={2}
+        />
+      </svg>
+    </div>
+  );
+};
 
 const ConnectorLine = () => (
   <div className="flex items-center shrink-0 mx-0">
@@ -773,11 +846,13 @@ interface FlowBranchProps {
   templates: any[];
   allBots: any[];
   branchLabel?: string;
+  nodePositions: Record<string, { x: number; y: number }>;
+  onUpdateNodePosition: (nodeId: string, pos: { x: number; y: number }) => void;
 }
 
 const FlowBranch = ({
   output, stepNumber, onAddStep, onRemoveStep, onUpdateConfig, onUpdateOutputs,
-  pipelines, stages, templates, allBots, branchLabel,
+  pipelines, stages, templates, allBots, branchLabel, nodePositions, onUpdateNodePosition,
 }: FlowBranchProps) => {
   if (output.nextSteps.length === 0) {
     return (
@@ -798,6 +873,7 @@ const FlowBranch = ({
       {output.nextSteps.map((step, idx) => {
         const currentNum = stepNumber + idx;
         const hasMultipleOutputs = step.outputs.length > 1;
+        const stepPos = nodePositions[step.id] || { x: 0, y: 0 };
 
         return (
           <div key={step.id} className="flex items-start">
@@ -805,13 +881,20 @@ const FlowBranch = ({
               <>
                 <ConnectorLine />
                 <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded whitespace-nowrap mr-1 self-center">{branchLabel}</span>
-                <ConnectorLine />
+                <OrthogonalConnector targetOffset={stepPos} />
               </>
             ) : (
-              <ConnectorLine />
+              <OrthogonalConnector targetOffset={stepPos} />
             )}
 
-            <div className="flex flex-col shrink-0">
+            <div
+              className="flex flex-col shrink-0"
+              style={{
+                transform: `translate(${stepPos.x}px, ${stepPos.y}px)`,
+                position: "relative",
+                zIndex: 5,
+              }}
+            >
               <StepCard
                 step={step}
                 number={currentNum}
@@ -822,11 +905,13 @@ const FlowBranch = ({
                 stages={stages}
                 templates={templates}
                 allBots={allBots}
+                position={stepPos}
+                onUpdatePosition={(pos) => onUpdateNodePosition(step.id, pos)}
               />
             </div>
 
             {hasMultipleOutputs ? (
-              <div className="flex flex-col gap-3 self-center">
+              <div className="flex flex-col gap-3 self-center" style={{ transform: `translate(${stepPos.x}px, ${stepPos.y}px)` }}>
                 {step.outputs.map((o) => (
                   <FlowBranch
                     key={o.id} output={o} stepNumber={currentNum + 1}
@@ -834,16 +919,20 @@ const FlowBranch = ({
                     onUpdateConfig={onUpdateConfig} onUpdateOutputs={onUpdateOutputs}
                     pipelines={pipelines} stages={stages} templates={templates} allBots={allBots}
                     branchLabel={o.label}
+                    nodePositions={nodePositions} onUpdateNodePosition={onUpdateNodePosition}
                   />
                 ))}
               </div>
             ) : step.outputs.length === 1 ? (
-              <FlowBranch
-                output={step.outputs[0]} stepNumber={currentNum + 1}
-                onAddStep={onAddStep} onRemoveStep={onRemoveStep}
-                onUpdateConfig={onUpdateConfig} onUpdateOutputs={onUpdateOutputs}
-                pipelines={pipelines} stages={stages} templates={templates} allBots={allBots}
-              />
+              <div style={{ transform: `translate(${stepPos.x}px, ${stepPos.y}px)` }}>
+                <FlowBranch
+                  output={step.outputs[0]} stepNumber={currentNum + 1}
+                  onAddStep={onAddStep} onRemoveStep={onRemoveStep}
+                  onUpdateConfig={onUpdateConfig} onUpdateOutputs={onUpdateOutputs}
+                  pipelines={pipelines} stages={stages} templates={templates} allBots={allBots}
+                  nodePositions={nodePositions} onUpdateNodePosition={onUpdateNodePosition}
+                />
+              </div>
             ) : null}
           </div>
         );
@@ -852,7 +941,7 @@ const FlowBranch = ({
   );
 };
 
-// ── Step Card ──
+// ── Step Card (draggable) ──
 
 interface StepCardProps {
   step: FlowStep;
@@ -864,11 +953,15 @@ interface StepCardProps {
   stages: any[];
   templates: any[];
   allBots: any[];
+  position: { x: number; y: number };
+  onUpdatePosition: (pos: { x: number; y: number }) => void;
 }
 
-const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pipelines, stages, templates, allBots }: StepCardProps) => {
+const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pipelines, stages, templates, allBots, position, onUpdatePosition }: StepCardProps) => {
   const stepInfo = STEP_TYPES.find(s => s.type === step.type);
   const config = step.config || {};
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef({ x: 0, y: 0, px: 0, py: 0 });
 
   const headerColors: Record<string, string> = {
     send_message: "bg-blue-500", pause: "bg-amber-500", condition: "bg-purple-500",
@@ -877,9 +970,38 @@ const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pip
     list_message: "bg-cyan-500", validation: "bg-orange-500", round_robin: "bg-violet-500",
   };
 
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    // Don't drag if clicking the close button
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+    dragRef.current = { x: e.clientX, y: e.clientY, px: position.x, py: position.y };
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - dragRef.current.x;
+      const dy = ev.clientY - dragRef.current.y;
+      onUpdatePosition({ x: dragRef.current.px + dx, y: dragRef.current.py + dy });
+    };
+    const onUp = () => {
+      setIsDragging(false);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   return (
-    <div className="bg-card rounded-xl border border-border shadow-sm w-80 overflow-hidden" style={{ touchAction: "none" }}>
-      <div className={`${headerColors[step.type] || "bg-muted"} px-3 py-2 flex items-center justify-between`}>
+    <div
+      className="bg-card rounded-xl border border-border shadow-sm w-80 overflow-hidden"
+      style={{ touchAction: "none", zIndex: isDragging ? 50 : "auto" }}
+    >
+      <div
+        className={`${headerColors[step.type] || "bg-muted"} px-3 py-2 flex items-center justify-between`}
+        style={{ cursor: isDragging ? "grabbing" : "grab", touchAction: "none" }}
+        onMouseDown={handleHeaderMouseDown}
+      >
         <div className="flex items-center gap-2 text-white">
           <span className="text-xs font-bold bg-white/20 rounded-full w-5 h-5 flex items-center justify-center">{number}</span>
           <span className="text-xs font-semibold">{stepInfo?.label || step.type}</span>
