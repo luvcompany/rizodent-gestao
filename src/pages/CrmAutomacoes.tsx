@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent } from "@/components/ui/card";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Save, Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert } from "lucide-react";
+import { Save, Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, Cpu, AlertTriangle } from "lucide-react";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -19,6 +20,8 @@ type Automation = {
 };
 type Template = { id: string; name: string; status: string };
 type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
+type BotItem = { id: string; name: string; active: boolean };
+type StageBotConfig = { id: string; stage_id: string; bot_id: string | null; trigger_type: string; active: boolean; is_final_stage: boolean };
 
 const PRESET_COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
@@ -34,6 +37,8 @@ export default function CrmAutomacoes() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [channels, setChannels] = useState<FunnelChannel[]>([]);
+  const [allBots, setAllBots] = useState<BotItem[]>([]);
+  const [stageBotConfigs, setStageBotConfigs] = useState<StageBotConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [duplicateRulesOpen, setDuplicateRulesOpen] = useState(false);
   const [duplicateEnabled, setDuplicateEnabled] = useState(false);
@@ -64,16 +69,20 @@ export default function CrmAutomacoes() {
     const pid = pipeId || selectedPipelineId || pipes[0]?.id;
     if (pid) {
       setSelectedPipelineId(pid);
-      const [stagesRes, autoRes, tplRes, chRes] = await Promise.all([
+      const [stagesRes, autoRes, tplRes, chRes, botsRes, sbcRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
         supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED"),
         supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
+        supabase.from("bots").select("id, name, active"),
+        supabase.from("stage_bot_config").select("*"),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
       setTemplates((tplRes.data as Template[]) || []);
       setChannels((chRes.data as FunnelChannel[]) || []);
+      setAllBots((botsRes.data as BotItem[]) || []);
+      setStageBotConfigs((sbcRes.data as StageBotConfig[]) || []);
     }
     setLoading(false);
   }, [selectedPipelineId]);
