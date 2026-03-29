@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Mic, File as FileIcon, Image } from "lucide-react";
+import AudioPlayer from "./AudioPlayer";
 import { supabase } from "@/integrations/supabase/client";
 
 type ChatMessage = {
