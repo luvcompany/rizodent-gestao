@@ -220,20 +220,19 @@ const CrmBotEditor = () => {
     });
   };
 
-  const removeStep = (stepId: string) => {
-    setRootOutputs(prev => removeStepInTree(prev, stepId));
-  };
-
-  const removeStepInTree = (outs: FlowOutput[]): FlowOutput[] => {
-    return outs.map(o => ({
-      ...o,
-      nextSteps: o.nextSteps
-        .filter(step => step.id !== stepId)
-        .map(step => ({
-          ...step,
-          outputs: removeStepInTree(step.outputs),
-        })),
-    }));
+  const removeStep = (targetId: string) => {
+    const removeInTree = (outs: FlowOutput[]): FlowOutput[] => {
+      return outs.map(o => ({
+        ...o,
+        nextSteps: o.nextSteps
+          .filter(step => step.id !== targetId)
+          .map(step => ({
+            ...step,
+            outputs: removeInTree(step.outputs),
+          })),
+      }));
+    };
+    setRootOutputs(prev => removeInTree(prev));
   };
 
   const updateStepConfig = (stepId: string, config: any) => {
