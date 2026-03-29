@@ -14,6 +14,222 @@ export type Database = {
   }
   public: {
     Tables: {
+      bot_execution_logs: {
+        Row: {
+          action: string | null
+          created_at: string | null
+          execution_id: string | null
+          id: string
+          node_id: string | null
+          result: string | null
+        }
+        Insert: {
+          action?: string | null
+          created_at?: string | null
+          execution_id?: string | null
+          id?: string
+          node_id?: string | null
+          result?: string | null
+        }
+        Update: {
+          action?: string | null
+          created_at?: string | null
+          execution_id?: string | null
+          id?: string
+          node_id?: string | null
+          result?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_execution_logs_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "bot_executions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_execution_logs_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "bot_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_executions: {
+        Row: {
+          bot_id: string | null
+          cancel_reason: string | null
+          current_node_id: string | null
+          finished_at: string | null
+          id: string
+          lead_id: string | null
+          started_at: string | null
+          status: string | null
+          timeout_at: string | null
+          waiting_for: string | null
+          waiting_since: string | null
+        }
+        Insert: {
+          bot_id?: string | null
+          cancel_reason?: string | null
+          current_node_id?: string | null
+          finished_at?: string | null
+          id?: string
+          lead_id?: string | null
+          started_at?: string | null
+          status?: string | null
+          timeout_at?: string | null
+          waiting_for?: string | null
+          waiting_since?: string | null
+        }
+        Update: {
+          bot_id?: string | null
+          cancel_reason?: string | null
+          current_node_id?: string | null
+          finished_at?: string | null
+          id?: string
+          lead_id?: string | null
+          started_at?: string | null
+          status?: string | null
+          timeout_at?: string | null
+          waiting_for?: string | null
+          waiting_since?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_executions_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "bots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_executions_current_node_id_fkey"
+            columns: ["current_node_id"]
+            isOneToOne: false
+            referencedRelation: "bot_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_executions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_node_outputs: {
+        Row: {
+          condition_type: string
+          condition_value: string | null
+          created_at: string | null
+          id: string
+          label: string
+          next_node_id: string | null
+          node_id: string | null
+        }
+        Insert: {
+          condition_type: string
+          condition_value?: string | null
+          created_at?: string | null
+          id?: string
+          label: string
+          next_node_id?: string | null
+          node_id?: string | null
+        }
+        Update: {
+          condition_type?: string
+          condition_value?: string | null
+          created_at?: string | null
+          id?: string
+          label?: string
+          next_node_id?: string | null
+          node_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_node_outputs_next_node_id_fkey"
+            columns: ["next_node_id"]
+            isOneToOne: false
+            referencedRelation: "bot_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_node_outputs_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "bot_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_nodes: {
+        Row: {
+          bot_id: string | null
+          config: Json
+          created_at: string | null
+          id: string
+          is_start_node: boolean | null
+          position_x: number | null
+          position_y: number | null
+          type: string
+        }
+        Insert: {
+          bot_id?: string | null
+          config?: Json
+          created_at?: string | null
+          id?: string
+          is_start_node?: boolean | null
+          position_x?: number | null
+          position_y?: number | null
+          type: string
+        }
+        Update: {
+          bot_id?: string | null
+          config?: Json
+          created_at?: string | null
+          id?: string
+          is_start_node?: boolean | null
+          position_x?: number | null
+          position_y?: number | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_nodes_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "bots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bots: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       clinicas: {
         Row: {
           ativa: boolean
@@ -189,11 +405,15 @@ export type Database = {
       }
       crm_leads: {
         Row: {
+          automation_paused: boolean | null
           created_at: string
+          follow_up_count: number | null
           has_task: boolean
           id: string
+          last_inbound_at: string | null
           last_message: string | null
           last_message_at: string | null
+          last_outbound_at: string | null
           name: string
           notes: string | null
           paciente_id: string | null
@@ -208,11 +428,15 @@ export type Database = {
           value: number | null
         }
         Insert: {
+          automation_paused?: boolean | null
           created_at?: string
+          follow_up_count?: number | null
           has_task?: boolean
           id?: string
+          last_inbound_at?: string | null
           last_message?: string | null
           last_message_at?: string | null
+          last_outbound_at?: string | null
           name: string
           notes?: string | null
           paciente_id?: string | null
@@ -227,11 +451,15 @@ export type Database = {
           value?: number | null
         }
         Update: {
+          automation_paused?: boolean | null
           created_at?: string
+          follow_up_count?: number | null
           has_task?: boolean
           id?: string
+          last_inbound_at?: string | null
           last_message?: string | null
           last_message_at?: string | null
+          last_outbound_at?: string | null
           name?: string
           notes?: string | null
           paciente_id?: string | null
@@ -815,6 +1043,51 @@ export type Database = {
             columns: ["clinica_id"]
             isOneToOne: false
             referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stage_bot_config: {
+        Row: {
+          active: boolean | null
+          bot_id: string | null
+          created_at: string | null
+          id: string
+          is_final_stage: boolean | null
+          stage_id: string | null
+          trigger_type: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          bot_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_final_stage?: boolean | null
+          stage_id?: string | null
+          trigger_type?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          bot_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_final_stage?: boolean | null
+          stage_id?: string | null
+          trigger_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_bot_config_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "bots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_bot_config_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: true
+            referencedRelation: "crm_stages"
             referencedColumns: ["id"]
           },
         ]
