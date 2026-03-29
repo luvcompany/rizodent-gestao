@@ -380,7 +380,30 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       )}
 
-      {recording ? (
+      {/* Expired window state */}
+      {isWindowExpired ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2.5 text-sm text-destructive">
+            <AlertTriangle size={16} className="flex-shrink-0" />
+            <span className="flex-1">A sessão de 24h expirou. Envie um template para reabrir a conversa.</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative">
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Sessão expirada — use um template"
+                className="pr-10 bg-secondary border-border opacity-50"
+                disabled
+              />
+            </div>
+            <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
+              <FileText size={16} />
+              Enviar Template
+            </Button>
+          </div>
+        </div>
+      ) : recording ? (
         <div className="flex items-center gap-3">
           <button onClick={cancelRecording} className="p-2 text-destructive hover:text-destructive/80">
             <X size={20} />
@@ -445,6 +468,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               <Mic size={20} />
             </button>
           )}
+        </div>
+      )}
+
+      {/* 24h window countdown */}
+      {!isWindowExpired && lastInboundAt && (
+        <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+          <Clock size={12} />
+          <span>A sessão de mensagens termina em: <span className="font-medium text-foreground">{windowInfo.remaining}</span></span>
         </div>
       )}
     </div>
