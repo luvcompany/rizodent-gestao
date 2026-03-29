@@ -846,11 +846,13 @@ interface FlowBranchProps {
   templates: any[];
   allBots: any[];
   branchLabel?: string;
+  nodePositions: Record<string, { x: number; y: number }>;
+  onUpdateNodePosition: (nodeId: string, pos: { x: number; y: number }) => void;
 }
 
 const FlowBranch = ({
   output, stepNumber, onAddStep, onRemoveStep, onUpdateConfig, onUpdateOutputs,
-  pipelines, stages, templates, allBots, branchLabel,
+  pipelines, stages, templates, allBots, branchLabel, nodePositions, onUpdateNodePosition,
 }: FlowBranchProps) => {
   if (output.nextSteps.length === 0) {
     return (
@@ -871,6 +873,7 @@ const FlowBranch = ({
       {output.nextSteps.map((step, idx) => {
         const currentNum = stepNumber + idx;
         const hasMultipleOutputs = step.outputs.length > 1;
+        const stepPos = nodePositions[step.id] || { x: 0, y: 0 };
 
         return (
           <div key={step.id} className="flex items-start">
@@ -878,13 +881,20 @@ const FlowBranch = ({
               <>
                 <ConnectorLine />
                 <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded whitespace-nowrap mr-1 self-center">{branchLabel}</span>
-                <ConnectorLine />
+                <OrthogonalConnector targetOffset={stepPos} />
               </>
             ) : (
-              <ConnectorLine />
+              <OrthogonalConnector targetOffset={stepPos} />
             )}
 
-            <div className="flex flex-col shrink-0">
+            <div
+              className="flex flex-col shrink-0"
+              style={{
+                transform: `translate(${stepPos.x}px, ${stepPos.y}px)`,
+                position: "relative",
+                zIndex: 5,
+              }}
+            >
               <StepCard
                 step={step}
                 number={currentNum}
@@ -895,11 +905,13 @@ const FlowBranch = ({
                 stages={stages}
                 templates={templates}
                 allBots={allBots}
+                position={stepPos}
+                onUpdatePosition={(pos) => onUpdateNodePosition(step.id, pos)}
               />
             </div>
 
             {hasMultipleOutputs ? (
-              <div className="flex flex-col gap-3 self-center">
+              <div className="flex flex-col gap-3 self-center" style={{ transform: `translate(${stepPos.x}px, ${stepPos.y}px)` }}>
                 {step.outputs.map((o) => (
                   <FlowBranch
                     key={o.id} output={o} stepNumber={currentNum + 1}
@@ -907,16 +919,20 @@ const FlowBranch = ({
                     onUpdateConfig={onUpdateConfig} onUpdateOutputs={onUpdateOutputs}
                     pipelines={pipelines} stages={stages} templates={templates} allBots={allBots}
                     branchLabel={o.label}
+                    nodePositions={nodePositions} onUpdateNodePosition={onUpdateNodePosition}
                   />
                 ))}
               </div>
             ) : step.outputs.length === 1 ? (
-              <FlowBranch
-                output={step.outputs[0]} stepNumber={currentNum + 1}
-                onAddStep={onAddStep} onRemoveStep={onRemoveStep}
-                onUpdateConfig={onUpdateConfig} onUpdateOutputs={onUpdateOutputs}
-                pipelines={pipelines} stages={stages} templates={templates} allBots={allBots}
-              />
+              <div style={{ transform: `translate(${stepPos.x}px, ${stepPos.y}px)` }}>
+                <FlowBranch
+                  output={step.outputs[0]} stepNumber={currentNum + 1}
+                  onAddStep={onAddStep} onRemoveStep={onRemoveStep}
+                  onUpdateConfig={onUpdateConfig} onUpdateOutputs={onUpdateOutputs}
+                  pipelines={pipelines} stages={stages} templates={templates} allBots={allBots}
+                  nodePositions={nodePositions} onUpdateNodePosition={onUpdateNodePosition}
+                />
+              </div>
             ) : null}
           </div>
         );
@@ -925,7 +941,7 @@ const FlowBranch = ({
   );
 };
 
-// ── Step Card ──
+// ── Step Card (draggable) ──
 
 interface StepCardProps {
   step: FlowStep;
@@ -937,11 +953,15 @@ interface StepCardProps {
   stages: any[];
   templates: any[];
   allBots: any[];
+  position: { x: number; y: number };
+  onUpdatePosition: (pos: { x: number; y: number }) => void;
 }
 
-const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pipelines, stages, templates, allBots }: StepCardProps) => {
+const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pipelines, stages, templates, allBots, position, onUpdatePosition }: StepCardProps) => {
   const stepInfo = STEP_TYPES.find(s => s.type === step.type);
   const config = step.config || {};
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef({ x: 0, y: 0, px: 0, py: 0 });
 
   const headerColors: Record<string, string> = {
     send_message: "bg-blue-500", pause: "bg-amber-500", condition: "bg-purple-500",
@@ -950,9 +970,38 @@ const StepCard = ({ step, number, onRemove, onUpdateConfig, onUpdateOutputs, pip
     list_message: "bg-cyan-500", validation: "bg-orange-500", round_robin: "bg-violet-500",
   };
 
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    // Don't drag if clicking the close button
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+    dragRef.current = { x: e.clientX, y: e.clientY, px: position.x, py: position.y };
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - dragRef.current.x;
+      const dy = ev.clientY - dragRef.current.y;
+      onUpdatePosition({ x: dragRef.current.px + dx, y: dragRef.current.py + dy });
+    };
+    const onUp = () => {
+      setIsDragging(false);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+
   return (
-    <div className="bg-card rounded-xl border border-border shadow-sm w-80 overflow-hidden" style={{ touchAction: "none" }}>
-      <div className={`${headerColors[step.type] || "bg-muted"} px-3 py-2 flex items-center justify-between`}>
+    <div
+      className="bg-card rounded-xl border border-border shadow-sm w-80 overflow-hidden"
+      style={{ touchAction: "none", zIndex: isDragging ? 50 : "auto" }}
+    >
+      <div
+        className={`${headerColors[step.type] || "bg-muted"} px-3 py-2 flex items-center justify-between`}
+        style={{ cursor: isDragging ? "grabbing" : "grab", touchAction: "none" }}
+        onMouseDown={handleHeaderMouseDown}
+      >
         <div className="flex items-center gap-2 text-white">
           <span className="text-xs font-bold bg-white/20 rounded-full w-5 h-5 flex items-center justify-center">{number}</span>
           <span className="text-xs font-semibold">{stepInfo?.label || step.type}</span>
