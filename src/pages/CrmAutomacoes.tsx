@@ -463,6 +463,67 @@ export default function CrmAutomacoes() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Duplicate Rules Dialog */}
+      <Dialog open={duplicateRulesOpen} onOpenChange={setDuplicateRulesOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert size={18} className="text-primary" />
+              Regras de Controle de Duplicados
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Configure como o sistema deve identificar e tratar leads duplicados ao entrar no funil.
+            </p>
+
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Critérios de identificação</Label>
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="dup-phone"
+                  checked={duplicateRules.checkPhone}
+                  onCheckedChange={(v) => setDuplicateRules(p => ({ ...p, checkPhone: !!v }))}
+                />
+                <label htmlFor="dup-phone" className="text-sm text-foreground cursor-pointer">Mesmo telefone</label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="dup-name"
+                  checked={duplicateRules.checkName}
+                  onCheckedChange={(v) => setDuplicateRules(p => ({ ...p, checkName: !!v }))}
+                />
+                <label htmlFor="dup-name" className="text-sm text-foreground cursor-pointer">Mesmo nome</label>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-sm font-semibold">Ação ao encontrar duplicado</Label>
+              <Select value={duplicateRules.action} onValueChange={(v: "block" | "merge" | "notify") => setDuplicateRules(p => ({ ...p, action: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="block">Bloquear entrada (não criar lead)</SelectItem>
+                  <SelectItem value="merge">Mesclar com lead existente</SelectItem>
+                  <SelectItem value="notify">Criar e notificar sobre duplicata</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="bg-secondary/50 border border-border rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">
+                {duplicateRules.action === "block" && "O lead não será criado se já existir outro com os mesmos dados selecionados."}
+                {duplicateRules.action === "merge" && "Os dados do novo lead serão mesclados ao registro existente, atualizando informações."}
+                {duplicateRules.action === "notify" && "O lead será criado normalmente, mas uma notificação será gerada avisando sobre a duplicata."}
+              </p>
+            </div>
+
+            <Button className="w-full" onClick={() => { toast.success("Regras de duplicados salvas"); setDuplicateRulesOpen(false); }}>
+              Salvar Regras
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
