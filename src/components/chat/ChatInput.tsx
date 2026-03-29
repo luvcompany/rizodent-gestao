@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Send, Paperclip, Mic, FileText, Image, File, Video,
-  Square, X, Loader2
+  Square, X, Loader2, Clock, AlertTriangle
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,9 +33,10 @@ type ChatInputProps = {
   onMessageError?: (tempId: string) => void;
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
+  lastInboundAt?: string | null;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -75,6 +76,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !attachedFile) || !leadPhone) return;
+
+    // Block if 24h window expired
+    if (windowInfo.expired) {
+      toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
+      return;
+    }
 
     let type = "text";
     let message = newMessage.trim();
@@ -322,6 +329,26 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
+  // 24h window logic
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30000); // update every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  const windowInfo = useMemo(() => {
+    if (!lastInboundAt) return { expired: true, remaining: "" };
+    const inboundTime = new Date(lastInboundAt).getTime();
+    const expiresAt = inboundTime + 24 * 60 * 60 * 1000;
+    const diff = expiresAt - now;
+    if (diff <= 0) return { expired: true, remaining: "" };
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return { expired: false, remaining: `${hours}h ${mins.toString().padStart(2, "0")}m` };
+  }, [lastInboundAt, now]);
+
+  const isWindowExpired = windowInfo.expired;
+
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
@@ -353,7 +380,30 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       )}
 
-      {recording ? (
+      {/* Expired window state */}
+      {isWindowExpired ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2.5 text-sm text-destructive">
+            <AlertTriangle size={16} className="flex-shrink-0" />
+            <span className="flex-1">A sessão de 24h expirou. Envie um template para reabrir a conversa.</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative">
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Sessão expirada — use um template"
+                className="pr-10 bg-secondary border-border opacity-50"
+                disabled
+              />
+            </div>
+            <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
+              <FileText size={16} />
+              Enviar Template
+            </Button>
+          </div>
+        </div>
+      ) : recording ? (
         <div className="flex items-center gap-3">
           <button onClick={cancelRecording} className="p-2 text-destructive hover:text-destructive/80">
             <X size={20} />
@@ -418,6 +468,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               <Mic size={20} />
             </button>
           )}
+        </div>
+      )}
+
+      {/* 24h window countdown */}
+      {!isWindowExpired && lastInboundAt && (
+        <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+          <Clock size={12} />
+          <span>A sessão de mensagens termina em: <span className="font-medium text-foreground">{windowInfo.remaining}</span></span>
         </div>
       )}
     </div>

@@ -483,6 +483,7 @@ export default function CrmConversas() {
                 onMessageError={handleMessageError}
                 replyTo={replyTo}
                 onReplySent={() => setReplyTo(null)}
+                lastInboundAt={[...messages].reverse().find((m) => m.direction === "inbound")?.created_at || null}
               />
             </div>
           ) : (

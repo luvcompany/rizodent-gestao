@@ -448,7 +448,7 @@ export default function CrmConversa() {
         )}
 
         {/* Input Area */}
-        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} replyTo={replyTo} onReplySent={() => setReplyTo(null)} onMessageSent={(msg) => setMessages(prev => [...prev, msg])} onMessageError={(tempId) => setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "error" } : m))} />}
+        {id && <ChatInput leadId={id} leadPhone={lead.phone} onLoadTemplates={loadTemplates} externalMessage={templateMessage} onExternalMessageConsumed={() => setTemplateMessage("")} replyTo={replyTo} onReplySent={() => setReplyTo(null)} onMessageSent={(msg) => setMessages(prev => [...prev, msg])} onMessageError={(tempId) => setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: "error" } : m))} lastInboundAt={[...messages].reverse().find((m) => m.direction === "inbound")?.created_at || null} />}
       </div>
 
       {/* RIGHT COLUMN - Lead Panel (30%) */}
