@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+
 import ChatInput from "@/components/chat/ChatInput";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
