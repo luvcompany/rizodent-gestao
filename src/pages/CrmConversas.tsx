@@ -7,11 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ChatInput from "@/components/chat/ChatInput";
-import ChatMessageContent from "@/components/chat/ChatMessageContent";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
-import MessageActions from "@/components/chat/MessageActions";
+import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
+import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
+import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
@@ -19,8 +19,8 @@ import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import {
-  Search, MessageSquare, Clock, Phone, MoreVertical,
-  Check, CheckCheck, Plus, Tag, ArrowRight, X
+  Search, MessageSquare, Phone, MoreVertical,
+  Plus, Tag, X
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -209,14 +209,6 @@ export default function CrmConversas() {
     } catch { toast.error("Erro inesperado"); }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "read": return <CheckCheck size={14} className="text-blue-400" />;
-      case "delivered": return <CheckCheck size={14} className="text-muted-foreground" />;
-      case "sent": return <Check size={14} className="text-muted-foreground" />;
-      default: return <Clock size={14} className="text-muted-foreground" />;
-    }
-  };
 
   // Message interactions
   const handleReply = (msg: Message) => setReplyTo(msg);
@@ -380,97 +372,26 @@ export default function CrmConversas() {
                 );
               }
 
-              const quotedMsg = msg.reply_to_message_id
-                ? messages.find((m) => m.id === msg.reply_to_message_id)
-                : null;
-
-              const rawReactions = Array.isArray((msg as any).reactions) ? (msg as any).reactions as { emoji: string; from: string }[] : [];
-              const reactionsMap = new Map<string, string>();
-              rawReactions.forEach((r) => reactionsMap.set(r.from, r.emoji));
-              const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
-
               return (
-                <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className="w-full flex transition-all duration-300 rounded-lg">
-                  <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
-                    <MessageActions
-                      message={msg}
-                      direction={msg.direction}
-                      onReply={handleReply}
-                      onForward={handleForward}
-                      onReact={handleReact}
-                    />
-                    <div className={`rounded-lg px-3 py-2 ${
-                      msg.direction === "outbound"
-                        ? "bg-primary/20 text-foreground rounded-br-none"
-                        : "bg-card border border-border text-foreground rounded-bl-none"
-                    }`}>
-                      {quotedMsg && (
-                        <div
-                          onClick={() => scrollToMessage(quotedMsg.id)}
-                          className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[11px] font-semibold text-primary">
-                              {quotedMsg.direction === "inbound" ? selectedLead.name : "Você"}
-                            </div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {["image", "sticker"].includes(quotedMsg.type)
-                                ? "📷 Foto"
-                                : quotedMsg.type === "video"
-                                  ? "🎥 Vídeo"
-                                  : quotedMsg.type === "audio"
-                                    ? "🎤 Áudio"
-                                    : quotedMsg.type === "document"
-                                      ? "📄 Documento"
-                                      : quotedMsg.content || `[${quotedMsg.type}]`}
-                            </div>
-                          </div>
-                          {["image", "sticker", "video"].includes(quotedMsg.type) && quotedMsg.media_url?.startsWith("http") && (
-                            <img src={quotedMsg.media_url} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
-                          )}
-                        </div>
-                      )}
-                      <ChatMessageContent
-                        message={msg}
-                        onMediaClick={(url, type) => setMediaPreview({ url, type })}
-                      />
-                      <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                        {msg.direction === "outbound" && getStatusIcon(msg.status)}
-                      </div>
-                    </div>
-                    {reactions.length > 0 && (
-                      <div className={`flex gap-0.5 mt-[-8px] ${msg.direction === "outbound" ? "justify-end mr-1" : "justify-start ml-1"}`}>
-                        {reactions.map((r, i) => (
-                          <span key={i} className="text-sm bg-card border border-border rounded-full px-1.5 py-0.5 shadow-sm">
-                            {r.emoji}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <ChatMessageBubble
+                  key={msg.id}
+                  ref={(el) => { messageRefs.current[msg.id] = el; }}
+                  msg={msg}
+                  leadName={selectedLead.name}
+                  allMessages={messages}
+                  onReply={handleReply}
+                  onForward={handleForward}
+                  onReact={handleReact}
+                  onMediaClick={(url, type) => setMediaPreview({ url, type })}
+                  onScrollToMessage={scrollToMessage}
+                />
               );
             })}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Reply preview */}
           {replyTo && (
-            <div className="flex-shrink-0 bg-secondary/80 border-t border-border px-4 py-2 flex items-center gap-3">
-              <div className="w-1 h-8 rounded-full bg-primary flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-primary">
-                  {replyTo.direction === "inbound" ? selectedLead.name : "Você"}
-                </div>
-                <div className="text-xs text-muted-foreground truncate">{replyTo.content || `[${replyTo.type}]`}</div>
-              </div>
-              <button onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground">
-                <X size={16} />
-              </button>
-            </div>
+            <ChatReplyPreview replyTo={replyTo} leadName={selectedLead.name} onCancel={() => setReplyTo(null)} />
           )}
 
           <ChatInput
@@ -629,16 +550,7 @@ export default function CrmConversas() {
         />
       )}
 
-      {/* Media Preview Modal */}
-      <Dialog open={!!mediaPreview} onOpenChange={() => setMediaPreview(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] p-2 bg-background/95 border-border">
-          {mediaPreview?.type === "image" ? (
-            <img src={mediaPreview.url} alt="" className="w-full h-auto max-h-[85vh] object-contain rounded" />
-          ) : mediaPreview?.type === "video" ? (
-            <video src={mediaPreview.url} controls autoPlay className="w-full max-h-[85vh] rounded" />
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      <ChatMediaPreview mediaPreview={mediaPreview} onClose={() => setMediaPreview(null)} />
     </div>
   );
 }
