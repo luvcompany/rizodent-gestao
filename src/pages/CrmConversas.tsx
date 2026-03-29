@@ -7,11 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import ChatInput from "@/components/chat/ChatInput";
-import ChatMessageContent from "@/components/chat/ChatMessageContent";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
-import MessageActions from "@/components/chat/MessageActions";
+import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
+import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
+import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
@@ -19,8 +19,8 @@ import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import {
-  Search, MessageSquare, Clock, Phone, MoreVertical,
-  Check, CheckCheck, Plus, Tag, ArrowRight, X
+  Search, MessageSquare, Phone, MoreVertical,
+  Plus, Tag, X
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
