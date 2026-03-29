@@ -831,6 +831,10 @@ const AddStepButton = ({ outputId, onAdd, restrictToType }: { outputId: string; 
       </button>
 
       {open && (
+        restrictToType ? (
+          // Auto-add the restricted type directly
+          (() => { onAdd(outputId, restrictToType); setOpen(false); return null; })()
+        ) : (
         <div
           className="absolute left-12 top-full mt-1 bg-card rounded-xl border border-border shadow-xl z-30 py-2 w-64"
           style={{
@@ -862,6 +866,7 @@ const AddStepButton = ({ outputId, onAdd, restrictToType }: { outputId: string; 
             </button>
           ))}
         </div>
+        )
       )}
     </div>
   );
