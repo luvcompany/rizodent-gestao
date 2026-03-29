@@ -903,7 +903,7 @@ const FlowBranch = ({
             <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded whitespace-nowrap mr-1">{branchLabel}</span>
           </>
         )}
-        <AddStepButton outputId={output.id} onAdd={onAddStep} />
+        <AddStepButton outputId={output.id} onAdd={onAddStep} restrictToType={output.conditionType === "no_response" ? "pause" : undefined} />
       </div>
     );
   }
