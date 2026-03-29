@@ -23,6 +23,7 @@ import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
+import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
 import {
   ArrowLeft, FileText, Tag
 } from "lucide-react";
@@ -251,6 +252,16 @@ export default function CrmConversa() {
 
     // Show activity toast
     showActivityToast(`📋 Lead movido para ${toStageName}`);
+
+    // Trigger bot-engine for stage change
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      fetch(`https://${projectId}.supabase.co/functions/v1/bot-trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ leadId: id, newStageId: stageId }),
+      }).catch(() => {});
+    } catch {}
 
     setLead((prev) => prev ? { ...prev, stage_id: stageId } : prev);
     toast.success("Etapa atualizada");
@@ -524,6 +535,9 @@ export default function CrmConversa() {
 
         {/* Custom Fields */}
         <LeadCustomFields leadId={lead.id} />
+
+        {/* Automation Panel */}
+        <LeadAutomationPanel leadId={lead.id} />
 
         {/* Notes input */}
         <div className="p-4 border-b border-border">

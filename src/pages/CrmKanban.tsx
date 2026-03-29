@@ -108,7 +108,17 @@ export default function CrmKanban() {
     const { error } = await supabase.from("crm_leads").update({
       stage_id: newStageId, position: newPosition, updated_at: new Date().toISOString()
     }).eq("id", leadId);
-    if (error) { toast.error("Erro ao mover lead"); fetchData(); }
+    if (error) { toast.error("Erro ao mover lead"); fetchData(); return; }
+
+    // Trigger bot-engine for stage change
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      fetch(`https://${projectId}.supabase.co/functions/v1/bot-trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ leadId, newStageId }),
+      }).catch(() => {});
+    } catch {}
   };
 
   const handleCreateLead = async () => {
