@@ -376,12 +376,11 @@ export default function CrmConversas() {
                             <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
                             {lead.last_message_at && (
                               <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                {formatDistanceToNow(new Date(lead.last_message_at), { addSuffix: false, locale: ptBR })}
+                                {new Date(lead.last_message_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
-                            {stageDot && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: stageDot.color }} />}
                             {lead.source && (
                               <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{lead.source}</Badge>
                             )}

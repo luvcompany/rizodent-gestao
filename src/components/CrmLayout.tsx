@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
-  ArrowLeft, Menu, X, CalendarDays,
+  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 const crmNavItems = [
@@ -18,6 +18,7 @@ const crmNavItems = [
 const CrmLayout = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
     <div className="flex min-h-screen">
@@ -28,10 +29,30 @@ const CrmLayout = () => {
         />
       )}
 
+      {/* Collapse toggle for desktop */}
+      {!sidebarCollapsed && (
+        <button
+          onClick={() => setSidebarCollapsed(true)}
+          className="hidden lg:flex fixed top-4 left-[248px] z-[51] h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground hover:text-primary transition-colors"
+          title="Ocultar menu"
+        >
+          <ChevronLeft size={14} />
+        </button>
+      )}
+      {sidebarCollapsed && (
+        <button
+          onClick={() => setSidebarCollapsed(false)}
+          className="hidden lg:flex fixed top-4 left-3 z-[51] h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground hover:text-primary transition-colors"
+          title="Mostrar menu"
+        >
+          <ChevronRight size={14} />
+        </button>
+      )}
+
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform lg:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform ${
+          sidebarCollapsed ? "-translate-x-full" : "lg:translate-x-0"
+        } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
           <button
@@ -76,7 +97,7 @@ const CrmLayout = () => {
         </nav>
       </aside>
 
-      <div className="flex flex-1 flex-col lg:ml-64">
+      <div className={`flex flex-1 flex-col transition-all ${sidebarCollapsed ? "lg:ml-0" : "lg:ml-64"}`}>
         <header className="flex h-16 items-center gap-4 border-b border-border px-6">
           <button
             className="text-foreground lg:hidden"
