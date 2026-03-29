@@ -33,7 +33,11 @@ export default function CrmAutomacoes() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [channels, setChannels] = useState<FunnelChannel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [duplicateRulesOpen, setDuplicateRulesOpen] = useState(false);
+  const [duplicateEnabled, setDuplicateEnabled] = useState(false);
+  const [duplicateRules, setDuplicateRules] = useState({ checkPhone: true, checkName: false, action: "block" as "block" | "merge" | "notify" });
 
   const [newStageOpen, setNewStageOpen] = useState(false);
   const [newStageName, setNewStageName] = useState("");
