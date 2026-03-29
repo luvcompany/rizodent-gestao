@@ -724,7 +724,7 @@ const ConnectorLine = () => (
 
 // ── Add Step Button (draggable) ──
 
-const AddStepButton = ({ outputId, onAdd }: { outputId: string; onAdd: (outputId: string, type: string) => void }) => {
+const AddStepButton = ({ outputId, onAdd, restrictToType }: { outputId: string; onAdd: (outputId: string, type: string) => void; restrictToType?: string }) => {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
