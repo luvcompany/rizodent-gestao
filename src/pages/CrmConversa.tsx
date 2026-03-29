@@ -70,7 +70,7 @@ export default function CrmConversa() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [templateMessage, setTemplateMessage] = useState("");
-  
+  const [newNote, setNewNote] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -528,7 +528,18 @@ export default function CrmConversa() {
         {/* Notes input */}
         <div className="p-4 border-b border-border">
           <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Adicionar Nota</h3>
-          <NoteInput onAdd={handleAddNote} />
+          <div className="flex gap-2">
+            <Input
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+              placeholder="Adicionar nota..."
+              className="bg-secondary border-border text-sm"
+              onKeyDown={(e) => { if (e.key === "Enter" && newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }}
+            />
+            <Button size="sm" variant="outline" onClick={() => { if (newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }} disabled={!newNote.trim()}>
+              +
+            </Button>
+          </div>
         </div>
 
         {/* Footer */}
