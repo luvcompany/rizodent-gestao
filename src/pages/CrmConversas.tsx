@@ -72,6 +72,7 @@ export default function CrmConversas() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [newNote, setNewNote] = useState("");
   
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
