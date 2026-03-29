@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -21,9 +21,10 @@ import LeadCustomFields from "@/components/chat/LeadCustomFields";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
+import NotesBar from "@/components/chat/NotesBar";
+import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import {
-  ArrowLeft, FileText, Phone,
-  MoreVertical, Plus, Tag, X
+  ArrowLeft, FileText, Tag
 } from "lucide-react";
 
 type Message = {
@@ -69,7 +70,7 @@ export default function CrmConversa() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
   const [templateMessage, setTemplateMessage] = useState("");
-  const [newNote, setNewNote] = useState("");
+  
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,7 +125,14 @@ export default function CrmConversa() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
+  // Only scroll to bottom on initial load
+  const initialLoadDone = useRef(false);
+  useEffect(() => {
+    if (!initialLoadDone.current && messages.length > 0) {
+      scrollToBottom();
+      initialLoadDone.current = true;
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (!id) return;
@@ -248,15 +256,14 @@ export default function CrmConversa() {
     toast.success("Etapa atualizada");
   };
 
-  const handleAddNote = async () => {
-    if (!newNote.trim() || !lead) return;
+  const handleAddNote = async (noteText: string) => {
+    if (!noteText.trim() || !lead) return;
     const existingNotes = lead.notes || "";
     const timestamp = new Date().toLocaleString("pt-BR");
-    const updatedNotes = `${existingNotes}\n[${timestamp}] ${newNote.trim()}`.trim();
+    const updatedNotes = `${existingNotes}\n[${timestamp}] ${noteText.trim()}`.trim();
     const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", lead.id);
     if (error) { toast.error("Erro ao salvar nota"); return; }
     setLead((prev) => prev ? { ...prev, notes: updatedNotes } : prev);
-    setNewNote("");
     toast.success("Nota adicionada");
   };
 
@@ -384,15 +391,10 @@ export default function CrmConversa() {
               {lead.phone && <span>{lead.phone}</span>}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary">
-              <Phone size={18} />
-            </button>
-            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary">
-              <MoreVertical size={18} />
-            </button>
-          </div>
         </div>
+
+        {/* Notes Bar */}
+        <NotesBar notes={lead.notes} onAddNote={handleAddNote} />
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2 relative" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
@@ -488,31 +490,15 @@ export default function CrmConversa() {
             </Select>
           </div>
 
-          {/* Source */}
-          {lead.source && (
-            <div className="mt-2">
-              <span className="text-xs text-muted-foreground">Origem</span>
-              <p className="text-sm text-foreground capitalize">{lead.source}</p>
-            </div>
-          )}
         </div>
 
-        {/* Tags */}
-        <div className="p-4 border-b border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Tag size={14} className="text-muted-foreground" />
-            <span className="text-xs font-medium text-muted-foreground uppercase">Tags</span>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {lead.tags && lead.tags.length > 0 ? (
-              lead.tags.map((t) => (
-                <Badge key={t} variant="secondary" className="text-xs">#{t}</Badge>
-              ))
-            ) : (
-              <span className="text-sm text-muted-foreground">Nenhuma tag</span>
-            )}
-          </div>
-        </div>
+        {/* Inline Tags & Source Editor */}
+        <InlineTagsEditor
+          leadId={lead.id}
+          tags={lead.tags || []}
+          source={lead.source}
+          onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
+        />
 
         {/* Budget Panel */}
         <LeadBudgetPanel
@@ -534,26 +520,6 @@ export default function CrmConversa() {
 
         {/* Custom Fields */}
         <LeadCustomFields leadId={lead.id} />
-
-        {/* Notes / Activity */}
-        <div className="p-4 border-b border-border">
-          <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Notas & Atividades</h3>
-          <div className="text-sm text-foreground whitespace-pre-wrap mb-3 max-h-40 overflow-y-auto">
-            {lead.notes || "Sem notas"}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={newNote}
-              onChange={(e) => setNewNote(e.target.value)}
-              placeholder="Adicionar nota..."
-              className="bg-secondary border-border text-sm"
-              onKeyDown={(e) => { if (e.key === "Enter") handleAddNote(); }}
-            />
-            <Button size="sm" variant="outline" onClick={handleAddNote} disabled={!newNote.trim()}>
-              <Plus size={14} />
-            </Button>
-          </div>
-        </div>
 
         {/* Footer */}
         <div className="p-4">

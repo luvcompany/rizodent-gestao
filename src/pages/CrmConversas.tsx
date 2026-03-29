@@ -18,9 +18,10 @@ import LeadCustomFields from "@/components/chat/LeadCustomFields";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
+import NotesBar from "@/components/chat/NotesBar";
+import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import {
-  Search, MessageSquare, Phone, MoreVertical,
-  Plus, Tag, X
+  Search, MessageSquare
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -71,7 +72,7 @@ export default function CrmConversas() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [newNote, setNewNote] = useState("");
+  
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -133,7 +134,15 @@ export default function CrmConversas() {
     setReplyTo(null);
   }, [selectedLeadId, leads, fetchMessages]);
 
-  useEffect(() => { scrollToBottom(); }, [messages]);
+  const initialLoadDone = useRef(false);
+  useEffect(() => {
+    if (!initialLoadDone.current && messages.length > 0) {
+      scrollToBottom();
+      initialLoadDone.current = true;
+    }
+  }, [messages]);
+  // Reset on lead change
+  useEffect(() => { initialLoadDone.current = false; }, [selectedLeadId]);
 
   // Realtime for selected lead
   useEffect(() => {
@@ -179,15 +188,14 @@ export default function CrmConversas() {
     toast.success("Etapa atualizada");
   };
 
-  const handleAddNote = async () => {
-    if (!newNote.trim() || !selectedLead) return;
+  const handleAddNote = async (noteText: string) => {
+    if (!noteText.trim() || !selectedLead) return;
     const existingNotes = selectedLead.notes || "";
     const timestamp = new Date().toLocaleString("pt-BR");
-    const updatedNotes = `${existingNotes}\n[${timestamp}] ${newNote.trim()}`.trim();
+    const updatedNotes = `${existingNotes}\n[${timestamp}] ${noteText.trim()}`.trim();
     const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", selectedLead.id);
     if (error) { toast.error("Erro ao salvar nota"); return; }
     setSelectedLead((prev) => prev ? { ...prev, notes: updatedNotes } : prev);
-    setNewNote("");
     toast.success("Nota adicionada");
   };
 
@@ -343,15 +351,10 @@ export default function CrmConversas() {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <button className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary">
-                <Phone size={16} />
-              </button>
-              <button className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-secondary">
-                <MoreVertical size={16} />
-              </button>
-            </div>
           </div>
+
+          {/* Notes Bar */}
+          <NotesBar notes={selectedLead.notes} onAddNote={handleAddNote} />
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
@@ -459,27 +462,17 @@ export default function CrmConversas() {
               </Select>
             </div>
 
-            {selectedLead.source && (
-              <div className="mt-2">
-                <span className="text-xs text-muted-foreground">Origem</span>
-                <p className="text-sm text-foreground capitalize">{selectedLead.source}</p>
-              </div>
-            )}
           </div>
 
-          <div className="p-4 border-b border-border">
-            <div className="flex items-center gap-2 mb-2">
-              <Tag size={12} className="text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground uppercase">Tags</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {selectedLead.tags && selectedLead.tags.length > 0 ? (
-                selectedLead.tags.map((t) => <Badge key={t} variant="secondary" className="text-[10px]">#{t}</Badge>)
-              ) : (
-                <span className="text-xs text-muted-foreground">Nenhuma tag</span>
-              )}
-            </div>
-          </div>
+          <InlineTagsEditor
+            leadId={selectedLead.id}
+            tags={selectedLead.tags || []}
+            source={selectedLead.source}
+            onUpdated={(updates) => {
+              setSelectedLead((prev) => prev ? { ...prev, ...updates } as any : prev);
+              setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
+            }}
+          />
 
           <LeadBudgetPanel
             lead={selectedLead as any}
@@ -495,25 +488,6 @@ export default function CrmConversas() {
           />
 
           <LeadCustomFields leadId={selectedLead.id} />
-
-          <div className="p-4 border-b border-border">
-            <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Notas</h3>
-            <div className="text-xs text-foreground whitespace-pre-wrap mb-2 max-h-32 overflow-y-auto">
-              {selectedLead.notes || "Sem notas"}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                placeholder="Adicionar nota..."
-                className="bg-secondary border-border text-xs h-8"
-                onKeyDown={(e) => { if (e.key === "Enter") handleAddNote(); }}
-              />
-              <Button size="sm" variant="outline" onClick={handleAddNote} disabled={!newNote.trim()} className="h-8 px-2">
-                <Plus size={12} />
-              </Button>
-            </div>
-          </div>
 
           <div className="p-4">
             <div className="text-[10px] text-muted-foreground text-center">

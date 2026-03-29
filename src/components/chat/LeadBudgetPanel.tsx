@@ -56,14 +56,23 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   }, [lead.paciente_id]);
 
   const fetchPacienteAndBudgets = async (pacienteId: string) => {
-    const [pRes, oRes] = await Promise.all([
+    const [pRes, oRes, pagRes] = await Promise.all([
       supabase.from("pacientes").select("id, nome, telefone, email").eq("id", pacienteId).single(),
       supabase.from("orcamentos").select("id, valor_orcado, status, created_at").eq("paciente_id", pacienteId).eq("status", "aberto"),
+      supabase.from("pagamentos").select("valor").eq("paciente_id", pacienteId),
     ]);
     if (pRes.data) setPaciente(pRes.data);
     if (oRes.data) {
       setOrcamentos(oRes.data);
       setTotalValue(oRes.data.reduce((sum, o) => sum + Number(o.valor_orcado), 0));
+    }
+    // Sync lead value with total payments
+    if (pagRes.data) {
+      const totalPaid = pagRes.data.reduce((sum, p) => sum + Number(p.valor), 0);
+      if (totalPaid > 0) {
+        await supabase.from("crm_leads").update({ value: totalPaid }).eq("id", lead.id);
+        onLeadUpdated({ paciente_id: pacienteId } as any);
+      }
     }
   };
 

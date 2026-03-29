@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Mic, File as FileIcon, Image } from "lucide-react";
+import AudioPlayer from "./AudioPlayer";
 import { supabase } from "@/integrations/supabase/client";
 
 type ChatMessage = {
@@ -138,7 +139,7 @@ export default function ChatMessageContent({ message, onMediaClick }: { message:
 
   if (message.type === "audio") {
     if (hasResolvedMedia) {
-      return <audio src={message.media_url!} controls className="max-w-full min-w-[200px]" />;
+      return <AudioPlayer src={message.media_url!} />;
     }
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
