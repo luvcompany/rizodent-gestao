@@ -94,15 +94,18 @@ export const SendMessageConfig = ({ config, onChange, templates, outputs, onUpda
       useTemplate: true,
     });
 
-    // Create outputs for action buttons
+    // Create outputs: button click outputs + "Sem resposta"
     const actionOutputs = newButtons
       .filter((b: any) => b.type === "action")
       .map((b: any) => ({
         id: uid(), label: `${b.label} clicado`, conditionType: "button_click", conditionValue: b.id, nextSteps: [],
       }));
 
-    const baseOutputs = outputs.filter(o => o.conditionType !== "button_click");
-    onUpdateOutputs([...baseOutputs, ...actionOutputs]);
+    const noResponseOutput: FlowOutput = {
+      id: uid(), label: "Sem resposta", conditionType: "no_response", conditionValue: null, nextSteps: [],
+    };
+
+    onUpdateOutputs([...actionOutputs, noResponseOutput]);
     setShowTemplateModal(false);
   };
 
@@ -135,61 +138,112 @@ export const SendMessageConfig = ({ config, onChange, templates, outputs, onUpda
             <span className="text-[10px] font-semibold text-primary flex items-center gap-1">
               <FileText size={10} /> Template: {config.template_name}
             </span>
-            <button onClick={() => onChange({ ...config, useTemplate: false, template_name: "", template_id: "" })} className="text-muted-foreground hover:text-destructive">
+            <button onClick={() => {
+              onChange({ ...config, useTemplate: false, template_name: "", template_id: "", buttons: [] });
+              // Reset outputs to default
+              onUpdateOutputs([
+                { id: uid(), label: "Próximo", conditionType: "default", conditionValue: null, nextSteps: [] },
+                { id: uid(), label: "Falha ao enviar", conditionType: "failure", conditionValue: null, nextSteps: [] },
+              ]);
+            }} className="text-muted-foreground hover:text-destructive">
               <X size={10} />
             </button>
           </div>
-          <p className="text-[10px] text-muted-foreground line-clamp-2">{config.message}</p>
+          <p className="text-[10px] text-muted-foreground line-clamp-3">{config.message}</p>
+          {buttons.length > 0 && (
+            <div className="space-y-1 mt-1">
+              {buttons.map((btn: any) => (
+                <div key={btn.id} className="flex items-center gap-1 bg-muted/50 rounded px-2 py-1">
+                  <span className="text-[10px] text-muted-foreground">{btn.type === "action" ? "🔘" : "🔗"}</span>
+                  <span className="text-[10px] text-foreground">{btn.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
-        <div className="relative">
-          <div className="absolute top-1.5 right-1.5 flex items-center gap-1.5 z-10">
-            <button className="text-muted-foreground hover:text-foreground"><Mic size={14} /></button>
-            <button className="text-muted-foreground hover:text-foreground"><Paperclip size={14} /></button>
+        <>
+          <div className="relative">
+            <div className="absolute top-1.5 right-1.5 flex items-center gap-1.5 z-10">
+              <label className="text-muted-foreground hover:text-foreground cursor-pointer">
+                <Mic size={14} />
+                <input type="file" accept="audio/*" className="hidden" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onChange({ ...config, audio_file: file.name, audio_url: URL.createObjectURL(file) });
+                  }
+                }} />
+              </label>
+              <label className="text-muted-foreground hover:text-foreground cursor-pointer">
+                <Paperclip size={14} />
+                <input type="file" className="hidden" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onChange({ ...config, attachment_file: file.name, attachment_url: URL.createObjectURL(file) });
+                  }
+                }} />
+              </label>
+            </div>
+            <Textarea
+              className="text-xs min-h-[60px] pr-16"
+              value={config.message || ""}
+              onChange={e => onChange({ ...config, message: e.target.value })}
+              placeholder="Escreva algo ou escolha um modelo..."
+            />
           </div>
-          <Textarea
-            className="text-xs min-h-[60px] pr-16"
-            value={config.message || ""}
-            onChange={e => onChange({ ...config, message: e.target.value })}
-            placeholder="Escreva algo ou escolha um modelo..."
-          />
-        </div>
+
+          {config.audio_file && (
+            <div className="flex items-center gap-2 bg-muted/50 rounded px-2 py-1 text-xs">
+              <Mic size={12} className="text-primary" />
+              <span className="flex-1 truncate">{config.audio_file}</span>
+              <button onClick={() => onChange({ ...config, audio_file: undefined, audio_url: undefined })} className="text-muted-foreground hover:text-destructive"><X size={10} /></button>
+            </div>
+          )}
+
+          {config.attachment_file && (
+            <div className="flex items-center gap-2 bg-muted/50 rounded px-2 py-1 text-xs">
+              <Paperclip size={12} className="text-primary" />
+              <span className="flex-1 truncate">{config.attachment_file}</span>
+              <button onClick={() => onChange({ ...config, attachment_file: undefined, attachment_url: undefined })} className="text-muted-foreground hover:text-destructive"><X size={10} /></button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-1 flex-wrap">
+            {["{{nome}}", "{{telefone}}", "{{email}}"].map(v => (
+              <button
+                key={v}
+                className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded hover:bg-primary/20 transition-colors"
+                onClick={() => onChange({ ...config, message: (config.message || "") + " " + v })}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+
+          {buttons.map((btn: any, i: number) => (
+            <div key={btn.id} className="flex items-center gap-1 bg-muted/50 rounded px-2 py-1">
+              <span className="text-[10px] text-muted-foreground">{btn.type === "action" ? "🔘" : "🔗"}</span>
+              <Input
+                className="h-6 text-xs flex-1 bg-transparent border-0 p-0"
+                value={btn.label}
+                onChange={e => {
+                  const newBtns = [...buttons];
+                  newBtns[i] = { ...btn, label: e.target.value };
+                  onChange({ ...config, buttons: newBtns });
+                }}
+              />
+              <button onClick={() => {
+                onChange({ ...config, buttons: buttons.filter((_: any, j: number) => j !== i) });
+              }} className="text-muted-foreground hover:text-destructive"><X size={10} /></button>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-2">
+            <button onClick={() => addButton("action")} className="text-[10px] text-primary hover:underline">+ Botão de ação</button>
+            <button onClick={() => addButton("url")} className="text-[10px] text-primary hover:underline">+ Botão de URL</button>
+          </div>
+        </>
       )}
-
-      <div className="flex items-center gap-1 flex-wrap">
-        {["{{nome}}", "{{telefone}}", "{{email}}"].map(v => (
-          <button
-            key={v}
-            className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded hover:bg-primary/20 transition-colors"
-            onClick={() => onChange({ ...config, message: (config.message || "") + " " + v })}
-          >
-            {v}
-          </button>
-        ))}
-      </div>
-
-      {buttons.map((btn: any, i: number) => (
-        <div key={btn.id} className="flex items-center gap-1 bg-muted/50 rounded px-2 py-1">
-          <span className="text-[10px] text-muted-foreground">{btn.type === "action" ? "🔘" : "🔗"}</span>
-          <Input
-            className="h-6 text-xs flex-1 bg-transparent border-0 p-0"
-            value={btn.label}
-            onChange={e => {
-              const newBtns = [...buttons];
-              newBtns[i] = { ...btn, label: e.target.value };
-              onChange({ ...config, buttons: newBtns });
-            }}
-          />
-          <button onClick={() => {
-            onChange({ ...config, buttons: buttons.filter((_: any, j: number) => j !== i) });
-          }} className="text-muted-foreground hover:text-destructive"><X size={10} /></button>
-        </div>
-      ))}
-
-      <div className="flex items-center gap-2">
-        <button onClick={() => addButton("action")} className="text-[10px] text-primary hover:underline">+ Botão de ação</button>
-        <button onClick={() => addButton("url")} className="text-[10px] text-primary hover:underline">+ Botão de URL</button>
-      </div>
 
       {/* Template Selection Modal */}
       <Dialog open={showTemplateModal} onOpenChange={setShowTemplateModal}>
