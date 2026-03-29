@@ -142,12 +142,18 @@ export const SendMessageConfig = ({ config, onChange, templates, outputs, onUpda
           <p className="text-[10px] text-muted-foreground line-clamp-2">{config.message}</p>
         </div>
       ) : (
-        <Textarea
-          className="text-xs min-h-[60px]"
-          value={config.message || ""}
-          onChange={e => onChange({ ...config, message: e.target.value })}
-          placeholder="Escreva algo ou escolha um modelo..."
-        />
+        <div className="relative">
+          <div className="absolute top-1.5 right-1.5 flex items-center gap-1.5 z-10">
+            <button className="text-muted-foreground hover:text-foreground"><Mic size={14} /></button>
+            <button className="text-muted-foreground hover:text-foreground"><Paperclip size={14} /></button>
+          </div>
+          <Textarea
+            className="text-xs min-h-[60px] pr-16"
+            value={config.message || ""}
+            onChange={e => onChange({ ...config, message: e.target.value })}
+            placeholder="Escreva algo ou escolha um modelo..."
+          />
+        </div>
       )}
 
       <div className="flex items-center gap-1 flex-wrap">
@@ -160,11 +166,6 @@ export const SendMessageConfig = ({ config, onChange, templates, outputs, onUpda
             {v}
           </button>
         ))}
-      </div>
-
-      <div className="flex items-center gap-2">
-        <button className="text-muted-foreground hover:text-foreground"><Mic size={14} /></button>
-        <button className="text-muted-foreground hover:text-foreground"><Paperclip size={14} /></button>
       </div>
 
       {buttons.map((btn: any, i: number) => (
