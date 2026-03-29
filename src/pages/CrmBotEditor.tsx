@@ -80,6 +80,13 @@ const CrmBotEditor = () => {
   const [templates, setTemplates] = useState<any[]>([]);
   const [bots, setBots] = useState<any[]>([]);
 
+  // Node positions (draggable offsets)
+  const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
+
+  const updateNodePosition = useCallback((nodeId: string, pos: { x: number; y: number }) => {
+    setNodePositions(prev => ({ ...prev, [nodeId]: pos }));
+  }, []);
+
   // Pan & Zoom state
   const canvasRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -90,6 +97,7 @@ const CrmBotEditor = () => {
 
   // Load/save canvas state from localStorage
   const storageKey = `bot-canvas-${botId}`;
+  const positionsKey = `bot-positions-${botId}`;
 
   useEffect(() => {
     if (!botId) return;
@@ -101,12 +109,21 @@ const CrmBotEditor = () => {
         if (sz) setZoom(sz);
       } catch {}
     }
+    const savedPos = localStorage.getItem(positionsKey);
+    if (savedPos) {
+      try { setNodePositions(JSON.parse(savedPos)); } catch {}
+    }
   }, [botId]);
 
   useEffect(() => {
     if (!botId) return;
     localStorage.setItem(storageKey, JSON.stringify({ pan, zoom }));
   }, [pan, zoom, botId]);
+
+  useEffect(() => {
+    if (!botId) return;
+    localStorage.setItem(positionsKey, JSON.stringify(nodePositions));
+  }, [nodePositions, botId]);
 
   useEffect(() => {
     if (!botId) return;
