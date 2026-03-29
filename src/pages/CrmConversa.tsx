@@ -438,18 +438,7 @@ export default function CrmConversa() {
 
         {/* Reply preview */}
         {replyTo && (
-          <div className="flex-shrink-0 bg-secondary/80 border-t border-border px-4 py-2 flex items-center gap-3">
-            <div className="w-1 h-8 rounded-full bg-primary flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-primary">
-                {replyTo.direction === "inbound" ? lead.name : "Você"}
-              </div>
-              <div className="text-xs text-muted-foreground truncate">{replyTo.content || `[${replyTo.type}]`}</div>
-            </div>
-            <button onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground">
-              <X size={16} />
-            </button>
-          </div>
+          <ChatReplyPreview replyTo={replyTo} leadName={lead.name} onCancel={() => setReplyTo(null)} />
         )}
 
         {/* Input Area */}
