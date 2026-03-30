@@ -199,11 +199,19 @@ Deno.serve(async (req) => {
       };
       const contentType = contentTypeMap[ext] || fileResponse.headers.get("content-type") || "application/octet-stream";
 
-      // Audio files should already be OGG/OPUS from client — use real content type
-      const uploadFilename = filename;
-      const uploadContentType = contentType;
+      // Force audio type detection from file extension/content-type
+      const audioExtensions = new Set(["ogg", "opus", "mp3", "m4a", "wav", "aac", "webm"]);
+      const isAudioFile = audioExtensions.has(ext) || contentType.startsWith("audio/");
+      if (isAudioFile && type !== "audio") {
+        console.log(`[send-whatsapp] Correcting type from "${type}" to "audio" based on file: ${filename}`);
+      }
+      const resolvedType = isAudioFile ? "audio" : type;
 
-      console.log(`[send-whatsapp] Uploading to Meta: filename=${uploadFilename}, contentType=${uploadContentType}, size=${fileBlob.size}`);
+      // For audio, always force OGG content type for Meta compatibility
+      const uploadFilename = resolvedType === "audio" ? filename.replace(/\.\w+$/, ".ogg") : filename;
+      const uploadContentType = resolvedType === "audio" ? "audio/ogg" : contentType;
+
+      console.log(`[send-whatsapp] Uploading to Meta: filename=${uploadFilename}, contentType=${uploadContentType}, size=${fileBlob.size}, resolvedType=${resolvedType}`);
 
       // Upload to Meta
       const formData = new FormData();
