@@ -206,7 +206,8 @@ Deno.serve(async (req) => {
       if (isAudioFile && type !== "audio") {
         console.log(`[send-whatsapp] Correcting type from "${type}" to "audio" based on file: ${filename}`);
       }
-      const resolvedType = isAudioFile ? "audio" : type;
+      finalType = isAudioFile ? "audio" : type;
+      const resolvedType = finalType;
 
       // For audio, always force OGG content type for Meta compatibility
       const uploadFilename = resolvedType === "audio" ? filename.replace(/\.\w+$/, ".ogg") : filename;
