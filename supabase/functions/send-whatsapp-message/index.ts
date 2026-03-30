@@ -184,13 +184,12 @@ Deno.serve(async (req) => {
       const filename = urlParts[urlParts.length - 1] || "file";
       const ext = filename.split(".").pop()?.toLowerCase() || "";
 
-      // For audio: WhatsApp requires audio/ogg with opus codec or audio/aac
-      // WebM audio is NOT supported by WhatsApp API - force ogg content type
+      // Content type mapping — audio files are now pre-converted to OGG/OPUS on client
       const contentTypeMap: Record<string, string> = {
         ogg: "audio/ogg", opus: "audio/ogg",
-        webm: type === "audio" ? "audio/ogg" : "video/webm",  // Force ogg for audio webm
+        webm: type === "audio" ? "audio/ogg" : "video/webm",
         mp3: "audio/mpeg", m4a: "audio/mp4",
-        wav: type === "audio" ? "audio/ogg" : "audio/wav", aac: "audio/aac",
+        wav: "audio/wav", aac: "audio/aac",
         mp4: type === "video" ? "video/mp4" : "audio/mp4",
         jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
         pdf: "application/pdf", doc: "application/msword",
@@ -200,9 +199,9 @@ Deno.serve(async (req) => {
       };
       const contentType = contentTypeMap[ext] || fileResponse.headers.get("content-type") || "application/octet-stream";
 
-      // For audio files, always upload as .ogg to Meta (WhatsApp requirement)
-      const uploadFilename = type === "audio" ? filename.replace(/\.\w+$/, ".ogg") : filename;
-      const uploadContentType = type === "audio" ? "audio/ogg" : contentType;
+      // Audio files should already be OGG/OPUS from client — use real content type
+      const uploadFilename = filename;
+      const uploadContentType = contentType;
 
       console.log(`[send-whatsapp] Uploading to Meta: filename=${uploadFilename}, contentType=${uploadContentType}, size=${fileBlob.size}`);
 

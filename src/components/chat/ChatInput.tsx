@@ -44,9 +44,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [optimizing, setOptimizing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (externalMessage) {
@@ -236,109 +237,61 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     setAttachedFile({ file, type });
   };
 
-  const convertToOggOpus = async (blob: Blob): Promise<File> => {
-    // If already OGG, just wrap as file
-    if (blob.type.includes("ogg")) {
-      return new globalThis.File([blob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
-    }
-
-    // Decode audio using Web Audio API and re-encode as OGG-compatible PCM
-    // Then upload as audio/ogg — the edge function will handle proper labeling
-    const audioContext = new AudioContext({ sampleRate: 48000 });
-    const arrayBuffer = await blob.arrayBuffer();
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-    // Encode as WAV first (lossless intermediate), then wrap as OGG for Meta
-    const numberOfChannels = 1; // mono for voice
-    const sampleRate = audioBuffer.sampleRate;
-    const channelData = audioBuffer.getChannelData(0);
-
-    // Create OGG/OPUS-like container — since browsers can't natively encode OGG,
-    // we create a proper WAV and let the edge function upload with correct type
-    const wavBuffer = encodeWav(channelData, sampleRate);
-    const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
-
-    await audioContext.close();
-    return new globalThis.File([wavBlob], `audio_${Date.now()}.wav`, { type: "audio/wav" });
-  };
-
-  const encodeWav = (samples: Float32Array, sampleRate: number): ArrayBuffer => {
-    const buffer = new ArrayBuffer(44 + samples.length * 2);
-    const view = new DataView(buffer);
-    const writeString = (offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-    };
-    writeString(0, "RIFF");
-    view.setUint32(4, 36 + samples.length * 2, true);
-    writeString(8, "WAVE");
-    writeString(12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true); // PCM
-    view.setUint16(22, 1, true); // mono
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeString(36, "data");
-    view.setUint32(40, samples.length * 2, true);
-    for (let i = 0; i < samples.length; i++) {
-      const s = Math.max(-1, Math.min(1, samples[i]));
-      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-    }
-    return buffer;
-  };
+  // No client-side conversion needed — opus-media-recorder records directly as OGG/OPUS
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prefer OGG/OPUS (WhatsApp native format)
-      const mimeType = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
-        ? "audio/ogg;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : MediaRecorder.isTypeSupported("audio/mp4")
-            ? "audio/mp4"
-            : "audio/webm";
+      streamRef.current = stream;
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      // Use opus-media-recorder for guaranteed OGG/OPUS output
+      const OpusMediaRecorder = (await import("opus-media-recorder")).default;
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      const workerOptions = {
+        OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+        WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+        encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
       };
 
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
+      const recorder = new OpusMediaRecorder(
+        stream,
+        { mimeType: "audio/ogg;codecs=opus" },
+        workerOptions
+      );
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e: any) => {
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+        streamRef.current = null;
         if (timerRef.current) clearInterval(timerRef.current);
         setRecordingTime(0);
 
-        const rawBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const oggBlob = new Blob(audioChunksRef.current, { type: "audio/ogg;codecs=opus" });
 
-        if (rawBlob.size > 15 * 1024 * 1024) {
+        if (oggBlob.size > 15 * 1024 * 1024) {
           toast.warning("Áudio muito longo. Considere enviar em partes menores.");
+          return;
+        }
+
+        if (oggBlob.size < 100) {
+          toast.error("Gravação muito curta ou vazia.");
           return;
         }
 
         setUploading(true);
 
-        let audioFile: globalThis.File;
-        const isNativeOgg = mimeType.includes("ogg");
+        const audioFile = new globalThis.File(
+          [oggBlob],
+          `audio_${Date.now()}.ogg`,
+          { type: "audio/ogg" }
+        );
 
-        if (isNativeOgg) {
-          // Already OGG/OPUS — use directly
-          audioFile = new globalThis.File([rawBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
-        } else {
-          // Convert non-OGG recordings (WebM/MP4) to WAV for reliable WhatsApp delivery
-          try {
-            toast.info("Convertendo áudio...");
-            audioFile = await convertToOggOpus(rawBlob);
-          } catch (err) {
-            console.error("Audio conversion failed, using original:", err);
-            // Fallback: send as-is with ogg label (edge function handles it)
-            audioFile = new globalThis.File([rawBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
-          }
-        }
+        console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
 
         const url = await uploadFile(audioFile, "audio");
         setUploading(false);
@@ -372,11 +325,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         }
       };
 
-      mediaRecorder.start();
+      recorder.start();
       setRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
-    } catch {
+    } catch (err) {
+      console.error("Recording start failed:", err);
       toast.error("Não foi possível acessar o microfone");
     }
   };
@@ -390,8 +344,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.ondataavailable = null;
       mediaRecorderRef.current.onstop = null;
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream?.getTracks().forEach((t) => t.stop());
+      try { mediaRecorderRef.current.stop(); } catch {}
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     }
     if (timerRef.current) clearInterval(timerRef.current);
     setRecording(false);
