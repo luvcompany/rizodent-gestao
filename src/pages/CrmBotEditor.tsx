@@ -111,6 +111,13 @@ const CrmBotEditor = () => {
 
   // Editing step
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [showGeneralSettings, setShowGeneralSettings] = useState(false);
+  const [generalSettings, setGeneralSettings] = useState({
+    responseDelayEnabled: false,
+    responseDelaySeconds: 5,
+    inactivityTimeoutEnabled: false,
+    inactivityTimeoutMinutes: 30,
+  });
 
   useEffect(() => {
     if (!botId) return;
@@ -412,7 +419,7 @@ const CrmBotEditor = () => {
   if (!bot) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] -m-6 bg-[#f8f6f0] dark:bg-background" style={{ touchAction: "none" }}>
+    <div className="flex flex-col h-[calc(100vh-4rem)] -m-6 bg-background" style={{ touchAction: "none" }}>
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-card shrink-0 z-20">
         <Button variant="ghost" size="sm" onClick={() => navigate("/crm/bots")}>
@@ -467,7 +474,9 @@ const CrmBotEditor = () => {
                   <div className="rounded-xl overflow-hidden shadow-lg border-2 border-indigo-200 dark:border-indigo-800 bg-card">
                     <div className="bg-indigo-500 px-4 py-3 flex items-center justify-between">
                       <span className="text-white text-sm font-bold">Início</span>
-                      <Settings size={16} className="text-white/70" />
+                      <button onClick={() => { setShowGeneralSettings(true); setEditingStepId(null); setActionsOpen(false); }}>
+                        <Settings size={16} className="text-white/70 hover:text-white transition-colors cursor-pointer" />
+                      </button>
                     </div>
                     <div className="p-3 space-y-2">
                       {triggers.length === 0 && (
@@ -598,7 +607,7 @@ const CrmBotEditor = () => {
         )}
 
         {/* ── Step Editor Sidebar ── */}
-        {editingStep && !actionsOpen && (
+        {editingStep && !actionsOpen && !showGeneralSettings && (
           <div className="w-80 border-l border-border bg-card shrink-0 overflow-y-auto z-20" onPointerDown={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h2 className="text-sm font-bold text-foreground">Editar passo</h2>
@@ -635,6 +644,92 @@ const CrmBotEditor = () => {
               {editingStep.type === "list_message" && (
                 <ListMessageConfig config={editingStep.config} onChange={c => updateStepConfig(editingStep.id, c)} outputs={editingStep.outputs} onUpdateOutputs={o => updateStepOutputs(editingStep.id, o)} />
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── General Settings Sidebar ── */}
+        {showGeneralSettings && (
+          <div className="w-96 border-l border-border bg-card shrink-0 overflow-y-auto z-20" onPointerDown={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
+              <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center">
+                <Settings size={18} className="text-muted-foreground" />
+              </div>
+              <h2 className="text-sm font-bold text-foreground flex-1">Configuração geral do chatbot</h2>
+              <button onClick={() => setShowGeneralSettings(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-6">
+              {/* Info banner */}
+              <div className="flex gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-primary text-xs font-bold">i</span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Perguntas, menus e modelos de mensagens seguirão a configuração padrão definida abaixo.
+                </p>
+              </div>
+
+              {/* Response delay */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Tempo de espera para envio da resposta</h3>
+                  <Switch
+                    checked={generalSettings.responseDelayEnabled}
+                    onCheckedChange={v => setGeneralSettings(prev => ({ ...prev, responseDelayEnabled: v }))}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Defina por quantos segundos o chatbot deve aguardar para responder.
+                </p>
+                {generalSettings.responseDelayEnabled && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={generalSettings.responseDelaySeconds}
+                      onChange={e => setGeneralSettings(prev => ({ ...prev, responseDelaySeconds: parseInt(e.target.value) || 1 }))}
+                      className="w-20 h-8 text-xs"
+                    />
+                    <span className="text-xs text-muted-foreground">segundos</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="h-px bg-border" />
+
+              {/* Inactivity timeout */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">Tempo máximo de inatividade</h3>
+                  <Switch
+                    checked={generalSettings.inactivityTimeoutEnabled}
+                    onCheckedChange={v => setGeneralSettings(prev => ({ ...prev, inactivityTimeoutEnabled: v }))}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Defina por quanto tempo o chatbot pode ficar sem receber novas mensagens. Ao atingir esse limite, ele seguirá para outro fluxo ou, se não houver nenhum, a conversa será encerrada.
+                </p>
+                {generalSettings.inactivityTimeoutEnabled && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={generalSettings.inactivityTimeoutMinutes}
+                      onChange={e => setGeneralSettings(prev => ({ ...prev, inactivityTimeoutMinutes: parseInt(e.target.value) || 1 }))}
+                      className="w-20 h-8 text-xs"
+                    />
+                    <span className="text-xs text-muted-foreground">minutos</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-border px-5 py-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowGeneralSettings(false)}>Cancelar</Button>
+              <Button size="sm" onClick={() => { setShowGeneralSettings(false); toast.success("Configurações salvas!"); }}>Salvar</Button>
             </div>
           </div>
         )}
