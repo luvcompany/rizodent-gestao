@@ -270,7 +270,23 @@ export default function CrmModelos() {
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED */}
       <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
+          {integrations.length > 0 && (
+            <Select value={selectedIntegration} onValueChange={setSelectedIntegration}>
+              <SelectTrigger className="w-[220px] h-8 text-sm">
+                <SelectValue placeholder="Selecione a integração" />
+              </SelectTrigger>
+              <SelectContent>
+                {integrations.map((intg) => (
+                  <SelectItem key={intg.key} value={intg.key}>
+                    {(intg.config as any)?.display_name || intg.key}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
         <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
           <Plus size={14} className="mr-1" /> Novo Modelo
         </Button>
