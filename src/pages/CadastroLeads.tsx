@@ -5,67 +5,50 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw } from "lucide-react";
+import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw, Users } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
 
-
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
 const CadastroLeads = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
-  const [clinicaId, setClinicaId] = useState("");
   const [data, setData] = useState(() => new Date().toISOString().split("T")[0]);
+
+  // Leads Novos - clínica e valor separados
+  const [clinicaIdLeads, setClinicaIdLeads] = useState("");
   const [leadsNovos, setLeadsNovos] = useState("");
+  const [savingLeads, setSavingLeads] = useState(false);
+  const [existingIdLeads, setExistingIdLeads] = useState<string | null>(null);
+
+  // Agendados + Reagendados - clínica separada
+  const [clinicaIdAgendados, setClinicaIdAgendados] = useState("");
   const [agendaram, setAgendaram] = useState("");
   const [compareceram, setCompareceram] = useState("");
   const [contrataram, setContrataram] = useState("");
   const [remarcados, setRemarcados] = useState("");
   const [reagendadosCompareceram, setReagendadosCompareceram] = useState("");
   const [reagendadosContrataram, setReagendadosContrataram] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [existingId, setExistingId] = useState<string | null>(null);
+  const [savingAgendados, setSavingAgendados] = useState(false);
+  const [existingIdAgendados, setExistingIdAgendados] = useState<string | null>(null);
+
   const [registros, setRegistros] = useState<LeadWithClinica[]>([]);
 
   // Calculated fields - Agendados
-  const faltaram = useMemo(() => {
-    const a = parseInt(agendaram) || 0;
-    const c = parseInt(compareceram) || 0;
-    return Math.max(a - c, 0);
-  }, [agendaram, compareceram]);
-
-  const naoContrataram = useMemo(() => {
-    const c = parseInt(compareceram) || 0;
-    const ct = parseInt(contrataram) || 0;
-    return Math.max(c - ct, 0);
-  }, [compareceram, contrataram]);
+  const faltaram = useMemo(() => Math.max((parseInt(agendaram) || 0) - (parseInt(compareceram) || 0), 0), [agendaram, compareceram]);
+  const naoContrataram = useMemo(() => Math.max((parseInt(compareceram) || 0) - (parseInt(contrataram) || 0), 0), [compareceram, contrataram]);
 
   // Calculated fields - Reagendados
-  const reagendadosFaltaram = useMemo(() => {
-    const r = parseInt(remarcados) || 0;
-    const rc = parseInt(reagendadosCompareceram) || 0;
-    return Math.max(r - rc, 0);
-  }, [remarcados, reagendadosCompareceram]);
+  const reagendadosFaltaram = useMemo(() => Math.max((parseInt(remarcados) || 0) - (parseInt(reagendadosCompareceram) || 0), 0), [remarcados, reagendadosCompareceram]);
+  const reagendadosNaoContrataram = useMemo(() => Math.max((parseInt(reagendadosCompareceram) || 0) - (parseInt(reagendadosContrataram) || 0), 0), [reagendadosCompareceram, reagendadosContrataram]);
 
-  const reagendadosNaoContrataram = useMemo(() => {
-    const rc = parseInt(reagendadosCompareceram) || 0;
-    const rct = parseInt(reagendadosContrataram) || 0;
-    return Math.max(rc - rct, 0);
-  }, [reagendadosCompareceram, reagendadosContrataram]);
-
-  // Faltas líquidas = faltas brutas dos agendados - reagendados + faltas dos reagendados
-  const faltasLiquidas = useMemo(() => {
-    const fBruto = faltaram;
-    const r = parseInt(remarcados) || 0;
-    const rFaltaram = reagendadosFaltaram;
-    return Math.max(fBruto - r + rFaltaram, 0);
-  }, [faltaram, remarcados, reagendadosFaltaram]);
+  // Faltas líquidas
+  const faltasLiquidas = useMemo(() => Math.max(faltaram - (parseInt(remarcados) || 0) + reagendadosFaltaram, 0), [faltaram, remarcados, reagendadosFaltaram]);
 
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
@@ -82,22 +65,40 @@ const CadastroLeads = () => {
     if (data) setRegistros(data);
   }, []);
 
-  useEffect(() => {
-    fetchRegistros();
-  }, [fetchRegistros]);
+  useEffect(() => { fetchRegistros(); }, [fetchRegistros]);
 
+  // Auto-load existing record for Leads Novos
   useEffect(() => {
-    if (!clinicaId || !data) { setExistingId(null); return; }
+    if (!clinicaIdLeads || !data) { setExistingIdLeads(null); return; }
     supabase
       .from("leads_diarios")
       .select("*")
       .eq("data", data)
-      .eq("clinica_id", clinicaId)
+      .eq("clinica_id", clinicaIdLeads)
       .maybeSingle()
       .then(({ data: existing }) => {
         if (existing) {
-          setExistingId(existing.id);
+          setExistingIdLeads(existing.id);
           setLeadsNovos(String(existing.leads_novos));
+        } else {
+          setExistingIdLeads(null);
+          setLeadsNovos("");
+        }
+      });
+  }, [clinicaIdLeads, data]);
+
+  // Auto-load existing record for Agendados
+  useEffect(() => {
+    if (!clinicaIdAgendados || !data) { setExistingIdAgendados(null); return; }
+    supabase
+      .from("leads_diarios")
+      .select("*")
+      .eq("data", data)
+      .eq("clinica_id", clinicaIdAgendados)
+      .maybeSingle()
+      .then(({ data: existing }) => {
+        if (existing) {
+          setExistingIdAgendados(existing.id);
           setAgendaram(String(existing.agendaram));
           setCompareceram(String(existing.compareceram));
           setContrataram(String(existing.contrataram));
@@ -105,34 +106,53 @@ const CadastroLeads = () => {
           setReagendadosCompareceram(String((existing as any).reagendados_compareceram || 0));
           setReagendadosContrataram(String((existing as any).reagendados_contrataram || 0));
         } else {
-          setExistingId(null);
-          resetFields();
+          setExistingIdAgendados(null);
+          setAgendaram(""); setCompareceram(""); setContrataram("");
+          setRemarcados(""); setReagendadosCompareceram(""); setReagendadosContrataram("");
         }
       });
-  }, [clinicaId, data]);
+  }, [clinicaIdAgendados, data]);
 
-  const resetFields = () => {
-    setLeadsNovos(""); setAgendaram(""); setCompareceram("");
-    setContrataram(""); setRemarcados("");
-    setReagendadosCompareceram(""); setReagendadosContrataram("");
+  // Save Leads Novos only
+  const handleSaveLeads = async () => {
+    if (!clinicaIdLeads) { toast.error("Selecione uma clínica para Leads Novos."); return; }
+    setSavingLeads(true);
+    try {
+      const leadsValue = parseInt(leadsNovos) || 0;
+      if (existingIdLeads) {
+        const { error } = await supabase.from("leads_diarios").update({
+          leads_novos: leadsValue,
+          created_by: user?.id,
+        }).eq("id", existingIdLeads);
+        if (error) throw error;
+        toast.success("Leads novos atualizados!");
+      } else {
+        const { error } = await supabase.from("leads_diarios").insert({
+          data,
+          clinica_id: clinicaIdLeads,
+          leads_novos: leadsValue,
+          agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
+          nao_contrataram: 0, remarcados: 0,
+          reagendados_compareceram: 0, reagendados_contrataram: 0,
+          created_by: user?.id,
+        });
+        if (error) throw error;
+        toast.success("Leads novos cadastrados!");
+      }
+      fetchRegistros();
+    } catch (err: any) {
+      toast.error("Erro: " + err.message);
+    } finally {
+      setSavingLeads(false);
+    }
   };
 
-  const resetForm = () => {
-    setExistingId(null);
-    resetFields();
-    setClinicaId("");
-    setData(new Date().toISOString().split("T")[0]);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clinicaId) { toast.error("Selecione uma clínica."); return; }
-    setSaving(true);
+  // Save Agendados + Reagendados
+  const handleSaveAgendados = async () => {
+    if (!clinicaIdAgendados) { toast.error("Selecione uma clínica para Agendados."); return; }
+    setSavingAgendados(true);
     try {
       const payload = {
-        data,
-        clinica_id: clinicaId,
-        leads_novos: parseInt(leadsNovos) || 0,
         agendaram: parseInt(agendaram) || 0,
         compareceram: parseInt(compareceram) || 0,
         contrataram: parseInt(contrataram) || 0,
@@ -144,34 +164,32 @@ const CadastroLeads = () => {
         created_by: user?.id,
       };
 
-      if (existingId) {
-        const { error } = await supabase.from("leads_diarios").update(payload).eq("id", existingId);
+      if (existingIdAgendados) {
+        const { error } = await supabase.from("leads_diarios").update(payload).eq("id", existingIdAgendados);
         if (error) throw error;
-        toast.success("Dados atualizados!");
+        toast.success("Dados de agendados atualizados!");
       } else {
-        const { error } = await supabase.from("leads_diarios").insert(payload);
+        const { error } = await supabase.from("leads_diarios").insert({
+          data,
+          clinica_id: clinicaIdAgendados,
+          leads_novos: 0,
+          ...payload,
+        });
         if (error) throw error;
-        toast.success("Dados cadastrados!");
+        toast.success("Dados de agendados cadastrados!");
       }
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
     } finally {
-      setSaving(false);
+      setSavingAgendados(false);
     }
   };
 
   const handleEdit = (registro: LeadWithClinica) => {
-    setClinicaId(registro.clinica_id);
     setData(registro.data);
-    setExistingId(registro.id);
-    setLeadsNovos(String(registro.leads_novos));
-    setAgendaram(String(registro.agendaram));
-    setCompareceram(String(registro.compareceram));
-    setContrataram(String(registro.contrataram));
-    setRemarcados(String(registro.remarcados));
-    setReagendadosCompareceram(String((registro as any).reagendados_compareceram || 0));
-    setReagendadosContrataram(String((registro as any).reagendados_contrataram || 0));
+    setClinicaIdLeads(registro.clinica_id);
+    setClinicaIdAgendados(registro.clinica_id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -180,7 +198,6 @@ const CadastroLeads = () => {
       const { error } = await supabase.from("leads_diarios").delete().eq("id", id);
       if (error) throw error;
       toast.success("Registro excluído!");
-      if (existingId === id) resetForm();
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro ao excluir: " + err.message);
@@ -189,13 +206,6 @@ const CadastroLeads = () => {
 
   const getClinicaNome = (registro: LeadWithClinica) => registro.clinicas?.nome || "—";
 
-  const CalcBadge = ({ label, value, color = "primary" }: { label: string; value: number; color?: string }) => (
-    <div className={`flex items-center justify-between rounded-lg bg-${color}/10 p-3`}>
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className={`text-lg font-bold text-${color}`}>{value}</span>
-    </div>
-  );
-
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
       <div className="mb-2">
@@ -203,154 +213,183 @@ const CadastroLeads = () => {
         <p className="text-sm text-muted-foreground">Gerencie o funil de vendas diário</p>
       </div>
 
+      {/* Data compartilhada */}
+      <div className="space-y-2">
+        <Label>Data</Label>
+        <div className="relative max-w-xs">
+          <CalendarDays size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input type="date" value={data} onChange={(e) => setData(e.target.value)} className="bg-secondary border-border pl-10" required />
+        </div>
+      </div>
+
+      {/* CARD 1: Leads Novos */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Users size={18} className="text-primary" />
+            Leads Novos
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Clínica</Label>
+            <Select value={clinicaIdLeads} onValueChange={setClinicaIdLeads}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
+              <SelectContent>
+                {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {existingIdLeads && (
+            <div className="rounded-lg bg-primary/10 p-3 text-sm text-primary">
+              ⚠️ Já existe registro para esta data/clínica. O valor de leads novos será atualizado.
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Quantidade de Leads Novos</Label>
+            <p className="text-xs text-muted-foreground">Leads novos que entraram no dia</p>
+            <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
+          </div>
+
+          <Button onClick={handleSaveLeads} disabled={savingLeads} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
+            <Save size={18} className="mr-2" />
+            {savingLeads ? "Salvando..." : existingIdLeads ? "Atualizar Leads Novos" : "Salvar Leads Novos"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* CARD 2: Agendados + Reagendados */}
       <Card className="gradient-card border-border shadow-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <TrendingUp size={18} className="text-primary" />
-            Dados do Dia
+            Agendados do Dia + Reagendados
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2">
+        <CardContent className="space-y-5">
+          <div className="space-y-2">
+            <Label>Clínica</Label>
+            <Select value={clinicaIdAgendados} onValueChange={setClinicaIdAgendados}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
+              <SelectContent>
+                {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {existingIdAgendados && (
+            <div className="rounded-lg bg-primary/10 p-3 text-sm text-primary">
+              ⚠️ Já existe registro para esta data/clínica. Os dados serão atualizados.
+            </div>
+          )}
+
+          {/* BLOCO AGENDADOS */}
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">📅 Agendados do Dia</p>
+              <p className="text-xs text-muted-foreground">Pacientes que estavam agendados para comparecer hoje</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label>Data</Label>
-                <div className="relative">
-                  <CalendarDays size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input type="date" value={data} onChange={(e) => setData(e.target.value)} className="bg-secondary border-border pl-10" required />
-                </div>
+                <Label>Agendados</Label>
+                <p className="text-xs text-muted-foreground">Total agendado para o dia</p>
+                <Input type="number" min="0" placeholder="0" value={agendaram} onChange={(e) => setAgendaram(e.target.value)} className="bg-secondary border-border" />
               </div>
               <div className="space-y-2">
-                <Label>Clínica</Label>
-                <Select value={clinicaId} onValueChange={setClinicaId}>
-                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-                  </SelectContent>
-                </Select>
+                <Label>Compareceram</Label>
+                <p className="text-xs text-muted-foreground">Quantos vieram à consulta</p>
+                <Input type="number" min="0" placeholder="0" value={compareceram} onChange={(e) => setCompareceram(e.target.value)} className="bg-secondary border-border" />
+              </div>
+              <div className="space-y-2">
+                <Label>Contrataram</Label>
+                <p className="text-xs text-muted-foreground">Dos que compareceram, quantos fecharam</p>
+                <Input type="number" min="0" placeholder="0" value={contrataram} onChange={(e) => setContrataram(e.target.value)} className="bg-secondary border-border" />
               </div>
             </div>
-
-            {existingId && (
-              <div className="rounded-lg bg-primary/10 p-3 text-sm text-primary">
-                ⚠️ Já existe registro para esta data/clínica. Os dados serão atualizados.
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
+                <span className="text-sm text-muted-foreground">Faltaram</span>
+                <span className="text-lg font-bold text-destructive">{faltaram}</span>
               </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>Leads Novos</Label>
-              <p className="text-xs text-muted-foreground">Quantidade de leads novos que entraram no dia</p>
-              <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
-            </div>
-
-            {/* BLOCO AGENDADOS */}
-            <div className="border-t border-border pt-4 space-y-4">
-              <div>
-                <p className="text-sm font-semibold text-foreground">📅 Agendados do Dia</p>
-                <p className="text-xs text-muted-foreground">Pacientes que estavam agendados para comparecer hoje</p>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Agendados</Label>
-                  <p className="text-xs text-muted-foreground">Total agendado para o dia</p>
-                  <Input type="number" min="0" placeholder="0" value={agendaram} onChange={(e) => setAgendaram(e.target.value)} className="bg-secondary border-border" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Compareceram</Label>
-                  <p className="text-xs text-muted-foreground">Quantos vieram à consulta</p>
-                  <Input type="number" min="0" placeholder="0" value={compareceram} onChange={(e) => setCompareceram(e.target.value)} className="bg-secondary border-border" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Contrataram</Label>
-                  <p className="text-xs text-muted-foreground">Dos que compareceram, quantos fecharam</p>
-                  <Input type="number" min="0" placeholder="0" value={contrataram} onChange={(e) => setContrataram(e.target.value)} className="bg-secondary border-border" />
-                </div>
-              </div>
-              {/* Calculated fields */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
-                  <span className="text-sm text-muted-foreground">Faltaram</span>
-                  <span className="text-lg font-bold text-destructive">{faltaram}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-lg bg-muted p-3">
-                  <span className="text-sm text-muted-foreground">Não Contrataram</span>
-                  <span className="text-lg font-bold text-muted-foreground">{naoContrataram}</span>
-                </div>
+              <div className="flex items-center justify-between rounded-lg bg-muted p-3">
+                <span className="text-sm text-muted-foreground">Não Contrataram</span>
+                <span className="text-lg font-bold text-muted-foreground">{naoContrataram}</span>
               </div>
             </div>
+          </div>
 
-            {/* BLOCO REAGENDADOS */}
-            <div className="border-t border-border pt-4 space-y-4">
-              <div>
-                <p className="text-sm font-semibold text-foreground flex items-center gap-2">
-                  <RefreshCw size={16} className="text-primary" />
-                  Reagendados
-                </p>
-                <p className="text-xs text-muted-foreground">Pacientes que faltaram anteriormente e foram reagendados para hoje</p>
-                <p className="text-xs text-primary/80 mt-1">
-                  💡 Reagendados são descontados das faltas. Se faltarem novamente, voltam ao total de faltas.
-                </p>
+          {/* BLOCO REAGENDADOS */}
+          <div className="border-t border-border pt-4 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <RefreshCw size={16} className="text-primary" />
+                Reagendados
+              </p>
+              <p className="text-xs text-muted-foreground">Pacientes que faltaram anteriormente e foram reagendados para hoje</p>
+              <p className="text-xs text-primary/80 mt-1">
+                💡 Reagendados são descontados das faltas. Se faltarem novamente, voltam ao total de faltas.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Reagendados</Label>
+                <p className="text-xs text-muted-foreground">Total reagendado para o dia</p>
+                <Input type="number" min="0" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Reagendados</Label>
-                  <p className="text-xs text-muted-foreground">Total reagendado para o dia</p>
-                  <Input type="number" min="0" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Compareceram</Label>
-                  <p className="text-xs text-muted-foreground">Reagendados que vieram</p>
-                  <Input type="number" min="0" placeholder="0" value={reagendadosCompareceram} onChange={(e) => setReagendadosCompareceram(e.target.value)} className="bg-secondary border-border" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Contrataram</Label>
-                  <p className="text-xs text-muted-foreground">Reagendados que fecharam</p>
-                  <Input type="number" min="0" placeholder="0" value={reagendadosContrataram} onChange={(e) => setReagendadosContrataram(e.target.value)} className="bg-secondary border-border" />
-                </div>
+              <div className="space-y-2">
+                <Label>Compareceram</Label>
+                <p className="text-xs text-muted-foreground">Reagendados que vieram</p>
+                <Input type="number" min="0" placeholder="0" value={reagendadosCompareceram} onChange={(e) => setReagendadosCompareceram(e.target.value)} className="bg-secondary border-border" />
               </div>
-              {/* Calculated fields */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
-                  <span className="text-sm text-muted-foreground">Faltaram (reagendados)</span>
-                  <span className="text-lg font-bold text-destructive">{reagendadosFaltaram}</span>
+              <div className="space-y-2">
+                <Label>Contrataram</Label>
+                <p className="text-xs text-muted-foreground">Reagendados que fecharam</p>
+                <Input type="number" min="0" placeholder="0" value={reagendadosContrataram} onChange={(e) => setReagendadosContrataram(e.target.value)} className="bg-secondary border-border" />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
+                <span className="text-sm text-muted-foreground">Faltaram (reagendados)</span>
+                <span className="text-lg font-bold text-destructive">{reagendadosFaltaram}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-muted p-3">
+                <span className="text-sm text-muted-foreground">Não Contrataram (reagendados)</span>
+                <span className="text-lg font-bold text-muted-foreground">{reagendadosNaoContrataram}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Resumo de faltas líquidas */}
+          <div className="border-t border-border pt-4">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+              <p className="text-sm font-semibold text-foreground mb-2">📊 Resumo de Faltas</p>
+              <div className="grid gap-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Faltas brutas (agendados)</span>
+                  <span className="font-medium">{faltaram}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-lg bg-muted p-3">
-                  <span className="text-sm text-muted-foreground">Não Contrataram (reagendados)</span>
-                  <span className="text-lg font-bold text-muted-foreground">{reagendadosNaoContrataram}</span>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">− Reagendados (recuperados)</span>
+                  <span className="font-medium text-primary">-{parseInt(remarcados) || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">+ Faltaram no reagendamento</span>
+                  <span className="font-medium text-destructive">+{reagendadosFaltaram}</span>
+                </div>
+                <div className="flex justify-between border-t border-border pt-2">
+                  <span className="font-semibold">Total de faltas líquidas</span>
+                  <span className="text-lg font-bold text-destructive">{faltasLiquidas}</span>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Resumo de faltas líquidas */}
-            <div className="border-t border-border pt-4">
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-                <p className="text-sm font-semibold text-foreground mb-2">📊 Resumo de Faltas</p>
-                <div className="grid gap-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Faltas brutas (agendados)</span>
-                    <span className="font-medium">{faltaram}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">− Reagendados (recuperados)</span>
-                    <span className="font-medium text-primary">-{parseInt(remarcados) || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">+ Faltaram no reagendamento</span>
-                    <span className="font-medium text-destructive">+{reagendadosFaltaram}</span>
-                  </div>
-                  <div className="flex justify-between border-t border-border pt-2">
-                    <span className="font-semibold">Total de faltas líquidas</span>
-                    <span className="text-lg font-bold text-destructive">{faltasLiquidas}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <Button type="submit" disabled={saving} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
-              <Save size={18} className="mr-2" />
-              {saving ? "Salvando..." : existingId ? "Atualizar Dados" : "Salvar Dados"}
-            </Button>
-          </form>
+          <Button onClick={handleSaveAgendados} disabled={savingAgendados} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
+            <Save size={18} className="mr-2" />
+            {savingAgendados ? "Salvando..." : existingIdAgendados ? "Atualizar Agendados" : "Salvar Agendados"}
+          </Button>
         </CardContent>
       </Card>
 
