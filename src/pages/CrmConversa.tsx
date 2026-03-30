@@ -52,6 +52,12 @@ type Lead = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  imagem_origem?: string | null;
+  titulo_anuncio?: string | null;
+  descricao_anuncio?: string | null;
+  link_anuncio?: string | null;
+  ad_id?: string | null;
+  nome_anuncio?: string | null;
 };
 
 type Stage = {
