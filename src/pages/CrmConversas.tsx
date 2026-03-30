@@ -105,13 +105,14 @@ export default function CrmConversas() {
   // Fetch leads list with last message direction
   useEffect(() => {
     const fetchLeads = async () => {
-      const [leadsRes, stagesRes, profilesRes] = await Promise.all([
+      const [leadsRes, stagesRes, profilesRes, pipelinesRes] = await Promise.all([
         supabase
           .from("crm_leads")
-          .select("id, name, phone, last_message, last_message_at, tags, source, stage_id, value, notes, created_at, updated_at")
+          .select("id, name, phone, last_message, last_message_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at")
           .order("last_message_at", { ascending: false, nullsFirst: false }),
         supabase.from("crm_stages").select("*").order("position"),
         supabase.from("profiles").select("id, nome"),
+        supabase.from("crm_pipelines").select("id, name").order("created_at"),
       ]);
       const rawLeads = (leadsRes.data || []) as LeadConversation[];
 
