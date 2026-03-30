@@ -140,20 +140,28 @@ Deno.serve(async (req) => {
           const value = change?.value;
           if (!value) continue;
 
-          // Filter by configured phone_number_id
+          // Find the matching integration by phone_number_id
           const incomingPhoneNumberId = value?.metadata?.phone_number_id;
-          if (incomingPhoneNumberId) {
-            const { data: integration } = await supabase
-              .from("integrations")
-              .select("config")
-              .eq("key", "whatsapp_config")
-              .maybeSingle();
+          let matchedIntegration: any = null;
 
-            const configuredPhoneNumberId = (integration?.config as any)?.phone_number_id;
-            if (configuredPhoneNumberId && configuredPhoneNumberId !== incomingPhoneNumberId) {
-              console.log(`[WEBHOOK] Ignorando: phone_number_id ${incomingPhoneNumberId} != configurado ${configuredPhoneNumberId}`);
+          if (incomingPhoneNumberId) {
+            const { data: allIntegrations } = await supabase
+              .from("integrations")
+              .select("id, key, config")
+              .like("key", "whatsapp_%");
+
+            if (allIntegrations) {
+              matchedIntegration = allIntegrations.find((intg: any) => {
+                const cfg = intg.config as any;
+                return cfg?.phone_number_id === incomingPhoneNumberId;
+              });
+            }
+
+            if (!matchedIntegration) {
+              console.log(`[WEBHOOK] Nenhuma integração encontrada para phone_number_id ${incomingPhoneNumberId}`);
               continue;
             }
+            console.log(`[WEBHOOK] Integração encontrada: ${matchedIntegration.key} para phone_number_id ${incomingPhoneNumberId}`);
           }
 
           // Extract contact name from payload
