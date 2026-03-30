@@ -1,0 +1,1 @@
+ALTER TABLE public.crm_leads ADD COLUMN nome_anuncio text DEFAULT NULL;
