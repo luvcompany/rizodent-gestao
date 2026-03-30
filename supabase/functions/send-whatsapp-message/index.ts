@@ -11,14 +11,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const whatsappToken = Deno.env.get("WHATSAPP_TOKEN");
-    const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
-
-    if (!whatsappToken || !phoneNumberId) {
-      return new Response(JSON.stringify({ error: "WhatsApp secrets not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
     const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id } = await req.json();
 
@@ -28,10 +24,46 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    // Resolve WhatsApp credentials from lead's pipeline integration
+    let whatsappToken = Deno.env.get("WHATSAPP_TOKEN") || "";
+    let phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+
+    const { data: leadData } = await supabase
+      .from("crm_leads")
+      .select("pipeline_id")
+      .eq("id", lead_id)
+      .maybeSingle();
+
+    if (leadData?.pipeline_id) {
+      const { data: funnelChannel } = await supabase
+        .from("funnel_channels")
+        .select("channel_config")
+        .eq("channel_type", "whatsapp")
+        .eq("pipeline_id", leadData.pipeline_id)
+        .maybeSingle();
+
+      if (funnelChannel?.channel_config) {
+        const integrationKey = (funnelChannel.channel_config as any)?.integration_key;
+        if (integrationKey) {
+          const { data: integration } = await supabase
+            .from("integrations")
+            .select("config")
+            .eq("key", integrationKey)
+            .maybeSingle();
+          if (integration?.config) {
+            const cfg = integration.config as any;
+            if (cfg.access_token) whatsappToken = cfg.access_token;
+            if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
+          }
+        }
+      }
+    }
+
+    if (!whatsappToken || !phoneNumberId) {
+      return new Response(JSON.stringify({ error: "WhatsApp credentials not found for this lead's pipeline" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Resolve reply context wamid
     let resolvedWamid = reply_to_wamid || null;
