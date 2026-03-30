@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw, Users } from "lucide-react";
@@ -13,20 +13,35 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
 
+const VCA_IDS = [
+  "93c99d9a-8698-495a-829b-a6592ade8d06", // VCA 01
+  "041908a4-8825-4594-be5c-a37dbbfafba2", // VCA 02
+];
+const VCA_GROUP_VALUE = "vca-group";
+
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
 const CadastroLeads = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
-  const [data, setData] = useState(() => new Date().toISOString().split("T")[0]);
 
-  // Leads Novos - clínica e valor separados
+  // Leads Novos - separate date, clinic, value
+  const [dataLeads, setDataLeads] = useState(() => new Date().toISOString().split("T")[0]);
   const [clinicaIdLeads, setClinicaIdLeads] = useState("");
   const [leadsNovos, setLeadsNovos] = useState("");
   const [savingLeads, setSavingLeads] = useState(false);
   const [existingIdLeads, setExistingIdLeads] = useState<string | null>(null);
 
-  // Agendados + Reagendados - clínica separada
+  // For VCA group: split leads between VCA 01 and VCA 02
+  const [leadsVca1, setLeadsVca1] = useState("");
+  const [leadsVca2, setLeadsVca2] = useState("");
+  const [existingIdVca1, setExistingIdVca1] = useState<string | null>(null);
+  const [existingIdVca2, setExistingIdVca2] = useState<string | null>(null);
+
+  const isVcaGroup = clinicaIdLeads === VCA_GROUP_VALUE;
+
+  // Agendados + Reagendados - separate date, clinic
+  const [dataAgendados, setDataAgendados] = useState(() => new Date().toISOString().split("T")[0]);
   const [clinicaIdAgendados, setClinicaIdAgendados] = useState("");
   const [agendaram, setAgendaram] = useState("");
   const [compareceram, setCompareceram] = useState("");
@@ -39,16 +54,16 @@ const CadastroLeads = () => {
 
   const [registros, setRegistros] = useState<LeadWithClinica[]>([]);
 
-  // Calculated fields - Agendados
+  // Calculated fields
   const faltaram = useMemo(() => Math.max((parseInt(agendaram) || 0) - (parseInt(compareceram) || 0), 0), [agendaram, compareceram]);
   const naoContrataram = useMemo(() => Math.max((parseInt(compareceram) || 0) - (parseInt(contrataram) || 0), 0), [compareceram, contrataram]);
-
-  // Calculated fields - Reagendados
   const reagendadosFaltaram = useMemo(() => Math.max((parseInt(remarcados) || 0) - (parseInt(reagendadosCompareceram) || 0), 0), [remarcados, reagendadosCompareceram]);
   const reagendadosNaoContrataram = useMemo(() => Math.max((parseInt(reagendadosCompareceram) || 0) - (parseInt(reagendadosContrataram) || 0), 0), [reagendadosCompareceram, reagendadosContrataram]);
-
-  // Faltas líquidas
   const faltasLiquidas = useMemo(() => Math.max(faltaram - (parseInt(remarcados) || 0) + reagendadosFaltaram, 0), [faltaram, remarcados, reagendadosFaltaram]);
+
+  // Separate clinics into VCA and others
+  const vcaClinics = useMemo(() => clinicas.filter(c => VCA_IDS.includes(c.id)), [clinicas]);
+  const otherClinics = useMemo(() => clinicas.filter(c => !VCA_IDS.includes(c.id)), [clinicas]);
 
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
@@ -67,35 +82,33 @@ const CadastroLeads = () => {
 
   useEffect(() => { fetchRegistros(); }, [fetchRegistros]);
 
-  // Auto-load existing record for Leads Novos
+  // Auto-load for Leads Novos (single clinic)
   useEffect(() => {
-    if (!clinicaIdLeads || !data) { setExistingIdLeads(null); return; }
-    supabase
-      .from("leads_diarios")
-      .select("*")
-      .eq("data", data)
-      .eq("clinica_id", clinicaIdLeads)
-      .maybeSingle()
+    if (isVcaGroup || !clinicaIdLeads || !dataLeads) { setExistingIdLeads(null); return; }
+    supabase.from("leads_diarios").select("*").eq("data", dataLeads).eq("clinica_id", clinicaIdLeads).maybeSingle()
       .then(({ data: existing }) => {
-        if (existing) {
-          setExistingIdLeads(existing.id);
-          setLeadsNovos(String(existing.leads_novos));
-        } else {
-          setExistingIdLeads(null);
-          setLeadsNovos("");
-        }
+        if (existing) { setExistingIdLeads(existing.id); setLeadsNovos(String(existing.leads_novos)); }
+        else { setExistingIdLeads(null); setLeadsNovos(""); }
       });
-  }, [clinicaIdLeads, data]);
+  }, [clinicaIdLeads, dataLeads, isVcaGroup]);
 
-  // Auto-load existing record for Agendados
+  // Auto-load for VCA group
   useEffect(() => {
-    if (!clinicaIdAgendados || !data) { setExistingIdAgendados(null); return; }
-    supabase
-      .from("leads_diarios")
-      .select("*")
-      .eq("data", data)
-      .eq("clinica_id", clinicaIdAgendados)
-      .maybeSingle()
+    if (!isVcaGroup || !dataLeads) return;
+    Promise.all(VCA_IDS.map(id =>
+      supabase.from("leads_diarios").select("*").eq("data", dataLeads).eq("clinica_id", id).maybeSingle()
+    )).then(([r1, r2]) => {
+      if (r1.data) { setExistingIdVca1(r1.data.id); setLeadsVca1(String(r1.data.leads_novos)); }
+      else { setExistingIdVca1(null); setLeadsVca1(""); }
+      if (r2.data) { setExistingIdVca2(r2.data.id); setLeadsVca2(String(r2.data.leads_novos)); }
+      else { setExistingIdVca2(null); setLeadsVca2(""); }
+    });
+  }, [isVcaGroup, dataLeads]);
+
+  // Auto-load for Agendados
+  useEffect(() => {
+    if (!clinicaIdAgendados || !dataAgendados) { setExistingIdAgendados(null); return; }
+    supabase.from("leads_diarios").select("*").eq("data", dataAgendados).eq("clinica_id", clinicaIdAgendados).maybeSingle()
       .then(({ data: existing }) => {
         if (existing) {
           setExistingIdAgendados(existing.id);
@@ -111,33 +124,49 @@ const CadastroLeads = () => {
           setRemarcados(""); setReagendadosCompareceram(""); setReagendadosContrataram("");
         }
       });
-  }, [clinicaIdAgendados, data]);
+  }, [clinicaIdAgendados, dataAgendados]);
 
-  // Save Leads Novos only
+  // Save Leads Novos
   const handleSaveLeads = async () => {
-    if (!clinicaIdLeads) { toast.error("Selecione uma clínica para Leads Novos."); return; }
+    if (!clinicaIdLeads) { toast.error("Selecione uma clínica."); return; }
     setSavingLeads(true);
     try {
-      const leadsValue = parseInt(leadsNovos) || 0;
-      if (existingIdLeads) {
-        const { error } = await supabase.from("leads_diarios").update({
-          leads_novos: leadsValue,
-          created_by: user?.id,
-        }).eq("id", existingIdLeads);
-        if (error) throw error;
-        toast.success("Leads novos atualizados!");
+      if (isVcaGroup) {
+        // Save for both VCA clinics
+        const saves = [
+          { id: VCA_IDS[0], value: parseInt(leadsVca1) || 0, existingId: existingIdVca1 },
+          { id: VCA_IDS[1], value: parseInt(leadsVca2) || 0, existingId: existingIdVca2 },
+        ];
+        for (const s of saves) {
+          if (s.existingId) {
+            const { error } = await supabase.from("leads_diarios").update({ leads_novos: s.value, created_by: user?.id }).eq("id", s.existingId);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase.from("leads_diarios").insert({
+              data: dataLeads, clinica_id: s.id, leads_novos: s.value,
+              agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
+              nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
+              created_by: user?.id,
+            });
+            if (error) throw error;
+          }
+        }
+        toast.success("Leads novos VCA 01 e VCA 02 salvos!");
       } else {
-        const { error } = await supabase.from("leads_diarios").insert({
-          data,
-          clinica_id: clinicaIdLeads,
-          leads_novos: leadsValue,
-          agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
-          nao_contrataram: 0, remarcados: 0,
-          reagendados_compareceram: 0, reagendados_contrataram: 0,
-          created_by: user?.id,
-        });
-        if (error) throw error;
-        toast.success("Leads novos cadastrados!");
+        const leadsValue = parseInt(leadsNovos) || 0;
+        if (existingIdLeads) {
+          const { error } = await supabase.from("leads_diarios").update({ leads_novos: leadsValue, created_by: user?.id }).eq("id", existingIdLeads);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("leads_diarios").insert({
+            data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: leadsValue,
+            agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
+            nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
+            created_by: user?.id,
+          });
+          if (error) throw error;
+        }
+        toast.success("Leads novos salvos!");
       }
       fetchRegistros();
     } catch (err: any) {
@@ -149,35 +178,27 @@ const CadastroLeads = () => {
 
   // Save Agendados + Reagendados
   const handleSaveAgendados = async () => {
-    if (!clinicaIdAgendados) { toast.error("Selecione uma clínica para Agendados."); return; }
+    if (!clinicaIdAgendados) { toast.error("Selecione uma clínica."); return; }
     setSavingAgendados(true);
     try {
       const payload = {
         agendaram: parseInt(agendaram) || 0,
         compareceram: parseInt(compareceram) || 0,
         contrataram: parseInt(contrataram) || 0,
-        faltaram,
-        nao_contrataram: naoContrataram,
+        faltaram, nao_contrataram: naoContrataram,
         remarcados: parseInt(remarcados) || 0,
         reagendados_compareceram: parseInt(reagendadosCompareceram) || 0,
         reagendados_contrataram: parseInt(reagendadosContrataram) || 0,
         created_by: user?.id,
       };
-
       if (existingIdAgendados) {
         const { error } = await supabase.from("leads_diarios").update(payload).eq("id", existingIdAgendados);
         if (error) throw error;
-        toast.success("Dados de agendados atualizados!");
       } else {
-        const { error } = await supabase.from("leads_diarios").insert({
-          data,
-          clinica_id: clinicaIdAgendados,
-          leads_novos: 0,
-          ...payload,
-        });
+        const { error } = await supabase.from("leads_diarios").insert({ data: dataAgendados, clinica_id: clinicaIdAgendados, leads_novos: 0, ...payload });
         if (error) throw error;
-        toast.success("Dados de agendados cadastrados!");
       }
+      toast.success("Dados de agendados salvos!");
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
@@ -187,7 +208,8 @@ const CadastroLeads = () => {
   };
 
   const handleEdit = (registro: LeadWithClinica) => {
-    setData(registro.data);
+    setDataLeads(registro.data);
+    setDataAgendados(registro.data);
     setClinicaIdLeads(registro.clinica_id);
     setClinicaIdAgendados(registro.clinica_id);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -204,22 +226,15 @@ const CadastroLeads = () => {
     }
   };
 
-  const getClinicaNome = (registro: LeadWithClinica) => registro.clinicas?.nome || "—";
+  const getClinicaNome = (r: LeadWithClinica) => r.clinicas?.nome || "—";
+
+  const vcaClinicName = (id: string) => clinicas.find(c => c.id === id)?.nome || id;
 
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
       <div className="mb-2">
         <h1 className="text-2xl font-bold">Cadastro de Leads</h1>
         <p className="text-sm text-muted-foreground">Gerencie o funil de vendas diário</p>
-      </div>
-
-      {/* Data compartilhada */}
-      <div className="space-y-2">
-        <Label>Data</Label>
-        <div className="relative max-w-xs">
-          <CalendarDays size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input type="date" value={data} onChange={(e) => setData(e.target.value)} className="bg-secondary border-border pl-10" required />
-        </div>
       </div>
 
       {/* CARD 1: Leads Novos */}
@@ -231,31 +246,66 @@ const CadastroLeads = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Clínica</Label>
-            <Select value={clinicaIdLeads} onValueChange={setClinicaIdLeads}>
-              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
-              <SelectContent>
-                {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-              </SelectContent>
-            </Select>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Data</Label>
+              <div className="relative">
+                <CalendarDays size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input type="date" value={dataLeads} onChange={(e) => setDataLeads(e.target.value)} className="bg-secondary border-border pl-10" required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Clínica</Label>
+              <Select value={clinicaIdLeads} onValueChange={(v) => { setClinicaIdLeads(v); setLeadsNovos(""); setLeadsVca1(""); setLeadsVca2(""); }}>
+                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
+                <SelectContent>
+                  {vcaClinics.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Vitória da Conquista</SelectLabel>
+                      <SelectItem value={VCA_GROUP_VALUE}>VCA 01 + VCA 02 (dividir)</SelectItem>
+                      {vcaClinics.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+                    </SelectGroup>
+                  )}
+                  {otherClinics.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Outras Clínicas</SelectLabel>
+                      {otherClinics.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+                    </SelectGroup>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {existingIdLeads && (
+          {(existingIdLeads && !isVcaGroup) && (
             <div className="rounded-lg bg-primary/10 p-3 text-sm text-primary">
-              ⚠️ Já existe registro para esta data/clínica. O valor de leads novos será atualizado.
+              ⚠️ Já existe registro para esta data/clínica. O valor será atualizado.
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label>Quantidade de Leads Novos</Label>
-            <p className="text-xs text-muted-foreground">Leads novos que entraram no dia</p>
-            <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
-          </div>
+          {isVcaGroup ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>{vcaClinicName(VCA_IDS[0])}</Label>
+                <Input type="number" min="0" placeholder="0" value={leadsVca1} onChange={(e) => setLeadsVca1(e.target.value)} className="bg-secondary border-border" />
+                {existingIdVca1 && <p className="text-xs text-primary">⚠️ Registro existente — será atualizado</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>{vcaClinicName(VCA_IDS[1])}</Label>
+                <Input type="number" min="0" placeholder="0" value={leadsVca2} onChange={(e) => setLeadsVca2(e.target.value)} className="bg-secondary border-border" />
+                {existingIdVca2 && <p className="text-xs text-primary">⚠️ Registro existente — será atualizado</p>}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>Quantidade de Leads Novos</Label>
+              <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
+            </div>
+          )}
 
           <Button onClick={handleSaveLeads} disabled={savingLeads} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
             <Save size={18} className="mr-2" />
-            {savingLeads ? "Salvando..." : existingIdLeads ? "Atualizar Leads Novos" : "Salvar Leads Novos"}
+            {savingLeads ? "Salvando..." : "Salvar Leads Novos"}
           </Button>
         </CardContent>
       </Card>
@@ -269,14 +319,23 @@ const CadastroLeads = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="space-y-2">
-            <Label>Clínica</Label>
-            <Select value={clinicaIdAgendados} onValueChange={setClinicaIdAgendados}>
-              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
-              <SelectContent>
-                {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-              </SelectContent>
-            </Select>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Data</Label>
+              <div className="relative">
+                <CalendarDays size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input type="date" value={dataAgendados} onChange={(e) => setDataAgendados(e.target.value)} className="bg-secondary border-border pl-10" required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Clínica</Label>
+              <Select value={clinicaIdAgendados} onValueChange={setClinicaIdAgendados}>
+                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
+                <SelectContent>
+                  {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {existingIdAgendados && (
@@ -328,9 +387,7 @@ const CadastroLeads = () => {
                 Reagendados
               </p>
               <p className="text-xs text-muted-foreground">Pacientes que faltaram anteriormente e foram reagendados para hoje</p>
-              <p className="text-xs text-primary/80 mt-1">
-                💡 Reagendados são descontados das faltas. Se faltarem novamente, voltam ao total de faltas.
-              </p>
+              <p className="text-xs text-primary/80 mt-1">💡 Reagendados são descontados das faltas. Se faltarem novamente, voltam ao total de faltas.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
@@ -393,7 +450,7 @@ const CadastroLeads = () => {
         </CardContent>
       </Card>
 
-      {/* Histórico de registros */}
+      {/* Histórico */}
       <Card className="gradient-card border-border shadow-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
