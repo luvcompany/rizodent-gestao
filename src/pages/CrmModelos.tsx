@@ -17,6 +17,13 @@ type WhatsAppTemplate = {
   created_at: string; updated_at: string;
 };
 
+type Integration = {
+  id: string;
+  key: string;
+  config: any;
+  status: string;
+};
+
 const PAGE_SIZE = 10;
 
 export default function CrmModelos() {
@@ -29,6 +36,8 @@ export default function CrmModelos() {
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [selectedIntegration, setSelectedIntegration] = useState<string>("");
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
@@ -37,12 +46,26 @@ export default function CrmModelos() {
     hasHeader: false,
   });
 
+  // Load integrations
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase.from("integrations").select("*").like("key", "whatsapp_%").eq("status", "connected");
+      const list = (data || []) as Integration[];
+      setIntegrations(list);
+      if (list.length > 0 && !selectedIntegration) {
+        setSelectedIntegration(list[0].key);
+      }
+    };
+    load();
+  }, []);
+
   const fetchTemplates = useCallback(async () => {
+    if (!selectedIntegration) return;
     setLoading(true);
-    // First try to sync from Meta API
+    // Sync from Meta API using selected integration credentials
     try {
       await supabase.functions.invoke("manage-whatsapp-templates", {
-        body: { action: "list" },
+        body: { action: "list", integration_key: selectedIntegration },
       });
     } catch (e) {
       console.log("[Templates] Meta sync skipped:", e);
@@ -51,7 +74,7 @@ export default function CrmModelos() {
     const { data, error } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
     if (!error) setTemplates((data as WhatsAppTemplate[]) || []);
     setLoading(false);
-  }, []);
+  }, [selectedIntegration]);
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
@@ -101,7 +124,7 @@ export default function CrmModelos() {
     if (template.meta_template_id) {
       try {
         const { error } = await supabase.functions.invoke("manage-whatsapp-templates", {
-          body: { action: "delete", template_name: template.name },
+          body: { action: "delete", template_name: template.name, integration_key: selectedIntegration },
         });
         if (error) {
           toast.error("Erro ao deletar na Meta. Removendo apenas localmente.");
@@ -158,6 +181,7 @@ export default function CrmModelos() {
         const { data, error: fnError } = await supabase.functions.invoke("manage-whatsapp-templates", {
           body: {
             action: "create",
+            integration_key: selectedIntegration,
             name: form.name,
             category: form.category,
             language: form.language,
@@ -247,7 +271,23 @@ export default function CrmModelos() {
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED */}
       <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
+          {integrations.length > 0 && (
+            <Select value={selectedIntegration} onValueChange={setSelectedIntegration}>
+              <SelectTrigger className="w-[220px] h-8 text-sm">
+                <SelectValue placeholder="Selecione a integração" />
+              </SelectTrigger>
+              <SelectContent>
+                {integrations.map((intg) => (
+                  <SelectItem key={intg.key} value={intg.key}>
+                    {(intg.config as any)?.display_name || intg.key}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
         <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
           <Plus size={14} className="mr-1" /> Novo Modelo
         </Button>

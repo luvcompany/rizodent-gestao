@@ -6,6 +6,28 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function resolveCredentials(supabase: any, integrationKey?: string) {
+  // If an integration_key is provided, resolve from integrations table
+  if (integrationKey) {
+    const { data: intg } = await supabase
+      .from("integrations")
+      .select("config")
+      .eq("key", integrationKey)
+      .maybeSingle();
+    if (intg?.config) {
+      const cfg = intg.config as any;
+      if (cfg.access_token && cfg.waba_id) {
+        return { token: cfg.access_token, wabaId: cfg.waba_id };
+      }
+    }
+  }
+  // Fallback to env vars
+  return {
+    token: Deno.env.get("WHATSAPP_TOKEN") || "",
+    wabaId: Deno.env.get("WABA_ID") || "",
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -16,19 +38,17 @@ Deno.serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Read tokens from Supabase secrets (env vars), NOT from integrations table
-    const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN");
-    const WABA_ID = Deno.env.get("WABA_ID");
+    const body = await req.json();
+    const { action, integration_key } = body;
+
+    const { token: WHATSAPP_TOKEN, wabaId: WABA_ID } = await resolveCredentials(supabase, integration_key);
 
     if (!WHATSAPP_TOKEN || !WABA_ID) {
       return new Response(
-        JSON.stringify({ error: "WhatsApp não configurado. Configure os secrets WHATSAPP_TOKEN e WABA_ID." }),
+        JSON.stringify({ error: "WhatsApp não configurado. Configure os secrets WHATSAPP_TOKEN e WABA_ID ou preencha na integração." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const body = await req.json();
-    const { action } = body;
 
     // ACTION: LIST - Fetch all templates from Meta API
     if (action === "list") {
@@ -115,7 +135,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Build Meta API components
       const components: any[] = [];
 
       if (header_type && header_content) {
@@ -179,7 +198,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Save to local DB with Meta response
       const { error: dbError } = await supabase.from("crm_whatsapp_templates").insert({
         name,
         language,
@@ -231,7 +249,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Delete from local DB too
       await supabase.from("crm_whatsapp_templates").delete().eq("name", template_name);
 
       return new Response(
