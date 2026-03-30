@@ -405,15 +405,19 @@ export type Database = {
       }
       crm_leads: {
         Row: {
+          ad_id: string | null
           automation_paused: boolean | null
           created_at: string
+          descricao_anuncio: string | null
           follow_up_count: number | null
           has_task: boolean
           id: string
+          imagem_origem: string | null
           last_inbound_at: string | null
           last_message: string | null
           last_message_at: string | null
           last_outbound_at: string | null
+          link_anuncio: string | null
           name: string
           nome_anuncio: string | null
           notes: string | null
@@ -425,19 +429,24 @@ export type Database = {
           stage_id: string
           tags: string[] | null
           task_overdue: boolean
+          titulo_anuncio: string | null
           updated_at: string
           value: number | null
         }
         Insert: {
+          ad_id?: string | null
           automation_paused?: boolean | null
           created_at?: string
+          descricao_anuncio?: string | null
           follow_up_count?: number | null
           has_task?: boolean
           id?: string
+          imagem_origem?: string | null
           last_inbound_at?: string | null
           last_message?: string | null
           last_message_at?: string | null
           last_outbound_at?: string | null
+          link_anuncio?: string | null
           name: string
           nome_anuncio?: string | null
           notes?: string | null
@@ -449,19 +458,24 @@ export type Database = {
           stage_id: string
           tags?: string[] | null
           task_overdue?: boolean
+          titulo_anuncio?: string | null
           updated_at?: string
           value?: number | null
         }
         Update: {
+          ad_id?: string | null
           automation_paused?: boolean | null
           created_at?: string
+          descricao_anuncio?: string | null
           follow_up_count?: number | null
           has_task?: boolean
           id?: string
+          imagem_origem?: string | null
           last_inbound_at?: string | null
           last_message?: string | null
           last_message_at?: string | null
           last_outbound_at?: string | null
+          link_anuncio?: string | null
           name?: string
           nome_anuncio?: string | null
           notes?: string | null
@@ -473,6 +487,7 @@ export type Database = {
           stage_id?: string
           tags?: string[] | null
           task_overdue?: boolean
+          titulo_anuncio?: string | null
           updated_at?: string
           value?: number | null
         }

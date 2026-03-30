@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { compressImage } from "./imageCompressor";
+import SlashCommandMenu from "./SlashCommandMenu";
 
 type ReplyMessage = {
   id: string;
@@ -50,6 +51,24 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingDiscardedRef = useRef(false);
+
+  // Slash commands
+  const [slashActive, setSlashActive] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [slashTemplates, setSlashTemplates] = useState<any[]>([]);
+  const [slashBots, setSlashBots] = useState<any[]>([]);
+
+  useEffect(() => {
+    const loadSlashData = async () => {
+      const [{ data: t }, { data: b }] = await Promise.all([
+        supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED"),
+        supabase.from("bots").select("id, name, description").eq("active", true),
+      ]);
+      setSlashTemplates(t || []);
+      setSlashBots(b || []);
+    };
+    loadSlashData();
+  }, []);
 
   useEffect(() => {
     if (externalMessage) {
@@ -518,11 +537,43 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </DropdownMenu>
 
           <div className="flex-1 relative">
+            <SlashCommandMenu
+              query={slashQuery}
+              templates={slashTemplates}
+              bots={slashBots}
+              visible={slashActive}
+              onSelectTemplate={(t) => {
+                setNewMessage(`[Template: ${t.name}]`);
+                setSlashActive(false);
+                toast.info(`Template "${t.name}" selecionado. Pressione Enter para enviar.`);
+              }}
+              onSelectBot={(b) => {
+                setNewMessage(`[Bot: ${b.name}]`);
+                setSlashActive(false);
+                toast.info(`Bot "${b.name}" selecionado. Pressione Enter para disparar.`);
+              }}
+              onClose={() => setSlashActive(false)}
+            />
             <Input
               value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Digite uma mensagem..."
+              onChange={(e) => {
+                const val = e.target.value;
+                setNewMessage(val);
+                if (val.startsWith("/")) {
+                  setSlashActive(true);
+                  setSlashQuery(val.slice(1));
+                } else {
+                  setSlashActive(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (slashActive && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                  e.preventDefault();
+                  return;
+                }
+                handleKeyDown(e);
+              }}
+              placeholder="Digite / para atalhos ou uma mensagem..."
               className="pr-10 bg-secondary border-border"
               disabled={optimizing || uploading}
             />

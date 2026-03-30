@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -25,8 +25,9 @@ import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
 import {
-  ArrowLeft, FileText, Tag
+  ArrowLeft, FileText, Tag, Search
 } from "lucide-react";
+import LeadAdInfo from "@/components/chat/LeadAdInfo";
 
 type Message = {
   id: string;
@@ -52,6 +53,12 @@ type Lead = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  imagem_origem?: string | null;
+  titulo_anuncio?: string | null;
+  descricao_anuncio?: string | null;
+  link_anuncio?: string | null;
+  ad_id?: string | null;
+  nome_anuncio?: string | null;
 };
 
 type Stage = {
@@ -74,7 +81,14 @@ export default function CrmConversa() {
   const [newNote, setNewNote] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [templateSearch, setTemplateSearch] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const filteredTemplates = useMemo(() => {
+    if (!templateSearch.trim()) return templates;
+    const q = templateSearch.toLowerCase();
+    return templates.filter(t => t.name.toLowerCase().includes(q) || (t.body_text || "").toLowerCase().includes(q));
+  }, [templates, templateSearch]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -515,6 +529,16 @@ export default function CrmConversa() {
           onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
         />
 
+        {/* Ad Info */}
+        <LeadAdInfo
+          imagemOrigem={(lead as any).imagem_origem}
+          tituloAnuncio={(lead as any).titulo_anuncio}
+          descricaoAnuncio={(lead as any).descricao_anuncio}
+          linkAnuncio={(lead as any).link_anuncio}
+          adId={(lead as any).ad_id}
+          nomeAnuncio={(lead as any).nome_anuncio}
+        />
+
         {/* Budget Panel */}
         <LeadBudgetPanel
           lead={lead as any}
@@ -575,15 +599,24 @@ export default function CrmConversa() {
 
       {/* Templates Sheet */}
       <Sheet open={templatesOpen} onOpenChange={setTemplatesOpen}>
-        <SheetContent className="w-[380px]">
+        <SheetContent className="w-[380px] flex flex-col">
           <SheetHeader>
             <SheetTitle>Templates Aprovados</SheetTitle>
           </SheetHeader>
-          <div className="mt-4 space-y-2">
-            {templates.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nenhum template aprovado encontrado.</p>
+          <div className="mt-3 relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar template..."
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              className="pl-9 bg-secondary border-border"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto mt-3 space-y-2 pr-1">
+            {filteredTemplates.length === 0 && (
+              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum template encontrado.</p>
             )}
-            {templates.map((t) => (
+            {filteredTemplates.map((t) => (
               <button
                 key={t.id}
                 onClick={() => sendTemplate(t)}
