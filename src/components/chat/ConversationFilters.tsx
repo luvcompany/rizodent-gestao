@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -11,10 +10,12 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
-type Stage = { id: string; name: string; color: string };
+type Stage = { id: string; name: string; color: string; pipeline_id?: string };
 type Profile = { id: string; nome: string };
+type Pipeline = { id: string; name: string };
 
 export type ConversationFilterValues = {
+  pipelineId: string;
   dateRange: string;
   customDateFrom?: Date;
   customDateTo?: Date;
@@ -26,6 +27,7 @@ export type ConversationFilterValues = {
 };
 
 const emptyFilters: ConversationFilterValues = {
+  pipelineId: "",
   dateRange: "",
   stageId: "",
   status: "",
@@ -36,6 +38,7 @@ const emptyFilters: ConversationFilterValues = {
 
 function countActive(f: ConversationFilterValues): number {
   let c = 0;
+  if (f.pipelineId) c++;
   if (f.dateRange) c++;
   if (f.stageId) c++;
   if (f.status) c++;
@@ -51,12 +54,14 @@ export default function ConversationFilters({
   allTags,
   filters,
   onApply,
+  pipelines = [],
 }: {
   stages: Stage[];
   profiles: Profile[];
   allTags: string[];
   filters: ConversationFilterValues;
   onApply: (f: ConversationFilterValues) => void;
+  pipelines?: Pipeline[];
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConversationFilterValues>(filters);
@@ -66,6 +71,11 @@ export default function ConversationFilters({
     setDraft(filters);
     setOpen(true);
   };
+
+  // Filter stages by selected pipeline
+  const filteredStages = draft.pipelineId
+    ? stages.filter((s) => (s as any).pipeline_id === draft.pipelineId)
+    : stages;
 
   return (
     <>
@@ -84,7 +94,43 @@ export default function ConversationFilters({
           <SheetHeader>
             <SheetTitle>Filtros</SheetTitle>
           </SheetHeader>
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-4 overflow-y-auto max-h-[calc(100vh-120px)]">
+            {/* Pipeline */}
+            {pipelines.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Funil</label>
+                <Select
+                  value={draft.pipelineId}
+                  onValueChange={(v) => setDraft({ ...draft, pipelineId: v, stageId: "" })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos os funis" /></SelectTrigger>
+                  <SelectContent>
+                    {pipelines.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Stage */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Etapa do Funil</label>
+              <Select value={draft.stageId} onValueChange={(v) => setDraft({ ...draft, stageId: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                <SelectContent>
+                  {filteredStages.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                        {s.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Date */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Data</label>
@@ -94,6 +140,8 @@ export default function ConversationFilters({
                   <SelectItem value="today">Hoje</SelectItem>
                   <SelectItem value="yesterday">Ontem</SelectItem>
                   <SelectItem value="7days">Últimos 7 dias</SelectItem>
+                  <SelectItem value="this_month">Este mês</SelectItem>
+                  <SelectItem value="last_month">Mês passado</SelectItem>
                   <SelectItem value="custom">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
@@ -123,24 +171,6 @@ export default function ConversationFilters({
                   </Popover>
                 </div>
               )}
-            </div>
-
-            {/* Stage */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Etapa do Funil</label>
-              <Select value={draft.stageId} onValueChange={(v) => setDraft({ ...draft, stageId: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
-                <SelectContent>
-                  {stages.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                        {s.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             {/* Status */}
