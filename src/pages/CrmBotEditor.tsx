@@ -419,7 +419,7 @@ const CrmBotEditor = () => {
   if (!bot) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] -m-6 bg-[#f8f6f0] dark:bg-background" style={{ touchAction: "none" }}>
+    <div className="flex flex-col h-[calc(100vh-4rem)] -m-6 bg-background" style={{ touchAction: "none" }}>
       {/* ── Toolbar ── */}
       <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-card shrink-0 z-20">
         <Button variant="ghost" size="sm" onClick={() => navigate("/crm/bots")}>
