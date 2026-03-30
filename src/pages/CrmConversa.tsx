@@ -522,6 +522,16 @@ export default function CrmConversa() {
           onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
         />
 
+        {/* Ad Info */}
+        <LeadAdInfo
+          imagemOrigem={(lead as any).imagem_origem}
+          tituloAnuncio={(lead as any).titulo_anuncio}
+          descricaoAnuncio={(lead as any).descricao_anuncio}
+          linkAnuncio={(lead as any).link_anuncio}
+          adId={(lead as any).ad_id}
+          nomeAnuncio={(lead as any).nome_anuncio}
+        />
+
         {/* Budget Panel */}
         <LeadBudgetPanel
           lead={lead as any}
