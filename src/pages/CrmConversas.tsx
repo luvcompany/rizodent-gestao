@@ -365,12 +365,12 @@ export default function CrmConversas() {
   const currentStage = stages.find((s) => s.id === selectedLead?.stage_id);
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] w-full min-w-0 max-w-full flex-col overflow-hidden bg-background">
-      <ResizablePanelGroup direction="horizontal" className="h-full w-full min-w-0 max-w-full overflow-hidden">
+    <div className="flex h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
+      <ResizablePanelGroup direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
         {/* LEFT PANEL - Leads list */}
         {leftPanelVisible && (
-        <><ResizablePanel defaultSize={22} minSize={20} maxSize={35}>
-          <div className="flex flex-col h-full bg-card">
+        <><ResizablePanel defaultSize={24} minSize={20} maxSize={28} className="min-w-0 overflow-hidden">
+          <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-hidden">
             <div className="flex-shrink-0 px-4 py-3 border-b border-border">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-bold text-foreground text-sm">Conversas</h2>
@@ -454,9 +454,9 @@ export default function CrmConversas() {
         )}
 
         {/* CENTER PANEL - Chat */}
-        <ResizablePanel defaultSize={rightPanelVisible ? 50 : 78} minSize={30}>
+        <ResizablePanel defaultSize={rightPanelVisible ? 46 : 76} minSize={38} className="min-w-0 overflow-hidden">
           {selectedLeadId && selectedLead ? (
-            <div className="flex flex-col h-full">
+            <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden">
               {/* Chat header */}
               <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
@@ -554,8 +554,8 @@ export default function CrmConversas() {
         {rightPanelVisible && selectedLeadId && selectedLead && (
           <>
             <ResizableHandle />
-            <ResizablePanel defaultSize={28} minSize={20} maxSize={35}>
-              <div className="flex flex-col h-full bg-card overflow-y-auto">
+            <ResizablePanel defaultSize={30} minSize={24} maxSize={34} className="min-w-0 overflow-hidden">
+              <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-y-auto">
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center gap-3 mb-3">
                     <Avatar className="h-12 w-12">
