@@ -5,12 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, CheckCircle2, Circle, Clock, Phone, CalendarDays, MessageSquare, Plus, AlertTriangle } from "lucide-react";
+import { CalendarIcon, CheckCircle2, Circle, Clock, Phone, CalendarDays, MessageSquare, Plus, AlertTriangle, Pencil, Trash2 } from "lucide-react";
 import { format, isPast } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -46,6 +44,8 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [title, setTitle] = useState("");
   const [type, setType] = useState("personalizado");
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
@@ -68,6 +68,28 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
     supabase.from("profiles").select("id, nome").then(({ data }) => setProfiles((data as Profile[]) || []));
   }, [leadId]);
 
+  const resetForm = () => {
+    setTitle(""); setType("personalizado"); setDueDate(undefined); setDueTime("09:00"); setNotes(""); setAssignedTo("");
+    setEditingTask(null);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setDialogOpen(true);
+  };
+
+  const openEdit = (task: Task) => {
+    setEditingTask(task);
+    setTitle(task.title);
+    setType(task.type);
+    const d = new Date(task.due_date);
+    setDueDate(d);
+    setDueTime(format(d, "HH:mm"));
+    setNotes(task.notes || "");
+    setAssignedTo(task.assigned_to || "");
+    setDialogOpen(true);
+  };
+
   const handleSave = async () => {
     if (!title.trim() || !dueDate) { toast.error("Preencha título e data"); return; }
     setSaving(true);
@@ -75,19 +97,37 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
     const dt = new Date(dueDate);
     dt.setHours(h, m, 0, 0);
 
-    const { error } = await supabase.from("crm_tasks").insert({
-      lead_id: leadId,
+    const payload = {
       title: title.trim(),
       type,
       due_date: dt.toISOString(),
       notes: notes.trim() || null,
       assigned_to: assignedTo || null,
-    });
-    setSaving(false);
-    if (error) { toast.error("Erro ao salvar tarefa"); return; }
-    toast.success("Tarefa criada");
+      updated_at: new Date().toISOString(),
+    };
+
+    if (editingTask) {
+      const { error } = await supabase.from("crm_tasks").update(payload).eq("id", editingTask.id);
+      setSaving(false);
+      if (error) { toast.error("Erro ao atualizar tarefa"); return; }
+      toast.success("Tarefa atualizada");
+    } else {
+      const { error } = await supabase.from("crm_tasks").insert({ ...payload, lead_id: leadId });
+      setSaving(false);
+      if (error) { toast.error("Erro ao salvar tarefa"); return; }
+      toast.success("Tarefa criada");
+    }
     setDialogOpen(false);
-    setTitle(""); setType("personalizado"); setDueDate(undefined); setDueTime("09:00"); setNotes(""); setAssignedTo("");
+    resetForm();
+    fetchTasks();
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    const { error } = await supabase.from("crm_tasks").delete().eq("id", deleteId);
+    if (error) { toast.error("Erro ao excluir tarefa"); return; }
+    toast.success("Tarefa excluída");
+    setDeleteId(null);
     fetchTasks();
   };
 
@@ -107,7 +147,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
     <div className="p-4 border-b border-border">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-medium text-muted-foreground uppercase">Tarefas</h3>
-        <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => setDialogOpen(true)}>
+        <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={openCreate}>
           <Plus size={12} /> Adicionar
         </Button>
       </div>
@@ -119,7 +159,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
           const st = getStatus(task);
           const Icon = typeIcons[task.type] || Clock;
           return (
-            <div key={task.id} className="flex items-start gap-2 p-2 rounded-md bg-secondary/50 text-xs">
+            <div key={task.id} className="flex items-start gap-2 p-2 rounded-md bg-secondary/50 text-xs group">
               <button onClick={() => toggleDone(task)} className="mt-0.5 flex-shrink-0">
                 {st === "done" ? (
                   <CheckCircle2 size={16} className="text-green-500" />
@@ -140,14 +180,19 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
                   </span>
                 </div>
               </div>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => openEdit(task)} className="p-1 hover:bg-background rounded"><Pencil size={12} className="text-muted-foreground" /></button>
+                <button onClick={() => setDeleteId(task.id)} className="p-1 hover:bg-destructive/20 rounded"><Trash2 size={12} className="text-destructive" /></button>
+              </div>
             </div>
           );
         })}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Create/Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nova Tarefa</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingTask ? "Editar Tarefa" : "Nova Tarefa"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Título</label>
@@ -200,8 +245,20 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : "Criar Tarefa"}</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : editingTask ? "Salvar" : "Criar Tarefa"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Excluir tarefa?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Esta ação não pode ser desfeita.</p>
+          <div className="flex gap-2 justify-end mt-4">
+            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDelete}>Excluir</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
