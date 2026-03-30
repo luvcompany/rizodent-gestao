@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin } from "lucide-react";
 
-const CIDADES = ["Vitória da Conquista", "Itabuna", "Ipiaú", "Guanambi"];
+const CIDADES = ["Vitória da Conquista", "Itabuna", "Ipiaú", "Guanambi", "Sem localização"];
 
 type Lead = {
   id: string;
