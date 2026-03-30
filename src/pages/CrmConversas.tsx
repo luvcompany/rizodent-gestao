@@ -81,6 +81,7 @@ export default function CrmConversas() {
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [filters, setFilters] = useState<ConversationFilterValues>(emptyFilters);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
