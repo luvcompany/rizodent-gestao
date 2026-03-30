@@ -327,7 +327,6 @@ Deno.serve(async (req) => {
                   console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}`);
                 }
               }
-            }
             } else if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
               // Update auto-generated name with real contact name (don't overwrite manual edits)
               await supabase.from("crm_leads").update({ name: contactName }).eq("id", lead.id);
