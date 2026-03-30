@@ -81,7 +81,14 @@ export default function CrmConversa() {
   const [newNote, setNewNote] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [templateSearch, setTemplateSearch] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const filteredTemplates = useMemo(() => {
+    if (!templateSearch.trim()) return templates;
+    const q = templateSearch.toLowerCase();
+    return templates.filter(t => t.name.toLowerCase().includes(q) || (t.body_text || "").toLowerCase().includes(q));
+  }, [templates, templateSearch]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
