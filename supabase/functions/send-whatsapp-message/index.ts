@@ -307,7 +307,7 @@ Deno.serve(async (req) => {
     }
 
     await supabase.from("crm_leads").update({
-      last_message: message || `[${type}]`,
+      last_message: message || `[${finalType}]`,
       last_message_at: new Date().toISOString(),
     }).eq("id", lead_id);
 
