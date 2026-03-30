@@ -178,16 +178,52 @@ export default function CrmKanban() {
     fetchData(pipeline.id);
   };
 
+  // Apply filters to leads
+  const applyFilters = useCallback((list: Lead[]) => {
+    return list.filter((l) => {
+      if (searchTerm) {
+        const s = searchTerm.toLowerCase();
+        if (!l.name.toLowerCase().includes(s) && !l.phone?.includes(s)) return false;
+      }
+      if (kanbanFilters.dateRange) {
+        const d = new Date(l.created_at);
+        if (kanbanFilters.dateRange === "today" && !isToday(d)) return false;
+        if (kanbanFilters.dateRange === "yesterday" && !isYesterday(d)) return false;
+        if (kanbanFilters.dateRange === "7days" && !isAfter(d, subDays(new Date(), 7))) return false;
+        if (kanbanFilters.dateRange === "this_month" && d < startOfMonth(new Date())) return false;
+        if (kanbanFilters.dateRange === "last_month") {
+          const start = startOfMonth(subMonths(new Date(), 1));
+          const end = endOfMonth(subMonths(new Date(), 1));
+          if (d < start || d > end) return false;
+        }
+        if (kanbanFilters.dateRange === "custom") {
+          if (kanbanFilters.customDateFrom && d < kanbanFilters.customDateFrom) return false;
+          if (kanbanFilters.customDateTo) {
+            const e = new Date(kanbanFilters.customDateTo);
+            e.setHours(23, 59, 59, 999);
+            if (d > e) return false;
+          }
+        }
+      }
+      if (kanbanFilters.stageId && l.stage_id !== kanbanFilters.stageId) return false;
+      if (kanbanFilters.tags.length && !kanbanFilters.tags.some((t) => l.tags?.includes(t))) return false;
+      if (kanbanFilters.source && l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
+      return true;
+    });
+  }, [searchTerm, kanbanFilters]);
+
   const getLeadsForStage = (stageId: string) => {
-    let filtered = leads.filter(l => l.stage_id === stageId);
-    if (searchTerm) {
-      const s = searchTerm.toLowerCase();
-      filtered = filtered.filter(l => l.name.toLowerCase().includes(s) || l.phone?.includes(s));
-    }
+    const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
     return filtered.sort((a, b) => a.position - b.position);
   };
 
-  const totalLeads = leads.length;
+  const allFilteredLeads = useMemo(() => applyFilters(leads), [leads, applyFilters]);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    leads.forEach((l) => l.tags?.forEach((t: string) => set.add(t)));
+    return Array.from(set);
+  }, [leads]);
   const totalValue = leads.reduce((acc, l) => acc + (l.value || 0), 0);
   const withTaskToday = leads.filter(l => l.has_task && !l.task_overdue).length;
   const noTasks = leads.filter(l => !l.has_task).length;
