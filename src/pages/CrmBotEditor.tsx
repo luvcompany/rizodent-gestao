@@ -111,6 +111,13 @@ const CrmBotEditor = () => {
 
   // Editing step
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [showGeneralSettings, setShowGeneralSettings] = useState(false);
+  const [generalSettings, setGeneralSettings] = useState({
+    responseDelayEnabled: false,
+    responseDelaySeconds: 5,
+    inactivityTimeoutEnabled: false,
+    inactivityTimeoutMinutes: 30,
+  });
 
   useEffect(() => {
     if (!botId) return;
