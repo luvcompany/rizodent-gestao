@@ -592,15 +592,24 @@ export default function CrmConversa() {
 
       {/* Templates Sheet */}
       <Sheet open={templatesOpen} onOpenChange={setTemplatesOpen}>
-        <SheetContent className="w-[380px]">
+        <SheetContent className="w-[380px] flex flex-col">
           <SheetHeader>
             <SheetTitle>Templates Aprovados</SheetTitle>
           </SheetHeader>
-          <div className="mt-4 space-y-2">
-            {templates.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nenhum template aprovado encontrado.</p>
+          <div className="mt-3 relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar template..."
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              className="pl-9 bg-secondary border-border"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto mt-3 space-y-2 pr-1">
+            {filteredTemplates.length === 0 && (
+              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum template encontrado.</p>
             )}
-            {templates.map((t) => (
+            {filteredTemplates.map((t) => (
               <button
                 key={t.id}
                 onClick={() => sendTemplate(t)}
