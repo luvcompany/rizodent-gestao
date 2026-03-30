@@ -109,32 +109,24 @@ export default function CrmConversas() {
       const [leadsRes, stagesRes, profilesRes, pipelinesRes] = await Promise.all([
         supabase
           .from("crm_leads")
-          .select("id, name, phone, last_message, last_message_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at")
+          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at")
           .order("last_message_at", { ascending: false, nullsFirst: false }),
         supabase.from("crm_stages").select("*").order("position"),
         supabase.from("profiles").select("id, nome"),
         supabase.from("crm_pipelines").select("id, name").order("created_at"),
       ]);
-      const rawLeads = (leadsRes.data || []) as LeadConversation[];
+      const rawLeads = (leadsRes.data || []) as (LeadConversation & { last_inbound_at?: string; last_outbound_at?: string })[];
 
-      // Fetch last message direction for each lead
-      const leadIds = rawLeads.map((l) => l.id);
-      if (leadIds.length > 0) {
-        // Get the latest message for each lead using a batch approach
-        const { data: lastMsgs } = await supabase
-          .from("messages")
-          .select("lead_id, direction")
-          .in("lead_id", leadIds)
-          .order("created_at", { ascending: false });
-        
-        if (lastMsgs) {
-          const dirMap = new Map<string, string>();
-          lastMsgs.forEach((m: any) => {
-            if (!dirMap.has(m.lead_id)) dirMap.set(m.lead_id, m.direction);
-          });
-          rawLeads.forEach((l) => { l.last_direction = dirMap.get(l.id); });
+      // Derive last_direction from existing columns instead of fetching all messages
+      rawLeads.forEach((l) => {
+        if (l.last_inbound_at && l.last_outbound_at) {
+          l.last_direction = new Date(l.last_inbound_at) > new Date(l.last_outbound_at) ? "inbound" : "outbound";
+        } else if (l.last_inbound_at) {
+          l.last_direction = "inbound";
+        } else if (l.last_outbound_at) {
+          l.last_direction = "outbound";
         }
-      }
+      });
 
       setLeads(rawLeads);
       setStages((stagesRes.data as Stage[]) || []);
