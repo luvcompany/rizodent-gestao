@@ -181,6 +181,7 @@ export default function CrmModelos() {
         const { data, error: fnError } = await supabase.functions.invoke("manage-whatsapp-templates", {
           body: {
             action: "create",
+            integration_key: selectedIntegration,
             name: form.name,
             category: form.category,
             language: form.language,
