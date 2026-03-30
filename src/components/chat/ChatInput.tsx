@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { compressImage } from "./imageCompressor";
+import SlashCommandMenu from "./SlashCommandMenu";
 
 type ReplyMessage = {
   id: string;
