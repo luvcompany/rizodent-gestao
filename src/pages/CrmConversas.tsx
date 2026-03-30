@@ -339,6 +339,15 @@ export default function CrmConversas() {
         if (filters.dateRange === "today" && !isToday(msgDate)) return false;
         if (filters.dateRange === "yesterday" && !isYesterday(msgDate)) return false;
         if (filters.dateRange === "7days" && !isAfter(msgDate, subDays(new Date(), 7))) return false;
+        if (filters.dateRange === "this_month") {
+          const start = startOfMonth(new Date());
+          if (msgDate < start) return false;
+        }
+        if (filters.dateRange === "last_month") {
+          const start = startOfMonth(subMonths(new Date(), 1));
+          const end = endOfMonth(subMonths(new Date(), 1));
+          if (msgDate < start || msgDate > end) return false;
+        }
         if (filters.dateRange === "custom") {
           if (filters.customDateFrom && msgDate < filters.customDateFrom) return false;
           if (filters.customDateTo) {
@@ -348,6 +357,8 @@ export default function CrmConversas() {
           }
         }
       }
+      // Pipeline filter
+      if (filters.pipelineId && l.pipeline_id !== filters.pipelineId) return false;
       if (filters.stageId && l.stage_id !== filters.stageId) return false;
       if (filters.status === "open" && l.last_direction !== "inbound") return false;
       if (filters.status === "replied" && l.last_direction !== "outbound") return false;
