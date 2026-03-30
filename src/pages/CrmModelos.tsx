@@ -17,6 +17,13 @@ type WhatsAppTemplate = {
   created_at: string; updated_at: string;
 };
 
+type Integration = {
+  id: string;
+  key: string;
+  config: any;
+  status: string;
+};
+
 const PAGE_SIZE = 10;
 
 export default function CrmModelos() {
@@ -29,6 +36,8 @@ export default function CrmModelos() {
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [selectedIntegration, setSelectedIntegration] = useState<string>("");
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
@@ -37,12 +46,26 @@ export default function CrmModelos() {
     hasHeader: false,
   });
 
+  // Load integrations
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase.from("integrations").select("*").like("key", "whatsapp_%").eq("status", "connected");
+      const list = (data || []) as Integration[];
+      setIntegrations(list);
+      if (list.length > 0 && !selectedIntegration) {
+        setSelectedIntegration(list[0].key);
+      }
+    };
+    load();
+  }, []);
+
   const fetchTemplates = useCallback(async () => {
+    if (!selectedIntegration) return;
     setLoading(true);
-    // First try to sync from Meta API
+    // Sync from Meta API using selected integration credentials
     try {
       await supabase.functions.invoke("manage-whatsapp-templates", {
-        body: { action: "list" },
+        body: { action: "list", integration_key: selectedIntegration },
       });
     } catch (e) {
       console.log("[Templates] Meta sync skipped:", e);
@@ -51,7 +74,7 @@ export default function CrmModelos() {
     const { data, error } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
     if (!error) setTemplates((data as WhatsAppTemplate[]) || []);
     setLoading(false);
-  }, []);
+  }, [selectedIntegration]);
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
