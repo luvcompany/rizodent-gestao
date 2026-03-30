@@ -138,6 +138,7 @@ export default function CrmConversas() {
       setLeads(rawLeads);
       setStages((stagesRes.data as Stage[]) || []);
       setProfiles((profilesRes.data as { id: string; nome: string }[]) || []);
+      setPipelines((pipelinesRes.data as { id: string; name: string }[]) || []);
       setLoading(false);
     };
     fetchLeads();
