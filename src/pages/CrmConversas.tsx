@@ -26,7 +26,7 @@ import ConversationFilters, { type ConversationFilterValues, emptyFilters } from
 import {
   Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen
 } from "lucide-react";
-import { formatDistanceToNow, isToday, isYesterday, subDays, isAfter } from "date-fns";
+import { formatDistanceToNow, isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 type LeadConversation = {
