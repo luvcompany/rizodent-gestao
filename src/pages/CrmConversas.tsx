@@ -193,30 +193,26 @@ export default function CrmConversas() {
             return [newLead, ...prev];
           });
         } else if (payload.eventType === "UPDATE") {
-          const updated = payload.new as LeadConversation;
+          const updated = payload.new as any;
+          // Derive last_direction from timestamps
+          if (updated.last_inbound_at && updated.last_outbound_at) {
+            updated.last_direction = new Date(updated.last_inbound_at) > new Date(updated.last_outbound_at) ? "inbound" : "outbound";
+          } else if (updated.last_inbound_at) {
+            updated.last_direction = "inbound";
+          } else if (updated.last_outbound_at) {
+            updated.last_direction = "outbound";
+          }
           setLeads((prev) => {
             const newList = prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l);
-            // Re-sort by last_message_at
             return newList.sort((a, b) => {
               if (!a.last_message_at) return 1;
               if (!b.last_message_at) return -1;
               return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
             });
           });
-          // Also update selectedLead if it's the one that changed
           if (updated.id === selectedLeadId) {
             setSelectedLead((prev) => prev ? { ...prev, ...updated } : prev);
           }
-        } else if (payload.eventType === "DELETE") {
-          const deletedId = (payload.old as any).id;
-          setLeads((prev) => prev.filter((l) => l.id !== deletedId));
-        }
-      })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
-        // Update last_direction for the lead when a new message arrives
-        const msg = payload.new as any;
-        setLeads((prev) => prev.map((l) => l.id === msg.lead_id ? { ...l, last_direction: msg.direction } : l));
-      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [selectedLeadId]);
