@@ -99,7 +99,26 @@ Deno.serve(async (req) => {
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
-    const verifyToken = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "";
+    // Try verify token from integrations table first, fallback to env var
+    let verifyToken = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "";
+    try {
+      const { data: integrations } = await supabase
+        .from("integrations")
+        .select("config")
+        .like("key", "whatsapp_%")
+        .limit(10);
+      if (integrations) {
+        for (const intg of integrations) {
+          const cfg = intg.config as any;
+          if (cfg?.webhook_verify_token && cfg.webhook_verify_token === token) {
+            verifyToken = cfg.webhook_verify_token;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.log("[WEBHOOK] Erro ao buscar verify token das integrações:", e);
+    }
 
     if (mode === "subscribe" && token === verifyToken) {
       console.log("Webhook verified successfully");
