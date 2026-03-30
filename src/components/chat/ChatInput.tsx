@@ -253,6 +253,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     const tempId = crypto.randomUUID();
     const optimisticUrl = URL.createObjectURL(oggBlob);
 
+    // Show message instantly in chat
     onMessageSent?.({
       id: tempId,
       lead_id: leadId,
@@ -266,31 +267,27 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       reply_to_message_id: null,
     });
 
-    setUploading(true);
+    // Upload and send fully in background — no banner, no blocking
+    (async () => {
+      try {
+        console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
 
-    try {
-      console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
+        const url = await uploadFile(audioFile, "audio");
+        if (!url) { onMessageError?.(tempId); return; }
 
-      const url = await uploadFile(audioFile, "audio");
-      if (!url) {
+        const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+          body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
+        });
+
+        if (error || data?.error) {
+          onMessageError?.(tempId);
+          toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
+        }
+      } catch {
         onMessageError?.(tempId);
-        return;
+        toast.error("Erro ao enviar áudio");
       }
-
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
-      });
-
-      if (error || data?.error) {
-        onMessageError?.(tempId);
-        toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
-      }
-    } catch {
-      onMessageError?.(tempId);
-      toast.error("Erro ao enviar áudio");
-    } finally {
-      setUploading(false);
-    }
+    })();
   };
 
   const startRecording = async () => {
