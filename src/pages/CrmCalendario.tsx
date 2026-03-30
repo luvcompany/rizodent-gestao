@@ -77,17 +77,14 @@ export default function CrmCalendario() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const fetchTasks = useCallback(async () => {
-    const [tasksRes, profilesRes] = await Promise.all([
+    const [tasksRes, profilesRes, leadsRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("profiles").select("id, nome"),
+      supabase.from("crm_leads").select("id, name"),
     ]);
     const rawTasks = (tasksRes.data || []) as Task[];
-    const leadIds = [...new Set(rawTasks.map((t) => t.lead_id))];
-    if (leadIds.length > 0) {
-      const { data: leads } = await supabase.from("crm_leads").select("id, name").in("id", leadIds);
-      const nameMap = new Map((leads || []).map((l: any) => [l.id, l.name]));
-      rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
-    }
+    const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
+    rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
     setTasks(rawTasks);
     setProfiles((profilesRes.data as Profile[]) || []);
   }, []);
