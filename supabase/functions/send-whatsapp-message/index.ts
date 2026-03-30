@@ -240,19 +240,19 @@ Deno.serve(async (req) => {
 
       const mediaId = uploadData.id;
 
-      waBody.type = type;
-      if (type === "image") {
+      waBody.type = resolvedType;
+      if (resolvedType === "image") {
         waBody.image = { id: mediaId, caption: message || undefined };
-      } else if (type === "audio") {
+      } else if (resolvedType === "audio") {
         waBody.audio = { id: mediaId };
-      } else if (type === "video") {
+      } else if (resolvedType === "video") {
         waBody.video = { id: mediaId, caption: message || undefined };
-      } else if (type === "document") {
+      } else if (resolvedType === "document") {
         waBody.document = { id: mediaId, caption: message || undefined, filename: message || filename };
-      } else if (type === "sticker") {
+      } else if (resolvedType === "sticker") {
         waBody.sticker = { id: mediaId };
       } else {
-        return new Response(JSON.stringify({ error: `Unsupported media type: ${type}` }), {
+        return new Response(JSON.stringify({ error: `Unsupported media type: ${resolvedType}` }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
