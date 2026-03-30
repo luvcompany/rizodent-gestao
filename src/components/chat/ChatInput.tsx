@@ -43,7 +43,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [recordingTime, setRecordingTime] = useState(0);
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -253,6 +253,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     const tempId = crypto.randomUUID();
     const optimisticUrl = URL.createObjectURL(oggBlob);
 
+    // Show message instantly in chat
     onMessageSent?.({
       id: tempId,
       lead_id: leadId,
@@ -266,31 +267,27 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       reply_to_message_id: null,
     });
 
-    setUploading(true);
+    // Upload and send fully in background — no banner, no blocking
+    (async () => {
+      try {
+        console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
 
-    try {
-      console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
+        const url = await uploadFile(audioFile, "audio");
+        if (!url) { onMessageError?.(tempId); return; }
 
-      const url = await uploadFile(audioFile, "audio");
-      if (!url) {
+        const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+          body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
+        });
+
+        if (error || data?.error) {
+          onMessageError?.(tempId);
+          toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
+        }
+      } catch {
         onMessageError?.(tempId);
-        return;
+        toast.error("Erro ao enviar áudio");
       }
-
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
-      });
-
-      if (error || data?.error) {
-        onMessageError?.(tempId);
-        toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
-      }
-    } catch {
-      onMessageError?.(tempId);
-      toast.error("Erro ao enviar áudio");
-    } finally {
-      setUploading(false);
-    }
+    })();
   };
 
   const startRecording = async () => {
@@ -480,20 +477,20 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       ) : recording ? (
         <div className="flex items-center gap-3">
-          <button onClick={cancelRecording} className="p-2 text-destructive hover:text-destructive/80">
-            <X size={20} />
+          <button onClick={cancelRecording} className="p-2 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors" title="Cancelar gravação">
+            <Square size={18} />
           </button>
           <div className="flex-1 flex items-center gap-2">
             <span className={`w-3 h-3 rounded-full ${recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"}`} />
             <span className="text-sm font-medium text-foreground">
-              {recordingPaused ? "Gravação pausada" : "Gravando..."} {formatTime(recordingTime)}
+              {recordingPaused ? "Pausado" : "Gravando"} {formatTime(recordingTime)}
             </span>
           </div>
-          <button onClick={togglePauseRecording} className="p-2 text-muted-foreground hover:text-primary transition-colors">
+          <button onClick={togglePauseRecording} className="p-2 text-muted-foreground hover:text-primary transition-colors" title={recordingPaused ? "Retomar" : "Pausar"}>
             {recordingPaused ? <Play size={18} /> : <Pause size={18} />}
           </button>
-          <Button size="icon" onClick={stopRecording} variant="default">
-            <Square size={16} />
+          <Button size="icon" onClick={stopRecording} variant="default" title="Enviar áudio">
+            <Send size={16} />
           </Button>
         </div>
       ) : (
