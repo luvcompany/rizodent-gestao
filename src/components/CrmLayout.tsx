@@ -98,8 +98,8 @@ const CrmLayout = () => {
         </nav>
       </aside>
 
-      <div className={`flex flex-1 flex-col transition-all ${sidebarCollapsed ? "lg:ml-0" : "lg:ml-64"}`}>
-        <header className="flex h-16 items-center gap-4 border-b border-border px-6">
+      <div className={`flex min-w-0 flex-1 flex-col transition-all ${sidebarCollapsed ? "lg:pl-0" : "lg:pl-64"}`}>
+        <header className="flex min-w-0 h-16 items-center gap-4 border-b border-border px-6">
           <button
             className="text-foreground lg:hidden"
             onClick={() => setSidebarOpen(true)}
@@ -111,7 +111,7 @@ const CrmLayout = () => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden p-6">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-6">
           <Outlet />
         </main>
       </div>
