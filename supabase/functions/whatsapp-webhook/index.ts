@@ -15,8 +15,6 @@ async function downloadAndStoreMedia(
 ): Promise<string | null> {
   try {
     console.log(`[MEDIA] Buscando media_id: ${mediaId}`);
-
-    // Step 1: Get temporary URL from Meta
     const metaRes = await fetch(`https://graph.facebook.com/v25.0/${mediaId}`, {
       headers: { Authorization: `Bearer ${whatsappToken}` },
     });
@@ -38,7 +36,6 @@ async function downloadAndStoreMedia(
       return null;
     }
 
-    // Step 2: Download the file
     console.log(`[MEDIA] Fazendo download da URL: ${downloadUrl}`);
     const fileRes = await fetch(downloadUrl, {
       headers: { Authorization: `Bearer ${whatsappToken}` },
@@ -50,7 +47,6 @@ async function downloadAndStoreMedia(
     const fileBlob = await fileRes.blob();
     console.log(`[MEDIA] Download concluído: ${fileBlob.size} bytes, tipo: ${mimeType}`);
 
-    // Determine extension from mime type
     const extMap: Record<string, string> = {
       "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
       "audio/ogg": "ogg", "audio/ogg; codecs=opus": "ogg", "audio/mpeg": "mp3",
@@ -63,7 +59,6 @@ async function downloadAndStoreMedia(
     const ext = extMap[mimeType] || mimeType.split("/").pop() || "bin";
     const path = `${msgType}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
-    // Step 3: Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from("chat-media")
       .upload(path, fileBlob, { contentType: mimeType });
@@ -99,7 +94,6 @@ Deno.serve(async (req) => {
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
-    // Try verify token from integrations table first, fallback to env var
     let verifyToken = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "";
     try {
       const { data: integrations } = await supabase
@@ -164,14 +158,12 @@ Deno.serve(async (req) => {
             console.log(`[WEBHOOK] Integração encontrada: ${matchedIntegration.key} para phone_number_id ${incomingPhoneNumberId}`);
           }
 
-          // Extract contact name and referral (ad) info from payload
           const contacts = value?.contacts || [];
           const contactName = contacts[0]?.profile?.name || null;
 
-          // Handle incoming messages
           const messages = value?.messages || [];
           for (const msg of messages) {
-            const from = msg.from; // sender phone number
+            const from = msg.from;
             const msgType = msg.type || "text";
             let content = "";
             let mediaId: string | null = null;
@@ -211,7 +203,6 @@ Deno.serve(async (req) => {
                 }
                 break;
               case "reaction": {
-                // Handle reactions: update the target message's reactions column instead of inserting a new message
                 const reactionEmoji = msg.reaction?.emoji || "";
                 const reactionWamid = msg.reaction?.message_id;
                 if (reactionWamid) {
@@ -223,18 +214,16 @@ Deno.serve(async (req) => {
                   if (targetMsg) {
                     const existing = Array.isArray(targetMsg.reactions) ? targetMsg.reactions : [];
                     if (reactionEmoji) {
-                      // Add reaction
                       const updated = [...existing, { emoji: reactionEmoji, from: from }];
                       await supabase.from("messages").update({ reactions: updated }).eq("id", targetMsg.id);
                     } else {
-                      // Empty emoji = remove reaction from this sender
                       const updated = existing.filter((r: any) => r.from !== from);
                       await supabase.from("messages").update({ reactions: updated }).eq("id", targetMsg.id);
                     }
                     console.log(`[WEBHOOK] Reaction ${reactionEmoji || "removed"} on message ${targetMsg.id}`);
                   }
                 }
-                continue; // Skip normal message insertion for reactions
+                continue;
               }
               case "location":
                 content = `📍 Localização: ${msg.location?.latitude}, ${msg.location?.longitude}`;
@@ -259,15 +248,16 @@ Deno.serve(async (req) => {
                 break;
             }
 
-            // Extract referral (ad) info - Meta sends this alongside the message when lead comes from an ad
-            const referral = msg.referral || null;
-            const adHeadline = referral?.headline || referral?.body || null;
+            // Extract referral (ad) info - comes in context.referral or msg.referral
+            const referral = msg.referral || msg.context?.referral || null;
+            const adHeadline = referral?.headline || null;
+            const adBody = referral?.body || null;
+            const adImageUrl = referral?.image_url || null;
             const adSourceUrl = referral?.source_url || null;
             const adSourceId = referral?.source_id || null;
 
             // Download and store media if present
             let mediaUrl: string | null = null;
-            // Use token from matched integration config, fallback to env var
             const whatsappToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
             if (mediaId && MEDIA_TYPES.has(msgType)) {
               mediaUrl = await downloadAndStoreMedia(mediaId, msgType, whatsappToken, supabase);
@@ -276,14 +266,13 @@ Deno.serve(async (req) => {
             // Find or create lead by phone
             let { data: lead } = await supabase
               .from("crm_leads")
-              .select("id, name")
+              .select("id, name, source")
               .eq("phone", from)
               .maybeSingle();
 
             if (!lead) {
               const leadName = contactName || `Lead WhatsApp ${from}`;
 
-              // Find pipeline linked to this integration via funnel_channels
               let pipelineId: string | null = null;
               if (matchedIntegration) {
                 const { data: funnelChannel } = await supabase
@@ -318,22 +307,30 @@ Deno.serve(async (req) => {
 
                 if (stage) {
                   const insertData: any = {
-                      name: leadName,
-                      phone: from,
-                      pipeline_id: pipelineId,
-                      stage_id: stage.id,
-                      source: referral ? "facebook_ad" : "whatsapp",
+                    name: leadName,
+                    phone: from,
+                    pipeline_id: pipelineId,
+                    stage_id: stage.id,
+                    source: referral ? "facebook_ad" : "whatsapp",
                   };
-                  if (adHeadline) insertData.nome_anuncio = adHeadline;
+                  // Save ad referral data if present
+                  if (referral) {
+                    if (adHeadline) insertData.titulo_anuncio = adHeadline;
+                    if (adHeadline) insertData.nome_anuncio = adHeadline;
+                    if (adBody) insertData.descricao_anuncio = adBody;
+                    if (adImageUrl) insertData.imagem_origem = adImageUrl;
+                    if (adSourceUrl) insertData.link_anuncio = adSourceUrl;
+                    if (adSourceId) insertData.ad_id = adSourceId;
+                  }
 
                   const { data: newLead } = await supabase
                     .from("crm_leads")
                     .insert(insertData)
-                    .select("id, name")
+                    .select("id, name, source")
                     .single();
 
                   lead = newLead;
-                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, anuncio: ${adHeadline || 'N/A'}`);
+                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
                 }
               }
             } else {
@@ -342,8 +339,15 @@ Deno.serve(async (req) => {
               if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
                 updates.name = contactName;
               }
-              if (referral && adHeadline) {
-                updates.nome_anuncio = adHeadline;
+              if (referral) {
+                if (adHeadline) {
+                  updates.titulo_anuncio = adHeadline;
+                  updates.nome_anuncio = adHeadline;
+                }
+                if (adBody) updates.descricao_anuncio = adBody;
+                if (adImageUrl) updates.imagem_origem = adImageUrl;
+                if (adSourceUrl) updates.link_anuncio = adSourceUrl;
+                if (adSourceId) updates.ad_id = adSourceId;
                 if (!lead.source || lead.source === "whatsapp") updates.source = "facebook_ad";
               }
               if (Object.keys(updates).length > 0) {
@@ -354,7 +358,6 @@ Deno.serve(async (req) => {
             }
 
             if (lead) {
-              // Resolve reply_to_message_id from WhatsApp context
               let replyToMessageId = null;
               if (msg.context?.id) {
                 const { data: replyTarget } = await supabase
@@ -383,7 +386,6 @@ Deno.serve(async (req) => {
                 console.log(`[WEBHOOK] Mensagem salva: ${JSON.stringify(savedMsg)}`);
               }
 
-              // Update lead with last message info + last_inbound_at + reset follow_up_count
               await supabase.from("crm_leads").update({
                 last_message: content || `[${msgType}]`,
                 last_message_at: new Date().toISOString(),
@@ -393,7 +395,7 @@ Deno.serve(async (req) => {
 
               console.log(`[WEBHOOK] Message received from ${from}, lead ${lead.id}, type: ${msgType}, media_url: ${mediaUrl}`);
 
-              // Trigger bot-engine for inbound message (fire-and-forget)
+              // Trigger bot-engine for inbound message
               try {
                 const botUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/bot-engine`;
                 fetch(botUrl, {
@@ -420,7 +422,7 @@ Deno.serve(async (req) => {
           const statuses = value?.statuses || [];
           for (const status of statuses) {
             const messageId = status.id;
-            const statusValue = status.status; // sent, delivered, read, failed
+            const statusValue = status.status;
             console.log(`Status update: ${messageId} -> ${statusValue}`);
           }
         }
@@ -430,9 +432,9 @@ Deno.serve(async (req) => {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    } catch (err) {
-      console.error("Error processing webhook:", err);
-      return new Response(JSON.stringify({ error: err.message }), {
+    } catch (error) {
+      console.error("Webhook error:", error);
+      return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
