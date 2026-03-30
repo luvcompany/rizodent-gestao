@@ -75,7 +75,7 @@ export default function CrmIntegracoes() {
     const idx = whatsappEntries.length + 1;
     setEditEntry({
       key: `whatsapp_${idx}`,
-      config: { ...defaultConfig, display_name: `WhatsApp ${idx}`, webhook_verify_token: crypto.randomUUID().slice(0, 16) },
+      config: { ...defaultConfig, display_name: `WhatsApp ${idx}` },
       status: "disconnected",
     });
   };
