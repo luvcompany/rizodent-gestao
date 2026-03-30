@@ -282,7 +282,6 @@ export default function CrmKanban() {
             onApply={setKanbanFilters}
             pipelines={pipelines}
           />
-          </button>
           <div className="relative">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
