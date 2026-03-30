@@ -140,20 +140,28 @@ Deno.serve(async (req) => {
           const value = change?.value;
           if (!value) continue;
 
-          // Filter by configured phone_number_id
+          // Find the matching integration by phone_number_id
           const incomingPhoneNumberId = value?.metadata?.phone_number_id;
-          if (incomingPhoneNumberId) {
-            const { data: integration } = await supabase
-              .from("integrations")
-              .select("config")
-              .eq("key", "whatsapp_config")
-              .maybeSingle();
+          let matchedIntegration: any = null;
 
-            const configuredPhoneNumberId = (integration?.config as any)?.phone_number_id;
-            if (configuredPhoneNumberId && configuredPhoneNumberId !== incomingPhoneNumberId) {
-              console.log(`[WEBHOOK] Ignorando: phone_number_id ${incomingPhoneNumberId} != configurado ${configuredPhoneNumberId}`);
+          if (incomingPhoneNumberId) {
+            const { data: allIntegrations } = await supabase
+              .from("integrations")
+              .select("id, key, config")
+              .like("key", "whatsapp_%");
+
+            if (allIntegrations) {
+              matchedIntegration = allIntegrations.find((intg: any) => {
+                const cfg = intg.config as any;
+                return cfg?.phone_number_id === incomingPhoneNumberId;
+              });
+            }
+
+            if (!matchedIntegration) {
+              console.log(`[WEBHOOK] Nenhuma integração encontrada para phone_number_id ${incomingPhoneNumberId}`);
               continue;
             }
+            console.log(`[WEBHOOK] Integração encontrada: ${matchedIntegration.key} para phone_number_id ${incomingPhoneNumberId}`);
           }
 
           // Extract contact name from payload
@@ -253,7 +261,8 @@ Deno.serve(async (req) => {
 
             // Download and store media if present
             let mediaUrl: string | null = null;
-            const whatsappToken = Deno.env.get("WHATSAPP_TOKEN") || "";
+            // Use token from matched integration config, fallback to env var
+            const whatsappToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
             if (mediaId && MEDIA_TYPES.has(msgType)) {
               mediaUrl = await downloadAndStoreMedia(mediaId, msgType, whatsappToken, supabase);
             }
@@ -266,20 +275,37 @@ Deno.serve(async (req) => {
               .maybeSingle();
 
             if (!lead) {
-              // Use contact name from Meta payload, fallback to phone
               const leadName = contactName || `Lead WhatsApp ${from}`;
 
-              const { data: pipeline } = await supabase
-                .from("crm_pipelines")
-                .select("id")
-                .limit(1)
-                .single();
+              // Find pipeline linked to this integration via funnel_channels
+              let pipelineId: string | null = null;
+              if (matchedIntegration) {
+                const { data: funnelChannel } = await supabase
+                  .from("funnel_channels")
+                  .select("pipeline_id")
+                  .eq("channel_type", "whatsapp")
+                  .eq("channel_config->>integration_key", matchedIntegration.key)
+                  .maybeSingle();
+                if (funnelChannel) {
+                  pipelineId = funnelChannel.pipeline_id;
+                  console.log(`[WEBHOOK] Pipeline do funnel_channels: ${pipelineId}`);
+                }
+              }
 
-              if (pipeline) {
+              if (!pipelineId) {
+                const { data: fallbackPipeline } = await supabase
+                  .from("crm_pipelines")
+                  .select("id")
+                  .limit(1)
+                  .single();
+                pipelineId = fallbackPipeline?.id || null;
+              }
+
+              if (pipelineId) {
                 const { data: stage } = await supabase
                   .from("crm_stages")
                   .select("id")
-                  .eq("pipeline_id", pipeline.id)
+                  .eq("pipeline_id", pipelineId)
                   .order("position", { ascending: true })
                   .limit(1)
                   .single();
@@ -290,7 +316,7 @@ Deno.serve(async (req) => {
                     .insert({
                       name: leadName,
                       phone: from,
-                      pipeline_id: pipeline.id,
+                      pipeline_id: pipelineId,
                       stage_id: stage.id,
                       source: "whatsapp",
                     })
@@ -298,9 +324,10 @@ Deno.serve(async (req) => {
                     .single();
 
                   lead = newLead;
-                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), id: ${newLead?.id}`);
+                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}`);
                 }
               }
+            }
             } else if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
               // Update auto-generated name with real contact name (don't overwrite manual edits)
               await supabase.from("crm_leads").update({ name: contactName }).eq("id", lead.id);
