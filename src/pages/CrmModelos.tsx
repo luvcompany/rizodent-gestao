@@ -124,7 +124,7 @@ export default function CrmModelos() {
     if (template.meta_template_id) {
       try {
         const { error } = await supabase.functions.invoke("manage-whatsapp-templates", {
-          body: { action: "delete", template_name: template.name },
+          body: { action: "delete", template_name: template.name, integration_key: selectedIntegration },
         });
         if (error) {
           toast.error("Erro ao deletar na Meta. Removendo apenas localmente.");
