@@ -315,12 +315,22 @@ export default function CrmConversas() {
   const filtered = useMemo(() => {
     return leads.filter((l) => {
       // Search
-      if (search) {
-        const s = search.toLowerCase();
-        if (!l.name.toLowerCase().includes(s) && !l.phone?.includes(s) && !l.last_message?.toLowerCase().includes(s)) return false;
+      const normalizedSearch = search.trim().toLowerCase();
+      if (normalizedSearch) {
+        const searchDigits = normalizedSearch.replace(/\D/g, "");
+        const phoneRaw = l.phone || "";
+        const phoneDigits = phoneRaw.replace(/\D/g, "");
+        const matchesText =
+          l.name.toLowerCase().includes(normalizedSearch) ||
+          phoneRaw.toLowerCase().includes(normalizedSearch) ||
+          (l.last_message || "").toLowerCase().includes(normalizedSearch);
+        const matchesPhone = searchDigits.length >= 3 && phoneDigits.includes(searchDigits);
+
+        if (!matchesText && !matchesPhone) return false;
       }
       // Date filter
-      if (filters.dateRange && l.last_message_at) {
+      if (filters.dateRange) {
+        if (!l.last_message_at) return false;
         const msgDate = new Date(l.last_message_at);
         if (filters.dateRange === "today" && !isToday(msgDate)) return false;
         if (filters.dateRange === "yesterday" && !isYesterday(msgDate)) return false;
@@ -335,6 +345,9 @@ export default function CrmConversas() {
         }
       }
       if (filters.stageId && l.stage_id !== filters.stageId) return false;
+      if (filters.status === "open" && l.last_direction !== "inbound") return false;
+      if (filters.status === "replied" && l.last_direction !== "outbound") return false;
+      if (filters.status === "no_reply" && !!l.last_direction) return false;
       if (filters.tags.length && !filters.tags.some((t) => l.tags?.includes(t))) return false;
       if (filters.source && l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
       return true;
