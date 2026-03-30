@@ -388,6 +388,7 @@ export default function CrmConversas() {
                     allTags={allTags}
                     filters={filters}
                     onApply={setFilters}
+                    pipelines={pipelines}
                   />
                   <span className="text-xs text-muted-foreground">{filtered.length}</span>
                 </div>
