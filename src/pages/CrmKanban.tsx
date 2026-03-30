@@ -274,8 +274,14 @@ export default function CrmKanban() {
               <List size={16} />
             </button>
           </div>
-          <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 transition-colors">
-            <Filter size={14} /> Filtro
+          <ConversationFilters
+            stages={stages}
+            profiles={profiles}
+            allTags={allTags}
+            filters={kanbanFilters}
+            onApply={setKanbanFilters}
+            pipelines={pipelines}
+          />
           </button>
           <div className="relative">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
