@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id } = await req.json();
+    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id, audio_voice = false } = await req.json();
 
     if (!lead_id || !to) {
       return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
@@ -181,13 +181,21 @@ Deno.serve(async (req) => {
       }
       const fileBlob = await fileResponse.blob();
       
-      const urlParts = media_url.split("/");
-      const filename = urlParts[urlParts.length - 1] || "file";
+      let filename = "file";
+      try {
+        const parsedUrl = new URL(media_url);
+        filename = decodeURIComponent(parsedUrl.pathname.split("/").pop() || "file");
+      } catch {
+        const cleanUrl = media_url.split("?")[0];
+        const urlParts = cleanUrl.split("/");
+        filename = urlParts[urlParts.length - 1] || "file";
+      }
+
       const ext = filename.split(".").pop()?.toLowerCase() || "";
 
       // Content type mapping — audio files are now pre-converted to OGG/OPUS on client
       const contentTypeMap: Record<string, string> = {
-        ogg: "audio/ogg", opus: "audio/ogg",
+        ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg",
         webm: type === "audio" ? "audio/ogg" : "video/webm",
         mp3: "audio/mpeg", m4a: "audio/mp4",
         wav: "audio/wav", aac: "audio/aac",
@@ -201,8 +209,8 @@ Deno.serve(async (req) => {
       const contentType = contentTypeMap[ext] || fileResponse.headers.get("content-type") || "application/octet-stream";
 
       // Force audio type detection from file extension/content-type
-      const audioExtensions = new Set(["ogg", "opus", "mp3", "m4a", "wav", "aac", "webm"]);
-      const isAudioFile = audioExtensions.has(ext) || contentType.startsWith("audio/");
+      const audioExtensions = new Set(["ogg", "oga", "opus", "mp3", "m4a", "wav", "aac", "webm", "amr"]);
+      const isAudioFile = type === "audio" || audioExtensions.has(ext) || contentType.toLowerCase().startsWith("audio/");
       if (isAudioFile && type !== "audio") {
         console.log(`[send-whatsapp] Correcting type from "${type}" to "audio" based on file: ${filename}`);
       }
@@ -246,7 +254,7 @@ Deno.serve(async (req) => {
       if (resolvedType === "image") {
         waBody.image = { id: mediaId, caption: message || undefined };
       } else if (resolvedType === "audio") {
-        waBody.audio = { id: mediaId };
+        waBody.audio = audio_voice ? { id: mediaId, voice: true } : { id: mediaId };
       } else if (resolvedType === "video") {
         waBody.video = { id: mediaId, caption: message || undefined };
       } else if (resolvedType === "document") {
