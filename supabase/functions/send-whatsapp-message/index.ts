@@ -146,6 +146,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    let finalType = type; // may be corrected for audio files
     let waBody: any = { messaging_product: "whatsapp", to };
 
     // Add reply context
@@ -199,11 +200,20 @@ Deno.serve(async (req) => {
       };
       const contentType = contentTypeMap[ext] || fileResponse.headers.get("content-type") || "application/octet-stream";
 
-      // Audio files should already be OGG/OPUS from client — use real content type
-      const uploadFilename = filename;
-      const uploadContentType = contentType;
+      // Force audio type detection from file extension/content-type
+      const audioExtensions = new Set(["ogg", "opus", "mp3", "m4a", "wav", "aac", "webm"]);
+      const isAudioFile = audioExtensions.has(ext) || contentType.startsWith("audio/");
+      if (isAudioFile && type !== "audio") {
+        console.log(`[send-whatsapp] Correcting type from "${type}" to "audio" based on file: ${filename}`);
+      }
+      finalType = isAudioFile ? "audio" : type;
+      const resolvedType = finalType;
 
-      console.log(`[send-whatsapp] Uploading to Meta: filename=${uploadFilename}, contentType=${uploadContentType}, size=${fileBlob.size}`);
+      // For audio, always force OGG content type for Meta compatibility
+      const uploadFilename = resolvedType === "audio" ? filename.replace(/\.\w+$/, ".ogg") : filename;
+      const uploadContentType = resolvedType === "audio" ? "audio/ogg" : contentType;
+
+      console.log(`[send-whatsapp] Uploading to Meta: filename=${uploadFilename}, contentType=${uploadContentType}, size=${fileBlob.size}, resolvedType=${resolvedType}`);
 
       // Upload to Meta
       const formData = new FormData();
@@ -232,19 +242,19 @@ Deno.serve(async (req) => {
 
       const mediaId = uploadData.id;
 
-      waBody.type = type;
-      if (type === "image") {
+      waBody.type = resolvedType;
+      if (resolvedType === "image") {
         waBody.image = { id: mediaId, caption: message || undefined };
-      } else if (type === "audio") {
+      } else if (resolvedType === "audio") {
         waBody.audio = { id: mediaId };
-      } else if (type === "video") {
+      } else if (resolvedType === "video") {
         waBody.video = { id: mediaId, caption: message || undefined };
-      } else if (type === "document") {
+      } else if (resolvedType === "document") {
         waBody.document = { id: mediaId, caption: message || undefined, filename: message || filename };
-      } else if (type === "sticker") {
+      } else if (resolvedType === "sticker") {
         waBody.sticker = { id: mediaId };
       } else {
-        return new Response(JSON.stringify({ error: `Unsupported media type: ${type}` }), {
+        return new Response(JSON.stringify({ error: `Unsupported media type: ${resolvedType}` }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -278,10 +288,11 @@ Deno.serve(async (req) => {
     // Save message to DB
     const sentWamid = waData?.messages?.[0]?.id || null;
     const dbContent = type === "template" ? `📋 Template: ${template_name}` : (message || null);
+    const dbType = type === "template" ? "text" : finalType;
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,
       direction: "outbound",
-      type: type === "template" ? "text" : type,
+      type: dbType,
       content: dbContent,
       media_url: media_url || null,
       status: "sent",
@@ -296,7 +307,7 @@ Deno.serve(async (req) => {
     }
 
     await supabase.from("crm_leads").update({
-      last_message: message || `[${type}]`,
+      last_message: message || `[${finalType}]`,
       last_message_at: new Date().toISOString(),
     }).eq("id", lead_id);
 
