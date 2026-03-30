@@ -26,7 +26,7 @@ import ConversationFilters, { type ConversationFilterValues, emptyFilters } from
 import {
   Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen
 } from "lucide-react";
-import { formatDistanceToNow, isToday, isYesterday, subDays, isAfter } from "date-fns";
+import { formatDistanceToNow, isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 type LeadConversation = {
@@ -38,6 +38,7 @@ type LeadConversation = {
   tags: string[] | null;
   source: string | null;
   stage_id: string;
+  pipeline_id: string;
   value: number | null;
   notes: string | null;
   created_at: string;
@@ -81,6 +82,7 @@ export default function CrmConversas() {
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   const [filters, setFilters] = useState<ConversationFilterValues>(emptyFilters);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -104,13 +106,14 @@ export default function CrmConversas() {
   // Fetch leads list with last message direction
   useEffect(() => {
     const fetchLeads = async () => {
-      const [leadsRes, stagesRes, profilesRes] = await Promise.all([
+      const [leadsRes, stagesRes, profilesRes, pipelinesRes] = await Promise.all([
         supabase
           .from("crm_leads")
-          .select("id, name, phone, last_message, last_message_at, tags, source, stage_id, value, notes, created_at, updated_at")
+          .select("id, name, phone, last_message, last_message_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at")
           .order("last_message_at", { ascending: false, nullsFirst: false }),
         supabase.from("crm_stages").select("*").order("position"),
         supabase.from("profiles").select("id, nome"),
+        supabase.from("crm_pipelines").select("id, name").order("created_at"),
       ]);
       const rawLeads = (leadsRes.data || []) as LeadConversation[];
 
@@ -136,6 +139,7 @@ export default function CrmConversas() {
       setLeads(rawLeads);
       setStages((stagesRes.data as Stage[]) || []);
       setProfiles((profilesRes.data as { id: string; nome: string }[]) || []);
+      setPipelines((pipelinesRes.data as { id: string; name: string }[]) || []);
       setLoading(false);
     };
     fetchLeads();
@@ -335,6 +339,15 @@ export default function CrmConversas() {
         if (filters.dateRange === "today" && !isToday(msgDate)) return false;
         if (filters.dateRange === "yesterday" && !isYesterday(msgDate)) return false;
         if (filters.dateRange === "7days" && !isAfter(msgDate, subDays(new Date(), 7))) return false;
+        if (filters.dateRange === "this_month") {
+          const start = startOfMonth(new Date());
+          if (msgDate < start) return false;
+        }
+        if (filters.dateRange === "last_month") {
+          const start = startOfMonth(subMonths(new Date(), 1));
+          const end = endOfMonth(subMonths(new Date(), 1));
+          if (msgDate < start || msgDate > end) return false;
+        }
         if (filters.dateRange === "custom") {
           if (filters.customDateFrom && msgDate < filters.customDateFrom) return false;
           if (filters.customDateTo) {
@@ -344,6 +357,8 @@ export default function CrmConversas() {
           }
         }
       }
+      // Pipeline filter
+      if (filters.pipelineId && l.pipeline_id !== filters.pipelineId) return false;
       if (filters.stageId && l.stage_id !== filters.stageId) return false;
       if (filters.status === "open" && l.last_direction !== "inbound") return false;
       if (filters.status === "replied" && l.last_direction !== "outbound") return false;
@@ -373,6 +388,7 @@ export default function CrmConversas() {
                     allTags={allTags}
                     filters={filters}
                     onApply={setFilters}
+                    pipelines={pipelines}
                   />
                   <span className="text-xs text-muted-foreground">{filtered.length}</span>
                 </div>

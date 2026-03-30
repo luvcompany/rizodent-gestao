@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -11,10 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import ConversationFilters, { type ConversationFilterValues, emptyFilters, countActive } from "@/components/chat/ConversationFilters";
 import {
-  Plus, Filter, LayoutGrid, List, Zap, Search,
-  Calendar, AlertTriangle, Clock, TrendingUp, Users
+  Plus, LayoutGrid, List, Zap, Search,
+  Calendar, AlertTriangle, Clock, TrendingUp, Users, MessageSquare
 } from "lucide-react";
+import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 type Stage = {
   id: string;
@@ -65,6 +67,8 @@ export default function CrmKanban() {
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [searchTerm, setSearchTerm] = useState("");
+  const [kanbanFilters, setKanbanFilters] = useState<ConversationFilterValues>(emptyFilters);
+  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
@@ -79,9 +83,13 @@ export default function CrmKanban() {
 
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
     setLoading(true);
-    const { data: allPipelines } = await supabase.from("crm_pipelines").select("*").order("created_at");
-    const pList = (allPipelines as Pipeline[]) || [];
+    const [pipelinesRes, profilesRes] = await Promise.all([
+      supabase.from("crm_pipelines").select("*").order("created_at"),
+      supabase.from("profiles").select("id, nome"),
+    ]);
+    const pList = (pipelinesRes.data as Pipeline[]) || [];
     setPipelines(pList);
+    setProfiles((profilesRes.data as { id: string; nome: string }[]) || []);
     const p = selectedPipelineId
       ? pList.find(pp => pp.id === selectedPipelineId) || pList[0]
       : pList[0];
@@ -170,16 +178,52 @@ export default function CrmKanban() {
     fetchData(pipeline.id);
   };
 
+  // Apply filters to leads
+  const applyFilters = useCallback((list: Lead[]) => {
+    return list.filter((l) => {
+      if (searchTerm) {
+        const s = searchTerm.toLowerCase();
+        if (!l.name.toLowerCase().includes(s) && !l.phone?.includes(s)) return false;
+      }
+      if (kanbanFilters.dateRange) {
+        const d = new Date(l.created_at);
+        if (kanbanFilters.dateRange === "today" && !isToday(d)) return false;
+        if (kanbanFilters.dateRange === "yesterday" && !isYesterday(d)) return false;
+        if (kanbanFilters.dateRange === "7days" && !isAfter(d, subDays(new Date(), 7))) return false;
+        if (kanbanFilters.dateRange === "this_month" && d < startOfMonth(new Date())) return false;
+        if (kanbanFilters.dateRange === "last_month") {
+          const start = startOfMonth(subMonths(new Date(), 1));
+          const end = endOfMonth(subMonths(new Date(), 1));
+          if (d < start || d > end) return false;
+        }
+        if (kanbanFilters.dateRange === "custom") {
+          if (kanbanFilters.customDateFrom && d < kanbanFilters.customDateFrom) return false;
+          if (kanbanFilters.customDateTo) {
+            const e = new Date(kanbanFilters.customDateTo);
+            e.setHours(23, 59, 59, 999);
+            if (d > e) return false;
+          }
+        }
+      }
+      if (kanbanFilters.stageId && l.stage_id !== kanbanFilters.stageId) return false;
+      if (kanbanFilters.tags.length && !kanbanFilters.tags.some((t) => l.tags?.includes(t))) return false;
+      if (kanbanFilters.source && l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
+      return true;
+    });
+  }, [searchTerm, kanbanFilters]);
+
   const getLeadsForStage = (stageId: string) => {
-    let filtered = leads.filter(l => l.stage_id === stageId);
-    if (searchTerm) {
-      const s = searchTerm.toLowerCase();
-      filtered = filtered.filter(l => l.name.toLowerCase().includes(s) || l.phone?.includes(s));
-    }
+    const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
     return filtered.sort((a, b) => a.position - b.position);
   };
 
-  const totalLeads = leads.length;
+  const allFilteredLeads = useMemo(() => applyFilters(leads), [leads, applyFilters]);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    leads.forEach((l) => l.tags?.forEach((t: string) => set.add(t)));
+    return Array.from(set);
+  }, [leads]);
   const totalValue = leads.reduce((acc, l) => acc + (l.value || 0), 0);
   const withTaskToday = leads.filter(l => l.has_task && !l.task_overdue).length;
   const noTasks = leads.filter(l => !l.has_task).length;
@@ -230,9 +274,14 @@ export default function CrmKanban() {
               <List size={16} />
             </button>
           </div>
-          <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 transition-colors">
-            <Filter size={14} /> Filtro
-          </button>
+          <ConversationFilters
+            stages={stages}
+            profiles={profiles}
+            allTags={allTags}
+            filters={kanbanFilters}
+            onApply={setKanbanFilters}
+            pipelines={pipelines}
+          />
           <div className="relative">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -244,7 +293,7 @@ export default function CrmKanban() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{totalLeads} leads: <span className="text-primary font-semibold">{formatCurrency(totalValue)}</span></span>
+          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{allFilteredLeads.length} leads: <span className="text-primary font-semibold">{formatCurrency(totalValue)}</span></span>
           <Button variant="outline" size="sm" onClick={() => navigate("/crm/relatorios")}>
             <TrendingUp size={14} className="mr-1" /> RELATÓRIOS
           </Button>
@@ -267,95 +316,166 @@ export default function CrmKanban() {
       </div>
 
       {/* Kanban area - SCROLLABLE horizontally */}
-      <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }} className="p-4">
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex gap-3 h-full min-w-max">
-            {stages.map((stage, idx) => {
-              const stageLeads = getLeadsForStage(stage.id);
-              const stageValue = stageLeads.reduce((a, l) => a + (l.value || 0), 0);
-              return (
-                <div key={stage.id} className="flex items-start gap-1">
-                  <div className="w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
-                    <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
-                    <div className="px-3 py-2 flex-shrink-0">
-                      <div className="font-semibold text-sm text-foreground">{stage.name}</div>
-                      <div className="text-xs text-muted-foreground">{stageLeads.length} leads · {formatCurrency(stageValue)}</div>
-                    </div>
-
-                    {idx === 0 && (
-                      <div className="px-2 pb-1 flex-shrink-0">
-                        <button
-                          onClick={() => { setNewLead(p => ({ ...p, stage_id: stage.id })); setNewLeadOpen(true); }}
-                          className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1 flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <Plus size={12} /> Adição rápida
-                        </button>
+      {viewMode === "kanban" ? (
+        <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }} className="p-4">
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <div className="flex gap-3 h-full min-w-max">
+              {stages.map((stage, idx) => {
+                const stageLeads = getLeadsForStage(stage.id);
+                const stageValue = stageLeads.reduce((a, l) => a + (l.value || 0), 0);
+                return (
+                  <div key={stage.id} className="flex items-start gap-1">
+                    <div className="w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
+                      <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
+                      <div className="px-3 py-2 flex-shrink-0">
+                        <div className="font-semibold text-sm text-foreground">{stage.name}</div>
+                        <div className="text-xs text-muted-foreground">{stageLeads.length} leads · {formatCurrency(stageValue)}</div>
                       </div>
-                    )}
 
-                    <Droppable droppableId={stage.id}>
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          className={`flex-1 overflow-y-auto px-2 pb-2 min-h-[100px] ${snapshot.isDraggingOver ? "bg-primary/5" : ""}`}
-                        >
-                          {stageLeads.map((lead, lIdx) => (
-                            <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
-                              {(prov, snap) => (
-                                <Link
-                                  to={`/crm/conversa/${lead.id}`}
-                                  ref={prov.innerRef}
-                                  {...prov.draggableProps}
-                                  {...prov.dragHandleProps}
-                                  className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
-                                >
-                                  <div className="flex items-start justify-between mb-1">
-                                    <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
-                                    <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
-                                      {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-                                    </span>
-                                  </div>
-                                  <div className="text-xs text-primary mb-1.5 cursor-pointer hover:underline">
-                                    Lead #{lead.id.slice(0, 8)}
-                                  </div>
-                                  {lead.tags && lead.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mb-2">
-                                      {lead.tags.map(tag => (
-                                        <span key={tag} className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">#{tag}</span>
-                                      ))}
-                                    </div>
-                                  )}
-                                  <div className="flex items-center justify-between">
-                                    {lead.value ? <span className="text-xs font-medium text-primary">{formatCurrency(lead.value)}</span> : <span />}
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
-                                      {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
-                                    </span>
-                                  </div>
-                                </Link>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
+                      {idx === 0 && (
+                        <div className="px-2 pb-1 flex-shrink-0">
+                          <button
+                            onClick={() => { setNewLead(p => ({ ...p, stage_id: stage.id })); setNewLeadOpen(true); }}
+                            className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1 flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <Plus size={12} /> Adição rápida
+                          </button>
                         </div>
                       )}
-                    </Droppable>
-                  </div>
 
-                  {idx < stages.length - 1 && (
-                    <button
-                      onClick={() => { setNewStageInsertIdx(idx); setNewStageOpen(true); }}
-                      className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors"
-                    >
-                      +
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                      <Droppable droppableId={stage.id}>
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className={`flex-1 overflow-y-auto px-2 pb-2 min-h-[100px] ${snapshot.isDraggingOver ? "bg-primary/5" : ""}`}
+                          >
+                            {stageLeads.map((lead, lIdx) => (
+                              <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
+                                {(prov, snap) => (
+                                  <Link
+                                    to={`/crm/conversa/${lead.id}`}
+                                    ref={prov.innerRef}
+                                    {...prov.draggableProps}
+                                    {...prov.dragHandleProps}
+                                    className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
+                                  >
+                                    <div className="flex items-start justify-between mb-1">
+                                      <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
+                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
+                                        {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-primary mb-1.5 cursor-pointer hover:underline">
+                                      Lead #{lead.id.slice(0, 8)}
+                                    </div>
+                                    {lead.tags && lead.tags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mb-2">
+                                        {lead.tags.map(tag => (
+                                          <span key={tag} className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">#{tag}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div className="flex items-center justify-between">
+                                      {lead.value ? <span className="text-xs font-medium text-primary">{formatCurrency(lead.value)}</span> : <span />}
+                                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
+                                        {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
+                                      </span>
+                                    </div>
+                                  </Link>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    </div>
+
+                    {idx < stages.length - 1 && (
+                      <button
+                        onClick={() => { setNewStageInsertIdx(idx); setNewStageOpen(true); }}
+                        className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </DragDropContext>
+        </div>
+      ) : (
+        /* LIST VIEW */
+        <div style={{ flex: 1, overflowY: "auto" }} className="p-4">
+          <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Nome</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Telefone</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Etapa</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Origem</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Valor</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Tags</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Status</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Criado em</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allFilteredLeads.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <MessageSquare size={24} className="mx-auto mb-2 opacity-50" />
+                      Nenhum lead encontrado
+                    </td>
+                  </tr>
+                ) : (
+                  allFilteredLeads.map((lead) => {
+                    const stage = stages.find((s) => s.id === lead.stage_id);
+                    return (
+                      <tr key={lead.id} className="border-b border-border hover:bg-secondary/30 transition-colors">
+                        <td className="px-4 py-2.5">
+                          <Link to={`/crm/conversa/${lead.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                            {lead.name}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{lead.phone || "—"}</td>
+                        <td className="px-4 py-2.5">
+                          {stage && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />
+                              <span className="text-foreground">{stage.name}</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{lead.source || "—"}</td>
+                        <td className="px-4 py-2.5 text-primary font-medium">{lead.value ? formatCurrency(lead.value) : "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex flex-wrap gap-1">
+                            {lead.tags?.map((t: string) => (
+                              <Badge key={t} variant="secondary" className="text-[10px]">#{t}</Badge>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
+                            {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground text-xs">
+                          {new Date(lead.created_at).toLocaleDateString("pt-BR")}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-        </DragDropContext>
-      </div>
+        </div>
+      )}
 
       {/* New Lead Modal */}
       <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
