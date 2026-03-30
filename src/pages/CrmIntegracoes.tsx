@@ -156,6 +156,25 @@ export default function CrmIntegracoes() {
     }
 
     toast.success("Configurações salvas");
+
+    // Auto-sync templates from Meta when WABA is configured
+    if (editEntry.config.waba_id && editEntry.config.token) {
+      try {
+        toast.info("Sincronizando modelos do WhatsApp...");
+        const { data: syncResult, error: syncError } = await supabase.functions.invoke("manage-whatsapp-templates", {
+          body: { action: "list", integration_key: editEntry.key },
+        });
+        if (syncError) {
+          console.error("[Sync] Erro:", syncError);
+          toast.warning("Erro ao sincronizar modelos");
+        } else {
+          toast.success(`${syncResult?.count || 0} modelos sincronizados`);
+        }
+      } catch (e) {
+        console.error("[Sync] Erro:", e);
+      }
+    }
+
     setSaving(false);
     loadEntries();
   };

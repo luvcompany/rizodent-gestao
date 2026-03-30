@@ -52,7 +52,8 @@ Deno.serve(async (req) => {
             .maybeSingle();
           if (integration?.config) {
             const cfg = integration.config as any;
-            if (cfg.access_token) whatsappToken = cfg.access_token;
+            const resolvedToken = cfg.access_token || cfg.token;
+            if (resolvedToken) whatsappToken = resolvedToken;
             if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
           }
         }
