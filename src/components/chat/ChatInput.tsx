@@ -477,20 +477,20 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       ) : recording ? (
         <div className="flex items-center gap-3">
-          <button onClick={cancelRecording} className="p-2 text-destructive hover:text-destructive/80">
-            <X size={20} />
+          <button onClick={cancelRecording} className="p-2 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors" title="Cancelar gravação">
+            <Square size={18} />
           </button>
           <div className="flex-1 flex items-center gap-2">
             <span className={`w-3 h-3 rounded-full ${recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"}`} />
             <span className="text-sm font-medium text-foreground">
-              {recordingPaused ? "Gravação pausada" : "Gravando..."} {formatTime(recordingTime)}
+              {recordingPaused ? "Pausado" : "Gravando"} {formatTime(recordingTime)}
             </span>
           </div>
-          <button onClick={togglePauseRecording} className="p-2 text-muted-foreground hover:text-primary transition-colors">
+          <button onClick={togglePauseRecording} className="p-2 text-muted-foreground hover:text-primary transition-colors" title={recordingPaused ? "Retomar" : "Pausar"}>
             {recordingPaused ? <Play size={18} /> : <Pause size={18} />}
           </button>
-          <Button size="icon" onClick={stopRecording} variant="default">
-            <Square size={16} />
+          <Button size="icon" onClick={stopRecording} variant="default" title="Enviar áudio">
+            <Send size={16} />
           </Button>
         </div>
       ) : (
