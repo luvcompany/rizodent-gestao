@@ -415,6 +415,7 @@ export type Database = {
           last_message_at: string | null
           last_outbound_at: string | null
           name: string
+          nome_anuncio: string | null
           notes: string | null
           paciente_id: string | null
           phone: string | null
@@ -438,6 +439,7 @@ export type Database = {
           last_message_at?: string | null
           last_outbound_at?: string | null
           name: string
+          nome_anuncio?: string | null
           notes?: string | null
           paciente_id?: string | null
           phone?: string | null
@@ -461,6 +463,7 @@ export type Database = {
           last_message_at?: string | null
           last_outbound_at?: string | null
           name?: string
+          nome_anuncio?: string | null
           notes?: string | null
           paciente_id?: string | null
           phone?: string | null

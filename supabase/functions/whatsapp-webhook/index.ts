@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
             console.log(`[WEBHOOK] Integração encontrada: ${matchedIntegration.key} para phone_number_id ${incomingPhoneNumberId}`);
           }
 
-          // Extract contact name from payload
+          // Extract contact name and referral (ad) info from payload
           const contacts = value?.contacts || [];
           const contactName = contacts[0]?.profile?.name || null;
 
@@ -259,6 +259,12 @@ Deno.serve(async (req) => {
                 break;
             }
 
+            // Extract referral (ad) info - Meta sends this alongside the message when lead comes from an ad
+            const referral = msg.referral || null;
+            const adHeadline = referral?.headline || referral?.body || null;
+            const adSourceUrl = referral?.source_url || null;
+            const adSourceId = referral?.source_id || null;
+
             // Download and store media if present
             let mediaUrl: string | null = null;
             // Use token from matched integration config, fallback to env var
@@ -311,27 +317,40 @@ Deno.serve(async (req) => {
                   .single();
 
                 if (stage) {
-                  const { data: newLead } = await supabase
-                    .from("crm_leads")
-                    .insert({
+                  const insertData: any = {
                       name: leadName,
                       phone: from,
                       pipeline_id: pipelineId,
                       stage_id: stage.id,
-                      source: "whatsapp",
-                    })
+                      source: referral ? "facebook_ad" : "whatsapp",
+                  };
+                  if (adHeadline) insertData.nome_anuncio = adHeadline;
+
+                  const { data: newLead } = await supabase
+                    .from("crm_leads")
+                    .insert(insertData)
                     .select("id, name")
                     .single();
 
                   lead = newLead;
-                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}`);
+                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, anuncio: ${adHeadline || 'N/A'}`);
                 }
               }
-            } else if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
-              // Update auto-generated name with real contact name (don't overwrite manual edits)
-              await supabase.from("crm_leads").update({ name: contactName }).eq("id", lead.id);
-              console.log(`[WEBHOOK] Nome do lead atualizado: "${lead.name}" → "${contactName}"`);
-              lead = { ...lead, name: contactName };
+            } else {
+              // Existing lead - update name if auto-generated, and update ad info if referral present
+              const updates: any = {};
+              if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
+                updates.name = contactName;
+              }
+              if (referral && adHeadline) {
+                updates.nome_anuncio = adHeadline;
+                if (!lead.source || lead.source === "whatsapp") updates.source = "facebook_ad";
+              }
+              if (Object.keys(updates).length > 0) {
+                await supabase.from("crm_leads").update(updates).eq("id", lead.id);
+                console.log(`[WEBHOOK] Lead ${lead.id} atualizado:`, JSON.stringify(updates));
+                lead = { ...lead, ...updates };
+              }
             }
 
             if (lead) {
