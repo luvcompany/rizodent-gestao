@@ -259,6 +259,12 @@ Deno.serve(async (req) => {
                 break;
             }
 
+            // Extract referral (ad) info - Meta sends this alongside the message when lead comes from an ad
+            const referral = msg.referral || null;
+            const adHeadline = referral?.headline || referral?.body || null;
+            const adSourceUrl = referral?.source_url || null;
+            const adSourceId = referral?.source_id || null;
+
             // Download and store media if present
             let mediaUrl: string | null = null;
             // Use token from matched integration config, fallback to env var
