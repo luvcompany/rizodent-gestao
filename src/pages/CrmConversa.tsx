@@ -25,8 +25,9 @@ import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
 import {
-  ArrowLeft, FileText, Tag
+  ArrowLeft, FileText, Tag, Search
 } from "lucide-react";
+import LeadAdInfo from "@/components/chat/LeadAdInfo";
 
 type Message = {
   id: string;
