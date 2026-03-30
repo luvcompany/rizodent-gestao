@@ -239,7 +239,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+      // Prefer OGG/OPUS (required by WhatsApp API)
+      const isOggSupported = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus");
+      const mimeType = isOggSupported
         ? "audio/ogg;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
@@ -258,8 +260,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         if (timerRef.current) clearInterval(timerRef.current);
         setRecordingTime(0);
 
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/ogg" });
-        const audioFile = new globalThis.File([audioBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
+        // Use actual recorded mime type for correct labeling
+        const actualMime = mimeType;
+        const isOgg = actualMime.includes("ogg");
+        const ext = isOgg ? "ogg" : "webm";
+        const blobType = isOgg ? "audio/ogg; codecs=opus" : "audio/webm; codecs=opus";
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
+        const audioFile = new globalThis.File([audioBlob], `audio_${Date.now()}.${ext}`, { type: isOgg ? "audio/ogg" : "audio/webm" });
 
         if (audioFile.size > 15 * 1024 * 1024) {
           toast.warning("Áudio muito longo. Considere enviar em partes menores.");

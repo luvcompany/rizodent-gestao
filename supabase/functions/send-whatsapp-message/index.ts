@@ -170,8 +170,10 @@ Deno.serve(async (req) => {
       waBody.text = { body: message };
     } else if (media_url) {
       // Download file from storage
+      console.log(`[send-whatsapp] Downloading media: ${media_url}, type: ${type}`);
       const fileResponse = await fetch(media_url);
       if (!fileResponse.ok) {
+        console.error(`[send-whatsapp] Failed to download file: ${fileResponse.status}`);
         return new Response(JSON.stringify({ error: "Failed to download file from storage", status: fileResponse.status }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -182,9 +184,13 @@ Deno.serve(async (req) => {
       const filename = urlParts[urlParts.length - 1] || "file";
       const ext = filename.split(".").pop()?.toLowerCase() || "";
 
+      // For audio: WhatsApp requires audio/ogg with opus codec or audio/aac
+      // WebM audio is NOT supported by WhatsApp API - force ogg content type
       const contentTypeMap: Record<string, string> = {
-        ogg: "audio/ogg", opus: "audio/ogg", mp3: "audio/mpeg", m4a: "audio/mp4",
-        wav: "audio/wav", webm: type === "audio" ? "audio/webm" : "video/webm",
+        ogg: "audio/ogg", opus: "audio/ogg",
+        webm: type === "audio" ? "audio/ogg" : "video/webm",  // Force ogg for audio webm
+        mp3: "audio/mpeg", m4a: "audio/mp4",
+        wav: "audio/wav", aac: "audio/aac",
         mp4: type === "video" ? "video/mp4" : "audio/mp4",
         jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
         pdf: "application/pdf", doc: "application/msword",
@@ -194,11 +200,17 @@ Deno.serve(async (req) => {
       };
       const contentType = contentTypeMap[ext] || fileResponse.headers.get("content-type") || "application/octet-stream";
 
+      // For audio files, always upload as .ogg to Meta (WhatsApp requirement)
+      const uploadFilename = type === "audio" ? filename.replace(/\.\w+$/, ".ogg") : filename;
+      const uploadContentType = type === "audio" ? "audio/ogg" : contentType;
+
+      console.log(`[send-whatsapp] Uploading to Meta: filename=${uploadFilename}, contentType=${uploadContentType}, size=${fileBlob.size}`);
+
       // Upload to Meta
       const formData = new FormData();
       formData.append("messaging_product", "whatsapp");
-      formData.append("file", new File([fileBlob], filename, { type: contentType }));
-      formData.append("type", contentType);
+      formData.append("file", new File([fileBlob], uploadFilename, { type: uploadContentType }));
+      formData.append("type", uploadContentType);
 
       const uploadResponse = await fetch(
         `https://graph.facebook.com/v25.0/${phoneNumberId}/media`,
@@ -210,7 +222,10 @@ Deno.serve(async (req) => {
       );
       const uploadData = await uploadResponse.json();
 
+      console.log(`[send-whatsapp] Meta upload response: ${JSON.stringify(uploadData)}`);
+
       if (!uploadResponse.ok || !uploadData.id) {
+        console.error(`[send-whatsapp] Meta media upload failed: ${JSON.stringify(uploadData)}`);
         return new Response(JSON.stringify({ error: "Meta media upload failed", details: uploadData }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
