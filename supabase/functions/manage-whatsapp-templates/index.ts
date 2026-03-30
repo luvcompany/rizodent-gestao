@@ -16,8 +16,10 @@ async function resolveCredentials(supabase: any, integrationKey?: string) {
       .maybeSingle();
     if (intg?.config) {
       const cfg = intg.config as any;
-      if (cfg.access_token && cfg.waba_id) {
-        return { token: cfg.access_token, wabaId: cfg.waba_id };
+      const token = cfg.access_token || cfg.token;
+      const wabaId = cfg.waba_id;
+      if (token && wabaId) {
+        return { token, wabaId };
       }
     }
   }
