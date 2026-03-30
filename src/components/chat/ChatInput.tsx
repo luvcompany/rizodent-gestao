@@ -242,54 +242,56 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prefer OGG/OPUS (WhatsApp native format)
-      const mimeType = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
-        ? "audio/ogg;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : MediaRecorder.isTypeSupported("audio/mp4")
-            ? "audio/mp4"
-            : "audio/webm";
+      streamRef.current = stream;
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      // Use opus-media-recorder for guaranteed OGG/OPUS output
+      const OpusMediaRecorder = (await import("opus-media-recorder")).default;
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      const workerOptions = {
+        OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+        WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+        encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
       };
 
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
+      const recorder = new OpusMediaRecorder(
+        stream,
+        { mimeType: "audio/ogg;codecs=opus" },
+        workerOptions
+      );
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e: any) => {
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+        streamRef.current = null;
         if (timerRef.current) clearInterval(timerRef.current);
         setRecordingTime(0);
 
-        const rawBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const oggBlob = new Blob(audioChunksRef.current, { type: "audio/ogg;codecs=opus" });
 
-        if (rawBlob.size > 15 * 1024 * 1024) {
+        if (oggBlob.size > 15 * 1024 * 1024) {
           toast.warning("Áudio muito longo. Considere enviar em partes menores.");
+          return;
+        }
+
+        if (oggBlob.size < 100) {
+          toast.error("Gravação muito curta ou vazia.");
           return;
         }
 
         setUploading(true);
 
-        let audioFile: globalThis.File;
-        const isNativeOgg = mimeType.includes("ogg");
+        const audioFile = new globalThis.File(
+          [oggBlob],
+          `audio_${Date.now()}.ogg`,
+          { type: "audio/ogg" }
+        );
 
-        if (isNativeOgg) {
-          // Already OGG/OPUS — use directly
-          audioFile = new globalThis.File([rawBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
-        } else {
-          // Convert non-OGG recordings (WebM/MP4) to WAV for reliable WhatsApp delivery
-          try {
-            toast.info("Convertendo áudio...");
-            audioFile = await convertToOggOpus(rawBlob);
-          } catch (err) {
-            console.error("Audio conversion failed, using original:", err);
-            // Fallback: send as-is with ogg label (edge function handles it)
-            audioFile = new globalThis.File([rawBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
-          }
-        }
+        console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
 
         const url = await uploadFile(audioFile, "audio");
         setUploading(false);
@@ -323,11 +325,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         }
       };
 
-      mediaRecorder.start();
+      recorder.start();
       setRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
-    } catch {
+    } catch (err) {
+      console.error("Recording start failed:", err);
       toast.error("Não foi possível acessar o microfone");
     }
   };
