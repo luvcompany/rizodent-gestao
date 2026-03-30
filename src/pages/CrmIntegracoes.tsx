@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   MessageSquare, Instagram, Facebook, Mail, ShoppingBag,
   Settings, Copy, RefreshCw, Send, Eye, EyeOff, CheckCircle, XCircle,
-  Plus, Trash2, Check, AlertTriangle
+  Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch
 } from "lucide-react";
 
 type WhatsAppConfig = {
@@ -22,6 +23,7 @@ type WhatsAppConfig = {
   api_version: string;
   webhook_verify_token: string;
   display_name: string;
+  pipeline_id?: string;
 };
 
 type WhatsAppEntry = {
@@ -31,6 +33,21 @@ type WhatsAppEntry = {
   status: string;
 };
 
+type Pipeline = {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+};
+
+type Stage = {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+  pipeline_id: string;
+};
+
 const defaultConfig: WhatsAppConfig = {
   token: "",
   phone_number_id: "",
@@ -38,7 +55,17 @@ const defaultConfig: WhatsAppConfig = {
   api_version: "v25.0",
   webhook_verify_token: "",
   display_name: "",
+  pipeline_id: "",
 };
+
+const DEFAULT_STAGES = [
+  { name: "Novo Lead", color: "#6366f1", position: 0 },
+  { name: "Em Atendimento", color: "#3b82f6", position: 1 },
+  { name: "Agendado", color: "#f59e0b", position: 2 },
+  { name: "Compareceu", color: "#10b981", position: 3 },
+  { name: "Contratou", color: "#22c55e", position: 4 },
+  { name: "Perdido", color: "#ef4444", position: 5 },
+];
 
 const otherIntegrations = [
   { key: "instagram", name: "Instagram Direct", desc: "Em breve", icon: Instagram, enabled: false },
@@ -57,7 +84,15 @@ export default function CrmIntegracoes() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
-  useEffect(() => { loadEntries(); }, []);
+  // Pipeline state
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [newPipelineName, setNewPipelineName] = useState("");
+  const [creatingPipeline, setCreatingPipeline] = useState(false);
+  const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null);
+  const [editingPipelineName, setEditingPipelineName] = useState("");
+
+  useEffect(() => { loadEntries(); loadPipelines(); }, []);
 
   const loadEntries = async () => {
     const { data } = await supabase.from("integrations").select("*").like("key", "whatsapp_%");
@@ -70,6 +105,23 @@ export default function CrmIntegracoes() {
       })));
     }
   };
+
+  const loadPipelines = async () => {
+    const { data } = await supabase.from("crm_pipelines").select("*").order("created_at");
+    if (data) setPipelines(data);
+  };
+
+  const loadStages = async (pipelineId: string) => {
+    const { data } = await supabase.from("crm_stages").select("*").eq("pipeline_id", pipelineId).order("position");
+    if (data) setStages(data);
+  };
+
+  // Load stages when pipeline changes
+  useEffect(() => {
+    const pid = editEntry?.config.pipeline_id;
+    if (pid) loadStages(pid);
+    else setStages([]);
+  }, [editEntry?.config.pipeline_id]);
 
   const handleNew = () => {
     const idx = whatsappEntries.length + 1;
@@ -87,8 +139,22 @@ export default function CrmIntegracoes() {
     if (editEntry.id) {
       await supabase.from("integrations").update(payload).eq("id", editEntry.id);
     } else {
-      await supabase.from("integrations").insert({ key: editEntry.key, ...payload, status: "disconnected" });
+      const { data } = await supabase.from("integrations").insert({ key: editEntry.key, ...payload, status: "disconnected" }).select().single();
+      if (data) {
+        setEditEntry(prev => prev ? { ...prev, id: data.id } : prev);
+      }
     }
+
+    // Link pipeline via funnel_channels
+    if (editEntry.config.pipeline_id && editEntry.id) {
+      await supabase.from("funnel_channels").delete().eq("channel_type", "whatsapp").eq("pipeline_id", editEntry.config.pipeline_id);
+      await supabase.from("funnel_channels").upsert({
+        pipeline_id: editEntry.config.pipeline_id,
+        channel_type: "whatsapp",
+        channel_config: { integration_key: editEntry.key } as import("@/integrations/supabase/types").Json,
+      }, { onConflict: "id" });
+    }
+
     toast.success("Configurações salvas");
     setSaving(false);
     loadEntries();
@@ -149,11 +215,64 @@ export default function CrmIntegracoes() {
     setTesting(false);
   };
 
+  // Pipeline CRUD
+  const handleCreatePipeline = async () => {
+    if (!newPipelineName.trim()) { toast.error("Digite um nome para o funil"); return; }
+    setCreatingPipeline(true);
+    const { data: pipeline, error } = await supabase.from("crm_pipelines").insert({ name: newPipelineName.trim() }).select().single();
+    if (error || !pipeline) { toast.error("Erro ao criar funil"); setCreatingPipeline(false); return; }
+
+    // Create default stages
+    const stagesPayload = DEFAULT_STAGES.map(s => ({ ...s, pipeline_id: pipeline.id }));
+    await supabase.from("crm_stages").insert(stagesPayload);
+
+    toast.success("Funil criado com etapas padrão!");
+    setNewPipelineName("");
+    setCreatingPipeline(false);
+    await loadPipelines();
+
+    // Auto-select
+    setEditEntry(prev => prev ? { ...prev, config: { ...prev.config, pipeline_id: pipeline.id } } : prev);
+  };
+
+  const handleEditPipeline = async (id: string) => {
+    if (!editingPipelineName.trim()) return;
+    await supabase.from("crm_pipelines").update({ name: editingPipelineName.trim() }).eq("id", id);
+    toast.success("Funil renomeado");
+    setEditingPipelineId(null);
+    loadPipelines();
+  };
+
+  const handleDeletePipeline = async (id: string) => {
+    // Check if pipeline has leads
+    const { count } = await supabase.from("crm_leads").select("id", { count: "exact", head: true }).eq("pipeline_id", id);
+    if (count && count > 0) {
+      toast.error(`Não é possível excluir: existem ${count} leads neste funil`);
+      return;
+    }
+    if (!confirm("Excluir este funil e todas as suas etapas?")) return;
+    await supabase.from("crm_stages").delete().eq("pipeline_id", id);
+    await supabase.from("funnel_channels").delete().eq("pipeline_id", id);
+    await supabase.from("stage_bot_config").delete().in("stage_id",
+      (await supabase.from("crm_stages").select("id").eq("pipeline_id", id)).data?.map(s => s.id) || []
+    );
+    await supabase.from("crm_pipelines").delete().eq("id", id);
+    toast.success("Funil excluído");
+
+    // Unselect if was selected
+    if (editEntry?.config.pipeline_id === id) {
+      setEditEntry(prev => prev ? { ...prev, config: { ...prev.config, pipeline_id: "" } } : prev);
+    }
+    loadPipelines();
+  };
+
   const webhookUrl = `https://oybroifaleftwrhnlhqc.supabase.co/functions/v1/whatsapp-webhook`;
   const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado!"); };
 
   const FieldStatus = ({ value }: { value: string | undefined }) =>
     value ? <Check size={14} className="text-green-400" /> : <AlertTriangle size={14} className="text-yellow-400" />;
+
+  const selectedPipeline = pipelines.find(p => p.id === editEntry?.config.pipeline_id);
 
   return (
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
@@ -179,6 +298,7 @@ export default function CrmIntegracoes() {
             {whatsappEntries.map(entry => {
               const c = entry.config;
               const isConnected = entry.status === "connected";
+              const pName = pipelines.find(p => p.id === c.pipeline_id)?.name;
               return (
                 <Card key={entry.key} className="cursor-pointer hover:border-primary/30 transition-all" onClick={() => setEditEntry(entry)}>
                   <CardContent className="p-5">
@@ -194,6 +314,11 @@ export default function CrmIntegracoes() {
                     </div>
                     <h3 className="font-semibold text-foreground mb-1">{c.display_name || entry.key}</h3>
                     <p className="text-sm text-muted-foreground">{c.phone_number_id ? `ID: ...${c.phone_number_id.slice(-4)}` : "Não configurado"}</p>
+                    {pName && (
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                        <GitBranch size={12} /> Funil: {pName}
+                      </p>
+                    )}
                     <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1"><FieldStatus value={c.token} /> Token</span>
                       <span className="flex items-center gap-1"><FieldStatus value={c.phone_number_id} /> Phone ID</span>
@@ -239,7 +364,7 @@ export default function CrmIntegracoes() {
       </div>
 
       {/* WhatsApp Config Modal */}
-      <Dialog open={!!editEntry} onOpenChange={(open) => { if (!open) { setEditEntry(null); setTestResult(null); } }}>
+      <Dialog open={!!editEntry} onOpenChange={(open) => { if (!open) { setEditEntry(null); setTestResult(null); setEditingPipelineId(null); } }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -252,6 +377,7 @@ export default function CrmIntegracoes() {
             <Tabs defaultValue="config">
               <TabsList className="w-full">
                 <TabsTrigger value="config" className="flex-1">Configuração</TabsTrigger>
+                <TabsTrigger value="funnel" className="flex-1">Funil</TabsTrigger>
                 <TabsTrigger value="webhook" className="flex-1">Webhook</TabsTrigger>
                 <TabsTrigger value="test" className="flex-1">Teste</TabsTrigger>
               </TabsList>
@@ -289,6 +415,106 @@ export default function CrmIntegracoes() {
                     <Button variant="destructive" size="icon" onClick={() => handleDelete(editEntry)}><Trash2 size={16} /></Button>
                   )}
                 </div>
+              </TabsContent>
+
+              {/* FUNNEL TAB */}
+              <TabsContent value="funnel" className="space-y-4 mt-4">
+                <div>
+                  <Label className="flex items-center gap-2 mb-2">
+                    <GitBranch size={14} /> Funil vinculado a este canal
+                  </Label>
+                  <Select
+                    value={editEntry.config.pipeline_id || ""}
+                    onValueChange={(val) => setEditEntry(prev => prev ? { ...prev, config: { ...prev.config, pipeline_id: val } } : prev)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um funil..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {pipelines.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">Leads novos deste WhatsApp serão criados na primeira etapa do funil selecionado.</p>
+                </div>
+
+                {/* Create new pipeline */}
+                <div className="border border-border rounded-lg p-4 space-y-3">
+                  <h4 className="text-sm font-semibold text-foreground">Criar novo funil</h4>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newPipelineName}
+                      onChange={e => setNewPipelineName(e.target.value)}
+                      placeholder="Nome do funil"
+                      onKeyDown={e => e.key === "Enter" && handleCreatePipeline()}
+                    />
+                    <Button onClick={handleCreatePipeline} disabled={creatingPipeline} size="sm">
+                      <Plus size={14} className="mr-1" /> Criar
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    O novo funil será criado com as etapas padrão: {DEFAULT_STAGES.map(s => s.name).join(", ")}
+                  </p>
+                </div>
+
+                {/* Pipeline list with edit/delete */}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-foreground">Funis existentes</h4>
+                  {pipelines.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Nenhum funil cadastrado.</p>
+                  )}
+                  {pipelines.map(p => (
+                    <div key={p.id} className={`flex items-center gap-2 p-3 rounded-lg border transition-all ${editEntry.config.pipeline_id === p.id ? "border-primary bg-primary/5" : "border-border"}`}>
+                      {editingPipelineId === p.id ? (
+                        <>
+                          <Input
+                            value={editingPipelineName}
+                            onChange={e => setEditingPipelineName(e.target.value)}
+                            className="flex-1 h-8"
+                            onKeyDown={e => e.key === "Enter" && handleEditPipeline(p.id)}
+                            autoFocus
+                          />
+                          <Button size="sm" variant="ghost" onClick={() => handleEditPipeline(p.id)}><Check size={14} /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingPipelineId(null)}><XCircle size={14} /></Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1 text-sm font-medium text-foreground">{p.name}</span>
+                          {editEntry.config.pipeline_id === p.id && (
+                            <Badge className="bg-primary/20 text-primary border-0 text-xs">Selecionado</Badge>
+                          )}
+                          <Button size="sm" variant="ghost" onClick={() => { setEditingPipelineId(p.id); setEditingPipelineName(p.name); }}>
+                            <Pencil size={14} />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDeletePipeline(p.id)}>
+                            <Trash2 size={14} />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Show stages of selected pipeline */}
+                {selectedPipeline && stages.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-foreground">Etapas de "{selectedPipeline.name}"</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {stages.map((s, i) => (
+                        <div key={s.id} className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
+                          <span className="text-xs text-foreground">{s.name}</span>
+                          {i < stages.length - 1 && <span className="text-muted-foreground text-xs">→</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <Button onClick={handleSave} disabled={saving} className="w-full">
+                  {saving ? "Salvando..." : "Salvar Configurações"}
+                </Button>
               </TabsContent>
 
               <TabsContent value="webhook" className="space-y-4 mt-4">
