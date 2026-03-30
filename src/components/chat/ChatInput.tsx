@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Send, Paperclip, Mic, FileText, Image, File, Video,
-  Square, X, Loader2, Clock, AlertTriangle
+  Square, X, Loader2, Clock, AlertTriangle, Pause, Play
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,6 +39,7 @@ type ChatInputProps = {
 export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
+  const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
@@ -48,6 +49,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const recordingDiscardedRef = useRef(false);
 
   useEffect(() => {
     if (externalMessage) {
@@ -69,9 +71,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   };
 
   const getMessageType = (file: globalThis.File): string => {
+    const lowerName = file.name.toLowerCase();
     if (file.type.startsWith("image/")) return "image";
     if (file.type.startsWith("audio/")) return "audio";
     if (file.type.startsWith("video/")) return "video";
+    if (/\.(ogg|opus|mp3|m4a|aac|wav|webm|amr)$/i.test(lowerName)) return "audio";
     return "document";
   };
 
@@ -237,12 +241,64 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     setAttachedFile({ file, type });
   };
 
-  // No client-side conversion needed — opus-media-recorder records directly as OGG/OPUS
+  const sendRecordedAudio = async (oggBlob: Blob) => {
+    if (!leadPhone) return;
+
+    const audioFile = new globalThis.File(
+      [oggBlob],
+      `audio_${Date.now()}.ogg`,
+      { type: "audio/ogg" }
+    );
+
+    const tempId = crypto.randomUUID();
+    const optimisticUrl = URL.createObjectURL(oggBlob);
+
+    onMessageSent?.({
+      id: tempId,
+      lead_id: leadId,
+      direction: "outbound",
+      type: "audio",
+      content: null,
+      media_url: optimisticUrl,
+      status: "sending",
+      created_at: new Date().toISOString(),
+      whatsapp_message_id: null,
+      reply_to_message_id: null,
+    });
+
+    setUploading(true);
+
+    try {
+      console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
+
+      const url = await uploadFile(audioFile, "audio");
+      if (!url) {
+        onMessageError?.(tempId);
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
+      });
+
+      if (error || data?.error) {
+        onMessageError?.(tempId);
+        toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
+      }
+    } catch {
+      onMessageError?.(tempId);
+      toast.error("Erro ao enviar áudio");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      recordingDiscardedRef.current = false;
+      setRecordingPaused(false);
 
       // Use opus-media-recorder for guaranteed OGG/OPUS output
       const OpusMediaRecorder = (await import("opus-media-recorder")).default;
@@ -269,7 +325,15 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
         streamRef.current = null;
         if (timerRef.current) clearInterval(timerRef.current);
+        setRecording(false);
+        setRecordingPaused(false);
         setRecordingTime(0);
+
+        if (recordingDiscardedRef.current) {
+          recordingDiscardedRef.current = false;
+          audioChunksRef.current = [];
+          return;
+        }
 
         const oggBlob = new Blob(audioChunksRef.current, { type: "audio/ogg;codecs=opus" });
 
@@ -283,64 +347,46 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           return;
         }
 
-        setUploading(true);
-
-        const audioFile = new globalThis.File(
-          [oggBlob],
-          `audio_${Date.now()}.ogg`,
-          { type: "audio/ogg" }
-        );
-
-        console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
-
-        const url = await uploadFile(audioFile, "audio");
-        setUploading(false);
-        if (!url) return;
-
-        const tempId = crypto.randomUUID();
-        onMessageSent?.({
-          id: tempId,
-          lead_id: leadId,
-          direction: "outbound",
-          type: "audio",
-          content: null,
-          media_url: url,
-          status: "sending",
-          created_at: new Date().toISOString(),
-          whatsapp_message_id: null,
-          reply_to_message_id: null,
-        });
-
-        try {
-          const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-            body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url },
-          });
-          if (error || data?.error) {
-            onMessageError?.(tempId);
-            toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
-          }
-        } catch {
-          onMessageError?.(tempId);
-          toast.error("Erro ao enviar áudio");
-        }
+        await sendRecordedAudio(oggBlob);
       };
 
       recorder.start();
       setRecording(true);
       setRecordingTime(0);
-      timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
+      timerRef.current = setInterval(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          setRecordingTime((t) => t + 1);
+        }
+      }, 1000);
     } catch (err) {
       console.error("Recording start failed:", err);
       toast.error("Não foi possível acessar o microfone");
     }
   };
 
+  const togglePauseRecording = () => {
+    if (!mediaRecorderRef.current) return;
+
+    if (mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.pause();
+      setRecordingPaused(true);
+      return;
+    }
+
+    if (mediaRecorderRef.current.state === "paused") {
+      mediaRecorderRef.current.resume();
+      setRecordingPaused(false);
+    }
+  };
+
   const stopRecording = () => {
     mediaRecorderRef.current?.stop();
     setRecording(false);
+    setRecordingPaused(false);
   };
 
   const cancelRecording = () => {
+    recordingDiscardedRef.current = true;
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.ondataavailable = null;
       mediaRecorderRef.current.onstop = null;
@@ -438,9 +484,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             <X size={20} />
           </button>
           <div className="flex-1 flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
-            <span className="text-sm font-medium text-foreground">Gravando... {formatTime(recordingTime)}</span>
+            <span className={`w-3 h-3 rounded-full ${recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"}`} />
+            <span className="text-sm font-medium text-foreground">
+              {recordingPaused ? "Gravação pausada" : "Gravando..."} {formatTime(recordingTime)}
+            </span>
           </div>
+          <button onClick={togglePauseRecording} className="p-2 text-muted-foreground hover:text-primary transition-colors">
+            {recordingPaused ? <Play size={18} /> : <Pause size={18} />}
+          </button>
           <Button size="icon" onClick={stopRecording} variant="default">
             <Square size={16} />
           </Button>
