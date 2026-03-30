@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
         ogg: "audio/ogg", opus: "audio/ogg",
         webm: type === "audio" ? "audio/ogg" : "video/webm",  // Force ogg for audio webm
         mp3: "audio/mpeg", m4a: "audio/mp4",
-        wav: "audio/wav", aac: "audio/aac",
+        wav: type === "audio" ? "audio/ogg" : "audio/wav", aac: "audio/aac",
         mp4: type === "video" ? "video/mp4" : "audio/mp4",
         jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
         pdf: "application/pdf", doc: "application/msword",
