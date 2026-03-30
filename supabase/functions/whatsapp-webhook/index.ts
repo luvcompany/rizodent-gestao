@@ -250,11 +250,62 @@ Deno.serve(async (req) => {
 
             // Extract referral (ad) info - comes in context.referral or msg.referral
             const referral = msg.referral || msg.context?.referral || null;
-            const adHeadline = referral?.headline || null;
-            const adBody = referral?.body || null;
-            const adImageUrl = referral?.image_url || null;
-            const adSourceUrl = referral?.source_url || null;
-            const adSourceId = referral?.source_id || null;
+            let adHeadline = referral?.headline || null;
+            let adBody = referral?.body || null;
+            let adImageUrl = referral?.image_url || null;
+            let adSourceUrl = referral?.source_url || null;
+            let adSourceId = referral?.source_id || null;
+
+            // Enrich ad data from Meta Graph API if we have an ad ID but missing image/link
+            if (referral && adSourceId) {
+              try {
+                const metaToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
+                console.log(`[AD-ENRICHMENT] Fetching ad creative for ad_id: ${adSourceId}`);
+                const adRes = await fetch(
+                  `https://graph.facebook.com/v25.0/${adSourceId}?fields=id,name,permalink_url,creative{thumbnail_url,image_url,object_story_spec}&access_token=${metaToken}`
+                );
+                if (adRes.ok) {
+                  const adData = await adRes.json();
+                  console.log(`[AD-ENRICHMENT] Ad data received:`, JSON.stringify(adData));
+
+                  // Fill missing fields from the API response
+                  if (!adHeadline && adData.name) adHeadline = adData.name;
+                  if (!adSourceUrl && adData.permalink_url) adSourceUrl = adData.permalink_url;
+
+                  const creative = adData.creative;
+                  if (creative) {
+                    // Try to get image from creative
+                    if (!adImageUrl) {
+                      adImageUrl = creative.image_url
+                        || creative.thumbnail_url
+                        || creative.object_story_spec?.link_data?.picture
+                        || creative.object_story_spec?.link_data?.image_url
+                        || creative.object_story_spec?.video_data?.image_url
+                        || null;
+                    }
+                    // Try to get link from creative
+                    if (!adSourceUrl) {
+                      adSourceUrl = creative.object_story_spec?.link_data?.link || null;
+                    }
+                    // Try to get description from creative
+                    if (!adBody) {
+                      adBody = creative.object_story_spec?.link_data?.description
+                        || creative.object_story_spec?.link_data?.message
+                        || null;
+                    }
+                    if (!adHeadline) {
+                      adHeadline = creative.object_story_spec?.link_data?.name || null;
+                    }
+                  }
+                  console.log(`[AD-ENRICHMENT] Enriched: image=${adImageUrl}, link=${adSourceUrl}, headline=${adHeadline}`);
+                } else {
+                  const errText = await adRes.text();
+                  console.log(`[AD-ENRICHMENT] Failed to fetch ad ${adSourceId}: ${adRes.status} - ${errText}`);
+                }
+              } catch (adErr: any) {
+                console.log(`[AD-ENRICHMENT] Error enriching ad data: ${adErr.message}`);
+              }
+            }
 
             // Download and store media if present
             let mediaUrl: string | null = null;
