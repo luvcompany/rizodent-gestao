@@ -83,9 +83,13 @@ export default function CrmKanban() {
 
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
     setLoading(true);
-    const { data: allPipelines } = await supabase.from("crm_pipelines").select("*").order("created_at");
-    const pList = (allPipelines as Pipeline[]) || [];
+    const [pipelinesRes, profilesRes] = await Promise.all([
+      supabase.from("crm_pipelines").select("*").order("created_at"),
+      supabase.from("profiles").select("id, nome"),
+    ]);
+    const pList = (pipelinesRes.data as Pipeline[]) || [];
     setPipelines(pList);
+    setProfiles((profilesRes.data as { id: string; nome: string }[]) || []);
     const p = selectedPipelineId
       ? pList.find(pp => pp.id === selectedPipelineId) || pList[0]
       : pList[0];
