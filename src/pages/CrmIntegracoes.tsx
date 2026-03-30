@@ -300,12 +300,12 @@ export default function CrmIntegracoes() {
                   </div>
                 </div>
                 <div>
-                  <Label>Token de Verificação</Label>
+                  <Label className="flex items-center gap-2">Token de Verificação <FieldStatus value={editEntry.config.webhook_verify_token} /></Label>
                   <div className="flex gap-2">
-                    <Input value={editEntry.config.webhook_verify_token} readOnly className="bg-secondary" />
+                    <Input value={editEntry.config.webhook_verify_token} onChange={(e) => setEditEntry(prev => prev ? { ...prev, config: { ...prev.config, webhook_verify_token: e.target.value } } : prev)} placeholder="Digite o token de verificação do webhook" />
                     <Button variant="outline" size="icon" onClick={() => copyToClipboard(editEntry.config.webhook_verify_token)}><Copy size={16} /></Button>
-                    <Button variant="outline" size="icon" onClick={() => setEditEntry(prev => prev ? { ...prev, config: { ...prev.config, webhook_verify_token: crypto.randomUUID().slice(0, 16) } } : prev)}><RefreshCw size={16} /></Button>
                   </div>
+                  <p className="text-xs text-muted-foreground mt-1">Este token deve ser o mesmo configurado no Meta Business Manager e nos secrets do backend.</p>
                 </div>
                 <div className="bg-secondary/50 rounded-lg p-4 space-y-2">
                   <h4 className="font-semibold text-sm text-foreground">Como configurar no Meta Business Manager:</h4>
