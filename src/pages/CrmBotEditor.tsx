@@ -474,7 +474,9 @@ const CrmBotEditor = () => {
                   <div className="rounded-xl overflow-hidden shadow-lg border-2 border-indigo-200 dark:border-indigo-800 bg-card">
                     <div className="bg-indigo-500 px-4 py-3 flex items-center justify-between">
                       <span className="text-white text-sm font-bold">Início</span>
-                      <Settings size={16} className="text-white/70" />
+                      <button onClick={() => { setShowGeneralSettings(true); setEditingStepId(null); setActionsOpen(false); }}>
+                        <Settings size={16} className="text-white/70 hover:text-white transition-colors cursor-pointer" />
+                      </button>
                     </div>
                     <div className="p-3 space-y-2">
                       {triggers.length === 0 && (
