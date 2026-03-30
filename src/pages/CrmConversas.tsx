@@ -38,6 +38,7 @@ type LeadConversation = {
   tags: string[] | null;
   source: string | null;
   stage_id: string;
+  pipeline_id: string;
   value: number | null;
   notes: string | null;
   created_at: string;
