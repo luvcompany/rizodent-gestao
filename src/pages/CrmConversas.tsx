@@ -365,7 +365,7 @@ export default function CrmConversas() {
   const currentStage = stages.find((s) => s.id === selectedLead?.stage_id);
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden bg-background" style={{ top: 0, left: 0, right: 0, bottom: 0, margin: '-1.5rem', height: 'calc(100vh - 4rem)', marginTop: '-1.5rem' }}>
+    <div className="flex flex-col overflow-hidden bg-background -mx-6 -my-6 h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] min-h-0 max-w-[100vw] box-border" style={{ width: 'calc(100% + 3rem)' }}>
       <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0 min-w-0 max-w-full overflow-hidden">
         {/* LEFT PANEL - Leads list */}
         {leftPanelVisible && (
