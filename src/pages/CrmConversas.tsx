@@ -213,6 +213,11 @@ export default function CrmConversas() {
           if (updated.id === selectedLeadId) {
             setSelectedLead((prev) => prev ? { ...prev, ...updated } : prev);
           }
+        } else if (payload.eventType === "DELETE") {
+          const deletedId = (payload.old as any).id;
+          setLeads((prev) => prev.filter((l) => l.id !== deletedId));
+        }
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [selectedLeadId]);
