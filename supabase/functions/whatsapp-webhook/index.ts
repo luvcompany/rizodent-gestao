@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
             console.log(`[WEBHOOK] Integração encontrada: ${matchedIntegration.key} para phone_number_id ${incomingPhoneNumberId}`);
           }
 
-          // Extract contact name from payload
+          // Extract contact name and referral (ad) info from payload
           const contacts = value?.contacts || [];
           const contactName = contacts[0]?.profile?.name || null;
 
