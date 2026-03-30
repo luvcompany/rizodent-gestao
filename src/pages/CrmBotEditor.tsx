@@ -4,9 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   ArrowLeft, Save, Plus, X, MessageSquare, Pause, Zap, GitBranch,
-  CheckCircle2, Bot, StopCircle, Heart, MessageCircle, Send, Smartphone,
+  CheckCircle2, Bot, Heart, MessageCircle, Send, Smartphone,
   Shuffle, ZoomIn, ZoomOut, Maximize2, Settings, MoreVertical, Play,
-  Tag, ArrowRightLeft, Timer, Clock, Webhook, Code2, Copy,
+  Tag, ArrowRightLeft, Timer, Clock, GripVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -37,27 +37,21 @@ interface Trigger {
 }
 
 const STEP_TYPES = [
-  { type: "send_message", label: "Enviar mensagem", icon: MessageSquare, color: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/30", category: "mensagem" },
-  { type: "send_message_template", label: "Enviar modelo de mensagem", icon: MessageSquare, color: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/30", category: "mensagem" },
-  { type: "list_message", label: "Enviar menu", icon: Smartphone, color: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/30", category: "mensagem" },
-  { type: "reaction", label: "Reação", icon: Heart, color: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/30", category: "mensagem" },
-  { type: "comment", label: "Comentário interno", icon: MessageCircle, color: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/30", category: "mensagem" },
-
-  { type: "action", label: "Adicionar/remover etiquetas", icon: Tag, color: "text-cyan-500", bg: "bg-cyan-50 dark:bg-cyan-950/30", category: "contato", defaultConfig: { actionType: "add_tag" } },
-
-  { type: "action_transfer", label: "Transferir atendimento", icon: ArrowRightLeft, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/30", category: "atendimento" },
-  { type: "stop_bot", label: "Concluir atendimento", icon: CheckCircle2, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/30", category: "atendimento" },
-
-  { type: "action_move", label: "Mover card", icon: Zap, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/30", category: "crm", defaultConfig: { actionType: "move_stage" } },
-  { type: "action_field", label: "Alterar campos do card", icon: Zap, color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-950/30", category: "crm", defaultConfig: { actionType: "set_field" } },
-
-  { type: "pause", label: "Aguardar mensagens do contato", icon: Timer, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950/30", category: "tempo" },
-  { type: "pause_timer", label: "Esperar alguns segundos", icon: Clock, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950/30", category: "tempo" },
-
-  { type: "condition", label: "Enviar condicional", icon: GitBranch, color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-950/30", category: "fluxo" },
-  { type: "start_bot", label: "Direcionar para outro chatbot", icon: Bot, color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-950/30", category: "fluxo" },
-
-  { type: "round_robin", label: "Round Robin", icon: Shuffle, color: "text-gray-500", bg: "bg-gray-50 dark:bg-gray-950/30", category: "avancado" },
+  { type: "send_message", label: "Enviar mensagem", icon: MessageSquare, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
+  { type: "send_message_template", label: "Modelo de mensagem", icon: Send, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
+  { type: "list_message", label: "Enviar menu", icon: Smartphone, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
+  { type: "reaction", label: "Reação", icon: Heart, color: "text-pink-400", bg: "bg-pink-500/10", category: "mensagem" },
+  { type: "comment", label: "Comentário interno", icon: MessageCircle, color: "text-blue-400", bg: "bg-blue-500/10", category: "mensagem" },
+  { type: "action", label: "Etiquetas", icon: Tag, color: "text-cyan-400", bg: "bg-cyan-500/10", category: "contato", defaultConfig: { actionType: "add_tag" } },
+  { type: "action_transfer", label: "Transferir", icon: ArrowRightLeft, color: "text-amber-400", bg: "bg-amber-500/10", category: "atendimento" },
+  { type: "stop_bot", label: "Encerrar bot", icon: CheckCircle2, color: "text-red-400", bg: "bg-red-500/10", category: "atendimento" },
+  { type: "action_move", label: "Mover card", icon: Zap, color: "text-amber-400", bg: "bg-amber-500/10", category: "crm", defaultConfig: { actionType: "move_stage" } },
+  { type: "action_field", label: "Alterar campo", icon: Zap, color: "text-amber-400", bg: "bg-amber-500/10", category: "crm", defaultConfig: { actionType: "set_field" } },
+  { type: "pause", label: "Aguardar resposta", icon: Timer, color: "text-violet-400", bg: "bg-violet-500/10", category: "tempo" },
+  { type: "pause_timer", label: "Esperar tempo", icon: Clock, color: "text-violet-400", bg: "bg-violet-500/10", category: "tempo" },
+  { type: "condition", label: "Condição", icon: GitBranch, color: "text-purple-400", bg: "bg-purple-500/10", category: "fluxo" },
+  { type: "start_bot", label: "Outro chatbot", icon: Bot, color: "text-indigo-400", bg: "bg-indigo-500/10", category: "fluxo" },
+  { type: "round_robin", label: "Round Robin", icon: Shuffle, color: "text-slate-400", bg: "bg-slate-500/10", category: "avancado" },
 ];
 
 const ACTION_CATEGORIES = [
@@ -71,11 +65,11 @@ const ACTION_CATEGORIES = [
 ];
 
 const TRIGGER_OPTIONS = [
-  { type: "stage_enter", label: "Quando lead é movido para esta etapa", needsStage: true },
-  { type: "lead_created", label: "Quando lead é criado nesta etapa", needsStage: true },
-  { type: "tag_added", label: "Quando tag é adicionada", needsStage: false },
-  { type: "message_received", label: "Quando mensagem é recebida", needsStage: false },
-  { type: "no_response", label: "Quando lead não responde (timeout)", needsStage: false },
+  { type: "stage_enter", label: "Lead movido para etapa", needsStage: true },
+  { type: "lead_created", label: "Lead criado na etapa", needsStage: true },
+  { type: "tag_added", label: "Tag adicionada", needsStage: false },
+  { type: "message_received", label: "Mensagem recebida", needsStage: false },
+  { type: "no_response", label: "Sem resposta (timeout)", needsStage: false },
 ];
 
 const uid = () => `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -102,14 +96,19 @@ const CrmBotEditor = () => {
   const [templates, setTemplates] = useState<any[]>([]);
   const [bots, setBots] = useState<any[]>([]);
 
-  // Pan & Zoom
+  // Canvas state
   const canvasRef = useRef<HTMLDivElement>(null);
   const [pan, setPan] = useState({ x: 60, y: 60 });
   const [zoom, setZoom] = useState(1);
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  // Editing step
+  // Dragging blocks
+  const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const [stepPositions, setStepPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const dragStartRef = useRef({ x: 0, y: 0, origX: 0, origY: 0 });
+
+  // Editing
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [showGeneralSettings, setShowGeneralSettings] = useState(false);
   const [generalSettings, setGeneralSettings] = useState({
@@ -138,6 +137,13 @@ const CrmBotEditor = () => {
     const { data: outs } = await supabase.from("bot_node_outputs").select("*").in("node_id", nodeIds);
     const tree = rebuildTree(nodes, outs || []);
     setRootOutputs(tree);
+
+    // Restore positions
+    const positions: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((n: any) => {
+      positions[n.id] = { x: n.position_x || 0, y: n.position_y || 0 };
+    });
+    setStepPositions(positions);
   };
 
   const rebuildTree = (nodes: any[], outs: any[]): FlowOutput[] => {
@@ -166,10 +172,10 @@ const CrmBotEditor = () => {
 
   const mapNodeType = (dbType: string): string => {
     const map: Record<string, string> = {
-      message_text: "send_message", message_template: "send_message", message_audio: "send_message",
+      message_text: "send_message", message_template: "send_message_template", message_audio: "send_message",
       wait: "pause", condition: "condition",
       action_move_stage: "action_move", action_set_field: "action_field", action_add_tag: "action",
-      action_end_bot: "stop_bot", set_field: "action_field", move_stage: "action_move",
+      action_end_bot: "stop_bot",
     };
     return map[dbType] || dbType;
   };
@@ -194,6 +200,7 @@ const CrmBotEditor = () => {
     setRootOutputs(prev => addStepInTree(prev, outputId, newStep));
     setActionsOpen(false);
     setActiveOutputId(null);
+    setTimeout(() => setEditingStepId(newStep.id), 100);
   };
 
   const addStepInTree = (outs: FlowOutput[], targetOutputId: string, newStep: FlowStep): FlowOutput[] => {
@@ -308,7 +315,8 @@ const CrmBotEditor = () => {
         const realId = crypto.randomUUID();
         idMap[step.id] = realId;
         const dbType = mapToDbType(step.type, step.config);
-        flatNodes.push({ id: realId, bot_id: botId, type: dbType, config: step.config, position_x: stepIndex * 300, position_y: 0, is_start_node: isFirst });
+        const pos = stepPositions[step.id] || { x: stepIndex * 320, y: 0 };
+        flatNodes.push({ id: realId, bot_id: botId, type: dbType, config: step.config, position_x: pos.x, position_y: pos.y, is_start_node: isFirst });
         stepIndex++;
         step.outputs.forEach(o => {
           const outId = crypto.randomUUID();
@@ -330,6 +338,19 @@ const CrmBotEditor = () => {
 
       if (flatNodes.length > 0) await supabase.from("bot_nodes").insert(flatNodes);
       if (flatOutputs.length > 0) await supabase.from("bot_node_outputs").insert(flatOutputs);
+
+      // Save stage_bot_config for triggers
+      for (const trigger of triggers) {
+        if (trigger.config?.stage_id) {
+          const { data: existing } = await supabase.from("stage_bot_config").select("id").eq("stage_id", trigger.config.stage_id).maybeSingle();
+          if (existing) {
+            await supabase.from("stage_bot_config").update({ bot_id: botId, active: true, trigger_type: trigger.type === "stage_enter" ? "on_enter" : "on_create" }).eq("id", existing.id);
+          } else {
+            await supabase.from("stage_bot_config").insert({ stage_id: trigger.config.stage_id, bot_id: botId, active: true, trigger_type: trigger.type === "stage_enter" ? "on_enter" : "on_create" });
+          }
+        }
+      }
+
       toast.success("Bot salvo com sucesso!");
     } catch (err: any) {
       toast.error("Erro ao salvar: " + err.message);
@@ -396,13 +417,13 @@ const CrmBotEditor = () => {
     setTriggers(prev => prev.map(t => t.id === triggerId ? { ...t, config: { ...t.config, ...config } } : t));
   };
 
-  // Open actions panel for a specific output
   const openActionsForOutput = (outputId: string) => {
     setActiveOutputId(outputId);
     setActionsOpen(true);
+    setEditingStepId(null);
+    setShowGeneralSettings(false);
   };
 
-  // Find step in tree
   const findStep = (outs: FlowOutput[], stepId: string): FlowStep | null => {
     for (const o of outs) {
       for (const s of o.nextSteps) {
@@ -416,7 +437,75 @@ const CrmBotEditor = () => {
 
   const editingStep = editingStepId ? findStep(rootOutputs, editingStepId) : null;
 
+  // Step block drag handlers
+  const handleStepDragStart = (e: React.PointerEvent, stepId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setDraggedStepId(stepId);
+    const pos = stepPositions[stepId] || { x: 0, y: 0 };
+    dragStartRef.current = { x: e.clientX, y: e.clientY, origX: pos.x, origY: pos.y };
+  };
+
+  const handleStepDragMove = useCallback((e: React.PointerEvent) => {
+    if (!draggedStepId) return;
+    const dx = (e.clientX - dragStartRef.current.x) / zoom;
+    const dy = (e.clientY - dragStartRef.current.y) / zoom;
+    setStepPositions(prev => ({
+      ...prev,
+      [draggedStepId]: { x: dragStartRef.current.origX + dx, y: dragStartRef.current.origY + dy },
+    }));
+  }, [draggedStepId, zoom]);
+
+  const handleStepDragEnd = useCallback(() => {
+    setDraggedStepId(null);
+  }, []);
+
+  // ── Helper to get step info ──
+
+  const getStepDef = (type: string) => STEP_TYPES.find(s => s.type === type);
+
+  const getStepPreview = (step: FlowStep): string | null => {
+    if (step.type === "send_message" || step.type === "send_message_template") {
+      if (step.config?.useTemplate) return `Template: ${step.config.template_name}`;
+      return step.config?.message?.substring(0, 50) || null;
+    }
+    if (step.type === "action" || step.type === "action_move" || step.type === "action_field") {
+      if (step.config?.actionType === "add_tag") return `Tag: ${step.config.tag || "..."}`;
+      if (step.config?.actionType === "move_stage") return "Mover etapa";
+      return step.config?.actionType || null;
+    }
+    if (step.type === "pause" || step.type === "pause_timer") {
+      const cond = step.config?.conditions?.[0];
+      if (cond?.type === "timer") return `${cond.hours || 0}h ${cond.minutes || 0}min`;
+      return "Aguardar resposta";
+    }
+    if (step.type === "reaction") return step.config?.emoji || "👍";
+    if (step.type === "comment") return step.config?.text?.substring(0, 40) || null;
+    if (step.type === "start_bot") {
+      const b = bots.find(bot => bot.id === step.config?.bot_id);
+      return b ? b.name : null;
+    }
+    return null;
+  };
+
   if (!bot) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
+
+  // ── Collect all steps flat with parent output info for rendering ──
+  const collectAllSteps = (outs: FlowOutput[], depth = 0): { step: FlowStep; output: FlowOutput; depth: number; parentStepId: string | null }[] => {
+    const result: { step: FlowStep; output: FlowOutput; depth: number; parentStepId: string | null }[] = [];
+    for (const o of outs) {
+      for (const step of o.nextSteps) {
+        result.push({ step, output: o, depth, parentStepId: null });
+        if (step.outputs.length > 0) {
+          result.push(...collectAllSteps(step.outputs, depth + 1));
+        }
+      }
+    }
+    return result;
+  };
+
+  const allSteps = collectAllSteps(rootOutputs);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] -m-6 bg-background" style={{ touchAction: "none" }}>
@@ -430,7 +519,9 @@ const CrmBotEditor = () => {
         ) : (
           <h1 className="text-lg font-bold text-foreground cursor-pointer hover:text-primary transition-colors" onClick={() => setEditingName(true)}>{botName}</h1>
         )}
-        <span className="text-[10px] font-semibold bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 px-2 py-0.5 rounded-full">Rascunho</span>
+        <span className="text-[10px] font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+          {bot.active ? "Ativo" : "Rascunho"}
+        </span>
         <div className="flex items-center gap-2 ml-auto">
           <div className="flex items-center gap-2 mr-2">
             <span className="text-xs text-muted-foreground">Ativo</span>
@@ -439,28 +530,32 @@ const CrmBotEditor = () => {
               setBot(prev => prev ? { ...prev, active: v } : prev);
             }} />
           </div>
-          <Button variant="outline" size="sm" onClick={saveBot} disabled={saving} className="gap-1.5">
-            <Save size={14} /> {saving ? "Salvando..." : "Salvar alterações"}
+          <Button size="sm" onClick={saveBot} disabled={saving} className="gap-1.5">
+            <Save size={14} /> {saving ? "Salvando..." : "Salvar"}
           </Button>
         </div>
       </div>
 
       <div className="flex-1 flex relative overflow-hidden">
         {/* ── Canvas ── */}
-        <div className="flex-1 relative overflow-hidden">
+        <div
+          className="flex-1 relative overflow-hidden"
+          onPointerMove={draggedStepId ? handleStepDragMove : undefined}
+          onPointerUp={draggedStepId ? handleStepDragEnd : undefined}
+        >
           <div
             ref={canvasRef}
             className="absolute inset-0"
-            style={{ cursor: isPanningRef.current ? "grabbing" : "grab", touchAction: "none" }}
+            style={{ cursor: draggedStepId ? "grabbing" : isPanningRef.current ? "grabbing" : "grab", touchAction: "none" }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
           >
-            {/* Dot grid background */}
-            <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none">
+            {/* Dot grid */}
+            <svg className="absolute inset-0 w-full h-full opacity-10 pointer-events-none">
               <defs>
-                <pattern id="dotgrid" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-                  <circle cx="1" cy="1" r="1" fill="currentColor" className="text-muted-foreground" />
+                <pattern id="dotgrid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+                  <circle cx="1" cy="1" r="0.8" fill="currentColor" className="text-muted-foreground" />
                 </pattern>
               </defs>
               <rect width="100%" height="100%" fill="url(#dotgrid)" />
@@ -468,14 +563,17 @@ const CrmBotEditor = () => {
 
             {/* Transformed content */}
             <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
-              <div className="flex items-start gap-8 min-w-max p-4" onPointerDown={e => e.stopPropagation()}>
-                {/* ── Trigger Card (Início) ── */}
+              <div className="flex items-start gap-6 min-w-max p-4" onPointerDown={e => e.stopPropagation()}>
+                {/* ── Trigger Card ── */}
                 <div className="w-72 shrink-0">
-                  <div className="rounded-xl overflow-hidden shadow-lg border-2 border-indigo-200 dark:border-indigo-800 bg-card">
-                    <div className="bg-indigo-500 px-4 py-3 flex items-center justify-between">
-                      <span className="text-white text-sm font-bold">Início</span>
+                  <div className="rounded-xl overflow-hidden shadow-lg border border-primary/30 bg-card">
+                    <div className="bg-primary px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Play size={14} className="text-primary-foreground" />
+                        <span className="text-primary-foreground text-sm font-bold">Início</span>
+                      </div>
                       <button onClick={() => { setShowGeneralSettings(true); setEditingStepId(null); setActionsOpen(false); }}>
-                        <Settings size={16} className="text-white/70 hover:text-white transition-colors cursor-pointer" />
+                        <Settings size={16} className="text-primary-foreground/70 hover:text-primary-foreground transition-colors cursor-pointer" />
                       </button>
                     </div>
                     <div className="p-3 space-y-2">
@@ -494,7 +592,7 @@ const CrmBotEditor = () => {
                         return (
                           <div key={t.id} className="bg-muted/50 rounded-lg px-3 py-2 space-y-1.5">
                             <div className="flex items-center justify-between text-xs">
-                              <span className="font-medium">{t.label}</span>
+                              <span className="font-medium text-foreground">{t.label}</span>
                               <button onClick={() => setTriggers(prev => prev.filter(tr => tr.id !== t.id))} className="text-muted-foreground hover:text-destructive"><X size={12} /></button>
                             </div>
                             {opt?.needsStage && (
@@ -521,7 +619,7 @@ const CrmBotEditor = () => {
                         {showTriggerMenu && (
                           <div className="absolute top-full left-0 right-0 mt-1 bg-card rounded-lg border border-border shadow-lg z-30 py-1">
                             {TRIGGER_OPTIONS.map(opt => (
-                              <button key={opt.type} className="w-full text-left px-3 py-2 text-xs hover:bg-muted/80 transition-colors"
+                              <button key={opt.type} className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-muted/80 transition-colors"
                                 onClick={() => {
                                   setTriggers(prev => [...prev, { id: uid(), type: opt.type, label: opt.label, config: opt.needsStage ? { pipeline_id: "", stage_id: "" } : undefined }]);
                                   setShowTriggerMenu(false);
@@ -536,23 +634,28 @@ const CrmBotEditor = () => {
                   </div>
                 </div>
 
-                {/* ── Connector from trigger to flow ── */}
+                {/* ── Connector ── */}
                 <div className="flex items-center self-center shrink-0">
-                  <div className="w-6 h-px bg-border" />
-                  <div className="w-1.5 h-1.5 rounded-full bg-border -ml-0.5" />
-                  <div className="w-6 h-px bg-border" />
+                  <div className="w-8 h-px bg-border" />
+                  <div className="w-2 h-2 rounded-full bg-primary/50" />
+                  <div className="w-8 h-px bg-border" />
                 </div>
 
                 {/* ── Flow Groups ── */}
-                <div className="flex items-start gap-8">
+                <div className="flex items-start gap-6">
                   {rootOutputs.map(output => (
                     <FlowGroupRenderer
                       key={output.id}
                       output={output}
                       onAddStep={openActionsForOutput}
                       onRemoveStep={removeStep}
-                      onEditStep={setEditingStepId}
+                      onEditStep={(id) => { setEditingStepId(id); setActionsOpen(false); setShowGeneralSettings(false); }}
                       editingStepId={editingStepId}
+                      stepPositions={stepPositions}
+                      onDragStart={handleStepDragStart}
+                      draggedStepId={draggedStepId}
+                      getStepPreview={getStepPreview}
+                      bots={bots}
                     />
                   ))}
                 </div>
@@ -610,7 +713,14 @@ const CrmBotEditor = () => {
         {editingStep && !actionsOpen && !showGeneralSettings && (
           <div className="w-80 border-l border-border bg-card shrink-0 overflow-y-auto z-20" onPointerDown={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <h2 className="text-sm font-bold text-foreground">Editar passo</h2>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const def = getStepDef(editingStep.type);
+                  const Icon = def?.icon || MessageSquare;
+                  return <Icon size={16} className={def?.color || "text-foreground"} />;
+                })()}
+                <h2 className="text-sm font-bold text-foreground">{getStepDef(editingStep.type)?.label || "Editar"}</h2>
+              </div>
               <button onClick={() => setEditingStepId(null)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <div className="p-4 space-y-3">
@@ -655,78 +765,58 @@ const CrmBotEditor = () => {
               <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center">
                 <Settings size={18} className="text-muted-foreground" />
               </div>
-              <h2 className="text-sm font-bold text-foreground flex-1">Configuração geral do chatbot</h2>
+              <h2 className="text-sm font-bold text-foreground flex-1">Configuração geral</h2>
               <button onClick={() => setShowGeneralSettings(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-6">
-              {/* Info banner */}
               <div className="flex gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
                 <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
                   <span className="text-primary text-xs font-bold">i</span>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Perguntas, menus e modelos de mensagens seguirão a configuração padrão definida abaixo.
+                  Perguntas, menus e modelos seguirão a configuração padrão abaixo.
                 </p>
               </div>
 
-              {/* Response delay */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">Tempo de espera para envio da resposta</h3>
+                  <h3 className="text-sm font-semibold text-foreground">Delay de resposta</h3>
                   <Switch
                     checked={generalSettings.responseDelayEnabled}
                     onCheckedChange={v => setGeneralSettings(prev => ({ ...prev, responseDelayEnabled: v }))}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Defina por quantos segundos o chatbot deve aguardar para responder.
-                </p>
+                <p className="text-xs text-muted-foreground">Segundos de espera antes de responder.</p>
                 {generalSettings.responseDelayEnabled && (
                   <div className="flex items-center gap-2 mt-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={generalSettings.responseDelaySeconds}
+                    <Input type="number" min={1} max={60} value={generalSettings.responseDelaySeconds}
                       onChange={e => setGeneralSettings(prev => ({ ...prev, responseDelaySeconds: parseInt(e.target.value) || 1 }))}
-                      className="w-20 h-8 text-xs"
-                    />
+                      className="w-20 h-8 text-xs" />
                     <span className="text-xs text-muted-foreground">segundos</span>
                   </div>
                 )}
               </div>
 
-              <div className="h-px bg-border" />
-
-              {/* Inactivity timeout */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-foreground">Tempo máximo de inatividade</h3>
+                  <h3 className="text-sm font-semibold text-foreground">Timeout de inatividade</h3>
                   <Switch
                     checked={generalSettings.inactivityTimeoutEnabled}
                     onCheckedChange={v => setGeneralSettings(prev => ({ ...prev, inactivityTimeoutEnabled: v }))}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Defina por quanto tempo o chatbot pode ficar sem receber novas mensagens. Ao atingir esse limite, ele seguirá para outro fluxo ou, se não houver nenhum, a conversa será encerrada.
-                </p>
+                <p className="text-xs text-muted-foreground">Tempo máximo sem mensagens antes de encerrar.</p>
                 {generalSettings.inactivityTimeoutEnabled && (
                   <div className="flex items-center gap-2 mt-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={generalSettings.inactivityTimeoutMinutes}
+                    <Input type="number" min={1} max={1440} value={generalSettings.inactivityTimeoutMinutes}
                       onChange={e => setGeneralSettings(prev => ({ ...prev, inactivityTimeoutMinutes: parseInt(e.target.value) || 1 }))}
-                      className="w-20 h-8 text-xs"
-                    />
+                      className="w-20 h-8 text-xs" />
                     <span className="text-xs text-muted-foreground">minutos</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Footer */}
             <div className="border-t border-border px-5 py-4 flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setShowGeneralSettings(false)}>Cancelar</Button>
               <Button size="sm" onClick={() => { setShowGeneralSettings(false); toast.success("Configurações salvas!"); }}>Salvar</Button>
@@ -738,7 +828,7 @@ const CrmBotEditor = () => {
   );
 };
 
-// ── Flow Group Renderer (Kommo-style grouped card) ──
+// ── Flow Group Renderer ──
 
 interface FlowGroupRendererProps {
   output: FlowOutput;
@@ -746,10 +836,14 @@ interface FlowGroupRendererProps {
   onRemoveStep: (stepId: string) => void;
   onEditStep: (stepId: string) => void;
   editingStepId: string | null;
+  stepPositions: Record<string, { x: number; y: number }>;
+  onDragStart: (e: React.PointerEvent, stepId: string) => void;
+  draggedStepId: string | null;
+  getStepPreview: (step: FlowStep) => string | null;
+  bots: any[];
 }
 
-const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editingStepId }: FlowGroupRendererProps) => {
-  // Collect all steps in the main branch (linear chain)
+const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editingStepId, stepPositions, onDragStart, draggedStepId, getStepPreview, bots }: FlowGroupRendererProps) => {
   const collectLinearSteps = (o: FlowOutput): { steps: FlowStep[]; branches: { output: FlowOutput; afterStepIdx: number }[] } => {
     const steps: FlowStep[] = [];
     const branches: { output: FlowOutput; afterStepIdx: number }[] = [];
@@ -759,15 +853,13 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
       const step = current.nextSteps[0];
       steps.push(step);
 
-      // If this step has multiple outputs, register branches
       if (step.outputs.length > 1) {
         step.outputs.forEach(out => {
           branches.push({ output: out, afterStepIdx: steps.length - 1 });
         });
-        break; // Branching stops linear collection
+        break;
       }
 
-      // Single output → continue chain
       if (step.outputs.length === 1) {
         current = step.outputs[0];
       } else {
@@ -780,7 +872,6 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
 
   const { steps, branches } = collectLinearSteps(output);
 
-  // Get the last output for adding new steps
   const getLastOutputId = (): string => {
     if (steps.length === 0) return output.id;
     const lastStep = steps[steps.length - 1];
@@ -788,133 +879,99 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
     return output.id;
   };
 
-  const stepColors: Record<string, { icon: string; bg: string }> = {
-    send_message: { icon: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/20" },
-    send_message_template: { icon: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/20" },
-    list_message: { icon: "text-rose-500", bg: "bg-rose-50 dark:bg-rose-950/20" },
-    reaction: { icon: "text-pink-500", bg: "bg-pink-50 dark:bg-pink-950/20" },
-    comment: { icon: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950/20" },
-    pause: { icon: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950/20" },
-    pause_timer: { icon: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950/20" },
-    condition: { icon: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-950/20" },
-    action: { icon: "text-cyan-500", bg: "bg-cyan-50 dark:bg-cyan-950/20" },
-    action_move: { icon: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/20" },
-    action_field: { icon: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/20" },
-    action_transfer: { icon: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/20" },
-    stop_bot: { icon: "text-red-500", bg: "bg-red-50 dark:bg-red-950/20" },
-    start_bot: { icon: "text-indigo-500", bg: "bg-indigo-50 dark:bg-indigo-950/20" },
-    round_robin: { icon: "text-gray-500", bg: "bg-gray-50 dark:bg-gray-950/20" },
-  };
-
-  const getStepLabel = (step: FlowStep): string => {
-    const def = STEP_TYPES.find(s => s.type === step.type);
-    return def?.label || step.type;
-  };
-
-  const getStepPreview = (step: FlowStep): string | null => {
-    if (step.type === "send_message" || step.type === "send_message_template") {
-      if (step.config?.useTemplate) return `Template: ${step.config.template_name}`;
-      return step.config?.message?.substring(0, 60) || null;
-    }
-    if (step.type === "action" || step.type === "action_move" || step.type === "action_field") {
-      if (step.config?.actionType === "add_tag") return `Tag: ${step.config.tag || "..."}`;
-      if (step.config?.actionType === "move_stage") return "Mover etapa";
-      return step.config?.actionType || null;
-    }
-    if (step.type === "action_transfer") return `Equipe: ${step.config?.team || "Atendimento"}`;
-    if (step.type === "pause" || step.type === "pause_timer") {
-      const cond = step.config?.conditions?.[0];
-      if (cond?.type === "timer") return `${cond.hours || 0}h ${cond.minutes || 0}min`;
-      return "Aguardar resposta";
-    }
-    if (step.type === "reaction") return step.config?.emoji || "👍";
-    if (step.type === "comment") return step.config?.text?.substring(0, 40) || null;
-    return null;
-  };
-
   const getStepIcon = (type: string) => {
     const def = STEP_TYPES.find(s => s.type === type);
     return def?.icon || MessageSquare;
   };
 
+  const getStepDef = (type: string) => STEP_TYPES.find(s => s.type === type);
   const hasBranches = branches.length > 0;
 
   return (
-    <div className="flex items-start gap-8">
+    <div className="flex items-start gap-6">
       {/* Main group card */}
-      <div className={`rounded-xl border-2 shadow-lg bg-card min-w-[300px] overflow-hidden transition-all ${
-        editingStepId && steps.some(s => s.id === editingStepId) ? "border-indigo-400 dark:border-indigo-600" : "border-blue-200 dark:border-blue-800"
+      <div className={`rounded-xl border shadow-lg bg-card min-w-[280px] max-w-[320px] overflow-hidden transition-all ${
+        editingStepId && steps.some(s => s.id === editingStepId)
+          ? "border-primary ring-1 ring-primary/30"
+          : "border-border"
       }`}>
         {/* Card header */}
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border-b border-border">
-          <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center">
-            <Bot size={14} className="text-indigo-500" />
+        <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b border-border">
+          <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
+            <Bot size={12} className="text-primary" />
           </div>
-          <span className="text-sm font-semibold text-foreground flex-1">{output.label}</span>
-          <button className="text-muted-foreground hover:text-foreground"><MoreVertical size={14} /></button>
+          <span className="text-xs font-semibold text-foreground flex-1 truncate">{output.label}</span>
+          <button className="text-muted-foreground hover:text-foreground"><MoreVertical size={12} /></button>
         </div>
 
         {/* Steps list */}
-        <div className="p-2 space-y-1.5">
+        <div className="p-1.5 space-y-1">
           {steps.map((step) => {
             const Icon = getStepIcon(step.type);
-            const colors = stepColors[step.type] || { icon: "text-gray-500", bg: "bg-gray-50 dark:bg-gray-950/20" };
+            const def = getStepDef(step.type);
             const preview = getStepPreview(step);
             const isEditing = editingStepId === step.id;
+            const isDragging = draggedStepId === step.id;
 
             return (
               <div
                 key={step.id}
+                className={`rounded-lg p-2.5 cursor-pointer transition-all group relative ${
+                  isEditing ? "ring-2 ring-primary bg-primary/5" : "hover:bg-muted/50"
+                } ${isDragging ? "opacity-50" : ""}`}
                 onClick={() => onEditStep(step.id)}
-                className={`rounded-lg p-3 cursor-pointer transition-all group ${colors.bg} ${
-                  isEditing ? "ring-2 ring-indigo-400" : "hover:ring-1 hover:ring-border"
-                }`}
               >
                 <div className="flex items-center gap-2">
-                  <Icon size={14} className={colors.icon} />
-                  <span className="text-xs font-semibold text-foreground flex-1">{getStepLabel(step)}</span>
+                  <div
+                    className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
+                    onPointerDown={(e) => onDragStart(e, step.id)}
+                  >
+                    <GripVertical size={12} />
+                  </div>
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${def?.bg || "bg-muted"}`}>
+                    <Icon size={12} className={def?.color || "text-foreground"} />
+                  </div>
+                  <span className="text-xs font-medium text-foreground flex-1 truncate">{def?.label || step.type}</span>
                   <button
                     onClick={(e) => { e.stopPropagation(); onRemoveStep(step.id); }}
                     className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
                   >
-                    <X size={12} />
+                    <X size={11} />
                   </button>
                 </div>
                 {preview && (
-                  <p className="text-[11px] text-muted-foreground mt-1 ml-5 truncate">{preview}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1 ml-[34px] truncate leading-tight">{preview}</p>
                 )}
               </div>
             );
           })}
         </div>
 
-        {/* Add step button inside card */}
+        {/* Add step button */}
         {!hasBranches && (
-          <div className="px-2 pb-2">
+          <div className="px-1.5 pb-1.5">
             <button
               onClick={() => onAddStep(getLastOutputId())}
               className="w-full flex items-center justify-center gap-1 py-2 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5 transition-all"
             >
-              <Plus size={14} />
+              <Plus size={12} /> Passo
             </button>
           </div>
         )}
       </div>
 
-      {/* Branch connectors + child groups */}
+      {/* Branch connectors */}
       {hasBranches && (
-        <div className="flex flex-col gap-4 self-center">
+        <div className="flex flex-col gap-3 self-center">
           {branches.map(({ output: branchOutput }) => (
             <div key={branchOutput.id} className="flex items-center gap-2">
-              {/* Connector */}
               <div className="flex items-center shrink-0">
-                <div className="w-8 h-px bg-border" />
-                <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded whitespace-nowrap border border-border">{branchOutput.label}</span>
-                <div className="w-8 h-px bg-border" />
-                <div className="w-1.5 h-1.5 rounded-full bg-border" />
+                <div className="w-6 h-px bg-border" />
+                <span className="text-[10px] text-muted-foreground bg-muted/80 px-2 py-0.5 rounded border border-border whitespace-nowrap">{branchOutput.label}</span>
+                <div className="w-6 h-px bg-border" />
+                <div className="w-1.5 h-1.5 rounded-full bg-primary/40" />
               </div>
 
-              {/* Child group or add button */}
               {branchOutput.nextSteps.length > 0 ? (
                 <FlowGroupRenderer
                   output={branchOutput}
@@ -922,13 +979,18 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
                   onRemoveStep={onRemoveStep}
                   onEditStep={onEditStep}
                   editingStepId={editingStepId}
+                  stepPositions={stepPositions}
+                  onDragStart={onDragStart}
+                  draggedStepId={draggedStepId}
+                  getStepPreview={getStepPreview}
+                  bots={bots}
                 />
               ) : (
                 <button
                   onClick={() => onAddStep(branchOutput.id)}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-dashed border-border bg-card text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors shadow-sm"
                 >
-                  <Plus size={12} /> Adicionar passo
+                  <Plus size={11} /> Passo
                 </button>
               )}
             </div>
@@ -940,8 +1002,8 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
       {!hasBranches && steps.length > 0 && steps[steps.length - 1].outputs.length === 1 && steps[steps.length - 1].outputs[0].nextSteps.length > 0 && (
         <div className="flex items-center gap-2 self-center">
           <div className="flex items-center shrink-0">
-            <div className="w-8 h-px bg-border" />
-            <div className="w-1.5 h-1.5 rounded-full bg-border" />
+            <div className="w-6 h-px bg-border" />
+            <div className="w-1.5 h-1.5 rounded-full bg-primary/40" />
           </div>
           <FlowGroupRenderer
             output={steps[steps.length - 1].outputs[0]}
@@ -949,6 +1011,11 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
             onRemoveStep={onRemoveStep}
             onEditStep={onEditStep}
             editingStepId={editingStepId}
+            stepPositions={stepPositions}
+            onDragStart={onDragStart}
+            draggedStepId={draggedStepId}
+            getStepPreview={getStepPreview}
+            bots={bots}
           />
         </div>
       )}
