@@ -261,7 +261,8 @@ Deno.serve(async (req) => {
 
             // Download and store media if present
             let mediaUrl: string | null = null;
-            const whatsappToken = Deno.env.get("WHATSAPP_TOKEN") || "";
+            // Use token from matched integration config, fallback to env var
+            const whatsappToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
             if (mediaId && MEDIA_TYPES.has(msgType)) {
               mediaUrl = await downloadAndStoreMedia(mediaId, msgType, whatsappToken, supabase);
             }
