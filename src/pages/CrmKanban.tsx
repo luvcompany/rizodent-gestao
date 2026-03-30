@@ -294,7 +294,7 @@ export default function CrmKanban() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{totalLeads} leads: <span className="text-primary font-semibold">{formatCurrency(totalValue)}</span></span>
+          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{allFilteredLeads.length} leads: <span className="text-primary font-semibold">{formatCurrency(totalValue)}</span></span>
           <Button variant="outline" size="sm" onClick={() => navigate("/crm/relatorios")}>
             <TrendingUp size={14} className="mr-1" /> RELATÓRIOS
           </Button>
