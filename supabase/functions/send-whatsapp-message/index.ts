@@ -146,6 +146,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    let finalType = type; // may be corrected for audio files
     let waBody: any = { messaging_product: "whatsapp", to };
 
     // Add reply context
