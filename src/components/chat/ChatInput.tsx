@@ -52,6 +52,24 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const streamRef = useRef<MediaStream | null>(null);
   const recordingDiscardedRef = useRef(false);
 
+  // Slash commands
+  const [slashActive, setSlashActive] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [slashTemplates, setSlashTemplates] = useState<any[]>([]);
+  const [slashBots, setSlashBots] = useState<any[]>([]);
+
+  useEffect(() => {
+    const loadSlashData = async () => {
+      const [{ data: t }, { data: b }] = await Promise.all([
+        supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED"),
+        supabase.from("bots").select("id, name, description").eq("active", true),
+      ]);
+      setSlashTemplates(t || []);
+      setSlashBots(b || []);
+    };
+    loadSlashData();
+  }, []);
+
   useEffect(() => {
     if (externalMessage) {
       setNewMessage(externalMessage);
