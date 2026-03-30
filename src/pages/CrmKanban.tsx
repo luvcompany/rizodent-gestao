@@ -316,95 +316,166 @@ export default function CrmKanban() {
       </div>
 
       {/* Kanban area - SCROLLABLE horizontally */}
-      <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }} className="p-4">
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex gap-3 h-full min-w-max">
-            {stages.map((stage, idx) => {
-              const stageLeads = getLeadsForStage(stage.id);
-              const stageValue = stageLeads.reduce((a, l) => a + (l.value || 0), 0);
-              return (
-                <div key={stage.id} className="flex items-start gap-1">
-                  <div className="w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
-                    <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
-                    <div className="px-3 py-2 flex-shrink-0">
-                      <div className="font-semibold text-sm text-foreground">{stage.name}</div>
-                      <div className="text-xs text-muted-foreground">{stageLeads.length} leads · {formatCurrency(stageValue)}</div>
-                    </div>
-
-                    {idx === 0 && (
-                      <div className="px-2 pb-1 flex-shrink-0">
-                        <button
-                          onClick={() => { setNewLead(p => ({ ...p, stage_id: stage.id })); setNewLeadOpen(true); }}
-                          className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1 flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <Plus size={12} /> Adição rápida
-                        </button>
+      {viewMode === "kanban" ? (
+        <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }} className="p-4">
+          <DragDropContext onDragEnd={handleDragEnd}>
+            <div className="flex gap-3 h-full min-w-max">
+              {stages.map((stage, idx) => {
+                const stageLeads = getLeadsForStage(stage.id);
+                const stageValue = stageLeads.reduce((a, l) => a + (l.value || 0), 0);
+                return (
+                  <div key={stage.id} className="flex items-start gap-1">
+                    <div className="w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
+                      <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
+                      <div className="px-3 py-2 flex-shrink-0">
+                        <div className="font-semibold text-sm text-foreground">{stage.name}</div>
+                        <div className="text-xs text-muted-foreground">{stageLeads.length} leads · {formatCurrency(stageValue)}</div>
                       </div>
-                    )}
 
-                    <Droppable droppableId={stage.id}>
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          className={`flex-1 overflow-y-auto px-2 pb-2 min-h-[100px] ${snapshot.isDraggingOver ? "bg-primary/5" : ""}`}
-                        >
-                          {stageLeads.map((lead, lIdx) => (
-                            <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
-                              {(prov, snap) => (
-                                <Link
-                                  to={`/crm/conversa/${lead.id}`}
-                                  ref={prov.innerRef}
-                                  {...prov.draggableProps}
-                                  {...prov.dragHandleProps}
-                                  className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
-                                >
-                                  <div className="flex items-start justify-between mb-1">
-                                    <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
-                                    <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
-                                      {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-                                    </span>
-                                  </div>
-                                  <div className="text-xs text-primary mb-1.5 cursor-pointer hover:underline">
-                                    Lead #{lead.id.slice(0, 8)}
-                                  </div>
-                                  {lead.tags && lead.tags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mb-2">
-                                      {lead.tags.map(tag => (
-                                        <span key={tag} className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">#{tag}</span>
-                                      ))}
-                                    </div>
-                                  )}
-                                  <div className="flex items-center justify-between">
-                                    {lead.value ? <span className="text-xs font-medium text-primary">{formatCurrency(lead.value)}</span> : <span />}
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
-                                      {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
-                                    </span>
-                                  </div>
-                                </Link>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
+                      {idx === 0 && (
+                        <div className="px-2 pb-1 flex-shrink-0">
+                          <button
+                            onClick={() => { setNewLead(p => ({ ...p, stage_id: stage.id })); setNewLeadOpen(true); }}
+                            className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1 flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <Plus size={12} /> Adição rápida
+                          </button>
                         </div>
                       )}
-                    </Droppable>
-                  </div>
 
-                  {idx < stages.length - 1 && (
-                    <button
-                      onClick={() => { setNewStageInsertIdx(idx); setNewStageOpen(true); }}
-                      className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors"
-                    >
-                      +
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                      <Droppable droppableId={stage.id}>
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className={`flex-1 overflow-y-auto px-2 pb-2 min-h-[100px] ${snapshot.isDraggingOver ? "bg-primary/5" : ""}`}
+                          >
+                            {stageLeads.map((lead, lIdx) => (
+                              <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
+                                {(prov, snap) => (
+                                  <Link
+                                    to={`/crm/conversa/${lead.id}`}
+                                    ref={prov.innerRef}
+                                    {...prov.draggableProps}
+                                    {...prov.dragHandleProps}
+                                    className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
+                                  >
+                                    <div className="flex items-start justify-between mb-1">
+                                      <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
+                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
+                                        {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-primary mb-1.5 cursor-pointer hover:underline">
+                                      Lead #{lead.id.slice(0, 8)}
+                                    </div>
+                                    {lead.tags && lead.tags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mb-2">
+                                        {lead.tags.map(tag => (
+                                          <span key={tag} className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">#{tag}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div className="flex items-center justify-between">
+                                      {lead.value ? <span className="text-xs font-medium text-primary">{formatCurrency(lead.value)}</span> : <span />}
+                                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
+                                        {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
+                                      </span>
+                                    </div>
+                                  </Link>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    </div>
+
+                    {idx < stages.length - 1 && (
+                      <button
+                        onClick={() => { setNewStageInsertIdx(idx); setNewStageOpen(true); }}
+                        className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors"
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </DragDropContext>
+        </div>
+      ) : (
+        /* LIST VIEW */
+        <div style={{ flex: 1, overflowY: "auto" }} className="p-4">
+          <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Nome</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Telefone</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Etapa</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Origem</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Valor</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Tags</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Status</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Criado em</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allFilteredLeads.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <MessageSquare size={24} className="mx-auto mb-2 opacity-50" />
+                      Nenhum lead encontrado
+                    </td>
+                  </tr>
+                ) : (
+                  allFilteredLeads.map((lead) => {
+                    const stage = stages.find((s) => s.id === lead.stage_id);
+                    return (
+                      <tr key={lead.id} className="border-b border-border hover:bg-secondary/30 transition-colors">
+                        <td className="px-4 py-2.5">
+                          <Link to={`/crm/conversa/${lead.id}`} className="font-medium text-foreground hover:text-primary transition-colors">
+                            {lead.name}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{lead.phone || "—"}</td>
+                        <td className="px-4 py-2.5">
+                          {stage && (
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />
+                              <span className="text-foreground">{stage.name}</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{lead.source || "—"}</td>
+                        <td className="px-4 py-2.5 text-primary font-medium">{lead.value ? formatCurrency(lead.value) : "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex flex-wrap gap-1">
+                            {lead.tags?.map((t: string) => (
+                              <Badge key={t} variant="secondary" className="text-[10px]">#{t}</Badge>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
+                            {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground text-xs">
+                          {new Date(lead.created_at).toLocaleDateString("pt-BR")}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-        </DragDropContext>
-      </div>
+        </div>
+      )}
 
       {/* New Lead Modal */}
       <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
