@@ -200,9 +200,12 @@ const CrmBotEditor = () => {
   const mapNodeType = (dbType: string): string => {
     const map: Record<string, string> = {
       message_text: "send_message", message_template: "send_message_template", message_audio: "send_message",
+      message_image: "send_message", message_video: "send_message", message_document: "send_message",
+      message_list: "list_message",
       wait: "pause", condition: "condition",
       action_move_stage: "action_move", action_set_field: "action_field", action_add_tag: "action",
-      action_end_bot: "stop_bot",
+      action_end_bot: "stop_bot", start_bot: "start_bot", comment: "comment", reaction: "reaction",
+      round_robin: "round_robin",
     };
     return map[dbType] || dbType;
   };
