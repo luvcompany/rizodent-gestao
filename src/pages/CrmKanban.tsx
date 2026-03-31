@@ -42,6 +42,8 @@ type Lead = {
   position: number;
   created_at: string;
   updated_at: string;
+  last_message: string | null;
+  last_message_at: string | null;
 };
 
 type Pipeline = {
