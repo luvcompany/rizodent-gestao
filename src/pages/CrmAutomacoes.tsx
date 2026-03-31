@@ -10,8 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, AlertTriangle } from "lucide-react";
-import FollowUpConfigCard from "@/components/chat/FollowUpConfigCard";
+import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, AlertTriangle, RefreshCw } from "lucide-react";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -23,6 +22,7 @@ type Template = { id: string; name: string; status: string };
 type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
 type BotItem = { id: string; name: string; active: boolean };
 type StageBotConfig = { id: string; stage_id: string; bot_id: string | null; trigger_type: string; active: boolean; is_final_stage: boolean };
+type FollowUpCfg = { id: string; stage_id: string; is_active: boolean; disparo1_type: string; disparo1_delay_minutes: number; max_attempts: number };
 
 const PRESET_COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
@@ -43,6 +43,7 @@ export default function CrmAutomacoes() {
   const [channels, setChannels] = useState<FunnelChannel[]>([]);
   const [allBots, setAllBots] = useState<BotItem[]>([]);
   const [stageBotConfigs, setStageBotConfigs] = useState<StageBotConfig[]>([]);
+  const [followUpConfigs, setFollowUpConfigs] = useState<FollowUpCfg[]>([]);
   const [loading, setLoading] = useState(true);
   const [duplicateRulesOpen, setDuplicateRulesOpen] = useState(false);
   const [duplicateEnabled, setDuplicateEnabled] = useState(false);
@@ -78,13 +79,14 @@ export default function CrmAutomacoes() {
     const pid = pipeId || selectedPipelineId || pipes[0]?.id;
     if (pid) {
       setSelectedPipelineId(pid);
-      const [stagesRes, autoRes, tplRes, chRes, botsRes, sbcRes] = await Promise.all([
+      const [stagesRes, autoRes, tplRes, chRes, botsRes, sbcRes, fuRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
         supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED"),
         supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
         supabase.from("bots").select("id, name, active"),
         supabase.from("stage_bot_config").select("*"),
+        supabase.from("crm_followup_configs").select("id, stage_id, is_active, disparo1_type, disparo1_delay_minutes, max_attempts"),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
@@ -92,6 +94,7 @@ export default function CrmAutomacoes() {
       setChannels((chRes.data as FunnelChannel[]) || []);
       setAllBots((botsRes.data as BotItem[]) || []);
       setStageBotConfigs((sbcRes.data as StageBotConfig[]) || []);
+      setFollowUpConfigs((fuRes.data as FollowUpCfg[]) || []);
     }
     setLoading(false);
   }, [selectedPipelineId]);
@@ -385,8 +388,30 @@ export default function CrmAutomacoes() {
                                     <Plus size={12} /> Adicionar gatilho
                                   </button>
 
-                                  {/* Follow Up Config Card */}
-                                  <FollowUpConfigCard stageId={stage.id} stages={stages} templates={templates} />
+                                  {/* Follow Up - simple dropdown */}
+                                  {(() => {
+                                    const stageFollowUp = followUpConfigs.find(f => f.stage_id === stage.id);
+                                    return (
+                                      <div className="flex items-center justify-between bg-amber-500/5 border border-amber-500/20 rounded-lg px-2 py-1.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <RefreshCw size={11} className="text-amber-500" />
+                                          <span className="text-[10px] text-foreground font-medium">Follow Up</span>
+                                        </div>
+                                        {stageFollowUp ? (
+                                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${stageFollowUp.is_active ? "bg-green-500/20 text-green-500" : "bg-muted text-muted-foreground"}`}>
+                                            {stageFollowUp.is_active ? "Ativo" : "Inativo"}
+                                          </span>
+                                        ) : (
+                                          <button
+                                            onClick={() => navigate("/crm/followups")}
+                                            className="text-[10px] text-primary hover:underline"
+                                          >
+                                            Configurar
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
 
                                   {/* Inline bot config when expanded */}
                                   {expandedStageId === stage.id && (() => {
