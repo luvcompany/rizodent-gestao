@@ -94,6 +94,7 @@ export default function CrmAutomacoes() {
       setChannels((chRes.data as FunnelChannel[]) || []);
       setAllBots((botsRes.data as BotItem[]) || []);
       setStageBotConfigs((sbcRes.data as StageBotConfig[]) || []);
+      setFollowUpConfigs((fuRes.data as FollowUpCfg[]) || []);
     }
     setLoading(false);
   }, [selectedPipelineId]);
