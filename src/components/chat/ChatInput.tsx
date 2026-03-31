@@ -110,7 +110,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
 
     let type = "text";
-    let message = newMessage.trim();
+    let rawMessage = newMessage.trim();
+    // Prepend signature if enabled
+    const sigEnabled = profile?.signature_enabled && profile?.nome;
+    let message = sigEnabled ? `*${profile.nome}*\n${rawMessage}` : rawMessage;
     let fileToUpload = attachedFile?.file;
     const originalFileName = attachedFile?.file.name;
 
