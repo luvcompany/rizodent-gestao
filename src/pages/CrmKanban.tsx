@@ -223,7 +223,11 @@ export default function CrmKanban() {
 
   const getLeadsForStage = (stageId: string) => {
     const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
-    return filtered.sort((a, b) => a.position - b.position);
+    return filtered.sort((a, b) => {
+      const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return bTime - aTime; // most recent first
+    });
   };
 
   const allFilteredLeads = useMemo(() => applyFilters(leads), [leads, applyFilters]);
