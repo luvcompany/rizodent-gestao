@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const { leadId, trigger, message, newStageId } = await req.json();
+    const { leadId, trigger, message, newStageId, messageType } = await req.json();
 
     if (trigger === "inbound_message") {
       return await handleInboundMessage(supabase, leadId, message);
