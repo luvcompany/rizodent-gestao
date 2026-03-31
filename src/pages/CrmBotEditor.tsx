@@ -1022,7 +1022,7 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
                 draggable
                 onDragStart={(e) => onDragStart(e, step.id)}
                 onDragOver={onDragOver}
-                onDrop={() => onDrop(output.id, step.id)}
+                onDrop={(e) => onDrop(e, output.id, step.id)}
                 onDragEnd={onDragEnd}
                 className={`rounded-lg p-2.5 cursor-pointer transition-all group relative ${
                   isEditing ? "ring-2 ring-primary bg-primary/5" : "hover:bg-muted/50"
