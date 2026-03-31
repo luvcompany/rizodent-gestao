@@ -188,16 +188,54 @@ Deno.serve(async (req) => {
       waBody.type = "text";
       waBody.text = { body: message };
     } else if (media_url) {
-      // Download file from storage
+      // Download file from storage (handle private bucket)
       console.log(`[send-whatsapp] Downloading media: ${media_url}, type: ${type}`);
-      const fileResponse = await fetch(media_url);
-      if (!fileResponse.ok) {
-        console.error(`[send-whatsapp] Failed to download file: ${fileResponse.status}`);
-        return new Response(JSON.stringify({ error: "Failed to download file from storage", status: fileResponse.status }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      
+      let fileBlob: Blob;
+      // Check if this is a Supabase storage URL - use storage API for private bucket
+      const chatMediaMarker = "/storage/v1/object/";
+      const isChatMedia = media_url.includes(chatMediaMarker) && media_url.includes("chat-media");
+      
+      if (isChatMedia) {
+        // Extract path from storage URL
+        const pathMatch = media_url.match(/chat-media\/(.+?)(?:\?|$)/);
+        const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
+        
+        if (storagePath) {
+          console.log(`[send-whatsapp] Downloading from private bucket, path: ${storagePath}`);
+          const { data: fileData, error: downloadError } = await supabase.storage
+            .from("chat-media")
+            .download(storagePath);
+          
+          if (downloadError || !fileData) {
+            console.error(`[send-whatsapp] Failed to download from storage: ${JSON.stringify(downloadError)}`);
+            return new Response(JSON.stringify({ error: "Failed to download file from storage", details: downloadError }), {
+              status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          fileBlob = fileData;
+        } else {
+          // Fallback to direct fetch with signed URL
+          const { data: signedData } = await supabase.storage.from("chat-media").createSignedUrl(media_url, 300);
+          const fileResponse = await fetch(signedData?.signedUrl || media_url);
+          if (!fileResponse.ok) {
+            return new Response(JSON.stringify({ error: "Failed to download file from storage", status: fileResponse.status }), {
+              status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          fileBlob = await fileResponse.blob();
+        }
+      } else {
+        // External URL - fetch directly
+        const fileResponse = await fetch(media_url);
+        if (!fileResponse.ok) {
+          console.error(`[send-whatsapp] Failed to download file: ${fileResponse.status}`);
+          return new Response(JSON.stringify({ error: "Failed to download file from storage", status: fileResponse.status }), {
+            status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        fileBlob = await fileResponse.blob();
       }
-      const fileBlob = await fileResponse.blob();
       
       let filename = "file";
       try {
