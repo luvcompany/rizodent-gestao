@@ -24,6 +24,7 @@ import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
+import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import {
   ArrowLeft, FileText, Tag, Search
 } from "lucide-react";
@@ -562,6 +563,9 @@ export default function CrmConversa() {
 
         {/* Automation Panel */}
         <LeadAutomationPanel leadId={lead.id} />
+
+        {/* Follow Up Panel */}
+        <LeadFollowUpPanel leadId={lead.id} />
 
         {/* Notes input */}
         <div className="p-4 border-b border-border">

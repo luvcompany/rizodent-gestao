@@ -14,9 +14,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import ConversationFilters, { type ConversationFilterValues, emptyFilters, countActive } from "@/components/chat/ConversationFilters";
 import {
   Plus, LayoutGrid, List, Zap, Search,
-  Calendar, AlertTriangle, Clock, TrendingUp, Users, MessageSquare
+  Calendar, AlertTriangle, Clock, TrendingUp, Users, MessageSquare, RefreshCw
 } from "lucide-react";
 import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 type Stage = {
   id: string;
@@ -69,6 +70,7 @@ export default function CrmKanban() {
   const [searchTerm, setSearchTerm] = useState("");
   const [kanbanFilters, setKanbanFilters] = useState<ConversationFilterValues>(emptyFilters);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
+  const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
@@ -95,12 +97,17 @@ export default function CrmKanban() {
       : pList[0];
     if (p) {
       setPipeline(p);
-      const [stagesRes, leadsRes] = await Promise.all([
+      const [stagesRes, leadsRes, fqRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", p.id).order("position"),
         supabase.from("crm_leads").select("*").eq("pipeline_id", p.id).order("position"),
+        supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setLeads((leadsRes.data as Lead[]) || []);
+      // Map lead_id -> status for follow-up indicator
+      const fqMap: Record<string, string> = {};
+      (fqRes.data || []).forEach((fq: any) => { fqMap[fq.lead_id] = fq.status; });
+      setFollowUpLeads(fqMap);
     }
     setLoading(false);
   }, []);
@@ -361,7 +368,21 @@ export default function CrmKanban() {
                                     className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
                                   >
                                     <div className="flex items-start justify-between mb-1">
-                                      <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
+                                      <div className="flex items-center gap-1">
+                                        <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
+                                        {followUpLeads[lead.id] && (
+                                          <TooltipProvider>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <RefreshCw size={12} className={followUpLeads[lead.id] === "responded" ? "text-green-500" : "text-amber-500"} />
+                                              </TooltipTrigger>
+                                              <TooltipContent>
+                                                <p className="text-xs">{followUpLeads[lead.id] === "responded" ? "Respondeu ao follow up" : "Follow up ativo"}</p>
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        )}
+                                      </div>
                                       <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
                                         {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
                                       </span>
