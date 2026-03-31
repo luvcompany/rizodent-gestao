@@ -10,6 +10,7 @@ const crmNavItems = [
   { to: "/crm/conversas", icon: MessageSquare, label: "Conversas" },
   { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
   { to: "/crm/bots", icon: Cpu, label: "Bots" },
+  { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
   { to: "/crm/automacoes", icon: Bot, label: "Automações" },
   { to: "/crm/modelos", icon: FileText, label: "Modelos" },
   { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
