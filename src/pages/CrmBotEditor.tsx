@@ -472,29 +472,39 @@ const CrmBotEditor = () => {
 
   const editingStep = editingStepId ? findStep(rootOutputs, editingStepId) : null;
 
-  // Step block drag handlers
-  const handleStepDragStart = (e: React.PointerEvent, stepId: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setDraggedStepId(stepId);
-    const pos = stepPositions[stepId] || { x: 0, y: 0 };
-    dragStartRef.current = { x: e.clientX, y: e.clientY, origX: pos.x, origY: pos.y };
+  // Step block drag handlers — reorder within the same output group
+  const reorderStepInTree = (outs: FlowOutput[], fromId: string, toId: string): FlowOutput[] => {
+    return outs.map(o => {
+      const fromIdx = o.nextSteps.findIndex(s => s.id === fromId);
+      const toIdx = o.nextSteps.findIndex(s => s.id === toId);
+      if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
+        const newSteps = [...o.nextSteps];
+        const [moved] = newSteps.splice(fromIdx, 1);
+        newSteps.splice(toIdx, 0, moved);
+        return { ...o, nextSteps: newSteps };
+      }
+      return { ...o, nextSteps: o.nextSteps.map(step => ({ ...step, outputs: reorderStepInTree(step.outputs, fromId, toId) })) };
+    });
   };
 
-  const handleStepDragMove = useCallback((e: React.PointerEvent) => {
-    if (!draggedStepId) return;
-    const dx = (e.clientX - dragStartRef.current.x) / zoom;
-    const dy = (e.clientY - dragStartRef.current.y) / zoom;
-    setStepPositions(prev => ({
-      ...prev,
-      [draggedStepId]: { x: dragStartRef.current.origX + dx, y: dragStartRef.current.origY + dy },
-    }));
-  }, [draggedStepId, zoom]);
+  const handleStepDragStart = (_e: React.DragEvent, stepId: string) => {
+    setDraggedStepId(stepId);
+  };
 
-  const handleStepDragEnd = useCallback(() => {
+  const handleStepDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleStepDrop = (targetStepId: string) => {
+    if (draggedStepId && draggedStepId !== targetStepId) {
+      setRootOutputs(prev => reorderStepInTree(prev, draggedStepId!, targetStepId));
+    }
     setDraggedStepId(null);
-  }, []);
+  };
+
+  const handleStepDragEnd = () => {
+    setDraggedStepId(null);
+  };
 
   // ── Helper to get step info ──
 
