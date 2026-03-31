@@ -585,8 +585,6 @@ const CrmBotEditor = () => {
         {/* ── Canvas ── */}
         <div
           className="flex-1 relative overflow-hidden"
-          onPointerMove={draggedStepId ? handleStepDragMove : undefined}
-          onPointerUp={draggedStepId ? handleStepDragEnd : undefined}
         >
           <div
             ref={canvasRef}
