@@ -14,9 +14,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import ConversationFilters, { type ConversationFilterValues, emptyFilters, countActive } from "@/components/chat/ConversationFilters";
 import {
   Plus, LayoutGrid, List, Zap, Search,
-  Calendar, AlertTriangle, Clock, TrendingUp, Users, MessageSquare
+  Calendar, AlertTriangle, Clock, TrendingUp, Users, MessageSquare, RefreshCw
 } from "lucide-react";
 import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 type Stage = {
   id: string;
