@@ -42,6 +42,8 @@ type Lead = {
   position: number;
   created_at: string;
   updated_at: string;
+  last_message: string | null;
+  last_message_at: string | null;
 };
 
 type Pipeline = {
@@ -221,7 +223,11 @@ export default function CrmKanban() {
 
   const getLeadsForStage = (stageId: string) => {
     const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
-    return filtered.sort((a, b) => a.position - b.position);
+    return filtered.sort((a, b) => {
+      const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return bTime - aTime; // most recent first
+    });
   };
 
   const allFilteredLeads = useMemo(() => applyFilters(leads), [leads, applyFilters]);
@@ -387,9 +393,14 @@ export default function CrmKanban() {
                                         {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
                                       </span>
                                     </div>
-                                    <div className="text-xs text-primary mb-1.5 cursor-pointer hover:underline">
+                                    <div className="text-xs text-primary mb-0.5 cursor-pointer hover:underline">
                                       Lead #{lead.id.slice(0, 8)}
                                     </div>
+                                    {lead.last_message && (
+                                      <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-2 leading-snug">
+                                        {lead.last_message}
+                                      </p>
+                                    )}
                                     {lead.tags && lead.tags.length > 0 && (
                                       <div className="flex flex-wrap gap-1 mb-2">
                                         {lead.tags.map(tag => (
