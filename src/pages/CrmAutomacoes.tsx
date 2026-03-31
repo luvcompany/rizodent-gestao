@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, AlertTriangle } from "lucide-react";
+import FollowUpConfigCard from "@/components/chat/FollowUpConfigCard";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
