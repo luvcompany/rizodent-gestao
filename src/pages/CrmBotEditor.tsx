@@ -963,16 +963,18 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
             return (
               <div
                 key={step.id}
+                draggable
+                onDragStart={(e) => onDragStart(e, step.id)}
+                onDragOver={onDragOver}
+                onDrop={() => onDrop(step.id)}
+                onDragEnd={onDragEnd}
                 className={`rounded-lg p-2.5 cursor-pointer transition-all group relative ${
                   isEditing ? "ring-2 ring-primary bg-primary/5" : "hover:bg-muted/50"
                 } ${isDragging ? "opacity-50" : ""}`}
                 onClick={() => onEditStep(step.id)}
               >
                 <div className="flex items-center gap-2">
-                  <div
-                    className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
-                    onPointerDown={(e) => onDragStart(e, step.id)}
-                  >
+                  <div className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground">
                     <GripVertical size={12} />
                   </div>
                   <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${def?.bg || "bg-muted"}`}>
