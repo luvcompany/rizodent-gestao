@@ -25,6 +25,8 @@ import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import TaskPanel from "@/components/chat/TaskPanel";
+import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
+import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import {
   Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen
@@ -53,6 +55,7 @@ type LeadConversation = {
   descricao_anuncio?: string | null;
   link_anuncio?: string | null;
   ad_id?: string | null;
+  nome_anuncio?: string | null;
 };
 
 export default function CrmConversas() {
@@ -77,7 +80,7 @@ export default function CrmConversas() {
       const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
         supabase
           .from("crm_leads")
-          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at")
+          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio")
           .order("last_message_at", { ascending: false, nullsFirst: false }),
         supabase.from("profiles").select("id, nome"),
         supabase.from("crm_pipelines").select("id, name").order("created_at"),
@@ -293,8 +296,11 @@ export default function CrmConversas() {
                               : "hover:bg-secondary/50"
                         }`}
                       >
-                        <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
+                        <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5 relative">
                           <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+                          {isInbound && (
+                            <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-destructive rounded-full border-2 border-card" />
+                          )}
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
@@ -490,6 +496,16 @@ export default function CrmConversas() {
                   }}
                 />
 
+                <LeadAdInfo
+                  imagemOrigem={selectedLead.imagem_origem}
+                  tituloAnuncio={selectedLead.titulo_anuncio}
+                  descricaoAnuncio={selectedLead.descricao_anuncio}
+                  linkAnuncio={selectedLead.link_anuncio}
+                  adId={selectedLead.ad_id}
+                  nomeAnuncio={selectedLead.nome_anuncio}
+                  source={selectedLead.source}
+                />
+
                 <LeadBudgetPanel
                   lead={selectedLead as any}
                   onLeadUpdated={(updates) => setSelectedLead((prev) => prev ? { ...prev, ...updates } : prev)}
@@ -507,14 +523,9 @@ export default function CrmConversas() {
 
                 <LeadCustomFields leadId={selectedLead.id} />
 
-                <LeadAdInfo
-                  imagemOrigem={selectedLead.imagem_origem}
-                  tituloAnuncio={selectedLead.titulo_anuncio}
-                  descricaoAnuncio={selectedLead.descricao_anuncio}
-                  linkAnuncio={selectedLead.link_anuncio}
-                  adId={selectedLead.ad_id}
-                  source={selectedLead.source}
-                />
+                <LeadAutomationPanel leadId={selectedLead.id} />
+
+                <LeadFollowUpPanel leadId={selectedLead.id} />
 
                 {/* Notes input */}
                 <div className="p-4 border-b border-border">

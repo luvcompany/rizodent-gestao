@@ -121,11 +121,48 @@ export default function CrmKanban() {
     const leadId = result.draggableId;
     const newStageId = result.destination.droppableId;
     const newPosition = result.destination.index;
+    const movedLead = leads.find(l => l.id === leadId);
+    const previousStageId = movedLead?.stage_id;
+
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage_id: newStageId, position: newPosition } : l));
     const { error } = await supabase.from("crm_leads").update({
       stage_id: newStageId, position: newPosition, updated_at: new Date().toISOString()
     }).eq("id", leadId);
     if (error) { toast.error("Erro ao mover lead"); fetchData(); return; }
+
+    // Register stage history and system message (same as chat hook)
+    if (previousStageId && previousStageId !== newStageId) {
+      // Close previous stage history entry
+      const { data: openEntry } = await supabase
+        .from("crm_lead_stage_history")
+        .select("id")
+        .eq("lead_id", leadId)
+        .eq("stage_id", previousStageId)
+        .is("exited_at", null)
+        .maybeSingle();
+
+      if (openEntry) {
+        await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() }).eq("id", openEntry.id);
+      }
+
+      // Insert new stage history entry
+      await supabase.from("crm_lead_stage_history").insert({
+        lead_id: leadId,
+        stage_id: newStageId,
+        entered_at: new Date().toISOString(),
+      });
+
+      // Insert system message
+      const fromName = stages.find(s => s.id === previousStageId)?.name || "?";
+      const toName = stages.find(s => s.id === newStageId)?.name || "?";
+      await supabase.from("messages").insert({
+        lead_id: leadId,
+        direction: "outbound",
+        type: "system",
+        content: `📋 Etapa alterada: ${fromName} → ${toName}`,
+        status: "system",
+      });
+    }
 
     // Trigger bot-engine for stage change
     try {
@@ -525,7 +562,7 @@ export default function CrmKanban() {
               <Select value={newLead.source} onValueChange={v => setNewLead(p => ({ ...p, source: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  {["instagram", "whatsapp", "facebook", "manual", "indicação", "google"].map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                  {["instagram", "whatsapp", "facebook", "facebook_ad", "instagram_ad", "manual", "indicação", "google"].map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

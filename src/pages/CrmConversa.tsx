@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import LeadAdInfo from "@/components/chat/LeadAdInfo";
+import TaskPanel from "@/components/chat/TaskPanel";
 import { ArrowLeft, FileText, Tag, Search } from "lucide-react";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
@@ -60,13 +61,14 @@ export default function CrmConversa() {
 
   // Fetch lead data separately (hook handles messages + stages)
   const [leadLoading, setLeadLoading] = useState(true);
-  useState(() => {
+  useEffect(() => {
     if (!id) return;
+    setLeadLoading(true);
     supabase.from("crm_leads").select("*").eq("id", id).single().then(({ data }) => {
       if (data) setLead(data as Lead);
       setLeadLoading(false);
     });
-  });
+  }, [id]);
 
   const handleStageChange = useCallback(async (stageId: string) => {
     if (!lead) return;
@@ -275,6 +277,9 @@ export default function CrmConversa() {
           lead={lead as any}
           onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
         />
+
+        {/* Task Panel */}
+        <TaskPanel leadId={lead.id} />
 
         {/* Response Times */}
         <LeadResponseTimes messages={chat.messages} />
