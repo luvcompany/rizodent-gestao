@@ -15,6 +15,11 @@ type Message = {
   whatsapp_message_id?: string | null;
   reply_to_message_id?: string | null;
   reactions?: { emoji: string; from: string }[];
+  ad_headline?: string | null;
+  ad_body?: string | null;
+  ad_image_url?: string | null;
+  ad_source_url?: string | null;
+  ad_source_id?: string | null;
 };
 
 type Props = {
