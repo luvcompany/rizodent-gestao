@@ -385,6 +385,9 @@ export default function CrmAutomacoes() {
                                     <Plus size={12} /> Adicionar gatilho
                                   </button>
 
+                                  {/* Follow Up Config Card */}
+                                  <FollowUpConfigCard stageId={stage.id} stages={stages} templates={templates} />
+
                                   {/* Inline bot config when expanded */}
                                   {expandedStageId === stage.id && (() => {
                                     const sbc = stageBotConfigs.find(c => c.stage_id === stage.id);
