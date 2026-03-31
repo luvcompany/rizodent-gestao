@@ -4,48 +4,47 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, RefreshCw, Pencil, Trash2, ArrowLeft } from "lucide-react";
+import { Plus, RefreshCw, Pencil, Trash2 } from "lucide-react";
+import FollowUpDisparoInput, { type DisparoData } from "@/components/chat/FollowUpDisparoInput";
 
 type Pipeline = { id: string; name: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
-type Template = { id: string; name: string };
-type FollowUpConfig = {
+
+interface FollowUpConfig {
   id?: string;
   stage_id: string;
   is_active: boolean;
-  disparo1_delay_minutes: number;
-  disparo1_type: string;
-  disparo1_content: string;
-  disparo1_template_id: string | null;
-  disparo2_delay_minutes: number;
-  disparo2_type: string;
-  disparo2_content: string;
-  disparo2_template_id: string | null;
+  disparos: DisparoData[];
   move_to_stage_id: string | null;
+  move_to_pipeline_id: string | null;
   return_to_stage_id: string | null;
+  return_to_pipeline_id: string | null;
   stop_on_stages: string[];
   max_attempts: number;
-};
+}
+
+const emptyDisparo = (): DisparoData => ({
+  delay_minutes: 10,
+  content: "",
+  audio_url: null,
+  file_url: null,
+  file_name: null,
+  template_id: null,
+});
 
 const emptyConfig = (): FollowUpConfig => ({
   stage_id: "",
   is_active: false,
-  disparo1_delay_minutes: 10,
-  disparo1_type: "text",
-  disparo1_content: "",
-  disparo1_template_id: null,
-  disparo2_delay_minutes: 120,
-  disparo2_type: "text",
-  disparo2_content: "",
-  disparo2_template_id: null,
+  disparos: [emptyDisparo()],
   move_to_stage_id: null,
+  move_to_pipeline_id: null,
   return_to_stage_id: null,
+  return_to_pipeline_id: null,
   stop_on_stages: [],
   max_attempts: 10,
 });
@@ -54,7 +53,6 @@ export default function CrmFollowUps() {
   const [configs, setConfigs] = useState<(FollowUpConfig & { id: string })[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [stages, setStages] = useState<Stage[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FollowUpConfig>(emptyConfig());
@@ -62,37 +60,65 @@ export default function CrmFollowUps() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [cfgRes, pipeRes, stgRes, tplRes] = await Promise.all([
+    const [cfgRes, pipeRes, stgRes] = await Promise.all([
       supabase.from("crm_followup_configs").select("*").order("created_at", { ascending: false }),
       supabase.from("crm_pipelines").select("id, name").order("created_at"),
       supabase.from("crm_stages").select("*").order("position"),
-      supabase.from("crm_whatsapp_templates").select("id, name").eq("status", "APPROVED"),
     ]);
-    setConfigs((cfgRes.data as any[]) || []);
+
+    const rawConfigs = (cfgRes.data as any[]) || [];
+    // Map DB rows to our interface, supporting both old (disparo1/2) and new (disparos jsonb)
+    const mapped = rawConfigs.map((c: any) => {
+      let disparos: DisparoData[] = [];
+      if (c.disparos && Array.isArray(c.disparos) && c.disparos.length > 0) {
+        disparos = c.disparos;
+      } else {
+        // Legacy: convert disparo1/2 columns
+        disparos = [
+          { delay_minutes: c.disparo1_delay_minutes || 10, content: c.disparo1_content || "", audio_url: null, file_url: null, file_name: null, template_id: c.disparo1_template_id },
+          { delay_minutes: c.disparo2_delay_minutes || 120, content: c.disparo2_content || "", audio_url: null, file_url: null, file_name: null, template_id: c.disparo2_template_id },
+        ].filter(d => d.content || d.template_id);
+        if (disparos.length === 0) disparos = [emptyDisparo()];
+      }
+      return {
+        id: c.id,
+        stage_id: c.stage_id,
+        is_active: c.is_active,
+        disparos,
+        move_to_stage_id: c.move_to_stage_id,
+        move_to_pipeline_id: null,
+        return_to_stage_id: c.return_to_stage_id,
+        return_to_pipeline_id: null,
+        stop_on_stages: c.stop_on_stages || [],
+        max_attempts: c.max_attempts,
+      };
+    });
+
+    setConfigs(mapped);
     setPipelines((pipeRes.data as Pipeline[]) || []);
     setStages((stgRes.data as Stage[]) || []);
-    setTemplates((tplRes.data as Template[]) || []);
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleSave = async () => {
-    if (!form.stage_id) {
-      toast.error("Selecione a etapa de origem");
-      return;
-    }
+    if (!form.stage_id) { toast.error("Selecione a etapa de origem"); return; }
+    if (form.disparos.length === 0) { toast.error("Adicione pelo menos um disparo"); return; }
+
     const payload: any = {
       stage_id: form.stage_id,
       is_active: form.is_active,
-      disparo1_delay_minutes: form.disparo1_delay_minutes,
-      disparo1_type: form.disparo1_type,
-      disparo1_content: form.disparo1_content || null,
-      disparo1_template_id: form.disparo1_type === "template" ? form.disparo1_template_id : null,
-      disparo2_delay_minutes: form.disparo2_delay_minutes,
-      disparo2_type: form.disparo2_type,
-      disparo2_content: form.disparo2_content || null,
-      disparo2_template_id: form.disparo2_type === "template" ? form.disparo2_template_id : null,
+      disparos: form.disparos,
+      // Keep legacy columns in sync with first 2 disparos for backward compat
+      disparo1_delay_minutes: form.disparos[0]?.delay_minutes || 10,
+      disparo1_type: form.disparos[0]?.audio_url ? "audio" : form.disparos[0]?.file_url ? "file" : "text",
+      disparo1_content: form.disparos[0]?.content || form.disparos[0]?.audio_url || form.disparos[0]?.file_url || null,
+      disparo1_template_id: form.disparos[0]?.template_id || null,
+      disparo2_delay_minutes: form.disparos[1]?.delay_minutes || 120,
+      disparo2_type: form.disparos[1]?.audio_url ? "audio" : form.disparos[1]?.file_url ? "file" : "text",
+      disparo2_content: form.disparos[1]?.content || form.disparos[1]?.audio_url || form.disparos[1]?.file_url || null,
+      disparo2_template_id: form.disparos[1]?.template_id || null,
       move_to_stage_id: form.move_to_stage_id || null,
       return_to_stage_id: form.return_to_stage_id || null,
       stop_on_stages: form.stop_on_stages,
@@ -120,98 +146,37 @@ export default function CrmFollowUps() {
   };
 
   const openEdit = (cfg: FollowUpConfig & { id: string }) => {
-    setForm({
-      ...cfg,
-      disparo1_content: cfg.disparo1_content || "",
-      disparo2_content: cfg.disparo2_content || "",
-      stop_on_stages: (cfg as any).stop_on_stages || [],
-    });
+    // Infer pipeline IDs from stage IDs
+    const movePipeline = cfg.move_to_stage_id ? stages.find(s => s.id === cfg.move_to_stage_id)?.pipeline_id || null : null;
+    const returnPipeline = cfg.return_to_stage_id ? stages.find(s => s.id === cfg.return_to_stage_id)?.pipeline_id || null : null;
+    setForm({ ...cfg, move_to_pipeline_id: movePipeline, return_to_pipeline_id: returnPipeline });
     setFormOpen(true);
   };
 
-  const openNew = () => {
-    setForm(emptyConfig());
-    setFormOpen(true);
-  };
+  const openNew = () => { setForm(emptyConfig()); setFormOpen(true); };
 
   const getStageName = (id: string) => stages.find(s => s.id === id)?.name || "—";
   const getStageColor = (id: string) => stages.find(s => s.id === id)?.color || "#6366f1";
   const getPipelineName = (stageId: string) => {
     const stage = stages.find(s => s.id === stageId);
-    if (!stage) return "";
-    return pipelines.find(p => p.id === stage.pipeline_id)?.name || "";
+    return stage ? pipelines.find(p => p.id === stage.pipeline_id)?.name || "" : "";
   };
 
-  const typeLabel: Record<string, string> = {
-    text: "Texto", audio: "Áudio", template: "Template", file: "Arquivo",
+  const addDisparo = () => {
+    setForm(prev => ({ ...prev, disparos: [...prev.disparos, emptyDisparo()] }));
   };
 
-  const renderDisparoForm = (prefix: "disparo1" | "disparo2", label: string, delayLabel: string) => {
-    const typeKey = `${prefix}_type` as keyof FollowUpConfig;
-    const contentKey = `${prefix}_content` as keyof FollowUpConfig;
-    const templateKey = `${prefix}_template_id` as keyof FollowUpConfig;
-    const delayKey = `${prefix}_delay_minutes` as keyof FollowUpConfig;
-    const currentType = form[typeKey] as string;
-
-    return (
-      <div className="space-y-3 rounded-lg border border-border p-4 bg-secondary/20">
-        <h4 className="text-sm font-semibold text-foreground">{label}</h4>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label className="text-xs text-muted-foreground">{delayLabel}</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number" min={1} className="h-8 text-sm"
-                value={form[delayKey] as number}
-                onChange={e => setForm(prev => ({ ...prev, [delayKey]: parseInt(e.target.value) || 1 }))}
-              />
-              <span className="text-xs text-muted-foreground whitespace-nowrap">minutos</span>
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Tipo de mensagem</Label>
-            <Select value={currentType} onValueChange={v => setForm(prev => ({ ...prev, [typeKey]: v }))}>
-              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="text">Texto</SelectItem>
-                <SelectItem value="audio">Áudio</SelectItem>
-                <SelectItem value="template">Template aprovado</SelectItem>
-                <SelectItem value="file">Arquivo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        {currentType === "text" && (
-          <Textarea
-            className="text-sm min-h-[70px]"
-            placeholder="Mensagem de follow up..."
-            value={form[contentKey] as string}
-            onChange={e => setForm(prev => ({ ...prev, [contentKey]: e.target.value }))}
-          />
-        )}
-        {currentType === "template" && (
-          <Select
-            value={(form[templateKey] as string) || ""}
-            onValueChange={v => setForm(prev => ({ ...prev, [templateKey]: v }))}
-          >
-            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecionar template" /></SelectTrigger>
-            <SelectContent>
-              {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
-              {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-        {(currentType === "audio" || currentType === "file") && (
-          <Input
-            className="h-8 text-sm"
-            placeholder="URL do arquivo..."
-            value={form[contentKey] as string}
-            onChange={e => setForm(prev => ({ ...prev, [contentKey]: e.target.value }))}
-          />
-        )}
-      </div>
-    );
+  const updateDisparo = (idx: number, d: DisparoData) => {
+    setForm(prev => ({ ...prev, disparos: prev.disparos.map((x, i) => i === idx ? d : x) }));
   };
+
+  const removeDisparo = (idx: number) => {
+    setForm(prev => ({ ...prev, disparos: prev.disparos.filter((_, i) => i !== idx) }));
+  };
+
+  // Filtered stages for movement selectors
+  const moveStages = form.move_to_pipeline_id ? stages.filter(s => s.pipeline_id === form.move_to_pipeline_id) : [];
+  const returnStages = form.return_to_pipeline_id ? stages.filter(s => s.pipeline_id === form.return_to_pipeline_id) : [];
 
   if (loading) return <div className="flex items-center justify-center h-96"><span className="text-muted-foreground">Carregando...</span></div>;
 
@@ -224,11 +189,9 @@ export default function CrmFollowUps() {
             <RefreshCw size={20} className="text-primary" />
             Follow Ups
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Configure sequências automáticas de follow up para seus leads</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Configure sequências automáticas de follow up</p>
         </div>
-        <Button onClick={openNew} size="sm">
-          <Plus size={14} className="mr-1" /> Novo Follow Up
-        </Button>
+        <Button onClick={openNew} size="sm"><Plus size={14} className="mr-1" /> Novo Follow Up</Button>
       </div>
 
       {/* List */}
@@ -236,7 +199,7 @@ export default function CrmFollowUps() {
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <RefreshCw size={40} className="text-muted-foreground/30 mb-4" />
           <h2 className="text-lg font-medium text-foreground mb-1">Nenhum Follow Up criado</h2>
-          <p className="text-sm text-muted-foreground mb-4">Crie seu primeiro follow up para automatizar o acompanhamento dos leads</p>
+          <p className="text-sm text-muted-foreground mb-4">Crie seu primeiro follow up automático</p>
           <Button onClick={openNew}><Plus size={14} className="mr-1" /> Criar Follow Up</Button>
         </div>
       ) : (
@@ -260,8 +223,7 @@ export default function CrmFollowUps() {
                     <span className="text-[10px] text-muted-foreground">{getPipelineName(cfg.stage_id)}</span>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>D1: {typeLabel[cfg.disparo1_type] || cfg.disparo1_type} ({cfg.disparo1_delay_minutes}min)</span>
-                    <span>D2: {typeLabel[cfg.disparo2_type] || cfg.disparo2_type} ({cfg.disparo2_delay_minutes}min)</span>
+                    <span>{cfg.disparos.length} disparo{cfg.disparos.length !== 1 ? "s" : ""}</span>
                     <span>Max: {cfg.max_attempts}x</span>
                     {cfg.move_to_stage_id && <span>→ {getStageName(cfg.move_to_stage_id)}</span>}
                     {cfg.return_to_stage_id && <span>← {getStageName(cfg.return_to_stage_id)}</span>}
@@ -320,35 +282,95 @@ export default function CrmFollowUps() {
               </div>
             </div>
 
-            {/* Disparo 1 */}
-            {renderDisparoForm("disparo1", "Disparo 1 — Primeira mensagem", "Aguardar sem resposta")}
+            {/* Dynamic Disparos */}
+            {form.disparos.map((d, idx) => (
+              <FollowUpDisparoInput
+                key={idx}
+                index={idx}
+                disparo={d}
+                onChange={updated => updateDisparo(idx, updated)}
+                onRemove={() => removeDisparo(idx)}
+                canRemove={form.disparos.length > 1}
+              />
+            ))}
 
-            {/* Disparo 2 */}
-            {renderDisparoForm("disparo2", "Disparo 2 — Segunda mensagem", "Se não responder em")}
+            <Button variant="outline" size="sm" onClick={addDisparo} className="w-full gap-1.5">
+              <Plus size={14} /> Adicionar Disparo
+            </Button>
 
             {/* Movement */}
             <div className="rounded-lg border border-border p-4 bg-secondary/20 space-y-3">
               <h4 className="text-sm font-semibold text-foreground">Movimentação</h4>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Mover lead para etapa</Label>
-                  <Select value={form.move_to_stage_id || "none"} onValueChange={v => setForm(prev => ({ ...prev, move_to_stage_id: v === "none" ? null : v }))}>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Mover lead para funil</Label>
+                  <Select
+                    value={form.move_to_pipeline_id || "none"}
+                    onValueChange={v => setForm(prev => ({ ...prev, move_to_pipeline_id: v === "none" ? null : v, move_to_stage_id: null }))}
+                  >
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Não mover</SelectItem>
-                      {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  {form.move_to_pipeline_id && (
+                    <>
+                      <Label className="text-xs text-muted-foreground">Etapa</Label>
+                      <Select
+                        value={form.move_to_stage_id || "none"}
+                        onValueChange={v => setForm(prev => ({ ...prev, move_to_stage_id: v === "none" ? null : v }))}
+                      >
+                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Selecionar</SelectItem>
+                          {moveStages.map(s => (
+                            <SelectItem key={s.id} value={s.id}>
+                              <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                {s.name}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
                 </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Quando responder, voltar para</Label>
-                  <Select value={form.return_to_stage_id || "none"} onValueChange={v => setForm(prev => ({ ...prev, return_to_stage_id: v === "none" ? null : v }))}>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Quando responder, voltar para funil</Label>
+                  <Select
+                    value={form.return_to_pipeline_id || "none"}
+                    onValueChange={v => setForm(prev => ({ ...prev, return_to_pipeline_id: v === "none" ? null : v, return_to_stage_id: null }))}
+                  >
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Não mover</SelectItem>
-                      {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  {form.return_to_pipeline_id && (
+                    <>
+                      <Label className="text-xs text-muted-foreground">Etapa</Label>
+                      <Select
+                        value={form.return_to_stage_id || "none"}
+                        onValueChange={v => setForm(prev => ({ ...prev, return_to_stage_id: v === "none" ? null : v }))}
+                      >
+                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Selecionar</SelectItem>
+                          {returnStages.map(s => (
+                            <SelectItem key={s.id} value={s.id}>
+                              <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                {s.name}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -397,7 +419,7 @@ export default function CrmFollowUps() {
       <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Excluir Follow Up?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Esta ação é irreversível. Leads na fila deste follow up serão removidos.</p>
+          <p className="text-sm text-muted-foreground">Esta ação é irreversível.</p>
           <div className="flex gap-2 justify-end mt-4">
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
             <Button variant="destructive" onClick={handleDelete}>Excluir</Button>
