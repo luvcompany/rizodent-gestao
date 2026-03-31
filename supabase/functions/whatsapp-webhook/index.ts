@@ -419,7 +419,7 @@ Deno.serve(async (req) => {
                 replyToMessageId = replyTarget?.id || null;
               }
 
-              const insertPayload = {
+              const insertPayload: any = {
                 lead_id: lead.id,
                 direction: "inbound",
                 type: msgType,
@@ -428,6 +428,12 @@ Deno.serve(async (req) => {
                 status: "received",
                 whatsapp_message_id: msg.id || null,
                 reply_to_message_id: replyToMessageId,
+                // Dados do anúncio (referral)
+                ad_headline: adHeadline || null,
+                ad_body: adBody || null,
+                ad_image_url: adImageUrl || null,
+                ad_source_url: adSourceUrl || null,
+                ad_source_id: adSourceId || null,
               };
               const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
 
