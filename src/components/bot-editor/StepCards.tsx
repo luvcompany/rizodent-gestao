@@ -250,6 +250,9 @@ export const SendMessageConfig = ({ config, onChange, templates, outputs, onUpda
         <DialogContent className="max-w-md max-h-[70vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-sm">Selecionar Template Aprovado</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Escolha um template aprovado para preencher automaticamente a mensagem e os botões.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {templates.length === 0 && (

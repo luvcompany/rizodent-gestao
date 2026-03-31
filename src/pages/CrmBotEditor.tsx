@@ -542,6 +542,7 @@ const CrmBotEditor = () => {
 
   const handleStepDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
   };
 
   const handleStepDrop = (groupOutputId: string, targetStepId: string) => {
