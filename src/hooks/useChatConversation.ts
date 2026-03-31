@@ -107,7 +107,9 @@ export function useChatConversation(leadId: string | null | undefined) {
   // ─── Scroll to bottom on initial load ───
   useEffect(() => {
     if (!initialLoadDone.current && messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+      });
       initialLoadDone.current = true;
     }
   }, [messages]);
