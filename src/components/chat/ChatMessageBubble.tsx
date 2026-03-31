@@ -94,6 +94,34 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                 )}
               </div>
             )}
+            {msg.direction === "inbound" && (msg.ad_source_url || msg.ad_headline || msg.ad_image_url) && (
+              <div className="mb-2 rounded-lg overflow-hidden border border-border bg-muted/40">
+                {msg.ad_image_url && (
+                  <div className="relative">
+                    <img src={msg.ad_image_url} alt="Anúncio" className="w-full h-32 object-cover" />
+                    <span className="absolute top-2 left-2 flex items-center gap-1 bg-background/90 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                      <svg viewBox="0 0 24 24" className="w-3 h-3 fill-[#1877F2]"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                      Anúncio do Facebook
+                    </span>
+                  </div>
+                )}
+                {!msg.ad_image_url && (
+                  <div className="flex items-center gap-1 px-3 pt-2">
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-[#1877F2]"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                    <span className="text-[10px] font-semibold text-muted-foreground">Anúncio do Facebook</span>
+                  </div>
+                )}
+                <div className="px-3 py-2 space-y-0.5">
+                  {msg.ad_headline && <p className="text-xs font-bold text-foreground leading-tight">{msg.ad_headline}</p>}
+                  {msg.ad_body && <p className="text-[11px] text-muted-foreground line-clamp-2">{msg.ad_body}</p>}
+                  {msg.ad_source_url && (
+                    <a href={msg.ad_source_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-500 hover:underline truncate block">
+                      {msg.ad_source_url.replace(/^https?:\/\//, '').slice(0, 50)}
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
             <ChatMessageContent message={msg} onMediaClick={onMediaClick} />
             <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
               <span className="text-[10px] text-muted-foreground">
