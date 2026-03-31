@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const uid = () => `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -250,6 +250,9 @@ export const SendMessageConfig = ({ config, onChange, templates, outputs, onUpda
         <DialogContent className="max-w-md max-h-[70vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-sm">Selecionar Template Aprovado</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Escolha um template aprovado para preencher automaticamente a mensagem e os botões.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {templates.length === 0 && (

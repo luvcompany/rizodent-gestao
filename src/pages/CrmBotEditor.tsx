@@ -474,32 +474,86 @@ const CrmBotEditor = () => {
 
   const editingStep = editingStepId ? findStep(rootOutputs, editingStepId) : null;
 
-  // Step block drag handlers — reorder within the same output group
-  const reorderStepInTree = (outs: FlowOutput[], fromId: string, toId: string): FlowOutput[] => {
-    return outs.map(o => {
-      const fromIdx = o.nextSteps.findIndex(s => s.id === fromId);
-      const toIdx = o.nextSteps.findIndex(s => s.id === toId);
-      if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
-        const newSteps = [...o.nextSteps];
-        const [moved] = newSteps.splice(fromIdx, 1);
-        newSteps.splice(toIdx, 0, moved);
-        return { ...o, nextSteps: newSteps };
+  // Step block drag handlers — reorder linear chain within the same flow group
+  const collectLinearSteps = (startOutput: FlowOutput): FlowStep[] => {
+    const steps: FlowStep[] = [];
+    let current = startOutput;
+    while (current.nextSteps.length > 0) {
+      const step = current.nextSteps[0];
+      steps.push(step);
+      if (step.outputs.length !== 1) break;
+      current = step.outputs[0];
+    }
+    return steps;
+  };
+
+  const rebuildLinearChain = (startOutput: FlowOutput, orderedSteps: FlowStep[]): FlowOutput => {
+    const root: FlowOutput = { ...startOutput, nextSteps: [] };
+    let currentOutput = root;
+
+    for (let i = 0; i < orderedSteps.length; i++) {
+      const originalStep = orderedSteps[i];
+      const safeOutputs = originalStep.outputs.length > 0
+        ? originalStep.outputs.map((out, idx) => ({ ...out, nextSteps: idx === 0 ? [] : out.nextSteps }))
+        : [{ id: uid(), label: "Próximo", conditionType: "default", conditionValue: null, nextSteps: [] }];
+
+      const clonedStep: FlowStep = { ...originalStep, outputs: safeOutputs };
+      currentOutput.nextSteps = [clonedStep];
+      if (i < orderedSteps.length - 1) currentOutput = clonedStep.outputs[0];
+    }
+
+    return root;
+  };
+
+  const reorderLinearGroupInTree = (
+    outs: FlowOutput[],
+    groupOutputId: string,
+    fromId: string,
+    toId: string,
+  ): FlowOutput[] => {
+    return outs.map((o) => {
+      if (o.id === groupOutputId) {
+        const linearSteps = collectLinearSteps(o);
+        const fromIdx = linearSteps.findIndex((s) => s.id === fromId);
+        const toIdx = linearSteps.findIndex((s) => s.id === toId);
+        if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return o;
+
+        const reordered = [...linearSteps];
+        const [moved] = reordered.splice(fromIdx, 1);
+        reordered.splice(toIdx, 0, moved);
+        return rebuildLinearChain(o, reordered);
       }
-      return { ...o, nextSteps: o.nextSteps.map(step => ({ ...step, outputs: reorderStepInTree(step.outputs, fromId, toId) })) };
+
+      return {
+        ...o,
+        nextSteps: o.nextSteps.map((step) => ({
+          ...step,
+          outputs: reorderLinearGroupInTree(step.outputs, groupOutputId, fromId, toId),
+        })),
+      };
     });
   };
 
-  const handleStepDragStart = (_e: React.DragEvent, stepId: string) => {
+  const handleStepDragStart = (e: React.DragEvent, stepId: string) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", stepId);
     setDraggedStepId(stepId);
   };
 
   const handleStepDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
   };
 
-  const handleStepDrop = (targetStepId: string) => {
-    if (draggedStepId && draggedStepId !== targetStepId) {
-      setRootOutputs(prev => reorderStepInTree(prev, draggedStepId!, targetStepId));
+  const handleStepDrop = (e: React.DragEvent, groupOutputId: string, targetStepId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceStepId = e.dataTransfer.getData("text/plain") || draggedStepId;
+
+    if (sourceStepId && sourceStepId !== targetStepId) {
+      setRootOutputs((prev) => reorderLinearGroupInTree(prev, groupOutputId, sourceStepId, targetStepId));
     }
     setDraggedStepId(null);
   };
@@ -885,7 +939,7 @@ interface FlowGroupRendererProps {
   editingStepId: string | null;
   onDragStart: (e: React.DragEvent, stepId: string) => void;
   onDragOver: (e: React.DragEvent) => void;
-  onDrop: (targetStepId: string) => void;
+  onDrop: (e: React.DragEvent, groupOutputId: string, targetStepId: string) => void;
   onDragEnd: () => void;
   draggedStepId: string | null;
   getStepPreview: (step: FlowStep) => string | null;
@@ -968,7 +1022,7 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
                 draggable
                 onDragStart={(e) => onDragStart(e, step.id)}
                 onDragOver={onDragOver}
-                onDrop={() => onDrop(step.id)}
+                onDrop={(e) => onDrop(e, output.id, step.id)}
                 onDragEnd={onDragEnd}
                 className={`rounded-lg p-2.5 cursor-pointer transition-all group relative ${
                   isEditing ? "ring-2 ring-primary bg-primary/5" : "hover:bg-muted/50"
