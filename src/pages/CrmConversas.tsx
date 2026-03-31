@@ -491,6 +491,15 @@ export default function CrmConversas() {
 
                 <LeadCustomFields leadId={selectedLead.id} />
 
+                <LeadAdInfo
+                  imagemOrigem={selectedLead.imagem_origem}
+                  tituloAnuncio={selectedLead.titulo_anuncio}
+                  descricaoAnuncio={selectedLead.descricao_anuncio}
+                  linkAnuncio={selectedLead.link_anuncio}
+                  adId={selectedLead.ad_id}
+                  source={selectedLead.source}
+                />
+
                 {/* Notes input */}
                 <div className="p-4 border-b border-border">
                   <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Adicionar Nota</h3>
