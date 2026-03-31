@@ -22,6 +22,23 @@ const CrmLayout = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchUnread = async () => {
+      const { count } = await supabase
+        .from("crm_leads")
+        .select("id", { count: "exact", head: true })
+        .not("last_inbound_at", "is", null)
+        .or("last_outbound_at.is.null,last_inbound_at.gt.last_outbound_at");
+      setUnreadCount(count || 0);
+    };
+    fetchUnread();
+    const ch = supabase.channel("unread-badge")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "crm_leads" }, fetchUnread)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
 
   return (
     <div className="flex min-h-screen">
