@@ -464,6 +464,43 @@ Deno.serve(async (req) => {
               } catch (botErr) {
                 console.error("[WEBHOOK] Erro ao preparar chamada bot-engine:", botErr);
               }
+
+              // Check follow-up queue - mark as responded if active
+              try {
+                const { data: fqItems } = await supabase
+                  .from("crm_followup_queue")
+                  .select("id, config_id")
+                  .eq("lead_id", lead.id)
+                  .in("status", ["waiting_disparo1", "waiting_disparo2"])
+                  .limit(10);
+
+                if (fqItems && fqItems.length > 0) {
+                  for (const fq of fqItems) {
+                    // Get config for return_to_stage_id
+                    const { data: fConfig } = await supabase
+                      .from("crm_followup_configs")
+                      .select("return_to_stage_id")
+                      .eq("id", fq.config_id)
+                      .single();
+
+                    await supabase.from("crm_followup_queue").update({
+                      status: "responded",
+                      updated_at: new Date().toISOString(),
+                    }).eq("id", fq.id);
+
+                    if (fConfig?.return_to_stage_id) {
+                      await supabase.from("crm_leads").update({
+                        stage_id: fConfig.return_to_stage_id,
+                        updated_at: new Date().toISOString(),
+                      }).eq("id", lead.id);
+                      console.log(`[WEBHOOK] Follow-up: lead ${lead.id} responded, moved to stage ${fConfig.return_to_stage_id}`);
+                    }
+                  }
+                  console.log(`[WEBHOOK] Follow-up: marked ${fqItems.length} queue items as responded for lead ${lead.id}`);
+                }
+              } catch (fqErr: any) {
+                console.error("[WEBHOOK] Erro ao verificar follow-up queue:", fqErr.message);
+              }
             } else {
               console.log(`Could not find or create lead for phone: ${from}`);
             }
