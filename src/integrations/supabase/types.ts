@@ -336,6 +336,7 @@ export type Database = {
           disparo2_delay_minutes: number
           disparo2_template_id: string | null
           disparo2_type: string
+          disparos: Json | null
           id: string
           is_active: boolean
           max_attempts: number
@@ -355,6 +356,7 @@ export type Database = {
           disparo2_delay_minutes?: number
           disparo2_template_id?: string | null
           disparo2_type?: string
+          disparos?: Json | null
           id?: string
           is_active?: boolean
           max_attempts?: number
@@ -374,6 +376,7 @@ export type Database = {
           disparo2_delay_minutes?: number
           disparo2_template_id?: string | null
           disparo2_type?: string
+          disparos?: Json | null
           id?: string
           is_active?: boolean
           max_attempts?: number
@@ -426,6 +429,7 @@ export type Database = {
           attempt_count: number
           config_id: string
           created_at: string
+          current_disparo_index: number | null
           disparo1_scheduled_at: string | null
           disparo1_sent_at: string | null
           disparo2_scheduled_at: string | null
@@ -433,6 +437,7 @@ export type Database = {
           id: string
           last_lead_message_at: string | null
           lead_id: string
+          next_scheduled_at: string | null
           stage_id: string
           status: string
           updated_at: string
@@ -441,6 +446,7 @@ export type Database = {
           attempt_count?: number
           config_id: string
           created_at?: string
+          current_disparo_index?: number | null
           disparo1_scheduled_at?: string | null
           disparo1_sent_at?: string | null
           disparo2_scheduled_at?: string | null
@@ -448,6 +454,7 @@ export type Database = {
           id?: string
           last_lead_message_at?: string | null
           lead_id: string
+          next_scheduled_at?: string | null
           stage_id: string
           status?: string
           updated_at?: string
@@ -456,6 +463,7 @@ export type Database = {
           attempt_count?: number
           config_id?: string
           created_at?: string
+          current_disparo_index?: number | null
           disparo1_scheduled_at?: string | null
           disparo1_sent_at?: string | null
           disparo2_scheduled_at?: string | null
@@ -463,6 +471,7 @@ export type Database = {
           id?: string
           last_lead_message_at?: string | null
           lead_id?: string
+          next_scheduled_at?: string | null
           stage_id?: string
           status?: string
           updated_at?: string
