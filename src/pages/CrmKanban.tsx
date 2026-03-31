@@ -97,12 +97,17 @@ export default function CrmKanban() {
       : pList[0];
     if (p) {
       setPipeline(p);
-      const [stagesRes, leadsRes] = await Promise.all([
+      const [stagesRes, leadsRes, fqRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", p.id).order("position"),
         supabase.from("crm_leads").select("*").eq("pipeline_id", p.id).order("position"),
+        supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setLeads((leadsRes.data as Lead[]) || []);
+      // Map lead_id -> status for follow-up indicator
+      const fqMap: Record<string, string> = {};
+      (fqRes.data || []).forEach((fq: any) => { fqMap[fq.lead_id] = fq.status; });
+      setFollowUpLeads(fqMap);
     }
     setLoading(false);
   }, []);
