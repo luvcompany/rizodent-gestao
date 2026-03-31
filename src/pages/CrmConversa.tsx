@@ -24,6 +24,7 @@ import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
+import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import {
   ArrowLeft, FileText, Tag, Search
 } from "lucide-react";
