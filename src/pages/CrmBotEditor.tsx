@@ -694,8 +694,10 @@ const CrmBotEditor = () => {
                       onRemoveStep={removeStep}
                       onEditStep={(id) => { setEditingStepId(id); setActionsOpen(false); setShowGeneralSettings(false); }}
                       editingStepId={editingStepId}
-                      stepPositions={stepPositions}
                       onDragStart={handleStepDragStart}
+                      onDragOver={handleStepDragOver}
+                      onDrop={handleStepDrop}
+                      onDragEnd={handleStepDragEnd}
                       draggedStepId={draggedStepId}
                       getStepPreview={getStepPreview}
                       bots={bots}
