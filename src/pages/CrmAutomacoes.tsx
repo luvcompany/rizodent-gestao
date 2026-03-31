@@ -43,6 +43,7 @@ export default function CrmAutomacoes() {
   const [channels, setChannels] = useState<FunnelChannel[]>([]);
   const [allBots, setAllBots] = useState<BotItem[]>([]);
   const [stageBotConfigs, setStageBotConfigs] = useState<StageBotConfig[]>([]);
+  const [followUpConfigs, setFollowUpConfigs] = useState<FollowUpCfg[]>([]);
   const [loading, setLoading] = useState(true);
   const [duplicateRulesOpen, setDuplicateRulesOpen] = useState(false);
   const [duplicateEnabled, setDuplicateEnabled] = useState(false);
