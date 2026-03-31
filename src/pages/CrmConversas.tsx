@@ -17,6 +17,7 @@ import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
+import LeadAdInfo from "@/components/chat/LeadAdInfo";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
