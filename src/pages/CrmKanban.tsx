@@ -70,6 +70,7 @@ export default function CrmKanban() {
   const [searchTerm, setSearchTerm] = useState("");
   const [kanbanFilters, setKanbanFilters] = useState<ConversationFilterValues>(emptyFilters);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
+  const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
