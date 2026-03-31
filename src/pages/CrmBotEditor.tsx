@@ -535,6 +535,7 @@ const CrmBotEditor = () => {
   };
 
   const handleStepDragStart = (e: React.DragEvent, stepId: string) => {
+    e.stopPropagation();
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", stepId);
     setDraggedStepId(stepId);
@@ -542,12 +543,17 @@ const CrmBotEditor = () => {
 
   const handleStepDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
   };
 
-  const handleStepDrop = (groupOutputId: string, targetStepId: string) => {
-    if (draggedStepId && draggedStepId !== targetStepId) {
-      setRootOutputs((prev) => reorderLinearGroupInTree(prev, groupOutputId, draggedStepId, targetStepId));
+  const handleStepDrop = (e: React.DragEvent, groupOutputId: string, targetStepId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sourceStepId = e.dataTransfer.getData("text/plain") || draggedStepId;
+
+    if (sourceStepId && sourceStepId !== targetStepId) {
+      setRootOutputs((prev) => reorderLinearGroupInTree(prev, groupOutputId, sourceStepId, targetStepId));
     }
     setDraggedStepId(null);
   };
