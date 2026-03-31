@@ -278,6 +278,9 @@ export default function CrmConversa() {
           onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
         />
 
+        {/* Task Panel */}
+        <TaskPanel leadId={lead.id} />
+
         {/* Response Times */}
         <LeadResponseTimes messages={chat.messages} />
 
