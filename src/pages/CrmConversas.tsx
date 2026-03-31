@@ -493,6 +493,16 @@ export default function CrmConversas() {
                   }}
                 />
 
+                <LeadAdInfo
+                  imagemOrigem={selectedLead.imagem_origem}
+                  tituloAnuncio={selectedLead.titulo_anuncio}
+                  descricaoAnuncio={selectedLead.descricao_anuncio}
+                  linkAnuncio={selectedLead.link_anuncio}
+                  adId={selectedLead.ad_id}
+                  nomeAnuncio={selectedLead.nome_anuncio}
+                  source={selectedLead.source}
+                />
+
                 <LeadBudgetPanel
                   lead={selectedLead as any}
                   onLeadUpdated={(updates) => setSelectedLead((prev) => prev ? { ...prev, ...updates } : prev)}
@@ -510,14 +520,9 @@ export default function CrmConversas() {
 
                 <LeadCustomFields leadId={selectedLead.id} />
 
-                <LeadAdInfo
-                  imagemOrigem={selectedLead.imagem_origem}
-                  tituloAnuncio={selectedLead.titulo_anuncio}
-                  descricaoAnuncio={selectedLead.descricao_anuncio}
-                  linkAnuncio={selectedLead.link_anuncio}
-                  adId={selectedLead.ad_id}
-                  source={selectedLead.source}
-                />
+                <LeadAutomationPanel leadId={selectedLead.id} />
+
+                <LeadFollowUpPanel leadId={selectedLead.id} />
 
                 {/* Notes input */}
                 <div className="p-4 border-b border-border">
