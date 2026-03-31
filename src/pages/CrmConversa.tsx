@@ -26,6 +26,7 @@ import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import LeadAdInfo from "@/components/chat/LeadAdInfo";
+import TaskPanel from "@/components/chat/TaskPanel";
 import { ArrowLeft, FileText, Tag, Search } from "lucide-react";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
