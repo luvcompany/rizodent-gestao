@@ -474,18 +474,63 @@ const CrmBotEditor = () => {
 
   const editingStep = editingStepId ? findStep(rootOutputs, editingStepId) : null;
 
-  // Step block drag handlers — reorder within the same output group
-  const reorderStepInTree = (outs: FlowOutput[], fromId: string, toId: string): FlowOutput[] => {
-    return outs.map(o => {
-      const fromIdx = o.nextSteps.findIndex(s => s.id === fromId);
-      const toIdx = o.nextSteps.findIndex(s => s.id === toId);
-      if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
-        const newSteps = [...o.nextSteps];
-        const [moved] = newSteps.splice(fromIdx, 1);
-        newSteps.splice(toIdx, 0, moved);
-        return { ...o, nextSteps: newSteps };
+  // Step block drag handlers — reorder linear chain within the same flow group
+  const collectLinearSteps = (startOutput: FlowOutput): FlowStep[] => {
+    const steps: FlowStep[] = [];
+    let current = startOutput;
+    while (current.nextSteps.length > 0) {
+      const step = current.nextSteps[0];
+      steps.push(step);
+      if (step.outputs.length !== 1) break;
+      current = step.outputs[0];
+    }
+    return steps;
+  };
+
+  const rebuildLinearChain = (startOutput: FlowOutput, orderedSteps: FlowStep[]): FlowOutput => {
+    const root: FlowOutput = { ...startOutput, nextSteps: [] };
+    let currentOutput = root;
+
+    for (let i = 0; i < orderedSteps.length; i++) {
+      const originalStep = orderedSteps[i];
+      const safeOutputs = originalStep.outputs.length > 0
+        ? originalStep.outputs.map((out, idx) => ({ ...out, nextSteps: idx === 0 ? [] : out.nextSteps }))
+        : [{ id: uid(), label: "Próximo", conditionType: "default", conditionValue: null, nextSteps: [] }];
+
+      const clonedStep: FlowStep = { ...originalStep, outputs: safeOutputs };
+      currentOutput.nextSteps = [clonedStep];
+      if (i < orderedSteps.length - 1) currentOutput = clonedStep.outputs[0];
+    }
+
+    return root;
+  };
+
+  const reorderLinearGroupInTree = (
+    outs: FlowOutput[],
+    groupOutputId: string,
+    fromId: string,
+    toId: string,
+  ): FlowOutput[] => {
+    return outs.map((o) => {
+      if (o.id === groupOutputId) {
+        const linearSteps = collectLinearSteps(o);
+        const fromIdx = linearSteps.findIndex((s) => s.id === fromId);
+        const toIdx = linearSteps.findIndex((s) => s.id === toId);
+        if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return o;
+
+        const reordered = [...linearSteps];
+        const [moved] = reordered.splice(fromIdx, 1);
+        reordered.splice(toIdx, 0, moved);
+        return rebuildLinearChain(o, reordered);
       }
-      return { ...o, nextSteps: o.nextSteps.map(step => ({ ...step, outputs: reorderStepInTree(step.outputs, fromId, toId) })) };
+
+      return {
+        ...o,
+        nextSteps: o.nextSteps.map((step) => ({
+          ...step,
+          outputs: reorderLinearGroupInTree(step.outputs, groupOutputId, fromId, toId),
+        })),
+      };
     });
   };
 
@@ -497,9 +542,9 @@ const CrmBotEditor = () => {
     e.preventDefault();
   };
 
-  const handleStepDrop = (targetStepId: string) => {
+  const handleStepDrop = (groupOutputId: string, targetStepId: string) => {
     if (draggedStepId && draggedStepId !== targetStepId) {
-      setRootOutputs(prev => reorderStepInTree(prev, draggedStepId!, targetStepId));
+      setRootOutputs((prev) => reorderLinearGroupInTree(prev, groupOutputId, draggedStepId, targetStepId));
     }
     setDraggedStepId(null);
   };
