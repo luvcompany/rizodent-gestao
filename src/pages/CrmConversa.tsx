@@ -564,6 +564,9 @@ export default function CrmConversa() {
         {/* Automation Panel */}
         <LeadAutomationPanel leadId={lead.id} />
 
+        {/* Follow Up Panel */}
+        <LeadFollowUpPanel leadId={lead.id} />
+
         {/* Notes input */}
         <div className="p-4 border-b border-border">
           <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Adicionar Nota</h3>
