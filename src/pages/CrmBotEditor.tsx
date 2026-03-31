@@ -103,10 +103,9 @@ const CrmBotEditor = () => {
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  // Dragging blocks
+  // Dragging blocks (reorder)
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
   const [stepPositions, setStepPositions] = useState<Record<string, { x: number; y: number }>>({});
-  const dragStartRef = useRef({ x: 0, y: 0, origX: 0, origY: 0 });
 
   // Editing
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
