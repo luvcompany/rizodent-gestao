@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const { leadId, trigger, message, newStageId } = await req.json();
+    const { leadId, trigger, message, newStageId, messageType } = await req.json();
 
     if (trigger === "inbound_message") {
       return await handleInboundMessage(supabase, leadId, message);
@@ -353,6 +353,105 @@ async function executeNode(supabase: any, execution: any, node: any, leadId: str
     case "action_end_bot": {
       await supabase.from("bot_executions").update({ status: "completed", finished_at: new Date().toISOString() }).eq("id", execution.id);
       await logExecution(supabase, execution.id, node.id, "bot_ended", "");
+      break;
+    }
+
+    case "message_image": case "message_video": case "message_document": {
+      const mediaType = node.type.replace("message_", "");
+      await callSendWhatsapp(supabase, {
+        lead_id: leadId, to: lead.phone, type: mediaType, media_url: config.attachment_url || config.media_url,
+        ...(config.message ? { message: config.message } : {}),
+      });
+      await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", leadId);
+      await logExecution(supabase, execution.id, node.id, `${mediaType}_sent`, config.attachment_url || config.media_url || "");
+
+      const nextOutput = await getDefaultOutput(supabase, node.id);
+      if (nextOutput?.next_node_id) {
+        const { data: next } = await supabase.from("bot_nodes").select("*").eq("id", nextOutput.next_node_id).single();
+        await supabase.from("bot_executions").update({ current_node_id: next.id }).eq("id", execution.id);
+        await executeNode(supabase, execution, next, leadId);
+      }
+      break;
+    }
+
+    case "message_list": {
+      await callSendWhatsapp(supabase, {
+        lead_id: leadId, to: lead.phone, type: "interactive",
+        interactive: {
+          type: "list",
+          header: config.header ? { type: "text", text: config.header } : undefined,
+          body: { text: config.body || "" },
+          footer: config.footer ? { text: config.footer } : undefined,
+          action: {
+            button: config.buttonText || "Ver opções",
+            sections: config.sections || [],
+          },
+        },
+      });
+      await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", leadId);
+      await logExecution(supabase, execution.id, node.id, "list_sent", config.body || "");
+
+      // Wait for reply
+      await supabase.from("bot_executions").update({
+        status: "waiting_reply", waiting_for: "any_reply", waiting_since: new Date().toISOString(), current_node_id: node.id,
+      }).eq("id", execution.id);
+      break;
+    }
+
+    case "reaction": {
+      // Reactions are sent via WhatsApp API but need the last inbound message ID
+      await logExecution(supabase, execution.id, node.id, "reaction_sent", config.emoji || "👍");
+
+      const nextOutput = await getDefaultOutput(supabase, node.id);
+      if (nextOutput?.next_node_id) {
+        const { data: next } = await supabase.from("bot_nodes").select("*").eq("id", nextOutput.next_node_id).single();
+        await supabase.from("bot_executions").update({ current_node_id: next.id }).eq("id", execution.id);
+        await executeNode(supabase, execution, next, leadId);
+      }
+      break;
+    }
+
+    case "comment": {
+      // Internal comment - just log it and move on
+      await logExecution(supabase, execution.id, node.id, "comment_added", config.text || "");
+
+      const nextOutput = await getDefaultOutput(supabase, node.id);
+      if (nextOutput?.next_node_id) {
+        const { data: next } = await supabase.from("bot_nodes").select("*").eq("id", nextOutput.next_node_id).single();
+        await supabase.from("bot_executions").update({ current_node_id: next.id }).eq("id", execution.id);
+        await executeNode(supabase, execution, next, leadId);
+      }
+      break;
+    }
+
+    case "start_bot": {
+      // End current execution and start the other bot
+      await supabase.from("bot_executions").update({ status: "completed", finished_at: new Date().toISOString() }).eq("id", execution.id);
+      await logExecution(supabase, execution.id, node.id, "start_other_bot", config.bot_id || "");
+
+      if (config.bot_id) {
+        const { data: startNode } = await supabase.from("bot_nodes").select("*").eq("bot_id", config.bot_id).eq("is_start_node", true).maybeSingle();
+        if (startNode) {
+          const { data: newExec } = await supabase.from("bot_executions").insert({
+            bot_id: config.bot_id, lead_id: leadId, current_node_id: startNode.id, status: "active",
+          }).select().single();
+          await logExecution(supabase, newExec.id, startNode.id, "bot_started", `from_bot: ${execution.bot_id}`);
+          await executeNode(supabase, newExec, startNode, leadId);
+        }
+      }
+      break;
+    }
+
+    case "round_robin": {
+      // Round robin - just log and continue
+      await logExecution(supabase, execution.id, node.id, "round_robin", JSON.stringify(config.users || []));
+
+      const nextOutput = await getDefaultOutput(supabase, node.id);
+      if (nextOutput?.next_node_id) {
+        const { data: next } = await supabase.from("bot_nodes").select("*").eq("id", nextOutput.next_node_id).single();
+        await supabase.from("bot_executions").update({ current_node_id: next.id }).eq("id", execution.id);
+        await executeNode(supabase, execution, next, leadId);
+      }
       break;
     }
 

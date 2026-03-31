@@ -465,6 +465,7 @@ Deno.serve(async (req) => {
                     leadId: lead.id,
                     trigger: "inbound_message",
                     message: content || "",
+                    messageType: msgType,
                   }),
                 }).catch(e => console.error("[WEBHOOK] Erro ao chamar bot-engine:", e));
               } catch (botErr) {

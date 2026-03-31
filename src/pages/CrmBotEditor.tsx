@@ -103,10 +103,9 @@ const CrmBotEditor = () => {
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  // Dragging blocks
+  // Dragging blocks (reorder)
   const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
   const [stepPositions, setStepPositions] = useState<Record<string, { x: number; y: number }>>({});
-  const dragStartRef = useRef({ x: 0, y: 0, origX: 0, origY: 0 });
 
   // Editing
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
@@ -130,8 +129,18 @@ const CrmBotEditor = () => {
     setBot(b);
     setBotName(b.name);
 
+    // Load general settings from bot description (JSON)
+    try {
+      const settings = b.description ? JSON.parse(b.description) : null;
+      if (settings?.generalSettings) setGeneralSettings(settings.generalSettings);
+    } catch { /* not JSON, ignore */ }
+
     const { data: nodes } = await supabase.from("bot_nodes").select("*").eq("bot_id", botId).order("created_at");
-    if (!nodes || nodes.length === 0) return;
+    if (!nodes || nodes.length === 0) {
+      // Still load triggers even if no nodes
+      await loadTriggers();
+      return;
+    }
 
     const nodeIds = nodes.map((n: any) => n.id);
     const { data: outs } = await supabase.from("bot_node_outputs").select("*").in("node_id", nodeIds);
@@ -144,6 +153,24 @@ const CrmBotEditor = () => {
       positions[n.id] = { x: n.position_x || 0, y: n.position_y || 0 };
     });
     setStepPositions(positions);
+
+    await loadTriggers();
+  };
+
+  const loadTriggers = async () => {
+    const { data: configs } = await supabase
+      .from("stage_bot_config")
+      .select("*, stage:crm_stages(id, name, pipeline_id)")
+      .eq("bot_id", botId);
+    if (configs && configs.length > 0) {
+      const loadedTriggers: Trigger[] = configs.map((c: any) => ({
+        id: uid(),
+        type: c.trigger_type === "on_enter" ? "stage_enter" : "lead_created",
+        label: c.trigger_type === "on_enter" ? "Lead movido para etapa" : "Lead criado na etapa",
+        config: { pipeline_id: c.stage?.pipeline_id || "", stage_id: c.stage_id || "" },
+      }));
+      setTriggers(loadedTriggers);
+    }
   };
 
   const rebuildTree = (nodes: any[], outs: any[]): FlowOutput[] => {
@@ -173,9 +200,12 @@ const CrmBotEditor = () => {
   const mapNodeType = (dbType: string): string => {
     const map: Record<string, string> = {
       message_text: "send_message", message_template: "send_message_template", message_audio: "send_message",
+      message_image: "send_message", message_video: "send_message", message_document: "send_message",
+      message_list: "list_message",
       wait: "pause", condition: "condition",
       action_move_stage: "action_move", action_set_field: "action_field", action_add_tag: "action",
-      action_end_bot: "stop_bot",
+      action_end_bot: "stop_bot", start_bot: "start_bot", comment: "comment", reaction: "reaction",
+      round_robin: "round_robin",
     };
     return map[dbType] || dbType;
   };
@@ -299,7 +329,9 @@ const CrmBotEditor = () => {
     if (!botId) return;
     setSaving(true);
     try {
-      await supabase.from("bots").update({ name: botName }).eq("id", botId);
+      // Save bot name + generalSettings in description as JSON
+      const settingsJson = JSON.stringify({ generalSettings });
+      await supabase.from("bots").update({ name: botName, description: settingsJson }).eq("id", botId);
       const { data: existingNodes } = await supabase.from("bot_nodes").select("id").eq("bot_id", botId);
       if (existingNodes?.length) {
         const existingIds = existingNodes.map((n: any) => n.id);
@@ -360,7 +392,7 @@ const CrmBotEditor = () => {
 
   const mapToDbType = (type: string, config: any): string => {
     switch (type) {
-      case "send_message": return config?.useTemplate ? "message_template" : "message_text";
+      case "send_message": return config?.useTemplate ? "message_template" : (config?.audio_url ? "message_audio" : (config?.attachment_url ? "message_image" : "message_text"));
       case "send_message_template": return "message_template";
       case "pause": case "pause_timer": return "wait";
       case "condition": return "condition";
@@ -369,6 +401,11 @@ const CrmBotEditor = () => {
       case "action_field": return "action_set_field";
       case "action_transfer": return "action_move_stage";
       case "stop_bot": return "action_end_bot";
+      case "list_message": return "message_list";
+      case "comment": return "comment";
+      case "reaction": return "reaction";
+      case "start_bot": return "start_bot";
+      case "round_robin": return "round_robin";
       default: return type;
     }
   };
@@ -437,29 +474,39 @@ const CrmBotEditor = () => {
 
   const editingStep = editingStepId ? findStep(rootOutputs, editingStepId) : null;
 
-  // Step block drag handlers
-  const handleStepDragStart = (e: React.PointerEvent, stepId: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setDraggedStepId(stepId);
-    const pos = stepPositions[stepId] || { x: 0, y: 0 };
-    dragStartRef.current = { x: e.clientX, y: e.clientY, origX: pos.x, origY: pos.y };
+  // Step block drag handlers — reorder within the same output group
+  const reorderStepInTree = (outs: FlowOutput[], fromId: string, toId: string): FlowOutput[] => {
+    return outs.map(o => {
+      const fromIdx = o.nextSteps.findIndex(s => s.id === fromId);
+      const toIdx = o.nextSteps.findIndex(s => s.id === toId);
+      if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
+        const newSteps = [...o.nextSteps];
+        const [moved] = newSteps.splice(fromIdx, 1);
+        newSteps.splice(toIdx, 0, moved);
+        return { ...o, nextSteps: newSteps };
+      }
+      return { ...o, nextSteps: o.nextSteps.map(step => ({ ...step, outputs: reorderStepInTree(step.outputs, fromId, toId) })) };
+    });
   };
 
-  const handleStepDragMove = useCallback((e: React.PointerEvent) => {
-    if (!draggedStepId) return;
-    const dx = (e.clientX - dragStartRef.current.x) / zoom;
-    const dy = (e.clientY - dragStartRef.current.y) / zoom;
-    setStepPositions(prev => ({
-      ...prev,
-      [draggedStepId]: { x: dragStartRef.current.origX + dx, y: dragStartRef.current.origY + dy },
-    }));
-  }, [draggedStepId, zoom]);
+  const handleStepDragStart = (_e: React.DragEvent, stepId: string) => {
+    setDraggedStepId(stepId);
+  };
 
-  const handleStepDragEnd = useCallback(() => {
+  const handleStepDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleStepDrop = (targetStepId: string) => {
+    if (draggedStepId && draggedStepId !== targetStepId) {
+      setRootOutputs(prev => reorderStepInTree(prev, draggedStepId!, targetStepId));
+    }
     setDraggedStepId(null);
-  }, []);
+  };
+
+  const handleStepDragEnd = () => {
+    setDraggedStepId(null);
+  };
 
   // ── Helper to get step info ──
 
@@ -540,8 +587,6 @@ const CrmBotEditor = () => {
         {/* ── Canvas ── */}
         <div
           className="flex-1 relative overflow-hidden"
-          onPointerMove={draggedStepId ? handleStepDragMove : undefined}
-          onPointerUp={draggedStepId ? handleStepDragEnd : undefined}
         >
           <div
             ref={canvasRef}
@@ -651,8 +696,10 @@ const CrmBotEditor = () => {
                       onRemoveStep={removeStep}
                       onEditStep={(id) => { setEditingStepId(id); setActionsOpen(false); setShowGeneralSettings(false); }}
                       editingStepId={editingStepId}
-                      stepPositions={stepPositions}
                       onDragStart={handleStepDragStart}
+                      onDragOver={handleStepDragOver}
+                      onDrop={handleStepDrop}
+                      onDragEnd={handleStepDragEnd}
                       draggedStepId={draggedStepId}
                       getStepPreview={getStepPreview}
                       bots={bots}
@@ -836,14 +883,16 @@ interface FlowGroupRendererProps {
   onRemoveStep: (stepId: string) => void;
   onEditStep: (stepId: string) => void;
   editingStepId: string | null;
-  stepPositions: Record<string, { x: number; y: number }>;
-  onDragStart: (e: React.PointerEvent, stepId: string) => void;
+  onDragStart: (e: React.DragEvent, stepId: string) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (targetStepId: string) => void;
+  onDragEnd: () => void;
   draggedStepId: string | null;
   getStepPreview: (step: FlowStep) => string | null;
   bots: any[];
 }
 
-const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editingStepId, stepPositions, onDragStart, draggedStepId, getStepPreview, bots }: FlowGroupRendererProps) => {
+const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editingStepId, onDragStart, onDragOver, onDrop, onDragEnd, draggedStepId, getStepPreview, bots }: FlowGroupRendererProps) => {
   const collectLinearSteps = (o: FlowOutput): { steps: FlowStep[]; branches: { output: FlowOutput; afterStepIdx: number }[] } => {
     const steps: FlowStep[] = [];
     const branches: { output: FlowOutput; afterStepIdx: number }[] = [];
@@ -916,16 +965,18 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
             return (
               <div
                 key={step.id}
+                draggable
+                onDragStart={(e) => onDragStart(e, step.id)}
+                onDragOver={onDragOver}
+                onDrop={() => onDrop(step.id)}
+                onDragEnd={onDragEnd}
                 className={`rounded-lg p-2.5 cursor-pointer transition-all group relative ${
                   isEditing ? "ring-2 ring-primary bg-primary/5" : "hover:bg-muted/50"
                 } ${isDragging ? "opacity-50" : ""}`}
                 onClick={() => onEditStep(step.id)}
               >
                 <div className="flex items-center gap-2">
-                  <div
-                    className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground"
-                    onPointerDown={(e) => onDragStart(e, step.id)}
-                  >
+                  <div className="cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground">
                     <GripVertical size={12} />
                   </div>
                   <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${def?.bg || "bg-muted"}`}>
@@ -979,8 +1030,10 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
                   onRemoveStep={onRemoveStep}
                   onEditStep={onEditStep}
                   editingStepId={editingStepId}
-                  stepPositions={stepPositions}
                   onDragStart={onDragStart}
+                  onDragOver={onDragOver}
+                  onDrop={onDrop}
+                  onDragEnd={onDragEnd}
                   draggedStepId={draggedStepId}
                   getStepPreview={getStepPreview}
                   bots={bots}
@@ -1011,8 +1064,10 @@ const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editin
             onRemoveStep={onRemoveStep}
             onEditStep={onEditStep}
             editingStepId={editingStepId}
-            stepPositions={stepPositions}
             onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            onDragEnd={onDragEnd}
             draggedStepId={draggedStepId}
             getStepPreview={getStepPreview}
             bots={bots}
