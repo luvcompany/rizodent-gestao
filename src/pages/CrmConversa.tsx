@@ -60,13 +60,14 @@ export default function CrmConversa() {
 
   // Fetch lead data separately (hook handles messages + stages)
   const [leadLoading, setLeadLoading] = useState(true);
-  useState(() => {
+  useEffect(() => {
     if (!id) return;
+    setLeadLoading(true);
     supabase.from("crm_leads").select("*").eq("id", id).single().then(({ data }) => {
       if (data) setLead(data as Lead);
       setLeadLoading(false);
     });
-  });
+  }, [id]);
 
   const handleStageChange = useCallback(async (stageId: string) => {
     if (!lead) return;
