@@ -325,6 +325,172 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_followup_configs: {
+        Row: {
+          created_at: string
+          disparo1_content: string | null
+          disparo1_delay_minutes: number
+          disparo1_template_id: string | null
+          disparo1_type: string
+          disparo2_content: string | null
+          disparo2_delay_minutes: number
+          disparo2_template_id: string | null
+          disparo2_type: string
+          id: string
+          is_active: boolean
+          max_attempts: number
+          move_to_stage_id: string | null
+          return_to_stage_id: string | null
+          stage_id: string
+          stop_on_stages: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          disparo1_content?: string | null
+          disparo1_delay_minutes?: number
+          disparo1_template_id?: string | null
+          disparo1_type?: string
+          disparo2_content?: string | null
+          disparo2_delay_minutes?: number
+          disparo2_template_id?: string | null
+          disparo2_type?: string
+          id?: string
+          is_active?: boolean
+          max_attempts?: number
+          move_to_stage_id?: string | null
+          return_to_stage_id?: string | null
+          stage_id: string
+          stop_on_stages?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          disparo1_content?: string | null
+          disparo1_delay_minutes?: number
+          disparo1_template_id?: string | null
+          disparo1_type?: string
+          disparo2_content?: string | null
+          disparo2_delay_minutes?: number
+          disparo2_template_id?: string | null
+          disparo2_type?: string
+          id?: string
+          is_active?: boolean
+          max_attempts?: number
+          move_to_stage_id?: string | null
+          return_to_stage_id?: string | null
+          stage_id?: string
+          stop_on_stages?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_followup_configs_disparo1_template_id_fkey"
+            columns: ["disparo1_template_id"]
+            isOneToOne: false
+            referencedRelation: "crm_whatsapp_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_followup_configs_disparo2_template_id_fkey"
+            columns: ["disparo2_template_id"]
+            isOneToOne: false
+            referencedRelation: "crm_whatsapp_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_followup_configs_move_to_stage_id_fkey"
+            columns: ["move_to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_followup_configs_return_to_stage_id_fkey"
+            columns: ["return_to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_followup_configs_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_followup_queue: {
+        Row: {
+          attempt_count: number
+          config_id: string
+          created_at: string
+          disparo1_scheduled_at: string | null
+          disparo1_sent_at: string | null
+          disparo2_scheduled_at: string | null
+          disparo2_sent_at: string | null
+          id: string
+          last_lead_message_at: string | null
+          lead_id: string
+          stage_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          config_id: string
+          created_at?: string
+          disparo1_scheduled_at?: string | null
+          disparo1_sent_at?: string | null
+          disparo2_scheduled_at?: string | null
+          disparo2_sent_at?: string | null
+          id?: string
+          last_lead_message_at?: string | null
+          lead_id: string
+          stage_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          config_id?: string
+          created_at?: string
+          disparo1_scheduled_at?: string | null
+          disparo1_sent_at?: string | null
+          disparo2_scheduled_at?: string | null
+          disparo2_sent_at?: string | null
+          id?: string
+          last_lead_message_at?: string | null
+          lead_id?: string
+          stage_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_followup_queue_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "crm_followup_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_followup_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_followup_queue_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_lead_custom_values: {
         Row: {
           field_id: string
