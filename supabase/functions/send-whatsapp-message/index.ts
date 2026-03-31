@@ -314,9 +314,11 @@ Deno.serve(async (req) => {
       });
     }
 
+    const now = new Date().toISOString();
     await supabase.from("crm_leads").update({
       last_message: message || `[${finalType}]`,
-      last_message_at: new Date().toISOString(),
+      last_message_at: now,
+      last_outbound_at: now,
     }).eq("id", lead_id);
 
     return new Response(JSON.stringify({ success: true, message: msg, whatsapp: waData }), {

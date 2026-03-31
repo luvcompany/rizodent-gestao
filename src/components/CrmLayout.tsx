@@ -26,16 +26,21 @@ const CrmLayout = () => {
 
   useEffect(() => {
     const fetchUnread = async () => {
-      const { count } = await supabase
+      // PostgREST .or() can't compare two columns, so we fetch both timestamps
+      // and count client-side
+      const { data } = await supabase
         .from("crm_leads")
-        .select("id", { count: "exact", head: true })
-        .not("last_inbound_at", "is", null)
-        .or("last_outbound_at.is.null,last_inbound_at.gt.last_outbound_at");
-      setUnreadCount(count || 0);
+        .select("last_inbound_at, last_outbound_at")
+        .not("last_inbound_at", "is", null);
+      const count = (data || []).filter((l) => {
+        if (!l.last_outbound_at) return true;
+        return new Date(l.last_inbound_at!) > new Date(l.last_outbound_at);
+      }).length;
+      setUnreadCount(count);
     };
     fetchUnread();
     const ch = supabase.channel("unread-badge")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "crm_leads" }, fetchUnread)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, fetchUnread)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, []);
