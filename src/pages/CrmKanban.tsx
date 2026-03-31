@@ -562,7 +562,7 @@ export default function CrmKanban() {
               <Select value={newLead.source} onValueChange={v => setNewLead(p => ({ ...p, source: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  {["instagram", "whatsapp", "facebook", "manual", "indicação", "google"].map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                  {["instagram", "whatsapp", "facebook", "facebook_ad", "instagram_ad", "manual", "indicação", "google"].map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

@@ -110,6 +110,10 @@ export function useChatConversation(leadId: string | null | undefined) {
       requestAnimationFrame(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
       });
+      // Fallback for long conversations where DOM may not be fully rendered
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+      }, 150);
       initialLoadDone.current = true;
     }
   }, [messages]);
