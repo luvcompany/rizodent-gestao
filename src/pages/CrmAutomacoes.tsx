@@ -22,6 +22,7 @@ type Template = { id: string; name: string; status: string };
 type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
 type BotItem = { id: string; name: string; active: boolean };
 type StageBotConfig = { id: string; stage_id: string; bot_id: string | null; trigger_type: string; active: boolean; is_final_stage: boolean };
+type FollowUpCfg = { id: string; stage_id: string; is_active: boolean; disparo1_type: string; disparo1_delay_minutes: number; max_attempts: number };
 
 const PRESET_COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
