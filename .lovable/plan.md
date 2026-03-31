@@ -1,99 +1,74 @@
 
 
-# Auditoria do CRM - Problemas e Melhorias
+# Auditoria do Construtor de Bots - Plano de Correção
 
-## Problemas Encontrados
+## Problemas Identificados
 
-### 1. Painéis laterais das duas telas de conversa estão diferentes
-O painel direito do **CrmConversa** (Kanban) e do **CrmConversas** (lista) possuem componentes e ordem diferentes:
+### 1. Drag-and-drop dos blocos NÃO funciona
+O sistema rastreia `stepPositions` mas **nunca usa essas posições para renderizar os blocos**. Os cards estão em layout `flex` (flow automático), então arrastar muda o estado mas não move nada visualmente. Para funcionar, os blocos precisariam de posicionamento absoluto com `transform: translate()`, ou alternativamente, implementar reordenação por drag (mover a posição do passo na lista).
 
-| Componente | CrmConversa (Kanban) | CrmConversas (Lista) |
-|---|---|---|
-| LeadEditPanel | Sim | Sim |
-| Etapa do Funil | Sim | Sim |
-| InlineTagsEditor | Sim | Sim |
-| **LeadAdInfo** | **Posição: após tags** | **Posição: após custom fields** |
-| LeadBudgetPanel | Sim | Sim |
-| LeadResponseTimes | Sim | Sim |
-| LeadStageTimeline | Sim | Sim |
-| LeadCustomFields | Sim | Sim |
-| **LeadAutomationPanel** | **Sim** | **Ausente** |
-| **LeadFollowUpPanel** | **Sim** | **Ausente** |
-| **TaskPanel** | **Ausente** | **Sim** |
-| **nomeAnuncio no LeadAdInfo** | **Sim (passado)** | **Ausente (não passado)** |
+**Solução**: Implementar reordenação por drag-and-drop dentro do card de grupo. Quando o usuário arrasta um bloco pelo `GripVertical`, ele reordena os passos dentro da sequência linear. Isso é mais intuitivo para um fluxo sequencial do que posicionamento livre.
 
-**Ação:** Equalizar os painéis - ambos devem ter os mesmos componentes, na mesma ordem, com as mesmas props.
+### 2. Bot Engine não suporta todos os tipos de mídia
+O `bot-engine` tem handlers para `message_text`, `message_template` e `message_audio`, mas o editor permite configurar mensagens com imagens, documentos e anexos. O `callSendWhatsapp` envia os dados, mas o mapeamento `mapToDbType` no editor não cobre todos os tipos.
 
-### 2. CrmConversas não busca campos de anúncio do banco
-A query de leads em `CrmConversas` (linha 80) seleciona campos específicos mas não inclui `imagem_origem`, `titulo_anuncio`, `descricao_anuncio`, `link_anuncio`, `ad_id`, `nome_anuncio`. Os dados do anúncio nunca chegam ao componente.
+**Solução**: Expandir o `bot-engine` para suportar `message_image`, `message_video`, `message_document` e garantir que o editor salve o tipo correto.
 
-**Ação:** Adicionar os campos de anúncio na query SELECT e no tipo `LeadConversation`.
+### 3. Mapeamento editor → banco incompleto
+- `list_message` não tem mapeamento em `mapToDbType`
+- `comment`, `reaction`, `start_bot`, `round_robin` não mapeiam para tipos do banco
+- O bot-engine não tem handlers para esses tipos
 
-### 3. Scroll para última mensagem pode falhar em conversas longas
-O `useEffect` atual usa `requestAnimationFrame` uma única vez, mas em conversas com muitas mensagens, o DOM pode não ter renderizado todos os elementos ainda. Pode ser necessário um `setTimeout` adicional ou uso de `MutationObserver`.
+**Solução**: Adicionar mapeamentos faltantes e handlers correspondentes no bot-engine.
 
-**Ação:** Adicionar um fallback com `setTimeout` de ~100ms após o `requestAnimationFrame` para garantir o scroll.
+### 4. Save do bot tem bug na resolução de next_node_id
+Linha 324: `o.nextSteps[0]` é um objeto `FlowStep`, mas é usado como se fosse string para construir `"__pending__" + o.nextSteps[0].id`. Isso funciona por concatenação implícita mas é frágil.
 
-### 4. Bug no CrmConversa: uso incorreto de `useState` como efeito
-Linha 63 do `CrmConversa.tsx` usa `useState(() => { ... })` como se fosse `useEffect`. Isso executa a fetch durante a inicialização do state mas não é reativo a mudanças de `id`. Se o usuário navegar entre leads, o lead não atualiza.
+### 5. Triggers não são salvos/carregados do banco
+Os triggers são armazenados em `stage_bot_config` ao salvar, mas **não são carregados de volta** ao abrir o editor (`loadBot` não busca triggers).
 
-**Ação:** Converter para `useEffect` com dependência em `id`.
+**Solução**: Carregar `stage_bot_config` para o bot e popular o estado `triggers`.
 
-### 5. Kanban drag-and-drop não registra histórico de etapa
-No `CrmKanban.tsx`, o `handleDragEnd` atualiza o `stage_id` no banco mas não insere entrada em `crm_lead_stage_history` nem cria mensagem de sistema, diferente do `handleStageChange` no hook unificado.
+### 6. Webhook → Bot Engine: mensagem de mídia não passa conteúdo útil
+O webhook chama o bot-engine com `message: content || ""`, mas para áudio/imagem, `content` é vazio. O bot-engine precisa do tipo de mídia para processar corretamente.
 
-**Ação:** Usar a mesma lógica do hook `useChatConversation.handleStageChange` ou chamá-lo diretamente.
-
-### 6. Origem duplicada no cadastro de novo lead
-O select de origem no formulário de novo lead (Kanban) não inclui `facebook_ad` e `instagram_ad` como opções, apenas "facebook" e "instagram" genéricos. Isso gera inconsistência com leads vindos do webhook.
-
-**Ação:** Adicionar `facebook_ad` e `instagram_ad` às opções de origem.
-
-## Melhorias Sugeridas
-
-### 7. Indicador de "sem resposta" na lista de conversas
-A lista de conversas (`CrmConversas`) não tem indicador visual claro de quais conversas aguardam resposta (como o badge do menu lateral). Adicionar um ponto/badge vermelho nos itens da lista.
-
-### 8. Realtime no Kanban
-O Kanban não tem subscription realtime - se outro usuário mover um lead ou se uma mensagem chegar, o board não atualiza automaticamente.
-
-### 9. Polling no hook `useChatConversation` é pesado
-O polling a cada 5 segundos faz uma query completa de todas as mensagens do lead. Para conversas com centenas de mensagens, isso gera tráfego desnecessário. Poderia filtrar apenas mensagens após o último `created_at` conhecido.
+### 7. Badge no menu lateral (questão do usuário anterior)
+O código está correto mas pode haver um problema de realtime subscription. Preciso verificar se a publicação realtime está habilitada para `crm_leads`.
 
 ---
 
-## Plano de Implementação (Priorizado)
+## Plano de Implementação
 
-### Passo 1 — Corrigir bug do useState no CrmConversa
-Substituir `useState(() => { fetch... })` por `useEffect` com dependência em `id`.
+### Passo 1 — Corrigir drag-and-drop como reordenação
+Substituir o sistema de posicionamento absoluto por reordenação sequencial. Ao arrastar um passo, ele troca de posição com o passo adjacente na lista linear.
 
-### Passo 2 — Equalizar painéis laterais
-Definir uma ordem padrão de componentes e aplicar identicamente em ambas as telas:
-1. LeadEditPanel
-2. Etapa do Funil
-3. InlineTagsEditor
-4. LeadAdInfo (com `nomeAnuncio`)
-5. LeadBudgetPanel
-6. TaskPanel
-7. LeadResponseTimes
-8. LeadStageTimeline
-9. LeadCustomFields
-10. LeadAutomationPanel
-11. LeadFollowUpPanel
-12. Notas
+### Passo 2 — Completar mapeamentos editor ↔ banco
+Adicionar em `mapToDbType`:
+- `list_message` → `message_list`
+- `comment` → `comment`
+- `reaction` → `reaction`
+- `start_bot` → `start_bot`
 
-### Passo 3 — Corrigir query de anúncios no CrmConversas
-Adicionar campos `imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio` na query e passar `nomeAnuncio` ao `LeadAdInfo`.
+### Passo 3 — Expandir bot-engine com novos tipos de nó
+Adicionar handlers para: `message_image`, `message_video`, `message_document`, `message_list`, `reaction`, `comment`, `start_bot`.
 
-### Passo 4 — Corrigir drag-and-drop do Kanban
-Adicionar registro de histórico de etapa e mensagem de sistema ao mover leads via drag-and-drop.
+### Passo 4 — Carregar triggers ao abrir o editor
+No `loadBot`, buscar `stage_bot_config` onde `bot_id = botId` e popular o estado `triggers`.
 
-### Passo 5 — Melhorar scroll para última mensagem
-Adicionar fallback com `setTimeout` para garantir scroll em conversas longas.
+### Passo 5 — Passar tipo de mídia do webhook ao bot-engine
+Alterar a chamada no webhook para incluir `messageType: msgType` junto com o `message`.
 
-### Passo 6 — Adicionar origens facebook_ad/instagram_ad no formulário
-Incluir as opções de origem de anúncio no select de criação de lead.
+### Passo 6 — Habilitar realtime para crm_leads + criar lead fictício
+Garantir que a publicação realtime está ativa. Criar uma migração que insere um lead de teste com telefone fictício para validar o fluxo.
 
-### Passo 7 — Badge de "sem resposta" na lista de conversas
-Adicionar indicador visual (ponto vermelho) nos itens da lista que aguardam resposta.
+### Passo 7 — Corrigir generalSettings não sendo salvos
+As configurações gerais do bot (delay, timeout) são mantidas apenas em estado local e nunca persistidas no banco. Salvar como parte do config do bot ou em uma coluna dedicada.
+
+---
+
+## Arquivos Afetados
+- `src/pages/CrmBotEditor.tsx` — drag-and-drop, mapeamentos, carregar triggers, salvar settings
+- `supabase/functions/bot-engine/index.ts` — novos handlers de nó
+- `supabase/functions/whatsapp-webhook/index.ts` — passar messageType
+- Migração SQL — lead fictício + realtime
 
