@@ -32,10 +32,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchProfile = async (userId: string) => {
     const [{ data: prof }, { data: role }] = await Promise.all([
-      supabase.from("profiles").select("nome, email, cargo, avatar_url").eq("id", userId).maybeSingle(),
+      supabase.from("profiles").select("nome, email, cargo, avatar_url, signature_enabled").eq("id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
     ]);
-    setProfile(prof);
+    setProfile(prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false } : null);
     setUserRole(role?.role ?? null);
   };
 
