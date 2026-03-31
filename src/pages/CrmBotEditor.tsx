@@ -387,7 +387,7 @@ const CrmBotEditor = () => {
 
   const mapToDbType = (type: string, config: any): string => {
     switch (type) {
-      case "send_message": return config?.useTemplate ? "message_template" : "message_text";
+      case "send_message": return config?.useTemplate ? "message_template" : (config?.audio_url ? "message_audio" : (config?.attachment_url ? "message_image" : "message_text"));
       case "send_message_template": return "message_template";
       case "pause": case "pause_timer": return "wait";
       case "condition": return "condition";
@@ -396,6 +396,11 @@ const CrmBotEditor = () => {
       case "action_field": return "action_set_field";
       case "action_transfer": return "action_move_stage";
       case "stop_bot": return "action_end_bot";
+      case "list_message": return "message_list";
+      case "comment": return "comment";
+      case "reaction": return "reaction";
+      case "start_bot": return "start_bot";
+      case "round_robin": return "round_robin";
       default: return type;
     }
   };
