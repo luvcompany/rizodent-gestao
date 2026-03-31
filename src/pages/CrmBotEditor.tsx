@@ -939,7 +939,7 @@ interface FlowGroupRendererProps {
   editingStepId: string | null;
   onDragStart: (e: React.DragEvent, stepId: string) => void;
   onDragOver: (e: React.DragEvent) => void;
-  onDrop: (groupOutputId: string, targetStepId: string) => void;
+  onDrop: (e: React.DragEvent, groupOutputId: string, targetStepId: string) => void;
   onDragEnd: () => void;
   draggedStepId: string | null;
   getStepPreview: (step: FlowStep) => string | null;
