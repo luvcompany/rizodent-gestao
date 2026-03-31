@@ -329,7 +329,9 @@ const CrmBotEditor = () => {
     if (!botId) return;
     setSaving(true);
     try {
-      await supabase.from("bots").update({ name: botName }).eq("id", botId);
+      // Save bot name + generalSettings in description as JSON
+      const settingsJson = JSON.stringify({ generalSettings });
+      await supabase.from("bots").update({ name: botName, description: settingsJson }).eq("id", botId);
       const { data: existingNodes } = await supabase.from("bot_nodes").select("id").eq("bot_id", botId);
       if (existingNodes?.length) {
         const existingIds = existingNodes.map((n: any) => n.id);
