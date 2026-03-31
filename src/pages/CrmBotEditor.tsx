@@ -881,14 +881,16 @@ interface FlowGroupRendererProps {
   onRemoveStep: (stepId: string) => void;
   onEditStep: (stepId: string) => void;
   editingStepId: string | null;
-  stepPositions: Record<string, { x: number; y: number }>;
-  onDragStart: (e: React.PointerEvent, stepId: string) => void;
+  onDragStart: (e: React.DragEvent, stepId: string) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (targetStepId: string) => void;
+  onDragEnd: () => void;
   draggedStepId: string | null;
   getStepPreview: (step: FlowStep) => string | null;
   bots: any[];
 }
 
-const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editingStepId, stepPositions, onDragStart, draggedStepId, getStepPreview, bots }: FlowGroupRendererProps) => {
+const FlowGroupRenderer = ({ output, onAddStep, onRemoveStep, onEditStep, editingStepId, onDragStart, onDragOver, onDrop, onDragEnd, draggedStepId, getStepPreview, bots }: FlowGroupRendererProps) => {
   const collectLinearSteps = (o: FlowOutput): { steps: FlowStep[]; branches: { output: FlowOutput; afterStepIdx: number }[] } => {
     const steps: FlowStep[] = [];
     const branches: { output: FlowOutput; afterStepIdx: number }[] = [];
