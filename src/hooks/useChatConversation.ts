@@ -1,0 +1,367 @@
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+export type ChatMessage = {
+  id: string;
+  lead_id: string;
+  direction: string;
+  type: string;
+  content: string | null;
+  media_url: string | null;
+  status: string;
+  created_at: string;
+  whatsapp_message_id?: string | null;
+  reply_to_message_id?: string | null;
+  reactions?: { emoji: string; from: string }[];
+  ad_headline?: string | null;
+  ad_body?: string | null;
+  ad_image_url?: string | null;
+  ad_source_url?: string | null;
+  ad_source_id?: string | null;
+};
+
+export type ChatStage = {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+  pipeline_id: string;
+};
+
+type ActivityToast = { id: string; content: string };
+
+export function useChatConversation(leadId: string | null | undefined) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [stages, setStages] = useState<ChatStage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Reply & Forward
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null);
+
+  // Media preview
+  const [mediaPreview, setMediaPreview] = useState<{ url: string; type: "image" | "video" } | null>(null);
+
+  // Templates
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState("");
+
+  // Activity toasts
+  const [activityToasts, setActivityToasts] = useState<ActivityToast[]>([]);
+
+  // Refs
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const initialLoadDone = useRef(false);
+
+  // Filtered templates
+  const filteredTemplates = useMemo(() => {
+    if (!templateSearch.trim()) return templates;
+    const q = templateSearch.toLowerCase();
+    return templates.filter(t => t.name.toLowerCase().includes(q) || (t.body_text || "").toLowerCase().includes(q));
+  }, [templates, templateSearch]);
+
+  // Last inbound message time
+  const lastInboundAt = useMemo(() => {
+    return [...messages].reverse().find((m) => m.direction === "inbound")?.created_at || null;
+  }, [messages]);
+
+  // ─── Fetch messages & stages ───
+  const fetchMessages = useCallback(async () => {
+    if (!leadId) return;
+    setLoading(true);
+    try {
+      const [messagesRes, stagesRes] = await Promise.all([
+        supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true }),
+        supabase.from("crm_stages").select("*").order("position"),
+      ]);
+      setMessages((messagesRes.data as ChatMessage[]) || []);
+      setStages((stagesRes.data as ChatStage[]) || []);
+    } catch (err) {
+      console.error("[useChatConversation] Fetch error:", err);
+    }
+    setLoading(false);
+  }, [leadId]);
+
+  useEffect(() => { fetchMessages(); }, [fetchMessages]);
+
+  // ─── Repair legacy media ───
+  useEffect(() => {
+    if (!leadId) return;
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("repair-chat-media", {
+          body: { leadId },
+        });
+        if (error) { console.error("[useChatConversation] Repair error:", error); return; }
+        if (data?.repaired?.length) {
+          console.log(`[useChatConversation] Repaired ${data.repaired.length} media`);
+          fetchMessages();
+        }
+      } catch {}
+    })();
+  }, [leadId, fetchMessages]);
+
+  // ─── Scroll to bottom on initial load ───
+  useEffect(() => {
+    if (!initialLoadDone.current && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      initialLoadDone.current = true;
+    }
+  }, [messages]);
+
+  // Reset on lead change
+  useEffect(() => {
+    initialLoadDone.current = false;
+    setReplyTo(null);
+    setForwardMsg(null);
+  }, [leadId]);
+
+  // ─── Realtime subscription ───
+  useEffect(() => {
+    if (!leadId) return;
+    const channel = supabase
+      .channel("chat-messages-" + leadId)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "messages", filter: `lead_id=eq.${leadId}`,
+      }, (payload) => {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === (payload.new as ChatMessage).id)) return prev;
+          return [...prev, payload.new as ChatMessage];
+        });
+      })
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "messages", filter: `lead_id=eq.${leadId}`,
+      }, (payload) => {
+        setMessages((prev) => prev.map((m) => m.id === (payload.new as ChatMessage).id ? (payload.new as ChatMessage) : m));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [leadId]);
+
+  // ─── Polling fallback ───
+  useEffect(() => {
+    if (!leadId) return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
+      if (data) {
+        setMessages((prev) => {
+          const newFingerprint = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
+          const oldFingerprint = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
+          return newFingerprint !== oldFingerprint ? (data as ChatMessage[]) : prev;
+        });
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [leadId]);
+
+  // ─── Activity Toasts ───
+  const dismissToast = useCallback((toastId: string) => {
+    setActivityToasts((prev) => prev.filter((t) => t.id !== toastId));
+  }, []);
+
+  const showActivityToast = useCallback((content: string) => {
+    const toastItem: ActivityToast = { id: Date.now().toString(), content };
+    setActivityToasts((prev) => [...prev, toastItem]);
+  }, []);
+
+  // ─── Scrolling ───
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  const scrollToMessage = useCallback((msgId: string) => {
+    const el = messageRefs.current[msgId];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-primary/50");
+      setTimeout(() => el.classList.remove("ring-2", "ring-primary/50"), 2000);
+    }
+  }, []);
+
+  // ─── Stage change ───
+  const handleStageChange = useCallback(async (newStageId: string, currentStageId: string, onSuccess?: (stageId: string) => void) => {
+    if (!leadId) return;
+
+    const { error } = await supabase.from("crm_leads").update({ stage_id: newStageId, updated_at: new Date().toISOString() }).eq("id", leadId);
+    if (error) { toast.error("Erro ao mover lead"); return; }
+
+    // Close previous stage history entry
+    const { data: openEntry } = await supabase
+      .from("crm_lead_stage_history")
+      .select("id")
+      .eq("lead_id", leadId)
+      .eq("stage_id", currentStageId)
+      .is("exited_at", null)
+      .maybeSingle();
+
+    if (openEntry) {
+      await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() }).eq("id", openEntry.id);
+    }
+
+    // Insert new stage history entry
+    await supabase.from("crm_lead_stage_history").insert({
+      lead_id: leadId,
+      stage_id: newStageId,
+      entered_at: new Date().toISOString(),
+    });
+
+    // Insert system message
+    const fromName = stages.find(s => s.id === currentStageId)?.name || "?";
+    const toName = stages.find(s => s.id === newStageId)?.name || "?";
+    const systemContent = `📋 Etapa alterada: ${fromName} → ${toName}`;
+    await supabase.from("messages").insert({
+      lead_id: leadId,
+      direction: "outbound",
+      type: "system",
+      content: systemContent,
+      status: "system",
+    });
+
+    showActivityToast(`📋 Lead movido para ${toName}`);
+
+    // Trigger bot-engine
+    try {
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      fetch(`https://${projectId}.supabase.co/functions/v1/bot-trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ leadId, newStageId }),
+      }).catch(() => {});
+    } catch {}
+
+    onSuccess?.(newStageId);
+    toast.success("Etapa atualizada");
+  }, [leadId, stages, showActivityToast]);
+
+  // ─── Reactions ───
+  const handleReact = useCallback(async (msg: ChatMessage, emoji: string, leadPhone: string | null) => {
+    if (!leadPhone) { toast.error("Lead sem telefone"); return; }
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msg.id) return m;
+        const existing = Array.isArray(m.reactions) ? m.reactions : [];
+        const filtered = existing.filter((r) => r.from !== "me");
+        return { ...m, reactions: [...filtered, { emoji, from: "me" }] };
+      })
+    );
+
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          lead_id: leadId,
+          to: leadPhone,
+          type: "reaction",
+          reaction_emoji: emoji,
+          reaction_to_message_id: msg.id,
+        },
+      });
+      if (error || data?.error) toast.error("Erro ao enviar reação");
+    } catch {
+      toast.error("Erro ao enviar reação");
+    }
+  }, [leadId]);
+
+  // ─── Templates ───
+  const loadTemplates = useCallback(async () => {
+    const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED");
+    setTemplates(data || []);
+    setTemplatesOpen(true);
+  }, []);
+
+  const sendTemplate = useCallback(async (template: any, leadPhone: string | null) => {
+    if (!leadPhone) { toast.error("Lead sem telefone configurado"); return; }
+    setTemplatesOpen(false);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          lead_id: leadId,
+          to: leadPhone,
+          type: "template",
+          template_name: template.name,
+          template_language: template.language,
+        },
+      });
+      if (error || data?.error) { toast.error("Erro ao enviar template"); return; }
+      toast.success("Template enviado");
+    } catch {
+      toast.error("Erro inesperado ao enviar template");
+    }
+  }, [leadId]);
+
+  // ─── Notes ───
+  const saveNotes = useCallback(async (updatedNotes: string) => {
+    if (!leadId) return;
+    const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", leadId);
+    if (error) toast.error("Erro ao salvar nota");
+    return !error;
+  }, [leadId]);
+
+  const addNote = useCallback(async (noteText: string, currentNotes: string | null) => {
+    if (!noteText.trim()) return;
+    const timestamp = new Date().toLocaleString("pt-BR");
+    const updatedNotes = `${currentNotes || ""}\n[${timestamp}] ${noteText.trim()}`.trim();
+    return saveNotes(updatedNotes);
+  }, [saveNotes]);
+
+  // ─── Optimistic message handling ───
+  const handleOptimisticMessage = useCallback((optimisticMsg: any) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === optimisticMsg.id)) return prev;
+      return [...prev, optimisticMsg];
+    });
+  }, []);
+
+  const handleMessageError = useCallback((tempId: string) => {
+    setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: "error" } : m));
+  }, []);
+
+  // ─── Helpers ───
+  const isSystemMessage = useCallback((msg: ChatMessage) => msg.type === "system" || msg.status === "system", []);
+
+  return {
+    // State
+    messages,
+    stages,
+    loading,
+    replyTo,
+    forwardMsg,
+    mediaPreview,
+    templates,
+    templatesOpen,
+    templateSearch,
+    filteredTemplates,
+    activityToasts,
+    lastInboundAt,
+
+    // Refs
+    messagesEndRef,
+    messageRefs,
+
+    // Setters
+    setReplyTo,
+    setForwardMsg,
+    setMediaPreview,
+    setTemplatesOpen,
+    setTemplateSearch,
+
+    // Actions
+    fetchMessages,
+    scrollToBottom,
+    scrollToMessage,
+    handleStageChange,
+    handleReact,
+    loadTemplates,
+    sendTemplate,
+    saveNotes,
+    addNote,
+    handleOptimisticMessage,
+    handleMessageError,
+    dismissToast,
+    showActivityToast,
+    isSystemMessage,
+  };
+}
