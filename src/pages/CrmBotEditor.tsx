@@ -129,8 +129,18 @@ const CrmBotEditor = () => {
     setBot(b);
     setBotName(b.name);
 
+    // Load general settings from bot description (JSON)
+    try {
+      const settings = b.description ? JSON.parse(b.description) : null;
+      if (settings?.generalSettings) setGeneralSettings(settings.generalSettings);
+    } catch { /* not JSON, ignore */ }
+
     const { data: nodes } = await supabase.from("bot_nodes").select("*").eq("bot_id", botId).order("created_at");
-    if (!nodes || nodes.length === 0) return;
+    if (!nodes || nodes.length === 0) {
+      // Still load triggers even if no nodes
+      await loadTriggers();
+      return;
+    }
 
     const nodeIds = nodes.map((n: any) => n.id);
     const { data: outs } = await supabase.from("bot_node_outputs").select("*").in("node_id", nodeIds);
@@ -143,6 +153,24 @@ const CrmBotEditor = () => {
       positions[n.id] = { x: n.position_x || 0, y: n.position_y || 0 };
     });
     setStepPositions(positions);
+
+    await loadTriggers();
+  };
+
+  const loadTriggers = async () => {
+    const { data: configs } = await supabase
+      .from("stage_bot_config")
+      .select("*, stage:crm_stages(id, name, pipeline_id)")
+      .eq("bot_id", botId);
+    if (configs && configs.length > 0) {
+      const loadedTriggers: Trigger[] = configs.map((c: any) => ({
+        id: uid(),
+        type: c.trigger_type === "on_enter" ? "stage_enter" : "lead_created",
+        label: c.trigger_type === "on_enter" ? "Lead movido para etapa" : "Lead criado na etapa",
+        config: { pipeline_id: c.stage?.pipeline_id || "", stage_id: c.stage_id || "" },
+      }));
+      setTriggers(loadedTriggers);
+    }
   };
 
   const rebuildTree = (nodes: any[], outs: any[]): FlowOutput[] => {
