@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, Cpu, RefreshCw,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 const crmNavItems = [
   { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
-  { to: "/crm/conversas", icon: MessageSquare, label: "Conversas" },
+  { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
   { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
   { to: "/crm/bots", icon: Cpu, label: "Bots" },
   { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
@@ -21,6 +22,23 @@ const CrmLayout = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchUnread = async () => {
+      const { count } = await supabase
+        .from("crm_leads")
+        .select("id", { count: "exact", head: true })
+        .not("last_inbound_at", "is", null)
+        .or("last_outbound_at.is.null,last_inbound_at.gt.last_outbound_at");
+      setUnreadCount(count || 0);
+    };
+    fetchUnread();
+    const ch = supabase.channel("unread-badge")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "crm_leads" }, fetchUnread)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
 
   return (
     <div className="flex min-h-screen">
@@ -94,6 +112,11 @@ const CrmLayout = () => {
             >
               <item.icon size={18} />
               {item.label}
+              {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
+                <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
