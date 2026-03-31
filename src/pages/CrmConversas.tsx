@@ -17,6 +17,7 @@ import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
+import LeadAdInfo from "@/components/chat/LeadAdInfo";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
@@ -46,6 +47,11 @@ type LeadConversation = {
   created_at: string;
   updated_at: string;
   last_direction?: string;
+  imagem_origem?: string | null;
+  titulo_anuncio?: string | null;
+  descricao_anuncio?: string | null;
+  link_anuncio?: string | null;
+  ad_id?: string | null;
 };
 
 export default function CrmConversas() {
@@ -489,6 +495,15 @@ export default function CrmConversas() {
                 />
 
                 <LeadCustomFields leadId={selectedLead.id} />
+
+                <LeadAdInfo
+                  imagemOrigem={selectedLead.imagem_origem}
+                  tituloAnuncio={selectedLead.titulo_anuncio}
+                  descricaoAnuncio={selectedLead.descricao_anuncio}
+                  linkAnuncio={selectedLead.link_anuncio}
+                  adId={selectedLead.ad_id}
+                  source={selectedLead.source}
+                />
 
                 {/* Notes input */}
                 <div className="p-4 border-b border-border">
