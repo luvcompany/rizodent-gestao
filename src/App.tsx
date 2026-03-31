@@ -16,6 +16,7 @@ import CadastroLeads from "./pages/CadastroLeads";
 import Usuarios from "./pages/Usuarios";
 import TiposProcedimento from "./pages/TiposProcedimento";
 import RegistroDiario from "./pages/RegistroDiario";
+import Configuracoes from "./pages/Configuracoes";
 import CrmKanban from "./pages/CrmKanban";
 import CrmAutomacoes from "./pages/CrmAutomacoes";
 import CrmModelos from "./pages/CrmModelos";
@@ -59,6 +60,7 @@ const App = () => (
               <Route path="/usuarios" element={<Usuarios />} />
               <Route path="/procedimentos" element={<TiposProcedimento />} />
               <Route path="/registro-diario" element={<RegistroDiario />} />
+              <Route path="/configuracoes" element={<Configuracoes />} />
             </Route>
             <Route
               element={

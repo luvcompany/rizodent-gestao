@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
   Send, Paperclip, Mic, FileText, Image, File, Video,
@@ -38,6 +39,7 @@ type ChatInputProps = {
 };
 
 export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
+  const { profile } = useAuth();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
   const [recordingPaused, setRecordingPaused] = useState(false);
@@ -108,7 +110,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
 
     let type = "text";
-    let message = newMessage.trim();
+    let rawMessage = newMessage.trim();
+    // Prepend signature if enabled
+    const sigEnabled = profile?.signature_enabled && profile?.nome;
+    let message = sigEnabled ? `*${profile.nome}*\n${rawMessage}` : rawMessage;
     let fileToUpload = attachedFile?.file;
     const originalFileName = attachedFile?.file.name;
 
