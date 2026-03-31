@@ -47,6 +47,11 @@ type LeadConversation = {
   created_at: string;
   updated_at: string;
   last_direction?: string;
+  imagem_origem?: string | null;
+  titulo_anuncio?: string | null;
+  descricao_anuncio?: string | null;
+  link_anuncio?: string | null;
+  ad_id?: string | null;
 };
 
 export default function CrmConversas() {
