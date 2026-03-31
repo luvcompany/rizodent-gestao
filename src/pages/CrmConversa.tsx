@@ -538,6 +538,7 @@ export default function CrmConversa() {
           linkAnuncio={(lead as any).link_anuncio}
           adId={(lead as any).ad_id}
           nomeAnuncio={(lead as any).nome_anuncio}
+          source={lead.source}
         />
 
         {/* Budget Panel */}
