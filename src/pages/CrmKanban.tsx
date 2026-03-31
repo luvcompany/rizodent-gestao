@@ -393,9 +393,14 @@ export default function CrmKanban() {
                                         {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
                                       </span>
                                     </div>
-                                    <div className="text-xs text-primary mb-1.5 cursor-pointer hover:underline">
+                                    <div className="text-xs text-primary mb-0.5 cursor-pointer hover:underline">
                                       Lead #{lead.id.slice(0, 8)}
                                     </div>
+                                    {lead.last_message && (
+                                      <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-2 leading-snug">
+                                        {lead.last_message}
+                                      </p>
+                                    )}
                                     {lead.tags && lead.tags.length > 0 && (
                                       <div className="flex flex-wrap gap-1 mb-2">
                                         {lead.tags.map(tag => (
