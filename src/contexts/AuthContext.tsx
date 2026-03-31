@@ -7,6 +7,7 @@ interface ProfileData {
   email: string;
   cargo: string | null;
   avatar_url: string | null;
+  signature_enabled: boolean;
 }
 
 interface AuthContextType {
