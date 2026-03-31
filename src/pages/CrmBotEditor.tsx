@@ -534,7 +534,9 @@ const CrmBotEditor = () => {
     });
   };
 
-  const handleStepDragStart = (_e: React.DragEvent, stepId: string) => {
+  const handleStepDragStart = (e: React.DragEvent, stepId: string) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", stepId);
     setDraggedStepId(stepId);
   };
 
