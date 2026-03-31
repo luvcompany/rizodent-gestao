@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
-  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, Cpu,
+  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, Cpu, RefreshCw,
 } from "lucide-react";
 
 const crmNavItems = [
