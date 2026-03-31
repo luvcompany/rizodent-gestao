@@ -296,11 +296,8 @@ export default function CrmConversas() {
                               : "hover:bg-secondary/50"
                         }`}
                       >
-                        <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5 relative">
+                        <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
                           <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
-                          {isInbound && (
-                            <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-destructive rounded-full border-2 border-card" />
-                          )}
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
