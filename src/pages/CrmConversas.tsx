@@ -364,32 +364,42 @@ export default function CrmConversas() {
                 {chat.messages.length === 0 && (
                   <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Nenhuma mensagem ainda</div>
                 )}
-                {chat.messages.map((msg) => {
+                {chat.messages.map((msg, idx) => {
+                  const msgDate = new Date(msg.created_at);
+                  const prevDate = idx > 0 ? new Date(chat.messages[idx - 1].created_at) : null;
+                  const showDateSep = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
+
+                  const dateSep = showDateSep ? <ChatDateSeparator key={`date-${msg.id}`} date={msgDate} /> : null;
+
                   if (chat.isSystemMessage(msg)) {
                     const destName = msg.content?.split("→").pop()?.trim();
                     const destStage = destName ? chat.stages.find(s => s.name === destName) : null;
                     return (
-                      <ChatActivitySeparator
-                        key={msg.id}
-                        content={msg.content || ""}
-                        timestamp={msg.created_at}
-                        stageColor={destStage?.color}
-                      />
+                      <div key={msg.id}>
+                        {dateSep}
+                        <ChatActivitySeparator
+                          content={msg.content || ""}
+                          timestamp={msg.created_at}
+                          stageColor={destStage?.color}
+                        />
+                      </div>
                     );
                   }
                   return (
-                    <ChatMessageBubble
-                      key={msg.id}
-                      ref={(el) => { chat.messageRefs.current[msg.id] = el; }}
-                      msg={msg}
-                      leadName={selectedLead.name}
-                      allMessages={chat.messages}
-                      onReply={chat.setReplyTo}
-                      onForward={chat.setForwardMsg}
-                      onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone)}
-                      onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
-                      onScrollToMessage={chat.scrollToMessage}
-                    />
+                    <div key={msg.id}>
+                      {dateSep}
+                      <ChatMessageBubble
+                        ref={(el) => { chat.messageRefs.current[msg.id] = el; }}
+                        msg={msg}
+                        leadName={selectedLead.name}
+                        allMessages={chat.messages}
+                        onReply={chat.setReplyTo}
+                        onForward={chat.setForwardMsg}
+                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone)}
+                        onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
+                        onScrollToMessage={chat.scrollToMessage}
+                      />
+                    </div>
                   );
                 })}
                 <div ref={chat.messagesEndRef} />
