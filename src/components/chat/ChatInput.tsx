@@ -87,8 +87,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       toast.error(`Erro ao fazer upload: ${error.message}`);
       return null;
     }
-    const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
-    return data.publicUrl;
+    const { data } = await supabase.storage.from("chat-media").createSignedUrl(path, 3600);
+    return data?.signedUrl || null;
   };
 
   const getMessageType = (file: globalThis.File): string => {

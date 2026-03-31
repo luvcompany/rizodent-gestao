@@ -42,8 +42,8 @@ export default function FollowUpDisparoInput({ index, disparo, onChange, onRemov
     const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error } = await supabase.storage.from("chat-media").upload(path, file);
     if (error) { toast.error(`Erro upload: ${error.message}`); return null; }
-    const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
-    return data.publicUrl;
+    const { data } = await supabase.storage.from("chat-media").createSignedUrl(path, 3600);
+    return data?.signedUrl || null;
   };
 
   const startRecording = async () => {
