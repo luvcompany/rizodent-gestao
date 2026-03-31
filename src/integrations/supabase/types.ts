@@ -967,6 +967,11 @@ export type Database = {
       }
       messages: {
         Row: {
+          ad_body: string | null
+          ad_headline: string | null
+          ad_image_url: string | null
+          ad_source_id: string | null
+          ad_source_url: string | null
           content: string | null
           created_at: string
           direction: string
@@ -980,6 +985,11 @@ export type Database = {
           whatsapp_message_id: string | null
         }
         Insert: {
+          ad_body?: string | null
+          ad_headline?: string | null
+          ad_image_url?: string | null
+          ad_source_id?: string | null
+          ad_source_url?: string | null
           content?: string | null
           created_at?: string
           direction?: string
@@ -993,6 +1003,11 @@ export type Database = {
           whatsapp_message_id?: string | null
         }
         Update: {
+          ad_body?: string | null
+          ad_headline?: string | null
+          ad_image_url?: string | null
+          ad_source_id?: string | null
+          ad_source_url?: string | null
           content?: string | null
           created_at?: string
           direction?: string
