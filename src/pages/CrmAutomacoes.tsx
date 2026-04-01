@@ -19,6 +19,7 @@ type Automation = {
   action_config: Record<string, unknown>; is_active: boolean;
 };
 type Template = { id: string; name: string; status: string };
+type BotEntry = { id: string; name: string };
 type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
 type FollowUpCfg = { id: string; stage_id: string; is_active: boolean; disparo1_type: string; disparo1_delay_minutes: number; max_attempts: number };
 
