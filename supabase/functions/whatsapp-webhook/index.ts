@@ -489,6 +489,40 @@ Deno.serve(async (req) => {
               } catch (fqErr: any) {
                 console.error("[WEBHOOK] Erro ao verificar follow-up queue:", fqErr.message);
               }
+
+              // Check for active bot execution waiting for reply
+              try {
+                const { data: botExec } = await supabase
+                  .from("bot_executions")
+                  .select("id")
+                  .eq("lead_id", lead.id)
+                  .eq("status", "waiting_reply")
+                  .order("started_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (botExec) {
+                  console.log(`[WEBHOOK] Bot execution ${botExec.id} waiting for reply, triggering continue`);
+                  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+                  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+                  // Fire and forget - call bot-engine to continue
+                  fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${serviceKey}`,
+                    },
+                    body: JSON.stringify({
+                      leadId: lead.id,
+                      trigger: "continue",
+                      executionId: botExec.id,
+                      replyText: content || "",
+                    }),
+                  }).catch((err: any) => console.error("[WEBHOOK] Bot-engine continue error:", err.message));
+                }
+              } catch (botErr: any) {
+                console.error("[WEBHOOK] Erro ao verificar bot execution:", botErr.message);
+              }
             } else {
               console.log(`Could not find or create lead for phone: ${from}`);
             }
