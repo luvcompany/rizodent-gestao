@@ -214,7 +214,9 @@ const CrmBots = () => {
                   <CardHeader className="flex flex-row items-start justify-between pb-2">
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-base truncate">{bot.name}</CardTitle>
-                      {bot.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{bot.description}</p>}
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {bot.description?.trim() || "Sem descrição"}
+                      </p>
                     </div>
                     <Switch checked={bot.active} onCheckedChange={() => toggleActive(bot)} />
                   </CardHeader>

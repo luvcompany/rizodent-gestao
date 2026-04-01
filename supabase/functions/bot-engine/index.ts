@@ -16,9 +16,11 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const { leadId, trigger, message, newStageId, messageType } = await req.json();
+    const { leadId, trigger, message, newStageId, messageType, botId } = await req.json();
 
-    if (trigger === "inbound_message") {
+    if (trigger === "manual_start") {
+      return await handleManualStart(supabase, leadId, botId);
+    } else if (trigger === "inbound_message") {
       return await handleInboundMessage(supabase, leadId, message);
     } else if (trigger === "check_timeouts") {
       return await handleCheckTimeouts(supabase);
@@ -37,6 +39,49 @@ function json(data: any, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// ─── MANUAL START ───
+
+async function handleManualStart(supabase: any, leadId: string, botId: string) {
+  if (!leadId || !botId) return json({ error: "leadId and botId required" }, 400);
+
+  const lead = await getLead(supabase, leadId);
+  if (!lead) return json({ error: "lead_not_found" }, 404);
+
+  // Cancel all active executions for this lead
+  await supabase
+    .from("bot_executions")
+    .update({ status: "cancelled", cancel_reason: "manual_start", finished_at: new Date().toISOString() })
+    .eq("lead_id", leadId)
+    .in("status", ["active", "waiting_reply", "waiting_timeout"]);
+
+  // Find start node
+  const { data: startNode } = await supabase
+    .from("bot_nodes")
+    .select("*")
+    .eq("bot_id", botId)
+    .eq("is_start_node", true)
+    .maybeSingle();
+
+  if (!startNode) return json({ error: "no_start_node" }, 404);
+
+  // Create new execution
+  const { data: newExec } = await supabase
+    .from("bot_executions")
+    .insert({
+      bot_id: botId,
+      lead_id: leadId,
+      current_node_id: startNode.id,
+      status: "active",
+    })
+    .select()
+    .single();
+
+  await logExecution(supabase, newExec.id, startNode.id, "bot_started", "manual_start");
+  await executeNode(supabase, newExec, startNode, leadId);
+
+  return json({ success: true, executionId: newExec.id });
 }
 
 // ─── TRIGGER HANDLERS ───
@@ -136,6 +181,30 @@ async function handleCheckTimeouts(supabase: any) {
 }
 
 async function handleStageChanged(supabase: any, leadId: string, newStageId: string) {
+  // Get current lead to check if already on this stage
+  const lead = await getLead(supabase, leadId);
+  if (!lead) return json({ error: "lead_not_found" }, 404);
+
+  // Prevent loop: if lead is already on this stage, skip
+  if (lead.stage_id === newStageId) {
+    return json({ skipped: true, reason: "same_stage" });
+  }
+
+  // Prevent loop: check if there's a recent active execution (< 30 seconds)
+  const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+  const { data: recentExec } = await supabase
+    .from("bot_executions")
+    .select("id")
+    .eq("lead_id", leadId)
+    .in("status", ["active", "waiting_reply", "waiting_timeout"])
+    .gte("started_at", thirtySecondsAgo)
+    .limit(1)
+    .maybeSingle();
+
+  if (recentExec) {
+    return json({ skipped: true, reason: "recent_execution_exists" });
+  }
+
   // Cancel all active executions
   await supabase
     .from("bot_executions")
@@ -310,6 +379,20 @@ async function executeNode(supabase: any, execution: any, node: any, leadId: str
 
     case "action_move_stage": {
       const targetStageId = config.stage_id;
+      const currentLead = await getLead(supabase, leadId);
+      
+      // If already on the target stage, skip the move and just advance
+      if (currentLead && currentLead.stage_id === targetStageId) {
+        await logExecution(supabase, execution.id, node.id, "stage_move_skipped", `already on ${targetStageId}`);
+        const nextOutput = await getDefaultOutput(supabase, node.id);
+        if (nextOutput?.next_node_id) {
+          const { data: next } = await supabase.from("bot_nodes").select("*").eq("id", nextOutput.next_node_id).single();
+          await supabase.from("bot_executions").update({ current_node_id: next.id }).eq("id", execution.id);
+          await executeNode(supabase, execution, next, leadId);
+        }
+        break;
+      }
+
       await supabase.from("crm_leads").update({ stage_id: targetStageId }).eq("id", leadId);
       await logExecution(supabase, execution.id, node.id, "stage_moved", targetStageId);
 

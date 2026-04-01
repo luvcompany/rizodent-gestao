@@ -38,7 +38,6 @@ interface Trigger {
 
 const STEP_TYPES = [
   { type: "send_message", label: "Enviar mensagem", icon: MessageSquare, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
-  { type: "send_message_template", label: "Modelo de mensagem", icon: Send, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
   { type: "list_message", label: "Enviar menu", icon: Smartphone, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
   { type: "reaction", label: "Reação", icon: Heart, color: "text-pink-400", bg: "bg-pink-500/10", category: "mensagem" },
   { type: "comment", label: "Comentário interno", icon: MessageCircle, color: "text-blue-400", bg: "bg-blue-500/10", category: "mensagem" },
@@ -129,11 +128,7 @@ const CrmBotEditor = () => {
     setBot(b);
     setBotName(b.name);
 
-    // Load general settings from bot description (JSON)
-    try {
-      const settings = b.description ? JSON.parse(b.description) : null;
-      if (settings?.generalSettings) setGeneralSettings(settings.generalSettings);
-    } catch { /* not JSON, ignore */ }
+    // General settings are now separate from description
 
     const { data: nodes } = await supabase.from("bot_nodes").select("*").eq("bot_id", botId).order("created_at");
     if (!nodes || nodes.length === 0) {
@@ -199,7 +194,7 @@ const CrmBotEditor = () => {
 
   const mapNodeType = (dbType: string): string => {
     const map: Record<string, string> = {
-      message_text: "send_message", message_template: "send_message_template", message_audio: "send_message",
+      message_text: "send_message", message_template: "send_message", message_audio: "send_message",
       message_image: "send_message", message_video: "send_message", message_document: "send_message",
       message_list: "list_message",
       wait: "pause", condition: "condition",
@@ -278,7 +273,7 @@ const CrmBotEditor = () => {
 
   const getDefaultConfig = (type: string): any => {
     switch (type) {
-      case "send_message": case "send_message_template": return { message: "", channel: "whatsapp", buttons: [] };
+      case "send_message": return { message: "", channel: "whatsapp", buttons: [] };
       case "pause": return { conditions: [{ type: "message_received", hours: 0, minutes: 0, seconds: 0 }] };
       case "pause_timer": return { conditions: [{ type: "timer", hours: 0, minutes: 5, seconds: 0 }] };
       case "condition": return { field: "tags", operator: "equals", value: "" };
@@ -310,7 +305,7 @@ const CrmBotEditor = () => {
           { id: uid(), label: "Sim", conditionType: "match", conditionValue: null, nextSteps: [] },
           { id: uid(), label: "Não", conditionType: "no_match", conditionValue: null, nextSteps: [] },
         ];
-      case "send_message": case "send_message_template":
+      case "send_message":
         return [{ id: uid(), label: "Próximo", conditionType: "default", conditionValue: null, nextSteps: [] }];
       case "list_message":
         return [
@@ -329,9 +324,8 @@ const CrmBotEditor = () => {
     if (!botId) return;
     setSaving(true);
     try {
-      // Save bot name + generalSettings in description as JSON
-      const settingsJson = JSON.stringify({ generalSettings });
-      await supabase.from("bots").update({ name: botName, description: settingsJson }).eq("id", botId);
+      // Save bot name + description with generalSettings stored separately in config
+      await supabase.from("bots").update({ name: botName }).eq("id", botId);
       const { data: existingNodes } = await supabase.from("bot_nodes").select("id").eq("bot_id", botId);
       if (existingNodes?.length) {
         const existingIds = existingNodes.map((n: any) => n.id);
@@ -393,7 +387,6 @@ const CrmBotEditor = () => {
   const mapToDbType = (type: string, config: any): string => {
     switch (type) {
       case "send_message": return config?.useTemplate ? "message_template" : (config?.audio_url ? "message_audio" : (config?.attachment_url ? "message_image" : "message_text"));
-      case "send_message_template": return "message_template";
       case "pause": case "pause_timer": return "wait";
       case "condition": return "condition";
       case "action": return "action_add_tag";
