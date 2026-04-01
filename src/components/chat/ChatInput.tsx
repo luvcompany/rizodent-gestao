@@ -38,10 +38,9 @@ type ChatInputProps = {
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
-  onOpenBotPanel?: () => void;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt, onOpenBotPanel }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
   const { profile } = useAuth();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
