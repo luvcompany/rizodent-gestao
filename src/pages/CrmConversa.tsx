@@ -395,54 +395,6 @@ export default function CrmConversa() {
         </div>
       </div>
 
-      {/* Bot Selection Sheet */}
-      <Sheet open={botSheetOpen} onOpenChange={setBotSheetOpen}>
-        <SheetContent side="bottom" className="max-h-[300px]">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Bot size={18} /> Iniciar Bot
-            </SheetTitle>
-          </SheetHeader>
-          <div className="mt-4 space-y-3">
-            {activeExecution ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Badge variant="default" className="gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    Bot ativo
-                  </Badge>
-                  <span className="text-sm text-muted-foreground">{activeExecution.bot_name}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Status: {activeExecution.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
-                </p>
-                <Button variant="destructive" size="sm" onClick={handleStopBot} className="gap-1.5">
-                  <Square size={12} /> Encerrar Bot
-                </Button>
-              </div>
-            ) : bots.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum bot publicado</p>
-            ) : (
-              <div className="flex items-center gap-3">
-                <Select value={selectedBotId} onValueChange={setSelectedBotId}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Selecionar bot..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bots.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={handleStartBot} disabled={!selectedBotId || startingBot} className="gap-1.5">
-                  {startingBot ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                  Iniciar
-                </Button>
-              </div>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Forward Dialog */}
       <ForwardMessageDialog
