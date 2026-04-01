@@ -108,10 +108,18 @@ function BotEditorInner() {
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
+      // Delete/Backspace to remove selected nodes (only when not focused on an input)
+      if ((e.key === "Delete" || e.key === "Backspace") && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) {
+        const selected = nodes.filter((n) => n.selected && n.type !== "start");
+        if (selected.length > 0) {
+          e.preventDefault();
+          selected.forEach((n) => handleDeleteNode(n.id));
+        }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo, nodes, edges, botName]);
+  }, [undo, redo, nodes, edges, botName, handleDeleteNode]);
 
   const onConnect = useCallback(
     (params: Connection) => {
