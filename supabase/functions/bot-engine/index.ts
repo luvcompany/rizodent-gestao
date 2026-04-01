@@ -16,9 +16,11 @@ Deno.serve(async (req) => {
   );
 
   try {
-    const { leadId, trigger, message, newStageId, messageType } = await req.json();
+    const { leadId, trigger, message, newStageId, messageType, botId } = await req.json();
 
-    if (trigger === "inbound_message") {
+    if (trigger === "manual_start") {
+      return await handleManualStart(supabase, leadId, botId);
+    } else if (trigger === "inbound_message") {
       return await handleInboundMessage(supabase, leadId, message);
     } else if (trigger === "check_timeouts") {
       return await handleCheckTimeouts(supabase);
