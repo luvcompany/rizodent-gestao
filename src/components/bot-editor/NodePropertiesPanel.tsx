@@ -37,7 +37,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     supabase.from("crm_stages").select("id, name, color").order("position").then(({ data }) => {
       if (data) setStages(data);
     });
-    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons").eq("status", "approved").then(({ data }) => {
+    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons").eq("status", "APPROVED").then(({ data }) => {
       if (data) setTemplates(data);
     });
   }, []);
