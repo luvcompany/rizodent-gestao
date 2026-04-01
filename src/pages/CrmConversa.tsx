@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -96,28 +97,13 @@ export default function CrmConversa() {
     await chat.sendTemplate(template, lead?.phone || null);
   }, [chat, lead]);
 
-  // ===== Bot Panel State =====
-  const [botSheetOpen, setBotSheetOpen] = useState(false);
-  const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
-  const [selectedBotId, setSelectedBotId] = useState("");
-  const [startingBot, setStartingBot] = useState(false);
+  // ===== Bot Active Execution State =====
   const [activeExecution, setActiveExecution] = useState<{
     id: string;
     status: string;
     bot_name?: string;
   } | null>(null);
 
-  // Fetch published bots
-  useEffect(() => {
-    supabase
-      .from("bots")
-      .select("id, name")
-      .eq("status", "published")
-      .order("name")
-      .then(({ data }) => { if (data) setBots(data); });
-  }, []);
-
-  // Check for active execution
   const checkExecution = useCallback(async () => {
     if (!id) return;
     const { data } = await supabase
@@ -141,7 +127,6 @@ export default function CrmConversa() {
 
   useEffect(() => { checkExecution(); }, [checkExecution]);
 
-  // Realtime subscription for bot executions
   useEffect(() => {
     if (!id) return;
     const channel = supabase
@@ -155,25 +140,6 @@ export default function CrmConversa() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [id, checkExecution]);
-
-  const handleStartBot = async () => {
-    if (!selectedBotId || !id) { toast.error("Selecione um bot"); return; }
-    setStartingBot(true);
-    try {
-      const { error } = await supabase.functions.invoke("bot-engine", {
-        body: { leadId: id, botId: selectedBotId, trigger: "manual_start" },
-      });
-      if (error) throw error;
-      toast.success("Bot iniciado!");
-      setSelectedBotId("");
-      setBotSheetOpen(false);
-      checkExecution();
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao iniciar bot");
-    } finally {
-      setStartingBot(false);
-    }
-  };
 
   const handleStopBot = async () => {
     if (!activeExecution) return;
@@ -297,7 +263,6 @@ export default function CrmConversa() {
             onMessageSent={chat.handleOptimisticMessage}
             onMessageError={chat.handleMessageError}
             lastInboundAt={chat.lastInboundAt}
-            onOpenBotPanel={() => setBotSheetOpen(true)}
           />
         )}
 
@@ -430,54 +395,6 @@ export default function CrmConversa() {
         </div>
       </div>
 
-      {/* Bot Selection Sheet */}
-      <Sheet open={botSheetOpen} onOpenChange={setBotSheetOpen}>
-        <SheetContent side="bottom" className="max-h-[300px]">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Bot size={18} /> Iniciar Bot
-            </SheetTitle>
-          </SheetHeader>
-          <div className="mt-4 space-y-3">
-            {activeExecution ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Badge variant="default" className="gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    Bot ativo
-                  </Badge>
-                  <span className="text-sm text-muted-foreground">{activeExecution.bot_name}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Status: {activeExecution.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
-                </p>
-                <Button variant="destructive" size="sm" onClick={handleStopBot} className="gap-1.5">
-                  <Square size={12} /> Encerrar Bot
-                </Button>
-              </div>
-            ) : bots.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum bot publicado</p>
-            ) : (
-              <div className="flex items-center gap-3">
-                <Select value={selectedBotId} onValueChange={setSelectedBotId}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Selecionar bot..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bots.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={handleStartBot} disabled={!selectedBotId || startingBot} className="gap-1.5">
-                  {startingBot ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                  Iniciar
-                </Button>
-              </div>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Forward Dialog */}
       <ForwardMessageDialog

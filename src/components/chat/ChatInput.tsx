@@ -14,6 +14,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { compressImage } from "./imageCompressor";
 import SlashCommandMenu from "./SlashCommandMenu";
 
@@ -36,10 +38,9 @@ type ChatInputProps = {
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
-  onOpenBotPanel?: () => void;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt, onOpenBotPanel }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
   const { profile } = useAuth();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
@@ -48,12 +49,41 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [uploading] = useState(false);
+  const [botPopoverOpen, setBotPopoverOpen] = useState(false);
+  const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
+  const [startingBotId, setStartingBotId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingDiscardedRef = useRef(false);
+
+  // Fetch published bots
+  useEffect(() => {
+    supabase
+      .from("bots")
+      .select("id, name")
+      .eq("status", "published")
+      .order("name")
+      .then(({ data }) => { if (data) setBots(data); });
+  }, []);
+
+  const handleStartBot = async (botId: string) => {
+    setStartingBotId(botId);
+    try {
+      const { error } = await supabase.functions.invoke("bot-engine", {
+        body: { leadId, botId, trigger: "manual_start" },
+      });
+      if (error) throw error;
+      toast.success("Bot iniciado!");
+      setBotPopoverOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao iniciar bot");
+    } finally {
+      setStartingBotId(null);
+    }
+  };
 
   // Slash commands
   const [slashActive, setSlashActive] = useState(false);
@@ -580,9 +610,37 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             <FileText size={20} />
           </button>
 
-          <button onClick={onOpenBotPanel} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
-            <Bot size={20} />
-          </button>
+          <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
+                <Bot size={20} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="start" sideOffset={8} className="w-64 p-2">
+              <p className="text-xs font-medium text-muted-foreground px-2 mb-1">Iniciar Bot</p>
+              {bots.length === 0 ? (
+                <p className="text-xs text-muted-foreground px-2 py-3">Nenhum bot publicado</p>
+              ) : (
+                <div className="max-h-48 overflow-y-auto space-y-0.5">
+                  {bots.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => handleStartBot(b.id)}
+                      disabled={startingBotId === b.id}
+                      className="flex w-full items-center rounded-md px-3 py-2 text-sm text-left hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {startingBotId === b.id ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Bot className="mr-2 h-4 w-4 text-muted-foreground" />
+                      )}
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
 
           {newMessage.trim() || attachedFile ? (
             <Button size="icon" onClick={handleSendMessage} disabled={optimizing || uploading}>
