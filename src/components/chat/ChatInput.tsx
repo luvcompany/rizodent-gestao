@@ -49,6 +49,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [uploading] = useState(false);
+  const [botPopoverOpen, setBotPopoverOpen] = useState(false);
+  const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
+  const [startingBotId, setStartingBotId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
