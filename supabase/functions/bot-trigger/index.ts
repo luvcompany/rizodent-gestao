@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -9,6 +11,23 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Validate authenticated user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const anonClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!);
+    const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { leadId, newStageId } = await req.json();
 
     if (!leadId || !newStageId) {
@@ -18,7 +37,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/bot-engine`;
+    const url = `${SUPABASE_URL}/functions/v1/bot-engine`;
     const response = await fetch(url, {
       method: "POST",
       headers: {
