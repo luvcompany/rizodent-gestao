@@ -447,7 +447,7 @@ export default function CrmAutomacoes() {
             {autoForm.action_type === "send_template" && (
               <div>
                 <Label>Template</Label>
-                <Select value={(autoForm.action_config.template_id as string) || ""} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { template_id: v } }))}>
+                <Select value={(autoForm.action_config.template_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { template_id: v } }))}>
                   <SelectTrigger><SelectValue placeholder="Selecionar template" /></SelectTrigger>
                   <SelectContent>
                     {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
@@ -461,7 +461,7 @@ export default function CrmAutomacoes() {
               <div className="space-y-3">
                 <div>
                   <Label>Bot</Label>
-                  <Select value={(autoForm.action_config.bot_id as string) || ""} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, bot_id: v } }))}>
+                  <Select value={(autoForm.action_config.bot_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, bot_id: v } }))}>
                     <SelectTrigger><SelectValue placeholder="Selecionar bot" /></SelectTrigger>
                     <SelectContent>
                       {publishedBots.length === 0 && <SelectItem value="none" disabled>Nenhum bot publicado</SelectItem>}
@@ -485,7 +485,7 @@ export default function CrmAutomacoes() {
             {autoForm.action_type === "move_stage" && (
               <div>
                 <Label>Mover para</Label>
-                <Select value={(autoForm.action_config.target_stage_id as string) || ""} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { target_stage_id: v } }))}>
+                <Select value={(autoForm.action_config.target_stage_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { target_stage_id: v } }))}>
                   <SelectTrigger><SelectValue placeholder="Selecionar etapa" /></SelectTrigger>
                   <SelectContent>
                     {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
