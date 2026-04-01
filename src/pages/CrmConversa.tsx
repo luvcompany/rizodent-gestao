@@ -96,28 +96,13 @@ export default function CrmConversa() {
     await chat.sendTemplate(template, lead?.phone || null);
   }, [chat, lead]);
 
-  // ===== Bot Panel State =====
-  const [botSheetOpen, setBotSheetOpen] = useState(false);
-  const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
-  const [selectedBotId, setSelectedBotId] = useState("");
-  const [startingBot, setStartingBot] = useState(false);
+  // ===== Bot Active Execution State =====
   const [activeExecution, setActiveExecution] = useState<{
     id: string;
     status: string;
     bot_name?: string;
   } | null>(null);
 
-  // Fetch published bots
-  useEffect(() => {
-    supabase
-      .from("bots")
-      .select("id, name")
-      .eq("status", "published")
-      .order("name")
-      .then(({ data }) => { if (data) setBots(data); });
-  }, []);
-
-  // Check for active execution
   const checkExecution = useCallback(async () => {
     if (!id) return;
     const { data } = await supabase
@@ -141,7 +126,6 @@ export default function CrmConversa() {
 
   useEffect(() => { checkExecution(); }, [checkExecution]);
 
-  // Realtime subscription for bot executions
   useEffect(() => {
     if (!id) return;
     const channel = supabase
@@ -155,25 +139,6 @@ export default function CrmConversa() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [id, checkExecution]);
-
-  const handleStartBot = async () => {
-    if (!selectedBotId || !id) { toast.error("Selecione um bot"); return; }
-    setStartingBot(true);
-    try {
-      const { error } = await supabase.functions.invoke("bot-engine", {
-        body: { leadId: id, botId: selectedBotId, trigger: "manual_start" },
-      });
-      if (error) throw error;
-      toast.success("Bot iniciado!");
-      setSelectedBotId("");
-      setBotSheetOpen(false);
-      checkExecution();
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao iniciar bot");
-    } finally {
-      setStartingBot(false);
-    }
-  };
 
   const handleStopBot = async () => {
     if (!activeExecution) return;
