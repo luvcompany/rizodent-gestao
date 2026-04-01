@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { X, Trash2, Mic, Square, Play, Pause } from "lucide-react";
+import { X, Trash2, Mic, Square, Play, Pause, Plus, Minus, Upload } from "lucide-react";
 import { NODE_DEFINITIONS } from "@/types/bot";
+import VariableTextarea from "./VariableTextarea";
 import type { Node } from "@xyflow/react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -19,10 +19,11 @@ type Props = {
 export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete }: Props) {
   const def = NODE_DEFINITIONS.find((d) => d.type === node.type);
   const [stages, setStages] = useState<{ id: string; name: string; color: string }[]>([]);
-  const [templates, setTemplates] = useState<{ id: string; name: string; body_text: string | null }[]>([]);
+  const [templates, setTemplates] = useState<{ id: string; name: string; body_text: string | null; buttons: any }[]>([]);
 
   // Audio recording state
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -30,12 +31,13 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     supabase.from("crm_stages").select("id, name, color").order("position").then(({ data }) => {
       if (data) setStages(data);
     });
-    supabase.from("crm_whatsapp_templates").select("id, name, body_text").eq("status", "approved").then(({ data }) => {
+    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons").eq("status", "approved").then(({ data }) => {
       if (data) setTemplates(data);
     });
   }, []);
@@ -61,6 +63,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
       const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+      setRecordingTime(0);
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
@@ -69,13 +72,14 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
       mediaRecorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: "audio/ogg; codecs=opus" });
         setAudioBlob(blob);
-        const url = URL.createObjectURL(blob);
-        setAudioPreviewUrl(url);
+        setAudioPreviewUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
+        if (timerRef.current) clearInterval(timerRef.current);
       };
 
       mediaRecorder.start();
       setIsRecording(true);
+      timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
     } catch {
       // ignore
     }
@@ -86,14 +90,25 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     setIsRecording(false);
   };
 
-  const uploadAudio = async () => {
+  const discardRecording = () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    setAudioBlob(null);
+    setAudioPreviewUrl(null);
+    setRecordingTime(0);
+    if (timerRef.current) clearInterval(timerRef.current);
+  };
+
+  const uploadAudio = async (targetField = "audioUrl") => {
     if (!audioBlob) return;
     setUploading(true);
     const fileName = `bot-audio/${Date.now()}.ogg`;
     const { data, error } = await supabase.storage.from("chat-media").upload(fileName, audioBlob, { contentType: "audio/ogg; codecs=opus" });
     if (!error && data) {
       const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(data.path);
-      update("audioUrl", urlData.publicUrl);
+      update(targetField, urlData.publicUrl);
     }
     setUploading(false);
     setAudioBlob(null);
@@ -115,10 +130,108 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     }
   };
 
+  const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
+
   const handleTemplateSelect = (templateId: string) => {
+    if (!templateId) {
+      updateMultiple({ templateId: "", templateName: "", text: "", templateButtons: [] });
+      return;
+    }
     const tpl = templates.find((t) => t.id === templateId);
-    updateMultiple({ templateId, text: tpl?.body_text || "" });
+    if (!tpl) return;
+    const btns = Array.isArray(tpl.buttons) ? tpl.buttons.map((b: any, i: number) => ({ id: String(i + 1), title: b.text || b.title || `Botão ${i + 1}` })) : [];
+    updateMultiple({ templateId, templateName: tpl.name, text: tpl.body_text || "", templateButtons: btns });
   };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField = "fileUrl") => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const ext = file.name.split(".").pop() || "bin";
+    const fileName = `bot-files/${Date.now()}.${ext}`;
+    const { data, error } = await supabase.storage.from("chat-media").upload(fileName, file);
+    if (!error && data) {
+      const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(data.path);
+      update(targetField, urlData.publicUrl);
+    }
+    setUploading(false);
+  };
+
+  // Render audio recorder component
+  const renderAudioRecorder = (urlField = "audioUrl") => (
+    <div className="space-y-2">
+      <Label className="text-xs">Gravar Áudio</Label>
+      {isRecording ? (
+        <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20">
+          <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+          <span className="text-xs font-mono text-destructive">{formatTime(recordingTime)}</span>
+          <div className="flex-1" />
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={discardRecording} title="Descartar">
+            <Trash2 size={14} />
+          </Button>
+          <Button variant="destructive" size="sm" onClick={stopRecording} className="gap-1 h-7">
+            <Square size={12} /> Parar
+          </Button>
+        </div>
+      ) : audioPreviewUrl ? (
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={togglePlayPreview}>
+            {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+          </Button>
+          <span className="text-xs text-muted-foreground flex-1">Áudio gravado</span>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={discardRecording}>
+            <Trash2 size={14} />
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => uploadAudio(urlField)} disabled={uploading} className="h-7 text-xs">
+            {uploading ? "..." : "Salvar"}
+          </Button>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" onClick={startRecording} className="gap-1.5 w-full">
+          <Mic size={14} /> Iniciar gravação
+        </Button>
+      )}
+      {(node.data[urlField] as string) && (
+        <div className="mt-1">
+          <audio src={node.data[urlField] as string} controls className="w-full h-8" />
+        </div>
+      )}
+    </div>
+  );
+
+  // Render file uploader component
+  const renderFileUploader = (urlField = "fileUrl") => (
+    <div className="space-y-2">
+      <Label className="text-xs">Tipo de Mídia</Label>
+      <Select value={(node.data.fileType as string) || "image"} onValueChange={(v) => update("fileType", v)}>
+        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="image">📷 Imagem</SelectItem>
+          <SelectItem value="video">🎬 Vídeo</SelectItem>
+          <SelectItem value="document">📄 Documento</SelectItem>
+        </SelectContent>
+      </Select>
+      <div>
+        <Label className="text-xs">Arquivo</Label>
+        {(node.data[urlField] as string) ? (
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-muted-foreground truncate flex-1">{String(node.data[urlField]).split("/").pop()}</span>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => update(urlField, "")}>
+              <X size={12} />
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-1">
+            <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md cursor-pointer hover:bg-secondary/50 transition-colors">
+              <Upload size={14} className="text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Clique para enviar</span>
+              <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, urlField)} />
+            </label>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   const renderFields = () => {
     switch (node.type) {
@@ -142,102 +255,136 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
                 </Select>
               </div>
             )}
+            {!(node.data.templateId as string) && (
+              <div>
+                <Label className="text-xs">Mensagem</Label>
+                <VariableTextarea
+                  value={(node.data.text as string) || ""}
+                  onChange={(v) => update("text", v)}
+                  placeholder="Digite a mensagem... Use [ para variáveis"
+                  rows={5}
+                  className="mt-1"
+                />
+              </div>
+            )}
+            {(node.data.templateId as string) && (node.data.templateButtons as any[])?.length > 0 && (
+              <div>
+                <Label className="text-xs">Timeout sem resposta (minutos)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={(node.data.noResponseTimeoutMinutes as number) || 60}
+                  onChange={(e) => update("noResponseTimeoutMinutes", parseInt(e.target.value) || 60)}
+                  className="mt-1 w-24"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Cada botão do modelo cria um ramo. O ramo "Sem resposta" ativa após este tempo.
+                </p>
+              </div>
+            )}
+          </div>
+        );
+
+      case "send_audio":
+        return renderAudioRecorder("audioUrl");
+
+      case "send_file":
+        return (
+          <div className="space-y-3">
+            {renderFileUploader("fileUrl")}
             <div>
-              <Label className="text-xs">Mensagem</Label>
-              <Textarea
-                value={(node.data.text as string) || ""}
-                onChange={(e) => update("text", e.target.value)}
-                placeholder="Digite a mensagem... Use {{lead.nome}} para variáveis"
-                rows={5}
+              <Label className="text-xs">Texto junto (opcional)</Label>
+              <VariableTextarea
+                value={(node.data.caption as string) || ""}
+                onChange={(v) => update("caption", v)}
+                placeholder="Legenda do arquivo..."
+                rows={3}
                 className="mt-1"
               />
             </div>
           </div>
         );
 
-      case "send_image":
+      case "send_menu": {
+        const menuType = (node.data.menuType as string) || "buttons";
+        const buttons = (node.data.buttons as { id: string; title: string }[]) || [];
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">URL da Imagem</Label>
-              <Input value={(node.data.imageUrl as string) || ""} onChange={(e) => update("imageUrl", e.target.value)} placeholder="https://..." className="mt-1" />
+              <Label className="text-xs">Tipo</Label>
+              <Select value={menuType} onValueChange={(v) => update("menuType", v)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="buttons">Botões (máx. 3)</SelectItem>
+                  <SelectItem value="list">Lista de opções</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <Label className="text-xs">Legenda (texto)</Label>
-              <Textarea value={(node.data.caption as string) || ""} onChange={(e) => update("caption", e.target.value)} placeholder="Texto da legenda..." rows={3} className="mt-1" />
+              <Label className="text-xs">Texto da mensagem</Label>
+              <VariableTextarea
+                value={(node.data.bodyText as string) || ""}
+                onChange={(v) => update("bodyText", v)}
+                rows={3}
+                className="mt-1"
+              />
             </div>
-          </div>
-        );
-
-      case "send_audio":
-        return (
-          <div className="space-y-3">
-            {/* Recording section */}
-            <div>
-              <Label className="text-xs">Gravar Áudio</Label>
-              <div className="flex items-center gap-2 mt-1">
-                {!isRecording ? (
-                  <Button variant="outline" size="sm" onClick={startRecording} className="gap-1.5">
-                    <Mic size={14} /> Gravar
-                  </Button>
-                ) : (
-                  <Button variant="destructive" size="sm" onClick={stopRecording} className="gap-1.5">
-                    <Square size={14} /> Parar
-                  </Button>
-                )}
-                {audioPreviewUrl && !isRecording && (
-                  <>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={togglePlayPreview}>
-                      {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={uploadAudio} disabled={uploading}>
-                      {uploading ? "Enviando..." : "Salvar áudio"}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-            {(node.data.audioUrl as string) && (
+            {menuType === "buttons" && (
               <div>
-                <Label className="text-xs">Áudio salvo</Label>
-                <p className="text-xs text-muted-foreground mt-1 truncate">{String(node.data.audioUrl).split("/").pop()}</p>
-                <audio src={node.data.audioUrl as string} controls className="w-full mt-1 h-8" />
+                <Label className="text-xs">Botões</Label>
+                <div className="space-y-1.5 mt-1">
+                  {buttons.map((btn, i) => (
+                    <div key={btn.id} className="flex items-center gap-1.5">
+                      <Input
+                        value={btn.title}
+                        onChange={(e) => {
+                          const newBtns = [...buttons];
+                          newBtns[i] = { ...btn, title: e.target.value };
+                          update("buttons", newBtns);
+                        }}
+                        placeholder={`Botão ${i + 1}`}
+                        className="h-8 text-xs"
+                      />
+                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => update("buttons", buttons.filter((_, j) => j !== i))} disabled={buttons.length <= 1}>
+                        <Minus size={12} />
+                      </Button>
+                    </div>
+                  ))}
+                  {buttons.length < 3 && (
+                    <Button variant="outline" size="sm" className="w-full gap-1 h-7 text-xs" onClick={() => update("buttons", [...buttons, { id: String(Date.now()), title: "" }])}>
+                      <Plus size={12} /> Adicionar botão
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+            {menuType === "list" && (
+              <div>
+                <Label className="text-xs">Título do menu</Label>
+                <Input value={(node.data.buttonLabel as string) || "Menu"} onChange={(e) => update("buttonLabel", e.target.value)} className="mt-1 h-8 text-xs" />
+                <Label className="text-xs mt-2 block">Itens da lista (um por linha: título | descrição)</Label>
+                <VariableTextarea
+                  value={(node.data.listItems as string) || ""}
+                  onChange={(v) => update("listItems", v)}
+                  placeholder={"Opção 1 | Descrição\nOpção 2 | Descrição"}
+                  rows={4}
+                  className="mt-1"
+                />
               </div>
             )}
             <div>
-              <Label className="text-xs">Ou cole URL do Áudio</Label>
-              <Input value={(node.data.audioUrl as string) || ""} onChange={(e) => update("audioUrl", e.target.value)} placeholder="https://...ogg" className="mt-1" />
+              <Label className="text-xs">Timeout sem resposta (minutos)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={(node.data.noResponseTimeoutMinutes as number) || 60}
+                onChange={(e) => update("noResponseTimeoutMinutes", parseInt(e.target.value) || 60)}
+                className="mt-1 w-24"
+              />
             </div>
           </div>
         );
-
-      case "send_file":
-        return (
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs">URL do Arquivo</Label>
-              <Input value={(node.data.fileUrl as string) || ""} onChange={(e) => update("fileUrl", e.target.value)} placeholder="https://...pdf" className="mt-1" />
-            </div>
-            <div>
-              <Label className="text-xs">Legenda (texto)</Label>
-              <Textarea value={(node.data.caption as string) || ""} onChange={(e) => update("caption", e.target.value)} placeholder="Texto da legenda..." rows={2} className="mt-1" />
-            </div>
-          </div>
-        );
-
-      case "send_video":
-        return (
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs">URL do Vídeo</Label>
-              <Input value={(node.data.videoUrl as string) || ""} onChange={(e) => update("videoUrl", e.target.value)} placeholder="https://...mp4" className="mt-1" />
-            </div>
-            <div>
-              <Label className="text-xs">Legenda (texto)</Label>
-              <Textarea value={(node.data.caption as string) || ""} onChange={(e) => update("caption", e.target.value)} placeholder="Texto da legenda..." rows={2} className="mt-1" />
-            </div>
-          </div>
-        );
+      }
 
       case "delay":
         return (
@@ -273,35 +420,15 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
               <div className="grid grid-cols-3 gap-2 mt-1">
                 <div>
                   <Label className="text-[10px] text-muted-foreground">Horas</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={(node.data.timeoutHours as string) ?? ""}
-                    onChange={(e) => update("timeoutHours", e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))}
-                    placeholder="0"
-                  />
+                  <Input type="number" min={0} value={(node.data.timeoutHours as string) ?? ""} onChange={(e) => update("timeoutHours", e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))} placeholder="0" />
                 </div>
                 <div>
                   <Label className="text-[10px] text-muted-foreground">Minutos</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={59}
-                    value={(node.data.timeoutMinutes as string) ?? ""}
-                    onChange={(e) => update("timeoutMinutes", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
-                    placeholder="0"
-                  />
+                  <Input type="number" min={0} max={59} value={(node.data.timeoutMinutes as string) ?? ""} onChange={(e) => update("timeoutMinutes", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
                 </div>
                 <div>
                   <Label className="text-[10px] text-muted-foreground">Segundos</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={59}
-                    value={(node.data.timeoutSeconds as string) ?? ""}
-                    onChange={(e) => update("timeoutSeconds", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))}
-                    placeholder="0"
-                  />
+                  <Input type="number" min={0} max={59} value={(node.data.timeoutSeconds as string) ?? ""} onChange={(e) => update("timeoutSeconds", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
                 </div>
               </div>
             </div>
@@ -312,7 +439,8 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
           </div>
         );
 
-      case "schedule":
+      case "schedule": {
+        const msgType = (node.data.messageType as string) || "text";
         return (
           <div className="space-y-3">
             <div>
@@ -328,26 +456,46 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             </div>
             <div>
               <Label className="text-xs">Horário de envio</Label>
-              <Input
-                type="time"
-                value={(node.data.scheduleTime as string) || "09:00"}
-                onChange={(e) => update("scheduleTime", e.target.value)}
-                className="mt-1"
-              />
+              <Input type="time" value={(node.data.scheduleTime as string) || "09:00"} onChange={(e) => update("scheduleTime", e.target.value)} className="mt-1" />
             </div>
             {(node.data.scheduleMode as string) === "custom" && (
               <div>
                 <Label className="text-xs">Data</Label>
-                <Input
-                  type="date"
-                  value={(node.data.scheduleDate as string) || ""}
-                  onChange={(e) => update("scheduleDate", e.target.value)}
-                  className="mt-1"
-                />
+                <Input type="date" value={(node.data.scheduleDate as string) || ""} onChange={(e) => update("scheduleDate", e.target.value)} className="mt-1" />
               </div>
+            )}
+
+            <div className="border-t border-border pt-3">
+              <Label className="text-xs font-semibold">Mensagem a enviar</Label>
+              <Select value={msgType} onValueChange={(v) => update("messageType", v)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text">💬 Texto</SelectItem>
+                  <SelectItem value="audio">🎙️ Áudio</SelectItem>
+                  <SelectItem value="file">📎 Arquivo / Mídia</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {msgType === "text" && (
+              <div>
+                <Label className="text-xs">Mensagem</Label>
+                <VariableTextarea value={(node.data.text as string) || ""} onChange={(v) => update("text", v)} rows={4} className="mt-1" />
+              </div>
+            )}
+            {msgType === "audio" && renderAudioRecorder("audioUrl")}
+            {msgType === "file" && (
+              <>
+                {renderFileUploader("fileUrl")}
+                <div>
+                  <Label className="text-xs">Legenda</Label>
+                  <VariableTextarea value={(node.data.caption as string) || ""} onChange={(v) => update("caption", v)} rows={2} className="mt-1" />
+                </div>
+              </>
             )}
           </div>
         );
+      }
 
       case "condition":
         return (
@@ -425,7 +573,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Nota</Label>
-              <Textarea value={(node.data.note as string) || ""} onChange={(e) => update("note", e.target.value)} placeholder="Texto da nota..." rows={4} className="mt-1" />
+              <VariableTextarea value={(node.data.note as string) || ""} onChange={(v) => update("note", v)} placeholder="Texto da nota..." rows={4} className="mt-1" />
             </div>
           </div>
         );
@@ -477,15 +625,9 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
         {renderFields()}
       </div>
 
-      {/* Delete button */}
       {node.type !== "start" && (
         <div className="p-4 border-t border-border">
-          <Button
-            variant="destructive"
-            size="sm"
-            className="w-full gap-1.5"
-            onClick={() => onDelete(node.id)}
-          >
+          <Button variant="destructive" size="sm" className="w-full gap-1.5" onClick={() => onDelete(node.id)}>
             <Trash2 size={14} /> Excluir bloco
           </Button>
         </div>

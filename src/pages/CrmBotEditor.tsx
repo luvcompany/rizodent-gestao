@@ -102,16 +102,32 @@ function BotEditorInner() {
     return () => clearTimeout(t);
   }, [nodes, edges, loading]);
 
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      setSelectedNode(null);
+    },
+    [setNodes, setEdges]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
+      if ((e.key === "Delete" || e.key === "Backspace") && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) {
+        const selected = nodes.filter((n) => n.selected && n.type !== "start");
+        if (selected.length > 0) {
+          e.preventDefault();
+          selected.forEach((n) => handleDeleteNode(n.id));
+        }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo, nodes, edges, botName]);
+  }, [undo, redo, nodes, edges, botName, handleDeleteNode]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -177,15 +193,6 @@ function BotEditorInner() {
       setSelectedNode((prev) => (prev?.id === nodeId ? { ...prev, data } : prev));
     },
     [setNodes]
-  );
-
-  const handleDeleteNode = useCallback(
-    (nodeId: string) => {
-      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-      setSelectedNode(null);
-    },
-    [setNodes, setEdges]
   );
 
   const handleSave = useCallback(async () => {
