@@ -457,6 +457,30 @@ export default function CrmAutomacoes() {
               </div>
             )}
 
+            {autoForm.action_type === "send_bot" && (
+              <div className="space-y-3">
+                <div>
+                  <Label>Bot</Label>
+                  <Select value={(autoForm.action_config.bot_id as string) || ""} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, bot_id: v } }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecionar bot" /></SelectTrigger>
+                    <SelectContent>
+                      {publishedBots.length === 0 && <SelectItem value="none" disabled>Nenhum bot publicado</SelectItem>}
+                      {publishedBots.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="send-to-all"
+                    checked={!!(autoForm.action_config.send_to_all_existing)}
+                    onCheckedChange={(v) => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, send_to_all_existing: !!v } }))}
+                  />
+                  <label htmlFor="send-to-all" className="text-sm text-foreground cursor-pointer">
+                    Enviar para todos os leads que já estão nesta etapa
+                  </label>
+                </div>
+              </div>
+            )
             {autoForm.action_type === "move_stage" && (
               <div>
                 <Label>Mover para</Label>
