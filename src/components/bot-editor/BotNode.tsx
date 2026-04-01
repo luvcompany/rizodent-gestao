@@ -10,11 +10,11 @@ function BotNode({ data, selected, type }: NodeProps) {
 
   // Build preview text
   let preview = "";
-  if (data.text) preview = String(data.text).slice(0, 60);
-  else if (data.note) preview = String(data.note).slice(0, 60);
-  else if (data.tag) preview = `Tag: ${data.tag}`;
-  else if (data.title) preview = String(data.title).slice(0, 60);
-  else if (data.caption) preview = String(data.caption).slice(0, 60);
+  if (data.text) preview = String(data.text as string).slice(0, 60);
+  else if (data.note) preview = String(data.note as string).slice(0, 60);
+  else if (data.tag) preview = `Tag: ${String(data.tag)}`;
+  else if (data.title) preview = String(data.title as string).slice(0, 60);
+  else if (data.caption) preview = String(data.caption as string).slice(0, 60);
 
   return (
     <div
