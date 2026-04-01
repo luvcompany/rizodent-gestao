@@ -39,6 +39,7 @@ export default function CrmAutomacoes() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [publishedBots, setPublishedBots] = useState<BotEntry[]>([]);
   const [channels, setChannels] = useState<FunnelChannel[]>([]);
   const [followUpConfigs, setFollowUpConfigs] = useState<FollowUpCfg[]>([]);
   const [loading, setLoading] = useState(true);
