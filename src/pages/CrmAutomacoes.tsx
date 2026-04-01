@@ -178,63 +178,6 @@ export default function CrmAutomacoes() {
     return map[type] || type;
   };
 
-  // ── Save bot config per stage (Kommo style) ──
-
-  const handleSaveSbcFull = async (
-    stageId: string,
-    updates: Partial<StageBotConfig>,
-    shouldApplyToAll: boolean,
-  ) => {
-    const sbc = stageBotConfigs.find(c => c.stage_id === stageId);
-    const payload = {
-      stage_id: stageId,
-      bot_id: updates.bot_id !== undefined ? (updates.bot_id || null) : (sbc?.bot_id || null),
-      trigger_type: updates.trigger_type || sbc?.trigger_type || "on_enter",
-      active: updates.active !== undefined ? updates.active : (sbc?.active ?? true),
-      is_final_stage: updates.is_final_stage !== undefined ? updates.is_final_stage : (sbc?.is_final_stage ?? false),
-    };
-
-    if (sbc) {
-      await supabase.from("stage_bot_config").update(payload).eq("id", sbc.id);
-    } else {
-      await supabase.from("stage_bot_config").insert(payload);
-    }
-
-    // Apply to all leads currently in this stage
-    if (shouldApplyToAll && payload.bot_id && !payload.is_final_stage) {
-      const { data: leads } = await supabase.from("crm_leads").select("id").eq("stage_id", stageId);
-      if (leads && leads.length > 0) {
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bot-trigger`;
-        let triggered = 0;
-        for (const lead of leads) {
-          // Check no active execution
-          const { data: active } = await supabase.from("bot_executions")
-            .select("id")
-            .eq("lead_id", lead.id)
-            .eq("status", "active")
-            .limit(1);
-          if (active && active.length > 0) continue;
-
-          try {
-            await fetch(url, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-              },
-              body: JSON.stringify({ leadId: lead.id, newStageId: stageId }),
-            });
-            triggered++;
-          } catch {}
-        }
-        toast.success(`Bot disparado para ${triggered} lead(s) na etapa`);
-      }
-    }
-
-    toast.success("Configuração salva");
-    setExpandedStageId(null);
-    fetchData(selectedPipelineId);
-  };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-background"><span className="text-muted-foreground">Carregando...</span></div>;
 
