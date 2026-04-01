@@ -391,7 +391,6 @@ const CrmBotEditor = () => {
   const mapToDbType = (type: string, config: any): string => {
     switch (type) {
       case "send_message": return config?.useTemplate ? "message_template" : (config?.audio_url ? "message_audio" : (config?.attachment_url ? "message_image" : "message_text"));
-      case "send_message_template": return "message_template";
       case "pause": case "pause_timer": return "wait";
       case "condition": return "condition";
       case "action": return "action_add_tag";
