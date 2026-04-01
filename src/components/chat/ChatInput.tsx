@@ -580,6 +580,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             <FileText size={20} />
           </button>
 
+          <button onClick={onOpenBotPanel} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
+            <Bot size={20} />
+          </button>
+
           {newMessage.trim() || attachedFile ? (
             <Button size="icon" onClick={handleSendMessage} disabled={optimizing || uploading}>
               <Send size={18} />
