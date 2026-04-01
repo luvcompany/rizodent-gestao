@@ -271,10 +271,10 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             {templates.length > 0 && (
               <div>
                 <Label className="text-xs">Usar Modelo (opcional)</Label>
-                <Select value={(node.data.templateId as string) || ""} onValueChange={handleTemplateSelect}>
+                <Select value={(node.data.templateId as string) || "__none__"} onValueChange={(v) => handleTemplateSelect(v === "__none__" ? "" : v)}>
                   <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Nenhum (texto livre)</SelectItem>
+                    <SelectItem value="__none__">Nenhum (texto livre)</SelectItem>
                     {templates.map((t) => (
                       <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                     ))}
