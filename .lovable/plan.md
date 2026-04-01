@@ -1,74 +1,106 @@
 
+# Construtor de Bots — Fase 1 (MVP)
 
-# Auditoria do Construtor de Bots - Plano de Correção
+## Escopo da Fase 1
+Conforme o roadmap sugerido na especificação:
+- Editor canvas básico com React Flow
+- Blocos de texto/mídia (mensagem de texto, imagem, áudio, arquivo, vídeo)
+- Gatilho manual (operador inicia pelo chat)
+- Bloco "Aguardar Resposta" com timeout
+- Bloco "Condição (If/Else)" simples
+- Bloco "Pausa/Delay"
+- Blocos de ação CRM básicos (mover etapa, adicionar tag, adicionar nota)
+- Transferir para humano
 
-## Problemas Identificados
+## 1. Banco de Dados (Migration)
 
-### 1. Drag-and-drop dos blocos NÃO funciona
-O sistema rastreia `stepPositions` mas **nunca usa essas posições para renderizar os blocos**. Os cards estão em layout `flex` (flow automático), então arrastar muda o estado mas não move nada visualmente. Para funcionar, os blocos precisariam de posicionamento absoluto com `transform: translate()`, ou alternativamente, implementar reordenação por drag (mover a posição do passo na lista).
+### Tabela `bots`
+- `id`, `name`, `description`, `status` (draft/published/archived)
+- `flow_json` (JSONB — nodes + edges do React Flow)
+- `current_version` (integer)
+- `created_by` (uuid)
+- `created_at`, `updated_at`
 
-**Solução**: Implementar reordenação por drag-and-drop dentro do card de grupo. Quando o usuário arrasta um bloco pelo `GripVertical`, ele reordena os passos dentro da sequência linear. Isso é mais intuitivo para um fluxo sequencial do que posicionamento livre.
+### Tabela `bot_versions`
+- `id`, `bot_id`, `version` (integer), `flow_json`, `published_at`
 
-### 2. Bot Engine não suporta todos os tipos de mídia
-O `bot-engine` tem handlers para `message_text`, `message_template` e `message_audio`, mas o editor permite configurar mensagens com imagens, documentos e anexos. O `callSendWhatsapp` envia os dados, mas o mapeamento `mapToDbType` no editor não cobre todos os tipos.
+### Tabela `bot_executions`
+- `id`, `bot_id`, `bot_version_id`, `lead_id`
+- `status` (active/waiting_reply/paused/completed/error)
+- `current_node_id` (text)
+- `variables` (JSONB — variáveis locais da sessão)
+- `started_at`, `updated_at`, `completed_at`
 
-**Solução**: Expandir o `bot-engine` para suportar `message_image`, `message_video`, `message_document` e garantir que o editor salve o tipo correto.
+### Tabela `bot_execution_logs`
+- `id`, `execution_id`, `node_id`, `action`, `details` (JSONB), `created_at`
 
-### 3. Mapeamento editor → banco incompleto
-- `list_message` não tem mapeamento em `mapToDbType`
-- `comment`, `reaction`, `start_bot`, `round_robin` não mapeiam para tipos do banco
-- O bot-engine não tem handlers para esses tipos
+### Tabela `bot_stage_triggers` (preparado para Fase 2)
+- `id`, `stage_id`, `bot_id`, `trigger_type` (on_enter/on_exit/on_timeout)
+- `delay_minutes`, `conditions` (JSONB), `priority`, `is_active`
 
-**Solução**: Adicionar mapeamentos faltantes e handlers correspondentes no bot-engine.
+### RLS
+- Admin/Gerente: CRUD completo em bots
+- CRC: SELECT em bots, INSERT/UPDATE em executions
+- Todos autenticados: SELECT em executions vinculadas
 
-### 4. Save do bot tem bug na resolução de next_node_id
-Linha 324: `o.nextSteps[0]` é um objeto `FlowStep`, mas é usado como se fosse string para construir `"__pending__" + o.nextSteps[0].id`. Isso funciona por concatenação implícita mas é frágil.
+## 2. Frontend — Páginas e Componentes
 
-### 5. Triggers não são salvos/carregados do banco
-Os triggers são armazenados em `stage_bot_config` ao salvar, mas **não são carregados de volta** ao abrir o editor (`loadBot` não busca triggers).
+### `/crm/bots` — Lista de Bots
+- Cards com nome, descrição, status (badge), data
+- Ações: criar, editar, duplicar, arquivar, excluir
+- Filtro por status
 
-**Solução**: Carregar `stage_bot_config` para o bot e popular o estado `triggers`.
+### `/crm/bots/:id` — Editor Canvas
+- **React Flow** como engine do canvas (instalar `@xyflow/react`)
+- Toolbar lateral esquerda com categorias de blocos (arrastar para canvas)
+- Painel de propriedades lateral direito (ao selecionar um bloco)
+- Toolbar superior: nome do bot, salvar, publicar, testar, desfazer/refazer
+- Minimap, controles de zoom, grid snap
+- Undo/Redo com histórico (50 ações)
 
-### 6. Webhook → Bot Engine: mensagem de mídia não passa conteúdo útil
-O webhook chama o bot-engine com `message: content || ""`, mas para áudio/imagem, `content` é vazio. O bot-engine precisa do tipo de mídia para processar corretamente.
+### Blocos da Fase 1:
+| Categoria | Blocos |
+|-----------|--------|
+| Início | Bloco Start (nó inicial obrigatório) |
+| Mensagem | Texto, Imagem+Texto, Áudio, Arquivo+Texto, Vídeo+Texto |
+| Lógica | Pausa/Delay, Aguardar Resposta, Condição (If/Else) |
+| Ação CRM | Mover Etapa, Adicionar/Remover Tag, Adicionar Nota |
+| Controle | Transferir para Humano |
 
-### 7. Badge no menu lateral (questão do usuário anterior)
-O código está correto mas pode haver um problema de realtime subscription. Preciso verificar se a publicação realtime está habilitada para `crm_leads`.
+### No Chat (`CrmConversa`)
+- Botão "Iniciar Bot" no painel lateral
+- Indicador "Bot ativo" no header da conversa
+- Botões pausar/encerrar bot
 
----
+## 3. Backend — Edge Functions
 
-## Plano de Implementação
+### `bot-engine` (nova)
+- Recebe: `{ leadId, botId, trigger, nodeId? }`
+- Triggers suportados na Fase 1: `manual_start`, `continue` (após resposta do lead)
+- Lógica:
+  - Busca o flow_json do bot publicado
+  - Cria/continua `bot_execution`
+  - Executa nós sequencialmente até encontrar bloco de pausa (delay/aguardar resposta)
+  - Para blocos de mensagem: usa o mesmo `send-whatsapp-message` existente
+  - Para delay: agenda próxima execução (via pg_cron ou setTimeout)
+  - Para aguardar resposta: salva estado e aguarda webhook
+  - Registra logs em `bot_execution_logs`
 
-### Passo 1 — Corrigir drag-and-drop como reordenação
-Substituir o sistema de posicionamento absoluto por reordenação sequencial. Ao arrastar um passo, ele troca de posição com o passo adjacente na lista linear.
+### Integração no `whatsapp-webhook` (existente)
+- Ao receber mensagem inbound: verifica se há `bot_execution` ativa aguardando resposta
+- Se sim: chama `bot-engine` com trigger `continue`
 
-### Passo 2 — Completar mapeamentos editor ↔ banco
-Adicionar em `mapToDbType`:
-- `list_message` → `message_list`
-- `comment` → `comment`
-- `reaction` → `reaction`
-- `start_bot` → `start_bot`
+## 4. Ordem de Implementação
+1. Migration do banco de dados (tabelas + RLS)
+2. Instalar `@xyflow/react`
+3. Página de lista de bots (`/crm/bots`)
+4. Editor canvas com blocos básicos (`/crm/bots/:id`)
+5. Edge Function `bot-engine`
+6. Integração no chat (iniciar/pausar/encerrar bot)
+7. Integração no webhook (continuar execução)
 
-### Passo 3 — Expandir bot-engine com novos tipos de nó
-Adicionar handlers para: `message_image`, `message_video`, `message_document`, `message_list`, `reaction`, `comment`, `start_bot`.
-
-### Passo 4 — Carregar triggers ao abrir o editor
-No `loadBot`, buscar `stage_bot_config` onde `bot_id = botId` e popular o estado `triggers`.
-
-### Passo 5 — Passar tipo de mídia do webhook ao bot-engine
-Alterar a chamada no webhook para incluir `messageType: msgType` junto com o `message`.
-
-### Passo 6 — Habilitar realtime para crm_leads + criar lead fictício
-Garantir que a publicação realtime está ativa. Criar uma migração que insere um lead de teste com telefone fictício para validar o fluxo.
-
-### Passo 7 — Corrigir generalSettings não sendo salvos
-As configurações gerais do bot (delay, timeout) são mantidas apenas em estado local e nunca persistidas no banco. Salvar como parte do config do bot ou em uma coluna dedicada.
-
----
-
-## Arquivos Afetados
-- `src/pages/CrmBotEditor.tsx` — drag-and-drop, mapeamentos, carregar triggers, salvar settings
-- `supabase/functions/bot-engine/index.ts` — novos handlers de nó
-- `supabase/functions/whatsapp-webhook/index.ts` — passar messageType
-- Migração SQL — lead fictício + realtime
-
+## Fases Futuras (não nesta implementação)
+- **Fase 2**: Gatilhos automáticos por etapa Kanban
+- **Fase 3**: List Message, botões interativos, templates HSM, reações
+- **Fase 4**: Switch, loop, goto, outro bot, webhook HTTP
+- **Fase 5**: Analytics e dashboard de execuções

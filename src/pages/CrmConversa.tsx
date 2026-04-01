@@ -27,6 +27,7 @@ import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import LeadAdInfo from "@/components/chat/LeadAdInfo";
 import TaskPanel from "@/components/chat/TaskPanel";
+import LeadBotPanel from "@/components/chat/LeadBotPanel";
 import { ArrowLeft, FileText, Tag, Search } from "lucide-react";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
@@ -277,6 +278,9 @@ export default function CrmConversa() {
           lead={lead as any}
           onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
         />
+
+        {/* Bot Panel */}
+        <LeadBotPanel leadId={lead.id} />
 
         {/* Task Panel */}
         <TaskPanel leadId={lead.id} />
