@@ -379,6 +379,20 @@ async function executeNode(supabase: any, execution: any, node: any, leadId: str
 
     case "action_move_stage": {
       const targetStageId = config.stage_id;
+      const currentLead = await getLead(supabase, leadId);
+      
+      // If already on the target stage, skip the move and just advance
+      if (currentLead && currentLead.stage_id === targetStageId) {
+        await logExecution(supabase, execution.id, node.id, "stage_move_skipped", `already on ${targetStageId}`);
+        const nextOutput = await getDefaultOutput(supabase, node.id);
+        if (nextOutput?.next_node_id) {
+          const { data: next } = await supabase.from("bot_nodes").select("*").eq("id", nextOutput.next_node_id).single();
+          await supabase.from("bot_executions").update({ current_node_id: next.id }).eq("id", execution.id);
+          await executeNode(supabase, execution, next, leadId);
+        }
+        break;
+      }
+
       await supabase.from("crm_leads").update({ stage_id: targetStageId }).eq("id", leadId);
       await logExecution(supabase, execution.id, node.id, "stage_moved", targetStageId);
 
