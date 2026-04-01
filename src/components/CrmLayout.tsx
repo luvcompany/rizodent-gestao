@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
-  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, Cpu, RefreshCw,
+  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -10,7 +10,7 @@ const crmNavItems = [
   { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
   { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
   { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
-  { to: "/crm/bots", icon: Cpu, label: "Bots" },
+  
   { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
   { to: "/crm/automacoes", icon: Bot, label: "Automações" },
   { to: "/crm/modelos", icon: FileText, label: "Modelos" },

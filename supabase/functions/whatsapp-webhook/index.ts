@@ -452,25 +452,6 @@ Deno.serve(async (req) => {
 
               console.log(`[WEBHOOK] Message received from ${from}, lead ${lead.id}, type: ${msgType}, media_url: ${mediaUrl}`);
 
-              // Trigger bot-engine for inbound message
-              try {
-                const botUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/bot-engine`;
-                fetch(botUrl, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                  },
-                  body: JSON.stringify({
-                    leadId: lead.id,
-                    trigger: "inbound_message",
-                    message: content || "",
-                    messageType: msgType,
-                  }),
-                }).catch(e => console.error("[WEBHOOK] Erro ao chamar bot-engine:", e));
-              } catch (botErr) {
-                console.error("[WEBHOOK] Erro ao preparar chamada bot-engine:", botErr);
-              }
 
               // Check follow-up queue - mark as responded if active
               try {

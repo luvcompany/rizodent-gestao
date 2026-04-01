@@ -25,7 +25,7 @@ import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import TaskPanel from "@/components/chat/TaskPanel";
-import LeadAutomationPanel from "@/components/chat/LeadAutomationPanel";
+
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import {
@@ -520,7 +520,7 @@ export default function CrmConversas() {
 
                 <LeadCustomFields leadId={selectedLead.id} />
 
-                <LeadAutomationPanel leadId={selectedLead.id} />
+                
 
                 <LeadFollowUpPanel leadId={selectedLead.id} />
 

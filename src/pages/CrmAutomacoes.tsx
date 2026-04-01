@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, AlertTriangle, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw } from "lucide-react";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -20,8 +20,6 @@ type Automation = {
 };
 type Template = { id: string; name: string; status: string };
 type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
-type BotItem = { id: string; name: string; active: boolean };
-type StageBotConfig = { id: string; stage_id: string; bot_id: string | null; trigger_type: string; active: boolean; is_final_stage: boolean };
 type FollowUpCfg = { id: string; stage_id: string; is_active: boolean; disparo1_type: string; disparo1_delay_minutes: number; max_attempts: number };
 
 const PRESET_COLORS = [
@@ -41,8 +39,6 @@ export default function CrmAutomacoes() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [channels, setChannels] = useState<FunnelChannel[]>([]);
-  const [allBots, setAllBots] = useState<BotItem[]>([]);
-  const [stageBotConfigs, setStageBotConfigs] = useState<StageBotConfig[]>([]);
   const [followUpConfigs, setFollowUpConfigs] = useState<FollowUpCfg[]>([]);
   const [loading, setLoading] = useState(true);
   const [duplicateRulesOpen, setDuplicateRulesOpen] = useState(false);
@@ -66,10 +62,7 @@ export default function CrmAutomacoes() {
   const [newPipelineColor, setNewPipelineColor] = useState("#6366f1");
   const [useCustomPipelineColor, setUseCustomPipelineColor] = useState(false);
 
-  // Expanded bot config per stage
-  const [expandedStageId, setExpandedStageId] = useState<string | null>(null);
-  const [applyToAll, setApplyToAll] = useState<Record<string, boolean>>({});
-  const [leaveUnread, setLeaveUnread] = useState<Record<string, boolean>>({});
+  
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
@@ -79,21 +72,17 @@ export default function CrmAutomacoes() {
     const pid = pipeId || selectedPipelineId || pipes[0]?.id;
     if (pid) {
       setSelectedPipelineId(pid);
-      const [stagesRes, autoRes, tplRes, chRes, botsRes, sbcRes, fuRes] = await Promise.all([
+      const [stagesRes, autoRes, tplRes, chRes, fuRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
         supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED"),
         supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
-        supabase.from("bots").select("id, name, active"),
-        supabase.from("stage_bot_config").select("*"),
         supabase.from("crm_followup_configs").select("id, stage_id, is_active, disparo1_type, disparo1_delay_minutes, max_attempts"),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
       setTemplates((tplRes.data as Template[]) || []);
       setChannels((chRes.data as FunnelChannel[]) || []);
-      setAllBots((botsRes.data as BotItem[]) || []);
-      setStageBotConfigs((sbcRes.data as StageBotConfig[]) || []);
       setFollowUpConfigs((fuRes.data as FollowUpCfg[]) || []);
     }
     setLoading(false);
@@ -189,63 +178,6 @@ export default function CrmAutomacoes() {
     return map[type] || type;
   };
 
-  // ── Save bot config per stage (Kommo style) ──
-
-  const handleSaveSbcFull = async (
-    stageId: string,
-    updates: Partial<StageBotConfig>,
-    shouldApplyToAll: boolean,
-  ) => {
-    const sbc = stageBotConfigs.find(c => c.stage_id === stageId);
-    const payload = {
-      stage_id: stageId,
-      bot_id: updates.bot_id !== undefined ? (updates.bot_id || null) : (sbc?.bot_id || null),
-      trigger_type: updates.trigger_type || sbc?.trigger_type || "on_enter",
-      active: updates.active !== undefined ? updates.active : (sbc?.active ?? true),
-      is_final_stage: updates.is_final_stage !== undefined ? updates.is_final_stage : (sbc?.is_final_stage ?? false),
-    };
-
-    if (sbc) {
-      await supabase.from("stage_bot_config").update(payload).eq("id", sbc.id);
-    } else {
-      await supabase.from("stage_bot_config").insert(payload);
-    }
-
-    // Apply to all leads currently in this stage
-    if (shouldApplyToAll && payload.bot_id && !payload.is_final_stage) {
-      const { data: leads } = await supabase.from("crm_leads").select("id").eq("stage_id", stageId);
-      if (leads && leads.length > 0) {
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bot-trigger`;
-        let triggered = 0;
-        for (const lead of leads) {
-          // Check no active execution
-          const { data: active } = await supabase.from("bot_executions")
-            .select("id")
-            .eq("lead_id", lead.id)
-            .eq("status", "active")
-            .limit(1);
-          if (active && active.length > 0) continue;
-
-          try {
-            await fetch(url, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-              },
-              body: JSON.stringify({ leadId: lead.id, newStageId: stageId }),
-            });
-            triggered++;
-          } catch {}
-        }
-        toast.success(`Bot disparado para ${triggered} lead(s) na etapa`);
-      }
-    }
-
-    toast.success("Configuração salva");
-    setExpandedStageId(null);
-    fetchData(selectedPipelineId);
-  };
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-background"><span className="text-muted-foreground">Carregando...</span></div>;
 
@@ -381,11 +313,12 @@ export default function CrmAutomacoes() {
                                   ))}
                                   <button
                                     onClick={() => {
-                                      setExpandedStageId(expandedStageId === stage.id ? null : stage.id);
+                                      setAutoForm({ stage_id: stage.id, trigger_type: "on_enter", action_type: "send_template", action_config: {}, editId: "" });
+                                      setAutoModalOpen(true);
                                     }}
                                     className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1.5 flex items-center justify-center gap-1 transition-colors"
                                   >
-                                    <Plus size={12} /> Adicionar gatilho
+                                    <Plus size={12} /> Adicionar automação
                                   </button>
 
                                   {/* Follow Up - simple dropdown */}
@@ -409,118 +342,6 @@ export default function CrmAutomacoes() {
                                             Configurar
                                           </button>
                                         )}
-                                      </div>
-                                    );
-                                  })()}
-
-                                  {/* Inline bot config when expanded */}
-                                  {expandedStageId === stage.id && (() => {
-                                    const sbc = stageBotConfigs.find(c => c.stage_id === stage.id);
-                                    const isFinal = sbc?.is_final_stage ?? false;
-                                    const botId = sbc?.bot_id || "";
-                                    const triggerType = sbc?.trigger_type || "on_enter";
-                                    const isActive = sbc?.active ?? true;
-
-                                    return (
-                                      <div className="space-y-3 border-t border-border pt-3 mt-2">
-                                        {/* Final stage toggle */}
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-[10px] text-muted-foreground">Etapa Final</span>
-                                          <Switch
-                                            checked={isFinal}
-                                            onCheckedChange={(v) => handleSaveSbcFull(stage.id, { is_final_stage: v }, false)}
-                                          />
-                                        </div>
-
-                                        {isFinal ? (
-                                          <div className="flex items-start gap-2 bg-destructive/10 border border-destructive/20 rounded-lg p-2">
-                                            <AlertTriangle size={12} className="text-destructive shrink-0 mt-0.5" />
-                                            <p className="text-[10px] text-destructive">Bots de outras etapas não interferem nesta etapa. Você ainda pode criar bots específicos para ela.</p>
-                                          </div>
-                                        ) : null}
-
-                                        {/* Salesbot */}
-                                        <div>
-                                          <Label className="text-xs font-semibold flex items-center gap-1 mb-1">
-                                            <Bot size={10} className="text-primary" /> Salesbot / Robô
-                                          </Label>
-                                          <Select value={botId || "none"} onValueChange={(v) => handleSaveSbcFull(stage.id, { bot_id: v === "none" ? "" : v }, false)}>
-                                            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Nenhum robô" /></SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="none">Nenhum robô</SelectItem>
-                                              {allBots.filter(b => b.active).map(b => (
-                                                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                                              ))}
-                                            </SelectContent>
-                                          </Select>
-                                          <button
-                                            onClick={() => navigate("/crm/bots")}
-                                            className="text-[10px] text-primary hover:underline mt-1 flex items-center gap-1"
-                                          >
-                                            ou <Plus size={8} /> Criar robô
-                                          </button>
-                                        </div>
-
-                                        {/* Trigger */}
-                                        <div>
-                                          <Label className="text-xs font-semibold mb-1">Executar</Label>
-                                          <Select value={triggerType} onValueChange={(v) => handleSaveSbcFull(stage.id, { trigger_type: v }, false)}>
-                                            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="on_enter">Quando movido para esta etapa</SelectItem>
-                                              <SelectItem value="on_create">Quando criado nesta etapa</SelectItem>
-                                              <SelectItem value="both">Quando movido ou criado</SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        </div>
-
-                                        {/* Active */}
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs text-foreground">Ativo</span>
-                                          <Switch checked={isActive} onCheckedChange={(v) => handleSaveSbcFull(stage.id, { active: v }, false)} />
-                                        </div>
-
-                                        {/* Leave unread */}
-                                        <div className="flex items-start gap-2">
-                                          <Switch
-                                            checked={leaveUnread[stage.id] ?? false}
-                                            onCheckedChange={v => setLeaveUnread(prev => ({ ...prev, [stage.id]: v }))}
-                                            className="mt-0.5"
-                                          />
-                                          <div>
-                                            <span className="text-[10px] text-foreground">Deixar mensagem sem resposta</span>
-                                            <p className="text-[9px] text-muted-foreground">Mensagens do robô marcadas como não respondidas</p>
-                                          </div>
-                                        </div>
-
-                                        {/* Apply to all */}
-                                        <div className="flex items-start gap-2 bg-muted/50 rounded-lg p-2">
-                                          <Checkbox
-                                            checked={applyToAll[stage.id] ?? false}
-                                            onCheckedChange={v => setApplyToAll(prev => ({ ...prev, [stage.id]: !!v }))}
-                                            className="mt-0.5"
-                                          />
-                                          <span className="text-[10px] text-foreground">Aplicar a todos os leads já nesta etapa</span>
-                                        </div>
-
-                                        {/* Action buttons */}
-                                        <div className="flex items-center gap-2">
-                                          <Button
-                                            size="sm"
-                                            className="flex-1 text-xs h-7"
-                                            onClick={() => handleSaveSbcFull(stage.id, {
-                                              bot_id: botId || "",
-                                              trigger_type: triggerType,
-                                              active: isActive,
-                                              is_final_stage: isFinal,
-                                            }, applyToAll[stage.id] ?? false)}
-                                          >
-                                            Finalizado
-                                          </Button>
-                                          <Button variant="outline" size="sm" className="flex-1 text-xs h-7" onClick={() => setExpandedStageId(null)}>
-                                            Cancelar
-                                          </Button>
-                                        </div>
                                       </div>
                                     );
                                   })()}

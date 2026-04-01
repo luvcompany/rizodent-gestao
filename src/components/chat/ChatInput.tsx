@@ -58,16 +58,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [slashActive, setSlashActive] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashTemplates, setSlashTemplates] = useState<any[]>([]);
-  const [slashBots, setSlashBots] = useState<any[]>([]);
 
   useEffect(() => {
     const loadSlashData = async () => {
-      const [{ data: t }, { data: b }] = await Promise.all([
-        supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED"),
-        supabase.from("bots").select("id, name, description").eq("active", true),
-      ]);
+      const { data: t } = await supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED");
       setSlashTemplates(t || []);
-      setSlashBots(b || []);
     };
     loadSlashData();
   }, []);
@@ -545,26 +540,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             <SlashCommandMenu
               query={slashQuery}
               templates={slashTemplates}
-              bots={slashBots}
+              bots={[]}
               visible={slashActive}
               onSelectTemplate={(t) => {
                 setNewMessage(`[Template: ${t.name}]`);
                 setSlashActive(false);
                 toast.info(`Template "${t.name}" selecionado. Pressione Enter para enviar.`);
               }}
-              onSelectBot={async (b) => {
-                setSlashActive(false);
-                setNewMessage("");
-                try {
-                  const { error } = await supabase.functions.invoke("bot-engine", {
-                    body: { leadId, trigger: "manual_start", botId: b.id },
-                  });
-                  if (error) { toast.error("Erro ao iniciar bot"); return; }
-                  toast.success("Bot iniciado com sucesso");
-                } catch {
-                  toast.error("Erro ao iniciar bot");
-                }
-              }}
+              onSelectBot={() => {}}
               onClose={() => setSlashActive(false)}
             />
             <Input

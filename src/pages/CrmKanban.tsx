@@ -164,15 +164,6 @@ export default function CrmKanban() {
       });
     }
 
-    // Trigger bot-engine for stage change
-    try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      fetch(`https://${projectId}.supabase.co/functions/v1/bot-trigger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: JSON.stringify({ leadId, newStageId }),
-      }).catch(() => {});
-    } catch {}
   };
 
   const handleCreateLead = async () => {
