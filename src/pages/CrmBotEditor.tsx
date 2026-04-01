@@ -38,7 +38,6 @@ interface Trigger {
 
 const STEP_TYPES = [
   { type: "send_message", label: "Enviar mensagem", icon: MessageSquare, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
-  { type: "send_message_template", label: "Modelo de mensagem", icon: Send, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
   { type: "list_message", label: "Enviar menu", icon: Smartphone, color: "text-emerald-400", bg: "bg-emerald-500/10", category: "mensagem" },
   { type: "reaction", label: "Reação", icon: Heart, color: "text-pink-400", bg: "bg-pink-500/10", category: "mensagem" },
   { type: "comment", label: "Comentário interno", icon: MessageCircle, color: "text-blue-400", bg: "bg-blue-500/10", category: "mensagem" },
