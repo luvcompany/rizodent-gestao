@@ -181,6 +181,30 @@ async function handleCheckTimeouts(supabase: any) {
 }
 
 async function handleStageChanged(supabase: any, leadId: string, newStageId: string) {
+  // Get current lead to check if already on this stage
+  const lead = await getLead(supabase, leadId);
+  if (!lead) return json({ error: "lead_not_found" }, 404);
+
+  // Prevent loop: if lead is already on this stage, skip
+  if (lead.stage_id === newStageId) {
+    return json({ skipped: true, reason: "same_stage" });
+  }
+
+  // Prevent loop: check if there's a recent active execution (< 30 seconds)
+  const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+  const { data: recentExec } = await supabase
+    .from("bot_executions")
+    .select("id")
+    .eq("lead_id", leadId)
+    .in("status", ["active", "waiting_reply", "waiting_timeout"])
+    .gte("started_at", thirtySecondsAgo)
+    .limit(1)
+    .maybeSingle();
+
+  if (recentExec) {
+    return json({ skipped: true, reason: "recent_execution_exists" });
+  }
+
   // Cancel all active executions
   await supabase
     .from("bot_executions")
