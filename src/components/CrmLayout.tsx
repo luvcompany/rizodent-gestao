@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
-  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, Cpu, RefreshCw,
+  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 

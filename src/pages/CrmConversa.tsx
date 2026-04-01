@@ -294,9 +294,6 @@ export default function CrmConversa() {
         {/* Custom Fields */}
         <LeadCustomFields leadId={lead.id} />
 
-        {/* Automation Panel */}
-        <LeadAutomationPanel leadId={lead.id} />
-
         {/* Follow Up Panel */}
         <LeadFollowUpPanel leadId={lead.id} />
 

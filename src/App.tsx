@@ -75,8 +75,6 @@ const App = () => (
               <Route path="/crm/integracoes" element={<CrmIntegracoes />} />
               <Route path="/crm/relatorios" element={<CrmRelatorios />} />
               <Route path="/crm/calendario" element={<CrmCalendario />} />
-              <Route path="/crm/bots" element={<CrmBots />} />
-              <Route path="/crm/bots/:id" element={<CrmBotEditor />} />
               <Route path="/crm/followups" element={<CrmFollowUps />} />
             </Route>
             <Route path="*" element={<NotFound />} />
