@@ -59,6 +59,32 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const streamRef = useRef<MediaStream | null>(null);
   const recordingDiscardedRef = useRef(false);
 
+  // Fetch published bots
+  useEffect(() => {
+    supabase
+      .from("bots")
+      .select("id, name")
+      .eq("status", "published")
+      .order("name")
+      .then(({ data }) => { if (data) setBots(data); });
+  }, []);
+
+  const handleStartBot = async (botId: string) => {
+    setStartingBotId(botId);
+    try {
+      const { error } = await supabase.functions.invoke("bot-engine", {
+        body: { leadId, botId, trigger: "manual_start" },
+      });
+      if (error) throw error;
+      toast.success("Bot iniciado!");
+      setBotPopoverOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao iniciar bot");
+    } finally {
+      setStartingBotId(null);
+    }
+  };
+
   // Slash commands
   const [slashActive, setSlashActive] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
