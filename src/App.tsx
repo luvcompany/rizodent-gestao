@@ -25,8 +25,6 @@ import CrmIntegracoes from "./pages/CrmIntegracoes";
 import CrmRelatorios from "./pages/CrmRelatorios";
 import CrmConversas from "./pages/CrmConversas";
 import CrmCalendario from "./pages/CrmCalendario";
-import CrmBots from "./pages/CrmBots";
-import CrmBotEditor from "./pages/CrmBotEditor";
 import CrmFollowUps from "./pages/CrmFollowUps";
 import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
