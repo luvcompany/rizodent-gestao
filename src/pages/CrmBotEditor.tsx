@@ -277,7 +277,7 @@ const CrmBotEditor = () => {
 
   const getDefaultConfig = (type: string): any => {
     switch (type) {
-      case "send_message": case "send_message_template": return { message: "", channel: "whatsapp", buttons: [] };
+      case "send_message": return { message: "", channel: "whatsapp", buttons: [] };
       case "pause": return { conditions: [{ type: "message_received", hours: 0, minutes: 0, seconds: 0 }] };
       case "pause_timer": return { conditions: [{ type: "timer", hours: 0, minutes: 5, seconds: 0 }] };
       case "condition": return { field: "tags", operator: "equals", value: "" };
