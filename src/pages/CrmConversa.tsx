@@ -262,7 +262,7 @@ export default function CrmConversa() {
             onMessageSent={chat.handleOptimisticMessage}
             onMessageError={chat.handleMessageError}
             lastInboundAt={chat.lastInboundAt}
-            onOpenBotPanel={() => setBotSheetOpen(true)}
+            />
           />
         )}
 
