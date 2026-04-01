@@ -447,7 +447,7 @@ export default function CrmAutomacoes() {
             {autoForm.action_type === "send_template" && (
               <div>
                 <Label>Template</Label>
-                <Select value={(autoForm.action_config.template_id as string) || ""} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { template_id: v } }))}>
+                <Select value={(autoForm.action_config.template_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { template_id: v } }))}>
                   <SelectTrigger><SelectValue placeholder="Selecionar template" /></SelectTrigger>
                   <SelectContent>
                     {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
