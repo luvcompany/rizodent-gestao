@@ -176,6 +176,7 @@ export default function CrmAutomacoes() {
     const map: Record<string, string> = {
       send_template: "Enviar template WhatsApp",
       send_audio: "Enviar áudio",
+      send_bot: "Enviar Bot",
       move_stage: "Mover para etapa",
       webhook: "Chamar webhook",
     };
