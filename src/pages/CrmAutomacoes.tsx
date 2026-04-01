@@ -485,7 +485,7 @@ export default function CrmAutomacoes() {
             {autoForm.action_type === "move_stage" && (
               <div>
                 <Label>Mover para</Label>
-                <Select value={(autoForm.action_config.target_stage_id as string) || ""} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { target_stage_id: v } }))}>
+                <Select value={(autoForm.action_config.target_stage_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { target_stage_id: v } }))}>
                   <SelectTrigger><SelectValue placeholder="Selecionar etapa" /></SelectTrigger>
                   <SelectContent>
                     {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
