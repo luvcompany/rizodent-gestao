@@ -436,6 +436,7 @@ export default function CrmAutomacoes() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="send_template">Enviar template WhatsApp</SelectItem>
+                  <SelectItem value="send_bot">Enviar Bot</SelectItem>
                   <SelectItem value="send_audio">Enviar áudio</SelectItem>
                   <SelectItem value="move_stage">Mover para etapa</SelectItem>
                   <SelectItem value="webhook">Chamar webhook</SelectItem>
