@@ -520,7 +520,7 @@ export default function CrmConversas() {
 
                 <LeadCustomFields leadId={selectedLead.id} />
 
-                <LeadAutomationPanel leadId={selectedLead.id} />
+                
 
                 <LeadFollowUpPanel leadId={selectedLead.id} />
 

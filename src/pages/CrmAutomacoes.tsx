@@ -72,21 +72,17 @@ export default function CrmAutomacoes() {
     const pid = pipeId || selectedPipelineId || pipes[0]?.id;
     if (pid) {
       setSelectedPipelineId(pid);
-      const [stagesRes, autoRes, tplRes, chRes, botsRes, sbcRes, fuRes] = await Promise.all([
+      const [stagesRes, autoRes, tplRes, chRes, fuRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
         supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED"),
         supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
-        supabase.from("bots").select("id, name, active"),
-        supabase.from("stage_bot_config").select("*"),
         supabase.from("crm_followup_configs").select("id, stage_id, is_active, disparo1_type, disparo1_delay_minutes, max_attempts"),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
       setTemplates((tplRes.data as Template[]) || []);
       setChannels((chRes.data as FunnelChannel[]) || []);
-      setAllBots((botsRes.data as BotItem[]) || []);
-      setStageBotConfigs((sbcRes.data as StageBotConfig[]) || []);
       setFollowUpConfigs((fuRes.data as FollowUpCfg[]) || []);
     }
     setLoading(false);
