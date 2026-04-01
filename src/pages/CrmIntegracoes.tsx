@@ -272,9 +272,6 @@ export default function CrmIntegracoes() {
     if (!confirm("Excluir este funil e todas as suas etapas?")) return;
     await supabase.from("crm_stages").delete().eq("pipeline_id", id);
     await supabase.from("funnel_channels").delete().eq("pipeline_id", id);
-    await supabase.from("stage_bot_config").delete().in("stage_id",
-      (await supabase.from("crm_stages").select("id").eq("pipeline_id", id)).data?.map(s => s.id) || []
-    );
     await supabase.from("crm_pipelines").delete().eq("id", id);
     toast.success("Funil excluído");
 
