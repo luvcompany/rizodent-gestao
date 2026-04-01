@@ -194,8 +194,6 @@ function BotEditorInner() {
     },
     [setNodes]
   );
-    [setNodes, setEdges]
-  );
 
   const handleSave = useCallback(async () => {
     if (!id) return;
