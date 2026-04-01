@@ -74,18 +74,20 @@ export default function CrmAutomacoes() {
     const pid = pipeId || selectedPipelineId || pipes[0]?.id;
     if (pid) {
       setSelectedPipelineId(pid);
-      const [stagesRes, autoRes, tplRes, chRes, fuRes] = await Promise.all([
+      const [stagesRes, autoRes, tplRes, chRes, fuRes, botsRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
         supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED"),
         supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
         supabase.from("crm_followup_configs").select("id, stage_id, is_active, disparo1_type, disparo1_delay_minutes, max_attempts"),
+        supabase.from("bots").select("id, name").eq("status", "published").order("name"),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
       setTemplates((tplRes.data as Template[]) || []);
       setChannels((chRes.data as FunnelChannel[]) || []);
       setFollowUpConfigs((fuRes.data as FollowUpCfg[]) || []);
+      setPublishedBots((botsRes.data as BotEntry[]) || []);
     }
     setLoading(false);
   }, [selectedPipelineId]);
