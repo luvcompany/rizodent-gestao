@@ -179,6 +179,15 @@ function BotEditorInner() {
     [setNodes]
   );
 
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      setSelectedNode(null);
+    },
+    [setNodes, setEdges]
+  );
+
   const handleSave = useCallback(async () => {
     if (!id) return;
     setSaving(true);
