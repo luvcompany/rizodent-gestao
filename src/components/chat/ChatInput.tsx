@@ -540,26 +540,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             <SlashCommandMenu
               query={slashQuery}
               templates={slashTemplates}
-              bots={slashBots}
+              bots={[]}
               visible={slashActive}
               onSelectTemplate={(t) => {
                 setNewMessage(`[Template: ${t.name}]`);
                 setSlashActive(false);
                 toast.info(`Template "${t.name}" selecionado. Pressione Enter para enviar.`);
               }}
-              onSelectBot={async (b) => {
-                setSlashActive(false);
-                setNewMessage("");
-                try {
-                  const { error } = await supabase.functions.invoke("bot-engine", {
-                    body: { leadId, trigger: "manual_start", botId: b.id },
-                  });
-                  if (error) { toast.error("Erro ao iniciar bot"); return; }
-                  toast.success("Bot iniciado com sucesso");
-                } catch {
-                  toast.error("Erro ao iniciar bot");
-                }
-              }}
+              onSelectBot={() => {}}
               onClose={() => setSlashActive(false)}
             />
             <Input
