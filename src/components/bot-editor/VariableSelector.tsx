@@ -1,0 +1,112 @@
+import { useEffect, useRef, useState } from "react";
+import { LEAD_VARIABLES } from "@/types/bot";
+
+type Props = {
+  inputRef: React.RefObject<HTMLTextAreaElement | HTMLInputElement>;
+  value: string;
+  onChange: (value: string) => void;
+};
+
+export default function VariableSelector({ inputRef, value, onChange }: Props) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [cursorPos, setCursorPos] = useState(0);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const handleInput = () => {
+      const pos = el.selectionStart || 0;
+      const textBefore = el.value.substring(0, pos);
+      const lastBracket = textBefore.lastIndexOf("[");
+
+      if (lastBracket !== -1 && !textBefore.substring(lastBracket).includes("]")) {
+        const searchText = textBefore.substring(lastBracket + 1);
+        setSearch(searchText.toLowerCase());
+        setCursorPos(pos);
+        setOpen(true);
+
+        // Position near cursor
+        const rect = el.getBoundingClientRect();
+        setPosition({ top: rect.bottom + 4, left: rect.left });
+      } else {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+
+    el.addEventListener("input", handleInput);
+    el.addEventListener("keydown", handleKeyDown);
+    return () => {
+      el.removeEventListener("input", handleInput);
+      el.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [inputRef]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as HTMLElement)) {
+        setOpen(false);
+      }
+    };
+    if (open) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const filtered = LEAD_VARIABLES.filter(
+    (v) => v.key.toLowerCase().includes(search) || v.label.toLowerCase().includes(search)
+  );
+
+  const selectVariable = (variable: typeof LEAD_VARIABLES[0]) => {
+    const el = inputRef.current;
+    if (!el) return;
+
+    const textBefore = value.substring(0, cursorPos);
+    const lastBracket = textBefore.lastIndexOf("[");
+    const textAfter = value.substring(cursorPos);
+
+    const newValue = textBefore.substring(0, lastBracket) + `[${variable.key}]` + textAfter;
+    onChange(newValue);
+    setOpen(false);
+
+    // Restore focus
+    setTimeout(() => {
+      const newPos = lastBracket + variable.key.length + 2;
+      el.focus();
+      el.setSelectionRange(newPos, newPos);
+    }, 10);
+  };
+
+  if (!open || filtered.length === 0) return null;
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-[9999] bg-popover border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto w-64"
+      style={{ top: position.top, left: position.left }}
+    >
+      <div className="p-1">
+        {filtered.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent rounded-md flex items-center justify-between gap-2"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              selectVariable(v);
+            }}
+          >
+            <span className="font-medium text-foreground">[{v.key}]</span>
+            <span className="text-muted-foreground truncate">{v.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
