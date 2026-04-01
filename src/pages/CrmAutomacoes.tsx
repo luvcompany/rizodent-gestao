@@ -19,6 +19,7 @@ type Automation = {
   action_config: Record<string, unknown>; is_active: boolean;
 };
 type Template = { id: string; name: string; status: string };
+type BotEntry = { id: string; name: string };
 type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
 type FollowUpCfg = { id: string; stage_id: string; is_active: boolean; disparo1_type: string; disparo1_delay_minutes: number; max_attempts: number };
 
@@ -38,6 +39,7 @@ export default function CrmAutomacoes() {
   const [stages, setStages] = useState<Stage[]>([]);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [publishedBots, setPublishedBots] = useState<BotEntry[]>([]);
   const [channels, setChannels] = useState<FunnelChannel[]>([]);
   const [followUpConfigs, setFollowUpConfigs] = useState<FollowUpCfg[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,18 +74,20 @@ export default function CrmAutomacoes() {
     const pid = pipeId || selectedPipelineId || pipes[0]?.id;
     if (pid) {
       setSelectedPipelineId(pid);
-      const [stagesRes, autoRes, tplRes, chRes, fuRes] = await Promise.all([
+      const [stagesRes, autoRes, tplRes, chRes, fuRes, botsRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
         supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED"),
         supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
         supabase.from("crm_followup_configs").select("id, stage_id, is_active, disparo1_type, disparo1_delay_minutes, max_attempts"),
+        supabase.from("bots").select("id, name").eq("status", "published").order("name"),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
       setTemplates((tplRes.data as Template[]) || []);
       setChannels((chRes.data as FunnelChannel[]) || []);
       setFollowUpConfigs((fuRes.data as FollowUpCfg[]) || []);
+      setPublishedBots((botsRes.data as BotEntry[]) || []);
     }
     setLoading(false);
   }, [selectedPipelineId]);
@@ -172,6 +176,7 @@ export default function CrmAutomacoes() {
     const map: Record<string, string> = {
       send_template: "Enviar template WhatsApp",
       send_audio: "Enviar áudio",
+      send_bot: "Enviar Bot",
       move_stage: "Mover para etapa",
       webhook: "Chamar webhook",
     };
@@ -431,6 +436,7 @@ export default function CrmAutomacoes() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="send_template">Enviar template WhatsApp</SelectItem>
+                  <SelectItem value="send_bot">Enviar Bot</SelectItem>
                   <SelectItem value="send_audio">Enviar áudio</SelectItem>
                   <SelectItem value="move_stage">Mover para etapa</SelectItem>
                   <SelectItem value="webhook">Chamar webhook</SelectItem>
@@ -448,6 +454,31 @@ export default function CrmAutomacoes() {
                     {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {autoForm.action_type === "send_bot" && (
+              <div className="space-y-3">
+                <div>
+                  <Label>Bot</Label>
+                  <Select value={(autoForm.action_config.bot_id as string) || ""} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, bot_id: v } }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecionar bot" /></SelectTrigger>
+                    <SelectContent>
+                      {publishedBots.length === 0 && <SelectItem value="none" disabled>Nenhum bot publicado</SelectItem>}
+                      {publishedBots.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="send-to-all"
+                    checked={!!(autoForm.action_config.send_to_all_existing)}
+                    onCheckedChange={(v) => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, send_to_all_existing: !!v } }))}
+                  />
+                  <label htmlFor="send-to-all" className="text-sm text-foreground cursor-pointer">
+                    Enviar para todos os leads que já estão nesta etapa
+                  </label>
+                </div>
               </div>
             )}
 

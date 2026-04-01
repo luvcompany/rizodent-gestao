@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,7 +38,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     supabase.from("crm_stages").select("id, name, color").order("position").then(({ data }) => {
       if (data) setStages(data);
     });
-    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons").eq("status", "approved").then(({ data }) => {
+    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons").eq("status", "APPROVED").then(({ data }) => {
       if (data) setTemplates(data);
     });
   }, []);
@@ -56,32 +57,57 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     [node, onUpdate]
   );
 
-  // Audio recording
+  // Audio recording using opus-media-recorder (same as chat)
+  const streamRef = useRef<MediaStream | null>(null);
+  const recordingDiscardedRef = useRef(false);
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-      mediaRecorderRef.current = mediaRecorder;
+      streamRef.current = stream;
+      recordingDiscardedRef.current = false;
+
+      const OpusMediaRecorder = (await import("opus-media-recorder")).default;
+      const workerOptions = {
+        OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+        WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+        encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
+      };
+
+      const recorder = new OpusMediaRecorder(
+        stream,
+        { mimeType: "audio/ogg;codecs=opus" },
+        workerOptions
+      );
+      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
       setRecordingTime(0);
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      recorder.ondataavailable = (e: any) => {
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
       };
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/ogg; codecs=opus" });
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+        streamRef.current = null;
+        if (timerRef.current) clearInterval(timerRef.current);
+
+        if (recordingDiscardedRef.current) {
+          recordingDiscardedRef.current = false;
+          audioChunksRef.current = [];
+          return;
+        }
+
+        const blob = new Blob(audioChunksRef.current, { type: "audio/ogg;codecs=opus" });
         setAudioBlob(blob);
         setAudioPreviewUrl(URL.createObjectURL(blob));
-        stream.getTracks().forEach((t) => t.stop());
-        if (timerRef.current) clearInterval(timerRef.current);
       };
 
-      mediaRecorder.start();
+      recorder.start();
       setIsRecording(true);
       timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
     } catch {
-      // ignore
+      toast.error("Não foi possível acessar o microfone");
     }
   };
 
@@ -91,6 +117,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
   };
 
   const discardRecording = () => {
+    recordingDiscardedRef.current = true;
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
     }
@@ -105,7 +132,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     if (!audioBlob) return;
     setUploading(true);
     const fileName = `bot-audio/${Date.now()}.ogg`;
-    const { data, error } = await supabase.storage.from("chat-media").upload(fileName, audioBlob, { contentType: "audio/ogg; codecs=opus" });
+    const { data, error } = await supabase.storage.from("chat-media").upload(fileName, audioBlob, { contentType: "audio/ogg;codecs=opus" });
     if (!error && data) {
       const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(data.path);
       update(targetField, urlData.publicUrl);
