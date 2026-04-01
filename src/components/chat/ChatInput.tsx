@@ -552,10 +552,18 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 setSlashActive(false);
                 toast.info(`Template "${t.name}" selecionado. Pressione Enter para enviar.`);
               }}
-              onSelectBot={(b) => {
-                setNewMessage(`[Bot: ${b.name}]`);
+              onSelectBot={async (b) => {
                 setSlashActive(false);
-                toast.info(`Bot "${b.name}" selecionado. Pressione Enter para disparar.`);
+                setNewMessage("");
+                try {
+                  const { error } = await supabase.functions.invoke("bot-engine", {
+                    body: { leadId, trigger: "manual_start", botId: b.id },
+                  });
+                  if (error) { toast.error("Erro ao iniciar bot"); return; }
+                  toast.success("Bot iniciado com sucesso");
+                } catch {
+                  toast.error("Erro ao iniciar bot");
+                }
               }}
               onClose={() => setSlashActive(false)}
             />

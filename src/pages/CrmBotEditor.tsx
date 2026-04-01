@@ -128,11 +128,7 @@ const CrmBotEditor = () => {
     setBot(b);
     setBotName(b.name);
 
-    // Load general settings from bot description (JSON)
-    try {
-      const settings = b.description ? JSON.parse(b.description) : null;
-      if (settings?.generalSettings) setGeneralSettings(settings.generalSettings);
-    } catch { /* not JSON, ignore */ }
+    // General settings are now separate from description
 
     const { data: nodes } = await supabase.from("bot_nodes").select("*").eq("bot_id", botId).order("created_at");
     if (!nodes || nodes.length === 0) {
