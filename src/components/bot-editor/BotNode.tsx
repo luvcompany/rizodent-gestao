@@ -39,7 +39,7 @@ function BotNode({ data, selected, type }: NodeProps) {
         style={{ background: def.color, color: "#fff" }}
       >
         <span>{def.icon}</span>
-        <span>{data.label || def.label}</span>
+        <span>{String(data.label || def.label)}</span>
       </div>
 
       {/* Body */}
