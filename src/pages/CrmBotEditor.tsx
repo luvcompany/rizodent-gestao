@@ -309,7 +309,7 @@ const CrmBotEditor = () => {
           { id: uid(), label: "Sim", conditionType: "match", conditionValue: null, nextSteps: [] },
           { id: uid(), label: "Não", conditionType: "no_match", conditionValue: null, nextSteps: [] },
         ];
-      case "send_message": case "send_message_template":
+      case "send_message":
         return [{ id: uid(), label: "Próximo", conditionType: "default", conditionValue: null, nextSteps: [] }];
       case "list_message":
         return [
