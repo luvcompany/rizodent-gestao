@@ -641,6 +641,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               )}
             </PopoverContent>
           </Popover>
+
+          {newMessage.trim() || attachedFile ? (
             <Button size="icon" onClick={handleSendMessage} disabled={optimizing || uploading}>
               <Send size={18} />
             </Button>
