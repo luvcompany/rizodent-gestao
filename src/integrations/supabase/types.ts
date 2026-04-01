@@ -14,6 +14,224 @@ export type Database = {
   }
   public: {
     Tables: {
+      bot_execution_logs: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json | null
+          execution_id: string
+          id: string
+          node_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json | null
+          execution_id: string
+          id?: string
+          node_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json | null
+          execution_id?: string
+          id?: string
+          node_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_execution_logs_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "bot_executions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_executions: {
+        Row: {
+          bot_id: string
+          bot_version_id: string | null
+          completed_at: string | null
+          current_node_id: string | null
+          id: string
+          lead_id: string
+          started_at: string
+          status: string
+          updated_at: string
+          variables: Json
+        }
+        Insert: {
+          bot_id: string
+          bot_version_id?: string | null
+          completed_at?: string | null
+          current_node_id?: string | null
+          id?: string
+          lead_id: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          variables?: Json
+        }
+        Update: {
+          bot_id?: string
+          bot_version_id?: string | null
+          completed_at?: string | null
+          current_node_id?: string | null
+          id?: string
+          lead_id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          variables?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_executions_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "bots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_executions_bot_version_id_fkey"
+            columns: ["bot_version_id"]
+            isOneToOne: false
+            referencedRelation: "bot_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_executions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_stage_triggers: {
+        Row: {
+          bot_id: string
+          conditions: Json | null
+          created_at: string
+          delay_minutes: number
+          id: string
+          is_active: boolean
+          priority: number
+          stage_id: string
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          bot_id: string
+          conditions?: Json | null
+          created_at?: string
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          priority?: number
+          stage_id: string
+          trigger_type?: string
+          updated_at?: string
+        }
+        Update: {
+          bot_id?: string
+          conditions?: Json | null
+          created_at?: string
+          delay_minutes?: number
+          id?: string
+          is_active?: boolean
+          priority?: number
+          stage_id?: string
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_stage_triggers_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "bots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bot_stage_triggers_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bot_versions: {
+        Row: {
+          bot_id: string
+          flow_json: Json
+          id: string
+          published_at: string
+          version: number
+        }
+        Insert: {
+          bot_id: string
+          flow_json: Json
+          id?: string
+          published_at?: string
+          version: number
+        }
+        Update: {
+          bot_id?: string
+          flow_json?: Json
+          id?: string
+          published_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bot_versions_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "bots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bots: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          current_version: number
+          description: string | null
+          flow_json: Json
+          id: string
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          current_version?: number
+          description?: string | null
+          flow_json?: Json
+          id?: string
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          current_version?: number
+          description?: string | null
+          flow_json?: Json
+          id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       clinicas: {
         Row: {
           ativa: boolean
