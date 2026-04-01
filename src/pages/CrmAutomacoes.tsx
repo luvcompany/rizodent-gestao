@@ -62,7 +62,7 @@ export default function CrmAutomacoes() {
   const [newPipelineColor, setNewPipelineColor] = useState("#6366f1");
   const [useCustomPipelineColor, setUseCustomPipelineColor] = useState(false);
 
-  const [leaveUnread, setLeaveUnread] = useState<Record<string, boolean>>({});
+  
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
