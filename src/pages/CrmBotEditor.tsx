@@ -306,6 +306,7 @@ function BotEditorInner() {
           <NodePropertiesPanel
             node={selectedNode}
             onUpdate={handleNodeDataUpdate}
+            onDelete={handleDeleteNode}
             onClose={() => setSelectedNode(null)}
           />
         )}
