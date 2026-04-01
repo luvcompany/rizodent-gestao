@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
   Send, Paperclip, Mic, FileText, Image, File, Video,
-  Square, X, Loader2, Clock, AlertTriangle, Pause, Play
+  Square, X, Loader2, Clock, AlertTriangle, Pause, Play, Bot
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,9 +36,10 @@ type ChatInputProps = {
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
+  onOpenBotPanel?: () => void;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt, onOpenBotPanel }: ChatInputProps) {
   const { profile } = useAuth();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
@@ -577,6 +578,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
           <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
             <FileText size={20} />
+          </button>
+
+          <button onClick={onOpenBotPanel} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
+            <Bot size={20} />
           </button>
 
           {newMessage.trim() || attachedFile ? (

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 
 import ChatInput from "@/components/chat/ChatInput";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
@@ -27,8 +28,7 @@ import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import LeadAdInfo from "@/components/chat/LeadAdInfo";
 import TaskPanel from "@/components/chat/TaskPanel";
-import LeadBotPanel from "@/components/chat/LeadBotPanel";
-import { ArrowLeft, FileText, Tag, Search } from "lucide-react";
+import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2 } from "lucide-react";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
 
@@ -96,6 +96,95 @@ export default function CrmConversa() {
     await chat.sendTemplate(template, lead?.phone || null);
   }, [chat, lead]);
 
+  // ===== Bot Panel State =====
+  const [botSheetOpen, setBotSheetOpen] = useState(false);
+  const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
+  const [selectedBotId, setSelectedBotId] = useState("");
+  const [startingBot, setStartingBot] = useState(false);
+  const [activeExecution, setActiveExecution] = useState<{
+    id: string;
+    status: string;
+    bot_name?: string;
+  } | null>(null);
+
+  // Fetch published bots
+  useEffect(() => {
+    supabase
+      .from("bots")
+      .select("id, name")
+      .eq("status", "published")
+      .order("name")
+      .then(({ data }) => { if (data) setBots(data); });
+  }, []);
+
+  // Check for active execution
+  const checkExecution = useCallback(async () => {
+    if (!id) return;
+    const { data } = await supabase
+      .from("bot_executions")
+      .select("id, status, current_node_id, bots(name)")
+      .eq("lead_id", id)
+      .in("status", ["active", "waiting_reply"])
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      setActiveExecution({
+        id: data.id,
+        status: data.status,
+        bot_name: (data as any).bots?.name,
+      });
+    } else {
+      setActiveExecution(null);
+    }
+  }, [id]);
+
+  useEffect(() => { checkExecution(); }, [checkExecution]);
+
+  // Realtime subscription for bot executions
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`bot-exec-${id}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "bot_executions",
+        filter: `lead_id=eq.${id}`,
+      }, () => checkExecution())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [id, checkExecution]);
+
+  const handleStartBot = async () => {
+    if (!selectedBotId || !id) { toast.error("Selecione um bot"); return; }
+    setStartingBot(true);
+    try {
+      const { error } = await supabase.functions.invoke("bot-engine", {
+        body: { leadId: id, botId: selectedBotId, trigger: "manual_start" },
+      });
+      if (error) throw error;
+      toast.success("Bot iniciado!");
+      setSelectedBotId("");
+      setBotSheetOpen(false);
+      checkExecution();
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao iniciar bot");
+    } finally {
+      setStartingBot(false);
+    }
+  };
+
+  const handleStopBot = async () => {
+    if (!activeExecution) return;
+    await supabase
+      .from("bot_executions")
+      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+      .eq("id", activeExecution.id);
+    toast.success("Bot encerrado");
+    setActiveExecution(null);
+  };
+
   if (chat.loading && leadLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
@@ -117,7 +206,7 @@ export default function CrmConversa() {
   return (
     <div className="flex overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* LEFT COLUMN - Chat (70%) */}
-      <div className="flex flex-col w-[70%] border-r border-border">
+      <div className="flex flex-col w-[70%] border-r border-border relative">
         {/* Chat Header */}
         <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
           <button onClick={() => navigate("/crm")} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -208,7 +297,25 @@ export default function CrmConversa() {
             onMessageSent={chat.handleOptimisticMessage}
             onMessageError={chat.handleMessageError}
             lastInboundAt={chat.lastInboundAt}
+            onOpenBotPanel={() => setBotSheetOpen(true)}
           />
+        )}
+
+        {/* Active Bot Badge — bottom-right corner of chat area */}
+        {activeExecution && (
+          <div className="absolute bottom-20 right-4 z-10 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-lg">
+            <Badge variant="default" className="gap-1.5 bg-primary">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <Bot size={12} />
+              {activeExecution.bot_name || "Bot"}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              {activeExecution.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
+            </span>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={handleStopBot}>
+              <Square size={10} className="mr-1" /> Parar
+            </Button>
+          </div>
         )}
       </div>
 
@@ -279,9 +386,6 @@ export default function CrmConversa() {
           onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
         />
 
-        {/* Bot Panel */}
-        <LeadBotPanel leadId={lead.id} />
-
         {/* Task Panel */}
         <TaskPanel leadId={lead.id} />
 
@@ -325,6 +429,55 @@ export default function CrmConversa() {
           </div>
         </div>
       </div>
+
+      {/* Bot Selection Sheet */}
+      <Sheet open={botSheetOpen} onOpenChange={setBotSheetOpen}>
+        <SheetContent side="bottom" className="max-h-[300px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Bot size={18} /> Iniciar Bot
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-3">
+            {activeExecution ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Badge variant="default" className="gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                    Bot ativo
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">{activeExecution.bot_name}</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Status: {activeExecution.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
+                </p>
+                <Button variant="destructive" size="sm" onClick={handleStopBot} className="gap-1.5">
+                  <Square size={12} /> Encerrar Bot
+                </Button>
+              </div>
+            ) : bots.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum bot publicado</p>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Select value={selectedBotId} onValueChange={setSelectedBotId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Selecionar bot..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bots.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button onClick={handleStartBot} disabled={!selectedBotId || startingBot} className="gap-1.5">
+                  {startingBot ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                  Iniciar
+                </Button>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Forward Dialog */}
       <ForwardMessageDialog

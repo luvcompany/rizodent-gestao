@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
-import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.99.1/cors";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -26,7 +30,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { leadId, botId, trigger, nodeId, executionId, replyText } = body;
+    const { leadId, botId, trigger, executionId, replyText } = body;
 
     if (!leadId || !trigger) {
       return json({ error: "Missing leadId or trigger" }, 400);
@@ -91,7 +95,7 @@ Deno.serve(async (req) => {
       if (execError) return json({ error: execError.message }, 500);
 
       // Execute from start node
-      const result = await executeFlow(supabase, execution.id, flowJson, startNode.id, leadId, {});
+      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, startNode.id, leadId, {});
       return json({ success: true, executionId: execution.id, ...result });
     }
 
@@ -138,12 +142,11 @@ Deno.serve(async (req) => {
       );
 
       if (!replyEdge) {
-        // No reply path, complete
         await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", execution.id);
         return json({ completed: true, reason: "no_reply_path" });
       }
 
-      const result = await executeFlow(supabase, execution.id, flowJson, replyEdge.target, leadId, variables);
+      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, replyEdge.target, leadId, variables);
       return json({ success: true, ...result });
     }
 
@@ -154,9 +157,41 @@ Deno.serve(async (req) => {
   }
 });
 
+// ===== Send message via the shared send-whatsapp-message edge function =====
+async function sendViaWhatsApp(
+  supabaseUrl: string,
+  serviceKey: string,
+  authHeader: string,
+  payload: Record<string, any>
+) {
+  const url = `${supabaseUrl}/functions/v1/send-whatsapp-message`;
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: authHeader,
+        apikey: serviceKey,
+      },
+      body: JSON.stringify(payload),
+    });
+    const result = await resp.json();
+    if (!resp.ok) {
+      console.error("send-whatsapp-message error:", JSON.stringify(result));
+    }
+    return result;
+  } catch (err) {
+    console.error("send-whatsapp-message call error:", err);
+    return { error: err.message };
+  }
+}
+
 // ===== Flow execution engine =====
 async function executeFlow(
   supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  authHeader: string,
   executionId: string,
   flowJson: any,
   startNodeId: string,
@@ -168,7 +203,7 @@ async function executeFlow(
   let currentNodeId = startNodeId;
   let vars = { ...variables };
   let stepsExecuted = 0;
-  const MAX_STEPS = 100; // safety
+  const MAX_STEPS = 100;
 
   // Get lead data
   const { data: lead } = await supabase.from("crm_leads").select("*").eq("id", leadId).single();
@@ -176,18 +211,6 @@ async function executeFlow(
     await supabase.from("bot_executions").update({ status: "error", completed_at: new Date().toISOString() }).eq("id", executionId);
     return { reason: "lead_not_found" };
   }
-
-  // Get WhatsApp credentials
-  const { data: integration } = await supabase
-    .from("integrations")
-    .select("config")
-    .eq("key", "whatsapp")
-    .eq("status", "connected")
-    .limit(1)
-    .single();
-
-  const waToken = Deno.env.get("WHATSAPP_TOKEN");
-  const waPhoneId = integration?.config?.phone_number_id || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
 
   while (currentNodeId && stepsExecuted < MAX_STEPS) {
     stepsExecuted++;
@@ -206,10 +229,9 @@ async function executeFlow(
     await supabase.from("bot_executions").update({ current_node_id: currentNodeId, variables: vars }).eq("id", executionId);
 
     // Execute node
-    const result = await executeNode(supabase, node, lead, vars, waToken, waPhoneId, executionId);
+    const result = await executeNode(supabase, supabaseUrl, serviceKey, authHeader, node, lead, vars, executionId);
 
     if (result.stop) {
-      // Node requires stopping (wait_reply, delay, transfer)
       await supabase.from("bot_executions").update({
         status: result.status || "waiting_reply",
         current_node_id: currentNodeId,
@@ -226,17 +248,14 @@ async function executeFlow(
     let nextNodeId: string | null = null;
 
     if (result.outputHandle) {
-      // Specific handle (condition true/false, wait_reply reply/timeout)
       const edge = edges.find((e: any) => e.source === currentNodeId && e.sourceHandle === result.outputHandle);
       nextNodeId = edge?.target || null;
     } else {
-      // Default: first edge without specific handle or any edge
       const edge = edges.find((e: any) => e.source === currentNodeId && (!e.sourceHandle || e.sourceHandle === null));
       nextNodeId = edge?.target || null;
     }
 
     if (!nextNodeId) {
-      // No more nodes, complete
       await supabase.from("bot_executions").update({
         status: "completed",
         completed_at: new Date().toISOString(),
@@ -249,7 +268,6 @@ async function executeFlow(
     currentNodeId = nextNodeId;
   }
 
-  // Max steps reached
   await supabase.from("bot_executions").update({
     status: "error",
     completed_at: new Date().toISOString(),
@@ -260,11 +278,12 @@ async function executeFlow(
 
 async function executeNode(
   supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  authHeader: string,
   node: any,
   lead: any,
   variables: Record<string, any>,
-  waToken: string | undefined,
-  waPhoneId: string | undefined,
   executionId: string
 ): Promise<{
   stop?: boolean;
@@ -275,7 +294,6 @@ async function executeNode(
 }> {
   const data = node.data || {};
 
-  // Replace variables in text
   const replaceVars = (text: string): string => {
     if (!text) return text;
     return text
@@ -291,19 +309,16 @@ async function executeNode(
 
   switch (node.type) {
     case "start":
-      return {}; // Just pass through
+      return {};
 
     case "send_text": {
       const text = replaceVars(data.text || "");
-      if (text && lead.phone && waToken && waPhoneId) {
-        await sendWhatsAppMessage(waToken, waPhoneId, lead.phone, { type: "text", text: { body: text } });
-        // Save message to DB
-        await supabase.from("messages").insert({
+      if (text && lead.phone) {
+        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
           lead_id: lead.id,
-          content: text,
+          to: lead.phone,
           type: "text",
-          direction: "outbound",
-          status: "sent",
+          message: text,
         });
       }
       return {};
@@ -311,35 +326,26 @@ async function executeNode(
 
     case "send_image": {
       const caption = replaceVars(data.caption || "");
-      if (data.imageUrl && lead.phone && waToken && waPhoneId) {
-        await sendWhatsAppMessage(waToken, waPhoneId, lead.phone, {
-          type: "image",
-          image: { link: data.imageUrl, caption },
-        });
-        await supabase.from("messages").insert({
+      if (data.imageUrl && lead.phone) {
+        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
           lead_id: lead.id,
-          content: caption || null,
-          media_url: data.imageUrl,
+          to: lead.phone,
           type: "image",
-          direction: "outbound",
-          status: "sent",
+          media_url: data.imageUrl,
+          message: caption || undefined,
         });
       }
       return {};
     }
 
     case "send_audio": {
-      if (data.audioUrl && lead.phone && waToken && waPhoneId) {
-        await sendWhatsAppMessage(waToken, waPhoneId, lead.phone, {
-          type: "audio",
-          audio: { link: data.audioUrl },
-        });
-        await supabase.from("messages").insert({
+      if (data.audioUrl && lead.phone) {
+        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
           lead_id: lead.id,
-          media_url: data.audioUrl,
+          to: lead.phone,
           type: "audio",
-          direction: "outbound",
-          status: "sent",
+          media_url: data.audioUrl,
+          audio_voice: true,
         });
       }
       return {};
@@ -347,18 +353,13 @@ async function executeNode(
 
     case "send_file": {
       const caption = replaceVars(data.caption || "");
-      if (data.fileUrl && lead.phone && waToken && waPhoneId) {
-        await sendWhatsAppMessage(waToken, waPhoneId, lead.phone, {
-          type: "document",
-          document: { link: data.fileUrl, caption },
-        });
-        await supabase.from("messages").insert({
+      if (data.fileUrl && lead.phone) {
+        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
           lead_id: lead.id,
-          content: caption || null,
-          media_url: data.fileUrl,
+          to: lead.phone,
           type: "document",
-          direction: "outbound",
-          status: "sent",
+          media_url: data.fileUrl,
+          message: caption || undefined,
         });
       }
       return {};
@@ -366,18 +367,13 @@ async function executeNode(
 
     case "send_video": {
       const caption = replaceVars(data.caption || "");
-      if (data.videoUrl && lead.phone && waToken && waPhoneId) {
-        await sendWhatsAppMessage(waToken, waPhoneId, lead.phone, {
-          type: "video",
-          video: { link: data.videoUrl, caption },
-        });
-        await supabase.from("messages").insert({
+      if (data.videoUrl && lead.phone) {
+        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
           lead_id: lead.id,
-          content: caption || null,
-          media_url: data.videoUrl,
+          to: lead.phone,
           type: "video",
-          direction: "outbound",
-          status: "sent",
+          media_url: data.videoUrl,
+          message: caption || undefined,
         });
       }
       return {};
@@ -390,20 +386,14 @@ async function executeNode(
       if (unit === "minutes") ms = amount * 60 * 1000;
       if (unit === "hours") ms = amount * 3600 * 1000;
 
-      // For short delays (< 30s), wait inline
       if (ms <= 30000) {
         await new Promise((r) => setTimeout(r, ms));
         return {};
       }
-
-      // For longer delays, stop and schedule a continuation
-      // In a real system you'd use pg_cron. For now, we'll still wait inline up to 5min.
       if (ms <= 300000) {
         await new Promise((r) => setTimeout(r, ms));
         return {};
       }
-
-      // Too long, mark as waiting
       return { stop: true, status: "active", reason: "delay_too_long" };
     }
 
@@ -441,11 +431,9 @@ async function executeNode(
     case "move_stage": {
       if (data.stageId && data.stageId !== lead.stage_id) {
         await supabase.from("crm_leads").update({ stage_id: data.stageId }).eq("id", lead.id);
-        // Record history
         await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
           .eq("lead_id", lead.id).eq("stage_id", lead.stage_id).is("exited_at", null);
         await supabase.from("crm_lead_stage_history").insert({ lead_id: lead.id, stage_id: data.stageId });
-        // System message
         const { data: stages } = await supabase.from("crm_stages").select("id, name").in("id", [lead.stage_id, data.stageId]);
         const fromName = stages?.find((s: any) => s.id === lead.stage_id)?.name || "?";
         const toName = stages?.find((s: any) => s.id === data.stageId)?.name || "?";
@@ -510,30 +498,5 @@ async function executeNode(
 
     default:
       return {};
-  }
-}
-
-async function sendWhatsAppMessage(token: string, phoneNumberId: string, to: string, messagePayload: any) {
-  const phone = to.replace(/\D/g, "");
-  try {
-    const resp = await fetch(`https://graph.facebook.com/v25.0/${phoneNumberId}/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: phone,
-        ...messagePayload,
-      }),
-    });
-    const result = await resp.json();
-    if (!resp.ok) {
-      console.error("WhatsApp API error:", JSON.stringify(result));
-    }
-    return result;
-  } catch (err) {
-    console.error("WhatsApp send error:", err);
   }
 }
