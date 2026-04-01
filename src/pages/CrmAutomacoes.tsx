@@ -480,7 +480,8 @@ export default function CrmAutomacoes() {
                   </label>
                 </div>
               </div>
-            )
+            )}
+
             {autoForm.action_type === "move_stage" && (
               <div>
                 <Label>Mover para</Label>
