@@ -158,13 +158,14 @@ export default function CrmAutomacoes() {
       action_config: autoForm.action_config as unknown as import("@/integrations/supabase/types").Json,
     };
     if (autoForm.editId) {
-      await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId);
+      const { data } = await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId).select().single();
+      if (data) setAutomations(prev => prev.map(a => a.id === autoForm.editId ? data as Automation : a));
     } else {
-      await supabase.from("crm_automations").insert(payload);
+      const { data } = await supabase.from("crm_automations").insert(payload).select().single();
+      if (data) setAutomations(prev => [...prev, data as Automation]);
     }
     toast.success("Automação salva");
     setAutoModalOpen(false);
-    fetchData(selectedPipelineId);
   };
 
   const handleDeleteAutomation = async (id: string) => {
