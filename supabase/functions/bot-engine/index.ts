@@ -552,12 +552,14 @@ async function executeNode(
     case "create_task": {
       if (data.title) {
         const dueDate = new Date(Date.now() + (data.dueHours || 24) * 3600 * 1000).toISOString();
+        const taskNotes = data.taskNotes ? replaceVars(data.taskNotes) : null;
         await supabase.from("crm_tasks").insert({
           lead_id: lead.id,
           title: replaceVars(data.title),
           due_date: dueDate,
           status: "pending",
-          type: "personalizado",
+          type: data.taskType || "personalizado",
+          notes: taskNotes,
         });
         await supabase.from("crm_leads").update({ has_task: true }).eq("id", lead.id);
       }
