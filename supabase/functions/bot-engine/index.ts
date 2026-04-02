@@ -21,12 +21,15 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Validate auth
+    // Validate auth - accept both user JWT and service role key
     const authHeader = req.headers.get("Authorization") || "";
     const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return json({ error: "Unauthorized" }, 401);
+    const isServiceKey = token === serviceKey;
+    if (!isServiceKey) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !user) {
+        return json({ error: "Unauthorized" }, 401);
+      }
     }
 
     const body = await req.json();
