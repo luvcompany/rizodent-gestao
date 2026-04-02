@@ -261,9 +261,9 @@ export default function CrmAutomacoes() {
               onClick={async () => {
                 const type = prompt("Tipo da fonte (whatsapp, instagram, facebook, manual, website):");
                 if (!type || !selectedPipelineId) return;
-                await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() });
+                const { data } = await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() }).select().single();
                 toast.success("Fonte adicionada");
-                fetchData(selectedPipelineId);
+                if (data) setChannels(prev => [...prev, data as FunnelChannel]);
               }}
               className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors"
             >
