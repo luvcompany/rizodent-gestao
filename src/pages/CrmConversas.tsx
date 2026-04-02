@@ -380,7 +380,7 @@ export default function CrmConversas() {
         {/* CENTER PANEL - Chat */}
         <ResizablePanel defaultSize={rightPanelVisible ? 46 : 76} minSize={38} className="min-w-0 overflow-hidden">
           {selectedLeadId && selectedLead ? (
-            <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden">
+            <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden relative">
               {/* Chat header */}
               <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
