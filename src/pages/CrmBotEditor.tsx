@@ -9,6 +9,7 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  useUpdateNodeInternals,
   type Connection,
   type Node,
   type Edge,
