@@ -29,7 +29,7 @@ import TaskPanel from "@/components/chat/TaskPanel";
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square
 } from "lucide-react";
 import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
@@ -70,9 +70,60 @@ export default function CrmConversas() {
   const [filters, setFilters] = useState<ConversationFilterValues>(emptyFilters);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
+  const [activeExecution, setActiveExecution] = useState<{
+    id: string; status: string; bot_name?: string;
+  } | null>(null);
 
   // Unified chat hook
   const chat = useChatConversation(selectedLeadId);
+
+  // ===== Bot Active Execution State =====
+  const checkExecution = useCallback(async () => {
+    if (!selectedLeadId) { setActiveExecution(null); return; }
+    const { data } = await supabase
+      .from("bot_executions")
+      .select("id, status, current_node_id, bots(name)")
+      .eq("lead_id", selectedLeadId)
+      .in("status", ["active", "waiting_reply"])
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      setActiveExecution({
+        id: data.id,
+        status: data.status,
+        bot_name: (data as any).bots?.name,
+      });
+    } else {
+      setActiveExecution(null);
+    }
+  }, [selectedLeadId]);
+
+  useEffect(() => { checkExecution(); }, [checkExecution]);
+
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    const channel = supabase
+      .channel(`bot-exec-conv-${selectedLeadId}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "bot_executions",
+        filter: `lead_id=eq.${selectedLeadId}`,
+      }, () => checkExecution())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedLeadId, checkExecution]);
+
+  const handleStopBot = async () => {
+    if (!activeExecution) return;
+    await supabase
+      .from("bot_executions")
+      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+      .eq("id", activeExecution.id);
+    toast.success("Bot encerrado");
+    setActiveExecution(null);
+  };
 
   // Fetch leads list
   useEffect(() => {
@@ -329,7 +380,7 @@ export default function CrmConversas() {
         {/* CENTER PANEL - Chat */}
         <ResizablePanel defaultSize={rightPanelVisible ? 46 : 76} minSize={38} className="min-w-0 overflow-hidden">
           {selectedLeadId && selectedLead ? (
-            <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden">
+            <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden relative">
               {/* Chat header */}
               <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
@@ -424,6 +475,23 @@ export default function CrmConversas() {
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
               />
+
+              {/* Active Bot Badge */}
+              {activeExecution && (
+                <div className="absolute bottom-20 right-4 z-10 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-lg">
+                  <Badge variant="default" className="gap-1.5 bg-primary">
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                    <Bot size={12} />
+                    {activeExecution.bot_name || "Bot"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {activeExecution.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
+                  </span>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={handleStopBot}>
+                    <Square size={10} className="mr-1" /> Parar
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">

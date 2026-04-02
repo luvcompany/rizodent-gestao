@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
         xls: "application/vnd.ms-excel",
         xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       };
-      const contentType = contentTypeMap[ext] || fileResponse.headers.get("content-type") || "application/octet-stream";
+      const contentType = contentTypeMap[ext] || fileBlob.type || "application/octet-stream";
 
       // Force audio type detection from file extension/content-type
       const audioExtensions = new Set(["ogg", "oga", "opus", "mp3", "m4a", "wav", "aac", "webm", "amr"]);
