@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useState, useRef } from "react";
-import { toast } from "sonner";
+import { useCallback, useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { X, Trash2, Mic, Square, Play, Pause, Plus, Minus, Upload } from "lucide-react";
+import { X, Trash2, Plus, Minus, Upload } from "lucide-react";
 import { NODE_DEFINITIONS } from "@/types/bot";
 import VariableTextarea from "./VariableTextarea";
+import BotAudioRecorder from "./BotAudioRecorder";
 import type { Node } from "@xyflow/react";
 import { supabase } from "@/integrations/supabase/client";
+import { getUploadedFileUrl } from "@/lib/mediaUtils";
 
 type Props = {
   node: Node;
@@ -21,18 +22,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
   const def = NODE_DEFINITIONS.find((d) => d.type === node.type);
   const [stages, setStages] = useState<{ id: string; name: string; color: string }[]>([]);
   const [templates, setTemplates] = useState<{ id: string; name: string; body_text: string | null; buttons: any }[]>([]);
-
-  // Audio recording state
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     supabase.from("crm_stages").select("id, name, color").order("position").then(({ data }) => {
@@ -57,108 +47,6 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     [node, onUpdate]
   );
 
-  // Audio recording using opus-media-recorder (same as chat)
-  const streamRef = useRef<MediaStream | null>(null);
-  const recordingDiscardedRef = useRef(false);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      recordingDiscardedRef.current = false;
-
-      const OpusMediaRecorder = (await import("opus-media-recorder")).default;
-      const workerOptions = {
-        OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
-        WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
-        encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
-      };
-
-      const recorder = new OpusMediaRecorder(
-        stream,
-        { mimeType: "audio/ogg;codecs=opus" },
-        workerOptions
-      );
-      mediaRecorderRef.current = recorder;
-      audioChunksRef.current = [];
-      setRecordingTime(0);
-
-      recorder.ondataavailable = (e: any) => {
-        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-        streamRef.current = null;
-        if (timerRef.current) clearInterval(timerRef.current);
-
-        if (recordingDiscardedRef.current) {
-          recordingDiscardedRef.current = false;
-          audioChunksRef.current = [];
-          return;
-        }
-
-        const blob = new Blob(audioChunksRef.current, { type: "audio/ogg;codecs=opus" });
-        setAudioBlob(blob);
-        setAudioPreviewUrl(URL.createObjectURL(blob));
-      };
-
-      recorder.start();
-      setIsRecording(true);
-      timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
-    } catch {
-      toast.error("Não foi possível acessar o microfone");
-    }
-  };
-
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
-  };
-
-  const discardRecording = () => {
-    recordingDiscardedRef.current = true;
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
-    setIsRecording(false);
-    setAudioBlob(null);
-    setAudioPreviewUrl(null);
-    setRecordingTime(0);
-    if (timerRef.current) clearInterval(timerRef.current);
-  };
-
-  const uploadAudio = async (targetField = "audioUrl") => {
-    if (!audioBlob) return;
-    setUploading(true);
-    const fileName = `bot-audio/${Date.now()}.ogg`;
-    const { data, error } = await supabase.storage.from("chat-media").upload(fileName, audioBlob, { contentType: "audio/ogg;codecs=opus" });
-    if (!error && data) {
-      const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(data.path);
-      update(targetField, urlData.publicUrl);
-    }
-    setUploading(false);
-    setAudioBlob(null);
-    setAudioPreviewUrl(null);
-  };
-
-  const togglePlayPreview = () => {
-    if (!audioPreviewUrl) return;
-    if (!audioPlayerRef.current) {
-      audioPlayerRef.current = new Audio(audioPreviewUrl);
-      audioPlayerRef.current.onended = () => setIsPlaying(false);
-    }
-    if (isPlaying) {
-      audioPlayerRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioPlayerRef.current.play();
-      setIsPlaying(true);
-    }
-  };
-
-  const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
-
   const handleTemplateSelect = (templateId: string) => {
     if (!templateId) {
       updateMultiple({ templateId: "", templateName: "", text: "", templateButtons: [] });
@@ -178,8 +66,8 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     const fileName = `bot-files/${Date.now()}.${ext}`;
     const { data, error } = await supabase.storage.from("chat-media").upload(fileName, file);
     if (!error && data) {
-      const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(data.path);
-      update(targetField, urlData.publicUrl);
+      const signedUrl = await getUploadedFileUrl(data.path);
+      update(targetField, signedUrl);
     }
     setUploading(false);
   };
@@ -187,42 +75,11 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
   // Render audio recorder component
   const renderAudioRecorder = (urlField = "audioUrl") => (
     <div className="space-y-2">
-      <Label className="text-xs">Gravar Áudio</Label>
-      {isRecording ? (
-        <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20">
-          <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-          <span className="text-xs font-mono text-destructive">{formatTime(recordingTime)}</span>
-          <div className="flex-1" />
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={discardRecording} title="Descartar">
-            <Trash2 size={14} />
-          </Button>
-          <Button variant="destructive" size="sm" onClick={stopRecording} className="gap-1 h-7">
-            <Square size={12} /> Parar
-          </Button>
-        </div>
-      ) : audioPreviewUrl ? (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={togglePlayPreview}>
-            {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-          </Button>
-          <span className="text-xs text-muted-foreground flex-1">Áudio gravado</span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={discardRecording}>
-            <Trash2 size={14} />
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => uploadAudio(urlField)} disabled={uploading} className="h-7 text-xs">
-            {uploading ? "..." : "Salvar"}
-          </Button>
-        </div>
-      ) : (
-        <Button variant="outline" size="sm" onClick={startRecording} className="gap-1.5 w-full">
-          <Mic size={14} /> Iniciar gravação
-        </Button>
-      )}
-      {(node.data[urlField] as string) && (
-        <div className="mt-1">
-          <audio src={node.data[urlField] as string} controls className="w-full h-8" />
-        </div>
-      )}
+      <Label className="text-xs">Áudio</Label>
+      <BotAudioRecorder
+        value={(node.data[urlField] as string) || ""}
+        onChange={(url) => update(urlField, url)}
+      />
     </div>
   );
 
