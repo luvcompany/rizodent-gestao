@@ -359,6 +359,13 @@ async function executeNode(
       last_reply: variables.last_reply || "",
     };
 
+    // Add all saved custom variables (from saveToField in wait_reply nodes)
+    Object.entries(variables).forEach(([key, value]) => {
+      if (!replacements[key]) {
+        replacements[key] = String(value || "");
+      }
+    });
+
     return Object.entries(replacements).reduce((result, [key, value]) => {
       const bracketPattern = new RegExp(`\\[${escapeRegExp(key)}\\]`, "gi");
       const moustachePattern = new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, "gi");
