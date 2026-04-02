@@ -136,6 +136,11 @@ Deno.serve(async (req) => {
 
       // Update variables with reply
       const variables = { ...(execution.variables as any || {}), last_reply: replyText || "" };
+      // If the current node has saveToField, store the reply under that name
+      const currentNode = (flowJson.nodes || []).find((n: any) => n.id === execution.current_node_id);
+      if (currentNode?.data?.saveToField) {
+        variables[currentNode.data.saveToField] = replyText || "";
+      }
       await supabase.from("bot_executions").update({ variables, status: "active" }).eq("id", execution.id);
 
       // Determine which edge to follow based on reply text
