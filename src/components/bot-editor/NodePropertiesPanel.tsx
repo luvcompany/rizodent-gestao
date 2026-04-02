@@ -524,20 +524,92 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
                 </div>
               </div>
             )}
-            {menuType === "list" && (
-              <div>
-                <Label className="text-xs">Título do menu</Label>
-                <Input value={(node.data.buttonLabel as string) || "Menu"} onChange={(e) => update("buttonLabel", e.target.value)} className="mt-1 h-8 text-xs" />
-                <Label className="text-xs mt-2 block">Itens da lista (um por linha: título | descrição)</Label>
-                <VariableTextarea
-                  value={(node.data.listItems as string) || ""}
-                  onChange={(v) => update("listItems", v)}
-                  placeholder={"Opção 1 | Descrição\nOpção 2 | Descrição"}
-                  rows={4}
-                  className="mt-1"
-                />
-              </div>
-            )}
+            {menuType === "list" && (() => {
+              const sections = (node.data.listSections as { title: string; rows: { id: string; title: string; description: string }[] }[]) || [{ title: "Seção 1", rows: [{ id: "1", title: "Item 1", description: "" }] }];
+              const updateSections = (newSections: typeof sections) => update("listSections", newSections);
+              return (
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-xs">Cabeçalho (opcional)</Label>
+                    <Input value={(node.data.headerText as string) || ""} onChange={(e) => update("headerText", e.target.value)} className="mt-1 h-8 text-xs" placeholder="Título da mensagem..." />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Rodapé (opcional)</Label>
+                    <Input value={(node.data.footerText as string) || ""} onChange={(e) => update("footerText", e.target.value)} className="mt-1 h-8 text-xs" placeholder="Rodapé..." />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Texto do botão de ação</Label>
+                    <Input value={(node.data.buttonLabel as string) || "Menu"} onChange={(e) => update("buttonLabel", e.target.value)} className="mt-1 h-8 text-xs" placeholder="Ver opções" />
+                  </div>
+
+                  {sections.map((section, si) => (
+                    <div key={si} className="border border-primary/30 rounded-lg p-2.5 space-y-2 bg-primary/5">
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={section.title}
+                          onChange={(e) => {
+                            const ns = [...sections];
+                            ns[si] = { ...ns[si], title: e.target.value };
+                            updateSections(ns);
+                          }}
+                          placeholder="Título da seção"
+                          className="h-7 text-xs font-semibold flex-1"
+                        />
+                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-destructive" onClick={() => updateSections(sections.filter((_, j) => j !== si))} disabled={sections.length <= 1}>
+                          <Trash2 size={12} />
+                        </Button>
+                      </div>
+
+                      {section.rows.map((row, ri) => (
+                        <div key={row.id} className="pl-2 border-l-2 border-primary/20 space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              value={row.title}
+                              onChange={(e) => {
+                                const ns = [...sections];
+                                ns[si] = { ...ns[si], rows: ns[si].rows.map((r, j) => j === ri ? { ...r, title: e.target.value } : r) };
+                                updateSections(ns);
+                              }}
+                              placeholder={`Opção ${ri + 1}`}
+                              className="h-7 text-xs flex-1"
+                            />
+                            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => {
+                              const ns = [...sections];
+                              ns[si] = { ...ns[si], rows: ns[si].rows.filter((_, j) => j !== ri) };
+                              updateSections(ns);
+                            }} disabled={section.rows.length <= 1}>
+                              <Minus size={12} />
+                            </Button>
+                          </div>
+                          <Input
+                            value={row.description}
+                            onChange={(e) => {
+                              const ns = [...sections];
+                              ns[si] = { ...ns[si], rows: ns[si].rows.map((r, j) => j === ri ? { ...r, description: e.target.value } : r) };
+                              updateSections(ns);
+                            }}
+                            placeholder="Descrição (opcional)"
+                            className="h-6 text-[10px] text-muted-foreground"
+                          />
+                        </div>
+                      ))}
+
+                      <Button variant="outline" size="sm" className="w-full gap-1 h-6 text-[10px]" onClick={() => {
+                        const ns = [...sections];
+                        ns[si] = { ...ns[si], rows: [...ns[si].rows, { id: String(Date.now()), title: "", description: "" }] };
+                        updateSections(ns);
+                      }}>
+                        <Plus size={10} /> Adicionar opção
+                      </Button>
+                    </div>
+                  ))}
+
+                  <Button variant="outline" size="sm" className="w-full gap-1 h-7 text-xs" onClick={() => updateSections([...sections, { title: "", rows: [{ id: String(Date.now()), title: "", description: "" }] }])}>
+                    <Plus size={12} /> Adicionar seção
+                  </Button>
+                </div>
+              );
+            })()}
             {renderTimeoutFields()}
           </div>
         );
