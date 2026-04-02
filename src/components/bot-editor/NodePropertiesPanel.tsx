@@ -50,14 +50,28 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
 
   const handleTemplateSelect = (templateId: string) => {
     if (!templateId) {
-      updateMultiple({ templateId: "", templateName: "", text: "", templateButtons: [] });
+      updateMultiple({ templateId: "", templateName: "", templateLanguage: "", text: "", templateButtons: [] });
       return;
     }
     const tpl = templates.find((t) => t.id === templateId);
     if (!tpl) return;
     const btns = Array.isArray(tpl.buttons) ? tpl.buttons.map((b: any, i: number) => ({ id: String(i + 1), title: b.text || b.title || `Botão ${i + 1}` })) : [];
-    updateMultiple({ templateId, templateName: tpl.name, text: tpl.body_text || "", templateButtons: btns });
+    updateMultiple({ templateId, templateName: tpl.name, templateLanguage: tpl.language || "pt_BR", text: tpl.body_text || "", templateButtons: btns });
   };
+
+  const displayTemplateName = (name: string) => name.replace(/_[a-z0-9]{4,8}$/, '');
+
+  const filteredTemplates = useMemo(() => {
+    if (!templateSearch.trim()) return templates;
+    const q = templateSearch.toLowerCase();
+    return templates.filter(t => t.name.toLowerCase().includes(q) || (t.body_text || "").toLowerCase().includes(q));
+  }, [templates, templateSearch]);
+
+  const selectedTemplate = useMemo(() => {
+    const tid = node.data.templateId as string;
+    if (!tid) return null;
+    return templates.find(t => t.id === tid) || null;
+  }, [node.data.templateId, templates]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField = "fileUrl") => {
     const file = e.target.files?.[0];
