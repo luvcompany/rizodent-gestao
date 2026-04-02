@@ -111,17 +111,17 @@ export default function CrmAutomacoes() {
 
   const handleAddStage = async () => {
     if (!newStageName || !selectedPipelineId) return;
-    const { error } = await supabase.from("crm_stages").insert({
+    const { data, error } = await supabase.from("crm_stages").insert({
       pipeline_id: selectedPipelineId, name: newStageName, color: newStageColor,
       position: stages.length,
-    });
+    }).select().single();
     if (error) { toast.error("Erro ao criar etapa"); return; }
     toast.success("Etapa criada");
     setNewStageOpen(false);
     setNewStageName("");
     setNewStageColor("#6366f1");
     setUseCustomStageColor(false);
-    fetchData(selectedPipelineId);
+    if (data) setStages(prev => [...prev, data as Stage]);
   };
 
   const handleAddPipeline = async () => {
@@ -142,9 +142,12 @@ export default function CrmAutomacoes() {
     if (!deleteStageId) return;
     const { error } = await supabase.from("crm_stages").delete().eq("id", deleteStageId);
     if (error) { toast.error("Erro ao excluir etapa. Mova os leads primeiro."); }
-    else { toast.success("Etapa excluída"); }
+    else {
+      toast.success("Etapa excluída");
+      setStages(prev => prev.filter(s => s.id !== deleteStageId));
+      setAutomations(prev => prev.filter(a => a.stage_id !== deleteStageId));
+    }
     setDeleteStageId(null);
-    fetchData(selectedPipelineId);
   };
 
   const handleSaveAutomation = async () => {
@@ -155,19 +158,20 @@ export default function CrmAutomacoes() {
       action_config: autoForm.action_config as unknown as import("@/integrations/supabase/types").Json,
     };
     if (autoForm.editId) {
-      await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId);
+      const { data } = await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId).select().single();
+      if (data) setAutomations(prev => prev.map(a => a.id === autoForm.editId ? data as Automation : a));
     } else {
-      await supabase.from("crm_automations").insert(payload);
+      const { data } = await supabase.from("crm_automations").insert(payload).select().single();
+      if (data) setAutomations(prev => [...prev, data as Automation]);
     }
     toast.success("Automação salva");
     setAutoModalOpen(false);
-    fetchData(selectedPipelineId);
   };
 
   const handleDeleteAutomation = async (id: string) => {
     await supabase.from("crm_automations").delete().eq("id", id);
     toast.success("Automação removida");
-    fetchData(selectedPipelineId);
+    setAutomations(prev => prev.filter(a => a.id !== id));
   };
 
   const getAutomationsForStage = (stageId: string) => automations.filter(a => a.stage_id === stageId);
@@ -247,7 +251,7 @@ export default function CrmAutomacoes() {
                     <button onClick={async () => {
                       await supabase.from("funnel_channels").delete().eq("id", ch.id);
                       toast.success("Fonte removida");
-                      fetchData(selectedPipelineId);
+                      setChannels(prev => prev.filter(c => c.id !== ch.id));
                     }}><Trash2 size={12} className="text-destructive cursor-pointer" /></button>
                   </div>
                 </div>
@@ -257,9 +261,9 @@ export default function CrmAutomacoes() {
               onClick={async () => {
                 const type = prompt("Tipo da fonte (whatsapp, instagram, facebook, manual, website):");
                 if (!type || !selectedPipelineId) return;
-                await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() });
+                const { data } = await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() }).select().single();
                 toast.success("Fonte adicionada");
-                fetchData(selectedPipelineId);
+                if (data) setChannels(prev => [...prev, data as FunnelChannel]);
               }}
               className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors"
             >
