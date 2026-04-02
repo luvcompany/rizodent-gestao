@@ -111,17 +111,17 @@ export default function CrmAutomacoes() {
 
   const handleAddStage = async () => {
     if (!newStageName || !selectedPipelineId) return;
-    const { error } = await supabase.from("crm_stages").insert({
+    const { data, error } = await supabase.from("crm_stages").insert({
       pipeline_id: selectedPipelineId, name: newStageName, color: newStageColor,
       position: stages.length,
-    });
+    }).select().single();
     if (error) { toast.error("Erro ao criar etapa"); return; }
     toast.success("Etapa criada");
     setNewStageOpen(false);
     setNewStageName("");
     setNewStageColor("#6366f1");
     setUseCustomStageColor(false);
-    fetchData(selectedPipelineId);
+    if (data) setStages(prev => [...prev, data as Stage]);
   };
 
   const handleAddPipeline = async () => {
