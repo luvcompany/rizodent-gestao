@@ -1,106 +1,72 @@
 
-# Construtor de Bots — Fase 1 (MVP)
 
-## Escopo da Fase 1
-Conforme o roadmap sugerido na especificação:
-- Editor canvas básico com React Flow
-- Blocos de texto/mídia (mensagem de texto, imagem, áudio, arquivo, vídeo)
-- Gatilho manual (operador inicia pelo chat)
-- Bloco "Aguardar Resposta" com timeout
-- Bloco "Condição (If/Else)" simples
-- Bloco "Pausa/Delay"
-- Blocos de ação CRM básicos (mover etapa, adicionar tag, adicionar nota)
-- Transferir para humano
+## Plan: Fix Template Names, Automations Page Stability, and Bot Trigger Execution
 
-## 1. Banco de Dados (Migration)
+### Problem Summary
+1. **Template names** show raw Meta suffixes like `_w9yunp` -- need to strip the last `_` segment
+2. **Automations page** calls `fetchData()` after every action, causing full re-render/reload
+3. **Bot automations don't execute** because:
+   - The stage move calls a non-existent `bot-trigger` function
+   - No code reads `crm_automations` table to execute configured actions (send_bot, send_template, etc.) when a lead enters a stage
 
-### Tabela `bots`
-- `id`, `name`, `description`, `status` (draft/published/archived)
-- `flow_json` (JSONB — nodes + edges do React Flow)
-- `current_version` (integer)
-- `created_by` (uuid)
-- `created_at`, `updated_at`
+---
 
-### Tabela `bot_versions`
-- `id`, `bot_id`, `version` (integer), `flow_json`, `published_at`
+### Step 1 -- Strip Suffix from Template Display Names
 
-### Tabela `bot_executions`
-- `id`, `bot_id`, `bot_version_id`, `lead_id`
-- `status` (active/waiting_reply/paused/completed/error)
-- `current_node_id` (text)
-- `variables` (JSONB — variáveis locais da sessão)
-- `started_at`, `updated_at`, `completed_at`
+**File**: `src/pages/CrmModelos.tsx`
 
-### Tabela `bot_execution_logs`
-- `id`, `execution_id`, `node_id`, `action`, `details` (JSONB), `created_at`
+Create a helper function that removes the last `_xxxxx` segment from template names (where the last segment looks like a random hash -- short alphanumeric suffix). Display the cleaned name in the template card (line 335) while keeping the raw name for API operations.
 
-### Tabela `bot_stage_triggers` (preparado para Fase 2)
-- `id`, `stage_id`, `bot_id`, `trigger_type` (on_enter/on_exit/on_timeout)
-- `delay_minutes`, `conditions` (JSONB), `priority`, `is_active`
+```typescript
+const displayName = (name: string) => {
+  // Remove last _segment if it looks like a random suffix (alphanumeric, ≤8 chars)
+  return name.replace(/_[a-z0-9]{4,8}$/, '');
+};
+```
 
-### RLS
-- Admin/Gerente: CRUD completo em bots
-- CRC: SELECT em bots, INSERT/UPDATE em executions
-- Todos autenticados: SELECT em executions vinculadas
+Apply on line 335: `{displayName(t.name)}`
 
-## 2. Frontend — Páginas e Componentes
+---
 
-### `/crm/bots` — Lista de Bots
-- Cards com nome, descrição, status (badge), data
-- Ações: criar, editar, duplicar, arquivar, excluir
-- Filtro por status
+### Step 2 -- Prevent Full Page Reload on CrmAutomacoes
 
-### `/crm/bots/:id` — Editor Canvas
-- **React Flow** como engine do canvas (instalar `@xyflow/react`)
-- Toolbar lateral esquerda com categorias de blocos (arrastar para canvas)
-- Painel de propriedades lateral direito (ao selecionar um bloco)
-- Toolbar superior: nome do bot, salvar, publicar, testar, desfazer/refazer
-- Minimap, controles de zoom, grid snap
-- Undo/Redo com histórico (50 ações)
+**File**: `src/pages/CrmAutomacoes.tsx`
 
-### Blocos da Fase 1:
-| Categoria | Blocos |
-|-----------|--------|
-| Início | Bloco Start (nó inicial obrigatório) |
-| Mensagem | Texto, Imagem+Texto, Áudio, Arquivo+Texto, Vídeo+Texto |
-| Lógica | Pausa/Delay, Aguardar Resposta, Condição (If/Else) |
-| Ação CRM | Mover Etapa, Adicionar/Remover Tag, Adicionar Nota |
-| Controle | Transferir para Humano |
+Instead of calling `fetchData(selectedPipelineId)` after every mutation (which re-fetches all pipelines, stages, automations, templates, bots, channels, followups), update state locally:
 
-### No Chat (`CrmConversa`)
-- Botão "Iniciar Bot" no painel lateral
-- Indicador "Bot ativo" no header da conversa
-- Botões pausar/encerrar bot
+- **Save automation**: After insert/update, add/update the automation in `automations` state directly
+- **Delete automation**: Remove from `automations` state directly
+- **Toggle automation**: Update in state directly
+- **Add stage**: Append to `stages` state
+- **Delete stage**: Remove from `stages` state
+- **Drag reorder**: Already updates state locally (keep as is)
+- Keep `fetchData` only for initial load and pipeline switching
 
-## 3. Backend — Edge Functions
+---
 
-### `bot-engine` (nova)
-- Recebe: `{ leadId, botId, trigger, nodeId? }`
-- Triggers suportados na Fase 1: `manual_start`, `continue` (após resposta do lead)
-- Lógica:
-  - Busca o flow_json do bot publicado
-  - Cria/continua `bot_execution`
-  - Executa nós sequencialmente até encontrar bloco de pausa (delay/aguardar resposta)
-  - Para blocos de mensagem: usa o mesmo `send-whatsapp-message` existente
-  - Para delay: agenda próxima execução (via pg_cron ou setTimeout)
-  - Para aguardar resposta: salva estado e aguarda webhook
-  - Registra logs em `bot_execution_logs`
+### Step 3 -- Fix Bot Trigger on Stage Move and Execute Automations
 
-### Integração no `whatsapp-webhook` (existente)
-- Ao receber mensagem inbound: verifica se há `bot_execution` ativa aguardando resposta
-- Se sim: chama `bot-engine` com trigger `continue`
+**File**: `src/hooks/useChatConversation.ts`
 
-## 4. Ordem de Implementação
-1. Migration do banco de dados (tabelas + RLS)
-2. Instalar `@xyflow/react`
-3. Página de lista de bots (`/crm/bots`)
-4. Editor canvas com blocos básicos (`/crm/bots/:id`)
-5. Edge Function `bot-engine`
-6. Integração no chat (iniciar/pausar/encerrar bot)
-7. Integração no webhook (continuar execução)
+The current code (lines 231-239) calls a non-existent `bot-trigger` function. Replace with:
 
-## Fases Futuras (não nesta implementação)
-- **Fase 2**: Gatilhos automáticos por etapa Kanban
-- **Fase 3**: List Message, botões interativos, templates HSM, reações
-- **Fase 4**: Switch, loop, goto, outro bot, webhook HTTP
-- **Fase 5**: Analytics e dashboard de execuções
+1. After moving a lead to a new stage, query `crm_automations` for automations matching `stage_id = newStageId` and `trigger_type = 'on_enter'` and `is_active = true`
+2. For each automation found:
+   - `send_bot`: Call `bot-engine` with `trigger: "manual_start"` and the configured `bot_id`
+   - `send_template`: Send the template via `send-whatsapp-message`
+   - `move_stage`: Move lead to target stage
+   - `webhook`: Call the configured URL
+3. Use `supabase.functions.invoke("bot-engine", ...)` instead of raw fetch to a non-existent endpoint
+
+Similarly, ensure automations with `trigger_type = 'on_create'` fire when leads are created (check if this path exists and fix if needed).
+
+---
+
+### Technical Details
+
+| File | Changes |
+|------|---------|
+| `src/pages/CrmModelos.tsx` | Add `displayName()` helper, use it in template card |
+| `src/pages/CrmAutomacoes.tsx` | Replace `fetchData()` calls in mutation handlers with local state updates |
+| `src/hooks/useChatConversation.ts` | Replace broken `bot-trigger` call with automation lookup + execution logic |
+
