@@ -49,8 +49,8 @@ function BotNode({ data, selected, type }: NodeProps) {
     });
     branchHandles.push({ id: "no-response", label: "Sem resposta", color: "#f97316" });
   } else if (hasMenuButtons) {
-    menuButtons.forEach((btn) => {
-      branchHandles.push({ id: `menu-${btn.id}`, label: btn.title, color: "#3b82f6" });
+    menuItems.forEach((btn) => {
+      branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "#3b82f6" });
     });
     branchHandles.push({ id: "no-response", label: "Sem resposta", color: "#f97316" });
   }
