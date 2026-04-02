@@ -145,7 +145,6 @@ Deno.serve(async (req) => {
 
       // Determine which edge to follow based on reply text
       const edges = flowJson.edges || [];
-      const currentNode = (flowJson.nodes || []).find((n: any) => n.id === execution.current_node_id);
       let nextEdge = null;
 
       // For template buttons or menu buttons: match reply text to button handle
