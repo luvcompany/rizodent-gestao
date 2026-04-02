@@ -38,6 +38,7 @@ function BotEditorInner() {
   const navigate = useNavigate();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const updateNodeInternals = useUpdateNodeInternals();
 
   const [botName, setBotName] = useState("Novo Bot");
   const [botStatus, setBotStatus] = useState("draft");
