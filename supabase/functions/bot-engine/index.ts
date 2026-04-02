@@ -590,24 +590,33 @@ async function executeNode(
     }
 
     case "send_menu": {
-      // Send interactive menu via WhatsApp
       if (lead.phone) {
-        const menuBody = replaceVars(data.body || data.text || "Escolha uma opção:");
+        const menuBody = replaceVars(data.bodyText || data.body || data.text || "Escolha uma opção:");
         const buttons = data.buttons || [];
+        const listSections = data.listSections || [];
         
-        if (data.menuType === "list" && data.sections) {
-          // List menu
+        if (data.menuType === "list" && listSections.length > 0) {
+          // Build WhatsApp list sections from structured data
+          const waSections = listSections.map((s: any) => ({
+            title: (s.title || "").slice(0, 24),
+            rows: (s.rows || []).map((r: any) => ({
+              id: r.id || String(Math.random()).slice(2, 10),
+              title: (r.title || "").slice(0, 24),
+              description: (r.description || "").slice(0, 72),
+            })),
+          }));
           await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
             lead_id: lead.id,
             to: lead.phone,
             type: "interactive",
             interactive_type: "list",
             body: menuBody,
-            button_text: data.buttonText || "Ver opções",
-            sections: data.sections,
+            header: data.headerText ? replaceVars(data.headerText) : undefined,
+            footer: data.footerText ? replaceVars(data.footerText) : undefined,
+            button_text: data.buttonLabel || "Ver opções",
+            sections: waSections,
           });
         } else if (buttons.length > 0) {
-          // Button menu (max 3 buttons)
           await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
             lead_id: lead.id,
             to: lead.phone,
@@ -620,7 +629,6 @@ async function executeNode(
             })),
           });
         } else {
-          // Fallback: send as text
           await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
             lead_id: lead.id,
             to: lead.phone,
@@ -629,7 +637,6 @@ async function executeNode(
           });
         }
       }
-      // Always wait for reply after sending menu
       return { stop: true, status: "waiting_reply", reason: "waiting_menu_reply" };
     }
 
