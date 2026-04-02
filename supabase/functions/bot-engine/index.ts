@@ -577,6 +577,50 @@ async function executeNode(
       return {};
     }
 
+    case "send_menu": {
+      // Send interactive menu via WhatsApp
+      if (lead.phone) {
+        const menuBody = replaceVars(data.body || data.text || "Escolha uma opção:");
+        const buttons = data.buttons || [];
+        
+        if (data.menuType === "list" && data.sections) {
+          // List menu
+          await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+            lead_id: lead.id,
+            to: lead.phone,
+            type: "interactive",
+            interactive_type: "list",
+            body: menuBody,
+            button_text: data.buttonText || "Ver opções",
+            sections: data.sections,
+          });
+        } else if (buttons.length > 0) {
+          // Button menu (max 3 buttons)
+          await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+            lead_id: lead.id,
+            to: lead.phone,
+            type: "interactive",
+            interactive_type: "button",
+            body: menuBody,
+            buttons: buttons.slice(0, 3).map((b: any) => ({
+              type: "reply",
+              reply: { id: b.id, title: (b.title || "").slice(0, 20) },
+            })),
+          });
+        } else {
+          // Fallback: send as text
+          await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+            lead_id: lead.id,
+            to: lead.phone,
+            type: "text",
+            message: menuBody,
+          });
+        }
+      }
+      // Always wait for reply after sending menu
+      return { stop: true, status: "waiting_reply", reason: "waiting_menu_reply" };
+    }
+
     case "transfer_human": {
       return { stop: true, status: "completed", reason: "transferred_to_human" };
     }
