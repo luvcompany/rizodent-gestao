@@ -29,7 +29,7 @@ import TaskPanel from "@/components/chat/TaskPanel";
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square
 } from "lucide-react";
 import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
