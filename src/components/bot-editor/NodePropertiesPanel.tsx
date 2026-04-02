@@ -20,17 +20,42 @@ type Props = {
 
 export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete }: Props) {
   const def = NODE_DEFINITIONS.find((d) => d.type === node.type);
-  const [stages, setStages] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [stages, setStages] = useState<{ id: string; name: string; color: string; pipeline_id: string }[]>([]);
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
   const [templates, setTemplates] = useState<{ id: string; name: string; body_text: string | null; buttons: any; language: string; header_type: string | null; footer_text: string | null }[]>([]);
   const [templateSearch, setTemplateSearch] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [existingTags, setExistingTags] = useState<string[]>([]);
+  const [existingSources, setExistingSources] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
 
   useEffect(() => {
-    supabase.from("crm_stages").select("id, name, color").order("position").then(({ data }) => {
+    supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position").then(({ data }) => {
       if (data) setStages(data);
+    });
+    supabase.from("crm_pipelines").select("id, name").then(({ data }) => {
+      if (data) setPipelines(data);
     });
     supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons, language, header_type, footer_text").eq("status", "APPROVED").then(({ data }) => {
       if (data) setTemplates(data);
+    });
+    // Fetch unique tags
+    supabase.from("crm_leads").select("tags").then(({ data }) => {
+      if (data) {
+        const allTags = new Set<string>();
+        data.forEach((l: any) => {
+          if (Array.isArray(l.tags)) l.tags.forEach((t: string) => allTags.add(t));
+        });
+        setExistingTags(Array.from(allTags).sort());
+      }
+    });
+    // Fetch unique sources
+    supabase.from("crm_leads").select("source").not("source", "is", null).then(({ data }) => {
+      if (data) {
+        const sources = new Set<string>();
+        data.forEach((l: any) => { if (l.source) sources.add(l.source); });
+        setExistingSources(Array.from(sources).sort());
+      }
     });
   }, []);
 
@@ -87,6 +112,13 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
     setUploading(false);
   };
 
+  // Tag suggestions filtered by input
+  const tagSuggestions = useMemo(() => {
+    if (!tagInput.trim()) return [];
+    const q = tagInput.toLowerCase();
+    return existingTags.filter(t => t.toLowerCase().includes(q) && t.toLowerCase() !== q);
+  }, [tagInput, existingTags]);
+
   // Render audio recorder component
   const renderAudioRecorder = (urlField = "audioUrl") => (
     <div className="space-y-2">
@@ -131,6 +163,206 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
       </div>
     </div>
   );
+
+  // Render timeout fields
+  const renderTimeoutFields = (label = "Timeout sem resposta") => (
+    <div>
+      <Label className="text-xs">{label}</Label>
+      <div className="grid grid-cols-3 gap-2 mt-1">
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Horas</Label>
+          <Input type="number" min={0} value={(node.data.timeoutHours as string) ?? ""} onChange={(e) => update("timeoutHours", e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))} placeholder="0" />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Minutos</Label>
+          <Input type="number" min={0} max={59} value={(node.data.timeoutMinutes as string) ?? ""} onChange={(e) => update("timeoutMinutes", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Segundos</Label>
+          <Input type="number" min={0} max={59} value={(node.data.timeoutSeconds as string) ?? ""} onChange={(e) => update("timeoutSeconds", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render tag input with suggestions
+  const renderTagInput = (isRemove = false) => {
+    const currentValue = (node.data.tag as string) || "";
+    return (
+      <div className="space-y-3">
+        <div className="relative">
+          <Label className="text-xs">{isRemove ? "Tag para remover" : "Nome da tag"}</Label>
+          <Input
+            value={currentValue}
+            onChange={(e) => {
+              update("tag", e.target.value);
+              setTagInput(e.target.value);
+            }}
+            onFocus={() => setTagInput(currentValue)}
+            placeholder="Digite ou selecione uma tag"
+            className="mt-1"
+          />
+          {tagInput && tagSuggestions.length > 0 && (
+            <div className="absolute z-50 w-full mt-1 border border-border rounded-md bg-popover shadow-md max-h-32 overflow-y-auto">
+              {tagSuggestions.map((tag) => (
+                <button
+                  key={tag}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                  onClick={() => { update("tag", tag); setTagInput(""); }}
+                >
+                  🏷️ {tag}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {isRemove && existingTags.length > 0 && (
+          <div>
+            <Label className="text-[10px] text-muted-foreground">Tags existentes</Label>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {existingTags.slice(0, 20).map((tag) => (
+                <button
+                  key={tag}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                    currentValue === tag
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-secondary text-secondary-foreground border-border hover:border-primary/50"
+                  }`}
+                  onClick={() => { update("tag", tag); setTagInput(""); }}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {!isRemove && existingTags.length > 0 && !currentValue && (
+          <div>
+            <Label className="text-[10px] text-muted-foreground">Sugestões</Label>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {existingTags.slice(0, 10).map((tag) => (
+                <button
+                  key={tag}
+                  className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-secondary text-secondary-foreground hover:border-primary/50 transition-colors"
+                  onClick={() => { update("tag", tag); setTagInput(""); }}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Render condition value field based on selected field
+  const renderConditionValue = () => {
+    const field = (node.data.field as string) || "";
+    const operator = (node.data.operator as string) || "equals";
+
+    // is_empty / not_empty don't need value
+    if (operator === "is_empty" || operator === "not_empty") return null;
+
+    if (field === "lead.stage") {
+      // Pipeline + stage picker
+      const selectedPipeline = (node.data.conditionPipelineId as string) || "";
+      const filteredStages = selectedPipeline
+        ? stages.filter(s => s.pipeline_id === selectedPipeline)
+        : stages;
+
+      return (
+        <>
+          <div>
+            <Label className="text-xs">Funil</Label>
+            <Select value={selectedPipeline || "__all__"} onValueChange={(v) => {
+              updateMultiple({ conditionPipelineId: v === "__all__" ? "" : v, value: "" });
+            }}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Todos os funis" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todos os funis</SelectItem>
+                {pipelines.map(p => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Etapa</Label>
+            <Select value={(node.data.value as string) || ""} onValueChange={(v) => update("value", v)}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a etapa..." /></SelectTrigger>
+              <SelectContent>
+                {filteredStages.map(s => {
+                  const pName = pipelines.find(p => p.id === s.pipeline_id)?.name;
+                  return (
+                    <SelectItem key={s.id} value={s.id}>
+                      <span className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                        {s.name}{!selectedPipeline && pName ? ` (${pName})` : ""}
+                      </span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      );
+    }
+
+    if (field === "lead.source") {
+      return (
+        <div>
+          <Label className="text-xs">Origem</Label>
+          {existingSources.length > 0 ? (
+            <Select value={(node.data.value as string) || ""} onValueChange={(v) => update("value", v)}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a origem..." /></SelectTrigger>
+              <SelectContent>
+                {existingSources.map(s => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input value={(node.data.value as string) || ""} onChange={(e) => update("value", e.target.value)} className="mt-1" placeholder="Digite a origem..." />
+          )}
+        </div>
+      );
+    }
+
+    if (field === "lead.tags") {
+      const currentValue = (node.data.value as string) || "";
+      return (
+        <div className="relative">
+          <Label className="text-xs">Tag</Label>
+          {existingTags.length > 0 ? (
+            <Select value={currentValue || "__custom__"} onValueChange={(v) => update("value", v === "__custom__" ? "" : v)}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a tag..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__custom__">Digitar manualmente...</SelectItem>
+                {existingTags.map(t => (
+                  <SelectItem key={t} value={t}>🏷️ {t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input value={currentValue} onChange={(e) => update("value", e.target.value)} className="mt-1" placeholder="Nome da tag..." />
+          )}
+          {currentValue === "" && existingTags.length > 0 && (
+            <Input value={currentValue} onChange={(e) => update("value", e.target.value)} className="mt-1" placeholder="Digite o nome da tag..." />
+          )}
+        </div>
+      );
+    }
+
+    // Default: free text input
+    return (
+      <div>
+        <Label className="text-xs">Valor</Label>
+        <Input value={(node.data.value as string) || ""} onChange={(e) => update("value", e.target.value)} className="mt-1" />
+      </div>
+    );
+  };
 
   const renderFields = () => {
     switch (node.type) {
@@ -209,26 +441,12 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
               </div>
             )}
             {(node.data.templateId as string) && (node.data.templateButtons as any[])?.length > 0 && (
-              <div>
-                <Label className="text-xs">Timeout sem resposta</Label>
-                <div className="grid grid-cols-3 gap-2 mt-1">
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Horas</Label>
-                    <Input type="number" min={0} value={(node.data.timeoutHours as string) ?? ""} onChange={(e) => update("timeoutHours", e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))} placeholder="0" />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Minutos</Label>
-                    <Input type="number" min={0} max={59} value={(node.data.timeoutMinutes as string) ?? ""} onChange={(e) => update("timeoutMinutes", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
-                  </div>
-                  <div>
-                    <Label className="text-[10px] text-muted-foreground">Segundos</Label>
-                    <Input type="number" min={0} max={59} value={(node.data.timeoutSeconds as string) ?? ""} onChange={(e) => update("timeoutSeconds", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
-                  </div>
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-1">
+              <>
+                {renderTimeoutFields()}
+                <p className="text-[10px] text-muted-foreground">
                   Cada botão do modelo cria um ramo. O ramo "Sem resposta" ativa após este tempo.
                 </p>
-              </div>
+              </>
             )}
           </div>
         );
@@ -320,23 +538,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
                 />
               </div>
             )}
-            <div>
-              <Label className="text-xs">Timeout sem resposta</Label>
-              <div className="grid grid-cols-3 gap-2 mt-1">
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Horas</Label>
-                  <Input type="number" min={0} value={(node.data.timeoutHours as string) ?? ""} onChange={(e) => update("timeoutHours", e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))} placeholder="0" />
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Minutos</Label>
-                  <Input type="number" min={0} max={59} value={(node.data.timeoutMinutes as string) ?? ""} onChange={(e) => update("timeoutMinutes", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Segundos</Label>
-                  <Input type="number" min={0} max={59} value={(node.data.timeoutSeconds as string) ?? ""} onChange={(e) => update("timeoutSeconds", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
-                </div>
-              </div>
-            </div>
+            {renderTimeoutFields()}
           </div>
         );
       }
@@ -370,23 +572,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
       case "wait_reply":
         return (
           <div className="space-y-3">
-            <div>
-              <Label className="text-xs">Timeout</Label>
-              <div className="grid grid-cols-3 gap-2 mt-1">
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Horas</Label>
-                  <Input type="number" min={0} value={(node.data.timeoutHours as string) ?? ""} onChange={(e) => update("timeoutHours", e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))} placeholder="0" />
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Minutos</Label>
-                  <Input type="number" min={0} max={59} value={(node.data.timeoutMinutes as string) ?? ""} onChange={(e) => update("timeoutMinutes", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
-                </div>
-                <div>
-                  <Label className="text-[10px] text-muted-foreground">Segundos</Label>
-                  <Input type="number" min={0} max={59} value={(node.data.timeoutSeconds as string) ?? ""} onChange={(e) => update("timeoutSeconds", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
-                </div>
-              </div>
-            </div>
+            {renderTimeoutFields("Timeout")}
             <div>
               <Label className="text-xs">Salvar resposta em campo (opcional)</Label>
               <Input value={(node.data.saveToField as string) || ""} onChange={(e) => update("saveToField", e.target.value)} placeholder="Nome do campo personalizado" className="mt-1" />
@@ -457,7 +643,9 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Campo</Label>
-              <Select value={(node.data.field as string) || ""} onValueChange={(v) => update("field", v)}>
+              <Select value={(node.data.field as string) || ""} onValueChange={(v) => {
+                updateMultiple({ field: v, value: "", conditionPipelineId: "" });
+              }}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="last_reply">Última resposta</SelectItem>
@@ -483,10 +671,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label className="text-xs">Valor</Label>
-              <Input value={(node.data.value as string) || ""} onChange={(e) => update("value", e.target.value)} className="mt-1" />
-            </div>
+            {renderConditionValue()}
           </div>
         );
 
@@ -513,22 +698,17 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
         );
 
       case "add_tag":
+        return renderTagInput(false);
+
       case "remove_tag":
-        return (
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs">Tag</Label>
-              <Input value={(node.data.tag as string) || ""} onChange={(e) => update("tag", e.target.value)} placeholder="Nome da tag" className="mt-1" />
-            </div>
-          </div>
-        );
+        return renderTagInput(true);
 
       case "add_note":
         return (
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Nota</Label>
-              <VariableTextarea value={(node.data.note as string) || ""} onChange={(v) => update("note", v)} placeholder="Texto da nota..." rows={4} className="mt-1" />
+              <VariableTextarea value={(node.data.note as string) || ""} onChange={(v) => update("note", v)} placeholder="Texto da nota... Use [ para variáveis" rows={4} className="mt-1" />
             </div>
           </div>
         );
@@ -538,11 +718,44 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Título da tarefa</Label>
-              <Input value={(node.data.title as string) || ""} onChange={(e) => update("title", e.target.value)} className="mt-1" />
+              <VariableTextarea
+                value={(node.data.title as string) || ""}
+                onChange={(v) => update("title", v)}
+                placeholder="Ex: Ligar para [lead.nome] - [resposta.ultima]. Use [ para variáveis"
+                rows={2}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Tipo da tarefa</Label>
+              <Select value={(node.data.taskType as string) || "personalizado"} onValueChange={(v) => update("taskType", v)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="personalizado">📋 Personalizado</SelectItem>
+                  <SelectItem value="agendamento">📅 Agendamento</SelectItem>
+                  <SelectItem value="ligacao">📞 Ligação</SelectItem>
+                  <SelectItem value="follow_up">🔄 Follow-up</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label className="text-xs">Prazo (horas a partir de agora)</Label>
               <Input type="number" min={1} value={(node.data.dueHours as number) || 24} onChange={(e) => update("dueHours", parseInt(e.target.value) || 24)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Observações (opcional)</Label>
+              <VariableTextarea
+                value={(node.data.taskNotes as string) || ""}
+                onChange={(v) => update("taskNotes", v)}
+                placeholder="Notas adicionais... Use [ para variáveis do lead ou respostas"
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+            <div className="bg-secondary/50 rounded-md p-2 border border-border">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                💡 <strong>Dica:</strong> Use variáveis como <code className="bg-secondary px-1 rounded">[lead.nome]</code>, <code className="bg-secondary px-1 rounded">[resposta.ultima]</code> para criar tarefas dinâmicas baseadas nas respostas do lead.
+              </p>
             </div>
           </div>
         );

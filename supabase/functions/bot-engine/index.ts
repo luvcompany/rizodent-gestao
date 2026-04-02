@@ -136,6 +136,11 @@ Deno.serve(async (req) => {
 
       // Update variables with reply
       const variables = { ...(execution.variables as any || {}), last_reply: replyText || "" };
+      // If the current node has saveToField, store the reply under that name
+      const currentNode = (flowJson.nodes || []).find((n: any) => n.id === execution.current_node_id);
+      if (currentNode?.data?.saveToField) {
+        variables[currentNode.data.saveToField] = replyText || "";
+      }
       await supabase.from("bot_executions").update({ variables, status: "active" }).eq("id", execution.id);
 
       // Determine which edge to follow based on reply text
@@ -354,6 +359,13 @@ async function executeNode(
       last_reply: variables.last_reply || "",
     };
 
+    // Add all saved custom variables (from saveToField in wait_reply nodes)
+    Object.entries(variables).forEach(([key, value]) => {
+      if (!replacements[key]) {
+        replacements[key] = String(value || "");
+      }
+    });
+
     return Object.entries(replacements).reduce((result, [key, value]) => {
       const bracketPattern = new RegExp(`\\[${escapeRegExp(key)}\\]`, "gi");
       const moustachePattern = new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, "gi");
@@ -552,12 +564,14 @@ async function executeNode(
     case "create_task": {
       if (data.title) {
         const dueDate = new Date(Date.now() + (data.dueHours || 24) * 3600 * 1000).toISOString();
+        const taskNotes = data.taskNotes ? replaceVars(data.taskNotes) : null;
         await supabase.from("crm_tasks").insert({
           lead_id: lead.id,
           title: replaceVars(data.title),
           due_date: dueDate,
           status: "pending",
-          type: "personalizado",
+          type: data.taskType || "personalizado",
+          notes: taskNotes,
         });
         await supabase.from("crm_leads").update({ has_task: true }).eq("id", lead.id);
       }
