@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Save, Undo2, Redo2 } from "lucide-react";
 
 import BotNode from "@/components/bot-editor/BotNode";
+import DeletableEdge from "@/components/bot-editor/DeletableEdge";
 import NodePalette from "@/components/bot-editor/NodePalette";
 import NodePropertiesPanel from "@/components/bot-editor/NodePropertiesPanel";
 import { NODE_DEFINITIONS } from "@/types/bot";
@@ -32,6 +33,8 @@ const nodeTypes: Record<string, any> = {};
 NODE_DEFINITIONS.forEach((def) => {
   nodeTypes[def.type] = BotNode;
 });
+
+const edgeTypes = { deletable: DeletableEdge };
 
 function BotEditorInner() {
   const { id } = useParams<{ id: string }>();
@@ -113,6 +116,13 @@ function BotEditorInner() {
     setIsDirty(current !== lastSavedRef.current);
   }, [nodes, edges, botName, loading]);
 
+  const handleDeleteEdge = useCallback(
+    (edgeId: string) => {
+      setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+    },
+    [setEdges]
+  );
+
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
@@ -129,6 +139,14 @@ function BotEditorInner() {
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
       if ((e.key === "Delete" || e.key === "Backspace") && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) {
+        // Delete selected edges
+        const selectedEdges = edges.filter((e) => e.selected);
+        if (selectedEdges.length > 0) {
+          e.preventDefault();
+          selectedEdges.forEach((ed) => handleDeleteEdge(ed.id));
+          return;
+        }
+        // Delete selected nodes
         const selected = nodes.filter((n) => n.selected && n.type !== "start");
         if (selected.length > 0) {
           e.preventDefault();
@@ -138,7 +156,7 @@ function BotEditorInner() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo, nodes, edges, botName, handleDeleteNode]);
+  }, [undo, redo, nodes, edges, botName, handleDeleteNode, handleDeleteEdge]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -156,7 +174,7 @@ function BotEditorInner() {
         edgeStyle.style = { stroke: "#f97316" };
         edgeStyle.label = "Timeout";
       }
-      setEdges((eds) => addEdge({ ...params, type: "smoothstep", animated: true, ...edgeStyle }, eds));
+      setEdges((eds) => addEdge({ ...params, type: "deletable", animated: true, ...edgeStyle }, eds));
     },
     [setEdges]
   );
@@ -285,7 +303,7 @@ function BotEditorInner() {
         <div className="flex-1 min-w-0" ref={reactFlowWrapper}>
           <ReactFlow
             nodes={nodes}
-            edges={edges}
+            edges={edges.map((e) => ({ ...e, data: { ...e.data, onDelete: handleDeleteEdge } }))}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
@@ -295,6 +313,7 @@ function BotEditorInner() {
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             fitView
             snapToGrid
             snapGrid={[16, 16]}
