@@ -204,45 +204,38 @@ function BotEditorInner() {
   );
 
   const handleSave = useCallback(async () => {
-    if (!id) return;
+    if (!id || !isDirty) return;
     setSaving(true);
+
+    // Save flow
     const { error } = await supabase.from("bots").update({
       name: botName,
       flow_json: { nodes, edges },
     }).eq("id", id);
-    setSaving(false);
-    if (error) { toast.error("Erro ao salvar"); return; }
-    toast.success("Bot salvo!");
-  }, [id, botName, nodes, edges]);
 
-  const handlePublish = useCallback(async () => {
-    if (!id) return;
-    // Save first
-    await supabase.from("bots").update({
-      name: botName,
-      flow_json: { nodes, edges },
-    }).eq("id", id);
+    if (error) { setSaving(false); toast.error("Erro ao salvar"); return; }
 
-    // Get current version
+    // Auto-publish: create version
     const { data: bot } = await supabase.from("bots").select("current_version").eq("id", id).single();
     const newVersion = (bot?.current_version || 0) + 1;
 
-    // Create version
     await supabase.from("bot_versions").insert({
       bot_id: id,
       version: newVersion,
       flow_json: { nodes, edges },
     });
 
-    // Update bot status
     await supabase.from("bots").update({
       status: "published",
       current_version: newVersion,
     }).eq("id", id);
 
     setBotStatus("published");
-    toast.success(`Bot publicado! Versão ${newVersion}`);
-  }, [id, botName, nodes, edges]);
+    lastSavedRef.current = JSON.stringify({ nodes, edges, botName });
+    setIsDirty(false);
+    setSaving(false);
+    toast.success(`Bot salvo e publicado! Versão ${newVersion}`);
+  }, [id, botName, nodes, edges, isDirty]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-full text-muted-foreground">Carregando editor...</div>;
