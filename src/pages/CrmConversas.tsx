@@ -475,6 +475,23 @@ export default function CrmConversas() {
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
               />
+
+              {/* Active Bot Badge */}
+              {activeExecution && (
+                <div className="absolute bottom-20 right-4 z-10 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-lg">
+                  <Badge variant="default" className="gap-1.5 bg-primary">
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                    <Bot size={12} />
+                    {activeExecution.bot_name || "Bot"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {activeExecution.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
+                  </span>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={handleStopBot}>
+                    <Square size={10} className="mr-1" /> Parar
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
