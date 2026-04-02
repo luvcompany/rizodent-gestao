@@ -21,7 +21,8 @@ type Props = {
 export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete }: Props) {
   const def = NODE_DEFINITIONS.find((d) => d.type === node.type);
   const [stages, setStages] = useState<{ id: string; name: string; color: string }[]>([]);
-  const [templates, setTemplates] = useState<{ id: string; name: string; body_text: string | null; buttons: any }[]>([]);
+  const [templates, setTemplates] = useState<{ id: string; name: string; body_text: string | null; buttons: any; language: string; header_type: string | null; footer_text: string | null }[]>([]);
+  const [templateSearch, setTemplateSearch] = useState("");
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
