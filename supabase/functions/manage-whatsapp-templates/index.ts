@@ -272,14 +272,16 @@ Deno.serve(async (req) => {
       );
       const metaData = await metaRes.json();
 
+      // Always delete locally, even if Meta API fails (e.g. permission issues)
+      await supabase.from("crm_whatsapp_templates").delete().eq("name", template_name);
+
       if (!metaRes.ok) {
+        console.warn("[DELETE] Meta API error, deleted locally only:", JSON.stringify(metaData));
         return new Response(
-          JSON.stringify({ error: "Erro ao deletar template na Meta", details: metaData }),
-          { status: metaRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ success: true, warning: "Template removido localmente. Não foi possível remover na Meta (verifique permissões do token).", details: metaData }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-
-      await supabase.from("crm_whatsapp_templates").delete().eq("name", template_name);
 
       return new Response(
         JSON.stringify({ success: true }),
