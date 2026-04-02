@@ -177,7 +177,44 @@ Deno.serve(async (req) => {
       waBody.context = { message_id: resolvedWamid };
     }
 
-    if (type === "template") {
+    if (type === "interactive") {
+      // Interactive messages: buttons or lists
+      waBody.type = "interactive";
+      const interactiveBody = body || message || "Escolha uma opção:";
+
+      if (interactive_type === "list") {
+        waBody.interactive = {
+          type: "list",
+          body: { text: interactiveBody },
+          action: {
+            button: button_text || "Ver opções",
+            sections: (sections || []).map((s: any) => ({
+              title: (s.title || "Opções").slice(0, 24),
+              rows: (s.rows || []).map((r: any) => ({
+                id: r.id || r.title?.slice(0, 20) || "opt",
+                title: (r.title || "").slice(0, 24),
+                description: r.description ? r.description.slice(0, 72) : undefined,
+              })),
+            })),
+          },
+        };
+      } else {
+        // Button type (max 3 reply buttons)
+        waBody.interactive = {
+          type: "button",
+          body: { text: interactiveBody },
+          action: {
+            buttons: (buttons || []).slice(0, 3).map((b: any) => ({
+              type: "reply",
+              reply: {
+                id: b.reply?.id || b.id || "btn",
+                title: (b.reply?.title || b.title || "").slice(0, 20),
+              },
+            })),
+          },
+        };
+      }
+    } else if (type === "template") {
       waBody.type = "template";
       waBody.template = {
         name: template_name,
