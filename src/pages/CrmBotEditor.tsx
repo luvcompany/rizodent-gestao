@@ -20,7 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Save, Upload, Undo2, Redo2 } from "lucide-react";
+import { ArrowLeft, Save, Undo2, Redo2 } from "lucide-react";
 
 import BotNode from "@/components/bot-editor/BotNode";
 import NodePalette from "@/components/bot-editor/NodePalette";
