@@ -171,7 +171,7 @@ export default function CrmAutomacoes() {
   const handleDeleteAutomation = async (id: string) => {
     await supabase.from("crm_automations").delete().eq("id", id);
     toast.success("Automação removida");
-    fetchData(selectedPipelineId);
+    setAutomations(prev => prev.filter(a => a.id !== id));
   };
 
   const getAutomationsForStage = (stageId: string) => automations.filter(a => a.stage_id === stageId);
