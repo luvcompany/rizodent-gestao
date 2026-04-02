@@ -202,8 +202,10 @@ function BotEditorInner() {
         nds.map((n) => (n.id === nodeId ? { ...n, data } : n))
       );
       setSelectedNode((prev) => (prev?.id === nodeId ? { ...prev, data } : prev));
+      // Force ReactFlow to recalculate handles for dynamic outputs (menu items, template buttons)
+      setTimeout(() => updateNodeInternals(nodeId), 0);
     },
-    [setNodes]
+    [setNodes, updateNodeInternals]
   );
 
   const handleSave = useCallback(async () => {
