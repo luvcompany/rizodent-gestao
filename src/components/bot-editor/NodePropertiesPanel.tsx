@@ -210,14 +210,21 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             )}
             {(node.data.templateId as string) && (node.data.templateButtons as any[])?.length > 0 && (
               <div>
-                <Label className="text-xs">Timeout sem resposta (minutos)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={(node.data.noResponseTimeoutMinutes as number) || 60}
-                  onChange={(e) => update("noResponseTimeoutMinutes", parseInt(e.target.value) || 60)}
-                  className="mt-1 w-24"
-                />
+                <Label className="text-xs">Timeout sem resposta</Label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Horas</Label>
+                    <Input type="number" min={0} value={(node.data.timeoutHours as string) ?? ""} onChange={(e) => update("timeoutHours", e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))} placeholder="0" />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Minutos</Label>
+                    <Input type="number" min={0} max={59} value={(node.data.timeoutMinutes as string) ?? ""} onChange={(e) => update("timeoutMinutes", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-muted-foreground">Segundos</Label>
+                    <Input type="number" min={0} max={59} value={(node.data.timeoutSeconds as string) ?? ""} onChange={(e) => update("timeoutSeconds", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
+                  </div>
+                </div>
                 <p className="text-[10px] text-muted-foreground mt-1">
                   Cada botão do modelo cria um ramo. O ramo "Sem resposta" ativa após este tempo.
                 </p>
@@ -314,14 +321,21 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
               </div>
             )}
             <div>
-              <Label className="text-xs">Timeout sem resposta (minutos)</Label>
-              <Input
-                type="number"
-                min={1}
-                value={(node.data.noResponseTimeoutMinutes as number) || 60}
-                onChange={(e) => update("noResponseTimeoutMinutes", parseInt(e.target.value) || 60)}
-                className="mt-1 w-24"
-              />
+              <Label className="text-xs">Timeout sem resposta</Label>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Horas</Label>
+                  <Input type="number" min={0} value={(node.data.timeoutHours as string) ?? ""} onChange={(e) => update("timeoutHours", e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value) || 0))} placeholder="0" />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Minutos</Label>
+                  <Input type="number" min={0} max={59} value={(node.data.timeoutMinutes as string) ?? ""} onChange={(e) => update("timeoutMinutes", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-muted-foreground">Segundos</Label>
+                  <Input type="number" min={0} max={59} value={(node.data.timeoutSeconds as string) ?? ""} onChange={(e) => update("timeoutSeconds", e.target.value === "" ? "" : Math.max(0, Math.min(59, parseInt(e.target.value) || 0)))} placeholder="0" />
+                </div>
+              </div>
             </div>
           </div>
         );
