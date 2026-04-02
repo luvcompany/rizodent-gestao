@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Save, Undo2, Redo2 } from "lucide-react";
 
 import BotNode from "@/components/bot-editor/BotNode";
+import DeletableEdge from "@/components/bot-editor/DeletableEdge";
 import NodePalette from "@/components/bot-editor/NodePalette";
 import NodePropertiesPanel from "@/components/bot-editor/NodePropertiesPanel";
 import { NODE_DEFINITIONS } from "@/types/bot";
@@ -32,6 +33,8 @@ const nodeTypes: Record<string, any> = {};
 NODE_DEFINITIONS.forEach((def) => {
   nodeTypes[def.type] = BotNode;
 });
+
+const edgeTypes = { deletable: DeletableEdge };
 
 function BotEditorInner() {
   const { id } = useParams<{ id: string }>();
