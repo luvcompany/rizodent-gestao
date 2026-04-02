@@ -69,20 +69,22 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       .then(({ data }) => { if (data) setBots(data); });
   }, []);
 
-  const handleStartBot = async (botId: string) => {
+  const handleStartBot = (botId: string) => {
     setStartingBotId(botId);
-    try {
-      const { error } = await supabase.functions.invoke("bot-engine", {
-        body: { leadId, botId, trigger: "manual_start" },
-      });
-      if (error) throw error;
+    setBotPopoverOpen(false);
+
+    void supabase.functions.invoke("bot-engine", {
+      body: { leadId, botId, trigger: "manual_start" },
+    }).then(({ data, error }) => {
+      if (error || data?.error) {
+        throw error || new Error(data?.error || "Erro ao iniciar bot");
+      }
       toast.success("Bot iniciado!");
-      setBotPopoverOpen(false);
-    } catch (err: any) {
+    }).catch((err: any) => {
       toast.error(err.message || "Erro ao iniciar bot");
-    } finally {
+    }).finally(() => {
       setStartingBotId(null);
-    }
+    });
   };
 
   // Slash commands

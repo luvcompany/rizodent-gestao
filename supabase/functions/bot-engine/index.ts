@@ -294,17 +294,41 @@ async function executeNode(
 }> {
   const data = node.data || {};
 
+  const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
   const replaceVars = (text: string): string => {
     if (!text) return text;
-    return text
-      .replace(/\{\{lead\.nome\}\}/gi, lead.name || "")
-      .replace(/\{\{lead\.name\}\}/gi, lead.name || "")
-      .replace(/\{\{lead\.telefone\}\}/gi, lead.phone || "")
-      .replace(/\{\{lead\.phone\}\}/gi, lead.phone || "")
-      .replace(/\{\{lead\.source\}\}/gi, lead.source || "")
-      .replace(/\{\{data\.hoje\}\}/gi, new Date().toLocaleDateString("pt-BR"))
-      .replace(/\{\{data\.hora\}\}/gi, new Date().toLocaleTimeString("pt-BR"))
-      .replace(/\{\{resposta\.ultima\}\}/gi, variables.last_reply || "");
+
+    const replacements: Record<string, string> = {
+      "lead.nome": lead.name || "",
+      "lead.name": lead.name || "",
+      "lead.telefone": lead.phone || "",
+      "lead.phone": lead.phone || "",
+      "lead.origem": lead.source || "",
+      "lead.source": lead.source || "",
+      "lead.etapa": lead.stage_id || "",
+      "lead.stage": lead.stage_id || "",
+      "lead.tags": Array.isArray(lead.tags) ? lead.tags.join(", ") : "",
+      "lead.valor": lead.value != null ? String(lead.value) : "",
+      "lead.notas": lead.notes || "",
+      "lead.notes": lead.notes || "",
+      "lead.ultima_mensagem": lead.last_message || "",
+      "lead.last_message": lead.last_message || "",
+      "lead.criado_em": lead.created_at ? new Date(lead.created_at).toLocaleDateString("pt-BR") : "",
+      "lead.nome_anuncio": lead.nome_anuncio || "",
+      "lead.titulo_anuncio": lead.titulo_anuncio || "",
+      "lead.follow_up_count": lead.follow_up_count != null ? String(lead.follow_up_count) : "",
+      "data.hoje": new Date().toLocaleDateString("pt-BR"),
+      "data.hora": new Date().toLocaleTimeString("pt-BR"),
+      "resposta.ultima": variables.last_reply || "",
+      last_reply: variables.last_reply || "",
+    };
+
+    return Object.entries(replacements).reduce((result, [key, value]) => {
+      const bracketPattern = new RegExp(`\\[${escapeRegExp(key)}\\]`, "gi");
+      const moustachePattern = new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, "gi");
+      return result.replace(bracketPattern, value).replace(moustachePattern, value);
+    }, text);
   };
 
   switch (node.type) {
