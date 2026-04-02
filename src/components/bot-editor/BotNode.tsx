@@ -14,9 +14,13 @@ function BotNode({ data, selected, type }: NodeProps) {
   const templateButtons = (data.templateButtons as { id: string; title: string }[]) || [];
   const hasTemplateButtons = isSendText && templateButtons.length > 0;
 
-  // Menu buttons
+  // Menu buttons or list options
+  const menuType = (data.menuType as string) || "buttons";
   const menuButtons = (data.buttons as { id: string; title: string }[]) || [];
-  const hasMenuButtons = isSendMenu && menuButtons.length > 0;
+  const listSections = (data.listSections as { title: string; rows: { id: string; title: string }[] }[]) || [];
+  const listRows = listSections.flatMap(s => s.rows);
+  const menuItems = isSendMenu ? (menuType === "list" ? listRows : menuButtons) : [];
+  const hasMenuButtons = isSendMenu && menuItems.length > 0;
 
   // Build preview text
   let preview = "";
@@ -45,8 +49,8 @@ function BotNode({ data, selected, type }: NodeProps) {
     });
     branchHandles.push({ id: "no-response", label: "Sem resposta", color: "#f97316" });
   } else if (hasMenuButtons) {
-    menuButtons.forEach((btn) => {
-      branchHandles.push({ id: `menu-${btn.id}`, label: btn.title, color: "#3b82f6" });
+    menuItems.forEach((btn) => {
+      branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "#3b82f6" });
     });
     branchHandles.push({ id: "no-response", label: "Sem resposta", color: "#f97316" });
   }

@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id, audio_voice = false, interactive_type, body, buttons, button_text, sections } = await req.json();
+    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id, audio_voice = false, interactive_type, body, buttons, button_text, sections, header, footer } = await req.json();
 
     if (!lead_id || !to) {
       return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
       const interactiveBody = body || message || "Escolha uma opção:";
 
       if (interactive_type === "list") {
-        waBody.interactive = {
+        const listInteractive: any = {
           type: "list",
           body: { text: interactiveBody },
           action: {
@@ -198,6 +198,9 @@ Deno.serve(async (req) => {
             })),
           },
         };
+        if (header) listInteractive.header = { type: "text", text: String(header).slice(0, 60) };
+        if (footer) listInteractive.footer = { text: String(footer).slice(0, 60) };
+        waBody.interactive = listInteractive;
       } else {
         // Button type (max 3 reply buttons)
         waBody.interactive = {
