@@ -138,18 +138,45 @@ Deno.serve(async (req) => {
       const variables = { ...(execution.variables as any || {}), last_reply: replyText || "" };
       await supabase.from("bot_executions").update({ variables, status: "active" }).eq("id", execution.id);
 
-      // Find the "reply" output edge from current node
+      // Determine which edge to follow based on reply text
       const edges = flowJson.edges || [];
-      const replyEdge = edges.find(
-        (e: any) => e.source === execution.current_node_id && (e.sourceHandle === "reply" || !e.sourceHandle)
-      );
+      const currentNode = (flowJson.nodes || []).find((n: any) => n.id === execution.current_node_id);
+      let nextEdge = null;
 
-      if (!replyEdge) {
+      // For template buttons or menu buttons: match reply text to button handle
+      if (currentNode && (currentNode.type === "send_text" || currentNode.type === "send_menu")) {
+        const templateButtons = currentNode.data?.templateButtons || [];
+        const menuButtons = currentNode.data?.buttons || [];
+        const allButtons = currentNode.type === "send_text" ? templateButtons : menuButtons;
+        const handlePrefix = currentNode.type === "send_text" ? "btn-" : "menu-";
+
+        if (allButtons.length > 0 && replyText) {
+          const normalizedReply = replyText.trim().toLowerCase();
+          // Find matching button by title
+          const matchedBtn = allButtons.find((btn: any) => 
+            btn.title && btn.title.trim().toLowerCase() === normalizedReply
+          );
+          if (matchedBtn) {
+            nextEdge = edges.find((e: any) => e.source === execution.current_node_id && e.sourceHandle === `${handlePrefix}${matchedBtn.id}`);
+          }
+        }
+        // If no button matched, try the generic reply edge
+        if (!nextEdge) {
+          nextEdge = edges.find((e: any) => e.source === execution.current_node_id && (e.sourceHandle === "reply" || !e.sourceHandle));
+        }
+      } else {
+        // Standard wait_reply or other nodes: follow reply edge
+        nextEdge = edges.find(
+          (e: any) => e.source === execution.current_node_id && (e.sourceHandle === "reply" || !e.sourceHandle)
+        );
+      }
+
+      if (!nextEdge) {
         await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", execution.id);
         return json({ completed: true, reason: "no_reply_path" });
       }
 
-      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, replyEdge.target, leadId, variables);
+      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, nextEdge.target, leadId, variables);
       return json({ success: true, ...result });
     }
 
