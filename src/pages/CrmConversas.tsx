@@ -70,9 +70,60 @@ export default function CrmConversas() {
   const [filters, setFilters] = useState<ConversationFilterValues>(emptyFilters);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
+  const [activeExecution, setActiveExecution] = useState<{
+    id: string; status: string; bot_name?: string;
+  } | null>(null);
 
   // Unified chat hook
   const chat = useChatConversation(selectedLeadId);
+
+  // ===== Bot Active Execution State =====
+  const checkExecution = useCallback(async () => {
+    if (!selectedLeadId) { setActiveExecution(null); return; }
+    const { data } = await supabase
+      .from("bot_executions")
+      .select("id, status, current_node_id, bots(name)")
+      .eq("lead_id", selectedLeadId)
+      .in("status", ["active", "waiting_reply"])
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      setActiveExecution({
+        id: data.id,
+        status: data.status,
+        bot_name: (data as any).bots?.name,
+      });
+    } else {
+      setActiveExecution(null);
+    }
+  }, [selectedLeadId]);
+
+  useEffect(() => { checkExecution(); }, [checkExecution]);
+
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    const channel = supabase
+      .channel(`bot-exec-conv-${selectedLeadId}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "bot_executions",
+        filter: `lead_id=eq.${selectedLeadId}`,
+      }, () => checkExecution())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [selectedLeadId, checkExecution]);
+
+  const handleStopBot = async () => {
+    if (!activeExecution) return;
+    await supabase
+      .from("bot_executions")
+      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+      .eq("id", activeExecution.id);
+    toast.success("Bot encerrado");
+    setActiveExecution(null);
+  };
 
   // Fetch leads list
   useEffect(() => {
