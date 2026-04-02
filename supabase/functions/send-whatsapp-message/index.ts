@@ -393,8 +393,8 @@ Deno.serve(async (req) => {
 
     // Save message to DB
     const sentWamid = waData?.messages?.[0]?.id || null;
-    const dbContent = type === "template" ? `📋 Template: ${template_name}` : (message || null);
-    const dbType = type === "template" ? "text" : finalType;
+    const dbContent = type === "template" ? `📋 Template: ${template_name}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
+    const dbType = type === "template" || type === "interactive" ? "text" : finalType;
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,
       direction: "outbound",
