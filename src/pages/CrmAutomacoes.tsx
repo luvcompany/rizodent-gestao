@@ -142,9 +142,12 @@ export default function CrmAutomacoes() {
     if (!deleteStageId) return;
     const { error } = await supabase.from("crm_stages").delete().eq("id", deleteStageId);
     if (error) { toast.error("Erro ao excluir etapa. Mova os leads primeiro."); }
-    else { toast.success("Etapa excluída"); }
+    else {
+      toast.success("Etapa excluída");
+      setStages(prev => prev.filter(s => s.id !== deleteStageId));
+      setAutomations(prev => prev.filter(a => a.stage_id !== deleteStageId));
+    }
     setDeleteStageId(null);
-    fetchData(selectedPipelineId);
   };
 
   const handleSaveAutomation = async () => {
