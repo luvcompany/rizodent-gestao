@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id, audio_voice = false } = await req.json();
+    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id, audio_voice = false, interactive_type, body, buttons, button_text, sections } = await req.json();
 
     if (!lead_id || !to) {
       return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
