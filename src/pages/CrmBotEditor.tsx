@@ -9,6 +9,7 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  useUpdateNodeInternals,
   type Connection,
   type Node,
   type Edge,
@@ -37,6 +38,7 @@ function BotEditorInner() {
   const navigate = useNavigate();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const updateNodeInternals = useUpdateNodeInternals();
 
   const [botName, setBotName] = useState("Novo Bot");
   const [botStatus, setBotStatus] = useState("draft");
@@ -200,8 +202,10 @@ function BotEditorInner() {
         nds.map((n) => (n.id === nodeId ? { ...n, data } : n))
       );
       setSelectedNode((prev) => (prev?.id === nodeId ? { ...prev, data } : prev));
+      // Force ReactFlow to recalculate handles for dynamic outputs (menu items, template buttons)
+      setTimeout(() => updateNodeInternals(nodeId), 0);
     },
-    [setNodes]
+    [setNodes, updateNodeInternals]
   );
 
   const handleSave = useCallback(async () => {

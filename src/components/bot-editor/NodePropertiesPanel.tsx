@@ -841,7 +841,13 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
   };
 
   return (
-    <div className="w-[320px] border-l border-border bg-card flex flex-col h-full">
+    <div
+      className="w-[320px] border-l border-border bg-card flex flex-col h-full"
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
       <div className="flex items-center justify-between p-4 border-b border-border">
         <div className="flex items-center gap-2">
           <span>{def?.icon}</span>
