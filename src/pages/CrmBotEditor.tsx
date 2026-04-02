@@ -266,11 +266,8 @@ function BotEditorInner() {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={redo} title="Refazer (Ctrl+Y)">
             <Redo2 size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving || !isDirty} className={`gap-1.5 ${!isDirty ? 'opacity-50' : ''}`}>
             <Save size={14} /> {saving ? "Salvando..." : "Salvar"}
-          </Button>
-          <Button size="sm" onClick={handlePublish} className="gap-1.5">
-            <Upload size={14} /> Publicar
           </Button>
         </div>
       </div>
