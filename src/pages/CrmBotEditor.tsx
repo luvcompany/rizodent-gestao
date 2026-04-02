@@ -20,7 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Save, Upload, Undo2, Redo2 } from "lucide-react";
+import { ArrowLeft, Save, Undo2, Redo2 } from "lucide-react";
 
 import BotNode from "@/components/bot-editor/BotNode";
 import NodePalette from "@/components/bot-editor/NodePalette";
@@ -45,6 +45,8 @@ function BotEditorInner() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isDirty, setIsDirty] = useState(false);
+  const lastSavedRef = useRef<string>("");
 
   // Undo/redo
   const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
@@ -88,6 +90,7 @@ function BotEditorInner() {
       const flow = data.flow_json as any;
       if (flow?.nodes) setNodes(flow.nodes);
       if (flow?.edges) setEdges(flow.edges);
+      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name });
       setLoading(false);
       // Init history
       historyRef.current = [{ nodes: flow?.nodes || [], edges: flow?.edges || [] }];
@@ -95,12 +98,18 @@ function BotEditorInner() {
     });
   }, [id]);
 
-  // Push history on changes (debounced)
+  // Push history on changes (debounced) + track dirty state
   useEffect(() => {
     if (loading) return;
     const t = setTimeout(pushHistory, 300);
     return () => clearTimeout(t);
   }, [nodes, edges, loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    const current = JSON.stringify({ nodes, edges, botName });
+    setIsDirty(current !== lastSavedRef.current);
+  }, [nodes, edges, botName, loading]);
 
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
@@ -196,45 +205,38 @@ function BotEditorInner() {
   );
 
   const handleSave = useCallback(async () => {
-    if (!id) return;
+    if (!id || !isDirty) return;
     setSaving(true);
+
+    // Save flow
     const { error } = await supabase.from("bots").update({
       name: botName,
       flow_json: { nodes, edges },
     }).eq("id", id);
-    setSaving(false);
-    if (error) { toast.error("Erro ao salvar"); return; }
-    toast.success("Bot salvo!");
-  }, [id, botName, nodes, edges]);
 
-  const handlePublish = useCallback(async () => {
-    if (!id) return;
-    // Save first
-    await supabase.from("bots").update({
-      name: botName,
-      flow_json: { nodes, edges },
-    }).eq("id", id);
+    if (error) { setSaving(false); toast.error("Erro ao salvar"); return; }
 
-    // Get current version
+    // Auto-publish: create version
     const { data: bot } = await supabase.from("bots").select("current_version").eq("id", id).single();
     const newVersion = (bot?.current_version || 0) + 1;
 
-    // Create version
     await supabase.from("bot_versions").insert({
       bot_id: id,
       version: newVersion,
       flow_json: { nodes, edges },
     });
 
-    // Update bot status
     await supabase.from("bots").update({
       status: "published",
       current_version: newVersion,
     }).eq("id", id);
 
     setBotStatus("published");
-    toast.success(`Bot publicado! Versão ${newVersion}`);
-  }, [id, botName, nodes, edges]);
+    lastSavedRef.current = JSON.stringify({ nodes, edges, botName });
+    setIsDirty(false);
+    setSaving(false);
+    toast.success(`Bot salvo e publicado! Versão ${newVersion}`);
+  }, [id, botName, nodes, edges, isDirty]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-full text-muted-foreground">Carregando editor...</div>;
@@ -264,11 +266,8 @@ function BotEditorInner() {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={redo} title="Refazer (Ctrl+Y)">
             <Redo2 size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving || !isDirty} className={`gap-1.5 ${!isDirty ? 'opacity-50' : ''}`}>
             <Save size={14} /> {saving ? "Salvando..." : "Salvar"}
-          </Button>
-          <Button size="sm" onClick={handlePublish} className="gap-1.5">
-            <Upload size={14} /> Publicar
           </Button>
         </div>
       </div>

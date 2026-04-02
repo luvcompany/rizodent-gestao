@@ -55,10 +55,10 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   // Start
   { type: 'start', label: 'Início', icon: '▶️', category: 'start', color: '#22c55e', description: 'Ponto de início do fluxo', defaultData: {} },
   // Messages (only 4)
-  { type: 'send_text', label: 'Mensagem de Texto', icon: '💬', category: 'message', color: '#3b82f6', description: 'Envia texto ou modelo de WhatsApp', defaultData: { text: '', templateId: '', templateButtons: [] } },
+  { type: 'send_text', label: 'Mensagem de Texto', icon: '💬', category: 'message', color: '#3b82f6', description: 'Envia texto ou modelo de WhatsApp', defaultData: { text: '', templateId: '', templateButtons: [], timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0 } },
   { type: 'send_audio', label: 'Áudio', icon: '🎙️', category: 'message', color: '#3b82f6', description: 'Grava e envia áudio de voz', defaultData: { audioUrl: '' } },
   { type: 'send_file', label: 'Arquivo / Mídia', icon: '📎', category: 'message', color: '#3b82f6', description: 'Envia foto, vídeo ou documento com texto', defaultData: { fileUrl: '', fileType: 'image', caption: '' } },
-  { type: 'send_menu', label: 'Menu Interativo', icon: '📋', category: 'message', color: '#3b82f6', description: 'Lista ou botões clicáveis via WhatsApp API', defaultData: { menuType: 'buttons', headerText: '', bodyText: '', footerText: '', buttons: [{ id: '1', title: 'Opção 1' }], listSections: [{ title: 'Seção 1', rows: [{ id: '1', title: 'Item 1', description: '' }] }], buttonLabel: 'Menu', noResponseTimeoutMinutes: 60 } },
+  { type: 'send_menu', label: 'Menu Interativo', icon: '📋', category: 'message', color: '#3b82f6', description: 'Lista ou botões clicáveis via WhatsApp API', defaultData: { menuType: 'buttons', headerText: '', bodyText: '', footerText: '', buttons: [{ id: '1', title: 'Opção 1' }], listSections: [{ title: 'Seção 1', rows: [{ id: '1', title: 'Item 1', description: '' }] }], buttonLabel: 'Menu', timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0 } },
   // Logic
   { type: 'delay', label: 'Pausa / Delay', icon: '⏸️', category: 'logic', color: '#a855f7', description: 'Aguarda um tempo antes de continuar', defaultData: { delaySeconds: 5, unit: 'seconds' } },
   { type: 'wait_reply', label: 'Aguardar Resposta', icon: '⌛', category: 'logic', color: '#a855f7', description: 'Aguarda resposta do cliente', defaultData: { timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0, saveToField: '' } },
