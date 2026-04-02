@@ -97,12 +97,18 @@ function BotEditorInner() {
     });
   }, [id]);
 
-  // Push history on changes (debounced)
+  // Push history on changes (debounced) + track dirty state
   useEffect(() => {
     if (loading) return;
     const t = setTimeout(pushHistory, 300);
     return () => clearTimeout(t);
   }, [nodes, edges, loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    const current = JSON.stringify({ nodes, edges, botName });
+    setIsDirty(current !== lastSavedRef.current);
+  }, [nodes, edges, botName, loading]);
 
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
