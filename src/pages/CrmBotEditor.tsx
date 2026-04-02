@@ -90,6 +90,7 @@ function BotEditorInner() {
       const flow = data.flow_json as any;
       if (flow?.nodes) setNodes(flow.nodes);
       if (flow?.edges) setEdges(flow.edges);
+      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name });
       setLoading(false);
       // Init history
       historyRef.current = [{ nodes: flow?.nodes || [], edges: flow?.edges || [] }];
