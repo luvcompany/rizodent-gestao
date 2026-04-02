@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
       const interactiveBody = body || message || "Escolha uma opção:";
 
       if (interactive_type === "list") {
-        waBody.interactive = {
+        const listInteractive: any = {
           type: "list",
           body: { text: interactiveBody },
           action: {
@@ -198,6 +198,9 @@ Deno.serve(async (req) => {
             })),
           },
         };
+        if (header) listInteractive.header = { type: "text", text: String(header).slice(0, 60) };
+        if (footer) listInteractive.footer = { text: String(footer).slice(0, 60) };
+        waBody.interactive = listInteractive;
       } else {
         // Button type (max 3 reply buttons)
         waBody.interactive = {
