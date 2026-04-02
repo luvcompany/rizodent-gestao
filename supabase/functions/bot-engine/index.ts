@@ -147,16 +147,28 @@ Deno.serve(async (req) => {
       const edges = flowJson.edges || [];
       let nextEdge = null;
 
-      // For template buttons or menu buttons: match reply text to button handle
+      // For template buttons or menu buttons/list: match reply text to button handle
       if (currentNode && (currentNode.type === "send_text" || currentNode.type === "send_menu")) {
         const templateButtons = currentNode.data?.templateButtons || [];
         const menuButtons = currentNode.data?.buttons || [];
-        const allButtons = currentNode.type === "send_text" ? templateButtons : menuButtons;
-        const handlePrefix = currentNode.type === "send_text" ? "btn-" : "menu-";
+        const listSections = currentNode.data?.listSections || [];
+        const listRows = listSections.flatMap((s: any) => s.rows || []);
+        
+        let allButtons: any[] = [];
+        let handlePrefix = "";
+        if (currentNode.type === "send_text") {
+          allButtons = templateButtons;
+          handlePrefix = "btn-";
+        } else if (currentNode.data?.menuType === "list") {
+          allButtons = listRows;
+          handlePrefix = "menu-";
+        } else {
+          allButtons = menuButtons;
+          handlePrefix = "menu-";
+        }
 
         if (allButtons.length > 0 && replyText) {
           const normalizedReply = replyText.trim().toLowerCase();
-          // Find matching button by title
           const matchedBtn = allButtons.find((btn: any) => 
             btn.title && btn.title.trim().toLowerCase() === normalizedReply
           );
