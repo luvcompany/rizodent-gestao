@@ -251,7 +251,7 @@ export default function CrmAutomacoes() {
                     <button onClick={async () => {
                       await supabase.from("funnel_channels").delete().eq("id", ch.id);
                       toast.success("Fonte removida");
-                      fetchData(selectedPipelineId);
+                      setChannels(prev => prev.filter(c => c.id !== ch.id));
                     }}><Trash2 size={12} className="text-destructive cursor-pointer" /></button>
                   </div>
                 </div>
