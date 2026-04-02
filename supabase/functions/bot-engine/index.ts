@@ -339,6 +339,24 @@ async function executeNode(
       return {};
 
     case "send_text": {
+      // If a template is selected, send as official WhatsApp template
+      if (data.templateId && data.templateName && lead.phone) {
+        const templateLanguage = data.templateLanguage || "pt_BR";
+        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+          lead_id: lead.id,
+          to: lead.phone,
+          type: "template",
+          template_name: data.templateName,
+          template_language: templateLanguage,
+        });
+        // If template has buttons, wait for reply
+        if (data.templateButtons && Array.isArray(data.templateButtons) && data.templateButtons.length > 0) {
+          return { stop: true, status: "waiting_reply", reason: "waiting_template_button" };
+        }
+        return {};
+      }
+
+      // Otherwise send as plain text
       const text = replaceVars(data.text || "");
       if (text && lead.phone) {
         await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
