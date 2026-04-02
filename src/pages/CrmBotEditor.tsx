@@ -45,6 +45,8 @@ function BotEditorInner() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isDirty, setIsDirty] = useState(false);
+  const lastSavedRef = useRef<string>("");
 
   // Undo/redo
   const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
