@@ -143,17 +143,59 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             {templates.length > 0 && (
               <div>
                 <Label className="text-xs">Usar Modelo (opcional)</Label>
+                <div className="relative mt-1 mb-1">
+                  <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    className="w-full pl-7 pr-3 py-1.5 text-xs border border-border rounded-md bg-secondary text-foreground focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground"
+                    placeholder="Pesquisar modelo..."
+                    value={templateSearch}
+                    onChange={(e) => setTemplateSearch(e.target.value)}
+                  />
+                </div>
                 <Select value={(node.data.templateId as string) || "__none__"} onValueChange={(v) => handleTemplateSelect(v === "__none__" ? "" : v)}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Nenhum (texto livre)</SelectItem>
-                    {templates.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    {filteredTemplates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{displayTemplateName(t.name)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
+
+            {/* Template Preview */}
+            {selectedTemplate && (
+              <div className="border border-border rounded-lg overflow-hidden bg-secondary/30">
+                <div className="px-3 py-2 bg-secondary/50 border-b border-border flex items-center justify-between">
+                  <span className="text-xs font-medium text-foreground">{displayTemplateName(selectedTemplate.name)}</span>
+                  <button onClick={() => handleTemplateSelect("")} className="text-muted-foreground hover:text-destructive">
+                    <X size={12} />
+                  </button>
+                </div>
+                <div className="p-3 space-y-2">
+                  {selectedTemplate.header_type && (
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                      {selectedTemplate.header_type === "TEXT" ? "📝 Cabeçalho de texto" : selectedTemplate.header_type === "IMAGE" ? "🖼️ Cabeçalho de imagem" : `📎 ${selectedTemplate.header_type}`}
+                    </div>
+                  )}
+                  <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{selectedTemplate.body_text || "Sem corpo"}</p>
+                  {selectedTemplate.footer_text && (
+                    <p className="text-[10px] text-muted-foreground italic">{selectedTemplate.footer_text}</p>
+                  )}
+                  {Array.isArray(selectedTemplate.buttons) && selectedTemplate.buttons.length > 0 && (
+                    <div className="border-t border-border pt-2 space-y-1">
+                      {(selectedTemplate.buttons as any[]).map((btn: any, i: number) => (
+                        <div key={i} className="text-xs text-primary text-center py-1 border border-primary/20 rounded-md bg-primary/5">
+                          {btn.text || btn.title || `Botão ${i + 1}`}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {!(node.data.templateId as string) && (
               <div>
                 <Label className="text-xs">Mensagem</Label>
