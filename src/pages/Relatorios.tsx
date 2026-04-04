@@ -389,11 +389,9 @@ const Relatorios = () => {
     if (selectedReport === "completo") {
       return (
         <div className="space-y-6">
-          {["previsibilidade", "contratado", "funil", "diario", "semanal", "procedimento", "ranking", "especialidade", "origem", "pagamentos"].map((key) => {
-            const prevSelected = selectedReport;
-            // render each report inline
-            return <div key={key}>{renderSingleReportByKey(key)}</div>;
-          })}
+          {["previsibilidade", "contratado", "funil", "diario", "semanal", "procedimento", "ranking", "especialidade", "origem", "pagamentos"].map((key) => (
+            <div key={key}>{renderSingleReportByKey(key)}</div>
+          ))}
         </div>
       );
     }
