@@ -372,6 +372,7 @@ const Relatorios = () => {
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
   const reportTypes = [
+    { key: "completo", label: "Relatório Completo", desc: "Visão consolidada com todos os dados e métricas", icon: FileBarChart },
     { key: "contratado", label: "Orçado vs Contratado", desc: "Valores orçados versus contratados com lista de pacientes", icon: DollarSign },
     { key: "diario", label: "Relatório Diário", desc: "Faturamento e pagamentos por dia", icon: Calendar },
     { key: "semanal", label: "Relatório Semanal", desc: "Faturamento agrupado por semana", icon: Calendar },
