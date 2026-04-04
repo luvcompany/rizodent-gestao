@@ -385,8 +385,10 @@ const Relatorios = () => {
     { key: "pagamentos", label: "Pagamentos", desc: "Detalhamento de todos os pagamentos realizados", icon: CreditCard },
   ];
 
-  const renderReportContent = () => {
-    switch (selectedReport) {
+  const renderSingleReport = (key: string) => {
+    const prev = selectedReport;
+    // temporarily set to render individual
+    switch (key) {
       case "contratado": return (<>
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
