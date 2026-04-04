@@ -385,10 +385,23 @@ const Relatorios = () => {
     { key: "pagamentos", label: "Pagamentos", desc: "Detalhamento de todos os pagamentos realizados", icon: CreditCard },
   ];
 
-  const renderSingleReport = (key: string) => {
-    const prev = selectedReport;
-    // temporarily set to render individual
-    switch (key) {
+  const renderReportContent = () => {
+    if (selectedReport === "completo") {
+      return (
+        <div className="space-y-6">
+          {["previsibilidade", "contratado", "funil", "diario", "semanal", "procedimento", "ranking", "especialidade", "origem", "pagamentos"].map((key) => {
+            const prevSelected = selectedReport;
+            // render each report inline
+            return <div key={key}>{renderSingleReportByKey(key)}</div>;
+          })}
+        </div>
+      );
+    }
+    return renderSingleReportByKey(selectedReport);
+  };
+
+  const renderSingleReportByKey = (reportKey: string | null) => {
+    switch (reportKey) {
       case "contratado": return (<>
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
