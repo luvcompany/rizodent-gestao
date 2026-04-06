@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
           if (incomingPhoneNumberId) {
             const { data: allIntegrations } = await supabase
               .from("integrations")
-              .select("id, key, config")
+              .select("id, key, config, status")
               .like("key", "whatsapp_%");
 
             if (allIntegrations) {
@@ -155,6 +155,13 @@ Deno.serve(async (req) => {
               console.log(`[WEBHOOK] Nenhuma integração encontrada para phone_number_id ${incomingPhoneNumberId}`);
               continue;
             }
+
+            // Check if integration is disabled
+            if (matchedIntegration.status === "disabled") {
+              console.log(`[WEBHOOK] Integração ${matchedIntegration.key} está DESATIVADA, ignorando webhook`);
+              continue;
+            }
+
             console.log(`[WEBHOOK] Integração encontrada: ${matchedIntegration.key} para phone_number_id ${incomingPhoneNumberId}`);
           }
 
