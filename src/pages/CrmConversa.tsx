@@ -255,9 +255,6 @@ export default function CrmConversa() {
           </div>
         </div>
 
-        {/* Appointment Confirmation Bar */}
-        <AppointmentConfirmBar leadId={lead.id} />
-
         {/* Notes Bar */}
         <NotesBar notes={lead.notes} onUpdateNotes={handleSaveNotes} />
 
@@ -404,6 +401,9 @@ export default function CrmConversa() {
           lead={lead as any}
           onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
         />
+
+        {/* Appointment Confirmation */}
+        <AppointmentConfirmBar leadId={lead.id} />
 
         {/* Task Panel */}
         <TaskPanel leadId={lead.id} />
