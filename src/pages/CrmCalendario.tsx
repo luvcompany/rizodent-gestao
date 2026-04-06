@@ -551,8 +551,56 @@ export default function CrmCalendario() {
         </div>
       )}
 
+      {/* ===== APPOINTMENTS VIEW ===== */}
+      {view === "appointments" && (
+        <div className="flex-1 overflow-auto">
+          {(view === "month" || view === "week") ? null : (
+            <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
+              <h2 className="text-sm font-bold text-foreground min-w-[200px] text-center capitalize">
+                {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
+              </h2>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
+            </div>
+          )}
+          <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
+            {eachDayOfInterval({ start: startOfWeek(currentDate, { weekStartsOn: 1 }), end: endOfWeek(currentDate, { weekStartsOn: 1 }) }).map(day => {
+              const dayKey = format(day, "yyyy-MM-dd");
+              const dayAppts = appointments.filter(a => a.scheduled_date === dayKey);
+              return (
+                <div key={dayKey} className={cn("bg-card p-2 min-h-[200px]", isToday(day) && "ring-1 ring-primary/50")}>
+                  <div className={cn("text-xs font-medium mb-2 text-center", isToday(day) ? "text-primary" : "text-foreground")}>
+                    <div>{format(day, "EEE", { locale: ptBR })}</div>
+                    <div className={cn("text-sm font-bold", isToday(day) && "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center mx-auto")}>{format(day, "d")}</div>
+                  </div>
+                  <div className="space-y-1">
+                    {dayAppts.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => (
+                      <div
+                        key={appt.id}
+                        onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}
+                        className={cn(
+                          "text-[10px] px-1.5 py-1 rounded cursor-pointer transition-colors",
+                          appt.status === "confirmed" ? "bg-green-500/15 text-green-700 hover:bg-green-500/25" :
+                          appt.status === "cancelled" ? "bg-destructive/10 text-destructive" :
+                          "bg-primary/10 text-foreground hover:bg-primary/20"
+                        )}
+                      >
+                        <div className="font-medium truncate">{appt.lead_name}</div>
+                        <div className="text-muted-foreground">{appt.scheduled_time.slice(0, 5)}</div>
+                      </div>
+                    ))}
+                    {dayAppts.length === 0 && <div className="text-[10px] text-muted-foreground text-center py-4">—</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Task detail dialog */}
-      <Dialog open={!!selectedTask} onOpenChange={(o) => { if (!o) setSelectedTask(null); }}>
+      <Dialog open={!!selectedTask && !deleteConfirm} onOpenChange={(o) => { if (!o) setSelectedTask(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>{selectedTask?.title}</DialogTitle></DialogHeader>
           {selectedTask && (() => {
@@ -593,9 +641,24 @@ export default function CrmCalendario() {
                     </Button>
                   )}
                 </div>
+                <Button size="sm" variant="destructive" className="w-full gap-1" onClick={() => setDeleteConfirm(selectedTask.id)}>
+                  <Trash2 size={14} /> Excluir tarefa
+                </Button>
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm dialog */}
+      <Dialog open={!!deleteConfirm} onOpenChange={(o) => { if (!o) setDeleteConfirm(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Excluir tarefa?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Esta ação não pode ser desfeita.</p>
+          <div className="flex gap-2 justify-end mt-4">
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => deleteConfirm && handleDeleteTask(deleteConfirm)}>Excluir</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
