@@ -60,6 +60,24 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     });
   }, []);
 
+  // Collect custom bot variables from all nodes
+  const botVariables = useMemo(() => {
+    const vars: { key: string; label: string; example: string }[] = [];
+    allNodes.forEach((n: any) => {
+      if (n.data?.saveToField && typeof n.data.saveToField === "string" && n.data.saveToField.trim()) {
+        const key = n.data.saveToField.trim();
+        if (!vars.find(v => v.key === key)) {
+          vars.push({ key, label: `Variável: ${key}`, example: "Resposta do lead" });
+        }
+      }
+    });
+    // Add last_reply as a built-in bot variable
+    if (!vars.find(v => v.key === "resposta.ultima")) {
+      vars.push({ key: "resposta.ultima", label: "Última Resposta", example: "Texto da última resposta" });
+    }
+    return vars;
+  }, [allNodes]);
+
   const update = useCallback(
     (key: string, value: any) => {
       onUpdate(node.id, { ...node.data, [key]: value });
