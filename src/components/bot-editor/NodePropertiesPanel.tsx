@@ -655,13 +655,13 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               // Collect all variable names used across all nodes in the flow
               const allBotVars = useMemo(() => {
                 const vars = new Set<string>();
-                nodes.forEach((n: any) => {
+                allNodes.forEach((n: any) => {
                   if (n.data?.saveToField && typeof n.data.saveToField === "string" && n.data.saveToField.trim()) {
                     vars.add(n.data.saveToField.trim());
                   }
                 });
                 return Array.from(vars).sort();
-              }, [nodes]);
+              }, [allNodes]);
 
               const filteredVars = varInput.trim()
                 ? allBotVars.filter(v => v.toLowerCase().includes(varInput.toLowerCase()))
