@@ -80,12 +80,14 @@ export default function CrmCalendario() {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("events");
   const [filterUser, setFilterUser] = useState("");
   const [filterType, setFilterType] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     const [tasksRes, profilesRes, leadsRes] = await Promise.all([
