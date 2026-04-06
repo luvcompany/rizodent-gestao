@@ -345,9 +345,12 @@ function BotEditorInner() {
         {/* Center: Canvas */}
         <div className="flex-1 min-w-0" ref={reactFlowWrapper}>
           <ReactFlow
-            nodes={nodes}
+            nodes={nodes.map((n) => ({
+              ...n,
+              data: { ...n.data, onDuplicate: handleDuplicateNode, onDeleteNode: handleDeleteNode },
+            }))}
             edges={edges.map((e) => ({ ...e, data: { ...e.data, onDelete: handleDeleteEdge } }))}
-            onNodesChange={onNodesChange}
+            onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onInit={setReactFlowInstance}
@@ -370,6 +373,16 @@ function BotEditorInner() {
               style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
               maskColor="hsl(var(--background) / 0.7)"
             />
+            {/* Snap alignment lines */}
+            <svg className="react-flow__edges" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 1000 }}>
+              {snapLines.map((line, i) =>
+                line.type === "vertical" ? (
+                  <line key={i} x1={line.position} y1={-10000} x2={line.position} y2={10000} stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" opacity={0.6} />
+                ) : (
+                  <line key={i} x1={-10000} y1={line.position} x2={10000} y2={line.position} stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" opacity={0.6} />
+                )
+              )}
+            </svg>
           </ReactFlow>
         </div>
 
