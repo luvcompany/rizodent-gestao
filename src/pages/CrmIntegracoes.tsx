@@ -198,7 +198,7 @@ export default function CrmIntegracoes() {
     loadEntries();
   };
 
-
+  const handleTestConnection = async () => {
     if (!editEntry) return;
     const c = editEntry.config;
     if (!c.token || !c.phone_number_id) { toast.error("Preencha o token e o Phone Number ID"); return; }
