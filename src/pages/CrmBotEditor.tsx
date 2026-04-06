@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ReactFlow,
@@ -13,6 +13,7 @@ import {
   type Connection,
   type Node,
   type Edge,
+  type NodeChange,
   ReactFlowProvider,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Save, Undo2, Redo2 } from "lucide-react";
+import { useSnapLines, duplicateNode, type SnapLine } from "@/hooks/useBotEditorHelpers";
 
 import BotNode from "@/components/bot-editor/BotNode";
 import DeletableEdge from "@/components/bot-editor/DeletableEdge";
@@ -51,7 +53,9 @@ function BotEditorInner() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
+  const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
   const lastSavedRef = useRef<string>("");
+  const { getSnapLines } = useSnapLines();
 
   // Undo/redo
   const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
@@ -132,21 +136,60 @@ function BotEditorInner() {
     [setNodes, setEdges]
   );
 
+  const handleDuplicateNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node || node.type === "start") return;
+      const newNode = duplicateNode(node);
+      setNodes((nds) => nds.concat(newNode));
+      toast.success("Bloco duplicado");
+    },
+    [nodes, setNodes]
+  );
+
+  // Snap-aware node change handler
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      onNodesChange(changes);
+      const dragChange = changes.find((c) => c.type === "position" && c.dragging);
+      if (dragChange && dragChange.type === "position" && dragChange.position) {
+        const draggingNode = nodes.find((n) => n.id === dragChange.id);
+        if (draggingNode) {
+          const tempNode = { ...draggingNode, position: dragChange.position };
+          const { snapLines: lines, snappedPosition } = getSnapLines(tempNode, nodes);
+          setSnapLines(lines);
+          if (snappedPosition.x !== dragChange.position.x || snappedPosition.y !== dragChange.position.y) {
+            setNodes((nds) =>
+              nds.map((n) => n.id === dragChange.id ? { ...n, position: snappedPosition } : n)
+            );
+          }
+        }
+      } else {
+        const hasDrag = changes.some((c) => c.type === "position" && c.dragging);
+        if (!hasDrag) setSnapLines([]);
+      }
+    },
+    [onNodesChange, nodes, getSnapLines, setNodes]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        e.preventDefault();
+        const selected = nodes.find((n) => n.selected && n.type !== "start");
+        if (selected) handleDuplicateNode(selected.id);
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) {
-        // Delete selected edges
         const selectedEdges = edges.filter((e) => e.selected);
         if (selectedEdges.length > 0) {
           e.preventDefault();
           selectedEdges.forEach((ed) => handleDeleteEdge(ed.id));
           return;
         }
-        // Delete selected nodes
         const selected = nodes.filter((n) => n.selected && n.type !== "start");
         if (selected.length > 0) {
           e.preventDefault();
@@ -156,7 +199,7 @@ function BotEditorInner() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo, nodes, edges, botName, handleDeleteNode, handleDeleteEdge]);
+  }, [undo, redo, nodes, edges, botName, handleDeleteNode, handleDeleteEdge, handleDuplicateNode]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -302,9 +345,12 @@ function BotEditorInner() {
         {/* Center: Canvas */}
         <div className="flex-1 min-w-0" ref={reactFlowWrapper}>
           <ReactFlow
-            nodes={nodes}
+            nodes={nodes.map((n) => ({
+              ...n,
+              data: { ...n.data, onDuplicate: handleDuplicateNode, onDeleteNode: handleDeleteNode },
+            }))}
             edges={edges.map((e) => ({ ...e, data: { ...e.data, onDelete: handleDeleteEdge } }))}
-            onNodesChange={onNodesChange}
+            onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onInit={setReactFlowInstance}
@@ -327,6 +373,16 @@ function BotEditorInner() {
               style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
               maskColor="hsl(var(--background) / 0.7)"
             />
+            {/* Snap alignment lines */}
+            <svg className="react-flow__edges" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 1000 }}>
+              {snapLines.map((line, i) =>
+                line.type === "vertical" ? (
+                  <line key={i} x1={line.position} y1={-10000} x2={line.position} y2={10000} stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" opacity={0.6} />
+                ) : (
+                  <line key={i} x1={-10000} y1={line.position} x2={10000} y2={line.position} stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" opacity={0.6} />
+                )
+              )}
+            </svg>
           </ReactFlow>
         </div>
 
