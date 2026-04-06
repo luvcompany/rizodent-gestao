@@ -95,10 +95,10 @@ export function useChatConversation(leadId: string | null | undefined) {
 
   useEffect(() => { fetchMessages(); fetchStages(); }, [fetchMessages, fetchStages]);
 
-  // ─── Repair legacy media ───
+  // ─── Repair legacy media (deferred, non-blocking) ───
   useEffect(() => {
     if (!leadId) return;
-    (async () => {
+    const timer = setTimeout(async () => {
       try {
         const { data, error } = await supabase.functions.invoke("repair-chat-media", {
           body: { leadId },
@@ -109,7 +109,8 @@ export function useChatConversation(leadId: string | null | undefined) {
           fetchMessages();
         }
       } catch {}
-    })();
+    }, 3000); // Defer 3s to not block initial render
+    return () => clearTimeout(timer);
   }, [leadId, fetchMessages]);
 
   // ─── Scroll to bottom on initial load ───
