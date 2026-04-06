@@ -562,6 +562,7 @@ export default function CrmCalendario() {
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
               <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
           </div>
+          <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
             {eachDayOfInterval({ start: startOfWeek(currentDate, { weekStartsOn: 1 }), end: endOfWeek(currentDate, { weekStartsOn: 1 }) }).map(day => {
               const dayKey = format(day, "yyyy-MM-dd");
               const dayAppts = appointments.filter(a => a.scheduled_date === dayKey);
