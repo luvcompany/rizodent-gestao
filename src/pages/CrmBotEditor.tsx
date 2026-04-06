@@ -53,7 +53,9 @@ function BotEditorInner() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
+  const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
   const lastSavedRef = useRef<string>("");
+  const { getSnapLines } = useSnapLines();
 
   // Undo/redo
   const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
