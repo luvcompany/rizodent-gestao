@@ -90,16 +90,20 @@ export default function CrmCalendario() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
-    const [tasksRes, profilesRes, leadsRes] = await Promise.all([
+    const [tasksRes, profilesRes, leadsRes, apptsRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("profiles").select("id, nome"),
       supabase.from("crm_leads").select("id, name"),
+      supabase.from("crm_appointments").select("*").order("scheduled_date"),
     ]);
     const rawTasks = (tasksRes.data || []) as Task[];
     const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
     rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
     setTasks(rawTasks);
     setProfiles((profilesRes.data as Profile[]) || []);
+    const rawAppts = (apptsRes.data || []) as Appointment[];
+    rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
+    setAppointments(rawAppts);
   }, []);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
