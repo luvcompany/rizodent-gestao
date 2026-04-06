@@ -189,7 +189,16 @@ export default function CrmIntegracoes() {
     loadEntries();
   };
 
-  const handleTestConnection = async () => {
+  const handleToggleIntegration = async (entry: WhatsAppEntry, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!entry.id) return;
+    const newStatus = entry.status === "disabled" ? "connected" : "disabled";
+    await supabase.from("integrations").update({ status: newStatus }).eq("id", entry.id);
+    toast.success(newStatus === "disabled" ? "Integração desativada" : "Integração ativada");
+    loadEntries();
+  };
+
+
     if (!editEntry) return;
     const c = editEntry.config;
     if (!c.token || !c.phone_number_id) { toast.error("Preencha o token e o Phone Number ID"); return; }
