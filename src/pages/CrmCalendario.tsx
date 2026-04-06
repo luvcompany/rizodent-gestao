@@ -32,7 +32,17 @@ type Task = {
 
 type Profile = { id: string; nome: string };
 
-type ViewMode = "events" | "list" | "month" | "week";
+type ViewMode = "events" | "list" | "month" | "week" | "appointments";
+
+type Appointment = {
+  id: string;
+  lead_id: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  status: string;
+  notes: string | null;
+  lead_name?: string;
+};
 
 const typeLabels: Record<string, string> = {
   agendamento: "Agendamento",
