@@ -1,8 +1,9 @@
-import { memo } from "react";
+import { memo, useState, useRef, useEffect } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { NODE_DEFINITIONS } from "@/types/bot";
+import { MoreVertical, Copy, Trash2 } from "lucide-react";
 
-function BotNode({ data, selected, type }: NodeProps) {
+function BotNode({ data, selected, type, id }: NodeProps) {
   const def = NODE_DEFINITIONS.find((d) => d.type === type) || NODE_DEFINITIONS[0];
   const isStart = type === "start";
   const isCondition = type === "condition";
@@ -10,11 +11,23 @@ function BotNode({ data, selected, type }: NodeProps) {
   const isSendText = type === "send_text";
   const isSendMenu = type === "send_menu";
 
-  // Template with buttons → dynamic handles
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as HTMLElement)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
   const templateButtons = (data.templateButtons as { id: string; title: string }[]) || [];
   const hasTemplateButtons = isSendText && templateButtons.length > 0;
 
-  // Menu buttons or list options
   const menuType = (data.menuType as string) || "buttons";
   const menuButtons = (data.buttons as { id: string; title: string }[]) || [];
   const listSections = (data.listSections as { title: string; rows: { id: string; title: string }[] }[]) || [];
@@ -22,7 +35,6 @@ function BotNode({ data, selected, type }: NodeProps) {
   const menuItems = isSendMenu ? (menuType === "list" ? listRows : menuButtons) : [];
   const hasMenuButtons = isSendMenu && menuItems.length > 0;
 
-  // Build preview text
   let preview = "";
   if (data.templateId && data.templateName) preview = `📄 ${String(data.templateName)}`;
   else if (data.text) preview = String(data.text as string).slice(0, 60);
@@ -34,7 +46,6 @@ function BotNode({ data, selected, type }: NodeProps) {
   else if (data.audioUrl) preview = "🎵 Áudio gravado";
   else if (data.fileUrl) preview = "📁 Arquivo anexado";
 
-  // Determine branching handles
   const branchHandles: { id: string; label: string; color: string }[] = [];
 
   if (isCondition) {
@@ -64,7 +75,6 @@ function BotNode({ data, selected, type }: NodeProps) {
       }`}
       style={{ background: "hsl(var(--card))" }}
     >
-      {/* Input handle */}
       {!isStart && (
         <Handle
           type="target"
@@ -76,11 +86,48 @@ function BotNode({ data, selected, type }: NodeProps) {
 
       {/* Header */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-t-md text-xs font-semibold"
+        className="flex items-center gap-2 px-3 py-2 rounded-t-md text-xs font-semibold relative"
         style={{ background: def.color, color: "#fff" }}
       >
         <span>{def.icon}</span>
-        <span>{String(data.label || def.label)}</span>
+        <span className="flex-1">{String(data.label || def.label)}</span>
+        {!isStart && (
+          <div ref={menuRef} className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+              className="p-0.5 rounded hover:bg-white/20 transition-colors"
+            >
+              <MoreVertical size={14} />
+            </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border shadow-lg py-1"
+                style={{ background: "hsl(var(--popover))", borderColor: "hsl(var(--border))" }}
+              >
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-popover-foreground transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    (data as any).onDuplicate?.(id);
+                  }}
+                >
+                  <Copy size={12} /> Duplicar
+                </button>
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-destructive/10 text-destructive transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    (data as any).onDeleteNode?.(id);
+                  }}
+                >
+                  <Trash2 size={12} /> Excluir
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Body */}
