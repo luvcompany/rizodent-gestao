@@ -69,15 +69,23 @@ Deno.serve(async (req) => {
         const integrationKey = (funnelChannel.channel_config as any)?.integration_key;
         if (integrationKey) {
           const { data: integration } = await supabase
-            .from("integrations")
-            .select("config")
-            .eq("key", integrationKey)
-            .maybeSingle();
-          if (integration?.config) {
-            const cfg = integration.config as any;
-            const resolvedToken = cfg.access_token || cfg.token;
-            if (resolvedToken) whatsappToken = resolvedToken;
-            if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
+              .from("integrations")
+              .select("config, status")
+              .eq("key", integrationKey)
+              .maybeSingle();
+
+            // Block sending if integration is disabled
+            if (integration?.status === "disabled") {
+              return new Response(JSON.stringify({ error: "Integração desativada" }), {
+                status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+              });
+            }
+
+            if (integration?.config) {
+              const cfg = integration.config as any;
+              const resolvedToken = cfg.access_token || cfg.token;
+              if (resolvedToken) whatsappToken = resolvedToken;
+              if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
           }
         }
       }
