@@ -307,24 +307,11 @@ export default function CrmConversa() {
             onLeadDeleted={() => navigate("/crm")}
           />
 
-          <div className="mt-3 mb-3">
-            <label className="text-xs text-muted-foreground mb-1 block">Etapa do Funil</label>
-            <Select value={lead.stage_id} onValueChange={handleStageChange}>
-              <SelectTrigger className="bg-secondary border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {chat.stages.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                      {s.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <PipelineStageSelector
+            stages={chat.stages}
+            currentStageId={lead.stage_id}
+            onStageChange={handleStageChange}
+          />
         </div>
 
         {/* Inline Tags & Source Editor */}
