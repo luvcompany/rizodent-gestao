@@ -136,7 +136,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={date} onSelect={setDate} className="p-3 pointer-events-auto" />
+                        <Calendar mode="single" selected={date} onSelect={setDate} locale={ptBR} className="p-3 pointer-events-auto" />
                       </PopoverContent>
                     </Popover>
                   </div>
