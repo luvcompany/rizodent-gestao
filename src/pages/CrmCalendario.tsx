@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ChevronLeft, ChevronRight, CalendarDays, Phone, MessageSquare, Clock,
-  CheckCircle2, AlertTriangle, Circle, List, LayoutGrid, Plus
+  CheckCircle2, AlertTriangle, Circle, List, LayoutGrid, Plus, Trash2
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek,
@@ -16,6 +16,7 @@ import {
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 type Task = {
   id: string;
