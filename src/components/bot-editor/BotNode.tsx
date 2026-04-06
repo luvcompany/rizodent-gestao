@@ -37,7 +37,8 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   const hasMenuButtons = isSendMenu && menuItems.length > 0;
 
   let preview = "";
-  if (data.templateId && data.templateName) preview = `📄 ${String(data.templateName)}`;
+  if (isWaitReply && data.saveToField) preview = `💾 [${String(data.saveToField)}]`;
+  else if (data.templateId && data.templateName) preview = `📄 ${String(data.templateName)}`;
   else if (data.text) preview = String(data.text as string).slice(0, 60);
   else if (data.note) preview = String(data.note as string).slice(0, 60);
   else if (data.tag) preview = `Tag: ${String(data.tag)}`;
