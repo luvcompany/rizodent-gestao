@@ -404,7 +404,7 @@ export default function CrmIntegracoes() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <MessageSquare size={20} className="text-primary" />
+              <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" />
               {editEntry?.config.display_name || "WhatsApp Business API"}
             </DialogTitle>
           </DialogHeader>
