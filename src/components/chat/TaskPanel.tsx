@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, CheckCircle2, Circle, Clock, Phone, CalendarDays, MessageSquare, Plus, AlertTriangle, Pencil, Trash2 } from "lucide-react";
+import { ptBR } from "date-fns/locale";
 import { format, isPast } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
