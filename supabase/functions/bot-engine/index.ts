@@ -503,15 +503,14 @@ async function executeNode(
       if (unit === "minutes") ms = amount * 60 * 1000;
       if (unit === "hours") ms = amount * 3600 * 1000;
 
-      if (ms <= 30000) {
-        await new Promise((r) => setTimeout(r, ms));
-        return {};
+      // Cap delay at 10 seconds to prevent Edge Function timeout
+      const maxDelay = 10000;
+      if (ms > maxDelay) {
+        console.log(`[bot-engine] Delay of ${ms}ms capped to ${maxDelay}ms to prevent timeout`);
+        ms = maxDelay;
       }
-      if (ms <= 300000) {
-        await new Promise((r) => setTimeout(r, ms));
-        return {};
-      }
-      return { stop: true, status: "active", reason: "delay_too_long" };
+      await new Promise((r) => setTimeout(r, ms));
+      return {};
     }
 
     case "wait_reply": {

@@ -512,7 +512,7 @@ Deno.serve(async (req) => {
                   console.log(`[WEBHOOK] Bot execution ${botExec.id} waiting for reply, triggering continue`);
                   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
                   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-                  // Fire and forget - call bot-engine to continue
+                  // Call bot-engine to continue (consume response to prevent resource leak)
                   fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
                     method: "POST",
                     headers: {
@@ -526,6 +526,9 @@ Deno.serve(async (req) => {
                       executionId: botExec.id,
                       replyText: content || "",
                     }),
+                  }).then(async (res) => {
+                    const body = await res.text();
+                    console.log(`[WEBHOOK] Bot-engine continue response (${res.status}): ${body}`);
                   }).catch((err: any) => console.error("[WEBHOOK] Bot-engine continue error:", err.message));
                 }
               } catch (botErr: any) {
