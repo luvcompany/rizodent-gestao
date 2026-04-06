@@ -136,21 +136,60 @@ function BotEditorInner() {
     [setNodes, setEdges]
   );
 
+  const handleDuplicateNode = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node || node.type === "start") return;
+      const newNode = duplicateNode(node);
+      setNodes((nds) => nds.concat(newNode));
+      toast.success("Bloco duplicado");
+    },
+    [nodes, setNodes]
+  );
+
+  // Snap-aware node change handler
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      onNodesChange(changes);
+      const dragChange = changes.find((c) => c.type === "position" && c.dragging);
+      if (dragChange && dragChange.type === "position" && dragChange.position) {
+        const draggingNode = nodes.find((n) => n.id === dragChange.id);
+        if (draggingNode) {
+          const tempNode = { ...draggingNode, position: dragChange.position };
+          const { snapLines: lines, snappedPosition } = getSnapLines(tempNode, nodes);
+          setSnapLines(lines);
+          if (snappedPosition.x !== dragChange.position.x || snappedPosition.y !== dragChange.position.y) {
+            setNodes((nds) =>
+              nds.map((n) => n.id === dragChange.id ? { ...n, position: snappedPosition } : n)
+            );
+          }
+        }
+      } else {
+        const hasDrag = changes.some((c) => c.type === "position" && c.dragging);
+        if (!hasDrag) setSnapLines([]);
+      }
+    },
+    [onNodesChange, nodes, getSnapLines, setNodes]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
       if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        e.preventDefault();
+        const selected = nodes.find((n) => n.selected && n.type !== "start");
+        if (selected) handleDuplicateNode(selected.id);
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) {
-        // Delete selected edges
         const selectedEdges = edges.filter((e) => e.selected);
         if (selectedEdges.length > 0) {
           e.preventDefault();
           selectedEdges.forEach((ed) => handleDeleteEdge(ed.id));
           return;
         }
-        // Delete selected nodes
         const selected = nodes.filter((n) => n.selected && n.type !== "start");
         if (selected.length > 0) {
           e.preventDefault();
@@ -160,7 +199,7 @@ function BotEditorInner() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo, nodes, edges, botName, handleDeleteNode, handleDeleteEdge]);
+  }, [undo, redo, nodes, edges, botName, handleDeleteNode, handleDeleteEdge, handleDuplicateNode]);
 
   const onConnect = useCallback(
     (params: Connection) => {
