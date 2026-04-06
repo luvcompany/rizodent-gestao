@@ -173,6 +173,7 @@ Deno.serve(async (req) => {
             const from = msg.from;
             const msgType = msg.type || "text";
             let content = "";
+            let replyOptionId: string | null = null;
             let mediaId: string | null = null;
 
             switch (msgType) {
@@ -199,12 +200,15 @@ Deno.serve(async (req) => {
                 break;
               case "button":
                 content = msg.button?.text || msg.button?.payload || "";
+                replyOptionId = msg.button?.payload || null;
                 break;
               case "interactive":
                 if (msg.interactive?.type === "button_reply") {
                   content = msg.interactive.button_reply?.title || "";
+                  replyOptionId = msg.interactive.button_reply?.id || null;
                 } else if (msg.interactive?.type === "list_reply") {
                   content = msg.interactive.list_reply?.title || msg.interactive.list_reply?.description || "";
+                  replyOptionId = msg.interactive.list_reply?.id || null;
                 } else {
                   content = msg.interactive?.body?.text || JSON.stringify(msg.interactive || {});
                 }
@@ -525,6 +529,7 @@ Deno.serve(async (req) => {
                       trigger: "continue",
                       executionId: botExec.id,
                       replyText: content || "",
+                      replyOptionId,
                     }),
                   }).then(async (res) => {
                     const body = await res.text();
