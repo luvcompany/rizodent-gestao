@@ -392,11 +392,16 @@ export default function CrmConversas() {
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
                   {leftPanelVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
                 </Button>
-                <Avatar className="h-9 w-9">
-                  <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
-                    {selectedLead.name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="relative">
+                  <Avatar className="h-9 w-9">
+                    <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
+                      {selectedLead.name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-0.5 -left-0.5">
+                    <ChannelBadgeIcon source={selectedLead.source} size={16} />
+                  </div>
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-foreground text-sm truncate">{selectedLead.name}</div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
