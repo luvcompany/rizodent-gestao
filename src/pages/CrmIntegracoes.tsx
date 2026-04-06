@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   MessageSquare, Instagram, Facebook, Mail, ShoppingBag,
   Settings, Copy, RefreshCw, Send, Eye, EyeOff, CheckCircle, XCircle,
-  Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch
+  Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch, Power
 } from "lucide-react";
 
 type WhatsAppConfig = {
@@ -188,6 +189,15 @@ export default function CrmIntegracoes() {
     loadEntries();
   };
 
+  const handleToggleIntegration = async (entry: WhatsAppEntry, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!entry.id) return;
+    const newStatus = entry.status === "disabled" ? "connected" : "disabled";
+    await supabase.from("integrations").update({ status: newStatus }).eq("id", entry.id);
+    toast.success(newStatus === "disabled" ? "Integração desativada" : "Integração ativada");
+    loadEntries();
+  };
+
   const handleTestConnection = async () => {
     if (!editEntry) return;
     const c = editEntry.config;
@@ -322,13 +332,22 @@ export default function CrmIntegracoes() {
                       <div className="p-2 rounded-lg bg-primary/10">
                         <MessageSquare size={24} className="text-primary" />
                       </div>
-                      {isConnected ? (
-                        <Badge className="bg-green-900/30 text-green-400 border-0"><CheckCircle size={12} className="mr-1" /> Conectado</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-muted-foreground"><XCircle size={12} className="mr-1" /> Não conectado</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={entry.status !== "disabled"}
+                          onCheckedChange={() => {}}
+                          onClick={(e) => handleToggleIntegration(entry, e)}
+                        />
+                        {isConnected ? (
+                          <Badge className="bg-green-900/30 text-green-400 border-0"><CheckCircle size={12} className="mr-1" /> Ativo</Badge>
+                        ) : entry.status === "disabled" ? (
+                          <Badge variant="secondary" className="text-muted-foreground"><Power size={12} className="mr-1" /> Desativado</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-muted-foreground"><XCircle size={12} className="mr-1" /> Não conectado</Badge>
+                        )}
+                      </div>
                     </div>
-                    <h3 className="font-semibold text-foreground mb-1">{c.display_name || entry.key}</h3>
+                    <h3 className={`font-semibold mb-1 ${entry.status === "disabled" ? "text-muted-foreground" : "text-foreground"}`}>{c.display_name || entry.key}</h3>
                     <p className="text-sm text-muted-foreground">{c.phone_number_id ? `ID: ...${c.phone_number_id.slice(-4)}` : "Não configurado"}</p>
                     {pName && (
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
