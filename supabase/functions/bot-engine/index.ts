@@ -70,10 +70,9 @@ function autoAdvanceCapturedReply(
     guard += 1;
     const node = nodes.find((item: any) => item.id === nextNodeId);
     if (!node || node.type !== "wait_reply") break;
+    if (!node.data?.saveToField) break;
 
-    if (node.data?.saveToField) {
-      nextVariables[node.data.saveToField] = replyValue;
-    }
+    nextVariables[node.data.saveToField] = replyValue;
 
     nextVariables.last_reply = replyValue;
 
@@ -314,7 +313,7 @@ Deno.serve(async (req) => {
     }
 
     return json({ error: "Unknown trigger" }, 400);
-  } catch (err) {
+  } catch (err: any) {
     console.error("bot-engine error:", err);
     return json({ error: err.message }, 500);
   }
@@ -343,7 +342,7 @@ async function sendViaWhatsApp(
       console.error("send-whatsapp-message error:", JSON.stringify(result));
     }
     return result;
-  } catch (err) {
+  } catch (err: any) {
     console.error("send-whatsapp-message call error:", err);
     return { error: err.message };
   }
