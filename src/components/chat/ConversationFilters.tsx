@@ -166,7 +166,7 @@ export default function ConversationFilters({
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={draft.customDateTo} onSelect={(d) => setDraft({ ...draft, customDateTo: d || undefined })} className="p-3 pointer-events-auto" />
+                      <Calendar mode="single" selected={draft.customDateTo} onSelect={(d) => setDraft({ ...draft, customDateTo: d || undefined })} locale={ptBR} className="p-3 pointer-events-auto" />
                     </PopoverContent>
                   </Popover>
                 </div>
