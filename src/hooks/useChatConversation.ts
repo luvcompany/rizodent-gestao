@@ -156,19 +156,20 @@ export function useChatConversation(leadId: string | null | undefined) {
     return () => { supabase.removeChannel(channel); };
   }, [leadId]);
 
-  // ─── Polling fallback ───
+  // ─── Polling fallback (less frequent, realtime handles most updates) ───
   useEffect(() => {
     if (!leadId) return;
     const interval = setInterval(async () => {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
       if (data) {
         setMessages((prev) => {
-          const newFingerprint = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
-          const oldFingerprint = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
+          if (data.length !== prev.length) return data as ChatMessage[];
+          const newFingerprint = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
+          const oldFingerprint = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
           return newFingerprint !== oldFingerprint ? (data as ChatMessage[]) : prev;
         });
       }
-    }, 5000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [leadId]);
 
