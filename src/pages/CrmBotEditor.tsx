@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ReactFlow,
@@ -13,6 +13,7 @@ import {
   type Connection,
   type Node,
   type Edge,
+  type NodeChange,
   ReactFlowProvider,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Save, Undo2, Redo2 } from "lucide-react";
+import { useSnapLines, duplicateNode, type SnapLine } from "@/hooks/useBotEditorHelpers";
 
 import BotNode from "@/components/bot-editor/BotNode";
 import DeletableEdge from "@/components/bot-editor/DeletableEdge";
