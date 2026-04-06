@@ -12,10 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  MessageSquare, Instagram, Facebook, Mail, ShoppingBag,
+  Instagram, Facebook, Mail, ShoppingBag,
   Settings, Copy, RefreshCw, Send, Eye, EyeOff, CheckCircle, XCircle,
   Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch, Power
 } from "lucide-react";
+import whatsappLogo from "@/assets/whatsapp-logo.png";
 
 type WhatsAppConfig = {
   token: string;
