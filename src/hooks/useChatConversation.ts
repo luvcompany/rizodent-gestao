@@ -68,29 +68,37 @@ export function useChatConversation(leadId: string | null | undefined) {
     return [...messages].reverse().find((m) => m.direction === "inbound")?.created_at || null;
   }, [messages]);
 
-  // ─── Fetch messages & stages ───
+  // ─── Cache stages globally ───
+  const stagesLoadedRef = useRef(false);
+
+  const fetchStages = useCallback(async () => {
+    if (stagesLoadedRef.current && stages.length > 0) return;
+    const { data } = await supabase.from("crm_stages").select("*").order("position");
+    if (data) {
+      setStages(data as ChatStage[]);
+      stagesLoadedRef.current = true;
+    }
+  }, [stages.length]);
+
+  // ─── Fetch messages ───
   const fetchMessages = useCallback(async () => {
     if (!leadId) return;
     setLoading(true);
     try {
-      const [messagesRes, stagesRes] = await Promise.all([
-        supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true }),
-        supabase.from("crm_stages").select("*").order("position"),
-      ]);
-      setMessages((messagesRes.data as ChatMessage[]) || []);
-      setStages((stagesRes.data as ChatStage[]) || []);
+      const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
+      setMessages((data as ChatMessage[]) || []);
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
     }
     setLoading(false);
   }, [leadId]);
 
-  useEffect(() => { fetchMessages(); }, [fetchMessages]);
+  useEffect(() => { fetchMessages(); fetchStages(); }, [fetchMessages, fetchStages]);
 
-  // ─── Repair legacy media ───
+  // ─── Repair legacy media (deferred, non-blocking) ───
   useEffect(() => {
     if (!leadId) return;
-    (async () => {
+    const timer = setTimeout(async () => {
       try {
         const { data, error } = await supabase.functions.invoke("repair-chat-media", {
           body: { leadId },
@@ -101,7 +109,8 @@ export function useChatConversation(leadId: string | null | undefined) {
           fetchMessages();
         }
       } catch {}
-    })();
+    }, 3000); // Defer 3s to not block initial render
+    return () => clearTimeout(timer);
   }, [leadId, fetchMessages]);
 
   // ─── Scroll to bottom on initial load ───
@@ -147,19 +156,20 @@ export function useChatConversation(leadId: string | null | undefined) {
     return () => { supabase.removeChannel(channel); };
   }, [leadId]);
 
-  // ─── Polling fallback ───
+  // ─── Polling fallback (less frequent, realtime handles most updates) ───
   useEffect(() => {
     if (!leadId) return;
     const interval = setInterval(async () => {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
       if (data) {
         setMessages((prev) => {
-          const newFingerprint = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
-          const oldFingerprint = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.content ?? ""}:${m.type}`).join("|");
+          if (data.length !== prev.length) return data as ChatMessage[];
+          const newFingerprint = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
+          const oldFingerprint = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
           return newFingerprint !== oldFingerprint ? (data as ChatMessage[]) : prev;
         });
       }
-    }, 5000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [leadId]);
 
