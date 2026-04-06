@@ -12,10 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  MessageSquare, Instagram, Facebook, Mail, ShoppingBag,
+  Instagram, Facebook, Mail, ShoppingBag,
   Settings, Copy, RefreshCw, Send, Eye, EyeOff, CheckCircle, XCircle,
   Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch, Power
 } from "lucide-react";
+import whatsappLogo from "@/assets/whatsapp-logo.png";
 
 type WhatsAppConfig = {
   token: string;
@@ -314,7 +315,7 @@ export default function CrmIntegracoes() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-foreground flex items-center gap-2">
-              <MessageSquare size={18} className="text-primary" /> WhatsApp Business
+              <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" /> WhatsApp Business
             </h2>
             <Button size="sm" onClick={handleNew}>
               <Plus size={14} className="mr-1" /> Novo Número
@@ -330,7 +331,7 @@ export default function CrmIntegracoes() {
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between mb-3">
                       <div className="p-2 rounded-lg bg-primary/10">
-                        <MessageSquare size={24} className="text-primary" />
+                        <img src={whatsappLogo} alt="WhatsApp" width={28} height={28} className="rounded-full" />
                       </div>
                       <div className="flex items-center gap-2">
                         <Switch
@@ -403,7 +404,7 @@ export default function CrmIntegracoes() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <MessageSquare size={20} className="text-primary" />
+              <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" />
               {editEntry?.config.display_name || "WhatsApp Business API"}
             </DialogTitle>
           </DialogHeader>

@@ -28,6 +28,7 @@ import TaskPanel from "@/components/chat/TaskPanel";
 
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
+import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
   Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square
 } from "lucide-react";
@@ -347,9 +348,14 @@ export default function CrmConversas() {
                               : "hover:bg-secondary/50"
                         }`}
                       >
-                        <Avatar className="h-9 w-9 flex-shrink-0 mt-0.5">
-                          <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
-                        </Avatar>
+                        <div className="relative flex-shrink-0 mt-0.5">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+                          </Avatar>
+                          <div className="absolute -bottom-0.5 -left-0.5">
+                            <ChannelBadgeIcon source={lead.source} size={16} />
+                          </div>
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
@@ -386,11 +392,16 @@ export default function CrmConversas() {
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
                   {leftPanelVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
                 </Button>
-                <Avatar className="h-9 w-9">
-                  <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
-                    {selectedLead.name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="relative">
+                  <Avatar className="h-9 w-9">
+                    <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
+                      {selectedLead.name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-0.5 -left-0.5">
+                    <ChannelBadgeIcon source={selectedLead.source} size={16} />
+                  </div>
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-foreground text-sm truncate">{selectedLead.name}</div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
