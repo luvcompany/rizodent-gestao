@@ -114,6 +114,15 @@ export default function CrmCalendario() {
     setSelectedTask(null);
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    const { error } = await supabase.from("crm_tasks").delete().eq("id", taskId);
+    if (error) { toast.error("Erro ao excluir tarefa"); return; }
+    toast.success("Tarefa excluída");
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    setSelectedTask(null);
+    setDeleteConfirm(null);
+  };
+
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
       if (filterUser && t.assigned_to !== filterUser) return false;
