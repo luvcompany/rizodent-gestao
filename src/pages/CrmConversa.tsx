@@ -402,6 +402,9 @@ export default function CrmConversa() {
           onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
         />
 
+        {/* Appointment Confirmation */}
+        <AppointmentConfirmBar leadId={lead.id} />
+
         {/* Task Panel */}
         <TaskPanel leadId={lead.id} />
 
