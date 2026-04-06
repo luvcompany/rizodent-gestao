@@ -28,6 +28,7 @@ import TaskPanel from "@/components/chat/TaskPanel";
 
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
+import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
   Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square
 } from "lucide-react";
