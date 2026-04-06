@@ -255,9 +255,6 @@ export default function CrmConversa() {
           </div>
         </div>
 
-        {/* Appointment Confirmation Bar */}
-        <AppointmentConfirmBar leadId={lead.id} />
-
         {/* Notes Bar */}
         <NotesBar notes={lead.notes} onUpdateNotes={handleSaveNotes} />
 
