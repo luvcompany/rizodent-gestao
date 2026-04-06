@@ -555,14 +555,13 @@ export default function CrmCalendario() {
       {view === "appointments" && (
         <div className="flex-1 overflow-auto">
           <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
               <h2 className="text-sm font-bold text-foreground min-w-[200px] text-center capitalize">
                 {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
               </h2>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
               <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
-            </div>
-          )}
-          <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
+          </div>
             {eachDayOfInterval({ start: startOfWeek(currentDate, { weekStartsOn: 1 }), end: endOfWeek(currentDate, { weekStartsOn: 1 }) }).map(day => {
               const dayKey = format(day, "yyyy-MM-dd");
               const dayAppts = appointments.filter(a => a.scheduled_date === dayKey);
