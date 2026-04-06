@@ -6,6 +6,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, CalendarCheck, CheckCircle2, Clock } from "lucide-react";
 import { format, isPast } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -136,7 +137,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={date} onSelect={setDate} className="p-3 pointer-events-auto" />
+                        <Calendar mode="single" selected={date} onSelect={setDate} locale={ptBR} className="p-3 pointer-events-auto" />
                       </PopoverContent>
                     </Popover>
                   </div>

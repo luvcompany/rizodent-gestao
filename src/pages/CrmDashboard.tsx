@@ -5,11 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   CalendarDays, Phone, MessageSquare, Clock, CheckCircle2, AlertTriangle,
-  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell
+  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users
 } from "lucide-react";
-import { format, isToday, isPast, startOfDay, endOfDay, isSameDay } from "date-fns";
+import { format, isToday, isPast, startOfDay, endOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
@@ -48,13 +49,18 @@ export default function CrmDashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
+  const [upcomingDays, setUpcomingDays] = useState("7");
+  const [leadsToday, setLeadsToday] = useState(0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [tasksRes, leadsRes, appointmentsRes] = await Promise.all([
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+
+    const [tasksRes, leadsRes, appointmentsRes, leadsCountRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("crm_leads").select("id, name"),
       supabase.from("crm_appointments").select("*").order("scheduled_date"),
+      supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
     ]);
 
     const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
@@ -67,6 +73,7 @@ export default function CrmDashboard() {
     rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
     setAppointments(rawAppts);
 
+    setLeadsToday(leadsCountRes.count || 0);
     setLoading(false);
   }, []);
 
@@ -89,9 +96,30 @@ export default function CrmDashboard() {
     appointments.filter(a => a.scheduled_date === format(selectedDate, "yyyy-MM-dd")),
   [appointments, selectedDate]);
 
-  const confirmedToday = useMemo(() =>
-    appointments.filter(a => a.scheduled_date === format(selectedDate, "yyyy-MM-dd") && a.status === "confirmed"),
-  [appointments, selectedDate]);
+  // Upcoming appointments
+  const upcomingAppointments = useMemo(() => {
+    const today = startOfDay(new Date());
+    const endDate = addDays(today, parseInt(upcomingDays));
+    return appointments
+      .filter(a => {
+        const d = new Date(a.scheduled_date);
+        return (isSameDay(d, today) || isAfter(d, today)) && isBefore(d, endDate);
+      })
+      .sort((a, b) => {
+        const cmp = a.scheduled_date.localeCompare(b.scheduled_date);
+        return cmp !== 0 ? cmp : a.scheduled_time.localeCompare(b.scheduled_time);
+      });
+  }, [appointments, upcomingDays]);
+
+  // Group upcoming by date
+  const groupedUpcoming = useMemo(() => {
+    const groups = new Map<string, Appointment[]>();
+    upcomingAppointments.forEach(a => {
+      if (!groups.has(a.scheduled_date)) groups.set(a.scheduled_date, []);
+      groups.get(a.scheduled_date)!.push(a);
+    });
+    return groups;
+  }, [upcomingAppointments]);
 
   const handleMarkDone = async (task: Task) => {
     await supabase.from("crm_tasks").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", task.id);
@@ -114,13 +142,13 @@ export default function CrmDashboard() {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="end">
-            <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setSelectedDate(d)} className="p-3 pointer-events-auto" />
+            <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setSelectedDate(d)} locale={ptBR} className="p-3 pointer-events-auto" />
           </PopoverContent>
         </Popover>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10"><ListTodo size={20} className="text-primary" /></div>
@@ -154,6 +182,15 @@ export default function CrmDashboard() {
             <div>
               <p className="text-2xl font-bold">{pendingConfirmations.length}</p>
               <p className="text-xs text-muted-foreground">Confirmações pendentes</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-500/10"><Users size={20} className="text-blue-600" /></div>
+            <div>
+              <p className="text-2xl font-bold">{leadsToday}</p>
+              <p className="text-xs text-muted-foreground">Leads hoje</p>
             </div>
           </div>
         </Card>
@@ -213,43 +250,73 @@ export default function CrmDashboard() {
           </div>
         </Card>
 
-        {/* Appointments of the day */}
+        {/* Upcoming Appointments */}
         <Card className="flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground">Agendamentos — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}</h2>
-            <Badge variant="outline">{dayAppointments.length}</Badge>
+            <h2 className="text-sm font-bold text-foreground">Próximos Agendamentos</h2>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{upcomingAppointments.length}</Badge>
+              <Select value={upcomingDays} onValueChange={setUpcomingDays}>
+                <SelectTrigger className="h-7 text-xs w-[110px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 dias</SelectItem>
+                  <SelectItem value="14">14 dias</SelectItem>
+                  <SelectItem value="30">30 dias</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {dayAppointments.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento para este dia</p>}
-            {dayAppointments.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => (
-              <div key={appt.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border">
-                <div className={cn(
-                  "p-2 rounded-lg",
-                  appt.status === "confirmed" ? "bg-green-500/10" : appt.status === "cancelled" ? "bg-destructive/10" : "bg-primary/10"
-                )}>
-                  <CalendarDays size={16} className={cn(
-                    appt.status === "confirmed" ? "text-green-600" : appt.status === "cancelled" ? "text-destructive" : "text-primary"
-                  )} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{appt.lead_name}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                    <span className="font-medium">{appt.scheduled_time.slice(0, 5)}</span>
-                    {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {upcomingAppointments.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento nos próximos {upcomingDays} dias</p>
+            )}
+            {Array.from(groupedUpcoming.entries()).map(([dateStr, appts]) => {
+              const date = new Date(dateStr + "T12:00:00");
+              const isDateToday = isToday(date);
+              return (
+                <div key={dateStr}>
+                  <div className={cn(
+                    "text-xs font-semibold uppercase mb-1.5 px-1",
+                    isDateToday ? "text-primary" : "text-muted-foreground"
+                  )}>
+                    {isDateToday ? "Hoje" : format(date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
+                  </div>
+                  <div className="space-y-1.5">
+                    {appts.map(appt => (
+                      <div key={appt.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border">
+                        <div className={cn(
+                          "p-2 rounded-lg",
+                          appt.status === "confirmed" ? "bg-green-500/10" : appt.status === "cancelled" ? "bg-destructive/10" : "bg-primary/10"
+                        )}>
+                          <CalendarDays size={16} className={cn(
+                            appt.status === "confirmed" ? "text-green-600" : appt.status === "cancelled" ? "text-destructive" : "text-primary"
+                          )} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{appt.lead_name}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                            <span className="font-medium">{appt.scheduled_time.slice(0, 5)}</span>
+                            {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className={cn(
+                          "text-[10px]",
+                          appt.status === "confirmed" && "border-green-500 text-green-600",
+                          appt.status === "cancelled" && "border-destructive text-destructive"
+                        )}>
+                          {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : "Pendente"}
+                        </Badge>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
+                          Ver
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <Badge variant="outline" className={cn(
-                  "text-[10px]",
-                  appt.status === "confirmed" && "border-green-500 text-green-600",
-                  appt.status === "cancelled" && "border-destructive text-destructive"
-                )}>
-                  {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : "Confirmado"}
-                </Badge>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
-                  Ver
-                </Button>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Pending confirmations */}
             {pendingConfirmations.length > 0 && (
