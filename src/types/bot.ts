@@ -61,7 +61,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { type: 'send_menu', label: 'Menu Interativo', icon: '📋', category: 'message', color: '#3b82f6', description: 'Lista ou botões clicáveis via WhatsApp API', defaultData: { menuType: 'buttons', headerText: '', bodyText: '', footerText: '', buttons: [{ id: '1', title: 'Opção 1' }], listSections: [{ title: 'Seção 1', rows: [{ id: '1', title: 'Item 1', description: '' }] }], buttonLabel: 'Menu', timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0 } },
   // Logic
   { type: 'delay', label: 'Pausa / Delay', icon: '⏸️', category: 'logic', color: '#a855f7', description: 'Aguarda um tempo antes de continuar', defaultData: { delaySeconds: 5, unit: 'seconds' } },
-  { type: 'wait_reply', label: 'Aguardar Resposta', icon: '⌛', category: 'logic', color: '#a855f7', description: 'Aguarda resposta do cliente', defaultData: { timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0, saveToField: '' } },
+  { type: 'wait_reply', label: 'Registrar Resposta', icon: '💾', category: 'logic', color: '#a855f7', description: 'Salva a resposta do lead em uma variável', defaultData: { timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0, saveToField: '' } },
   { type: 'condition', label: 'Condição (If/Else)', icon: '🔀', category: 'logic', color: '#a855f7', description: 'Ramifica baseado em condições', defaultData: { field: '', operator: 'equals', value: '' } },
   { type: 'schedule', label: 'Programar Envio', icon: '📅', category: 'logic', color: '#a855f7', description: 'Programa mensagem para data/hora futura', defaultData: { scheduleMode: 'next_day', scheduleTime: '09:00', scheduleDate: '', messageType: 'text', text: '', audioUrl: '', fileUrl: '', fileType: 'image', caption: '' } },
   // Actions

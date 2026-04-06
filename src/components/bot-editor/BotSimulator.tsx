@@ -176,7 +176,8 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
       }
 
       case "wait_reply": {
-        addMessage({ from: "bot", content: "⌛ Aguardando resposta...", type: "system" });
+        const fieldName = data.saveToField ? String(data.saveToField) : null;
+        addMessage({ from: "bot", content: fieldName ? `💾 Aguardando resposta → salvar em [${fieldName}]` : "💾 Aguardando resposta...", type: "system" });
         setWaitingReply(true);
         setWaitingMenuNode(null);
         processingRef.current = false;
