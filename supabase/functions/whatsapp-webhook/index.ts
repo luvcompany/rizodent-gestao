@@ -71,7 +71,7 @@ async function downloadAndStoreMedia(
     const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
     console.log(`[MEDIA] Upload para Supabase: sucesso, path=${path}, URL=${data.publicUrl}`);
     return data.publicUrl;
-  } catch (err) {
+  } catch (err: any) {
     console.error(`[MEDIA] ERRO inesperado ao processar media_id ${mediaId}: ${err.message}`, err);
     return null;
   }
@@ -558,7 +558,7 @@ Deno.serve(async (req) => {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Webhook error:", error);
       return new Response(JSON.stringify({ error: error.message }), {
         status: 500,
