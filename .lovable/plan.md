@@ -1,72 +1,41 @@
 
+## Plano de Implementação
 
-## Plan: Fix Template Names, Automations Page Stability, and Bot Trigger Execution
+### 1. Seletor de Funil ao mudar etapa na conversa
+- Ao mudar a etapa do lead no chat, mostrar primeiro a lista de funis e depois as etapas daquele funil (como na imagem enviada)
 
-### Problem Summary
-1. **Template names** show raw Meta suffixes like `_w9yunp` -- need to strip the last `_` segment
-2. **Automations page** calls `fetchData()` after every action, causing full re-render/reload
-3. **Bot automations don't execute** because:
-   - The stage move calls a non-existent `bot-trigger` function
-   - No code reads `crm_automations` table to execute configured actions (send_bot, send_template, etc.) when a lead enters a stage
+### 2. Melhorias no bloco "Criar Tarefa" do bot
+- Opções de agendamento: horário específico, primeiro horário do dia seguinte, em X horas, em X dias, em X dias às X horas
 
----
+### 3. Exclusão de tarefas no Calendário
+- Adicionar botão de excluir tarefas na página de calendário
 
-### Step 1 -- Strip Suffix from Template Display Names
+### 4. Tabela de Agendamentos (migration)
+- Criar tabela `crm_appointments` com campos: lead_id, scheduled_date, scheduled_time, status (pending_confirmation, confirmed, completed, cancelled, no_show), notes, task_id (referência à tarefa que gerou), confirmed_by, confirmed_at
 
-**File**: `src/pages/CrmModelos.tsx`
+### 5. Fluxo de Confirmação de Agendamento
+- Na conversa do lead, quando existir uma tarefa de confirmação pendente, mostrar um botão "Confirmar Agendamento"
+- Ao confirmar: tarefa é concluída automaticamente + agendamento é criado na tabela `crm_appointments`
 
-Create a helper function that removes the last `_xxxxx` segment from template names (where the last segment looks like a random hash -- short alphanumeric suffix). Display the cleaned name in the template card (line 335) while keeping the raw name for API operations.
+### 6. Aba "Agendamentos" no Calendário
+- Nova aba na página de calendário que mostra apenas agendamentos (não tarefas), organizados por dia e horário
 
-```typescript
-const displayName = (name: string) => {
-  // Remove last _segment if it looks like a random suffix (alphanumeric, ≤8 chars)
-  return name.replace(/_[a-z0-9]{4,8}$/, '');
-};
-```
+### 7. Dashboard CRM (`/crm/dashboard`)
+- Nova página com:
+  - Tarefas do dia (pendentes e atrasadas)
+  - Agendamentos do dia (com filtro de data)
+  - Quantidade de confirmações pendentes
+  - KPIs resumidos (leads novos, conversões, etc.)
 
-Apply on line 335: `{displayName(t.name)}`
+### 8. Notificações de tarefas
+- Sistema de notificação no horário definido da tarefa (browser notification ou toast)
 
----
-
-### Step 2 -- Prevent Full Page Reload on CrmAutomacoes
-
-**File**: `src/pages/CrmAutomacoes.tsx`
-
-Instead of calling `fetchData(selectedPipelineId)` after every mutation (which re-fetches all pipelines, stages, automations, templates, bots, channels, followups), update state locally:
-
-- **Save automation**: After insert/update, add/update the automation in `automations` state directly
-- **Delete automation**: Remove from `automations` state directly
-- **Toggle automation**: Update in state directly
-- **Add stage**: Append to `stages` state
-- **Delete stage**: Remove from `stages` state
-- **Drag reorder**: Already updates state locally (keep as is)
-- Keep `fetchData` only for initial load and pipeline switching
-
----
-
-### Step 3 -- Fix Bot Trigger on Stage Move and Execute Automations
-
-**File**: `src/hooks/useChatConversation.ts`
-
-The current code (lines 231-239) calls a non-existent `bot-trigger` function. Replace with:
-
-1. After moving a lead to a new stage, query `crm_automations` for automations matching `stage_id = newStageId` and `trigger_type = 'on_enter'` and `is_active = true`
-2. For each automation found:
-   - `send_bot`: Call `bot-engine` with `trigger: "manual_start"` and the configured `bot_id`
-   - `send_template`: Send the template via `send-whatsapp-message`
-   - `move_stage`: Move lead to target stage
-   - `webhook`: Call the configured URL
-3. Use `supabase.functions.invoke("bot-engine", ...)` instead of raw fetch to a non-existent endpoint
-
-Similarly, ensure automations with `trigger_type = 'on_create'` fire when leads are created (check if this path exists and fix if needed).
-
----
-
-### Technical Details
-
-| File | Changes |
-|------|---------|
-| `src/pages/CrmModelos.tsx` | Add `displayName()` helper, use it in template card |
-| `src/pages/CrmAutomacoes.tsx` | Replace `fetchData()` calls in mutation handlers with local state updates |
-| `src/hooks/useChatConversation.ts` | Replace broken `bot-trigger` call with automation lookup + execution logic |
-
+### Ordem de execução
+1. Migration (tabela crm_appointments)
+2. Seletor de funil na conversa
+3. Exclusão de tarefas no calendário
+4. Fluxo de confirmação de agendamento
+5. Aba de agendamentos no calendário
+6. Dashboard CRM
+7. Melhorias no bloco criar tarefa do bot
+8. Notificações de tarefas

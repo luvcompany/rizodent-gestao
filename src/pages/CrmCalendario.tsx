@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ChevronLeft, ChevronRight, CalendarDays, Phone, MessageSquare, Clock,
-  CheckCircle2, AlertTriangle, Circle, List, LayoutGrid, Plus
+  CheckCircle2, AlertTriangle, Circle, List, LayoutGrid, Plus, Trash2
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek,
@@ -16,6 +16,7 @@ import {
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 type Task = {
   id: string;
@@ -31,7 +32,17 @@ type Task = {
 
 type Profile = { id: string; nome: string };
 
-type ViewMode = "events" | "list" | "month" | "week";
+type ViewMode = "events" | "list" | "month" | "week" | "appointments";
+
+type Appointment = {
+  id: string;
+  lead_id: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  status: string;
+  notes: string | null;
+  lead_name?: string;
+};
 
 const typeLabels: Record<string, string> = {
   agendamento: "Agendamento",
@@ -69,24 +80,30 @@ export default function CrmCalendario() {
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("events");
   const [filterUser, setFilterUser] = useState("");
   const [filterType, setFilterType] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
-    const [tasksRes, profilesRes, leadsRes] = await Promise.all([
+    const [tasksRes, profilesRes, leadsRes, apptsRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("profiles").select("id, nome"),
       supabase.from("crm_leads").select("id, name"),
+      supabase.from("crm_appointments").select("*").order("scheduled_date"),
     ]);
     const rawTasks = (tasksRes.data || []) as Task[];
     const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
     rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
     setTasks(rawTasks);
     setProfiles((profilesRes.data as Profile[]) || []);
+    const rawAppts = (apptsRes.data || []) as Appointment[];
+    rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
+    setAppointments(rawAppts);
   }, []);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
@@ -95,6 +112,15 @@ export default function CrmCalendario() {
     await supabase.from("crm_tasks").update({ status: "done" }).eq("id", task.id);
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "done" } : t));
     setSelectedTask(null);
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    const { error } = await supabase.from("crm_tasks").delete().eq("id", taskId);
+    if (error) { toast.error("Erro ao excluir tarefa"); return; }
+    toast.success("Tarefa excluída");
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    setSelectedTask(null);
+    setDeleteConfirm(null);
   };
 
   const filtered = useMemo(() => {
@@ -217,7 +243,7 @@ export default function CrmCalendario() {
       <div className="flex items-center justify-between mb-3 flex-shrink-0 gap-2 flex-wrap">
         <div className="flex items-center gap-1">
           {/* View tabs */}
-          {(["events", "list", "week", "month"] as ViewMode[]).map((v) => (
+          {(["events", "list", "week", "month", "appointments"] as ViewMode[]).map((v) => (
             <Button
               key={v}
               variant={view === v ? "default" : "ghost"}
@@ -225,7 +251,7 @@ export default function CrmCalendario() {
               className={cn("h-8 text-xs", view === v && "gradient-orange text-primary-foreground")}
               onClick={() => setView(v)}
             >
-              {v === "events" ? "Eventos" : v === "list" ? "Lista" : v === "week" ? "Semana" : "Mês"}
+              {v === "events" ? "Eventos" : v === "list" ? "Lista" : v === "week" ? "Semana" : v === "month" ? "Mês" : "Agendamentos"}
             </Button>
           ))}
 
@@ -525,8 +551,54 @@ export default function CrmCalendario() {
         </div>
       )}
 
+      {/* ===== APPOINTMENTS VIEW ===== */}
+      {view === "appointments" && (
+        <div className="flex-1 overflow-auto">
+          <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
+              <h2 className="text-sm font-bold text-foreground min-w-[200px] text-center capitalize">
+                {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
+              </h2>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
+          </div>
+          <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
+            {eachDayOfInterval({ start: startOfWeek(currentDate, { weekStartsOn: 1 }), end: endOfWeek(currentDate, { weekStartsOn: 1 }) }).map(day => {
+              const dayKey = format(day, "yyyy-MM-dd");
+              const dayAppts = appointments.filter(a => a.scheduled_date === dayKey);
+              return (
+                <div key={dayKey} className={cn("bg-card p-2 min-h-[200px]", isToday(day) && "ring-1 ring-primary/50")}>
+                  <div className={cn("text-xs font-medium mb-2 text-center", isToday(day) ? "text-primary" : "text-foreground")}>
+                    <div>{format(day, "EEE", { locale: ptBR })}</div>
+                    <div className={cn("text-sm font-bold", isToday(day) && "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center mx-auto")}>{format(day, "d")}</div>
+                  </div>
+                  <div className="space-y-1">
+                    {dayAppts.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => (
+                      <div
+                        key={appt.id}
+                        onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}
+                        className={cn(
+                          "text-[10px] px-1.5 py-1 rounded cursor-pointer transition-colors",
+                          appt.status === "confirmed" ? "bg-green-500/15 text-green-700 hover:bg-green-500/25" :
+                          appt.status === "cancelled" ? "bg-destructive/10 text-destructive" :
+                          "bg-primary/10 text-foreground hover:bg-primary/20"
+                        )}
+                      >
+                        <div className="font-medium truncate">{appt.lead_name}</div>
+                        <div className="text-muted-foreground">{appt.scheduled_time.slice(0, 5)}</div>
+                      </div>
+                    ))}
+                    {dayAppts.length === 0 && <div className="text-[10px] text-muted-foreground text-center py-4">—</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Task detail dialog */}
-      <Dialog open={!!selectedTask} onOpenChange={(o) => { if (!o) setSelectedTask(null); }}>
+      <Dialog open={!!selectedTask && !deleteConfirm} onOpenChange={(o) => { if (!o) setSelectedTask(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>{selectedTask?.title}</DialogTitle></DialogHeader>
           {selectedTask && (() => {
@@ -567,9 +639,24 @@ export default function CrmCalendario() {
                     </Button>
                   )}
                 </div>
+                <Button size="sm" variant="destructive" className="w-full gap-1" onClick={() => setDeleteConfirm(selectedTask.id)}>
+                  <Trash2 size={14} /> Excluir tarefa
+                </Button>
               </div>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm dialog */}
+      <Dialog open={!!deleteConfirm} onOpenChange={(o) => { if (!o) setDeleteConfirm(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Excluir tarefa?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Esta ação não pode ser desfeita.</p>
+          <div className="flex gap-2 justify-end mt-4">
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => deleteConfirm && handleDeleteTask(deleteConfirm)}>Excluir</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

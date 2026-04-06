@@ -262,6 +262,63 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_appointments: {
+        Row: {
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          notes: string | null
+          scheduled_date: string
+          scheduled_time: string
+          status: string
+          task_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          notes?: string | null
+          scheduled_date: string
+          scheduled_time: string
+          status?: string
+          task_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          notes?: string | null
+          scheduled_date?: string
+          scheduled_time?: string
+          status?: string
+          task_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_appointments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_appointments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "crm_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_automations: {
         Row: {
           action_config: Json | null
