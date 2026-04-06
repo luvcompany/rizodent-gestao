@@ -420,6 +420,7 @@ function BotEditorInner() {
         {selectedNode && !simulatorOpen && (
           <NodePropertiesPanel
             node={selectedNode}
+            allNodes={nodes}
             onUpdate={handleNodeDataUpdate}
             onDelete={handleDeleteNode}
             onClose={() => setSelectedNode(null)}

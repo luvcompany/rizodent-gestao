@@ -19,7 +19,7 @@ type Props = {
   onDelete: (nodeId: string) => void;
 };
 
-export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete }: Props) {
+export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onClose, onDelete }: Props) {
   const def = NODE_DEFINITIONS.find((d) => d.type === node.type);
   const [stages, setStages] = useState<{ id: string; name: string; color: string; pipeline_id: string }[]>([]);
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
