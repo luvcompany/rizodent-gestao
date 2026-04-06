@@ -907,9 +907,67 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Prazo (horas a partir de agora)</Label>
-              <Input type="number" min={1} value={(node.data.dueHours as number) || 24} onChange={(e) => update("dueHours", parseInt(e.target.value) || 24)} className="mt-1" />
+              <Label className="text-xs">Quando agendar</Label>
+              <Select value={(node.data.dueMode as string) || "hours"} onValueChange={(v) => update("dueMode", v)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hours">Em X horas</SelectItem>
+                  <SelectItem value="days">Em X dias</SelectItem>
+                  <SelectItem value="days_at_time">Em X dias às X horas</SelectItem>
+                  <SelectItem value="next_day_first">Primeiro horário do dia seguinte</SelectItem>
+                  <SelectItem value="specific">Data e horário específicos</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {(node.data.dueMode === "hours" || !node.data.dueMode) && (
+              <div>
+                <Label className="text-xs">Horas a partir de agora</Label>
+                <Input type="number" min={1} value={(node.data.dueHours as number) || 24} onChange={(e) => update("dueHours", parseInt(e.target.value) || 24)} className="mt-1" />
+              </div>
+            )}
+
+            {node.data.dueMode === "days" && (
+              <div>
+                <Label className="text-xs">Dias a partir de agora</Label>
+                <Input type="number" min={1} value={(node.data.dueDays as number) || 1} onChange={(e) => update("dueDays", parseInt(e.target.value) || 1)} className="mt-1" />
+              </div>
+            )}
+
+            {node.data.dueMode === "days_at_time" && (
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs">Dias a partir de agora</Label>
+                  <Input type="number" min={1} value={(node.data.dueDays as number) || 1} onChange={(e) => update("dueDays", parseInt(e.target.value) || 1)} className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs">Horário</Label>
+                  <Input type="time" value={(node.data.dueTime as string) || "09:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1" />
+                </div>
+              </div>
+            )}
+
+            {node.data.dueMode === "next_day_first" && (
+              <div>
+                <Label className="text-xs">Primeiro horário</Label>
+                <Input type="time" value={(node.data.dueTime as string) || "08:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1" />
+                <p className="text-[10px] text-muted-foreground mt-1">Será agendado para o dia seguinte neste horário</p>
+              </div>
+            )}
+
+            {node.data.dueMode === "specific" && (
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs">Data</Label>
+                  <Input type="date" value={(node.data.dueDate as string) || ""} onChange={(e) => update("dueDate", e.target.value)} className="mt-1" />
+                </div>
+                <div>
+                  <Label className="text-xs">Horário</Label>
+                  <Input type="time" value={(node.data.dueTime as string) || "09:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1" />
+                </div>
+              </div>
+            )}
+
             <div>
               <Label className="text-xs">Observações (opcional)</Label>
               <VariableTextarea extraVariables={botVariables}
