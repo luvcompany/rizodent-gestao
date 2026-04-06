@@ -68,24 +68,32 @@ export function useChatConversation(leadId: string | null | undefined) {
     return [...messages].reverse().find((m) => m.direction === "inbound")?.created_at || null;
   }, [messages]);
 
-  // ─── Fetch messages & stages ───
+  // ─── Cache stages globally ───
+  const stagesLoadedRef = useRef(false);
+
+  const fetchStages = useCallback(async () => {
+    if (stagesLoadedRef.current && stages.length > 0) return;
+    const { data } = await supabase.from("crm_stages").select("*").order("position");
+    if (data) {
+      setStages(data as ChatStage[]);
+      stagesLoadedRef.current = true;
+    }
+  }, [stages.length]);
+
+  // ─── Fetch messages ───
   const fetchMessages = useCallback(async () => {
     if (!leadId) return;
     setLoading(true);
     try {
-      const [messagesRes, stagesRes] = await Promise.all([
-        supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true }),
-        supabase.from("crm_stages").select("*").order("position"),
-      ]);
-      setMessages((messagesRes.data as ChatMessage[]) || []);
-      setStages((stagesRes.data as ChatStage[]) || []);
+      const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
+      setMessages((data as ChatMessage[]) || []);
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
     }
     setLoading(false);
   }, [leadId]);
 
-  useEffect(() => { fetchMessages(); }, [fetchMessages]);
+  useEffect(() => { fetchMessages(); fetchStages(); }, [fetchMessages, fetchStages]);
 
   // ─── Repair legacy media ───
   useEffect(() => {
