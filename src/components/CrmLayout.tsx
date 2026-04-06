@@ -8,6 +8,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 
 const crmNavItems = [
+  { to: "/crm/dashboard", icon: Home, label: "Dashboard" },
   { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
   { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
   { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
