@@ -13,12 +13,13 @@ import { getUploadedFileUrl } from "@/lib/mediaUtils";
 
 type Props = {
   node: Node;
+  allNodes?: Node[];
   onUpdate: (nodeId: string, data: Record<string, any>) => void;
   onClose: () => void;
   onDelete: (nodeId: string) => void;
 };
 
-export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete }: Props) {
+export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onClose, onDelete }: Props) {
   const def = NODE_DEFINITIONS.find((d) => d.type === node.type);
   const [stages, setStages] = useState<{ id: string; name: string; color: string; pipeline_id: string }[]>([]);
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
@@ -58,6 +59,24 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
       }
     });
   }, []);
+
+  // Collect custom bot variables from all nodes
+  const botVariables = useMemo(() => {
+    const vars: { key: string; label: string; example: string }[] = [];
+    allNodes.forEach((n: any) => {
+      if (n.data?.saveToField && typeof n.data.saveToField === "string" && n.data.saveToField.trim()) {
+        const key = n.data.saveToField.trim();
+        if (!vars.find(v => v.key === key)) {
+          vars.push({ key, label: `Variável: ${key}`, example: "Resposta do lead" });
+        }
+      }
+    });
+    // Add last_reply as a built-in bot variable
+    if (!vars.find(v => v.key === "resposta.ultima")) {
+      vars.push({ key: "resposta.ultima", label: "Última Resposta", example: "Texto da última resposta" });
+    }
+    return vars;
+  }, [allNodes]);
 
   const update = useCallback(
     (key: string, value: any) => {
@@ -431,7 +450,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             {!(node.data.templateId as string) && (
               <div>
                 <Label className="text-xs">Mensagem</Label>
-                <VariableTextarea
+                <VariableTextarea extraVariables={botVariables}
                   value={(node.data.text as string) || ""}
                   onChange={(v) => update("text", v)}
                   placeholder="Digite a mensagem... Use [ para variáveis"
@@ -460,7 +479,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             {renderFileUploader("fileUrl")}
             <div>
               <Label className="text-xs">Texto junto (opcional)</Label>
-              <VariableTextarea
+              <VariableTextarea extraVariables={botVariables}
                 value={(node.data.caption as string) || ""}
                 onChange={(v) => update("caption", v)}
                 placeholder="Legenda do arquivo..."
@@ -488,7 +507,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             </div>
             <div>
               <Label className="text-xs">Texto da mensagem</Label>
-              <VariableTextarea
+              <VariableTextarea extraVariables={botVariables}
                 value={(node.data.bodyText as string) || ""}
                 onChange={(v) => update("bodyText", v)}
                 rows={3}
@@ -644,11 +663,88 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
       case "wait_reply":
         return (
           <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">Salva a resposta do lead em uma variável para uso em mensagens e condições futuras.</p>
             {renderTimeoutFields("Timeout")}
-            <div>
-              <Label className="text-xs">Salvar resposta em campo (opcional)</Label>
-              <Input value={(node.data.saveToField as string) || ""} onChange={(e) => update("saveToField", e.target.value)} placeholder="Nome do campo personalizado" className="mt-1" />
-            </div>
+            {(() => {
+              const currentField = (node.data.saveToField as string) || "";
+              const [varInput, setVarInput] = useState(currentField);
+              const [varDropdownOpen, setVarDropdownOpen] = useState(false);
+
+              // Collect all variable names used across all nodes in the flow
+              const allBotVars = useMemo(() => {
+                const vars = new Set<string>();
+                allNodes.forEach((n: any) => {
+                  if (n.data?.saveToField && typeof n.data.saveToField === "string" && n.data.saveToField.trim()) {
+                    vars.add(n.data.saveToField.trim());
+                  }
+                });
+                return Array.from(vars).sort();
+              }, [allNodes]);
+
+              const filteredVars = varInput.trim()
+                ? allBotVars.filter(v => v.toLowerCase().includes(varInput.toLowerCase()))
+                : allBotVars;
+
+              return (
+                <div>
+                  <Label className="text-xs">Salvar resposta na variável</Label>
+                  <div className="relative mt-1">
+                    <Input
+                      value={varInput}
+                      onChange={(e) => {
+                        setVarInput(e.target.value);
+                        update("saveToField", e.target.value);
+                        setVarDropdownOpen(true);
+                      }}
+                      onFocus={() => setVarDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setVarDropdownOpen(false), 200)}
+                      placeholder="Digite o nome da variável (ex: horario_preferido)"
+                    />
+                    {varDropdownOpen && filteredVars.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 border border-border rounded-md bg-popover shadow-md max-h-32 overflow-y-auto">
+                        {filteredVars.map((v) => (
+                          <button
+                            key={v}
+                            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors ${v === currentField ? "bg-accent/50 font-medium" : ""}`}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setVarInput(v);
+                              update("saveToField", v);
+                              setVarDropdownOpen(false);
+                            }}
+                          >
+                            💾 {v}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Use <kbd className="px-1 py-0.5 rounded bg-secondary text-[10px]">[{currentField || "variável"}]</kbd> em mensagens para exibir o valor salvo
+                  </p>
+                  {allBotVars.length > 0 && !varInput && (
+                    <div className="mt-2">
+                      <Label className="text-[10px] text-muted-foreground">Variáveis existentes</Label>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {allBotVars.map((v) => (
+                          <button
+                            key={v}
+                            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                              currentField === v
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-secondary text-secondary-foreground border-border hover:border-primary/50"
+                            }`}
+                            onClick={() => { setVarInput(v); update("saveToField", v); }}
+                          >
+                            💾 {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         );
 
@@ -693,7 +789,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             {msgType === "text" && (
               <div>
                 <Label className="text-xs">Mensagem</Label>
-                <VariableTextarea value={(node.data.text as string) || ""} onChange={(v) => update("text", v)} rows={4} className="mt-1" />
+                <VariableTextarea extraVariables={botVariables} value={(node.data.text as string) || ""} onChange={(v) => update("text", v)} rows={4} className="mt-1" />
               </div>
             )}
             {msgType === "audio" && renderAudioRecorder("audioUrl")}
@@ -702,7 +798,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
                 {renderFileUploader("fileUrl")}
                 <div>
                   <Label className="text-xs">Legenda</Label>
-                  <VariableTextarea value={(node.data.caption as string) || ""} onChange={(v) => update("caption", v)} rows={2} className="mt-1" />
+                  <VariableTextarea extraVariables={botVariables} value={(node.data.caption as string) || ""} onChange={(v) => update("caption", v)} rows={2} className="mt-1" />
                 </div>
               </>
             )}
@@ -780,7 +876,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Nota</Label>
-              <VariableTextarea value={(node.data.note as string) || ""} onChange={(v) => update("note", v)} placeholder="Texto da nota... Use [ para variáveis" rows={4} className="mt-1" />
+              <VariableTextarea extraVariables={botVariables} value={(node.data.note as string) || ""} onChange={(v) => update("note", v)} placeholder="Texto da nota... Use [ para variáveis" rows={4} className="mt-1" />
             </div>
           </div>
         );
@@ -790,7 +886,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Título da tarefa</Label>
-              <VariableTextarea
+              <VariableTextarea extraVariables={botVariables}
                 value={(node.data.title as string) || ""}
                 onChange={(v) => update("title", v)}
                 placeholder="Ex: Ligar para [lead.nome] - [resposta.ultima]. Use [ para variáveis"
@@ -816,7 +912,7 @@ export default function NodePropertiesPanel({ node, onUpdate, onClose, onDelete 
             </div>
             <div>
               <Label className="text-xs">Observações (opcional)</Label>
-              <VariableTextarea
+              <VariableTextarea extraVariables={botVariables}
                 value={(node.data.taskNotes as string) || ""}
                 onChange={(v) => update("taskNotes", v)}
                 placeholder="Notas adicionais... Use [ para variáveis do lead ou respostas"

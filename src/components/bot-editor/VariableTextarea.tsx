@@ -8,9 +8,10 @@ type Props = {
   placeholder?: string;
   rows?: number;
   className?: string;
+  extraVariables?: { key: string; label: string; example: string }[];
 };
 
-export default function VariableTextarea({ value, onChange, placeholder, rows = 4, className }: Props) {
+export default function VariableTextarea({ value, onChange, placeholder, rows = 4, className, extraVariables }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   return (
@@ -23,7 +24,7 @@ export default function VariableTextarea({ value, onChange, placeholder, rows = 
         rows={rows}
         className={className}
       />
-      <VariableSelector inputRef={ref} value={value} onChange={onChange} />
+      <VariableSelector inputRef={ref} value={value} onChange={onChange} extraVariables={extraVariables} />
       <p className="text-[10px] text-muted-foreground mt-1">
         Digite <kbd className="px-1 py-0.5 rounded bg-secondary text-[10px]">[</kbd> para inserir variáveis do lead
       </p>
