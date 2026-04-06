@@ -5,6 +5,90 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const normalizeReply = (value: string | null | undefined) =>
+  String(value || "")
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+function resolveInteractiveOption(
+  currentNode: any,
+  replyText: string,
+  replyOptionId?: string | null,
+) {
+  const templateButtons = currentNode.data?.templateButtons || [];
+  const menuButtons = currentNode.data?.buttons || [];
+  const listSections = currentNode.data?.listSections || [];
+  const listRows = listSections.flatMap((section: any) => section.rows || []);
+
+  let options: any[] = [];
+  let handlePrefix = "";
+
+  if (currentNode.type === "send_text") {
+    options = templateButtons;
+    handlePrefix = "btn-";
+  } else if (currentNode.data?.menuType === "list") {
+    options = listRows;
+    handlePrefix = "menu-";
+  } else {
+    options = menuButtons;
+    handlePrefix = "menu-";
+  }
+
+  let matchedOption = null;
+
+  if (replyOptionId) {
+    matchedOption = options.find((option: any) => String(option.id || "") === String(replyOptionId));
+  }
+
+  if (!matchedOption && replyText) {
+    const normalizedReply = normalizeReply(replyText);
+    matchedOption = options.find((option: any) => normalizeReply(option.title) === normalizedReply);
+  }
+
+  return {
+    matchedOption,
+    nextHandle: matchedOption ? `${handlePrefix}${matchedOption.id}` : null,
+    replyValue: replyText || matchedOption?.title || "",
+  };
+}
+
+function autoAdvanceCapturedReply(
+  startNodeId: string | null | undefined,
+  nodes: any[],
+  edges: any[],
+  variables: Record<string, any>,
+  replyValue: string,
+) {
+  let nextNodeId = startNodeId || null;
+  let nextVariables = { ...variables };
+  let autoAdvanced = false;
+  let guard = 0;
+
+  while (nextNodeId && guard < 10) {
+    guard += 1;
+    const node = nodes.find((item: any) => item.id === nextNodeId);
+    if (!node || node.type !== "wait_reply") break;
+    if (!node.data?.saveToField) break;
+
+    nextVariables[node.data.saveToField] = replyValue;
+
+    nextVariables.last_reply = replyValue;
+
+    const replyEdge = edges.find(
+      (edge: any) => edge.source === nextNodeId && (edge.sourceHandle === "reply" || !edge.sourceHandle),
+    );
+
+    if (!replyEdge?.target) break;
+
+    nextNodeId = replyEdge.target;
+    autoAdvanced = true;
+  }
+
+  return { nextNodeId, nextVariables, autoAdvanced };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -33,7 +117,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { leadId, botId, trigger, executionId, replyText } = body;
+    const { leadId, botId, trigger, executionId, replyText, replyOptionId } = body;
 
     if (!leadId || !trigger) {
       return json({ error: "Missing leadId or trigger" }, 400);
@@ -134,48 +218,41 @@ Deno.serve(async (req) => {
 
       if (!flowJson) return json({ error: "Flow not found" }, 404);
 
+      const nodes = flowJson.nodes || [];
+      const edges = flowJson.edges || [];
+
+      // Get lead data before fallback handling
+      const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
+
       // Update variables with reply
       const variables = { ...(execution.variables as any || {}), last_reply: replyText || "" };
+      if (replyOptionId) {
+        variables.last_reply_option_id = replyOptionId;
+      }
+
       // If the current node has saveToField, store the reply under that name
-      const currentNode = (flowJson.nodes || []).find((n: any) => n.id === execution.current_node_id);
+      const currentNode = nodes.find((n: any) => n.id === execution.current_node_id);
       if (currentNode?.data?.saveToField) {
         variables[currentNode.data.saveToField] = replyText || "";
       }
-      await supabase.from("bot_executions").update({ variables, status: "active" }).eq("id", execution.id);
 
       // Determine which edge to follow based on reply text
-      const edges = flowJson.edges || [];
       let nextEdge = null;
+      let replyValue = replyText || "";
 
       // For template buttons or menu buttons/list: match reply text to button handle
       if (currentNode && (currentNode.type === "send_text" || currentNode.type === "send_menu")) {
-        const templateButtons = currentNode.data?.templateButtons || [];
-        const menuButtons = currentNode.data?.buttons || [];
-        const listSections = currentNode.data?.listSections || [];
-        const listRows = listSections.flatMap((s: any) => s.rows || []);
-        
-        let allButtons: any[] = [];
-        let handlePrefix = "";
-        if (currentNode.type === "send_text") {
-          allButtons = templateButtons;
-          handlePrefix = "btn-";
-        } else if (currentNode.data?.menuType === "list") {
-          allButtons = listRows;
-          handlePrefix = "menu-";
-        } else {
-          allButtons = menuButtons;
-          handlePrefix = "menu-";
+        const { matchedOption, nextHandle, replyValue: resolvedReplyValue } = resolveInteractiveOption(
+          currentNode,
+          replyText || "",
+          replyOptionId,
+        );
+        replyValue = resolvedReplyValue;
+
+        if (matchedOption && nextHandle) {
+          nextEdge = edges.find((e: any) => e.source === execution.current_node_id && e.sourceHandle === nextHandle);
         }
 
-        if (allButtons.length > 0 && replyText) {
-          const normalizedReply = replyText.trim().toLowerCase();
-          const matchedBtn = allButtons.find((btn: any) => 
-            btn.title && btn.title.trim().toLowerCase() === normalizedReply
-          );
-          if (matchedBtn) {
-            nextEdge = edges.find((e: any) => e.source === execution.current_node_id && e.sourceHandle === `${handlePrefix}${matchedBtn.id}`);
-          }
-        }
         // If no button matched, try the generic reply edge
         if (!nextEdge) {
           nextEdge = edges.find((e: any) => e.source === execution.current_node_id && (e.sourceHandle === "reply" || !e.sourceHandle));
@@ -211,15 +288,32 @@ Deno.serve(async (req) => {
         return json({ completed: true, reason: "no_reply_path" });
       }
 
-      // Get lead data for flow execution
-      const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
+      let nextTargetNodeId = nextEdge.target;
+      let nextVariables = variables;
 
-      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, nextEdge.target, leadId, variables);
+      if (currentNode && (currentNode.type === "send_text" || currentNode.type === "send_menu")) {
+        const autoAdvance = autoAdvanceCapturedReply(nextEdge.target, nodes, edges, variables, replyValue);
+        nextTargetNodeId = autoAdvance.nextNodeId;
+        nextVariables = autoAdvance.nextVariables;
+
+        if (autoAdvance.autoAdvanced) {
+          console.log(`[bot-engine] Auto-advanced captured reply from ${execution.current_node_id} to ${nextTargetNodeId}`);
+        }
+      }
+
+      await supabase.from("bot_executions").update({ variables: nextVariables, status: "active" }).eq("id", execution.id);
+
+      if (!nextTargetNodeId) {
+        await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString(), variables: nextVariables }).eq("id", execution.id);
+        return json({ completed: true, reason: "flow_completed_after_reply" });
+      }
+
+      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, nextTargetNodeId, leadId, nextVariables);
       return json({ success: true, ...result });
     }
 
     return json({ error: "Unknown trigger" }, 400);
-  } catch (err) {
+  } catch (err: any) {
     console.error("bot-engine error:", err);
     return json({ error: err.message }, 500);
   }
@@ -248,7 +342,7 @@ async function sendViaWhatsApp(
       console.error("send-whatsapp-message error:", JSON.stringify(result));
     }
     return result;
-  } catch (err) {
+  } catch (err: any) {
     console.error("send-whatsapp-message call error:", err);
     return { error: err.message };
   }
