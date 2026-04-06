@@ -554,9 +554,7 @@ export default function CrmCalendario() {
       {/* ===== APPOINTMENTS VIEW ===== */}
       {view === "appointments" && (
         <div className="flex-1 overflow-auto">
-          {(view === "month" || view === "week") ? null : (
-            <div className="flex items-center gap-2 mb-3 flex-shrink-0">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
+          <div className="flex items-center gap-2 mb-3 flex-shrink-0">
               <h2 className="text-sm font-bold text-foreground min-w-[200px] text-center capitalize">
                 {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
               </h2>
