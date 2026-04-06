@@ -331,7 +331,7 @@ export default function CrmIntegracoes() {
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between mb-3">
                       <div className="p-2 rounded-lg bg-primary/10">
-                        <MessageSquare size={24} className="text-primary" />
+                        <img src={whatsappLogo} alt="WhatsApp" width={28} height={28} className="rounded-full" />
                       </div>
                       <div className="flex items-center gap-2">
                         <Switch
