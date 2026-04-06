@@ -243,7 +243,7 @@ export default function CrmCalendario() {
       <div className="flex items-center justify-between mb-3 flex-shrink-0 gap-2 flex-wrap">
         <div className="flex items-center gap-1">
           {/* View tabs */}
-          {(["events", "list", "week", "month"] as ViewMode[]).map((v) => (
+          {(["events", "list", "week", "month", "appointments"] as ViewMode[]).map((v) => (
             <Button
               key={v}
               variant={view === v ? "default" : "ghost"}
@@ -251,7 +251,7 @@ export default function CrmCalendario() {
               className={cn("h-8 text-xs", view === v && "gradient-orange text-primary-foreground")}
               onClick={() => setView(v)}
             >
-              {v === "events" ? "Eventos" : v === "list" ? "Lista" : v === "week" ? "Semana" : "Mês"}
+              {v === "events" ? "Eventos" : v === "list" ? "Lista" : v === "week" ? "Semana" : v === "month" ? "Mês" : "Agendamentos"}
             </Button>
           ))}
 
