@@ -13,6 +13,7 @@ import { getUploadedFileUrl } from "@/lib/mediaUtils";
 
 type Props = {
   node: Node;
+  allNodes?: Node[];
   onUpdate: (nodeId: string, data: Record<string, any>) => void;
   onClose: () => void;
   onDelete: (nodeId: string) => void;
