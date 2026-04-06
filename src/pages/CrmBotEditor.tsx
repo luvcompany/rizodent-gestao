@@ -23,12 +23,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Save, Undo2, Redo2 } from "lucide-react";
+import { Smartphone } from "lucide-react";
 import { useSnapLines, duplicateNode, type SnapLine } from "@/hooks/useBotEditorHelpers";
 
 import BotNode from "@/components/bot-editor/BotNode";
 import DeletableEdge from "@/components/bot-editor/DeletableEdge";
 import NodePalette from "@/components/bot-editor/NodePalette";
 import NodePropertiesPanel from "@/components/bot-editor/NodePropertiesPanel";
+import BotSimulator from "@/components/bot-editor/BotSimulator";
 import { NODE_DEFINITIONS } from "@/types/bot";
 
 const nodeTypes: Record<string, any> = {};
@@ -54,6 +56,8 @@ function BotEditorInner() {
   const [loading, setLoading] = useState(true);
   const [isDirty, setIsDirty] = useState(false);
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
+  const [simulatorOpen, setSimulatorOpen] = useState(false);
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const lastSavedRef = useRef<string>("");
   const { getSnapLines } = useSnapLines();
 
@@ -303,6 +307,20 @@ function BotEditorInner() {
     toast.success(`Bot salvo e publicado! Versão ${newVersion}`);
   }, [id, botName, nodes, edges, isDirty]);
 
+  const handleHighlightNode = useCallback((nodeId: string | null) => {
+    setHighlightedNodeId(nodeId);
+    if (nodeId && reactFlowInstance) {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (node) {
+        reactFlowInstance.setCenter(
+          node.position.x + (node.measured?.width ?? 250) / 2,
+          node.position.y + (node.measured?.height ?? 80) / 2,
+          { duration: 400, zoom: 1.2 }
+        );
+      }
+    }
+  }, [reactFlowInstance, nodes]);
+
   if (loading) {
     return <div className="flex items-center justify-center h-full text-muted-foreground">Carregando editor...</div>;
   }
@@ -334,6 +352,9 @@ function BotEditorInner() {
           <Button variant="outline" size="sm" onClick={handleSave} disabled={saving || !isDirty} className={`gap-1.5 ${!isDirty ? 'opacity-50' : ''}`}>
             <Save size={14} /> {saving ? "Salvando..." : "Salvar"}
           </Button>
+          <Button variant="outline" size="sm" onClick={() => { setSimulatorOpen(!simulatorOpen); setSelectedNode(null); }} className="gap-1.5">
+            <Smartphone size={14} /> Pré-visualizar bot
+          </Button>
         </div>
       </div>
 
@@ -347,7 +368,7 @@ function BotEditorInner() {
           <ReactFlow
             nodes={nodes.map((n) => ({
               ...n,
-              data: { ...n.data, onDuplicate: handleDuplicateNode, onDeleteNode: handleDeleteNode },
+              data: { ...n.data, onDuplicate: handleDuplicateNode, onDeleteNode: handleDeleteNode, _highlighted: n.id === highlightedNodeId },
             }))}
             edges={edges.map((e) => ({ ...e, data: { ...e.data, onDelete: handleDeleteEdge } }))}
             onNodesChange={handleNodesChange}
@@ -387,7 +408,16 @@ function BotEditorInner() {
         </div>
 
         {/* Right: Properties */}
-        {selectedNode && (
+        {simulatorOpen && (
+          <BotSimulator
+            nodes={nodes}
+            edges={edges}
+            onHighlightNode={handleHighlightNode}
+            onClose={() => { setSimulatorOpen(false); setHighlightedNodeId(null); }}
+          />
+        )}
+
+        {selectedNode && !simulatorOpen && (
           <NodePropertiesPanel
             node={selectedNode}
             onUpdate={handleNodeDataUpdate}
