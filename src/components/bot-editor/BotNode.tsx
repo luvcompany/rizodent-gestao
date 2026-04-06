@@ -10,6 +10,7 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   const isWaitReply = type === "wait_reply";
   const isSendText = type === "send_text";
   const isSendMenu = type === "send_menu";
+  const isHighlighted = !!(data as any)._highlighted;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -71,7 +72,11 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   return (
     <div
       className={`min-w-[220px] max-w-[280px] rounded-lg border-2 shadow-lg transition-all ${
-        selected ? "border-primary ring-2 ring-primary/20" : "border-border"
+        isHighlighted
+          ? "border-green-500 ring-4 ring-green-500/30 scale-105"
+          : selected
+            ? "border-primary ring-2 ring-primary/20"
+            : "border-border"
       }`}
       style={{ background: "hsl(var(--card))" }}
     >
