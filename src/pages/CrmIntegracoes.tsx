@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   MessageSquare, Instagram, Facebook, Mail, ShoppingBag,
   Settings, Copy, RefreshCw, Send, Eye, EyeOff, CheckCircle, XCircle,
-  Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch
+  Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch, Power
 } from "lucide-react";
 
 type WhatsAppConfig = {
