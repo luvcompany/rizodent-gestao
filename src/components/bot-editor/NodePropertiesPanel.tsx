@@ -450,7 +450,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             {!(node.data.templateId as string) && (
               <div>
                 <Label className="text-xs">Mensagem</Label>
-                <VariableTextarea
+                <VariableTextarea extraVariables={botVariables}
                   value={(node.data.text as string) || ""}
                   onChange={(v) => update("text", v)}
                   placeholder="Digite a mensagem... Use [ para variáveis"
@@ -479,7 +479,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             {renderFileUploader("fileUrl")}
             <div>
               <Label className="text-xs">Texto junto (opcional)</Label>
-              <VariableTextarea
+              <VariableTextarea extraVariables={botVariables}
                 value={(node.data.caption as string) || ""}
                 onChange={(v) => update("caption", v)}
                 placeholder="Legenda do arquivo..."
@@ -507,7 +507,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             </div>
             <div>
               <Label className="text-xs">Texto da mensagem</Label>
-              <VariableTextarea
+              <VariableTextarea extraVariables={botVariables}
                 value={(node.data.bodyText as string) || ""}
                 onChange={(v) => update("bodyText", v)}
                 rows={3}
@@ -789,7 +789,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             {msgType === "text" && (
               <div>
                 <Label className="text-xs">Mensagem</Label>
-                <VariableTextarea value={(node.data.text as string) || ""} onChange={(v) => update("text", v)} rows={4} className="mt-1" />
+                <VariableTextarea extraVariables={botVariables} value={(node.data.text as string) || ""} onChange={(v) => update("text", v)} rows={4} className="mt-1" />
               </div>
             )}
             {msgType === "audio" && renderAudioRecorder("audioUrl")}
@@ -798,7 +798,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                 {renderFileUploader("fileUrl")}
                 <div>
                   <Label className="text-xs">Legenda</Label>
-                  <VariableTextarea value={(node.data.caption as string) || ""} onChange={(v) => update("caption", v)} rows={2} className="mt-1" />
+                  <VariableTextarea extraVariables={botVariables} value={(node.data.caption as string) || ""} onChange={(v) => update("caption", v)} rows={2} className="mt-1" />
                 </div>
               </>
             )}
@@ -876,7 +876,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Nota</Label>
-              <VariableTextarea value={(node.data.note as string) || ""} onChange={(v) => update("note", v)} placeholder="Texto da nota... Use [ para variáveis" rows={4} className="mt-1" />
+              <VariableTextarea extraVariables={botVariables} value={(node.data.note as string) || ""} onChange={(v) => update("note", v)} placeholder="Texto da nota... Use [ para variáveis" rows={4} className="mt-1" />
             </div>
           </div>
         );
@@ -886,7 +886,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           <div className="space-y-3">
             <div>
               <Label className="text-xs">Título da tarefa</Label>
-              <VariableTextarea
+              <VariableTextarea extraVariables={botVariables}
                 value={(node.data.title as string) || ""}
                 onChange={(v) => update("title", v)}
                 placeholder="Ex: Ligar para [lead.nome] - [resposta.ultima]. Use [ para variáveis"
@@ -912,7 +912,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             </div>
             <div>
               <Label className="text-xs">Observações (opcional)</Label>
-              <VariableTextarea
+              <VariableTextarea extraVariables={botVariables}
                 value={(node.data.taskNotes as string) || ""}
                 onChange={(v) => update("taskNotes", v)}
                 placeholder="Notas adicionais... Use [ para variáveis do lead ou respostas"
