@@ -180,6 +180,23 @@ Deno.serve(async (req) => {
         if (!nextEdge) {
           nextEdge = edges.find((e: any) => e.source === execution.current_node_id && (e.sourceHandle === "reply" || !e.sourceHandle));
         }
+
+        // FALLBACK: If still no edge found, re-send the menu and keep waiting
+        if (!nextEdge && currentNode.type === "send_menu") {
+          console.log(`[bot-engine] No edge for reply "${replyText}" at node ${execution.current_node_id}, re-sending menu`);
+          // Re-send a hint message and keep waiting
+          if (lead?.phone) {
+            await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+              lead_id: leadId,
+              to: lead.phone,
+              type: "text",
+              message: "Por favor, selecione uma das opções do menu acima. 👆",
+            });
+          }
+          // Keep execution in waiting_reply status
+          await supabase.from("bot_executions").update({ status: "waiting_reply", variables }).eq("id", execution.id);
+          return json({ success: true, waiting: true, reason: "re_prompted_menu" });
+        }
       } else {
         // Standard wait_reply or other nodes: follow reply edge
         nextEdge = edges.find(
@@ -188,9 +205,14 @@ Deno.serve(async (req) => {
       }
 
       if (!nextEdge) {
+        // Complete gracefully but log the issue
+        console.log(`[bot-engine] No path found from node ${execution.current_node_id} after reply "${replyText}"`);
         await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", execution.id);
         return json({ completed: true, reason: "no_reply_path" });
       }
+
+      // Get lead data for flow execution
+      const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
 
       const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, nextEdge.target, leadId, variables);
       return json({ success: true, ...result });
@@ -481,15 +503,14 @@ async function executeNode(
       if (unit === "minutes") ms = amount * 60 * 1000;
       if (unit === "hours") ms = amount * 3600 * 1000;
 
-      if (ms <= 30000) {
-        await new Promise((r) => setTimeout(r, ms));
-        return {};
+      // Cap delay at 10 seconds to prevent Edge Function timeout
+      const maxDelay = 10000;
+      if (ms > maxDelay) {
+        console.log(`[bot-engine] Delay of ${ms}ms capped to ${maxDelay}ms to prevent timeout`);
+        ms = maxDelay;
       }
-      if (ms <= 300000) {
-        await new Promise((r) => setTimeout(r, ms));
-        return {};
-      }
-      return { stop: true, status: "active", reason: "delay_too_long" };
+      await new Promise((r) => setTimeout(r, ms));
+      return {};
     }
 
     case "wait_reply": {
