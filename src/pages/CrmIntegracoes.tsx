@@ -315,7 +315,7 @@ export default function CrmIntegracoes() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-foreground flex items-center gap-2">
-              <MessageSquare size={18} className="text-primary" /> WhatsApp Business
+              <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" /> WhatsApp Business
             </h2>
             <Button size="sm" onClick={handleNew}>
               <Plus size={14} className="mr-1" /> Novo Número
