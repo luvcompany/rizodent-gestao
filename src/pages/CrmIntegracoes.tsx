@@ -332,13 +332,22 @@ export default function CrmIntegracoes() {
                       <div className="p-2 rounded-lg bg-primary/10">
                         <MessageSquare size={24} className="text-primary" />
                       </div>
-                      {isConnected ? (
-                        <Badge className="bg-green-900/30 text-green-400 border-0"><CheckCircle size={12} className="mr-1" /> Conectado</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-muted-foreground"><XCircle size={12} className="mr-1" /> Não conectado</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={entry.status !== "disabled"}
+                          onCheckedChange={() => {}}
+                          onClick={(e) => handleToggleIntegration(entry, e)}
+                        />
+                        {isConnected ? (
+                          <Badge className="bg-green-900/30 text-green-400 border-0"><CheckCircle size={12} className="mr-1" /> Ativo</Badge>
+                        ) : entry.status === "disabled" ? (
+                          <Badge variant="secondary" className="text-muted-foreground"><Power size={12} className="mr-1" /> Desativado</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-muted-foreground"><XCircle size={12} className="mr-1" /> Não conectado</Badge>
+                        )}
+                      </div>
                     </div>
-                    <h3 className="font-semibold text-foreground mb-1">{c.display_name || entry.key}</h3>
+                    <h3 className={`font-semibold mb-1 ${entry.status === "disabled" ? "text-muted-foreground" : "text-foreground"}`}>{c.display_name || entry.key}</h3>
                     <p className="text-sm text-muted-foreground">{c.phone_number_id ? `ID: ...${c.phone_number_id.slice(-4)}` : "Não configurado"}</p>
                     {pName && (
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
