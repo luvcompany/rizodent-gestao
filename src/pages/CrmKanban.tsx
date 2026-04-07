@@ -369,13 +369,32 @@ export default function CrmKanban() {
             pipelines={pipelines}
           />
           <div className="relative">
-            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
             <input
               className="pl-7 pr-3 py-1 text-sm border border-border rounded-md bg-secondary text-foreground w-48 focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground"
-              placeholder="Buscar lead..."
+              placeholder="Buscar por nome ou telefone..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
+            {searchTerm.replace(/\D/g, "").length >= 3 && (() => {
+              const allFiltered = applyFilters(leads);
+              return allFiltered.length > 0 && allFiltered.length <= 10 ? (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto min-w-[240px]">
+                  {allFiltered.slice(0, 6).map((lead) => (
+                    <button
+                      key={lead.id}
+                      onClick={() => { navigate(`/crm/conversa/${lead.id}`); setSearchTerm(""); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/50 transition-colors border-b border-border last:border-b-0"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-medium text-foreground truncate block">{lead.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{lead.phone || "Sem telefone"}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null;
+            })()}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
