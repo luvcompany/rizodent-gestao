@@ -60,7 +60,7 @@ export default function CrmDashboard() {
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("crm_leads").select("id, name"),
       supabase.from("crm_appointments").select("*").order("scheduled_date"),
-      supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`).not("source", "is", null).neq("source", ""),
+      supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
     ]);
 
     const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
