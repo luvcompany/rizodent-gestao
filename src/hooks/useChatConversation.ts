@@ -84,13 +84,33 @@ export function useChatConversation(leadId: string | null | undefined) {
     }
   }, [stages.length]);
 
-  // ─── Fetch messages ───
-  const fetchMessages = useCallback(async () => {
+  // ─── Fetch messages with cache ───
+  const fetchMessages = useCallback(async (skipCache = false) => {
     if (!leadId) return;
+
+    // Serve from cache instantly if available and fresh
+    if (!skipCache) {
+      const cached = messageCache.get(leadId);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        setMessages(cached.messages as ChatMessage[]);
+        setLoading(false);
+        // Still refresh in background
+        supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true }).then(({ data }) => {
+          if (data) {
+            messageCache.set(leadId, { messages: data, timestamp: Date.now() });
+            setMessages(data as ChatMessage[]);
+          }
+        });
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
-      setMessages((data as ChatMessage[]) || []);
+      const msgs = (data as ChatMessage[]) || [];
+      messageCache.set(leadId, { messages: msgs, timestamp: Date.now() });
+      setMessages(msgs);
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
     }
