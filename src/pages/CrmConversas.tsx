@@ -588,6 +588,8 @@ export default function CrmConversas() {
                   onLeadUpdated={(updates) => setSelectedLead((prev) => prev ? { ...prev, ...updates } : prev)}
                 />
 
+                <AppointmentConfirmBar leadId={selectedLead.id} />
+
                 <TaskPanel leadId={selectedLead.id} />
 
                 <LeadResponseTimes messages={chat.messages} />
