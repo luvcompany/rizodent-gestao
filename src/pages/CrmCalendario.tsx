@@ -248,15 +248,6 @@ export default function CrmCalendario() {
       <div className="flex items-center gap-3 mb-4 flex-shrink-0">
         <div className="flex bg-secondary rounded-lg p-1 gap-1">
           <Button
-            variant={mainView === "tarefas" ? "default" : "ghost"}
-            size="sm"
-            className={cn("h-9 px-6 text-sm font-medium", mainView === "tarefas" && "gradient-orange text-primary-foreground shadow-sm")}
-            onClick={() => setMainView("tarefas")}
-          >
-            <Clock size={16} className="mr-2" />
-            Tarefas
-          </Button>
-          <Button
             variant={mainView === "agendamentos" ? "default" : "ghost"}
             size="sm"
             className={cn("h-9 px-6 text-sm font-medium", mainView === "agendamentos" && "gradient-orange text-primary-foreground shadow-sm")}
@@ -264,6 +255,15 @@ export default function CrmCalendario() {
           >
             <CalendarDays size={16} className="mr-2" />
             Agendamentos
+          </Button>
+          <Button
+            variant={mainView === "tarefas" ? "default" : "ghost"}
+            size="sm"
+            className={cn("h-9 px-6 text-sm font-medium", mainView === "tarefas" && "gradient-orange text-primary-foreground shadow-sm")}
+            onClick={() => setMainView("tarefas")}
+          >
+            <Clock size={16} className="mr-2" />
+            Tarefas
           </Button>
         </div>
       </div>

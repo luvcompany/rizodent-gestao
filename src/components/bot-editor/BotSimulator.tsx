@@ -134,7 +134,8 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
       }
 
       case "send_audio": {
-        addMessage({ from: "bot", content: "🎵 Áudio de voz", type: "audio" });
+        const audioUrl = data.audioUrl ? String(data.audioUrl) : null;
+        addMessage({ from: "bot", content: audioUrl || "🎵 Áudio de voz", type: "audio" });
         await delay(500);
         const nextId = findNextNode(nodeId);
         processingRef.current = false;
@@ -145,8 +146,9 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
       case "send_file": {
         const caption = replaceVars(String(data.caption || ""));
         const fileType = String(data.fileType || "document");
+        const fileUrl = data.fileUrl ? String(data.fileUrl) : null;
         const icon = fileType === "image" ? "🖼️" : fileType === "video" ? "🎬" : "📄";
-        addMessage({ from: "bot", content: `${icon} Arquivo${caption ? `: ${caption}` : ""}`, type: "file" });
+        addMessage({ from: "bot", content: fileUrl || `${icon} Arquivo${caption ? `: ${caption}` : ""}`, type: fileType === "image" ? "image" as any : "file" });
         await delay(500);
         const nextId = findNextNode(nodeId);
         processingRef.current = false;
