@@ -537,15 +537,27 @@ export default function CrmAutomacoes() {
             </div>
 
             {autoForm.action_type === "send_template" && (
-              <div>
-                <Label>Template</Label>
-                <Select value={(autoForm.action_config.template_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { template_id: v } }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar template" /></SelectTrigger>
-                  <SelectContent>
-                    {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
-                    {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3">
+                <div>
+                  <Label>Template</Label>
+                  <Select value={(autoForm.action_config.template_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, template_id: v } }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecionar template" /></SelectTrigger>
+                    <SelectContent>
+                      {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
+                      {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="send-to-all-tpl"
+                    checked={!!(autoForm.action_config.send_to_all_existing)}
+                    onCheckedChange={(v) => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, send_to_all_existing: !!v } }))}
+                  />
+                  <label htmlFor="send-to-all-tpl" className="text-sm text-foreground cursor-pointer">
+                    Enviar para todos os leads que já estão nesta etapa
+                  </label>
+                </div>
               </div>
             )}
 
