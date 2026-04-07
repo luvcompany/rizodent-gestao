@@ -177,7 +177,11 @@ export function useChatConversation(leadId: string | null | undefined) {
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "messages", filter: `lead_id=eq.${leadId}`,
       }, (payload) => {
-        setMessages((prev) => prev.map((m) => m.id === (payload.new as ChatMessage).id ? (payload.new as ChatMessage) : m));
+        setMessages((prev) => {
+          const updated = prev.map((m) => m.id === (payload.new as ChatMessage).id ? (payload.new as ChatMessage) : m);
+          if (leadId) messageCache.set(leadId, { messages: updated, timestamp: Date.now() });
+          return updated;
+        });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
