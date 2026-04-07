@@ -10,7 +10,7 @@ type SimMessage = {
   id: string;
   from: "bot" | "user";
   content: string;
-  type?: "text" | "menu" | "system" | "audio" | "file";
+  type?: "text" | "menu" | "system" | "audio" | "file" | "image";
   buttons?: { id: string; title: string }[];
   listSections?: { title: string; rows: { id: string; title: string; description?: string }[] }[];
   menuType?: "buttons" | "list";
