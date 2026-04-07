@@ -25,6 +25,7 @@ import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import TaskPanel from "@/components/chat/TaskPanel";
+import AppointmentConfirmBar from "@/components/chat/AppointmentConfirmBar";
 
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
@@ -586,6 +587,8 @@ export default function CrmConversas() {
                   lead={selectedLead as any}
                   onLeadUpdated={(updates) => setSelectedLead((prev) => prev ? { ...prev, ...updates } : prev)}
                 />
+
+                <AppointmentConfirmBar leadId={selectedLead.id} />
 
                 <TaskPanel leadId={selectedLead.id} />
 
