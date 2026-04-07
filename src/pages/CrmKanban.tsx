@@ -261,7 +261,11 @@ export default function CrmKanban() {
     return list.filter((l) => {
       if (searchTerm) {
         const s = searchTerm.toLowerCase();
-        if (!l.name.toLowerCase().includes(s) && !l.phone?.includes(s)) return false;
+        const searchDigits = s.replace(/\D/g, "");
+        const phoneDigits = (l.phone || "").replace(/\D/g, "");
+        const matchesText = l.name.toLowerCase().includes(s) || (l.phone || "").toLowerCase().includes(s);
+        const matchesPhone = searchDigits.length >= 3 && phoneDigits.includes(searchDigits);
+        if (!matchesText && !matchesPhone) return false;
       }
       if (kanbanFilters.dateRange) {
         const d = new Date(l.created_at);

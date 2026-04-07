@@ -166,9 +166,12 @@ export function useChatConversation(leadId: string | null | undefined) {
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "messages", filter: `lead_id=eq.${leadId}`,
       }, (payload) => {
+        const newMsg = payload.new as ChatMessage;
         setMessages((prev) => {
-          if (prev.some((m) => m.id === (payload.new as ChatMessage).id)) return prev;
-          return [...prev, payload.new as ChatMessage];
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          const updated = [...prev, newMsg];
+          if (leadId) messageCache.set(leadId, { messages: updated, timestamp: Date.now() });
+          return updated;
         });
       })
       .on("postgres_changes", {
