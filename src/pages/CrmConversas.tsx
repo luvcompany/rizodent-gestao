@@ -314,13 +314,35 @@ export default function CrmConversas() {
                 </div>
               </div>
               <div className="relative">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
                 <Input
-                  placeholder="Buscar..."
+                  placeholder="Buscar por nome ou telefone..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-8 h-8 text-sm bg-secondary"
                 />
+                {/* Search autocomplete dropdown */}
+                {search.trim().length >= 2 && filtered.length > 0 && filtered.length <= 8 && search.replace(/\D/g, "").length >= 3 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                    {filtered.slice(0, 6).map((lead) => (
+                      <button
+                        key={lead.id}
+                        onClick={() => { setSelectedLeadId(lead.id); setSearch(""); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/50 transition-colors border-b border-border last:border-b-0"
+                      >
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="bg-primary/20 text-primary text-[10px] font-bold">
+                            {lead.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium text-foreground truncate block">{lead.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{lead.phone || "Sem telefone"}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">

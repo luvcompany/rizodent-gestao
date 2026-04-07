@@ -398,7 +398,13 @@ export default function CrmAutomacoes() {
                                     <div key={auto.id} className="bg-primary/10 border border-primary/20 rounded p-2 text-xs">
                                       <div className="flex items-center gap-1 text-primary mb-1">
                                         <Bot size={12} />
-                                        <span className="font-medium">{auto.trigger_type === "on_enter" ? "Ao mover" : "Ao criar"}</span>
+                                        <span className="font-medium">
+                                          {auto.trigger_type === "on_enter" ? "Ao mover" : 
+                                           auto.trigger_type === "on_create" ? "Ao criar" :
+                                           auto.trigger_type === "on_create_or_enter" ? "Ao mover/criar" :
+                                           auto.trigger_type === "lead_created_date" ? "Por data" :
+                                           auto.trigger_type === "no_response" ? "Sem resposta" : auto.trigger_type}
+                                        </span>
                                       </div>
                                       <div className="text-foreground">{actionLabel(auto.action_type)}</div>
                                       <div className="flex items-center gap-1 mt-1">
@@ -519,9 +525,66 @@ export default function CrmAutomacoes() {
                 <SelectContent>
                   <SelectItem value="on_create">Quando criado nesta etapa</SelectItem>
                   <SelectItem value="on_enter">Quando movido para esta etapa</SelectItem>
+                  <SelectItem value="on_create_or_enter">Quando movido para ou criado nesta etapa</SelectItem>
+                  <SelectItem value="lead_created_date">Leads de determinada data</SelectItem>
+                  <SelectItem value="no_response">Leads sem resposta há X tempo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Lead date filter */}
+            {autoForm.trigger_type === "lead_created_date" && (
+              <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+                <Label className="text-xs">Data de criação do lead</Label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Label className="text-[10px] text-muted-foreground">De</Label>
+                    <Input
+                      type="date"
+                      value={(autoForm.action_config.date_from as string) || ""}
+                      onChange={e => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, date_from: e.target.value } }))}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label className="text-[10px] text-muted-foreground">Até</Label>
+                    <Input
+                      type="date"
+                      value={(autoForm.action_config.date_to as string) || ""}
+                      onChange={e => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, date_to: e.target.value } }))}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* No response filter */}
+            {autoForm.trigger_type === "no_response" && (
+              <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+                <Label className="text-xs">Lead sem resposta há</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={(autoForm.action_config.no_response_amount as number) || 1}
+                    onChange={e => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, no_response_amount: parseInt(e.target.value) || 1 } }))}
+                    className="h-8 text-xs w-20"
+                  />
+                  <Select
+                    value={(autoForm.action_config.no_response_unit as string) || "hours"}
+                    onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, no_response_unit: v } }))}
+                  >
+                    <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hours">Horas</SelectItem>
+                      <SelectItem value="days">Dias</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Dispara a ação para leads que não responderam dentro do período definido.</p>
+              </div>
+            )}
             <div>
               <Label>Ação</Label>
               <Select value={autoForm.action_type} onValueChange={v => setAutoForm(p => ({ ...p, action_type: v, action_config: {} }))}>
