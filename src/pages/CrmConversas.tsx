@@ -26,6 +26,7 @@ import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 import TaskPanel from "@/components/chat/TaskPanel";
 import AppointmentConfirmBar from "@/components/chat/AppointmentConfirmBar";
+import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
