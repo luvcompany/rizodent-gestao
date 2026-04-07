@@ -35,68 +35,6 @@ import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2 } from "lu
 
 import { useChatConversation } from "@/hooks/useChatConversation";
 
-// Pipeline + Stage Selector Component
-function PipelineStageSelector({ stages, currentStageId, onStageChange }: {
-  stages: { id: string; name: string; color: string; pipeline_id: string }[];
-  currentStageId: string;
-  onStageChange: (stageId: string) => void;
-}) {
-  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
-  const [selectedPipelineId, setSelectedPipelineId] = useState("");
-
-  useEffect(() => {
-    supabase.from("crm_pipelines").select("id, name").then(({ data }) => {
-      if (data) {
-        setPipelines(data);
-        // Auto-select pipeline of current stage
-        const currentStage = stages.find(s => s.id === currentStageId);
-        if (currentStage) setSelectedPipelineId(currentStage.pipeline_id);
-      }
-    });
-  }, [currentStageId, stages]);
-
-  const filteredStages = selectedPipelineId
-    ? stages.filter(s => s.pipeline_id === selectedPipelineId)
-    : stages;
-
-  const currentPipeline = pipelines.find(p => p.id === selectedPipelineId);
-
-  return (
-    <div className="mt-3 mb-3 space-y-2">
-      <div>
-        <label className="text-xs text-muted-foreground mb-1 block">Funil</label>
-        <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
-          <SelectTrigger className="bg-secondary border-border">
-            <SelectValue placeholder="Selecione o funil" />
-          </SelectTrigger>
-          <SelectContent>
-            {pipelines.map(p => (
-              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div>
-        <label className="text-xs text-muted-foreground mb-1 block">Etapa do Funil</label>
-        <Select value={currentStageId} onValueChange={onStageChange}>
-          <SelectTrigger className="bg-secondary border-border">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {filteredStages.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                  {s.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
-}
 
 type Lead = {
   id: string;
