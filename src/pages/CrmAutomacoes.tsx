@@ -280,7 +280,8 @@ export default function CrmAutomacoes() {
             {channels.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhuma fonte conectada a este funil.</p>
             ) : channels.map(ch => {
-              const icons: Record<string, string> = { whatsapp: "💬", instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
+              const isWhatsapp = ch.channel_type === "whatsapp";
+              const icons: Record<string, string> = { instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
               return (
                 <div key={ch.id} className="flex items-center justify-between py-1.5">
                   <div className="flex items-center gap-2 text-sm text-foreground">
