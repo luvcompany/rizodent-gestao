@@ -2,6 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// Global message cache to avoid re-fetching when switching between leads
+const messageCache = new Map<string, { messages: any[]; timestamp: number }>();
+const CACHE_TTL = 60_000; // 1 minute
+
 export type ChatMessage = {
   id: string;
   lead_id: string;
@@ -80,13 +84,33 @@ export function useChatConversation(leadId: string | null | undefined) {
     }
   }, [stages.length]);
 
-  // ─── Fetch messages ───
-  const fetchMessages = useCallback(async () => {
+  // ─── Fetch messages with cache ───
+  const fetchMessages = useCallback(async (skipCache = false) => {
     if (!leadId) return;
+
+    // Serve from cache instantly if available and fresh
+    if (!skipCache) {
+      const cached = messageCache.get(leadId);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        setMessages(cached.messages as ChatMessage[]);
+        setLoading(false);
+        // Still refresh in background
+        supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true }).then(({ data }) => {
+          if (data) {
+            messageCache.set(leadId, { messages: data, timestamp: Date.now() });
+            setMessages(data as ChatMessage[]);
+          }
+        });
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
-      setMessages((data as ChatMessage[]) || []);
+      const msgs = (data as ChatMessage[]) || [];
+      messageCache.set(leadId, { messages: msgs, timestamp: Date.now() });
+      setMessages(msgs);
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
     }
@@ -142,15 +166,22 @@ export function useChatConversation(leadId: string | null | undefined) {
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "messages", filter: `lead_id=eq.${leadId}`,
       }, (payload) => {
+        const newMsg = payload.new as ChatMessage;
         setMessages((prev) => {
-          if (prev.some((m) => m.id === (payload.new as ChatMessage).id)) return prev;
-          return [...prev, payload.new as ChatMessage];
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          const updated = [...prev, newMsg];
+          if (leadId) messageCache.set(leadId, { messages: updated, timestamp: Date.now() });
+          return updated;
         });
       })
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "messages", filter: `lead_id=eq.${leadId}`,
       }, (payload) => {
-        setMessages((prev) => prev.map((m) => m.id === (payload.new as ChatMessage).id ? (payload.new as ChatMessage) : m));
+        setMessages((prev) => {
+          const updated = prev.map((m) => m.id === (payload.new as ChatMessage).id ? (payload.new as ChatMessage) : m);
+          if (leadId) messageCache.set(leadId, { messages: updated, timestamp: Date.now() });
+          return updated;
+        });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
