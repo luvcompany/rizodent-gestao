@@ -167,6 +167,45 @@ export default function CrmAutomacoes() {
     }
     toast.success("Automação salva");
     setAutoModalOpen(false);
+
+    // Execute "send to all existing" if checked
+    const config = autoForm.action_config;
+    if (config.send_to_all_existing && autoForm.action_type === "send_bot" && config.bot_id) {
+      const { data: leadsInStage } = await supabase
+        .from("crm_leads")
+        .select("id, phone")
+        .eq("stage_id", autoForm.stage_id);
+
+      if (leadsInStage?.length) {
+        toast.info(`Disparando bot para ${leadsInStage.length} leads...`);
+        for (const lead of leadsInStage) {
+          supabase.functions.invoke("bot-engine", {
+            body: { leadId: lead.id, botId: config.bot_id, trigger: "automation_bulk" },
+          }).catch(e => console.error("[Automacoes] Bulk bot error:", e));
+        }
+        toast.success(`Bot disparado para ${leadsInStage.length} leads`);
+      }
+    } else if (config.send_to_all_existing && autoForm.action_type === "send_template" && config.template_id) {
+      const { data: leadsInStage } = await supabase
+        .from("crm_leads")
+        .select("id, phone")
+        .eq("stage_id", autoForm.stage_id);
+
+      if (leadsInStage?.length) {
+        const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", config.template_id as string).single();
+        if (tpl) {
+          toast.info(`Enviando template para ${leadsInStage.length} leads...`);
+          for (const lead of leadsInStage) {
+            if (lead.phone) {
+              supabase.functions.invoke("send-whatsapp-message", {
+                body: { lead_id: lead.id, to: lead.phone, type: "template", template_name: tpl.name, template_language: tpl.language },
+              }).catch(e => console.error("[Automacoes] Bulk template error:", e));
+            }
+          }
+          toast.success(`Template enviado para ${leadsInStage.length} leads`);
+        }
+      }
+    }
   };
 
   const handleDeleteAutomation = async (id: string) => {
