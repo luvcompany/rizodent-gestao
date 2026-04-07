@@ -2,6 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// Global message cache to avoid re-fetching when switching between leads
+const messageCache = new Map<string, { messages: any[]; timestamp: number }>();
+const CACHE_TTL = 60_000; // 1 minute
+
 export type ChatMessage = {
   id: string;
   lead_id: string;
