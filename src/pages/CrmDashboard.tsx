@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   CalendarDays, Phone, MessageSquare, Clock, CheckCircle2, AlertTriangle,
-  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users
+  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw
 } from "lucide-react";
 import { format, isToday, isPast, startOfDay, endOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -96,6 +96,15 @@ export default function CrmDashboard() {
     appointments.filter(a => a.scheduled_date === format(selectedDate, "yyyy-MM-dd")),
   [appointments, selectedDate]);
 
+  // Count reschedules (appointments with notes containing "reagend" or multiple appointments for same lead)
+  const rescheduledCount = useMemo(() => {
+    const leadAppointmentCounts = new Map<string, number>();
+    appointments.forEach(a => {
+      leadAppointmentCounts.set(a.lead_id, (leadAppointmentCounts.get(a.lead_id) || 0) + 1);
+    });
+    return Array.from(leadAppointmentCounts.values()).filter(c => c > 1).length;
+  }, [appointments]);
+
   // Upcoming appointments
   const upcomingAppointments = useMemo(() => {
     const today = startOfDay(new Date());
@@ -148,7 +157,7 @@ export default function CrmDashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10"><ListTodo size={20} className="text-primary" /></div>
@@ -194,17 +203,26 @@ export default function CrmDashboard() {
             </div>
           </div>
         </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-purple-500/10"><RefreshCw size={20} className="text-purple-600" /></div>
+            <div>
+              <p className="text-2xl font-bold">{rescheduledCount}</p>
+              <p className="text-xs text-muted-foreground">Reagendados</p>
+            </div>
+          </div>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
-        {/* Tasks of the day */}
+        {/* Tasks of the day + Today's Appointments */}
         <Card className="flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-bold text-foreground">Tarefas — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}</h2>
             <Badge variant="outline">{todayTasks.length}</Badge>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {todayTasks.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nenhuma tarefa para este dia</p>}
+            {todayTasks.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhuma tarefa para este dia</p>}
             {todayTasks.map(t => (
               <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border group">
                 <button onClick={() => handleMarkDone(t)} className="shrink-0">
@@ -242,6 +260,35 @@ export default function CrmDashboard() {
                     </div>
                     <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 text-xs" onClick={() => handleMarkDone(t)}>
                       Concluir
+                    </Button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Today's appointments in same column */}
+            {dayAppointments.length > 0 && (
+              <>
+                <div className="text-xs font-semibold text-green-600 uppercase mt-4 mb-1 flex items-center gap-1.5">
+                  <CalendarDays size={12} /> Agendamentos do dia ({dayAppointments.length})
+                </div>
+                {dayAppointments.map(appt => (
+                  <div key={appt.id} className="flex items-center gap-3 p-3 rounded-lg bg-green-500/5 border border-green-500/20">
+                    <div className="p-2 rounded-lg bg-green-500/10">
+                      <CalendarDays size={16} className="text-green-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{appt.lead_name}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
+                        {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] border-green-500 text-green-600">
+                      {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : "Pendente"}
+                    </Badge>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
+                      Ver
                     </Button>
                   </div>
                 ))}
@@ -297,7 +344,7 @@ export default function CrmDashboard() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{appt.lead_name}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                            <span className="font-medium">{appt.scheduled_time.slice(0, 5)}</span>
+                            <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
                             {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
                           </div>
                         </div>
