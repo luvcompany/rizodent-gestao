@@ -83,7 +83,7 @@ export default function CrmCalendario() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [mainView, setMainView] = useState<MainView>("tarefas");
+  const [mainView, setMainView] = useState<MainView>("agendamentos");
   const [taskView, setTaskView] = useState<TaskViewMode>("events");
   const [filterUser, setFilterUser] = useState("");
   const [filterType, setFilterType] = useState("");
