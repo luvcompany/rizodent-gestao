@@ -455,6 +455,23 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
                 <div className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-1 rounded-md text-center w-full italic">
                   {msg.content}
                 </div>
+              ) : msg.type === "audio" && msg.content.startsWith("http") ? (
+                <div className={`max-w-[85%] px-3 py-2 rounded-xl ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+                  <p className="text-[10px] text-muted-foreground mb-1">🎵 Áudio</p>
+                  <audio controls className="w-full h-8" style={{ maxWidth: "220px" }}>
+                    <source src={msg.content} />
+                  </audio>
+                </div>
+              ) : msg.type === "image" && msg.content.startsWith("http") ? (
+                <div className={`max-w-[85%] px-1 py-1 rounded-xl ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+                  <img src={msg.content} alt="Imagem" className="rounded-lg max-w-full max-h-40 object-cover" />
+                </div>
+              ) : msg.type === "file" && msg.content.startsWith("http") ? (
+                <div className={`max-w-[85%] px-3 py-2 rounded-xl ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+                  <a href={msg.content} target="_blank" rel="noopener noreferrer" className="text-xs underline flex items-center gap-1">
+                    📄 Ver arquivo
+                  </a>
+                </div>
               ) : (
                 <div
                   className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
