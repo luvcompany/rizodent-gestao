@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw, MoreVertical, Copy } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -166,6 +167,45 @@ export default function CrmAutomacoes() {
     }
     toast.success("Automação salva");
     setAutoModalOpen(false);
+
+    // Execute "send to all existing" if checked
+    const config = autoForm.action_config;
+    if (config.send_to_all_existing && autoForm.action_type === "send_bot" && config.bot_id) {
+      const { data: leadsInStage } = await supabase
+        .from("crm_leads")
+        .select("id, phone")
+        .eq("stage_id", autoForm.stage_id);
+
+      if (leadsInStage?.length) {
+        toast.info(`Disparando bot para ${leadsInStage.length} leads...`);
+        for (const lead of leadsInStage) {
+          supabase.functions.invoke("bot-engine", {
+            body: { leadId: lead.id, botId: config.bot_id, trigger: "automation_bulk" },
+          }).catch(e => console.error("[Automacoes] Bulk bot error:", e));
+        }
+        toast.success(`Bot disparado para ${leadsInStage.length} leads`);
+      }
+    } else if (config.send_to_all_existing && autoForm.action_type === "send_template" && config.template_id) {
+      const { data: leadsInStage } = await supabase
+        .from("crm_leads")
+        .select("id, phone")
+        .eq("stage_id", autoForm.stage_id);
+
+      if (leadsInStage?.length) {
+        const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", config.template_id as string).single();
+        if (tpl) {
+          toast.info(`Enviando template para ${leadsInStage.length} leads...`);
+          for (const lead of leadsInStage) {
+            if (lead.phone) {
+              supabase.functions.invoke("send-whatsapp-message", {
+                body: { lead_id: lead.id, to: lead.phone, type: "template", template_name: tpl.name, template_language: tpl.language },
+              }).catch(e => console.error("[Automacoes] Bulk template error:", e));
+            }
+          }
+          toast.success(`Template enviado para ${leadsInStage.length} leads`);
+        }
+      }
+    }
   };
 
   const handleDeleteAutomation = async (id: string) => {
@@ -197,13 +237,52 @@ export default function CrmAutomacoes() {
         <div className="flex items-center gap-3 min-w-0 flex-wrap">
           <h1 className="text-lg font-bold text-foreground whitespace-nowrap">Configuração do Funil</h1>
           {pipelines.length > 0 && (
-            <select
-              className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              value={selectedPipelineId}
-              onChange={(e) => fetchData(e.target.value)}
-            >
-              {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <div className="flex items-center gap-1">
+              <select
+                className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                value={selectedPipelineId}
+                onChange={(e) => fetchData(e.target.value)}
+              >
+                {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+                    <MoreVertical size={16} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={async () => {
+                    const pipe = pipelines.find(p => p.id === selectedPipelineId);
+                    if (!pipe) return;
+                    const { data } = await supabase.from("crm_pipelines").insert({
+                      name: `${pipe.name} (cópia)`, color: pipe.color,
+                    }).select().single();
+                    if (data) {
+                      // Duplicate stages
+                      for (const s of stages) {
+                        await supabase.from("crm_stages").insert({
+                          pipeline_id: data.id, name: s.name, color: s.color, position: s.position,
+                        });
+                      }
+                      toast.success("Funil duplicado");
+                      fetchData(data.id);
+                    }
+                  }}>
+                    <Copy size={14} className="mr-2" /> Duplicar funil
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={async () => {
+                    if (!confirm("Excluir este funil e todas suas etapas?")) return;
+                    await supabase.from("crm_stages").delete().eq("pipeline_id", selectedPipelineId);
+                    await supabase.from("crm_pipelines").delete().eq("id", selectedPipelineId);
+                    toast.success("Funil excluído");
+                    fetchData();
+                  }}>
+                    <Trash2 size={14} className="mr-2" /> Excluir funil
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -240,11 +319,20 @@ export default function CrmAutomacoes() {
             {channels.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhuma fonte conectada a este funil.</p>
             ) : channels.map(ch => {
-              const icons: Record<string, string> = { whatsapp: "💬", instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
+              const isWhatsapp = ch.channel_type === "whatsapp";
+              const icons: Record<string, string> = { instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
               return (
                 <div key={ch.id} className="flex items-center justify-between py-1.5">
                   <div className="flex items-center gap-2 text-sm text-foreground">
-                    <span>{icons[ch.channel_type] || "📡"}</span> {ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
+                    {isWhatsapp ? (
+                      <svg viewBox="0 0 32 32" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="16" cy="16" r="16" fill="#25D366"/>
+                        <path d="M23.3 8.6A10.4 10.4 0 0 0 6.6 20.1L5 27l7.1-1.6a10.4 10.4 0 0 0 11.2-17.8zm-7.3 16a8.6 8.6 0 0 1-4.4-1.2l-.3-.2-3.2.7.8-3.1-.2-.3A8.6 8.6 0 1 1 16 24.6zm4.7-6.4c-.3-.1-1.5-.8-1.8-.9-.2-.1-.4-.1-.6.1s-.7.9-.9 1.1c-.2.2-.3.2-.6.1a7.7 7.7 0 0 1-3.8-3.3c-.3-.5.3-.5.8-1.6.1-.2 0-.3 0-.5s-.6-1.5-.8-2c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2c0 1.3.9 2.6 1 2.8s1.8 2.7 4.3 3.8c1.6.7 2.2.7 3 .6.5-.1 1.5-.6 1.7-1.2s.2-1.1.2-1.2c0-.1-.2-.2-.5-.3z" fill="#fff"/>
+                      </svg>
+                    ) : (
+                      <span>{icons[ch.channel_type] || "📡"}</span>
+                    )}
+                    {ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
@@ -449,15 +537,27 @@ export default function CrmAutomacoes() {
             </div>
 
             {autoForm.action_type === "send_template" && (
-              <div>
-                <Label>Template</Label>
-                <Select value={(autoForm.action_config.template_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { template_id: v } }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar template" /></SelectTrigger>
-                  <SelectContent>
-                    {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
-                    {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3">
+                <div>
+                  <Label>Template</Label>
+                  <Select value={(autoForm.action_config.template_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, template_id: v } }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecionar template" /></SelectTrigger>
+                    <SelectContent>
+                      {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
+                      {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="send-to-all-tpl"
+                    checked={!!(autoForm.action_config.send_to_all_existing)}
+                    onCheckedChange={(v) => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, send_to_all_existing: !!v } }))}
+                  />
+                  <label htmlFor="send-to-all-tpl" className="text-sm text-foreground cursor-pointer">
+                    Enviar para todos os leads que já estão nesta etapa
+                  </label>
+                </div>
               </div>
             )}
 
