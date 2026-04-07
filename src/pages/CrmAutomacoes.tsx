@@ -198,13 +198,52 @@ export default function CrmAutomacoes() {
         <div className="flex items-center gap-3 min-w-0 flex-wrap">
           <h1 className="text-lg font-bold text-foreground whitespace-nowrap">Configuração do Funil</h1>
           {pipelines.length > 0 && (
-            <select
-              className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              value={selectedPipelineId}
-              onChange={(e) => fetchData(e.target.value)}
-            >
-              {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <div className="flex items-center gap-1">
+              <select
+                className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                value={selectedPipelineId}
+                onChange={(e) => fetchData(e.target.value)}
+              >
+                {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+                    <MoreVertical size={16} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={async () => {
+                    const pipe = pipelines.find(p => p.id === selectedPipelineId);
+                    if (!pipe) return;
+                    const { data } = await supabase.from("crm_pipelines").insert({
+                      name: `${pipe.name} (cópia)`, color: pipe.color,
+                    }).select().single();
+                    if (data) {
+                      // Duplicate stages
+                      for (const s of stages) {
+                        await supabase.from("crm_stages").insert({
+                          pipeline_id: data.id, name: s.name, color: s.color, position: s.position,
+                        });
+                      }
+                      toast.success("Funil duplicado");
+                      fetchData(data.id);
+                    }
+                  }}>
+                    <Copy size={14} className="mr-2" /> Duplicar funil
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={async () => {
+                    if (!confirm("Excluir este funil e todas suas etapas?")) return;
+                    await supabase.from("crm_stages").delete().eq("pipeline_id", selectedPipelineId);
+                    await supabase.from("crm_pipelines").delete().eq("id", selectedPipelineId);
+                    toast.success("Funil excluído");
+                    fetchData();
+                  }}>
+                    <Trash2 size={14} className="mr-2" /> Excluir funil
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
