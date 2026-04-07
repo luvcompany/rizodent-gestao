@@ -285,7 +285,15 @@ export default function CrmAutomacoes() {
               return (
                 <div key={ch.id} className="flex items-center justify-between py-1.5">
                   <div className="flex items-center gap-2 text-sm text-foreground">
-                    <span>{icons[ch.channel_type] || "📡"}</span> {ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
+                    {isWhatsapp ? (
+                      <svg viewBox="0 0 32 32" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="16" cy="16" r="16" fill="#25D366"/>
+                        <path d="M23.3 8.6A10.4 10.4 0 0 0 6.6 20.1L5 27l7.1-1.6a10.4 10.4 0 0 0 11.2-17.8zm-7.3 16a8.6 8.6 0 0 1-4.4-1.2l-.3-.2-3.2.7.8-3.1-.2-.3A8.6 8.6 0 1 1 16 24.6zm4.7-6.4c-.3-.1-1.5-.8-1.8-.9-.2-.1-.4-.1-.6.1s-.7.9-.9 1.1c-.2.2-.3.2-.6.1a7.7 7.7 0 0 1-3.8-3.3c-.3-.5.3-.5.8-1.6.1-.2 0-.3 0-.5s-.6-1.5-.8-2c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2c0 1.3.9 2.6 1 2.8s1.8 2.7 4.3 3.8c1.6.7 2.2.7 3 .6.5-.1 1.5-.6 1.7-1.2s.2-1.1.2-1.2c0-.1-.2-.2-.5-.3z" fill="#fff"/>
+                      </svg>
+                    ) : (
+                      <span>{icons[ch.channel_type] || "📡"}</span>
+                    )}
+                    {ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
