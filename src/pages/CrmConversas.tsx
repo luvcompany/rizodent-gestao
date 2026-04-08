@@ -274,6 +274,8 @@ export default function CrmConversas() {
   // Apply filters
   const filtered = useMemo(() => {
     return leads.filter((l) => {
+      // Filter by assigned user - each user sees only their leads
+      if (user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
       const normalizedSearch = search.trim().toLowerCase();
       if (normalizedSearch) {
         const searchDigits = normalizedSearch.replace(/\D/g, "");
