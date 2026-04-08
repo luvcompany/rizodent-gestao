@@ -174,7 +174,7 @@ const CadastroLeads = () => {
 
   const getClinicaNome = (r: LeadWithClinica) => r.clinicas?.nome || "—";
 
-  const vcaClinicName = (id: string) => clinicas.find(c => c.id === id)?.nome || id;
+  
 
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
