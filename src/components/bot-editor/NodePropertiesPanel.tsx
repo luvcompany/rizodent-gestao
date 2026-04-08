@@ -129,12 +129,45 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     setUploading(true);
     setUploadProgress(0);
     try {
-      // Compress images before upload (same logic as chat)
       const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+
+      // WhatsApp API limits
+      const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+      const MAX_VIDEO_SIZE = 16 * 1024 * 1024; // 16MB
+      const MAX_DOC_SIZE = 100 * 1024 * 1024; // 100MB
+
+      // Compress images
       if (isImage) {
         setUploadProgress(5);
         file = await compressImage(file);
+        if (file.size > MAX_IMAGE_SIZE) {
+          toast.error(`Imagem muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo: 5MB.`);
+          setUploading(false);
+          setUploadProgress(0);
+          return;
+        }
       }
+
+      // Validate video size
+      if (isVideo) {
+        if (file.size > MAX_VIDEO_SIZE) {
+          toast.error(`Vídeo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). O limite do WhatsApp é 16MB. Comprima o vídeo antes de enviar.`);
+          setUploading(false);
+          setUploadProgress(0);
+          return;
+        }
+        setUploadProgress(5);
+      }
+
+      // Validate document size
+      if (!isImage && !isVideo && file.size > MAX_DOC_SIZE) {
+        toast.error(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo: 100MB.`);
+        setUploading(false);
+        setUploadProgress(0);
+        return;
+      }
+
       const ext = file.name.split(".").pop() || "bin";
       const fileName = `bot-files/${Date.now()}.${ext}`;
 
@@ -178,6 +211,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
       }
     } catch (err) {
       console.error("Bot file upload error:", err);
+      toast.error("Erro ao enviar arquivo.");
     }
     setUploading(false);
     setUploadProgress(0);
