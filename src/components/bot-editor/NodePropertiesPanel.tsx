@@ -10,6 +10,7 @@ import BotAudioRecorder from "./BotAudioRecorder";
 import type { Node } from "@xyflow/react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUploadedFileUrl } from "@/lib/mediaUtils";
+import { compressImage } from "@/components/chat/imageCompressor";
 
 type Props = {
   node: Node;
@@ -122,15 +123,24 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
   }, [node.data.templateId, templates]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField = "fileUrl") => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const ext = file.name.split(".").pop() || "bin";
-    const fileName = `bot-files/${Date.now()}.${ext}`;
-    const { data, error } = await supabase.storage.from("chat-media").upload(fileName, file);
-    if (!error && data) {
-      const signedUrl = await getUploadedFileUrl(data.path);
-      update(targetField, signedUrl);
+    try {
+      // Compress images before upload (same logic as chat)
+      const isImage = file.type.startsWith("image/");
+      if (isImage) {
+        file = await compressImage(file);
+      }
+      const ext = file.name.split(".").pop() || "bin";
+      const fileName = `bot-files/${Date.now()}.${ext}`;
+      const { data, error } = await supabase.storage.from("chat-media").upload(fileName, file);
+      if (!error && data) {
+        const signedUrl = await getUploadedFileUrl(data.path);
+        update(targetField, signedUrl);
+      }
+    } catch (err) {
+      console.error("Bot file upload error:", err);
     }
     setUploading(false);
   };
