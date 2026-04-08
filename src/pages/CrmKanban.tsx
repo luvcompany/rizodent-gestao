@@ -62,6 +62,7 @@ const PRESET_COLORS = [
 
 export default function CrmKanban() {
   const navigate = useNavigate();
+  const { user, userRole } = useAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
