@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw, Users } from "lucide-react";
@@ -12,12 +12,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
-
-const VCA_IDS = [
-  "93c99d9a-8698-495a-829b-a6592ade8d06", // VCA 01
-  "041908a4-8825-4594-be5c-a37dbbfafba2", // VCA 02
-];
-const VCA_GROUP_VALUE = "vca-group";
 
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
@@ -31,14 +25,6 @@ const CadastroLeads = () => {
   const [leadsNovos, setLeadsNovos] = useState("");
   const [savingLeads, setSavingLeads] = useState(false);
   const [existingIdLeads, setExistingIdLeads] = useState<string | null>(null);
-
-  // For VCA group: split leads between VCA 01 and VCA 02
-  const [leadsVca1, setLeadsVca1] = useState("");
-  const [leadsVca2, setLeadsVca2] = useState("");
-  const [existingIdVca1, setExistingIdVca1] = useState<string | null>(null);
-  const [existingIdVca2, setExistingIdVca2] = useState<string | null>(null);
-
-  const isVcaGroup = clinicaIdLeads === VCA_GROUP_VALUE;
 
   // Agendados + Reagendados - separate date, clinic
   const [dataAgendados, setDataAgendados] = useState(() => new Date().toISOString().split("T")[0]);
@@ -61,10 +47,6 @@ const CadastroLeads = () => {
   const reagendadosNaoContrataram = useMemo(() => Math.max((parseInt(reagendadosCompareceram) || 0) - (parseInt(reagendadosContrataram) || 0), 0), [reagendadosCompareceram, reagendadosContrataram]);
   const faltasLiquidas = useMemo(() => Math.max(faltaram - (parseInt(remarcados) || 0) + reagendadosFaltaram, 0), [faltaram, remarcados, reagendadosFaltaram]);
 
-  // Separate clinics into VCA and others
-  const vcaClinics = useMemo(() => clinicas.filter(c => VCA_IDS.includes(c.id)), [clinicas]);
-  const otherClinics = useMemo(() => clinicas.filter(c => !VCA_IDS.includes(c.id)), [clinicas]);
-
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
       if (data) setClinicas(data);
@@ -82,28 +64,15 @@ const CadastroLeads = () => {
 
   useEffect(() => { fetchRegistros(); }, [fetchRegistros]);
 
-  // Auto-load for Leads Novos (single clinic)
+  // Auto-load for Leads Novos
   useEffect(() => {
-    if (isVcaGroup || !clinicaIdLeads || !dataLeads) { setExistingIdLeads(null); return; }
+    if (!clinicaIdLeads || !dataLeads) { setExistingIdLeads(null); return; }
     supabase.from("leads_diarios").select("*").eq("data", dataLeads).eq("clinica_id", clinicaIdLeads).maybeSingle()
       .then(({ data: existing }) => {
         if (existing) { setExistingIdLeads(existing.id); setLeadsNovos(String(existing.leads_novos)); }
         else { setExistingIdLeads(null); setLeadsNovos(""); }
       });
-  }, [clinicaIdLeads, dataLeads, isVcaGroup]);
-
-  // Auto-load for VCA group
-  useEffect(() => {
-    if (!isVcaGroup || !dataLeads) return;
-    Promise.all(VCA_IDS.map(id =>
-      supabase.from("leads_diarios").select("*").eq("data", dataLeads).eq("clinica_id", id).maybeSingle()
-    )).then(([r1, r2]) => {
-      if (r1.data) { setExistingIdVca1(r1.data.id); setLeadsVca1(String(r1.data.leads_novos)); }
-      else { setExistingIdVca1(null); setLeadsVca1(""); }
-      if (r2.data) { setExistingIdVca2(r2.data.id); setLeadsVca2(String(r2.data.leads_novos)); }
-      else { setExistingIdVca2(null); setLeadsVca2(""); }
-    });
-  }, [isVcaGroup, dataLeads]);
+  }, [clinicaIdLeads, dataLeads]);
 
   // Auto-load for Agendados
   useEffect(() => {
@@ -131,43 +100,20 @@ const CadastroLeads = () => {
     if (!clinicaIdLeads) { toast.error("Selecione uma clínica."); return; }
     setSavingLeads(true);
     try {
-      if (isVcaGroup) {
-        // Save for both VCA clinics
-        const saves = [
-          { id: VCA_IDS[0], value: parseInt(leadsVca1) || 0, existingId: existingIdVca1 },
-          { id: VCA_IDS[1], value: parseInt(leadsVca2) || 0, existingId: existingIdVca2 },
-        ];
-        for (const s of saves) {
-          if (s.existingId) {
-            const { error } = await supabase.from("leads_diarios").update({ leads_novos: s.value, created_by: user?.id }).eq("id", s.existingId);
-            if (error) throw error;
-          } else {
-            const { error } = await supabase.from("leads_diarios").insert({
-              data: dataLeads, clinica_id: s.id, leads_novos: s.value,
-              agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
-              nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
-              created_by: user?.id,
-            });
-            if (error) throw error;
-          }
-        }
-        toast.success("Leads novos VCA 01 e VCA 02 salvos!");
+      const leadsValue = parseInt(leadsNovos) || 0;
+      if (existingIdLeads) {
+        const { error } = await supabase.from("leads_diarios").update({ leads_novos: leadsValue, created_by: user?.id }).eq("id", existingIdLeads);
+        if (error) throw error;
       } else {
-        const leadsValue = parseInt(leadsNovos) || 0;
-        if (existingIdLeads) {
-          const { error } = await supabase.from("leads_diarios").update({ leads_novos: leadsValue, created_by: user?.id }).eq("id", existingIdLeads);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("leads_diarios").insert({
-            data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: leadsValue,
-            agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
-            nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
-            created_by: user?.id,
-          });
-          if (error) throw error;
-        }
-        toast.success("Leads novos salvos!");
+        const { error } = await supabase.from("leads_diarios").insert({
+          data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: leadsValue,
+          agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
+          nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
+          created_by: user?.id,
+        });
+        if (error) throw error;
       }
+      toast.success("Leads novos salvos!");
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
@@ -228,7 +174,7 @@ const CadastroLeads = () => {
 
   const getClinicaNome = (r: LeadWithClinica) => r.clinicas?.nome || "—";
 
-  const vcaClinicName = (id: string) => clinicas.find(c => c.id === id)?.nome || id;
+  
 
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
@@ -256,52 +202,25 @@ const CadastroLeads = () => {
             </div>
             <div className="space-y-2">
               <Label>Clínica</Label>
-              <Select value={clinicaIdLeads} onValueChange={(v) => { setClinicaIdLeads(v); setLeadsNovos(""); setLeadsVca1(""); setLeadsVca2(""); }}>
+              <Select value={clinicaIdLeads} onValueChange={(v) => { setClinicaIdLeads(v); setLeadsNovos(""); }}>
                 <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
                 <SelectContent>
-                  {vcaClinics.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Vitória da Conquista</SelectLabel>
-                      <SelectItem value={VCA_GROUP_VALUE}>VCA 01 + VCA 02 (dividir)</SelectItem>
-                      {vcaClinics.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-                    </SelectGroup>
-                  )}
-                  {otherClinics.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Outras Clínicas</SelectLabel>
-                      {otherClinics.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-                    </SelectGroup>
-                  )}
+                  {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {(existingIdLeads && !isVcaGroup) && (
+          {existingIdLeads && (
             <div className="rounded-lg bg-primary/10 p-3 text-sm text-primary">
               ⚠️ Já existe registro para esta data/clínica. O valor será atualizado.
             </div>
           )}
 
-          {isVcaGroup ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>{vcaClinicName(VCA_IDS[0])}</Label>
-                <Input type="number" min="0" placeholder="0" value={leadsVca1} onChange={(e) => setLeadsVca1(e.target.value)} className="bg-secondary border-border" />
-                {existingIdVca1 && <p className="text-xs text-primary">⚠️ Registro existente — será atualizado</p>}
-              </div>
-              <div className="space-y-2">
-                <Label>{vcaClinicName(VCA_IDS[1])}</Label>
-                <Input type="number" min="0" placeholder="0" value={leadsVca2} onChange={(e) => setLeadsVca2(e.target.value)} className="bg-secondary border-border" />
-                {existingIdVca2 && <p className="text-xs text-primary">⚠️ Registro existente — será atualizado</p>}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>Quantidade de Leads Novos</Label>
-              <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Quantidade de Leads Novos</Label>
+            <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
+          </div>
 
           <Button onClick={handleSaveLeads} disabled={savingLeads} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
             <Save size={18} className="mr-2" />
