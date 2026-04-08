@@ -45,6 +45,9 @@ type Appointment = {
   lead_name?: string;
 };
 
+type Stage = { id: string; name: string; color: string; pipeline_id: string };
+type Pipeline = { id: string; name: string };
+
 const typeLabels: Record<string, string> = {
   agendamento: "Agendamento",
   ligacao: "Ligação",
