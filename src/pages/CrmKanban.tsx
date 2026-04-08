@@ -315,14 +315,23 @@ export default function CrmKanban() {
     leads.forEach((l) => l.tags?.forEach((t: string) => set.add(t)));
     return Array.from(set);
   }, [leads]);
-  const totalValue = leads.reduce((acc, l) => acc + (l.value || 0), 0);
-  const withTaskToday = leads.filter(l => l.has_task && !l.task_overdue).length;
-  const noTasks = leads.filter(l => !l.has_task).length;
-  const overdue = leads.filter(l => l.task_overdue).length;
+  // Metrics based on filtered leads (user-specific)
+  const myLeads = allFilteredLeads;
+  const withTaskToday = myLeads.filter(l => l.has_task && !l.task_overdue).length;
+  const noTasks = myLeads.filter(l => !l.has_task).length;
+  const overdue = myLeads.filter(l => l.task_overdue).length;
   const today = new Date().toISOString().split("T")[0];
   const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-  const newToday = leads.filter(l => l.created_at.startsWith(today)).length;
-  const newYesterday = leads.filter(l => l.created_at.startsWith(yesterday)).length;
+  const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
+  const newYesterday = myLeads.filter(l => l.created_at.startsWith(yesterday)).length;
+
+  // Vendas concluídas = valor dos leads na etapa "Contratado" criados/atualizados neste mês
+  const contratadoStageIds = stages.filter(s => s.name.toLowerCase().includes("contratado") && !s.name.toLowerCase().includes("não")).map(s => s.id);
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const vendasConcluidas = myLeads
+    .filter(l => contratadoStageIds.includes(l.stage_id) && new Date(l.updated_at).getMonth() === currentMonth && new Date(l.updated_at).getFullYear() === currentYear)
+    .reduce((acc, l) => acc + (l.value || 0), 0);
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
