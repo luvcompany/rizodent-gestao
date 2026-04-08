@@ -10,6 +10,7 @@ import BotAudioRecorder from "./BotAudioRecorder";
 import type { Node } from "@xyflow/react";
 import { supabase } from "@/integrations/supabase/client";
 import { getUploadedFileUrl } from "@/lib/mediaUtils";
+import { compressImage } from "@/components/chat/imageCompressor";
 
 type Props = {
   node: Node;
