@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,7 @@ type Lead = {
 };
 
 export default function CrmConversa() {
+  const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [lead, setLead] = useState<Lead | null>(null);
@@ -90,17 +92,23 @@ export default function CrmConversa() {
     const oldUserId = lead.assigned_to;
     if (newUserId === oldUserId) return;
 
+    const oldUserName = profiles.find(p => p.id === oldUserId)?.nome || "Não atribuído";
     const newUserName = profiles.find(p => p.id === newUserId)?.nome || "?";
 
-    const { data, error } = await supabase.functions.invoke("transfer-lead", {
-      body: { leadId: id, newUserId },
-    });
-    if (error || data?.error) { toast.error("Erro ao transferir lead"); return; }
-
-    chat.showActivityToast(`🔄 Lead transferido para ${data?.newUserName || newUserName}`);
+    // Optimistic update for instant feedback
     setLead(prev => prev ? { ...prev, assigned_to: newUserId } : prev);
-    toast.success(`Lead transferido para ${data?.newUserName || newUserName}`);
-  }, [lead, id, profiles, chat]);
+    chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
+    toast.success(`Lead transferido para ${newUserName}`);
+
+    const updatePromise = supabase.from("crm_leads").update({ assigned_to: newUserId, updated_at: new Date().toISOString() }).eq("id", id);
+    const msgPromise = supabase.from("messages").insert({ lead_id: id, direction: "outbound", type: "system", content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`, status: "system", sender_id: user?.id || null });
+
+    const [updateRes] = await Promise.all([updatePromise, msgPromise]);
+    if (updateRes.error) {
+      setLead(prev => prev ? { ...prev, assigned_to: oldUserId } : prev);
+      toast.error("Erro ao transferir lead");
+    }
+  }, [lead, id, profiles, chat, user]);
 
   const handleStageChange = useCallback(async (stageId: string) => {
     if (!lead) return;

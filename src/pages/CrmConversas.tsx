@@ -241,18 +241,27 @@ export default function CrmConversas() {
     const oldUserId = selectedLead.assigned_to;
     if (newUserId === oldUserId) return;
 
+    const oldUserName = profiles.find(p => p.id === oldUserId)?.nome || "Não atribuído";
     const newUserName = profiles.find(p => p.id === newUserId)?.nome || "?";
 
-    const { data, error } = await supabase.functions.invoke("transfer-lead", {
-      body: { leadId: selectedLeadId, newUserId },
-    });
-    if (error || data?.error) { toast.error("Erro ao transferir lead"); return; }
-
-    chat.showActivityToast(`🔄 Lead transferido para ${data?.newUserName || newUserName}`);
+    // Optimistic update first for instant UI feedback
     setSelectedLead(prev => prev ? { ...prev, assigned_to: newUserId } : prev);
     setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, assigned_to: newUserId } : l));
-    toast.success(`Lead transferido para ${data?.newUserName || newUserName}`);
-  }, [selectedLead, selectedLeadId, profiles, chat]);
+    chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
+    toast.success(`Lead transferido para ${newUserName}`);
+
+    // Fire DB update + system message in parallel, no await blocking UI
+    const updatePromise = supabase.from("crm_leads").update({ assigned_to: newUserId, updated_at: new Date().toISOString() }).eq("id", selectedLeadId);
+    const msgPromise = supabase.from("messages").insert({ lead_id: selectedLeadId, direction: "outbound", type: "system", content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`, status: "system", sender_id: user?.id || null });
+
+    const [updateRes, msgRes] = await Promise.all([updatePromise, msgPromise]);
+    if (updateRes.error) {
+      // Rollback on failure
+      setSelectedLead(prev => prev ? { ...prev, assigned_to: oldUserId } : prev);
+      setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, assigned_to: oldUserId ?? null } : l));
+      toast.error("Erro ao transferir lead");
+    }
+  }, [selectedLead, selectedLeadId, profiles, chat, user]);
 
   // Collect all tags for filters
   const allTags = useMemo(() => {
