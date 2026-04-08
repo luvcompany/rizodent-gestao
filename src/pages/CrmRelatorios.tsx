@@ -1,17 +1,21 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
-import { Clock, Timer, Users, TrendingUp, AlertTriangle } from "lucide-react";
+import { Clock, Timer, Users, TrendingUp, AlertTriangle, Zap, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+import { format } from "date-fns";
 
 type Stage = { id: string; name: string; color: string; position: number };
 type StageHistory = { lead_id: string; stage_id: string; entered_at: string; exited_at: string | null };
-type Lead = { id: string; name: string; phone: string | null; stage_id: string; created_at: string };
-type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string };
+type Lead = { id: string; name: string; phone: string | null; stage_id: string; created_at: string; score?: number; last_message_at?: string | null };
+type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
 
 function formatDuration(ms: number): string {
   if (ms <= 0) return "—";
