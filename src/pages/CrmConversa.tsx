@@ -190,18 +190,10 @@ export default function CrmConversa() {
     setActiveExecution(null);
   };
 
-  if (chat.loading && leadLoading) {
+  if (leadLoading || !lead) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-muted-foreground">Carregando conversa...</div>
-      </div>
-    );
-  }
-
-  if (!lead) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-muted-foreground">Lead não encontrado</div>
       </div>
     );
   }
