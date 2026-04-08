@@ -385,6 +385,13 @@ Deno.serve(async (req) => {
                     if (adSourceId) insertData.ad_id = adSourceId;
                   }
 
+                  // Round-robin / least-load assignment
+                  const assignedTo = await resolveAutoAssignment(supabase, pipelineId);
+                  if (assignedTo) {
+                    insertData.assigned_to = assignedTo;
+                    console.log(`[WEBHOOK] Round-robin atribuiu lead a: ${assignedTo}`);
+                  }
+
                   const { data: newLead } = await supabase
                     .from("crm_leads")
                     .insert(insertData)
@@ -392,7 +399,7 @@ Deno.serve(async (req) => {
                     .single();
 
                   lead = newLead;
-                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
+                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, assigned: ${assignedTo || 'none'}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
                 }
               }
             } else {
