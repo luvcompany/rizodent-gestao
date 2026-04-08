@@ -613,6 +613,73 @@ export default function CrmCalendario() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Appointment result dialog */}
+      <Dialog open={!!selectedAppointment} onOpenChange={(o) => { if (!o) setSelectedAppointment(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Resultado do Agendamento</DialogTitle></DialogHeader>
+          {selectedAppointment && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium">{selectedAppointment.lead_name}</p>
+                <p className="text-xs text-muted-foreground">{selectedAppointment.scheduled_date} às {selectedAppointment.scheduled_time?.slice(0, 5)}</p>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold">Status do agendamento</Label>
+                <Select value={apptResultStatus} onValueChange={setApptResultStatus}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="confirmed">✅ Confirmado</SelectItem>
+                    <SelectItem value="contracted">🤝 Contratado</SelectItem>
+                    <SelectItem value="not_contracted">❌ Não contratou</SelectItem>
+                    <SelectItem value="no_show">🚫 Não compareceu</SelectItem>
+                    <SelectItem value="cancelled">🗑️ Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold">Mover lead para (opcional)</Label>
+                <Select value={apptMovePipelineId} onValueChange={(v) => { setApptMovePipelineId(v); setApptMoveStageId(""); }}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Funil..." /></SelectTrigger>
+                  <SelectContent>
+                    {crmPipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {apptMovePipelineId && (
+                  <Select value={apptMoveStageId} onValueChange={setApptMoveStageId}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Etapa..." /></SelectTrigger>
+                    <SelectContent>
+                      {crmStages.filter(s => s.pipeline_id === apptMovePipelineId).map(s => (
+                        <SelectItem key={s.id} value={s.id}>
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                            {s.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => navigate(`/crm/conversa/${selectedAppointment.lead_id}`)}>Ir para conversa</Button>
+                <Button className="flex-1" onClick={async () => {
+                  await supabase.from("crm_appointments").update({ status: apptResultStatus }).eq("id", selectedAppointment.id);
+                  if (apptMoveStageId) {
+                    await supabase.from("crm_leads").update({ stage_id: apptMoveStageId, pipeline_id: apptMovePipelineId }).eq("id", selectedAppointment.lead_id);
+                  }
+                  toast.success("Agendamento atualizado");
+                  setAppointments(prev => prev.map(a => a.id === selectedAppointment.id ? { ...a, status: apptResultStatus } : a));
+                  setSelectedAppointment(null);
+                }}>Salvar</Button>
+              </div>
+              <Button variant="destructive" size="sm" className="w-full" onClick={() => { setDeleteApptConfirm(selectedAppointment.id); setSelectedAppointment(null); }}>
+                <Trash2 size={14} className="mr-1" /> Excluir agendamento
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
