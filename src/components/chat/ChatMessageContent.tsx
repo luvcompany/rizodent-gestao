@@ -153,13 +153,18 @@ export default function ChatMessageContent({ message, onMediaClick }: { message:
 
   if (message.type === "video" && hasResolvedMedia) {
     return (
-      <div className="relative cursor-pointer" onClick={() => onMediaClick?.(resolvedUrl!, "video")}>
-        <video src={resolvedUrl!} className="rounded mb-1 max-w-full max-h-64" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center">
-            <span className="text-foreground text-lg ml-0.5">▶</span>
+      <div>
+        <div className="relative cursor-pointer" onClick={() => onMediaClick?.(resolvedUrl!, "video")}>
+          <video src={resolvedUrl!} className="rounded mb-1 max-w-full max-h-64" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center">
+              <span className="text-foreground text-lg ml-0.5">▶</span>
+            </div>
           </div>
         </div>
+        {message.content?.trim() && (
+          <p className="text-sm whitespace-pre-wrap mt-1">{message.content}</p>
+        )}
       </div>
     );
   }
