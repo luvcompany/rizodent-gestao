@@ -27,6 +27,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
   const [templates, setTemplates] = useState<{ id: string; name: string; body_text: string | null; buttons: any; language: string; header_type: string | null; footer_text: string | null }[]>([]);
   const [templateSearch, setTemplateSearch] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [existingTags, setExistingTags] = useState<string[]>([]);
   const [existingSources, setExistingSources] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
