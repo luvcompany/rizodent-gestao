@@ -35,6 +35,7 @@ export default function CrmRelatorios() {
   const [history, setHistory] = useState<StageHistory[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [inactiveDays, setInactiveDays] = useState("3");
 
