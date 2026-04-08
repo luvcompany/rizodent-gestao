@@ -282,6 +282,7 @@ function BotEditorInner() {
     // Save flow
     const { error } = await supabase.from("bots").update({
       name: botName,
+      description: botDescription,
       flow_json: { nodes, edges },
     }).eq("id", id);
 
