@@ -190,7 +190,7 @@ export default function CrmConversa() {
   if (leadLoading || !lead) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-muted-foreground">Carregando conversa...</div>
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
