@@ -94,6 +94,12 @@ export default function CrmCalendario() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleteApptConfirm, setDeleteApptConfirm] = useState<string | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [apptResultStatus, setApptResultStatus] = useState("");
+  const [apptMoveStageId, setApptMoveStageId] = useState("");
+  const [crmStages, setCrmStages] = useState<Stage[]>([]);
+  const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>([]);
+  const [apptMovePipelineId, setApptMovePipelineId] = useState("");
 
   const fetchTasks = useCallback(async () => {
     const [tasksRes, profilesRes, leadsRes, apptsRes] = await Promise.all([
