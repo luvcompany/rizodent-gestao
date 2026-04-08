@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { X, Trash2, Plus, Minus, Upload, Search } from "lucide-react";
+import { X, Trash2, Plus, Minus, Upload, Search, Loader2 } from "lucide-react";
 import { NODE_DEFINITIONS } from "@/types/bot";
 import VariableTextarea from "./VariableTextarea";
 import BotAudioRecorder from "./BotAudioRecorder";
@@ -27,6 +27,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
   const [templates, setTemplates] = useState<{ id: string; name: string; body_text: string | null; buttons: any; language: string; header_type: string | null; footer_text: string | null }[]>([]);
   const [templateSearch, setTemplateSearch] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [existingTags, setExistingTags] = useState<string[]>([]);
   const [existingSources, setExistingSources] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -126,23 +127,60 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     let file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadProgress(0);
     try {
       // Compress images before upload (same logic as chat)
       const isImage = file.type.startsWith("image/");
       if (isImage) {
+        setUploadProgress(5);
         file = await compressImage(file);
       }
       const ext = file.name.split(".").pop() || "bin";
       const fileName = `bot-files/${Date.now()}.${ext}`;
-      const { data, error } = await supabase.storage.from("chat-media").upload(fileName, file);
-      if (!error && data) {
-        const signedUrl = await getUploadedFileUrl(data.path);
+
+      // Use XMLHttpRequest for progress tracking
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const signedUrl = await new Promise<string | null>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${supabaseUrl}/storage/v1/object/chat-media/${fileName}`);
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.setRequestHeader("apikey", anonKey);
+        xhr.setRequestHeader("Content-Type", file!.type || "application/octet-stream");
+        xhr.setRequestHeader("x-upsert", "true");
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const pct = Math.round((event.loaded / event.total) * 90) + 10;
+            setUploadProgress(pct);
+          }
+        };
+
+        xhr.onload = async () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setUploadProgress(100);
+            const url = await getUploadedFileUrl(fileName);
+            resolve(url);
+          } else {
+            reject(new Error(`Upload failed: ${xhr.status}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Upload network error"));
+        xhr.send(file);
+      });
+
+      if (signedUrl) {
         update(targetField, signedUrl);
       }
     } catch (err) {
       console.error("Bot file upload error:", err);
     }
     setUploading(false);
+    setUploadProgress(0);
   };
 
   // Tag suggestions filtered by input
@@ -186,11 +224,28 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           </div>
         ) : (
           <div className="mt-1">
-            <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md cursor-pointer hover:bg-secondary/50 transition-colors">
-              <Upload size={14} className="text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Clique para enviar</span>
-              <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, urlField)} />
-            </label>
+            {uploading ? (
+              <div className="space-y-2 px-3 py-3 border border-dashed border-border rounded-md">
+                <div className="flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin text-primary" />
+                  <span className="text-xs text-muted-foreground">
+                    {uploadProgress < 10 ? "Comprimindo..." : uploadProgress >= 100 ? "Finalizando..." : `Enviando... ${uploadProgress}%`}
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md cursor-pointer hover:bg-secondary/50 transition-colors">
+                <Upload size={14} className="text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Clique para enviar</span>
+                <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, urlField)} />
+              </label>
+            )}
           </div>
         )}
       </div>
