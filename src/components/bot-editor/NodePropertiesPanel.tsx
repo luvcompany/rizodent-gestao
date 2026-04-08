@@ -993,6 +993,31 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
       case "transfer_human":
         return <p className="text-sm text-muted-foreground">O bot será encerrado e a conversa voltará ao modo manual.</p>;
 
+      case "trigger_bot":
+        return (
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Bot a acionar</Label>
+              <Select
+                value={(node.data.botId as string) || ""}
+                onValueChange={(v) => {
+                  const bot = publishedBots.find(b => b.id === v);
+                  updateMultiple({ botId: v, botName: bot?.name || "" });
+                }}
+              >
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o bot..." /></SelectTrigger>
+                <SelectContent>
+                  {publishedBots.length === 0 && <SelectItem value="none" disabled>Nenhum bot publicado</SelectItem>}
+                  {publishedBots.filter(b => b.id !== (node as any)._botId).map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[10px] text-muted-foreground">O bot atual será encerrado e o bot selecionado será iniciado para o mesmo lead.</p>
+          </div>
+        );
+
       default:
         return <p className="text-sm text-muted-foreground">Tipo de bloco não configurável.</p>;
     }
