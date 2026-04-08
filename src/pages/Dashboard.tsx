@@ -230,11 +230,20 @@ const Dashboard = () => {
     return days;
   }, [dateFrom, dateTo, filtered.leads]);
 
-  // Chart: Faturamento por Clínica
-  const fatClinica = clinicas.map((c) => ({
-    name: c.nome.replace("Clínica ", "").replace("Rizodent ", ""),
-    value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
-  })).filter((d) => d.value > 0);
+  // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
+  const fatClinicaRaw = clinicas.map((c) => {
+    let name = c.nome.replace("Clínica ", "").replace("Rizodent ", "");
+    if (name.includes("VCA")) name = "VCA";
+    return {
+      name,
+      value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
+    };
+  });
+  const fatClinicaGrouped = new Map<string, number>();
+  fatClinicaRaw.forEach(({ name, value }) => {
+    fatClinicaGrouped.set(name, (fatClinicaGrouped.get(name) || 0) + value);
+  });
+  const fatClinica = Array.from(fatClinicaGrouped.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0);
 
   // Chart: Procedimentos mais contratados (volume)
   const procMap = new Map<string, number>();
