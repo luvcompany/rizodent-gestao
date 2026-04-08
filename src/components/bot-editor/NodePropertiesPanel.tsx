@@ -127,23 +127,60 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     let file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadProgress(0);
     try {
       // Compress images before upload (same logic as chat)
       const isImage = file.type.startsWith("image/");
       if (isImage) {
+        setUploadProgress(5);
         file = await compressImage(file);
       }
       const ext = file.name.split(".").pop() || "bin";
       const fileName = `bot-files/${Date.now()}.${ext}`;
-      const { data, error } = await supabase.storage.from("chat-media").upload(fileName, file);
-      if (!error && data) {
-        const signedUrl = await getUploadedFileUrl(data.path);
+
+      // Use XMLHttpRequest for progress tracking
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      const signedUrl = await new Promise<string | null>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${supabaseUrl}/storage/v1/object/chat-media/${fileName}`);
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.setRequestHeader("apikey", anonKey);
+        xhr.setRequestHeader("Content-Type", file!.type || "application/octet-stream");
+        xhr.setRequestHeader("x-upsert", "true");
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const pct = Math.round((event.loaded / event.total) * 90) + 10;
+            setUploadProgress(pct);
+          }
+        };
+
+        xhr.onload = async () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setUploadProgress(100);
+            const url = await getUploadedFileUrl(fileName);
+            resolve(url);
+          } else {
+            reject(new Error(`Upload failed: ${xhr.status}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("Upload network error"));
+        xhr.send(file);
+      });
+
+      if (signedUrl) {
         update(targetField, signedUrl);
       }
     } catch (err) {
       console.error("Bot file upload error:", err);
     }
     setUploading(false);
+    setUploadProgress(0);
   };
 
   // Tag suggestions filtered by input
