@@ -94,13 +94,13 @@ export function useChatConversation(leadId: string | null | undefined) {
     if (!skipCache) {
       const cached = messageCache.get(leadId);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        setMessages(cached.messages as ChatMessage[]);
+        setMessages(cached.messages as unknown as ChatMessage[]);
         setLoading(false);
         // Still refresh in background
         supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true }).then(({ data }) => {
           if (data) {
             messageCache.set(leadId, { messages: data, timestamp: Date.now() });
-            setMessages(data as ChatMessage[]);
+            setMessages(data as unknown as ChatMessage[]);
             const mediaUrls = data.filter((m: any) => m.media_url?.startsWith("http")).map((m: any) => m.media_url!);
             if (mediaUrls.length > 0) batchSignMediaUrls(mediaUrls).catch(() => {});
           }
@@ -112,7 +112,7 @@ export function useChatConversation(leadId: string | null | undefined) {
     setLoading(true);
     try {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
-      const msgs = (data as ChatMessage[]) || [];
+      const msgs = (data as unknown as ChatMessage[]) || [];
       messageCache.set(leadId, { messages: msgs, timestamp: Date.now() });
       setMessages(msgs);
       // Pre-sign all media URLs in background so they're cached when rendering
@@ -203,10 +203,10 @@ export function useChatConversation(leadId: string | null | undefined) {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
       if (data) {
         setMessages((prev) => {
-          if (data.length !== prev.length) return data as ChatMessage[];
+          if (data.length !== prev.length) return data as unknown as ChatMessage[];
           const newFingerprint = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
           const oldFingerprint = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
-          return newFingerprint !== oldFingerprint ? (data as ChatMessage[]) : prev;
+          return newFingerprint !== oldFingerprint ? (data as unknown as ChatMessage[]) : prev;
         });
       }
     }, 15000);
