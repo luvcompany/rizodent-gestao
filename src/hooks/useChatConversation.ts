@@ -24,6 +24,7 @@ export type ChatMessage = {
   ad_image_url?: string | null;
   ad_source_url?: string | null;
   ad_source_id?: string | null;
+  sender_id?: string | null;
 };
 
 export type ChatStage = {
