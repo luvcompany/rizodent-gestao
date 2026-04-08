@@ -441,7 +441,7 @@ function LeadScoreSection({ leads, stages }: { leads: Lead[]; stages: Stage[] })
 /* ═══════════════════════════════════════════════════
    Métricas por Atendente Section
    ═══════════════════════════════════════════════════ */
-function AttendantMetricsSection({ messages, leads }: { messages: Message[]; leads: Lead[] }) {
+function AttendantMetricsSection({ messages, leads, appointments }: { messages: Message[]; leads: Lead[]; appointments: Appointment[] }) {
   const [metrics, setMetrics] = useState<any[]>([]);
 
   useEffect(() => {
@@ -460,34 +460,50 @@ function AttendantMetricsSection({ messages, leads }: { messages: Message[]; lea
         g.leads.add(m.lead_id);
       }
 
+      // Count assigned leads per user
       const assignedCounts = new Map<string, number>();
       for (const l of leads) {
-        const assigned = (l as any).assigned_to;
-        if (assigned) assignedCounts.set(assigned, (assignedCounts.get(assigned) || 0) + 1);
+        if (l.assigned_to) assignedCounts.set(l.assigned_to, (assignedCounts.get(l.assigned_to) || 0) + 1);
       }
 
-      const result = Array.from(grouped.entries()).map(([uid, g]) => ({
+      // Count appointments per assigned user
+      const appointmentCounts = new Map<string, number>();
+      const leadAssignMap = new Map(leads.map(l => [l.id, l.assigned_to]));
+      for (const apt of appointments) {
+        const assignedTo = leadAssignMap.get(apt.lead_id);
+        if (assignedTo) {
+          appointmentCounts.set(assignedTo, (appointmentCounts.get(assignedTo) || 0) + 1);
+        }
+      }
+
+      // Build unique user set
+      const allUsers = new Set<string>();
+      grouped.forEach((_, uid) => allUsers.add(uid));
+      assignedCounts.forEach((_, uid) => allUsers.add(uid));
+
+      const result = Array.from(allUsers).map((uid) => ({
         name: profileMap.get(uid) || uid.slice(0, 8),
-        totalMsgs: g.msgs,
-        leadsAtendidos: g.leads.size,
+        totalMsgs: grouped.get(uid)?.msgs || 0,
+        leadsAtendidos: grouped.get(uid)?.leads.size || 0,
         assignedLeads: assignedCounts.get(uid) || 0,
+        agendados: appointmentCounts.get(uid) || 0,
       })).sort((a, b) => b.totalMsgs - a.totalMsgs);
 
       setMetrics(result);
     };
     run();
-  }, [messages, leads]);
+  }, [messages, leads, appointments]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Users size={16} /> Métricas por Atendente
+          <Users size={16} /> Produtividade por Atendente
         </CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
-          <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Mensagens Enviadas</TableHead><TableHead>Leads Atendidos</TableHead><TableHead>Leads Atribuídos</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Msgs Enviadas</TableHead><TableHead>Leads Atendidos</TableHead><TableHead>Leads Atribuídos</TableHead><TableHead>Agendados</TableHead></TableRow></TableHeader>
           <TableBody>
             {metrics.map((m, i) => (
               <TableRow key={i}>
@@ -495,9 +511,10 @@ function AttendantMetricsSection({ messages, leads }: { messages: Message[]; lea
                 <TableCell>{m.totalMsgs}</TableCell>
                 <TableCell>{m.leadsAtendidos}</TableCell>
                 <TableCell>{m.assignedLeads}</TableCell>
+                <TableCell><Badge variant="secondary">{m.agendados}</Badge></TableCell>
               </TableRow>
             ))}
-            {metrics.length === 0 && <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Nenhuma métrica disponível</TableCell></TableRow>}
+            {metrics.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Nenhuma métrica disponível</TableCell></TableRow>}
           </TableBody>
         </Table>
       </CardContent>
