@@ -328,7 +328,7 @@ export default function CrmRelatorios() {
       <LeadScoreSection leads={leads} stages={stages} />
 
       {/* Attendant Metrics Section */}
-      <AttendantMetricsSection messages={messages} leads={leads} />
+      <AttendantMetricsSection messages={messages} leads={leads} appointments={appointments} />
 
       {/* Inactive Leads */}
       <Card>
