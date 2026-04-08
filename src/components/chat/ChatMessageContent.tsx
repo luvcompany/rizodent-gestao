@@ -137,12 +137,17 @@ export default function ChatMessageContent({ message, onMediaClick }: { message:
 
   if (["image", "sticker"].includes(message.type) && hasResolvedMedia) {
     return (
-      <img
-        src={resolvedUrl!}
-        alt={message.type === "sticker" ? "Figurinha" : "Imagem"}
-        className={message.type === "sticker" ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
-        onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
-      />
+      <div>
+        <img
+          src={resolvedUrl!}
+          alt={message.type === "sticker" ? "Figurinha" : "Imagem"}
+          className={message.type === "sticker" ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
+          onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
+        />
+        {message.content?.trim() && (
+          <p className="text-sm whitespace-pre-wrap mt-1">{message.content}</p>
+        )}
+      </div>
     );
   }
 
