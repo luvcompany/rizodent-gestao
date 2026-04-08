@@ -7,6 +7,71 @@ const corsHeaders = {
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
+async function resolveAutoAssignment(supabase: any, pipelineId: string): Promise<string | null> {
+  try {
+    const { data: rules } = await supabase
+      .from("crm_automations")
+      .select("action_config, is_active")
+      .eq("action_type", "assign_lead")
+      .eq("is_active", true);
+
+    if (!rules || rules.length === 0) return null;
+
+    const rule = rules.find((r: any) => (r.action_config as any)?.pipeline_id === pipelineId);
+    if (!rule) return null;
+
+    const cfg = rule.action_config as any;
+    const eligible: string[] = cfg?.eligible_users || [];
+    if (eligible.length === 0) return null;
+
+    const method = cfg?.method || "round_robin";
+
+    if (method === "least_load") {
+      // Assign to user with fewest active leads in this pipeline
+      const counts: Record<string, number> = {};
+      for (const uid of eligible) counts[uid] = 0;
+      const { data: leads } = await supabase
+        .from("crm_leads")
+        .select("assigned_to")
+        .eq("pipeline_id", pipelineId)
+        .in("assigned_to", eligible);
+      if (leads) {
+        for (const l of leads) {
+          if (l.assigned_to && counts[l.assigned_to] !== undefined) counts[l.assigned_to]++;
+        }
+      }
+      let min = Infinity, pick = eligible[0];
+      for (const uid of eligible) {
+        if (counts[uid] < min) { min = counts[uid]; pick = uid; }
+      }
+      return pick;
+    }
+
+    // Round-robin: count total leads assigned to each eligible user, pick the one with fewest
+    const { data: allLeads } = await supabase
+      .from("crm_leads")
+      .select("assigned_to")
+      .eq("pipeline_id", pipelineId)
+      .in("assigned_to", eligible);
+
+    const counts: Record<string, number> = {};
+    for (const uid of eligible) counts[uid] = 0;
+    if (allLeads) {
+      for (const l of allLeads) {
+        if (l.assigned_to && counts[l.assigned_to] !== undefined) counts[l.assigned_to]++;
+      }
+    }
+    let min = Infinity, pick = eligible[0];
+    for (const uid of eligible) {
+      if (counts[uid] < min) { min = counts[uid]; pick = uid; }
+    }
+    return pick;
+  } catch (e: any) {
+    console.error("[ROUND-ROBIN] Erro:", e.message);
+    return null;
+  }
+}
+
 async function downloadAndStoreMedia(
   mediaId: string,
   msgType: string,
@@ -385,6 +450,13 @@ Deno.serve(async (req) => {
                     if (adSourceId) insertData.ad_id = adSourceId;
                   }
 
+                  // Round-robin / least-load assignment
+                  const assignedTo = await resolveAutoAssignment(supabase, pipelineId);
+                  if (assignedTo) {
+                    insertData.assigned_to = assignedTo;
+                    console.log(`[WEBHOOK] Round-robin atribuiu lead a: ${assignedTo}`);
+                  }
+
                   const { data: newLead } = await supabase
                     .from("crm_leads")
                     .insert(insertData)
@@ -392,7 +464,7 @@ Deno.serve(async (req) => {
                     .single();
 
                   lead = newLead;
-                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
+                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, assigned: ${assignedTo || 'none'}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
                 }
               }
             } else {
