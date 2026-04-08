@@ -100,11 +100,12 @@ function BotEditorInner() {
     supabase.from("bots").select("*").eq("id", id).single().then(({ data, error }) => {
       if (error || !data) { toast.error("Bot não encontrado"); navigate("/crm/bots"); return; }
       setBotName(data.name);
+      setBotDescription(data.description || "");
       setBotStatus(data.status);
       const flow = data.flow_json as any;
       if (flow?.nodes) setNodes(flow.nodes);
       if (flow?.edges) setEdges(flow.edges);
-      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name });
+      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name, botDescription: data.description || "" });
       setLoading(false);
       // Init history
       historyRef.current = [{ nodes: flow?.nodes || [], edges: flow?.edges || [] }];
