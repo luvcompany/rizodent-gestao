@@ -320,6 +320,12 @@ export default function CrmRelatorios() {
         </Card>
       </div>
 
+      {/* Lead Score Section */}
+      <LeadScoreSection leads={leads} stages={stages} />
+
+      {/* Attendant Metrics Section */}
+      <AttendantMetricsSection messages={messages} leads={leads} />
+
       {/* Inactive Leads */}
       <Card>
         <CardHeader>
@@ -363,5 +369,134 @@ export default function CrmRelatorios() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Lead Score Section
+   ═══════════════════════════════════════════════════ */
+function LeadScoreSection({ leads, stages }: { leads: Lead[]; stages: Stage[] }) {
+  const [scoreLeads, setScoreLeads] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from("crm_leads").select("id, name, phone, score, stage_id, last_message_at").order("score", { ascending: false }).limit(50);
+    setScoreLeads(data || []);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const recalcAll = async () => {
+    setLoading(true);
+    await supabase.rpc("recalculate_all_lead_scores");
+    await load();
+    setLoading(false);
+    toast.success("Scores recalculados");
+  };
+
+  const avgScore = scoreLeads.length > 0 ? Math.round(scoreLeads.reduce((a, b) => a + (b.score || 0), 0) / scoreLeads.length) : 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Zap size={16} /> Score de Leads
+          </CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-2xl font-bold text-foreground">{avgScore}</p>
+              <p className="text-xs text-muted-foreground">Score Médio</p>
+            </div>
+            <Button size="sm" onClick={recalcAll} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Recalcular</Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-muted-foreground mb-3">+10 por resposta recebida, +15 por mudança de etapa, +5 por tarefa concluída, -1 por dia inativo.</p>
+        <Table>
+          <TableHeader><TableRow><TableHead>Lead</TableHead><TableHead>Telefone</TableHead><TableHead>Etapa</TableHead><TableHead>Score</TableHead><TableHead>Última Msg</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {scoreLeads.map((l) => (
+              <TableRow key={l.id}>
+                <TableCell className="font-medium">{l.name}</TableCell>
+                <TableCell className="text-muted-foreground">{l.phone || "—"}</TableCell>
+                <TableCell className="text-muted-foreground text-sm">{stages.find(s => s.id === l.stage_id)?.name || "—"}</TableCell>
+                <TableCell><Badge variant={l.score > 50 ? "default" : l.score > 20 ? "secondary" : "outline"}>{l.score}</Badge></TableCell>
+                <TableCell className="text-muted-foreground text-sm">{l.last_message_at ? format(new Date(l.last_message_at), "dd/MM HH:mm") : "—"}</TableCell>
+              </TableRow>
+            ))}
+            {scoreLeads.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Nenhum lead</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Métricas por Atendente Section
+   ═══════════════════════════════════════════════════ */
+function AttendantMetricsSection({ messages, leads }: { messages: Message[]; leads: Lead[] }) {
+  const [metrics, setMetrics] = useState<any[]>([]);
+
+  useEffect(() => {
+    const run = async () => {
+      const { data: profiles } = await supabase.from("profiles").select("id, nome");
+      if (!profiles) return;
+
+      const profileMap = new Map(profiles.map(p => [p.id, p.nome]));
+      const grouped = new Map<string, { msgs: number; leads: Set<string> }>();
+
+      for (const m of messages) {
+        if (m.direction !== "outbound" || !m.sender_id) continue;
+        if (!grouped.has(m.sender_id)) grouped.set(m.sender_id, { msgs: 0, leads: new Set() });
+        const g = grouped.get(m.sender_id)!;
+        g.msgs++;
+        g.leads.add(m.lead_id);
+      }
+
+      const assignedCounts = new Map<string, number>();
+      for (const l of leads) {
+        const assigned = (l as any).assigned_to;
+        if (assigned) assignedCounts.set(assigned, (assignedCounts.get(assigned) || 0) + 1);
+      }
+
+      const result = Array.from(grouped.entries()).map(([uid, g]) => ({
+        name: profileMap.get(uid) || uid.slice(0, 8),
+        totalMsgs: g.msgs,
+        leadsAtendidos: g.leads.size,
+        assignedLeads: assignedCounts.get(uid) || 0,
+      })).sort((a, b) => b.totalMsgs - a.totalMsgs);
+
+      setMetrics(result);
+    };
+    run();
+  }, [messages, leads]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Users size={16} /> Métricas por Atendente
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Mensagens Enviadas</TableHead><TableHead>Leads Atendidos</TableHead><TableHead>Leads Atribuídos</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {metrics.map((m, i) => (
+              <TableRow key={i}>
+                <TableCell className="font-medium">{m.name}</TableCell>
+                <TableCell>{m.totalMsgs}</TableCell>
+                <TableCell>{m.leadsAtendidos}</TableCell>
+                <TableCell>{m.assignedLeads}</TableCell>
+              </TableRow>
+            ))}
+            {metrics.length === 0 && <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Nenhuma métrica disponível</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }

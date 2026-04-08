@@ -3,22 +3,50 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
-  Home, FlaskConical,
+  Home, Settings, ChevronDown, Send,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-const crmNavItems = [
+type NavItem = {
+  to: string;
+  icon: any;
+  label: string;
+  end?: boolean;
+  badgeKey?: string;
+};
+
+type NavGroup = {
+  label: string;
+  icon: any;
+  children: NavItem[];
+};
+
+type SidebarEntry = NavItem | NavGroup;
+
+function isGroup(entry: SidebarEntry): entry is NavGroup {
+  return "children" in entry;
+}
+
+const crmNavItems: SidebarEntry[] = [
   { to: "/crm/dashboard", icon: Home, label: "Dashboard" },
   { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
   { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
   { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
-  { to: "/crm/bots", icon: Bot, label: "Bots" },
+  {
+    label: "Automações",
+    icon: Bot,
+    children: [
+      { to: "/crm/bots", icon: Bot, label: "Bots" },
+      { to: "/crm/modelos", icon: FileText, label: "Modelos" },
+      { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
+      { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
+    ],
+  },
+  { to: "/crm/automacoes", icon: Settings, label: "Config. Funil" },
   { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
-  
-  { to: "/crm/modelos", icon: FileText, label: "Modelos" },
   { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
   { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
-  { to: "/crm/extras", icon: FlaskConical, label: "Funções Extras" },
+  { to: "/crm/configuracoes", icon: Settings, label: "Configurações" },
 ];
 
 const CrmLayout = () => {
@@ -26,11 +54,19 @@ const CrmLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
+
+  const toggleGroup = (label: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const fetchUnread = async () => {
-      // PostgREST .or() can't compare two columns, so we fetch both timestamps
-      // and count client-side
       const { data } = await supabase
         .from("crm_leads")
         .select("last_inbound_at, last_outbound_at")
@@ -47,6 +83,66 @@ const CrmLayout = () => {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, []);
+
+  const renderNavItem = (item: NavItem) => (
+    <NavLink
+      key={item.to}
+      to={item.to}
+      end={item.end}
+      onClick={() => setSidebarOpen(false)}
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+          isActive
+            ? "gradient-orange text-primary-foreground shadow-orange"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        }`
+      }
+    >
+      <item.icon size={18} />
+      {item.label}
+      {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
+        <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
+    </NavLink>
+  );
+
+  const renderNavGroup = (group: NavGroup) => {
+    const isExpanded = expandedGroups.has(group.label);
+    return (
+      <div key={group.label}>
+        <button
+          onClick={() => toggleGroup(group.label)}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+        >
+          <group.icon size={18} />
+          {group.label}
+          <ChevronDown size={14} className={`ml-auto transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
+        </button>
+        {isExpanded && (
+          <div className="ml-4 space-y-0.5">
+            {group.children.map(child => (
+              <NavLink
+                key={child.to}
+                to={child.to}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? "gradient-orange text-primary-foreground shadow-orange"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  }`
+                }
+              >
+                {child.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="flex min-h-screen">
@@ -103,30 +199,10 @@ const CrmLayout = () => {
           <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
         </div>
 
-        <nav className="flex-1 space-y-1 p-4">
-          {crmNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "gradient-orange text-primary-foreground shadow-orange"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                }`
-              }
-            >
-              <item.icon size={18} />
-              {item.label}
-              {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
-                <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </NavLink>
-          ))}
+        <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+          {crmNavItems.map((entry) =>
+            isGroup(entry) ? renderNavGroup(entry) : renderNavItem(entry)
+          )}
         </nav>
       </aside>
 
