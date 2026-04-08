@@ -94,9 +94,9 @@ const NotificationBell = () => {
 
   const handleClick = (n: Notification) => {
     markAsRead(n.id);
+    setOpen(false);
     if (n.lead_id) {
-      navigate(`/crm/conversas`);
-      setOpen(false);
+      navigate(`/crm/conversa/${n.lead_id}`);
     }
   };
 
