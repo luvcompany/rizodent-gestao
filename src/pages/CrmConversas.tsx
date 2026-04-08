@@ -321,7 +321,7 @@ export default function CrmConversas() {
       if (filters.source && l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
       return true;
     });
-  }, [leads, search, filters]);
+  }, [leads, search, filters, user?.id]);
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
