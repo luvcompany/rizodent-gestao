@@ -63,7 +63,6 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { type: 'delay', label: 'Pausa / Delay', icon: '⏸️', category: 'logic', color: '#a855f7', description: 'Aguarda um tempo antes de continuar', defaultData: { delaySeconds: 5, unit: 'seconds' } },
   { type: 'wait_reply', label: 'Registrar Resposta', icon: '💾', category: 'logic', color: '#a855f7', description: 'Salva a resposta do lead em uma variável', defaultData: { timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0, saveToField: '' } },
   { type: 'condition', label: 'Condição (If/Else)', icon: '🔀', category: 'logic', color: '#a855f7', description: 'Ramifica baseado em condições', defaultData: { field: '', operator: 'equals', value: '' } },
-  { type: 'schedule', label: 'Programar Envio', icon: '📅', category: 'logic', color: '#a855f7', description: 'Programa mensagem para data/hora futura', defaultData: { scheduleMode: 'next_day', scheduleTime: '09:00', scheduleDate: '', messageType: 'text', text: '', audioUrl: '', fileUrl: '', fileType: 'image', caption: '' } },
   // Actions
   { type: 'move_stage', label: 'Mudar Etapa', icon: '📌', category: 'action', color: '#10b981', description: 'Move o lead para outra etapa', defaultData: { stageId: '' } },
   { type: 'add_tag', label: 'Adicionar Tag', icon: '🏷️', category: 'action', color: '#10b981', description: 'Adiciona tag ao lead', defaultData: { tag: '' } },
@@ -72,6 +71,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { type: 'create_task', label: 'Criar Tarefa', icon: '✅', category: 'action', color: '#10b981', description: 'Cria tarefa para o lead', defaultData: { title: '', dueHours: 24 } },
   // Control
   { type: 'transfer_human', label: 'Transferir para Humano', icon: '👤', category: 'control', color: '#f59e0b', description: 'Encerra bot e notifica operador', defaultData: {} },
+  { type: 'trigger_bot', label: 'Acionar Outro Bot', icon: '🤖', category: 'control', color: '#f59e0b', description: 'Inicia outro bot para este lead', defaultData: { botId: '', botName: '' } },
 ];
 
 export const CATEGORY_LABELS: Record<NodeCategory, string> = {
