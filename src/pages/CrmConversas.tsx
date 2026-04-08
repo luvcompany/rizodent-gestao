@@ -250,6 +250,14 @@ export default function CrmConversas() {
     chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
     toast.success(`Lead transferido para ${newUserName}`);
 
+    // Remove from list after 10s since it's no longer assigned to current user
+    const capturedLeadId = selectedLeadId;
+    setTimeout(() => {
+      setLeads(prev => prev.filter(l => l.id !== capturedLeadId));
+      setSelectedLeadId(prev => prev === capturedLeadId ? null : prev);
+      setSelectedLead(prev => prev?.id === capturedLeadId ? null : prev);
+    }, 10000);
+
     // Fire DB update + system message in parallel, no await blocking UI
     const updatePromise = supabase.from("crm_leads").update({ assigned_to: newUserId, updated_at: new Date().toISOString() }).eq("id", selectedLeadId);
     const msgPromise = supabase.from("messages").insert({ lead_id: selectedLeadId, direction: "outbound", type: "system", content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`, status: "system", sender_id: user?.id || null });
