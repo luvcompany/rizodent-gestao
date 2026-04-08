@@ -341,6 +341,12 @@ function BotEditorInner() {
             onChange={(e) => setBotName(e.target.value)}
             className="w-[200px] h-8 text-sm font-semibold bg-transparent border-transparent hover:border-border focus:border-border"
           />
+          <Input
+            value={botDescription}
+            onChange={(e) => setBotDescription(e.target.value)}
+            placeholder="Descrição do bot (opcional)"
+            className="w-[250px] h-8 text-xs bg-transparent border-transparent hover:border-border focus:border-border text-muted-foreground"
+          />
           <span className="text-xs text-muted-foreground px-2 py-0.5 rounded bg-secondary">
             {botStatus === "published" ? "Publicado" : "Rascunho"}
           </span>
