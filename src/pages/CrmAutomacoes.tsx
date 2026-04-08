@@ -66,7 +66,13 @@ export default function CrmAutomacoes() {
   const [newPipelineColor, setNewPipelineColor] = useState("#6366f1");
   const [useCustomPipelineColor, setUseCustomPipelineColor] = useState(false);
 
-  
+  // Round Robin state
+  const [roundRobinOpen, setRoundRobinOpen] = useState(false);
+  const [rrMethod, setRrMethod] = useState("round_robin");
+  const [rrEligible, setRrEligible] = useState<string[]>([]);
+  const [rrProfiles, setRrProfiles] = useState<{ id: string; nome: string }[]>([]);
+  const [rrActive, setRrActive] = useState(false);
+
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
