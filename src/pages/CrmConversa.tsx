@@ -353,6 +353,27 @@ export default function CrmConversa() {
             currentStageId={lead.stage_id}
             onStageChange={handleStageChange}
           />
+
+          {/* Responsible User Assignment */}
+          <div className="mt-3">
+            <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">
+              <UserRoundCog size={12} className="inline mr-1" />
+              Responsável
+            </label>
+            <Select
+              value={lead.assigned_to || "unassigned"}
+              onValueChange={(val) => handleTransferLead(val)}
+            >
+              <SelectTrigger className="bg-secondary border-border text-sm h-9">
+                <SelectValue placeholder="Selecionar responsável" />
+              </SelectTrigger>
+              <SelectContent>
+                {profiles.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Inline Tags & Source Editor */}
