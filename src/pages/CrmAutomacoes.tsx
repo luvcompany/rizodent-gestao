@@ -841,6 +841,45 @@ export default function CrmAutomacoes() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Round Robin Modal */}
+      <Dialog open={roundRobinOpen} onOpenChange={setRoundRobinOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Distribuição Automática de Leads</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Método</Label>
+              <Select value={rrMethod} onValueChange={setRrMethod}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="round_robin">Round Robin</SelectItem>
+                  <SelectItem value="least_load">Menor Carga</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {rrMethod === "round_robin" ? "Distribui leads igualmente entre os atendentes" : "Atribui ao atendente com menos leads ativos"}
+              </p>
+            </div>
+            <div>
+              <Label>Atendentes Elegíveis</Label>
+              <div className="space-y-2 mt-2 max-h-60 overflow-auto">
+                {rrProfiles.map(p => (
+                  <label key={p.id} className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-secondary">
+                    <Checkbox
+                      checked={rrEligible.includes(p.id)}
+                      onCheckedChange={() => setRrEligible(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                    />
+                    <span className="text-sm">{p.nome}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <Button onClick={handleSaveRoundRobin} className="w-full"><Zap size={16} /> Salvar Configuração</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
