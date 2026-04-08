@@ -87,6 +87,9 @@ const App = () => (
               <Route path="/crm/bots" element={<CrmBots />} />
               <Route path="/crm/bots/:id" element={<CrmBotEditor />} />
               <Route path="/crm/extras" element={<CrmExtras />} />
+              <Route path="/crm/configuracoes" element={<CrmConfiguracoes />} />
+              <Route path="/crm/respostas-rapidas" element={<CrmRespostasRapidas />} />
+              <Route path="/crm/campanhas" element={<CrmCampanhas />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
