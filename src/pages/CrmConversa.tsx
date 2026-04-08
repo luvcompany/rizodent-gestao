@@ -47,6 +47,7 @@ type Lead = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  assigned_to?: string | null;
   imagem_origem?: string | null;
   titulo_anuncio?: string | null;
   descricao_anuncio?: string | null;
