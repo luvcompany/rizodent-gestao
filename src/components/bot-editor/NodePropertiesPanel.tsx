@@ -1043,11 +1043,15 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <div>
-          <Label className="text-xs">Nome do bloco</Label>
+          <Label className="text-xs text-muted-foreground">Tipo: {def?.label || node.type}</Label>
+        </div>
+        <div>
+          <Label className="text-xs">Descrição do bloco (opcional)</Label>
           <Input
-            value={(node.data.label as string) || def?.label || ""}
-            onChange={(e) => update("label", e.target.value)}
+            value={(node.data.description as string) || ""}
+            onChange={(e) => update("description", e.target.value)}
             className="mt-1"
+            placeholder="Descreva o que este bloco faz..."
           />
         </div>
 

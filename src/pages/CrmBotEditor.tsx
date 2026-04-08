@@ -48,6 +48,7 @@ function BotEditorInner() {
   const updateNodeInternals = useUpdateNodeInternals();
 
   const [botName, setBotName] = useState("Novo Bot");
+  const [botDescription, setBotDescription] = useState("");
   const [botStatus, setBotStatus] = useState("draft");
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
