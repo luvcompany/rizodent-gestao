@@ -138,6 +138,9 @@ function BotNode({ data, selected, type, id }: NodeProps) {
 
       {/* Body */}
       <div className="px-3 py-2 min-h-[32px]">
+        {(data.description as string) && (
+          <p className="text-[10px] text-muted-foreground/70 italic mb-1">{String(data.description).slice(0, 50)}</p>
+        )}
         {preview ? (
           <p className="text-xs text-muted-foreground truncate">{preview}</p>
         ) : (
