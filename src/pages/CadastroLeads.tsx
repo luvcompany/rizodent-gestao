@@ -47,10 +47,6 @@ const CadastroLeads = () => {
   const reagendadosNaoContrataram = useMemo(() => Math.max((parseInt(reagendadosCompareceram) || 0) - (parseInt(reagendadosContrataram) || 0), 0), [reagendadosCompareceram, reagendadosContrataram]);
   const faltasLiquidas = useMemo(() => Math.max(faltaram - (parseInt(remarcados) || 0) + reagendadosFaltaram, 0), [faltaram, remarcados, reagendadosFaltaram]);
 
-  // Separate clinics into VCA and others
-  const vcaClinics = useMemo(() => clinicas.filter(c => VCA_IDS.includes(c.id)), [clinicas]);
-  const otherClinics = useMemo(() => clinicas.filter(c => !VCA_IDS.includes(c.id)), [clinicas]);
-
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
       if (data) setClinicas(data);
@@ -68,28 +64,15 @@ const CadastroLeads = () => {
 
   useEffect(() => { fetchRegistros(); }, [fetchRegistros]);
 
-  // Auto-load for Leads Novos (single clinic)
+  // Auto-load for Leads Novos
   useEffect(() => {
-    if (isVcaGroup || !clinicaIdLeads || !dataLeads) { setExistingIdLeads(null); return; }
+    if (!clinicaIdLeads || !dataLeads) { setExistingIdLeads(null); return; }
     supabase.from("leads_diarios").select("*").eq("data", dataLeads).eq("clinica_id", clinicaIdLeads).maybeSingle()
       .then(({ data: existing }) => {
         if (existing) { setExistingIdLeads(existing.id); setLeadsNovos(String(existing.leads_novos)); }
         else { setExistingIdLeads(null); setLeadsNovos(""); }
       });
-  }, [clinicaIdLeads, dataLeads, isVcaGroup]);
-
-  // Auto-load for VCA group
-  useEffect(() => {
-    if (!isVcaGroup || !dataLeads) return;
-    Promise.all(VCA_IDS.map(id =>
-      supabase.from("leads_diarios").select("*").eq("data", dataLeads).eq("clinica_id", id).maybeSingle()
-    )).then(([r1, r2]) => {
-      if (r1.data) { setExistingIdVca1(r1.data.id); setLeadsVca1(String(r1.data.leads_novos)); }
-      else { setExistingIdVca1(null); setLeadsVca1(""); }
-      if (r2.data) { setExistingIdVca2(r2.data.id); setLeadsVca2(String(r2.data.leads_novos)); }
-      else { setExistingIdVca2(null); setLeadsVca2(""); }
-    });
-  }, [isVcaGroup, dataLeads]);
+  }, [clinicaIdLeads, dataLeads]);
 
   // Auto-load for Agendados
   useEffect(() => {
