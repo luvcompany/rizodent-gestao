@@ -367,7 +367,7 @@ Deno.serve(async (req) => {
       } else if (resolvedType === "video") {
         waBody.video = { id: mediaId, caption: message || undefined };
       } else if (resolvedType === "document") {
-        waBody.document = { id: mediaId, caption: message || undefined, filename: message || filename };
+        waBody.document = { id: mediaId, caption: message || undefined, filename };
       } else if (resolvedType === "sticker") {
         waBody.sticker = { id: mediaId };
       } else {
