@@ -536,15 +536,12 @@ export default function CrmCalendario() {
                           "bg-primary/10 text-foreground"
                         )}
                       >
-                        <div className="font-medium truncate cursor-pointer hover:underline" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>{appt.lead_name}</div>
-                        <div className="text-muted-foreground">{appt.scheduled_time.slice(0, 5)}</div>
-                        {appt.notes && <div className="text-muted-foreground truncate">{appt.notes}</div>}
-                        <button
-                          onClick={() => setDeleteApptConfirm(appt.id)}
-                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 hover:bg-destructive/20 rounded transition-opacity"
-                        >
-                          <Trash2 size={10} className="text-destructive" />
-                        </button>
+                        <div className="font-medium truncate cursor-pointer hover:underline" onClick={() => {
+                          setSelectedAppointment(appt);
+                          setApptResultStatus(appt.status);
+                          setApptMoveStageId("");
+                          setApptMovePipelineId("");
+                        }}>{appt.lead_name}</div>
                       </div>
                     ))}
                     {dayAppts.length === 0 && <div className="text-[10px] text-muted-foreground text-center py-4">—</div>}
