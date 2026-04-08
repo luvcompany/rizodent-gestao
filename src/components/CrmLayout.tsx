@@ -6,6 +6,7 @@ import {
   Home, Settings, ChevronDown, Send,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import NotificationBell from "@/components/chat/NotificationBell";
 
 type NavItem = {
   to: string;
