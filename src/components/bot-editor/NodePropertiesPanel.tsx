@@ -224,11 +224,28 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           </div>
         ) : (
           <div className="mt-1">
-            <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md cursor-pointer hover:bg-secondary/50 transition-colors">
-              <Upload size={14} className="text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Clique para enviar</span>
-              <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, urlField)} />
-            </label>
+            {uploading ? (
+              <div className="space-y-2 px-3 py-3 border border-dashed border-border rounded-md">
+                <div className="flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin text-primary" />
+                  <span className="text-xs text-muted-foreground">
+                    {uploadProgress < 10 ? "Comprimindo..." : uploadProgress >= 100 ? "Finalizando..." : `Enviando... ${uploadProgress}%`}
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md cursor-pointer hover:bg-secondary/50 transition-colors">
+                <Upload size={14} className="text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Clique para enviar</span>
+                <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, urlField)} />
+              </label>
+            )}
           </div>
         )}
       </div>
