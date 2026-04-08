@@ -13,12 +13,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
 
-const VCA_IDS = [
-  "93c99d9a-8698-495a-829b-a6592ade8d06", // VCA 01
-  "041908a4-8825-4594-be5c-a37dbbfafba2", // VCA 02
-];
-const VCA_GROUP_VALUE = "vca-group";
-
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
 const CadastroLeads = () => {
@@ -31,14 +25,6 @@ const CadastroLeads = () => {
   const [leadsNovos, setLeadsNovos] = useState("");
   const [savingLeads, setSavingLeads] = useState(false);
   const [existingIdLeads, setExistingIdLeads] = useState<string | null>(null);
-
-  // For VCA group: split leads between VCA 01 and VCA 02
-  const [leadsVca1, setLeadsVca1] = useState("");
-  const [leadsVca2, setLeadsVca2] = useState("");
-  const [existingIdVca1, setExistingIdVca1] = useState<string | null>(null);
-  const [existingIdVca2, setExistingIdVca2] = useState<string | null>(null);
-
-  const isVcaGroup = clinicaIdLeads === VCA_GROUP_VALUE;
 
   // Agendados + Reagendados - separate date, clinic
   const [dataAgendados, setDataAgendados] = useState(() => new Date().toISOString().split("T")[0]);
