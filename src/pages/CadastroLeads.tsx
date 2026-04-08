@@ -100,43 +100,20 @@ const CadastroLeads = () => {
     if (!clinicaIdLeads) { toast.error("Selecione uma clínica."); return; }
     setSavingLeads(true);
     try {
-      if (isVcaGroup) {
-        // Save for both VCA clinics
-        const saves = [
-          { id: VCA_IDS[0], value: parseInt(leadsVca1) || 0, existingId: existingIdVca1 },
-          { id: VCA_IDS[1], value: parseInt(leadsVca2) || 0, existingId: existingIdVca2 },
-        ];
-        for (const s of saves) {
-          if (s.existingId) {
-            const { error } = await supabase.from("leads_diarios").update({ leads_novos: s.value, created_by: user?.id }).eq("id", s.existingId);
-            if (error) throw error;
-          } else {
-            const { error } = await supabase.from("leads_diarios").insert({
-              data: dataLeads, clinica_id: s.id, leads_novos: s.value,
-              agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
-              nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
-              created_by: user?.id,
-            });
-            if (error) throw error;
-          }
-        }
-        toast.success("Leads novos VCA 01 e VCA 02 salvos!");
+      const leadsValue = parseInt(leadsNovos) || 0;
+      if (existingIdLeads) {
+        const { error } = await supabase.from("leads_diarios").update({ leads_novos: leadsValue, created_by: user?.id }).eq("id", existingIdLeads);
+        if (error) throw error;
       } else {
-        const leadsValue = parseInt(leadsNovos) || 0;
-        if (existingIdLeads) {
-          const { error } = await supabase.from("leads_diarios").update({ leads_novos: leadsValue, created_by: user?.id }).eq("id", existingIdLeads);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("leads_diarios").insert({
-            data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: leadsValue,
-            agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
-            nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
-            created_by: user?.id,
-          });
-          if (error) throw error;
-        }
-        toast.success("Leads novos salvos!");
+        const { error } = await supabase.from("leads_diarios").insert({
+          data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: leadsValue,
+          agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
+          nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
+          created_by: user?.id,
+        });
+        if (error) throw error;
       }
+      toast.success("Leads novos salvos!");
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
