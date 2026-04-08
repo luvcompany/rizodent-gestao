@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ type Lead = {
   updated_at: string;
   last_message: string | null;
   last_message_at: string | null;
+  assigned_to: string | null;
 };
 
 type Pipeline = {
@@ -61,6 +63,7 @@ const PRESET_COLORS = [
 
 export default function CrmKanban() {
   const navigate = useNavigate();
+  const { user, userRole } = useAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stages, setStages] = useState<Stage[]>([]);
@@ -259,6 +262,8 @@ export default function CrmKanban() {
   // Apply filters to leads
   const applyFilters = useCallback((list: Lead[]) => {
     return list.filter((l) => {
+      // Filter by assigned user - each user sees only their leads
+      if (user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
       if (searchTerm) {
         const s = searchTerm.toLowerCase();
         const searchDigits = s.replace(/\D/g, "");
@@ -292,7 +297,7 @@ export default function CrmKanban() {
       if (kanbanFilters.source && l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
       return true;
     });
-  }, [searchTerm, kanbanFilters]);
+  }, [searchTerm, kanbanFilters, user?.id]);
 
   const getLeadsForStage = (stageId: string) => {
     const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog
 } from "lucide-react";
 import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
@@ -52,6 +53,7 @@ type LeadConversation = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  assigned_to?: string | null;
   last_direction?: string;
   imagem_origem?: string | null;
   titulo_anuncio?: string | null;
@@ -62,6 +64,7 @@ type LeadConversation = {
 };
 
 export default function CrmConversas() {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<LeadConversation[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -134,7 +137,7 @@ export default function CrmConversas() {
       const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
         supabase
           .from("crm_leads")
-          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio")
+          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio")
           .order("last_message_at", { ascending: false, nullsFirst: false }),
         supabase.from("profiles").select("id, nome"),
         supabase.from("crm_pipelines").select("id, name").order("created_at"),
@@ -232,6 +235,35 @@ export default function CrmConversas() {
     await chat.sendTemplate(template, selectedLead?.phone || null);
   }, [chat, selectedLead]);
 
+  // Transfer lead to another user
+  const handleTransferLead = useCallback(async (newUserId: string) => {
+    if (!selectedLead || !selectedLeadId) return;
+    const oldUserId = selectedLead.assigned_to;
+    if (newUserId === oldUserId) return;
+
+    const oldUserName = profiles.find(p => p.id === oldUserId)?.nome || "Não atribuído";
+    const newUserName = profiles.find(p => p.id === newUserId)?.nome || "?";
+
+    const { error } = await supabase.from("crm_leads").update({
+      assigned_to: newUserId,
+      updated_at: new Date().toISOString(),
+    }).eq("id", selectedLeadId);
+    if (error) { toast.error("Erro ao transferir lead"); return; }
+
+    await supabase.from("messages").insert({
+      lead_id: selectedLeadId,
+      direction: "outbound",
+      type: "system",
+      content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`,
+      status: "system",
+    });
+
+    chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
+    setSelectedLead(prev => prev ? { ...prev, assigned_to: newUserId } : prev);
+    setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, assigned_to: newUserId } : l));
+    toast.success(`Lead transferido para ${newUserName}`);
+  }, [selectedLead, selectedLeadId, profiles, chat]);
+
   // Collect all tags for filters
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -242,6 +274,8 @@ export default function CrmConversas() {
   // Apply filters
   const filtered = useMemo(() => {
     return leads.filter((l) => {
+      // Filter by assigned user - each user sees only their leads
+      if (user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
       const normalizedSearch = search.trim().toLowerCase();
       if (normalizedSearch) {
         const searchDigits = normalizedSearch.replace(/\D/g, "");
@@ -287,7 +321,7 @@ export default function CrmConversas() {
       if (filters.source && l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
       return true;
     });
-  }, [leads, search, filters]);
+  }, [leads, search, filters, user?.id]);
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
@@ -571,6 +605,27 @@ export default function CrmConversas() {
                     currentStageId={selectedLead.stage_id}
                     onStageChange={handleStageChange}
                   />
+
+                  {/* Responsible User Assignment */}
+                  <div className="mt-3">
+                    <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">
+                      <UserRoundCog size={12} className="inline mr-1" />
+                      Responsável
+                    </label>
+                    <Select
+                      value={selectedLead.assigned_to || "unassigned"}
+                      onValueChange={(val) => handleTransferLead(val)}
+                    >
+                      <SelectTrigger className="bg-secondary border-border text-sm h-9">
+                        <SelectValue placeholder="Selecionar responsável" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {profiles.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <InlineTagsEditor
