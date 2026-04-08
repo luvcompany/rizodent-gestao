@@ -64,6 +64,7 @@ type LeadConversation = {
 };
 
 export default function CrmConversas() {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<LeadConversation[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
