@@ -14,8 +14,9 @@ import { format } from "date-fns";
 
 type Stage = { id: string; name: string; color: string; position: number };
 type StageHistory = { lead_id: string; stage_id: string; entered_at: string; exited_at: string | null };
-type Lead = { id: string; name: string; phone: string | null; stage_id: string; created_at: string; score?: number; last_message_at?: string | null };
+type Lead = { id: string; name: string; phone: string | null; stage_id: string; created_at: string; score?: number; last_message_at?: string | null; assigned_to?: string | null };
 type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
+type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string };
 
 function formatDuration(ms: number): string {
   if (ms <= 0) return "—";
@@ -34,6 +35,7 @@ export default function CrmRelatorios() {
   const [history, setHistory] = useState<StageHistory[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [inactiveDays, setInactiveDays] = useState("3");
 
@@ -42,16 +44,18 @@ export default function CrmRelatorios() {
       setLoading(true);
       // Only fetch messages from last 90 days for performance
       const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-      const [stagesRes, historyRes, leadsRes, messagesRes] = await Promise.all([
+      const [stagesRes, historyRes, leadsRes, messagesRes, appointmentsRes] = await Promise.all([
         supabase.from("crm_stages").select("*").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at"),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, created_at, last_inbound_at, last_outbound_at, score, last_message_at"),
-        supabase.from("messages").select("id, lead_id, direction, created_at, status").gte("created_at", ninetyDaysAgo),
+        supabase.from("crm_leads").select("id, name, phone, stage_id, created_at, last_inbound_at, last_outbound_at, score, last_message_at, assigned_to"),
+        supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id").gte("created_at", ninetyDaysAgo),
+        supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setHistory((historyRes.data as StageHistory[]) || []);
       setLeads((leadsRes.data as Lead[]) || []);
       setMessages((messagesRes.data as Message[]) || []);
+      setAppointments((appointmentsRes.data as Appointment[]) || []);
       setLoading(false);
     };
     fetchAll();
@@ -324,7 +328,7 @@ export default function CrmRelatorios() {
       <LeadScoreSection leads={leads} stages={stages} />
 
       {/* Attendant Metrics Section */}
-      <AttendantMetricsSection messages={messages} leads={leads} />
+      <AttendantMetricsSection messages={messages} leads={leads} appointments={appointments} />
 
       {/* Inactive Leads */}
       <Card>
@@ -437,7 +441,7 @@ function LeadScoreSection({ leads, stages }: { leads: Lead[]; stages: Stage[] })
 /* ═══════════════════════════════════════════════════
    Métricas por Atendente Section
    ═══════════════════════════════════════════════════ */
-function AttendantMetricsSection({ messages, leads }: { messages: Message[]; leads: Lead[] }) {
+function AttendantMetricsSection({ messages, leads, appointments }: { messages: Message[]; leads: Lead[]; appointments: Appointment[] }) {
   const [metrics, setMetrics] = useState<any[]>([]);
 
   useEffect(() => {
@@ -456,34 +460,50 @@ function AttendantMetricsSection({ messages, leads }: { messages: Message[]; lea
         g.leads.add(m.lead_id);
       }
 
+      // Count assigned leads per user
       const assignedCounts = new Map<string, number>();
       for (const l of leads) {
-        const assigned = (l as any).assigned_to;
-        if (assigned) assignedCounts.set(assigned, (assignedCounts.get(assigned) || 0) + 1);
+        if (l.assigned_to) assignedCounts.set(l.assigned_to, (assignedCounts.get(l.assigned_to) || 0) + 1);
       }
 
-      const result = Array.from(grouped.entries()).map(([uid, g]) => ({
+      // Count appointments per assigned user
+      const appointmentCounts = new Map<string, number>();
+      const leadAssignMap = new Map(leads.map(l => [l.id, l.assigned_to]));
+      for (const apt of appointments) {
+        const assignedTo = leadAssignMap.get(apt.lead_id);
+        if (assignedTo) {
+          appointmentCounts.set(assignedTo, (appointmentCounts.get(assignedTo) || 0) + 1);
+        }
+      }
+
+      // Build unique user set
+      const allUsers = new Set<string>();
+      grouped.forEach((_, uid) => allUsers.add(uid));
+      assignedCounts.forEach((_, uid) => allUsers.add(uid));
+
+      const result = Array.from(allUsers).map((uid) => ({
         name: profileMap.get(uid) || uid.slice(0, 8),
-        totalMsgs: g.msgs,
-        leadsAtendidos: g.leads.size,
+        totalMsgs: grouped.get(uid)?.msgs || 0,
+        leadsAtendidos: grouped.get(uid)?.leads.size || 0,
         assignedLeads: assignedCounts.get(uid) || 0,
+        agendados: appointmentCounts.get(uid) || 0,
       })).sort((a, b) => b.totalMsgs - a.totalMsgs);
 
       setMetrics(result);
     };
     run();
-  }, [messages, leads]);
+  }, [messages, leads, appointments]);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Users size={16} /> Métricas por Atendente
+          <Users size={16} /> Produtividade por Atendente
         </CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
-          <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Mensagens Enviadas</TableHead><TableHead>Leads Atendidos</TableHead><TableHead>Leads Atribuídos</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Msgs Enviadas</TableHead><TableHead>Leads Atendidos</TableHead><TableHead>Leads Atribuídos</TableHead><TableHead>Agendados</TableHead></TableRow></TableHeader>
           <TableBody>
             {metrics.map((m, i) => (
               <TableRow key={i}>
@@ -491,9 +511,10 @@ function AttendantMetricsSection({ messages, leads }: { messages: Message[]; lea
                 <TableCell>{m.totalMsgs}</TableCell>
                 <TableCell>{m.leadsAtendidos}</TableCell>
                 <TableCell>{m.assignedLeads}</TableCell>
+                <TableCell><Badge variant="secondary">{m.agendados}</Badge></TableCell>
               </TableRow>
             ))}
-            {metrics.length === 0 && <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Nenhuma métrica disponível</TableCell></TableRow>}
+            {metrics.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Nenhuma métrica disponível</TableCell></TableRow>}
           </TableBody>
         </Table>
       </CardContent>
