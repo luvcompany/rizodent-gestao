@@ -91,7 +91,7 @@ export default function CrmConversa() {
     const oldUserId = lead.assigned_to;
     if (newUserId === oldUserId) return;
 
-    const oldUserName = profiles.find(p => p.id === newUserId === oldUserId)?.nome || "Não atribuído";
+    const oldUserName = profiles.find(p => p.id === oldUserId)?.nome || "Não atribuído";
     const newUserName = profiles.find(p => p.id === newUserId)?.nome || "?";
 
     // Optimistic update for instant feedback
