@@ -68,20 +68,17 @@ export default function CrmConversa() {
 
   const chat = useChatConversation(id);
 
-  // Fetch profiles for assignment selector
-  useEffect(() => {
-    supabase.from("profiles").select("id, nome").then(({ data }) => {
-      if (data) setProfiles(data);
-    });
-  }, []);
-
-  // Fetch lead data separately (hook handles messages + stages)
+  // Fetch lead + profiles in parallel
   const [leadLoading, setLeadLoading] = useState(true);
   useEffect(() => {
     if (!id) return;
     setLeadLoading(true);
-    supabase.from("crm_leads").select("*").eq("id", id).single().then(({ data }) => {
-      if (data) setLead(data as Lead);
+    Promise.all([
+      supabase.from("crm_leads").select("*").eq("id", id).single(),
+      supabase.from("profiles").select("id, nome"),
+    ]).then(([leadRes, profilesRes]) => {
+      if (leadRes.data) setLead(leadRes.data as Lead);
+      if (profilesRes.data) setProfiles(profilesRes.data);
       setLeadLoading(false);
     });
   }, [id]);
@@ -193,7 +190,7 @@ export default function CrmConversa() {
   if (leadLoading || !lead) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-muted-foreground">Carregando conversa...</div>
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
