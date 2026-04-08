@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { batchSignMediaUrls } from "@/lib/mediaUtils";
 
 // Global message cache to avoid re-fetching when switching between leads
 const messageCache = new Map<string, { messages: any[]; timestamp: number }>();
