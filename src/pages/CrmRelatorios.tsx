@@ -44,16 +44,18 @@ export default function CrmRelatorios() {
       setLoading(true);
       // Only fetch messages from last 90 days for performance
       const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-      const [stagesRes, historyRes, leadsRes, messagesRes] = await Promise.all([
+      const [stagesRes, historyRes, leadsRes, messagesRes, appointmentsRes] = await Promise.all([
         supabase.from("crm_stages").select("*").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at"),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, created_at, last_inbound_at, last_outbound_at, score, last_message_at"),
-        supabase.from("messages").select("id, lead_id, direction, created_at, status").gte("created_at", ninetyDaysAgo),
+        supabase.from("crm_leads").select("id, name, phone, stage_id, created_at, last_inbound_at, last_outbound_at, score, last_message_at, assigned_to"),
+        supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id").gte("created_at", ninetyDaysAgo),
+        supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setHistory((historyRes.data as StageHistory[]) || []);
       setLeads((leadsRes.data as Lead[]) || []);
       setMessages((messagesRes.data as Message[]) || []);
+      setAppointments((appointmentsRes.data as Appointment[]) || []);
       setLoading(false);
     };
     fetchAll();
