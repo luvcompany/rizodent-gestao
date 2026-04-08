@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { batchSignMediaUrls } from "@/lib/mediaUtils";
 
 // Global message cache to avoid re-fetching when switching between leads
 const messageCache = new Map<string, { messages: any[]; timestamp: number }>();
@@ -99,6 +100,8 @@ export function useChatConversation(leadId: string | null | undefined) {
           if (data) {
             messageCache.set(leadId, { messages: data, timestamp: Date.now() });
             setMessages(data as ChatMessage[]);
+            const mediaUrls = data.filter((m: any) => m.media_url?.startsWith("http")).map((m: any) => m.media_url!);
+            if (mediaUrls.length > 0) batchSignMediaUrls(mediaUrls).catch(() => {});
           }
         });
         return;
@@ -111,6 +114,11 @@ export function useChatConversation(leadId: string | null | undefined) {
       const msgs = (data as ChatMessage[]) || [];
       messageCache.set(leadId, { messages: msgs, timestamp: Date.now() });
       setMessages(msgs);
+      // Pre-sign all media URLs in background so they're cached when rendering
+      const mediaUrls = msgs.filter(m => m.media_url?.startsWith("http")).map(m => m.media_url!);
+      if (mediaUrls.length > 0) {
+        batchSignMediaUrls(mediaUrls).catch(() => {});
+      }
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
     }
