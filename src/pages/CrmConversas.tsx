@@ -53,6 +53,7 @@ type LeadConversation = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  assigned_to?: string | null;
   last_direction?: string;
   imagem_origem?: string | null;
   titulo_anuncio?: string | null;
