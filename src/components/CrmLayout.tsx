@@ -3,7 +3,7 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
-  Home,
+  Home, FlaskConical,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -18,6 +18,7 @@ const crmNavItems = [
   { to: "/crm/modelos", icon: FileText, label: "Modelos" },
   { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
   { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
+  { to: "/crm/extras", icon: FlaskConical, label: "Funções Extras" },
 ];
 
 const CrmLayout = () => {
