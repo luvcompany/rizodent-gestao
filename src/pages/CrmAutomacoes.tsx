@@ -359,6 +359,21 @@ export default function CrmAutomacoes() {
               </div>
               <Switch checked={duplicateEnabled} onCheckedChange={setDuplicateEnabled} />
             </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-foreground">Distribuição automática</div>
+                <button onClick={() => setRoundRobinOpen(true)} className="text-xs text-primary cursor-pointer hover:underline">Configurar</button>
+              </div>
+              <Switch checked={rrActive} onCheckedChange={async (v) => {
+                setRrActive(v);
+                const { data: existing } = await supabase.from("crm_automations").select("id, action_config").eq("action_type", "assign_lead");
+                const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
+                if (match) {
+                  await supabase.from("crm_automations").update({ is_active: v }).eq("id", match.id);
+                  toast.success(v ? "Distribuição ativada" : "Distribuição desativada");
+                }
+              }} />
+            </div>
             <hr className="border-border" />
             <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Fontes conectadas</div>
             {channels.length === 0 ? (
