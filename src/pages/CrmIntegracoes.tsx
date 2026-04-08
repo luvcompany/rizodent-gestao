@@ -10,12 +10,14 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Instagram, Facebook, Mail, ShoppingBag,
+  Instagram, Facebook, Mail, ShoppingBag, Webhook,
   Settings, Copy, RefreshCw, Send, Eye, EyeOff, CheckCircle, XCircle,
   Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch, Power
 } from "lucide-react";
+import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 
 type WhatsAppConfig = {
