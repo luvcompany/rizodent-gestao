@@ -102,11 +102,13 @@ export default function CrmCalendario() {
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
 
   const fetchTasks = useCallback(async () => {
-    const [tasksRes, profilesRes, leadsRes, apptsRes] = await Promise.all([
+    const [tasksRes, profilesRes, leadsRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("profiles").select("id, nome"),
       supabase.from("crm_leads").select("id, name"),
       supabase.from("crm_appointments").select("*").order("scheduled_date"),
+      supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
+      supabase.from("crm_pipelines").select("id, name"),
     ]);
     const rawTasks = (tasksRes.data || []) as Task[];
     const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
@@ -116,6 +118,8 @@ export default function CrmCalendario() {
     const rawAppts = (apptsRes.data || []) as Appointment[];
     rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
     setAppointments(rawAppts);
+    setCrmStages((stagesRes.data as Stage[]) || []);
+    setCrmPipelines((pipelinesRes.data as Pipeline[]) || []);
   }, []);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
