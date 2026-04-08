@@ -122,9 +122,9 @@ function BotEditorInner() {
 
   useEffect(() => {
     if (loading) return;
-    const current = JSON.stringify({ nodes, edges, botName });
+    const current = JSON.stringify({ nodes, edges, botName, botDescription });
     setIsDirty(current !== lastSavedRef.current);
-  }, [nodes, edges, botName, loading]);
+  }, [nodes, edges, botName, botDescription, loading]);
 
   const handleDeleteEdge = useCallback(
     (edgeId: string) => {
