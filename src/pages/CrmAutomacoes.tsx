@@ -102,6 +102,44 @@ export default function CrmAutomacoes() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Load round-robin state
+  useEffect(() => {
+    const loadRR = async () => {
+      const { data: profiles } = await supabase.from("profiles").select("id, nome");
+      setRrProfiles(profiles || []);
+      if (!selectedPipelineId) return;
+      const { data: existing } = await supabase.from("crm_automations").select("*").eq("action_type", "assign_lead");
+      const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
+      if (match) {
+        setRrActive(match.is_active);
+        const cfg = match.action_config as any;
+        setRrMethod(cfg?.method || "round_robin");
+        setRrEligible(cfg?.eligible_users || []);
+      } else {
+        setRrActive(false);
+        setRrMethod("round_robin");
+        setRrEligible([]);
+      }
+    };
+    loadRR();
+  }, [selectedPipelineId]);
+
+  const handleSaveRoundRobin = async () => {
+    if (rrEligible.length === 0) return toast.error("Selecione ao menos um atendente");
+    const config = { method: rrMethod, eligible_users: rrEligible, pipeline_id: selectedPipelineId };
+    const { data: existing } = await supabase.from("crm_automations").select("id, action_config").eq("action_type", "assign_lead");
+    const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
+    if (match) {
+      await supabase.from("crm_automations").update({ action_config: config as any, is_active: rrActive }).eq("id", match.id);
+    } else {
+      const { data: stagesData } = await supabase.from("crm_stages").select("id").eq("pipeline_id", selectedPipelineId).order("position").limit(1);
+      if (!stagesData?.length) return toast.error("Pipeline sem etapas");
+      await supabase.from("crm_automations").insert({ stage_id: stagesData[0].id, action_type: "assign_lead", trigger_type: "on_enter", action_config: config as any, is_active: rrActive });
+    }
+    toast.success("Distribuição automática salva");
+    setRoundRobinOpen(false);
+  };
+
   const handleStageDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
     const fromIdx = result.source.index;
