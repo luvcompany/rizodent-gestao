@@ -51,6 +51,9 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         setExistingTags(Array.from(allTags).sort());
       }
     });
+    supabase.from("bots").select("id, name").eq("status", "published").order("name").then(({ data }) => {
+      if (data) setPublishedBots(data as { id: string; name: string }[]);
+    });
     // Fetch unique sources
     supabase.from("crm_leads").select("source").not("source", "is", null).then(({ data }) => {
       if (data) {
