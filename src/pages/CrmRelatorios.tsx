@@ -45,7 +45,7 @@ export default function CrmRelatorios() {
       const [stagesRes, historyRes, leadsRes, messagesRes] = await Promise.all([
         supabase.from("crm_stages").select("*").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at"),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, created_at, last_inbound_at, last_outbound_at"),
+        supabase.from("crm_leads").select("id, name, phone, stage_id, created_at, last_inbound_at, last_outbound_at, score, last_message_at"),
         supabase.from("messages").select("id, lead_id, direction, created_at, status").gte("created_at", ninetyDaysAgo),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
