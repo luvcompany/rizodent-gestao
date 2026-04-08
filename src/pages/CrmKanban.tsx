@@ -428,7 +428,7 @@ export default function CrmKanban() {
         <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} variant="muted" />
         <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} variant="destructive" />
         <MetricBadge icon={<Clock size={14} />} label="Novo hoje / ontem" value={`${newToday} / ${newYesterday}`} variant="success" />
-        <MetricBadge icon={<TrendingUp size={14} />} label="Vendas em potencial" value={formatCurrency(totalValue)} variant="primary" />
+        <MetricBadge icon={<TrendingUp size={14} />} label="Vendas concluídas (mês)" value={formatCurrency(vendasConcluidas)} variant="primary" />
       </div>
 
       {/* Kanban area - SCROLLABLE horizontally */}
