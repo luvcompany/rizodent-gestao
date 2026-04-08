@@ -90,28 +90,16 @@ export default function CrmConversa() {
     const oldUserId = lead.assigned_to;
     if (newUserId === oldUserId) return;
 
-    const oldUserName = profiles.find(p => p.id === oldUserId)?.nome || "Não atribuído";
     const newUserName = profiles.find(p => p.id === newUserId)?.nome || "?";
 
-    // Update lead
-    const { error } = await supabase.from("crm_leads").update({
-      assigned_to: newUserId,
-      updated_at: new Date().toISOString(),
-    }).eq("id", id);
-    if (error) { toast.error("Erro ao transferir lead"); return; }
-
-    // System message in chat
-    await supabase.from("messages").insert({
-      lead_id: id,
-      direction: "outbound",
-      type: "system",
-      content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`,
-      status: "system",
+    const { data, error } = await supabase.functions.invoke("transfer-lead", {
+      body: { leadId: id, newUserId },
     });
+    if (error || data?.error) { toast.error("Erro ao transferir lead"); return; }
 
-    chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
+    chat.showActivityToast(`🔄 Lead transferido para ${data?.newUserName || newUserName}`);
     setLead(prev => prev ? { ...prev, assigned_to: newUserId } : prev);
-    toast.success(`Lead transferido para ${newUserName}`);
+    toast.success(`Lead transferido para ${data?.newUserName || newUserName}`);
   }, [lead, id, profiles, chat]);
 
   const handleStageChange = useCallback(async (stageId: string) => {

@@ -1,0 +1,77 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return json({ error: "Missing authorization header" }, 401);
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const anonClient = createClient(supabaseUrl, anonKey);
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await anonClient.auth.getUser(token);
+    if (authError || !user) return json({ error: "Unauthorized" }, 401);
+
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const { leadId, newUserId } = await req.json();
+
+    if (!leadId || !newUserId) {
+      return json({ error: "leadId and newUserId are required" }, 400);
+    }
+
+    const [{ data: lead }, { data: roleRow }, { data: profiles }] = await Promise.all([
+      supabase.from("crm_leads").select("id, assigned_to").eq("id", leadId).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
+      supabase.from("profiles").select("id, nome").in("id", [user.id, newUserId]),
+    ]);
+
+    if (!lead) return json({ error: "Lead not found" }, 404);
+
+    const isPrivileged = roleRow?.role === "admin" || roleRow?.role === "gerente";
+    const canTransfer = isPrivileged || lead.assigned_to === user.id || lead.assigned_to === null;
+    if (!canTransfer) return json({ error: "Forbidden" }, 403);
+
+    const oldUserId = lead.assigned_to;
+    const oldUserName = profiles?.find((p) => p.id === oldUserId)?.nome || "Não atribuído";
+    const newUserName = profiles?.find((p) => p.id === newUserId)?.nome || "Responsável";
+
+    const { error: updateError } = await supabase
+      .from("crm_leads")
+      .update({ assigned_to: newUserId, updated_at: new Date().toISOString() })
+      .eq("id", leadId);
+
+    if (updateError) return json({ error: updateError.message }, 500);
+
+    const { error: messageError } = await supabase.from("messages").insert({
+      lead_id: leadId,
+      direction: "outbound",
+      type: "system",
+      content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`,
+      status: "system",
+      sender_id: user.id,
+    });
+
+    if (messageError) return json({ error: messageError.message }, 500);
+
+    return json({ success: true, oldUserName, newUserName, assigned_to: newUserId });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+  }
+});
