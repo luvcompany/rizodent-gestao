@@ -267,10 +267,18 @@ const Dashboard = () => {
   const anuncioMap = new Map<string, number>();
   filtered.pacientes.forEach((p) => {
     if (!p.nome_anuncio) return;
+    const key = p.nome_anuncio.trim().toLowerCase();
     const paid = filtered.pagamentos.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
-    anuncioMap.set(p.nome_anuncio, (anuncioMap.get(p.nome_anuncio) || 0) + paid);
+    anuncioMap.set(key, (anuncioMap.get(key) || 0) + paid);
   });
-  const anuncioData = Array.from(anuncioMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
+  // Keep original casing for display: use first occurrence
+  const anuncioDisplayNames = new Map<string, string>();
+  filtered.pacientes.forEach((p) => {
+    if (!p.nome_anuncio) return;
+    const key = p.nome_anuncio.trim().toLowerCase();
+    if (!anuncioDisplayNames.has(key)) anuncioDisplayNames.set(key, p.nome_anuncio.trim());
+  });
+  const anuncioData = Array.from(anuncioMap.entries()).map(([key, value]) => ({ name: anuncioDisplayNames.get(key) || key, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
 
   // Funnel data - Leads Novos is separate from Atendimentos do Dia
   const funnelTotals = filtered.leads.reduce(
