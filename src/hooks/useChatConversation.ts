@@ -112,6 +112,11 @@ export function useChatConversation(leadId: string | null | undefined) {
       const msgs = (data as ChatMessage[]) || [];
       messageCache.set(leadId, { messages: msgs, timestamp: Date.now() });
       setMessages(msgs);
+      // Pre-sign all media URLs in background so they're cached when rendering
+      const mediaUrls = msgs.filter(m => m.media_url?.startsWith("http")).map(m => m.media_url!);
+      if (mediaUrls.length > 0) {
+        batchSignMediaUrls(mediaUrls).catch(() => {});
+      }
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
     }
