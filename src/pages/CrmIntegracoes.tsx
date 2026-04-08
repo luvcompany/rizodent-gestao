@@ -10,12 +10,14 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Instagram, Facebook, Mail, ShoppingBag,
+  Instagram, Facebook, Mail, ShoppingBag, Webhook,
   Settings, Copy, RefreshCw, Send, Eye, EyeOff, CheckCircle, XCircle,
   Plus, Trash2, Check, AlertTriangle, Pencil, GitBranch, Power
 } from "lucide-react";
+import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 
 type WhatsAppConfig = {
@@ -75,6 +77,66 @@ const otherIntegrations = [
   { key: "email", name: "E-mail (SMTP)", desc: "Em breve", icon: Mail, enabled: false },
   { key: "mercadolivre", name: "Mercado Livre", desc: "Em breve", icon: ShoppingBag, enabled: false },
 ];
+
+function WebhookSection() {
+  const [recentLeads, setRecentLeads] = useState<any[]>([]);
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  const webhookUrl = `https://${projectId}.supabase.co/functions/v1/generic-lead-webhook`;
+
+  const examplePayload = JSON.stringify({
+    name: "João Silva",
+    phone: "5511999887766",
+    tags: ["landing-page", "promo"],
+    pipeline: "nome-do-funil",
+    source: "typeform"
+  }, null, 2);
+
+  useEffect(() => {
+    supabase.from("crm_leads").select("id, name, phone, source, created_at").eq("source", "webhook").order("created_at", { ascending: false }).limit(10).then(({ data }) => setRecentLeads(data || []));
+  }, []);
+
+  return (
+    <div className="mt-6">
+      <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2"><Webhook size={18} /> Webhook Genérico de Entrada</h2>
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <div>
+            <Label>URL do Endpoint</Label>
+            <div className="flex gap-2 items-center">
+              <Input readOnly value={webhookUrl} className="font-mono text-xs" />
+              <Button size="icon" variant="outline" onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success("Copiado!"); }}><Copy size={14} /></Button>
+            </div>
+          </div>
+          <div>
+            <Label>Método: POST</Label>
+            <p className="text-xs text-muted-foreground">Content-Type: application/json</p>
+          </div>
+          <div>
+            <Label>Exemplo de Payload</Label>
+            <pre className="bg-muted p-3 rounded text-xs font-mono overflow-auto max-h-48">{examplePayload}</pre>
+          </div>
+          {recentLeads.length > 0 && (
+            <div>
+              <Label className="mb-2 block">Últimos leads via webhook</Label>
+              <Table>
+                <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Telefone</TableHead><TableHead>Data</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {recentLeads.map(l => (
+                    <TableRow key={l.id}>
+                      <TableCell>{l.name}</TableCell>
+                      <TableCell>{l.phone}</TableCell>
+                      <TableCell className="text-sm">{format(new Date(l.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function CrmIntegracoes() {
   const [whatsappEntries, setWhatsappEntries] = useState<WhatsAppEntry[]>([]);
@@ -397,6 +459,9 @@ export default function CrmIntegracoes() {
             );
           })}
         </div>
+
+        {/* Webhook Genérico */}
+        <WebhookSection />
       </div>
 
       {/* WhatsApp Config Modal */}

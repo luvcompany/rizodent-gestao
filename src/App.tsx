@@ -30,6 +30,9 @@ import CrmBots from "./pages/CrmBots";
 import CrmBotEditor from "./pages/CrmBotEditor";
 import CrmDashboard from "./pages/CrmDashboard";
 import CrmExtras from "./pages/CrmExtras";
+import CrmConfiguracoes from "./pages/CrmConfiguracoes";
+import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
+import CrmCampanhas from "./pages/CrmCampanhas";
 import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
 import NotFound from "./pages/NotFound";
@@ -84,6 +87,9 @@ const App = () => (
               <Route path="/crm/bots" element={<CrmBots />} />
               <Route path="/crm/bots/:id" element={<CrmBotEditor />} />
               <Route path="/crm/extras" element={<CrmExtras />} />
+              <Route path="/crm/configuracoes" element={<CrmConfiguracoes />} />
+              <Route path="/crm/respostas-rapidas" element={<CrmRespostasRapidas />} />
+              <Route path="/crm/campanhas" element={<CrmCampanhas />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

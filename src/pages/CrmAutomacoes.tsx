@@ -66,7 +66,13 @@ export default function CrmAutomacoes() {
   const [newPipelineColor, setNewPipelineColor] = useState("#6366f1");
   const [useCustomPipelineColor, setUseCustomPipelineColor] = useState(false);
 
-  
+  // Round Robin state
+  const [roundRobinOpen, setRoundRobinOpen] = useState(false);
+  const [rrMethod, setRrMethod] = useState("round_robin");
+  const [rrEligible, setRrEligible] = useState<string[]>([]);
+  const [rrProfiles, setRrProfiles] = useState<{ id: string; nome: string }[]>([]);
+  const [rrActive, setRrActive] = useState(false);
+
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
@@ -95,6 +101,44 @@ export default function CrmAutomacoes() {
   }, [selectedPipelineId]);
 
   useEffect(() => { fetchData(); }, []);
+
+  // Load round-robin state
+  useEffect(() => {
+    const loadRR = async () => {
+      const { data: profiles } = await supabase.from("profiles").select("id, nome");
+      setRrProfiles(profiles || []);
+      if (!selectedPipelineId) return;
+      const { data: existing } = await supabase.from("crm_automations").select("*").eq("action_type", "assign_lead");
+      const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
+      if (match) {
+        setRrActive(match.is_active);
+        const cfg = match.action_config as any;
+        setRrMethod(cfg?.method || "round_robin");
+        setRrEligible(cfg?.eligible_users || []);
+      } else {
+        setRrActive(false);
+        setRrMethod("round_robin");
+        setRrEligible([]);
+      }
+    };
+    loadRR();
+  }, [selectedPipelineId]);
+
+  const handleSaveRoundRobin = async () => {
+    if (rrEligible.length === 0) return toast.error("Selecione ao menos um atendente");
+    const config = { method: rrMethod, eligible_users: rrEligible, pipeline_id: selectedPipelineId };
+    const { data: existing } = await supabase.from("crm_automations").select("id, action_config").eq("action_type", "assign_lead");
+    const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
+    if (match) {
+      await supabase.from("crm_automations").update({ action_config: config as any, is_active: rrActive }).eq("id", match.id);
+    } else {
+      const { data: stagesData } = await supabase.from("crm_stages").select("id").eq("pipeline_id", selectedPipelineId).order("position").limit(1);
+      if (!stagesData?.length) return toast.error("Pipeline sem etapas");
+      await supabase.from("crm_automations").insert({ stage_id: stagesData[0].id, action_type: "assign_lead", trigger_type: "on_enter", action_config: config as any, is_active: rrActive });
+    }
+    toast.success("Distribuição automática salva");
+    setRoundRobinOpen(false);
+  };
 
   const handleStageDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
@@ -314,6 +358,21 @@ export default function CrmAutomacoes() {
                 <button onClick={() => setDuplicateRulesOpen(true)} className="text-xs text-primary cursor-pointer hover:underline">Configurar regras</button>
               </div>
               <Switch checked={duplicateEnabled} onCheckedChange={setDuplicateEnabled} />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-foreground">Distribuição automática</div>
+                <button onClick={() => setRoundRobinOpen(true)} className="text-xs text-primary cursor-pointer hover:underline">Configurar</button>
+              </div>
+              <Switch checked={rrActive} onCheckedChange={async (v) => {
+                setRrActive(v);
+                const { data: existing } = await supabase.from("crm_automations").select("id, action_config").eq("action_type", "assign_lead");
+                const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
+                if (match) {
+                  await supabase.from("crm_automations").update({ is_active: v }).eq("id", match.id);
+                  toast.success(v ? "Distribuição ativada" : "Distribuição desativada");
+                }
+              }} />
             </div>
             <hr className="border-border" />
             <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Fontes conectadas</div>
@@ -779,6 +838,45 @@ export default function CrmAutomacoes() {
             <Button className="w-full" onClick={() => { toast.success("Regras de duplicados salvas"); setDuplicateRulesOpen(false); }}>
               Salvar Regras
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Round Robin Modal */}
+      <Dialog open={roundRobinOpen} onOpenChange={setRoundRobinOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Distribuição Automática de Leads</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Método</Label>
+              <Select value={rrMethod} onValueChange={setRrMethod}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="round_robin">Round Robin</SelectItem>
+                  <SelectItem value="least_load">Menor Carga</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                {rrMethod === "round_robin" ? "Distribui leads igualmente entre os atendentes" : "Atribui ao atendente com menos leads ativos"}
+              </p>
+            </div>
+            <div>
+              <Label>Atendentes Elegíveis</Label>
+              <div className="space-y-2 mt-2 max-h-60 overflow-auto">
+                {rrProfiles.map(p => (
+                  <label key={p.id} className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-secondary">
+                    <Checkbox
+                      checked={rrEligible.includes(p.id)}
+                      onCheckedChange={() => setRrEligible(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                    />
+                    <span className="text-sm">{p.nome}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <Button onClick={handleSaveRoundRobin} className="w-full"><Zap size={16} /> Salvar Configuração</Button>
           </div>
         </DialogContent>
       </Dialog>
