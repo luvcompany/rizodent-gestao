@@ -235,6 +235,35 @@ export default function CrmConversas() {
     await chat.sendTemplate(template, selectedLead?.phone || null);
   }, [chat, selectedLead]);
 
+  // Transfer lead to another user
+  const handleTransferLead = useCallback(async (newUserId: string) => {
+    if (!selectedLead || !selectedLeadId) return;
+    const oldUserId = selectedLead.assigned_to;
+    if (newUserId === oldUserId) return;
+
+    const oldUserName = profiles.find(p => p.id === oldUserId)?.nome || "Não atribuído";
+    const newUserName = profiles.find(p => p.id === newUserId)?.nome || "?";
+
+    const { error } = await supabase.from("crm_leads").update({
+      assigned_to: newUserId,
+      updated_at: new Date().toISOString(),
+    }).eq("id", selectedLeadId);
+    if (error) { toast.error("Erro ao transferir lead"); return; }
+
+    await supabase.from("messages").insert({
+      lead_id: selectedLeadId,
+      direction: "outbound",
+      type: "system",
+      content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`,
+      status: "system",
+    });
+
+    chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
+    setSelectedLead(prev => prev ? { ...prev, assigned_to: newUserId } : prev);
+    setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, assigned_to: newUserId } : l));
+    toast.success(`Lead transferido para ${newUserName}`);
+  }, [selectedLead, selectedLeadId, profiles, chat]);
+
   // Collect all tags for filters
   const allTags = useMemo(() => {
     const set = new Set<string>();
