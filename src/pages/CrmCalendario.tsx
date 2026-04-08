@@ -667,6 +667,17 @@ export default function CrmCalendario() {
                 <Button className="flex-1" onClick={async () => {
                   await supabase.from("crm_appointments").update({ status: apptResultStatus }).eq("id", selectedAppointment.id);
                   if (apptMoveStageId) {
+                    // Close current stage history entry
+                    await supabase.from("crm_lead_stage_history")
+                      .update({ exited_at: new Date().toISOString() })
+                      .eq("lead_id", selectedAppointment.lead_id)
+                      .is("exited_at", null);
+                    // Create new stage history entry
+                    await supabase.from("crm_lead_stage_history").insert({
+                      lead_id: selectedAppointment.lead_id,
+                      stage_id: apptMoveStageId,
+                    });
+                    // Update lead
                     await supabase.from("crm_leads").update({ stage_id: apptMoveStageId, pipeline_id: apptMovePipelineId }).eq("id", selectedAppointment.lead_id);
                   }
                   toast.success("Agendamento atualizado");

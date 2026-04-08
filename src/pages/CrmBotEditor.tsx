@@ -48,6 +48,7 @@ function BotEditorInner() {
   const updateNodeInternals = useUpdateNodeInternals();
 
   const [botName, setBotName] = useState("Novo Bot");
+  const [botDescription, setBotDescription] = useState("");
   const [botStatus, setBotStatus] = useState("draft");
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -99,11 +100,12 @@ function BotEditorInner() {
     supabase.from("bots").select("*").eq("id", id).single().then(({ data, error }) => {
       if (error || !data) { toast.error("Bot não encontrado"); navigate("/crm/bots"); return; }
       setBotName(data.name);
+      setBotDescription(data.description || "");
       setBotStatus(data.status);
       const flow = data.flow_json as any;
       if (flow?.nodes) setNodes(flow.nodes);
       if (flow?.edges) setEdges(flow.edges);
-      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name });
+      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name, botDescription: data.description || "" });
       setLoading(false);
       // Init history
       historyRef.current = [{ nodes: flow?.nodes || [], edges: flow?.edges || [] }];
@@ -120,9 +122,9 @@ function BotEditorInner() {
 
   useEffect(() => {
     if (loading) return;
-    const current = JSON.stringify({ nodes, edges, botName });
+    const current = JSON.stringify({ nodes, edges, botName, botDescription });
     setIsDirty(current !== lastSavedRef.current);
-  }, [nodes, edges, botName, loading]);
+  }, [nodes, edges, botName, botDescription, loading]);
 
   const handleDeleteEdge = useCallback(
     (edgeId: string) => {
@@ -280,6 +282,7 @@ function BotEditorInner() {
     // Save flow
     const { error } = await supabase.from("bots").update({
       name: botName,
+      description: botDescription,
       flow_json: { nodes, edges },
     }).eq("id", id);
 
@@ -301,11 +304,11 @@ function BotEditorInner() {
     }).eq("id", id);
 
     setBotStatus("published");
-    lastSavedRef.current = JSON.stringify({ nodes, edges, botName });
+    lastSavedRef.current = JSON.stringify({ nodes, edges, botName, botDescription });
     setIsDirty(false);
     setSaving(false);
     toast.success(`Bot salvo e publicado! Versão ${newVersion}`);
-  }, [id, botName, nodes, edges, isDirty]);
+  }, [id, botName, botDescription, nodes, edges, isDirty]);
 
   const handleHighlightNode = useCallback((nodeId: string | null) => {
     setHighlightedNodeId(nodeId);
@@ -337,6 +340,12 @@ function BotEditorInner() {
             value={botName}
             onChange={(e) => setBotName(e.target.value)}
             className="w-[200px] h-8 text-sm font-semibold bg-transparent border-transparent hover:border-border focus:border-border"
+          />
+          <Input
+            value={botDescription}
+            onChange={(e) => setBotDescription(e.target.value)}
+            placeholder="Descrição do bot (opcional)"
+            className="w-[250px] h-8 text-xs bg-transparent border-transparent hover:border-border focus:border-border text-muted-foreground"
           />
           <span className="text-xs text-muted-foreground px-2 py-0.5 rounded bg-secondary">
             {botStatus === "published" ? "Publicado" : "Rascunho"}
