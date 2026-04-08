@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { X, Trash2, Plus, Minus, Upload, Search } from "lucide-react";
+import { X, Trash2, Plus, Minus, Upload, Search, Loader2 } from "lucide-react";
 import { NODE_DEFINITIONS } from "@/types/bot";
 import VariableTextarea from "./VariableTextarea";
 import BotAudioRecorder from "./BotAudioRecorder";
