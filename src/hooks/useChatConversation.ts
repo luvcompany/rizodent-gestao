@@ -100,6 +100,8 @@ export function useChatConversation(leadId: string | null | undefined) {
           if (data) {
             messageCache.set(leadId, { messages: data, timestamp: Date.now() });
             setMessages(data as ChatMessage[]);
+            const mediaUrls = data.filter((m: any) => m.media_url?.startsWith("http")).map((m: any) => m.media_url!);
+            if (mediaUrls.length > 0) batchSignMediaUrls(mediaUrls).catch(() => {});
           }
         });
         return;
