@@ -137,24 +137,34 @@ export default function ChatMessageContent({ message, onMediaClick }: { message:
 
   if (["image", "sticker"].includes(message.type) && hasResolvedMedia) {
     return (
-      <img
-        src={resolvedUrl!}
-        alt={message.type === "sticker" ? "Figurinha" : "Imagem"}
-        className={message.type === "sticker" ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
-        onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
-      />
+      <div>
+        <img
+          src={resolvedUrl!}
+          alt={message.type === "sticker" ? "Figurinha" : "Imagem"}
+          className={message.type === "sticker" ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
+          onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
+        />
+        {message.content?.trim() && (
+          <p className="text-sm whitespace-pre-wrap mt-1">{message.content}</p>
+        )}
+      </div>
     );
   }
 
   if (message.type === "video" && hasResolvedMedia) {
     return (
-      <div className="relative cursor-pointer" onClick={() => onMediaClick?.(resolvedUrl!, "video")}>
-        <video src={resolvedUrl!} className="rounded mb-1 max-w-full max-h-64" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center">
-            <span className="text-foreground text-lg ml-0.5">▶</span>
+      <div>
+        <div className="relative cursor-pointer" onClick={() => onMediaClick?.(resolvedUrl!, "video")}>
+          <video src={resolvedUrl!} className="rounded mb-1 max-w-full max-h-64" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center">
+              <span className="text-foreground text-lg ml-0.5">▶</span>
+            </div>
           </div>
         </div>
+        {message.content?.trim() && (
+          <p className="text-sm whitespace-pre-wrap mt-1">{message.content}</p>
+        )}
       </div>
     );
   }
