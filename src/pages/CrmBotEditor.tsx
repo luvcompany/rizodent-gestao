@@ -304,11 +304,11 @@ function BotEditorInner() {
     }).eq("id", id);
 
     setBotStatus("published");
-    lastSavedRef.current = JSON.stringify({ nodes, edges, botName });
+    lastSavedRef.current = JSON.stringify({ nodes, edges, botName, botDescription });
     setIsDirty(false);
     setSaving(false);
     toast.success(`Bot salvo e publicado! Versão ${newVersion}`);
-  }, [id, botName, nodes, edges, isDirty]);
+  }, [id, botName, botDescription, nodes, edges, isDirty]);
 
   const handleHighlightNode = useCallback((nodeId: string | null) => {
     setHighlightedNodeId(nodeId);
