@@ -57,6 +57,7 @@ type Lead = {
 };
 
 export default function CrmConversa() {
+  const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [lead, setLead] = useState<Lead | null>(null);
