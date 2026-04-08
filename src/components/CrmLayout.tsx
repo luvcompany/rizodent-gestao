@@ -6,6 +6,7 @@ import {
   Home, Settings, ChevronDown, Send,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import NotificationBell from "@/components/chat/NotificationBell";
 
 type NavItem = {
   to: string;
@@ -214,8 +215,9 @@ const CrmLayout = () => {
           >
             <Menu size={22} />
           </button>
-          <div className="ml-auto text-sm text-muted-foreground">
-            CRM — Gestão de Leads
+          <div className="ml-auto flex items-center gap-3">
+            <NotificationBell />
+            <span className="text-sm text-muted-foreground">CRM — Gestão de Leads</span>
           </div>
         </header>
 

@@ -102,8 +102,9 @@ export default function CrmConversa() {
 
     const updatePromise = supabase.from("crm_leads").update({ assigned_to: newUserId, updated_at: new Date().toISOString() }).eq("id", id);
     const msgPromise = supabase.from("messages").insert({ lead_id: id, direction: "outbound", type: "system", content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`, status: "system", sender_id: user?.id || null });
+    const notifPromise = supabase.from("crm_notifications").insert({ user_id: newUserId, type: "transfer", title: `Lead transferido para você`, body: `${lead.name} foi transferido por ${profiles.find(p => p.id === user?.id)?.nome || "alguém"}`, lead_id: id });
 
-    const [updateRes] = await Promise.all([updatePromise, msgPromise]);
+    const [updateRes] = await Promise.all([updatePromise, msgPromise, notifPromise]);
     if (updateRes.error) {
       setLead(prev => prev ? { ...prev, assigned_to: oldUserId } : prev);
       toast.error("Erro ao transferir lead");

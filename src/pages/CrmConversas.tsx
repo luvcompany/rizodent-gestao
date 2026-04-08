@@ -258,11 +258,12 @@ export default function CrmConversas() {
       setSelectedLead(prev => prev?.id === capturedLeadId ? null : prev);
     }, 10000);
 
-    // Fire DB update + system message in parallel, no await blocking UI
+    // Fire DB update + system message + notification in parallel
     const updatePromise = supabase.from("crm_leads").update({ assigned_to: newUserId, updated_at: new Date().toISOString() }).eq("id", selectedLeadId);
     const msgPromise = supabase.from("messages").insert({ lead_id: selectedLeadId, direction: "outbound", type: "system", content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`, status: "system", sender_id: user?.id || null });
+    const notifPromise = supabase.from("crm_notifications").insert({ user_id: newUserId, type: "transfer", title: `Lead transferido para você`, body: `${selectedLead.name} foi transferido por ${profiles.find(p => p.id === user?.id)?.nome || "alguém"}`, lead_id: selectedLeadId });
 
-    const [updateRes, msgRes] = await Promise.all([updatePromise, msgPromise]);
+    const [updateRes] = await Promise.all([updatePromise, msgPromise, notifPromise]);
     if (updateRes.error) {
       // Rollback on failure
       setSelectedLead(prev => prev ? { ...prev, assigned_to: oldUserId } : prev);

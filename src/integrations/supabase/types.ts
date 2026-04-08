@@ -897,6 +897,47 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          is_read: boolean
+          lead_id: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          lead_id?: string | null
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          lead_id?: string | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_notifications_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_pipelines: {
         Row: {
           color: string | null
