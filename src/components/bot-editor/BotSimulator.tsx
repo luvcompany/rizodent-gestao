@@ -11,6 +11,7 @@ type SimMessage = {
   from: "bot" | "user";
   content: string;
   type?: "text" | "menu" | "system" | "audio" | "file" | "image";
+  caption?: string;
   buttons?: { id: string; title: string }[];
   listSections?: { title: string; rows: { id: string; title: string; description?: string }[] }[];
   menuType?: "buttons" | "list";
@@ -148,7 +149,13 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
         const fileType = String(data.fileType || "document");
         const fileUrl = data.fileUrl ? String(data.fileUrl) : null;
         const icon = fileType === "image" ? "🖼️" : fileType === "video" ? "🎬" : "📄";
-        addMessage({ from: "bot", content: fileUrl || `${icon} Arquivo${caption ? `: ${caption}` : ""}`, type: fileType === "image" ? "image" as any : "file" });
+        const msgType = fileType === "image" ? "image" as const : "file" as const;
+        addMessage({
+          from: "bot",
+          content: fileUrl || `${icon} Arquivo`,
+          type: msgType,
+          caption: caption || undefined,
+        });
         await delay(500);
         const nextId = findNextNode(nodeId);
         processingRef.current = false;
@@ -277,12 +284,11 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
         return;
       }
 
-      case "schedule": {
-        addMessage({ from: "bot", content: `📅 Mensagem programada`, type: "system" });
-        await delay(300);
-        const nextId = findNextNode(nodeId);
+      case "trigger_bot": {
+        const botName = data.botName ? String(data.botName) : "outro bot";
+        addMessage({ from: "bot", content: `🤖 Acionando bot: ${botName}`, type: "system" });
+        setIsRunning(false);
         processingRef.current = false;
-        if (nextId) await processNode(nextId, vars);
         return;
       }
 
@@ -322,7 +328,6 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
 
     const newVars = { ...variables, last_reply: text };
 
-    // If waiting on a menu node, resolve the option
     if (waitingMenuNode) {
       const menuNode = waitingMenuNode;
       setWaitingMenuNode(null);
@@ -356,7 +361,6 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
         const handle = `${handlePrefix}${matched.id}`;
         const nextId = findNextNode(menuNode.id, handle);
         if (nextId) {
-          // Auto-skip wait_reply nodes that only capture
           let targetId = nextId;
           let targetVars = newVars;
           let guard = 0;
@@ -376,7 +380,6 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
         }
       }
 
-      // No match - try generic edge
       const genericNext = findNextNode(menuNode.id, "reply") || findNextNode(menuNode.id);
       if (genericNext) {
         setVariables(newVars);
@@ -390,7 +393,6 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
       return;
     }
 
-    // Regular wait_reply
     if (currentNodeId) {
       const currentNode = nodes.find((n) => n.id === currentNodeId);
       if (currentNode?.data?.saveToField) {
@@ -403,17 +405,14 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
     }
   }, [variables, waitingMenuNode, currentNodeId, addMessage, findNextNode, nodes, edges, processNode]);
 
-  // Auto-start
   useEffect(() => {
     if (!isRunning) startSimulation();
   }, []);
 
-  // Find last menu message for rendering buttons
   const lastMenuMessage = [...messages].reverse().find((m) => m.type === "menu" && m.from === "bot");
 
   return (
     <div className="flex flex-col w-[340px] border-l border-border bg-background h-full">
-      {/* Phone header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
         <div className="flex items-center gap-2">
           <Smartphone size={16} className="text-primary" />
@@ -429,14 +428,11 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
         </div>
       </div>
 
-      {/* Phone frame */}
       <div className="flex-1 flex flex-col min-h-0 mx-3 my-3 rounded-2xl border-2 border-border bg-background overflow-hidden shadow-lg">
-        {/* Status bar */}
         <div className="flex items-center justify-center py-1.5 bg-card border-b border-border">
           <div className="w-20 h-1 rounded-full bg-muted-foreground/30" />
         </div>
 
-        {/* Chat header */}
         <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-border">
           <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
             <span className="text-xs">🤖</span>
@@ -447,7 +443,6 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
           </div>
         </div>
 
-        {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2 bg-secondary/20">
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}>
@@ -455,22 +450,49 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
                 <div className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-1 rounded-md text-center w-full italic">
                   {msg.content}
                 </div>
-              ) : msg.type === "audio" && msg.content.startsWith("http") ? (
-                <div className={`max-w-[85%] px-3 py-2 rounded-xl ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+              ) : msg.type === "audio" ? (
+                <div className={`max-w-[90%] px-2 py-2 rounded-xl ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
                   <p className="text-[10px] text-muted-foreground mb-1">🎵 Áudio</p>
-                  <audio controls className="w-full h-8" style={{ maxWidth: "220px" }}>
-                    <source src={msg.content} />
-                  </audio>
+                  {msg.content.startsWith("http") ? (
+                    <audio controls preload="metadata" className="w-[200px] h-10">
+                      <source src={msg.content} />
+                    </audio>
+                  ) : (
+                    <div className="flex items-center gap-2 py-1">
+                      <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
+                        <span className="text-[10px]">▶</span>
+                      </div>
+                      <div className="flex-1 h-1 bg-muted-foreground/30 rounded-full" />
+                      <span className="text-[10px] text-muted-foreground">0:00</span>
+                    </div>
+                  )}
                 </div>
-              ) : msg.type === "image" && msg.content.startsWith("http") ? (
-                <div className={`max-w-[85%] px-1 py-1 rounded-xl ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
-                  <img src={msg.content} alt="Imagem" className="rounded-lg max-w-full max-h-40 object-cover" />
+              ) : msg.type === "image" ? (
+                <div className={`max-w-[85%] rounded-xl overflow-hidden ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+                  {msg.content.startsWith("http") && (
+                    <img src={msg.content} alt="Imagem" className="max-w-full max-h-40 object-cover" />
+                  )}
+                  {msg.caption && (
+                    <p className="text-xs px-3 py-2 whitespace-pre-wrap">{msg.caption}</p>
+                  )}
+                  {!msg.content.startsWith("http") && (
+                    <p className="text-xs px-3 py-2">🖼️ {msg.content}</p>
+                  )}
                 </div>
-              ) : msg.type === "file" && msg.content.startsWith("http") ? (
-                <div className={`max-w-[85%] px-3 py-2 rounded-xl ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
-                  <a href={msg.content} target="_blank" rel="noopener noreferrer" className="text-xs underline flex items-center gap-1">
-                    📄 Ver arquivo
-                  </a>
+              ) : msg.type === "file" ? (
+                <div className={`max-w-[85%] rounded-xl overflow-hidden ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+                  <div className="px-3 py-2">
+                    {msg.content.startsWith("http") ? (
+                      <a href={msg.content} target="_blank" rel="noopener noreferrer" className="text-xs underline flex items-center gap-1">
+                        📄 Ver arquivo
+                      </a>
+                    ) : (
+                      <p className="text-xs">{msg.content}</p>
+                    )}
+                  </div>
+                  {msg.caption && (
+                    <p className="text-xs px-3 pb-2 text-muted-foreground whitespace-pre-wrap">{msg.caption}</p>
+                  )}
                 </div>
               ) : (
                 <div
@@ -486,7 +508,6 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
             </div>
           ))}
 
-          {/* Interactive buttons/list for the active menu */}
           {waitingReply && lastMenuMessage && lastMenuMessage.type === "menu" && (
             <div className="space-y-1.5 pt-1">
               {lastMenuMessage.menuType === "buttons" && lastMenuMessage.buttons?.map((btn) => (
@@ -519,7 +540,6 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
           )}
         </div>
 
-        {/* Input */}
         <div className="border-t border-border p-2 bg-card">
           <div className="flex items-center gap-1.5">
             <Input

@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw, MoreVertical, Copy } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -380,16 +381,48 @@ export default function CrmAutomacoes() {
                             >
                               <div className="h-1.5" style={{ backgroundColor: stage.color }} />
                               <div className="p-3">
-                                <div className="flex items-center justify-between mb-1">
-                                  <div className="flex items-center gap-1">
+                              <div className="flex items-center justify-between mb-1">
+                                  <div className="flex items-center gap-1 flex-1 min-w-0">
                                     <span {...prov.dragHandleProps} className="cursor-grab text-muted-foreground hover:text-foreground">
                                       <GripVertical size={14} />
                                     </span>
-                                    <span className="font-semibold text-sm text-foreground">{stage.name}</span>
+                                    <input
+                                      className="font-semibold text-sm text-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary focus:outline-none w-full min-w-0"
+                                      value={stage.name}
+                                      onChange={async (e) => {
+                                        const newName = e.target.value;
+                                        setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: newName } : s));
+                                      }}
+                                      onBlur={async (e) => {
+                                        await supabase.from("crm_stages").update({ name: e.target.value }).eq("id", stage.id);
+                                      }}
+                                    />
                                   </div>
-                                  <button onClick={() => setDeleteStageId(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                                    <Trash2 size={14} />
-                                  </button>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <button className="w-5 h-5 rounded-md border border-border" style={{ backgroundColor: stage.color }} title="Alterar cor" />
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-auto p-2" align="end">
+                                        <div className="grid grid-cols-5 gap-1">
+                                          {PRESET_COLORS.map(c => (
+                                            <button
+                                              key={c}
+                                              onClick={async () => {
+                                                setStages(prev => prev.map(s => s.id === stage.id ? { ...s, color: c } : s));
+                                                await supabase.from("crm_stages").update({ color: c }).eq("id", stage.id);
+                                              }}
+                                              className={`w-6 h-6 rounded-md border-2 ${stage.color === c ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
+                                              style={{ backgroundColor: c }}
+                                            />
+                                          ))}
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                    <button onClick={() => setDeleteStageId(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
                                 </div>
                                 <div className="text-xs text-primary cursor-pointer mb-3">{stageAutos.length} automação(ões)</div>
 

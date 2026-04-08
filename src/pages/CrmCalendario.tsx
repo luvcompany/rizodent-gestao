@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   ChevronLeft, ChevronRight, CalendarDays, Phone, MessageSquare, Clock,
   CheckCircle2, AlertTriangle, Circle, List, LayoutGrid, Trash2
@@ -44,6 +45,9 @@ type Appointment = {
   notes: string | null;
   lead_name?: string;
 };
+
+type Stage = { id: string; name: string; color: string; pipeline_id: string };
+type Pipeline = { id: string; name: string };
 
 const typeLabels: Record<string, string> = {
   agendamento: "Agendamento",
@@ -91,13 +95,21 @@ export default function CrmCalendario() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleteApptConfirm, setDeleteApptConfirm] = useState<string | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [apptResultStatus, setApptResultStatus] = useState("");
+  const [apptMoveStageId, setApptMoveStageId] = useState("");
+  const [crmStages, setCrmStages] = useState<Stage[]>([]);
+  const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>([]);
+  const [apptMovePipelineId, setApptMovePipelineId] = useState("");
 
   const fetchTasks = useCallback(async () => {
-    const [tasksRes, profilesRes, leadsRes, apptsRes] = await Promise.all([
+    const [tasksRes, profilesRes, leadsRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("profiles").select("id, nome"),
       supabase.from("crm_leads").select("id, name"),
       supabase.from("crm_appointments").select("*").order("scheduled_date"),
+      supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
+      supabase.from("crm_pipelines").select("id, name"),
     ]);
     const rawTasks = (tasksRes.data || []) as Task[];
     const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
@@ -107,6 +119,8 @@ export default function CrmCalendario() {
     const rawAppts = (apptsRes.data || []) as Appointment[];
     rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
     setAppointments(rawAppts);
+    setCrmStages((stagesRes.data as Stage[]) || []);
+    setCrmPipelines((pipelinesRes.data as Pipeline[]) || []);
   }, []);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
@@ -523,15 +537,12 @@ export default function CrmCalendario() {
                           "bg-primary/10 text-foreground"
                         )}
                       >
-                        <div className="font-medium truncate cursor-pointer hover:underline" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>{appt.lead_name}</div>
-                        <div className="text-muted-foreground">{appt.scheduled_time.slice(0, 5)}</div>
-                        {appt.notes && <div className="text-muted-foreground truncate">{appt.notes}</div>}
-                        <button
-                          onClick={() => setDeleteApptConfirm(appt.id)}
-                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 hover:bg-destructive/20 rounded transition-opacity"
-                        >
-                          <Trash2 size={10} className="text-destructive" />
-                        </button>
+                        <div className="font-medium truncate cursor-pointer hover:underline" onClick={() => {
+                          setSelectedAppointment(appt);
+                          setApptResultStatus(appt.status);
+                          setApptMoveStageId("");
+                          setApptMovePipelineId("");
+                        }}>{appt.lead_name}</div>
                       </div>
                     ))}
                     {dayAppts.length === 0 && <div className="text-[10px] text-muted-foreground text-center py-4">—</div>}
@@ -601,6 +612,73 @@ export default function CrmCalendario() {
             <Button variant="outline" onClick={() => setDeleteApptConfirm(null)}>Cancelar</Button>
             <Button variant="destructive" onClick={() => deleteApptConfirm && handleDeleteAppointment(deleteApptConfirm)}>Excluir</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Appointment result dialog */}
+      <Dialog open={!!selectedAppointment} onOpenChange={(o) => { if (!o) setSelectedAppointment(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Resultado do Agendamento</DialogTitle></DialogHeader>
+          {selectedAppointment && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium">{selectedAppointment.lead_name}</p>
+                <p className="text-xs text-muted-foreground">{selectedAppointment.scheduled_date} às {selectedAppointment.scheduled_time?.slice(0, 5)}</p>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold">Status do agendamento</Label>
+                <Select value={apptResultStatus} onValueChange={setApptResultStatus}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="confirmed">✅ Confirmado</SelectItem>
+                    <SelectItem value="contracted">🤝 Contratado</SelectItem>
+                    <SelectItem value="not_contracted">❌ Não contratou</SelectItem>
+                    <SelectItem value="no_show">🚫 Não compareceu</SelectItem>
+                    <SelectItem value="cancelled">🗑️ Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold">Mover lead para (opcional)</Label>
+                <Select value={apptMovePipelineId} onValueChange={(v) => { setApptMovePipelineId(v); setApptMoveStageId(""); }}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Funil..." /></SelectTrigger>
+                  <SelectContent>
+                    {crmPipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {apptMovePipelineId && (
+                  <Select value={apptMoveStageId} onValueChange={setApptMoveStageId}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Etapa..." /></SelectTrigger>
+                    <SelectContent>
+                      {crmStages.filter(s => s.pipeline_id === apptMovePipelineId).map(s => (
+                        <SelectItem key={s.id} value={s.id}>
+                          <span className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                            {s.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => navigate(`/crm/conversa/${selectedAppointment.lead_id}`)}>Ir para conversa</Button>
+                <Button className="flex-1" onClick={async () => {
+                  await supabase.from("crm_appointments").update({ status: apptResultStatus }).eq("id", selectedAppointment.id);
+                  if (apptMoveStageId) {
+                    await supabase.from("crm_leads").update({ stage_id: apptMoveStageId, pipeline_id: apptMovePipelineId }).eq("id", selectedAppointment.lead_id);
+                  }
+                  toast.success("Agendamento atualizado");
+                  setAppointments(prev => prev.map(a => a.id === selectedAppointment.id ? { ...a, status: apptResultStatus } : a));
+                  setSelectedAppointment(null);
+                }}>Salvar</Button>
+              </div>
+              <Button variant="destructive" size="sm" className="w-full" onClick={() => { setDeleteApptConfirm(selectedAppointment.id); setSelectedAppointment(null); }}>
+                <Trash2 size={14} className="mr-1" /> Excluir agendamento
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
