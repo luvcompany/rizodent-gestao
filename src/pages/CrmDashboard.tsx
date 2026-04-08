@@ -79,7 +79,6 @@ export default function CrmDashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Metrics
   const todayTasks = useMemo(() =>
     tasks.filter(t => t.status !== "done" && isSameDay(new Date(t.due_date), selectedDate)),
   [tasks, selectedDate]);
@@ -96,7 +95,6 @@ export default function CrmDashboard() {
     appointments.filter(a => a.scheduled_date === format(selectedDate, "yyyy-MM-dd")),
   [appointments, selectedDate]);
 
-  // Count reschedules (appointments with notes containing "reagend" or multiple appointments for same lead)
   const rescheduledCount = useMemo(() => {
     const leadAppointmentCounts = new Map<string, number>();
     appointments.forEach(a => {
@@ -105,7 +103,6 @@ export default function CrmDashboard() {
     return Array.from(leadAppointmentCounts.values()).filter(c => c > 1).length;
   }, [appointments]);
 
-  // Upcoming appointments
   const upcomingAppointments = useMemo(() => {
     const today = startOfDay(new Date());
     const endDate = addDays(today, parseInt(upcomingDays));
@@ -120,7 +117,6 @@ export default function CrmDashboard() {
       });
   }, [appointments, upcomingDays]);
 
-  // Group upcoming by date
   const groupedUpcoming = useMemo(() => {
     const groups = new Map<string, Appointment[]>();
     upcomingAppointments.forEach(a => {
@@ -214,8 +210,9 @@ export default function CrmDashboard() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
-        {/* Tasks of the day + Today's Appointments */}
+      {/* 3 Columns: Tarefas | Agendamentos do dia | Próximos agendamentos */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+        {/* Column 1: Tasks */}
         <Card className="flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-bold text-foreground">Tarefas — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}</h2>
@@ -266,30 +263,20 @@ export default function CrmDashboard() {
               </>
             )}
 
-            {/* Today's appointments in same column */}
-            {dayAppointments.length > 0 && (
+            {pendingConfirmations.length > 0 && (
               <>
-                <div className="text-xs font-semibold text-green-600 uppercase mt-4 mb-1 flex items-center gap-1.5">
-                  <CalendarDays size={12} /> Agendamentos do dia ({dayAppointments.length})
-                </div>
-                {dayAppointments.map(appt => (
-                  <div key={appt.id} className="flex items-center gap-3 p-3 rounded-lg bg-green-500/5 border border-green-500/20">
-                    <div className="p-2 rounded-lg bg-green-500/10">
-                      <CalendarDays size={16} className="text-green-600" />
-                    </div>
+                <div className="text-xs font-semibold text-orange-600 uppercase mt-4 mb-1">Confirmações pendentes ({pendingConfirmations.length})</div>
+                {pendingConfirmations.slice(0, 5).map(t => (
+                  <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                    <Bell size={16} className="text-orange-600 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{appt.lead_name}</p>
+                      <p className="text-sm font-medium truncate">{t.title}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
-                        {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
+                        <span>{format(new Date(t.due_date), "dd/MM HH:mm")}</span>
+                        <span>·</span>
+                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline">{t.lead_name}</button>
                       </div>
                     </div>
-                    <Badge variant="outline" className="text-[10px] border-green-500 text-green-600">
-                      {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : "Pendente"}
-                    </Badge>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
-                      Ver
-                    </Button>
                   </div>
                 ))}
               </>
@@ -297,7 +284,41 @@ export default function CrmDashboard() {
           </div>
         </Card>
 
-        {/* Upcoming Appointments */}
+        {/* Column 2: Today's Appointments */}
+        <Card className="flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              <CalendarDays size={14} className="text-green-600" />
+              Agendamentos do dia
+            </h2>
+            <Badge variant="outline" className="border-green-500 text-green-600">{dayAppointments.length}</Badge>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {dayAppointments.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento para este dia</p>}
+            {dayAppointments.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => (
+              <div key={appt.id} className="flex items-center gap-3 p-3 rounded-lg bg-green-500/5 border border-green-500/20">
+                <div className="p-2 rounded-lg bg-green-500/10">
+                  <CalendarDays size={16} className="text-green-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{appt.lead_name}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                    <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
+                    {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
+                  </div>
+                </div>
+                <Badge variant="outline" className="text-[10px] border-green-500 text-green-600">
+                  {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : appt.status === "contracted" ? "Contratou" : appt.status === "not_contracted" ? "Não contratou" : "Pendente"}
+                </Badge>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
+                  Ver
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Column 3: Upcoming Appointments */}
         <Card className="flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-bold text-foreground">Próximos Agendamentos</h2>
@@ -353,7 +374,7 @@ export default function CrmDashboard() {
                           appt.status === "confirmed" && "border-green-500 text-green-600",
                           appt.status === "cancelled" && "border-destructive text-destructive"
                         )}>
-                          {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : "Pendente"}
+                          {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : appt.status === "contracted" ? "Contratou" : appt.status === "not_contracted" ? "Não contratou" : "Pendente"}
                         </Badge>
                         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
                           Ver
@@ -364,26 +385,6 @@ export default function CrmDashboard() {
                 </div>
               );
             })}
-
-            {/* Pending confirmations */}
-            {pendingConfirmations.length > 0 && (
-              <>
-                <div className="text-xs font-semibold text-orange-600 uppercase mt-4 mb-1">Confirmações pendentes ({pendingConfirmations.length})</div>
-                {pendingConfirmations.slice(0, 5).map(t => (
-                  <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
-                    <Bell size={16} className="text-orange-600 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span>{format(new Date(t.due_date), "dd/MM HH:mm")}</span>
-                        <span>·</span>
-                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline">{t.lead_name}</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
           </div>
         </Card>
       </div>
