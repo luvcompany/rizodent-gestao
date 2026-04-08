@@ -564,11 +564,12 @@ async function executeNode(
 
     case "send_file": {
       const caption = replaceVars(data.caption || "");
+      const fileType = data.fileType || "document"; // image, video, or document
       if (data.fileUrl && lead.phone) {
         await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
           lead_id: lead.id,
           to: lead.phone,
-          type: "document",
+          type: fileType,
           media_url: data.fileUrl,
           message: caption || undefined,
         });
