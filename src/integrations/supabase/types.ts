@@ -357,6 +357,115 @@ export type Database = {
           },
         ]
       }
+      crm_broadcast_recipients: {
+        Row: {
+          broadcast_id: string
+          error: string | null
+          id: string
+          lead_id: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          broadcast_id: string
+          error?: string | null
+          id?: string
+          lead_id: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          broadcast_id?: string
+          error?: string | null
+          id?: string
+          lead_id?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_broadcast_recipients_broadcast_id_fkey"
+            columns: ["broadcast_id"]
+            isOneToOne: false
+            referencedRelation: "crm_broadcasts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_broadcast_recipients_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_broadcasts: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          filter_pipeline_id: string | null
+          filter_stage_id: string | null
+          filter_tags: string[] | null
+          id: string
+          name: string
+          scheduled_at: string | null
+          sent_count: number
+          status: string
+          template_id: string | null
+          total_leads: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          filter_pipeline_id?: string | null
+          filter_stage_id?: string | null
+          filter_tags?: string[] | null
+          id?: string
+          name: string
+          scheduled_at?: string | null
+          sent_count?: number
+          status?: string
+          template_id?: string | null
+          total_leads?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          filter_pipeline_id?: string | null
+          filter_stage_id?: string | null
+          filter_tags?: string[] | null
+          id?: string
+          name?: string
+          scheduled_at?: string | null
+          sent_count?: number
+          status?: string
+          template_id?: string | null
+          total_leads?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_broadcasts_filter_pipeline_id_fkey"
+            columns: ["filter_pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "crm_pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_broadcasts_filter_stage_id_fkey"
+            columns: ["filter_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_broadcasts_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "crm_whatsapp_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_custom_fields: {
         Row: {
           created_at: string
@@ -640,6 +749,7 @@ export type Database = {
       crm_leads: {
         Row: {
           ad_id: string | null
+          assigned_to: string | null
           automation_paused: boolean | null
           created_at: string
           descricao_anuncio: string | null
@@ -659,6 +769,7 @@ export type Database = {
           phone: string | null
           pipeline_id: string
           position: number
+          score: number
           source: string | null
           stage_id: string
           tags: string[] | null
@@ -669,6 +780,7 @@ export type Database = {
         }
         Insert: {
           ad_id?: string | null
+          assigned_to?: string | null
           automation_paused?: boolean | null
           created_at?: string
           descricao_anuncio?: string | null
@@ -688,6 +800,7 @@ export type Database = {
           phone?: string | null
           pipeline_id: string
           position?: number
+          score?: number
           source?: string | null
           stage_id: string
           tags?: string[] | null
@@ -698,6 +811,7 @@ export type Database = {
         }
         Update: {
           ad_id?: string | null
+          assigned_to?: string | null
           automation_paused?: boolean | null
           created_at?: string
           descricao_anuncio?: string | null
@@ -717,6 +831,7 @@ export type Database = {
           phone?: string | null
           pipeline_id?: string
           position?: number
+          score?: number
           source?: string | null
           stage_id?: string
           tags?: string[] | null
@@ -749,6 +864,39 @@ export type Database = {
           },
         ]
       }
+      crm_notification_preferences: {
+        Row: {
+          browser_push_enabled: boolean
+          created_at: string
+          id: string
+          notify_lead_reply: boolean
+          notify_new_lead: boolean
+          notify_task_due: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          browser_push_enabled?: boolean
+          created_at?: string
+          id?: string
+          notify_lead_reply?: boolean
+          notify_new_lead?: boolean
+          notify_task_due?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          browser_push_enabled?: boolean
+          created_at?: string
+          id?: string
+          notify_lead_reply?: boolean
+          notify_new_lead?: boolean
+          notify_task_due?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       crm_pipelines: {
         Row: {
           color: string | null
@@ -770,6 +918,36 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+        }
+        Relationships: []
+      }
+      crm_quick_replies: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          media_type: string | null
+          media_url: string | null
+          title: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          media_type?: string | null
+          media_url?: string | null
+          title: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          media_type?: string | null
+          media_url?: string | null
+          title?: string
         }
         Relationships: []
       }
@@ -1039,6 +1217,7 @@ export type Database = {
           media_url: string | null
           reactions: Json | null
           reply_to_message_id: string | null
+          sender_id: string | null
           status: string
           type: string
           whatsapp_message_id: string | null
@@ -1057,6 +1236,7 @@ export type Database = {
           media_url?: string | null
           reactions?: Json | null
           reply_to_message_id?: string | null
+          sender_id?: string | null
           status?: string
           type?: string
           whatsapp_message_id?: string | null
@@ -1075,6 +1255,7 @@ export type Database = {
           media_url?: string | null
           reactions?: Json | null
           reply_to_message_id?: string | null
+          sender_id?: string | null
           status?: string
           type?: string
           whatsapp_message_id?: string | null
@@ -1444,6 +1625,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      recalculate_all_lead_scores: { Args: never; Returns: undefined }
+      recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
     }
     Enums: {
       app_role: "admin" | "gerente" | "crc"
