@@ -14,8 +14,9 @@ import { format } from "date-fns";
 
 type Stage = { id: string; name: string; color: string; position: number };
 type StageHistory = { lead_id: string; stage_id: string; entered_at: string; exited_at: string | null };
-type Lead = { id: string; name: string; phone: string | null; stage_id: string; created_at: string; score?: number; last_message_at?: string | null };
+type Lead = { id: string; name: string; phone: string | null; stage_id: string; created_at: string; score?: number; last_message_at?: string | null; assigned_to?: string | null };
 type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
+type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string };
 
 function formatDuration(ms: number): string {
   if (ms <= 0) return "—";
