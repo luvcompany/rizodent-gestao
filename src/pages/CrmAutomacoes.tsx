@@ -362,7 +362,8 @@ export default function CrmAutomacoes() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm text-foreground">Distribuição automática</div>
-                <button onClick={() => setRoundRobinOpen(true)} className="text-xs text-primary cursor-pointer hover:underline">Configurar</button>
+                <p className="text-xs text-muted-foreground max-w-xs">Distribui novos leads automaticamente entre os atendentes selecionados, usando Round Robin (alternado) ou Menor Carga.</p>
+                <button onClick={() => setRoundRobinOpen(true)} className="text-xs text-primary cursor-pointer hover:underline mt-0.5">Configurar</button>
               </div>
               <Switch checked={rrActive} onCheckedChange={async (v) => {
                 setRrActive(v);
