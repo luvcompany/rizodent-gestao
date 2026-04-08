@@ -29,6 +29,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
   const [existingTags, setExistingTags] = useState<string[]>([]);
   const [existingSources, setExistingSources] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [publishedBots, setPublishedBots] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position").then(({ data }) => {
