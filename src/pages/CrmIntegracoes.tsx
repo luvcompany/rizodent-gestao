@@ -399,6 +399,9 @@ export default function CrmIntegracoes() {
             );
           })}
         </div>
+
+        {/* Webhook Genérico */}
+        <WebhookSection />
       </div>
 
       {/* WhatsApp Config Modal */}
