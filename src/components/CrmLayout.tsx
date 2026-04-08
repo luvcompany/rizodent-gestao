@@ -18,6 +18,7 @@ const crmNavItems = [
   { to: "/crm/modelos", icon: FileText, label: "Modelos" },
   { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
   { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
+  { to: "/crm/extras", icon: FlaskConical, label: "Funções Extras" },
 ];
 
 const CrmLayout = () => {

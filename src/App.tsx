@@ -83,6 +83,7 @@ const App = () => (
               <Route path="/crm/followups" element={<CrmFollowUps />} />
               <Route path="/crm/bots" element={<CrmBots />} />
               <Route path="/crm/bots/:id" element={<CrmBotEditor />} />
+              <Route path="/crm/extras" element={<CrmExtras />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
