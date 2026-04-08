@@ -202,52 +202,25 @@ const CadastroLeads = () => {
             </div>
             <div className="space-y-2">
               <Label>Clínica</Label>
-              <Select value={clinicaIdLeads} onValueChange={(v) => { setClinicaIdLeads(v); setLeadsNovos(""); setLeadsVca1(""); setLeadsVca2(""); }}>
+              <Select value={clinicaIdLeads} onValueChange={(v) => { setClinicaIdLeads(v); setLeadsNovos(""); }}>
                 <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
                 <SelectContent>
-                  {vcaClinics.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Vitória da Conquista</SelectLabel>
-                      <SelectItem value={VCA_GROUP_VALUE}>VCA 01 + VCA 02 (dividir)</SelectItem>
-                      {vcaClinics.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-                    </SelectGroup>
-                  )}
-                  {otherClinics.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Outras Clínicas</SelectLabel>
-                      {otherClinics.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-                    </SelectGroup>
-                  )}
+                  {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {(existingIdLeads && !isVcaGroup) && (
+          {existingIdLeads && (
             <div className="rounded-lg bg-primary/10 p-3 text-sm text-primary">
               ⚠️ Já existe registro para esta data/clínica. O valor será atualizado.
             </div>
           )}
 
-          {isVcaGroup ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>{vcaClinicName(VCA_IDS[0])}</Label>
-                <Input type="number" min="0" placeholder="0" value={leadsVca1} onChange={(e) => setLeadsVca1(e.target.value)} className="bg-secondary border-border" />
-                {existingIdVca1 && <p className="text-xs text-primary">⚠️ Registro existente — será atualizado</p>}
-              </div>
-              <div className="space-y-2">
-                <Label>{vcaClinicName(VCA_IDS[1])}</Label>
-                <Input type="number" min="0" placeholder="0" value={leadsVca2} onChange={(e) => setLeadsVca2(e.target.value)} className="bg-secondary border-border" />
-                {existingIdVca2 && <p className="text-xs text-primary">⚠️ Registro existente — será atualizado</p>}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>Quantidade de Leads Novos</Label>
-              <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Quantidade de Leads Novos</Label>
+            <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
+          </div>
 
           <Button onClick={handleSaveLeads} disabled={savingLeads} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
             <Save size={18} className="mr-2" />
