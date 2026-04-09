@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { deduplicateTemplates } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
+import { executeStageAutomations } from "@/lib/automationUtils";
 import { toast } from "sonner";
 import { batchSignMediaUrls } from "@/lib/mediaUtils";
 
@@ -353,49 +354,12 @@ export function useChatConversation(leadId: string | null | undefined) {
 
     showActivityToast(`📋 Lead movido para ${toName}`);
 
-    // Execute automations for the new stage
-    try {
-      const { data: stageAutomations } = await supabase
-        .from("crm_automations")
-        .select("*")
-        .eq("stage_id", newStageId)
-        .eq("trigger_type", "on_enter")
-        .eq("is_active", true);
-
-      if (stageAutomations?.length) {
-        // Get lead phone for template sending
-        const { data: leadData } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
-        const leadPhone = leadData?.phone;
-
-        for (const auto of stageAutomations) {
-          const config = (auto.action_config || {}) as Record<string, unknown>;
-          try {
-            if (auto.action_type === "send_bot" && config.bot_id) {
-              await supabase.functions.invoke("bot-engine", {
-                body: { leadId, botId: config.bot_id, trigger: "automation" },
-              });
-            } else if (auto.action_type === "send_template" && config.template_id && leadPhone) {
-              const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", config.template_id as string).single();
-              if (tpl) {
-                await supabase.functions.invoke("send-whatsapp-message", {
-                  body: { lead_id: leadId, to: leadPhone, type: "template", template_name: tpl.name, template_language: tpl.language },
-                });
-              }
-            } else if (auto.action_type === "webhook" && config.url) {
-              fetch(config.url as string, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ lead_id: leadId, stage_id: newStageId, event: "stage_enter" }),
-              }).catch(() => {});
-            }
-          } catch (e) {
-            console.error("[useChatConversation] Automation error:", e);
-          }
-        }
-      }
-    } catch (e) {
-      console.error("[useChatConversation] Automations fetch error:", e);
-    }
+    // Execute automations for the new stage (on_enter + on_create_or_enter)
+    executeStageAutomations({
+      leadId,
+      stageId: newStageId,
+      triggerTypes: ["on_enter", "on_create_or_enter"],
+    });
 
     onSuccess?.(newStageId);
     toast.success("Etapa atualizada");
