@@ -117,7 +117,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     if (data) {
       const seen = new Map<string, AdOption>();
       for (const row of data) {
-        const key = row.ad_id || "";
+        const key = `${row.imagem_origem || "no-img"}::${row.descricao_anuncio || row.ad_id}`;
         if (!seen.has(key)) {
           seen.set(key, {
             ad_id: row.ad_id!,

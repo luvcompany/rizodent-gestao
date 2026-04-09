@@ -130,7 +130,9 @@ export default function InlineTagsEditor({
     if (data) {
       const seen = new Map<string, AdOption>();
       for (const row of data) {
-        const key = row.ad_id || "";
+        // Group by visual + description to unify same creative across ad accounts,
+        // while keeping different visuals with same description separate
+        const key = `${row.imagem_origem || "no-img"}::${row.descricao_anuncio || row.ad_id}`;
         if (!seen.has(key)) {
           seen.set(key, {
             ad_id: row.ad_id!,
