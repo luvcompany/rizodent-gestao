@@ -1225,18 +1225,19 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     try { return new URL(url).origin + new URL(url).pathname; } catch { return url; }
   };
 
-  // By ad (grouped by visual + description to merge same creative across locations)
+  // By ad (grouped by visual + description + account to differentiate same creative across accounts)
   const byAd = useMemo(() => {
-    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; links: Set<string>; sources: Set<string> }>();
+    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; accountName: string | null; links: Set<string>; sources: Set<string> }>();
     leads.forEach(l => {
       const desc = l.descricao_anuncio;
-      const adKey = `${normalizeImgUrl(l.imagem_origem || null)}::${desc || l.link_anuncio || l.nome_anuncio}`;
-      if (adKey === "no-img::undefined" || adKey === "no-img::null") return;
-      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, links: new Set(), sources: new Set() });
+      const adKey = `${normalizeImgUrl(l.imagem_origem || null)}::${desc || l.link_anuncio || l.nome_anuncio}::${l.ad_account_id || ""}`;
+      if (adKey === "no-img::undefined::" || adKey === "no-img::null::") return;
+      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, accountName: null, links: new Set(), sources: new Set() });
       const s = map.get(adKey)!;
       s.total++;
       if (!s.image && l.imagem_origem) s.image = l.imagem_origem;
       if (!s.name && l.nome_anuncio) s.name = l.nome_anuncio;
+      if (!s.accountName && l.ad_account_name) s.accountName = l.ad_account_name;
       if (l.link_anuncio) s.links.add(l.link_anuncio);
       if (l.source) s.sources.add(l.source);
       if (scheduledLeadIds.has(l.id)) s.scheduled++;
