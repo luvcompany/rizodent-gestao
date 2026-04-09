@@ -1203,7 +1203,7 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
   const byAd = useMemo(() => {
     const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; links: Set<string>; sources: Set<string> }>();
     leads.forEach(l => {
-      const desc = (l as any).descricao_anuncio;
+      const desc = l.descricao_anuncio;
       const adKey = `${normalizeImgUrl(l.imagem_origem || null)}::${desc || l.link_anuncio || l.nome_anuncio}`;
       if (adKey === "no-img::undefined" || adKey === "no-img::null") return;
       if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, links: new Set(), sources: new Set() });
