@@ -116,19 +116,20 @@ Deno.serve(async (req) => {
       });
 
       // Sync to local database
+      const metaTemplateIds = templates.map((t: any) => t.meta_template_id).filter(Boolean);
+
       for (const tmpl of templates) {
         const { data: existing } = await supabase
           .from("crm_whatsapp_templates")
           .select("id")
-          .eq("name", tmpl.name)
-          .eq("language", tmpl.language)
+          .eq("meta_template_id", tmpl.meta_template_id)
           .maybeSingle();
 
         if (existing) {
           await supabase
             .from("crm_whatsapp_templates")
             .update({
-              meta_template_id: tmpl.meta_template_id,
+              name: tmpl.name,
               status: tmpl.status,
               category: tmpl.category,
               header_type: tmpl.header_type,
@@ -145,6 +146,23 @@ Deno.serve(async (req) => {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
+        }
+      }
+
+      // Remove local templates that no longer exist on Meta
+      if (metaTemplateIds.length > 0) {
+        const { data: localTemplates } = await supabase
+          .from("crm_whatsapp_templates")
+          .select("id, meta_template_id")
+          .not("meta_template_id", "is", null);
+
+        if (localTemplates) {
+          const toDelete = localTemplates.filter(
+            (lt: any) => !metaTemplateIds.includes(lt.meta_template_id)
+          );
+          for (const d of toDelete) {
+            await supabase.from("crm_whatsapp_templates").delete().eq("id", d.id);
+          }
         }
       }
 
