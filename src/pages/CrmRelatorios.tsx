@@ -694,8 +694,10 @@ export default function CrmRelatorios() {
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 space-y-1">
-              {stageTimeData.map((s) => (
-                <div key={s.name} className="flex items-center justify-between text-xs">
+              {stageTimeData.map((s) => {
+                const stageObj = filteredStages.find(st => st.name === s.name);
+                return (
+                <div key={s.name} className="flex items-center justify-between text-xs cursor-pointer hover:bg-muted/50 rounded p-1 transition-colors" onClick={() => stageObj && drillDown({ stage_id: stageObj.id })}>
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
                     <span className="text-foreground">{s.name}</span>
@@ -705,7 +707,8 @@ export default function CrmRelatorios() {
                     <span className="font-medium text-foreground">{s.avgFormatted}</span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -731,15 +734,18 @@ export default function CrmRelatorios() {
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-2 w-full">
-                  {stageDistribution.map(s => (
-                    <div key={s.name} className="flex items-center justify-between text-sm">
+                  {stageDistribution.map(s => {
+                    const stageObj = filteredStages.find(st => st.name === s.name);
+                    return (
+                    <div key={s.name} className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/50 rounded p-1 transition-colors" onClick={() => stageObj && drillDown({ stage_id: stageObj.id })}>
                       <div className="flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
                         <span className="text-foreground">{s.name}</span>
                       </div>
                       <span className="font-semibold text-foreground">{s.value} leads</span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
