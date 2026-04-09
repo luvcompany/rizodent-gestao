@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { normalizePhone } from "@/lib/phoneUtils";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -216,9 +217,10 @@ export default function CrmKanban() {
       return;
     }
     const tagsArray = newLead.tags ? newLead.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+    const normalizedPhone = newLead.phone ? normalizePhone(newLead.phone) : null;
     const { error } = await supabase.from("crm_leads").insert({
       name: newLead.name,
-      phone: newLead.phone || null,
+      phone: normalizedPhone,
       stage_id: newLead.stage_id,
       pipeline_id: pipeline.id,
       source: newLead.source || null,
