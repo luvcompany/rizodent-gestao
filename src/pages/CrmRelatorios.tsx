@@ -1326,6 +1326,9 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
                       )}
                       <div className="min-w-0">
                         {row.name && <p className="text-sm font-medium truncate">{row.name}</p>}
+                        {row.accountName && (
+                          <p className="text-xs text-primary/70">Conta: {row.accountName}</p>
+                        )}
                         {row.linksArr.length > 0 && (
                           <div className="flex flex-col gap-0.5">
                             {row.linksArr.slice(0, 3).map((link, i) => (
