@@ -398,6 +398,15 @@ export default function CrmConversas() {
         {leftPanelVisible && (
         <><ResizablePanel defaultSize={24} minSize={20} maxSize={28} className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-hidden">
+              {/* URL filter banner */}
+              {(urlGhost || urlAppointmentStatus || urlInactiveDays) && (
+                <div className="flex items-center gap-1 mb-2 flex-wrap">
+                  {urlGhost && <Badge variant="destructive" className="text-[10px]">Leads Fantasma</Badge>}
+                  {urlAppointmentStatus && <Badge variant="secondary" className="text-[10px]">Agendamento: {urlAppointmentStatus}</Badge>}
+                  {urlInactiveDays && <Badge variant="secondary" className="text-[10px]">Inativos +{urlInactiveDays}d</Badge>}
+                  <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={() => setSearchParams({})}>✕ Limpar</Button>
+                </div>
+              )}
             <div className="flex-shrink-0 px-4 py-3 border-b border-border">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-bold text-foreground text-sm">Conversas</h2>
