@@ -228,6 +228,7 @@ export default function CrmKanban() {
       value: newLead.value ? parseFloat(newLead.value) : 0,
       notes: newLead.notes || null,
       position: leads.filter(l => l.stage_id === newLead.stage_id).length,
+      assigned_to: user?.id || null,
     });
     if (error) { toast.error("Erro ao criar lead"); return; }
     toast.success("Lead criado com sucesso");
