@@ -374,6 +374,24 @@ Deno.serve(async (req) => {
                       adHeadline = creative.object_story_spec?.link_data?.name || null;
                     }
                   }
+                  // Extract account_id from ad data
+                  if (adData.account_id) {
+                    adAccountId = adData.account_id;
+                    // Fetch account name
+                    try {
+                      const acctRes = await fetch(
+                        `https://graph.facebook.com/v25.0/act_${adData.account_id}?fields=name&access_token=${metaToken}`
+                      );
+                      if (acctRes.ok) {
+                        const acctData = await acctRes.json();
+                        adAccountName = acctData.name || null;
+                        console.log(`[AD-ENRICHMENT] Ad account: ${adAccountId} => ${adAccountName}`);
+                      } else {
+                        await acctRes.text();
+                      }
+                    } catch (_) { /* skip */ }
+                  }
+
                   console.log(`[AD-ENRICHMENT] After creative: image=${adImageUrl}, link=${adSourceUrl}`);
                 } else {
                   const errText = await adRes.text();
@@ -497,6 +515,8 @@ Deno.serve(async (req) => {
                     if (adImageUrl) insertData.imagem_origem = adImageUrl;
                     if (adSourceUrl) insertData.link_anuncio = adSourceUrl;
                     if (adSourceId) insertData.ad_id = adSourceId;
+                    if (adAccountId) insertData.ad_account_id = adAccountId;
+                    if (adAccountName) insertData.ad_account_name = adAccountName;
                   }
 
                   // Round-robin / least-load assignment
@@ -531,6 +551,8 @@ Deno.serve(async (req) => {
                 if (adImageUrl) updates.imagem_origem = adImageUrl;
                 if (adSourceUrl) updates.link_anuncio = adSourceUrl;
                 if (adSourceId) updates.ad_id = adSourceId;
+                if (adAccountId) updates.ad_account_id = adAccountId;
+                if (adAccountName) updates.ad_account_name = adAccountName;
                 if (!lead.source || lead.source === "whatsapp") updates.source = "facebook_ad";
               }
               if (Object.keys(updates).length > 0) {
