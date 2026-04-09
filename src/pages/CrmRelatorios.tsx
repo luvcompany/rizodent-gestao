@@ -94,7 +94,7 @@ export default function CrmRelatorios() {
         supabase.from("crm_pipelines").select("id, name, color").order("created_at"),
         supabase.from("crm_stages").select("id, name, color, position, pipeline_id").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio" as any),
+        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio, ad_account_id, ad_account_name" as any),
         supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id, ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url"),
         supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
@@ -1251,7 +1251,24 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
-  // By city
+  // By ad account (city-level grouping)
+  const byAccount = useMemo(() => {
+    const map = new Map<string, { total: number; scheduled: number; contracted: number }>();
+    leads.forEach(l => {
+      const accountName = l.ad_account_name || null;
+      if (!accountName) return;
+      if (!map.has(accountName)) map.set(accountName, { total: 0, scheduled: 0, contracted: 0 });
+      const s = map.get(accountName)!;
+      s.total++;
+      if (scheduledLeadIds.has(l.id)) s.scheduled++;
+      if (contractedLeadIds.has(l.id)) s.contracted++;
+    });
+    return Array.from(map.entries()).map(([name, v]) => ({
+      name, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
+    })).sort((a, b) => b.total - a.total);
+  }, [leads, scheduledLeadIds, contractedLeadIds]);
+
+  // By city (from pacientes)
   const byCidade = useMemo(() => {
     const pacienteMap = new Map(pacientes.map(p => [p.id, p.cidade]));
     const map = new Map<string, { total: number; scheduled: number; contracted: number }>();
@@ -1368,6 +1385,7 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
   return (
     <>
       {renderTable(bySource, "Por Origem", "source")}
+      {byAccount.length > 0 && renderTable(byAccount, "Por Conta de Anúncio", "ad_account")}
       {renderAdTable()}
       {renderTable(byCidade, "Por Cidade", "city")}
     </>
