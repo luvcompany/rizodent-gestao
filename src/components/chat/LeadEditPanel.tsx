@@ -106,18 +106,23 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     }
   }, [editOpen, lead]);
 
+  const normalizeImgUrl = (url: string | null) => {
+    if (!url) return "no-img";
+    try { return new URL(url).origin + new URL(url).pathname; } catch { return url; }
+  };
+
   const loadAds = async () => {
     setLoadingAds(true);
     const { data } = await supabase
       .from("crm_leads")
       .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio")
       .not("ad_id", "is", null)
-      .limit(500);
+      .limit(1000);
 
     if (data) {
       const seen = new Map<string, AdOption>();
       for (const row of data) {
-        const key = `${row.imagem_origem || "no-img"}::${row.descricao_anuncio || row.ad_id}`;
+        const key = `${normalizeImgUrl(row.imagem_origem)}::${row.descricao_anuncio || row.ad_id}`;
         if (!seen.has(key)) {
           seen.set(key, {
             ad_id: row.ad_id!,
