@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
@@ -38,6 +38,7 @@ export default function CrmModelos() {
   const [submitting, setSubmitting] = useState(false);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedIntegration, setSelectedIntegration] = useState<string>("");
+  const [syncing, setSyncing] = useState(false);
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
@@ -83,6 +84,24 @@ export default function CrmModelos() {
   }, [selectedIntegration]);
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
+
+  const handleSync = async () => {
+    if (!selectedIntegration || syncing) return;
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", {
+        body: { action: "list", integration_key: selectedIntegration },
+      });
+      if (error) throw error;
+      const { data: refreshed } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
+      if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
+      toast.success(`Sincronizado! ${data?.count || 0} modelos encontrados na Meta.`);
+    } catch (e: any) {
+      toast.error("Erro ao sincronizar: " + (e?.message || String(e)));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const filtered = templates.filter(t => {
     if (tab === "aprovados" && t.status !== "APPROVED") return false;
@@ -294,9 +313,15 @@ export default function CrmModelos() {
             </Select>
           )}
         </div>
-        <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
-          <Plus size={14} className="mr-1" /> Novo Modelo
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing}>
+            <RefreshCw size={14} className={`mr-1 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Sincronizar"}
+          </Button>
+          <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
+            <Plus size={14} className="mr-1" /> Novo Modelo
+          </Button>
+        </div>
       </div>
 
       {/* Tabs + Filters - FIXED */}
