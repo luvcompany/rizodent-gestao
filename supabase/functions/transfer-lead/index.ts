@@ -36,10 +36,9 @@ Deno.serve(async (req) => {
       return json({ error: "leadId and newUserId are required" }, 400);
     }
 
-    const [{ data: lead }, { data: roleRow }, { data: profiles }] = await Promise.all([
+    const [{ data: lead }, { data: roleRow }] = await Promise.all([
       supabase.from("crm_leads").select("id, assigned_to").eq("id", leadId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
-      supabase.from("profiles").select("id, nome").in("id", [user.id, newUserId]),
     ]);
 
     if (!lead) return json({ error: "Lead not found" }, 404);
@@ -49,6 +48,10 @@ Deno.serve(async (req) => {
     if (!canTransfer) return json({ error: "Forbidden" }, 403);
 
     const oldUserId = lead.assigned_to;
+    // Fetch profiles for all relevant users (old owner, requester, new owner)
+    const profileIds = [user.id, newUserId, oldUserId].filter(Boolean) as string[];
+    const { data: profiles } = await supabase.from("profiles").select("id, nome").in("id", profileIds);
+
     const oldUserName = profiles?.find((p) => p.id === oldUserId)?.nome || "Não atribuído";
     const newUserName = profiles?.find((p) => p.id === newUserId)?.nome || "Responsável";
 
