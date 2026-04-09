@@ -377,6 +377,8 @@ export default function CrmConversa() {
           nomeAnuncio={lead.nome_anuncio}
           descricaoAnuncio={lead.descricao_anuncio}
           linkAnuncio={lead.link_anuncio}
+          adAccountId={(lead as any).ad_account_id}
+          adAccountName={(lead as any).ad_account_name}
           onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
         />
 

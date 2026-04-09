@@ -15,6 +15,8 @@ type AdOption = {
   nome_anuncio: string | null;
   descricao_anuncio: string | null;
   link_anuncio: string | null;
+  ad_account_id: string | null;
+  ad_account_name: string | null;
 };
 
 type Props = {
@@ -26,6 +28,8 @@ type Props = {
   nomeAnuncio?: string | null;
   descricaoAnuncio?: string | null;
   linkAnuncio?: string | null;
+  adAccountId?: string | null;
+  adAccountName?: string | null;
   onUpdated: (updates: Record<string, any>) => void;
 };
 
@@ -49,7 +53,7 @@ function sourceToDropdown(source: string | null): string {
 }
 
 export default function InlineTagsEditor({
-  leadId, tags, source, adId, imagemOrigem, nomeAnuncio, descricaoAnuncio, linkAnuncio, onUpdated,
+  leadId, tags, source, adId, imagemOrigem, nomeAnuncio, descricaoAnuncio, linkAnuncio, adAccountId, adAccountName, onUpdated,
 }: Props) {
   const [newTag, setNewTag] = useState("");
   const [customSource, setCustomSource] = useState("");
@@ -131,13 +135,13 @@ export default function InlineTagsEditor({
     // 1) From crm_leads
     const { data: leadsData } = await supabase
       .from("crm_leads")
-      .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio")
+      .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio, ad_account_id, ad_account_name")
       .not("ad_id", "is", null)
       .limit(1000);
 
     if (leadsData) {
       for (const row of leadsData) {
-        const key = `${normalizeImgUrl(row.imagem_origem)}::${row.descricao_anuncio || row.ad_id}`;
+        const key = `${normalizeImgUrl(row.imagem_origem)}::${row.descricao_anuncio || row.ad_id}::${row.ad_account_id || ""}`;
         if (!seen.has(key)) {
           seen.set(key, {
             ad_id: row.ad_id!,
@@ -145,6 +149,8 @@ export default function InlineTagsEditor({
             nome_anuncio: row.nome_anuncio,
             descricao_anuncio: row.descricao_anuncio,
             link_anuncio: row.link_anuncio,
+            ad_account_id: (row as any).ad_account_id || null,
+            ad_account_name: (row as any).ad_account_name || null,
           });
         }
       }
@@ -153,13 +159,13 @@ export default function InlineTagsEditor({
     // 2) From messages (captures ads not yet linked to leads)
     const { data: msgData } = await supabase
       .from("messages")
-      .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url")
+      .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name")
       .not("ad_source_id", "is", null)
       .limit(1000);
 
     if (msgData) {
       for (const row of msgData) {
-        const key = `${normalizeImgUrl(row.ad_image_url)}::${row.ad_body || row.ad_source_id}`;
+        const key = `${normalizeImgUrl(row.ad_image_url)}::${row.ad_body || row.ad_source_id}::${(row as any).ad_account_id || ""}`;
         if (!seen.has(key)) {
           seen.set(key, {
             ad_id: row.ad_source_id!,
@@ -167,6 +173,8 @@ export default function InlineTagsEditor({
             nome_anuncio: row.ad_headline,
             descricao_anuncio: row.ad_body,
             link_anuncio: row.ad_source_url,
+            ad_account_id: (row as any).ad_account_id || null,
+            ad_account_name: (row as any).ad_account_name || null,
           });
         }
       }
@@ -190,6 +198,8 @@ export default function InlineTagsEditor({
       nome_anuncio: ad.nome_anuncio,
       descricao_anuncio: ad.descricao_anuncio,
       link_anuncio: ad.link_anuncio,
+      ad_account_id: ad.ad_account_id,
+      ad_account_name: ad.ad_account_name,
     });
     setShowAdSelector(false);
   };
@@ -201,6 +211,8 @@ export default function InlineTagsEditor({
       nome_anuncio: null,
       descricao_anuncio: null,
       link_anuncio: null,
+      ad_account_id: null,
+      ad_account_name: null,
     });
   };
 
@@ -249,6 +261,9 @@ export default function InlineTagsEditor({
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate">{nomeAnuncio || "Anúncio vinculado"}</p>
+                  {adAccountName && (
+                    <p className="text-[10px] text-muted-foreground">Conta: {adAccountName}</p>
+                  )}
                   {descricaoAnuncio && (
                     <p className="text-[10px] text-muted-foreground line-clamp-2">{descricaoAnuncio}</p>
                   )}
@@ -292,6 +307,9 @@ export default function InlineTagsEditor({
                           )}
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium truncate">{ad.nome_anuncio || "Sem nome"}</p>
+                            {ad.ad_account_name && (
+                              <p className="text-[10px] text-primary/70 truncate">Conta: {ad.ad_account_name}</p>
+                            )}
                             {ad.descricao_anuncio && (
                               <p className="text-[10px] text-muted-foreground line-clamp-1">{ad.descricao_anuncio}</p>
                             )}

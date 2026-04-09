@@ -332,13 +332,16 @@ Deno.serve(async (req) => {
             let adSourceUrl = referral?.source_url || null;
             let adSourceId = referral?.source_id || null;
 
+            let adAccountId: string | null = null;
+            let adAccountName: string | null = null;
+
             // Enrich ad data from Meta Graph API if we have an ad ID but missing image/link
             if (referral && adSourceId) {
               const metaToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
               try {
                 console.log(`[AD-ENRICHMENT] Fetching ad creative for ad_id: ${adSourceId}`);
                 const adRes = await fetch(
-                  `https://graph.facebook.com/v25.0/${adSourceId}?fields=id,name,permalink_url,creative{thumbnail_url,image_url,object_story_spec}&access_token=${metaToken}`
+                  `https://graph.facebook.com/v25.0/${adSourceId}?fields=id,name,permalink_url,account_id,creative{thumbnail_url,image_url,object_story_spec}&access_token=${metaToken}`
                 );
                 if (adRes.ok) {
                   const adData = await adRes.json();
@@ -371,6 +374,24 @@ Deno.serve(async (req) => {
                       adHeadline = creative.object_story_spec?.link_data?.name || null;
                     }
                   }
+                  // Extract account_id from ad data
+                  if (adData.account_id) {
+                    adAccountId = adData.account_id;
+                    // Fetch account name
+                    try {
+                      const acctRes = await fetch(
+                        `https://graph.facebook.com/v25.0/act_${adData.account_id}?fields=name&access_token=${metaToken}`
+                      );
+                      if (acctRes.ok) {
+                        const acctData = await acctRes.json();
+                        adAccountName = acctData.name || null;
+                        console.log(`[AD-ENRICHMENT] Ad account: ${adAccountId} => ${adAccountName}`);
+                      } else {
+                        await acctRes.text();
+                      }
+                    } catch (_) { /* skip */ }
+                  }
+
                   console.log(`[AD-ENRICHMENT] After creative: image=${adImageUrl}, link=${adSourceUrl}`);
                 } else {
                   const errText = await adRes.text();
@@ -494,6 +515,8 @@ Deno.serve(async (req) => {
                     if (adImageUrl) insertData.imagem_origem = adImageUrl;
                     if (adSourceUrl) insertData.link_anuncio = adSourceUrl;
                     if (adSourceId) insertData.ad_id = adSourceId;
+                    if (adAccountId) insertData.ad_account_id = adAccountId;
+                    if (adAccountName) insertData.ad_account_name = adAccountName;
                   }
 
                   // Round-robin / least-load assignment
@@ -528,6 +551,8 @@ Deno.serve(async (req) => {
                 if (adImageUrl) updates.imagem_origem = adImageUrl;
                 if (adSourceUrl) updates.link_anuncio = adSourceUrl;
                 if (adSourceId) updates.ad_id = adSourceId;
+                if (adAccountId) updates.ad_account_id = adAccountId;
+                if (adAccountName) updates.ad_account_name = adAccountName;
                 if (!lead.source || lead.source === "whatsapp") updates.source = "facebook_ad";
               }
               if (Object.keys(updates).length > 0) {
@@ -563,6 +588,8 @@ Deno.serve(async (req) => {
                 ad_image_url: adImageUrl || null,
                 ad_source_url: adSourceUrl || null,
                 ad_source_id: adSourceId || null,
+                ad_account_id: adAccountId || null,
+                ad_account_name: adAccountName || null,
               };
               const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
 
