@@ -759,7 +759,45 @@ export default function CrmRelatorios() {
       <LeadScoreSection leads={filteredLeads} stages={filteredStages} />
 
       {/* Attendant Metrics Section */}
-      <AttendantMetricsSection messages={filteredMessages} leads={filteredLeads} allLeads={allLeadsForPipeline} appointments={filteredAppointments} stages={filteredStages} history={filteredHistory} />
+      <AttendantMetricsSection messages={filteredMessages} leads={filteredLeads} allLeads={allLeadsForPipeline} appointments={filteredAppointments} stages={filteredStages} history={filteredHistory} onDrillDown={drillDown} />
+
+      {/* ═══════════════════════════════════════
+          FLUXO ENTRE FUNIS
+          ═══════════════════════════════════════ */}
+      {crossFunnelFlow && crossFunnelFlow.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ArrowRight size={16} /> Fluxo entre Funis
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {crossFunnelFlow.map((flow, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg cursor-pointer hover:bg-muted/60 transition-colors"
+                  onClick={() => {
+                    const toStages = stages.filter(s => s.pipeline_id === flow.to.id);
+                    if (toStages.length > 0) drillDown({ pipeline: flow.to.id });
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: flow.from.color || "hsl(var(--primary))" }} />
+                    <span className="text-sm font-medium text-foreground">{flow.from.name}</span>
+                  </div>
+                  <ArrowRight size={16} className="text-muted-foreground" />
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: flow.to.color || "hsl(var(--primary))" }} />
+                    <span className="text-sm font-medium text-foreground">{flow.to.name}</span>
+                  </div>
+                  <Badge variant="secondary" className="ml-auto">{flow.count} leads</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Inactive Leads */}
       <Card>
