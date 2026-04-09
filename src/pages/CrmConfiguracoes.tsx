@@ -71,8 +71,9 @@ function ImportTab() {
 
     for (const row of rows) {
       const name = row[nameIdx]?.trim();
-      const phone = row[phoneIdx]?.trim().replace(/\D/g, "");
-      if (!name || !phone) { skipped++; continue; }
+      const rawPhone = row[phoneIdx]?.trim();
+      if (!name || !rawPhone) { skipped++; continue; }
+      const phone = normalizePhone(rawPhone);
 
       const { data: existing } = await supabase.from("crm_leads").select("id").eq("phone", phone).limit(1);
       if (existing && existing.length > 0) { skipped++; continue; }
