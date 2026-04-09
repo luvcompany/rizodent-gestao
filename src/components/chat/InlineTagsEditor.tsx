@@ -15,6 +15,8 @@ type AdOption = {
   nome_anuncio: string | null;
   descricao_anuncio: string | null;
   link_anuncio: string | null;
+  ad_account_id: string | null;
+  ad_account_name: string | null;
 };
 
 type Props = {
@@ -26,6 +28,8 @@ type Props = {
   nomeAnuncio?: string | null;
   descricaoAnuncio?: string | null;
   linkAnuncio?: string | null;
+  adAccountId?: string | null;
+  adAccountName?: string | null;
   onUpdated: (updates: Record<string, any>) => void;
 };
 
