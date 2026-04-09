@@ -419,9 +419,9 @@ const Relatorios = () => {
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={[{ name: "Resumo", orcado: contratadoVsPago.totalOrcado, contratado: contratadoVsPago.totalContratado }]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" />
-                <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="name" stroke={ct.axisColor} />
+                <YAxis stroke={ct.axisColor} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
                 <Bar dataKey="orcado" fill="hsl(25,100%,50%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                 <Bar dataKey="contratado" fill="hsl(120,50%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
@@ -509,9 +509,9 @@ const Relatorios = () => {
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={dailyReport.slice(0, 14).reverse()} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="date" stroke="hsl(0,0%,64%)" fontSize={10} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="date" stroke={ct.axisColor} fontSize={10} />
+                <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
                 <Bar dataKey="faturamento" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
@@ -545,9 +545,9 @@ const Relatorios = () => {
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={weeklyReport.slice(0, 8).reverse()} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="week" stroke="hsl(0,0%,64%)" fontSize={10} />
-                <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="week" stroke={ct.axisColor} fontSize={10} />
+                <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
                 <Bar dataKey="faturamento" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
@@ -591,9 +591,9 @@ const Relatorios = () => {
                   { name: "Não Contrataram", value: totals.naoContrataram },
                 ];
               })()} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} />
-                <YAxis stroke="hsl(0,0%,64%)" allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} />
+                <YAxis stroke={ct.axisColor} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} />
                 <Bar dataKey="value" fill="hsl(25,100%,50%)" name="Quantidade" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
@@ -652,9 +652,9 @@ const Relatorios = () => {
                 { name: "A Receber", value: predictability.aReceber },
                 { name: "Projeção", value: predictability.projecaoMensal },
               ]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="name" stroke="hsl(0,0%,64%)" fontSize={11} />
-                <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} />
+                <YAxis stroke={ct.axisColor} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
                 <Bar dataKey="value" fill="hsl(25,100%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
@@ -714,9 +714,9 @@ const Relatorios = () => {
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={procedimentoReport.slice(0, 10)} layout="vertical" margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis type="number" stroke="hsl(0,0%,64%)" allowDecimals={false} />
-                <YAxis type="category" dataKey="procedimento" stroke="hsl(0,0%,64%)" fontSize={10} width={120} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis type="number" stroke={ct.axisColor} allowDecimals={false} />
+                <YAxis type="category" dataKey="procedimento" stroke={ct.axisColor} fontSize={10} width={120} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Contratações"]} />
                 <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Contratações" radius={[0, 6, 6, 0]} activeBar={activeBarStyle} />
               </BarChart>
@@ -749,9 +749,9 @@ const Relatorios = () => {
           <CardContent className="space-y-4">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={rankingPacientes.slice(0, 10)} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="nome" stroke="hsl(0,0%,64%)" fontSize={9} angle={-20} textAnchor="end" height={50} />
-                <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="nome" stroke={ct.axisColor} fontSize={9} angle={-20} textAnchor="end" height={50} />
+                <YAxis stroke={ct.axisColor} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
                 <Bar dataKey="orcado" fill="hsl(25,100%,50%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                 <Bar dataKey="contratado" fill="hsl(120,50%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
@@ -790,9 +790,9 @@ const Relatorios = () => {
           <CardContent className="space-y-4">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={especialidadeReport} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                <XAxis dataKey="especialidade" stroke="hsl(0,0%,64%)" fontSize={11} />
-                <YAxis stroke="hsl(0,0%,64%)" allowDecimals={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="especialidade" stroke={ct.axisColor} fontSize={11} />
+                <YAxis stroke={ct.axisColor} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Tratamentos"]} />
                 <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Tratamentos" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
@@ -831,9 +831,9 @@ const Relatorios = () => {
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📍 Por Origem</h3>
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={origemReport.origens} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                  <XAxis dataKey="label" stroke="hsl(0,0%,64%)" fontSize={11} />
-                  <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                  <XAxis dataKey="label" stroke={ct.axisColor} fontSize={11} />
+                  <YAxis stroke={ct.axisColor} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
                   <Bar dataKey="orcado" fill="hsl(25,100%,50%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                   <Bar dataKey="contratado" fill="hsl(120,50%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
@@ -862,9 +862,9 @@ const Relatorios = () => {
                 <h3 className="text-sm font-semibold text-muted-foreground mb-3">📢 Por Anúncio</h3>
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={origemReport.anuncios} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                    <XAxis dataKey="label" stroke="hsl(0,0%,64%)" fontSize={11} />
-                    <YAxis stroke="hsl(0,0%,64%)" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                    <XAxis dataKey="label" stroke={ct.axisColor} fontSize={11} />
+                    <YAxis stroke={ct.axisColor} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                     <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
                     <Bar dataKey="orcado" fill="hsl(25,100%,50%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                     <Bar dataKey="contratado" fill="hsl(120,50%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
@@ -948,9 +948,9 @@ const Relatorios = () => {
                 <TabsContent value="clinica">
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={pgClinicaData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                      <XAxis dataKey="clinica" stroke="hsl(0,0%,64%)" fontSize={11} />
-                      <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                      <XAxis dataKey="clinica" stroke={ct.axisColor} fontSize={11} />
+                      <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number, name: string) => [name === "total" ? formatCurrency(v) : v, name === "total" ? "Valor" : "Quantidade"]} />
                       <Bar dataKey="total" fill="hsl(25,100%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                     </BarChart>
@@ -974,9 +974,9 @@ const Relatorios = () => {
                 <TabsContent value="forma">
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={pgFormaData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,20%)" />
-                      <XAxis dataKey="forma" stroke="hsl(0,0%,64%)" fontSize={11} />
-                      <YAxis stroke="hsl(0,0%,64%)" fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                      <XAxis dataKey="forma" stroke={ct.axisColor} fontSize={11} />
+                      <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number, name: string) => [name === "total" ? formatCurrency(v) : v, name === "total" ? "Valor" : "Quantidade"]} />
                       <Bar dataKey="total" fill="hsl(35,100%,55%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                     </BarChart>
