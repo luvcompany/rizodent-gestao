@@ -332,13 +332,16 @@ Deno.serve(async (req) => {
             let adSourceUrl = referral?.source_url || null;
             let adSourceId = referral?.source_id || null;
 
+            let adAccountId: string | null = null;
+            let adAccountName: string | null = null;
+
             // Enrich ad data from Meta Graph API if we have an ad ID but missing image/link
             if (referral && adSourceId) {
               const metaToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
               try {
                 console.log(`[AD-ENRICHMENT] Fetching ad creative for ad_id: ${adSourceId}`);
                 const adRes = await fetch(
-                  `https://graph.facebook.com/v25.0/${adSourceId}?fields=id,name,permalink_url,creative{thumbnail_url,image_url,object_story_spec}&access_token=${metaToken}`
+                  `https://graph.facebook.com/v25.0/${adSourceId}?fields=id,name,permalink_url,account_id,creative{thumbnail_url,image_url,object_story_spec}&access_token=${metaToken}`
                 );
                 if (adRes.ok) {
                   const adData = await adRes.json();
