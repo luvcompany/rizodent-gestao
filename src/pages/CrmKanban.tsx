@@ -89,6 +89,16 @@ export default function CrmKanban() {
     name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: ""
   });
 
+  // Duplicate lead detection state
+  const [duplicateInfo, setDuplicateInfo] = useState<{
+    existingLeadId: string;
+    existingLeadName: string;
+    ownerName: string;
+    ownerId: string | null;
+    phone: string;
+  } | null>(null);
+  const [transferring, setTransferring] = useState(false);
+
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
     setLoading(true);
     const [pipelinesRes, profilesRes] = await Promise.all([
