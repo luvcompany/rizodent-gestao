@@ -89,6 +89,16 @@ export default function CrmKanban() {
     name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: ""
   });
 
+  // Duplicate lead detection state
+  const [duplicateInfo, setDuplicateInfo] = useState<{
+    existingLeadId: string;
+    existingLeadName: string;
+    ownerName: string;
+    ownerId: string | null;
+    phone: string;
+  } | null>(null);
+  const [transferring, setTransferring] = useState(false);
+
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
     setLoading(true);
     const [pipelinesRes, profilesRes] = await Promise.all([
@@ -216,8 +226,36 @@ export default function CrmKanban() {
       toast.error("Nome e etapa são obrigatórios");
       return;
     }
-    const tagsArray = newLead.tags ? newLead.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
     const normalizedPhone = newLead.phone ? normalizePhone(newLead.phone) : null;
+
+    // Check for duplicate phone
+    if (normalizedPhone) {
+      const { data: existing } = await supabase
+        .from("crm_leads")
+        .select("id, name, assigned_to")
+        .eq("phone", normalizedPhone)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        const dup = existing[0];
+        const ownerProfile = profiles.find(p => p.id === dup.assigned_to);
+        setDuplicateInfo({
+          existingLeadId: dup.id,
+          existingLeadName: dup.name,
+          ownerName: ownerProfile?.nome || "Sem responsável",
+          ownerId: dup.assigned_to,
+          phone: normalizedPhone,
+        });
+        return;
+      }
+    }
+
+    await insertNewLead(normalizedPhone);
+  };
+
+  const insertNewLead = async (normalizedPhone: string | null) => {
+    if (!pipeline) return;
+    const tagsArray = newLead.tags ? newLead.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
     const { error } = await supabase.from("crm_leads").insert({
       name: newLead.name,
       phone: normalizedPhone,
@@ -235,6 +273,26 @@ export default function CrmKanban() {
     setNewLeadOpen(false);
     setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "" });
     fetchData();
+  };
+
+  const handleTransferDuplicate = async () => {
+    if (!duplicateInfo || !user) return;
+    setTransferring(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("transfer-lead", {
+        body: { leadId: duplicateInfo.existingLeadId, newUserId: user.id },
+      });
+      if (error) throw error;
+      toast.success(`Lead "${duplicateInfo.existingLeadName}" transferido para você com todo o histórico!`);
+      setDuplicateInfo(null);
+      setNewLeadOpen(false);
+      setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "" });
+      fetchData();
+    } catch (err: any) {
+      toast.error("Erro ao transferir: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setTransferring(false);
+    }
   };
 
   const handleAddStage = async () => {
@@ -643,7 +701,56 @@ export default function CrmKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* New Stage Modal */}
+      {/* Duplicate Lead Modal */}
+      <Dialog open={!!duplicateInfo} onOpenChange={(open) => { if (!open) setDuplicateInfo(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle size={18} className="text-yellow-500" /> Lead Já Existente</DialogTitle></DialogHeader>
+          {duplicateInfo && (
+            <div className="space-y-4">
+              <div className="bg-secondary rounded-lg p-4 space-y-2">
+                <p className="text-sm">
+                  Já existe um lead com o telefone <strong>{duplicateInfo.phone}</strong>:
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Users size={14} className="text-primary" />
+                  <span className="text-sm font-medium">{duplicateInfo.existingLeadName}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Responsável: <strong>{duplicateInfo.ownerName}</strong>
+                </p>
+              </div>
+
+              {duplicateInfo.ownerId !== user?.id ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Deseja solicitar a transferência deste lead para você? Todo o histórico de conversas será mantido.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setDuplicateInfo(null)}>
+                      Cancelar
+                    </Button>
+                    <Button className="flex-1" onClick={handleTransferDuplicate} disabled={transferring}>
+                      <RefreshCw size={14} className={`mr-2 ${transferring ? "animate-spin" : ""}`} />
+                      {transferring ? "Transferindo..." : "Transferir para mim"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Este lead já está atribuído a você.
+                  </p>
+                  <Button variant="outline" className="w-full" onClick={() => setDuplicateInfo(null)}>
+                    Fechar
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+
       <Dialog open={newStageOpen} onOpenChange={(open) => { setNewStageOpen(open); if (!open) { setNewStageInsertIdx(null); setUseCustomColor(false); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Nova Etapa</DialogTitle></DialogHeader>
