@@ -52,7 +52,7 @@ const AppLayout = () => {
         }`}
       >
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
-          <img src={logo} alt="RizoDent" className="h-7 object-contain invert" />
+          <img src={logo} alt="RizoDent" className={`h-7 object-contain ${theme === 'dark' ? 'invert' : ''}`} />
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}
