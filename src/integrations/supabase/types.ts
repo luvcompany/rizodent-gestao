@@ -758,6 +758,8 @@ export type Database = {
       }
       crm_leads: {
         Row: {
+          ad_account_id: string | null
+          ad_account_name: string | null
           ad_id: string | null
           assigned_to: string | null
           automation_paused: boolean | null
@@ -790,6 +792,8 @@ export type Database = {
           value: number | null
         }
         Insert: {
+          ad_account_id?: string | null
+          ad_account_name?: string | null
           ad_id?: string | null
           assigned_to?: string | null
           automation_paused?: boolean | null
@@ -822,6 +826,8 @@ export type Database = {
           value?: number | null
         }
         Update: {
+          ad_account_id?: string | null
+          ad_account_name?: string | null
           ad_id?: string | null
           assigned_to?: string | null
           automation_paused?: boolean | null
@@ -1258,6 +1264,8 @@ export type Database = {
       }
       messages: {
         Row: {
+          ad_account_id: string | null
+          ad_account_name: string | null
           ad_body: string | null
           ad_headline: string | null
           ad_image_url: string | null
@@ -1277,6 +1285,8 @@ export type Database = {
           whatsapp_message_id: string | null
         }
         Insert: {
+          ad_account_id?: string | null
+          ad_account_name?: string | null
           ad_body?: string | null
           ad_headline?: string | null
           ad_image_url?: string | null
@@ -1296,6 +1306,8 @@ export type Database = {
           whatsapp_message_id?: string | null
         }
         Update: {
+          ad_account_id?: string | null
+          ad_account_name?: string | null
           ad_body?: string | null
           ad_headline?: string | null
           ad_image_url?: string | null
