@@ -313,9 +313,15 @@ export default function CrmModelos() {
             </Select>
           )}
         </div>
-        <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
-          <Plus size={14} className="mr-1" /> Novo Modelo
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing}>
+            <RefreshCw size={14} className={`mr-1 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Sincronizando..." : "Sincronizar"}
+          </Button>
+          <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
+            <Plus size={14} className="mr-1" /> Novo Modelo
+          </Button>
+        </div>
       </div>
 
       {/* Tabs + Filters - FIXED */}
