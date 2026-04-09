@@ -85,6 +85,24 @@ export default function CrmModelos() {
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
+  const handleSync = async () => {
+    if (!selectedIntegration || syncing) return;
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", {
+        body: { action: "list", integration_key: selectedIntegration },
+      });
+      if (error) throw error;
+      const { data: refreshed } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
+      if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
+      toast.success(`Sincronizado! ${data?.count || 0} modelos encontrados na Meta.`);
+    } catch (e: any) {
+      toast.error("Erro ao sincronizar: " + (e?.message || String(e)));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const filtered = templates.filter(t => {
     if (tab === "aprovados" && t.status !== "APPROVED") return false;
     if (tab === "pendentes" && t.status !== "PENDING" && t.status !== "REJECTED") return false;
