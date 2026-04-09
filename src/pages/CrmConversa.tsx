@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { cleanTemplateName } from "@/lib/templateUtils";
 
 import ChatInput from "@/components/chat/ChatInput";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
@@ -473,7 +474,7 @@ export default function CrmConversa() {
                 onClick={() => handleSendTemplate(t)}
                 className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/30 bg-secondary/50 hover:bg-secondary transition-colors"
               >
-                <div className="font-medium text-sm text-foreground">{t.name}</div>
+                <div className="font-medium text-sm text-foreground">{cleanTemplateName(t.name)}</div>
                 <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{t.body_text}</div>
               </button>
             ))}
