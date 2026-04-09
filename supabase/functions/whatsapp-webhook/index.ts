@@ -526,12 +526,24 @@ Deno.serve(async (req) => {
                 console.log(`[WEBHOOK] Mensagem salva: ${JSON.stringify(savedMsg)}`);
               }
 
-              await supabase.from("crm_leads").update({
+              // Build update payload — set first_inbound_at only if not already set
+              const leadUpdate: any = {
                 last_message: content || `[${msgType}]`,
                 last_message_at: new Date().toISOString(),
                 last_inbound_at: new Date().toISOString(),
                 follow_up_count: 0,
-              }).eq("id", lead.id);
+              };
+              // Check if first_inbound_at needs to be set (first ever inbound msg)
+              const { data: currentLead } = await supabase
+                .from("crm_leads")
+                .select("first_inbound_at")
+                .eq("id", lead.id)
+                .single();
+              if (!currentLead?.first_inbound_at) {
+                leadUpdate.first_inbound_at = new Date().toISOString();
+                console.log(`[WEBHOOK] Setting first_inbound_at for lead ${lead.id}`);
+              }
+              await supabase.from("crm_leads").update(leadUpdate).eq("id", lead.id);
 
               console.log(`[WEBHOOK] Message received from ${from}, lead ${lead.id}, type: ${msgType}, media_url: ${mediaUrl}`);
 

@@ -709,6 +709,7 @@ export type Database = {
           changed_by: string | null
           entered_at: string
           exited_at: string | null
+          from_stage_id: string | null
           id: string
           lead_id: string
           stage_id: string
@@ -717,6 +718,7 @@ export type Database = {
           changed_by?: string | null
           entered_at?: string
           exited_at?: string | null
+          from_stage_id?: string | null
           id?: string
           lead_id: string
           stage_id: string
@@ -725,11 +727,19 @@ export type Database = {
           changed_by?: string | null
           entered_at?: string
           exited_at?: string | null
+          from_stage_id?: string | null
           id?: string
           lead_id?: string
           stage_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "crm_lead_stage_history_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "crm_lead_stage_history_lead_id_fkey"
             columns: ["lead_id"]
@@ -753,6 +763,7 @@ export type Database = {
           automation_paused: boolean | null
           created_at: string
           descricao_anuncio: string | null
+          first_inbound_at: string | null
           follow_up_count: number | null
           has_task: boolean
           id: string
@@ -784,6 +795,7 @@ export type Database = {
           automation_paused?: boolean | null
           created_at?: string
           descricao_anuncio?: string | null
+          first_inbound_at?: string | null
           follow_up_count?: number | null
           has_task?: boolean
           id?: string
@@ -815,6 +827,7 @@ export type Database = {
           automation_paused?: boolean | null
           created_at?: string
           descricao_anuncio?: string | null
+          first_inbound_at?: string | null
           follow_up_count?: number | null
           has_task?: boolean
           id?: string
