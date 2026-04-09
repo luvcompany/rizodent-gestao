@@ -334,8 +334,8 @@ Deno.serve(async (req) => {
 
             // Enrich ad data from Meta Graph API if we have an ad ID but missing image/link
             if (referral && adSourceId) {
+              const metaToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
               try {
-                const metaToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
                 console.log(`[AD-ENRICHMENT] Fetching ad creative for ad_id: ${adSourceId}`);
                 const adRes = await fetch(
                   `https://graph.facebook.com/v25.0/${adSourceId}?fields=id,name,permalink_url,creative{thumbnail_url,image_url,object_story_spec}&access_token=${metaToken}`
@@ -344,42 +344,88 @@ Deno.serve(async (req) => {
                   const adData = await adRes.json();
                   console.log(`[AD-ENRICHMENT] Ad data received:`, JSON.stringify(adData));
 
-                  // Fill missing fields from the API response
                   if (!adHeadline && adData.name) adHeadline = adData.name;
                   if (!adSourceUrl && adData.permalink_url) adSourceUrl = adData.permalink_url;
 
                   const creative = adData.creative;
                   if (creative) {
-                    // Try to get image from creative
                     if (!adImageUrl) {
                       adImageUrl = creative.image_url
                         || creative.thumbnail_url
                         || creative.object_story_spec?.link_data?.picture
                         || creative.object_story_spec?.link_data?.image_url
                         || creative.object_story_spec?.video_data?.image_url
+                        || creative.object_story_spec?.video_data?.call_to_action?.value?.link // video thumbnail
                         || null;
                     }
-                    // Try to get link from creative
                     if (!adSourceUrl) {
                       adSourceUrl = creative.object_story_spec?.link_data?.link || null;
                     }
-                    // Try to get description from creative
                     if (!adBody) {
                       adBody = creative.object_story_spec?.link_data?.description
                         || creative.object_story_spec?.link_data?.message
+                        || creative.object_story_spec?.video_data?.message
                         || null;
                     }
                     if (!adHeadline) {
                       adHeadline = creative.object_story_spec?.link_data?.name || null;
                     }
                   }
-                  console.log(`[AD-ENRICHMENT] Enriched: image=${adImageUrl}, link=${adSourceUrl}, headline=${adHeadline}`);
+                  console.log(`[AD-ENRICHMENT] After creative: image=${adImageUrl}, link=${adSourceUrl}`);
                 } else {
                   const errText = await adRes.text();
                   console.log(`[AD-ENRICHMENT] Failed to fetch ad ${adSourceId}: ${adRes.status} - ${errText}`);
                 }
               } catch (adErr: any) {
                 console.log(`[AD-ENRICHMENT] Error enriching ad data: ${adErr.message}`);
+              }
+
+              // Fallback: fetch adcreatives directly for video/carousel ads that don't return image above
+              if (!adImageUrl) {
+                try {
+                  console.log(`[AD-ENRICHMENT] Trying adcreatives endpoint for ad_id: ${adSourceId}`);
+                  const crRes = await fetch(
+                    `https://graph.facebook.com/v25.0/${adSourceId}/adcreatives?fields=thumbnail_url,image_url,object_story_id,effective_object_story_id&access_token=${metaToken}`
+                  );
+                  if (crRes.ok) {
+                    const crData = await crRes.json();
+                    const cr = crData.data?.[0];
+                    if (cr) {
+                      adImageUrl = cr.image_url || cr.thumbnail_url || null;
+                      // If we have an object_story_id, try to get the post image
+                      const storyId = cr.effective_object_story_id || cr.object_story_id;
+                      if (!adImageUrl && storyId) {
+                        try {
+                          const postRes = await fetch(
+                            `https://graph.facebook.com/v25.0/${storyId}?fields=full_picture,picture&access_token=${metaToken}`
+                          );
+                          if (postRes.ok) {
+                            const postData = await postRes.json();
+                            adImageUrl = postData.full_picture || postData.picture || null;
+                          }
+                        } catch (_) { /* skip */ }
+                      }
+                    }
+                  }
+                  console.log(`[AD-ENRICHMENT] After adcreatives fallback: image=${adImageUrl}`);
+                } catch (crErr: any) {
+                  console.log(`[AD-ENRICHMENT] adcreatives fallback error: ${crErr.message}`);
+                }
+              }
+
+              // Final fallback: if source_url is an Instagram post, try oEmbed
+              if (!adImageUrl && adSourceUrl) {
+                try {
+                  const igMatch = adSourceUrl.match(/instagram\.com\/p\/([^/?]+)/);
+                  if (igMatch) {
+                    const oembedRes = await fetch(`https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(adSourceUrl)}&access_token=${metaToken}`);
+                    if (oembedRes.ok) {
+                      const oembedData = await oembedRes.json();
+                      adImageUrl = oembedData.thumbnail_url || null;
+                    }
+                  }
+                  console.log(`[AD-ENRICHMENT] After oEmbed fallback: image=${adImageUrl}`);
+                } catch (_) { /* skip */ }
               }
             }
 
