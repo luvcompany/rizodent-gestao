@@ -1191,20 +1191,22 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
-  // By ad name
+  // By ad (grouped by link_anuncio, with image)
   const byAd = useMemo(() => {
-    const map = new Map<string, { total: number; scheduled: number; contracted: number }>();
+    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null }>();
     leads.forEach(l => {
-      const ad = l.nome_anuncio;
-      if (!ad) return;
-      if (!map.has(ad)) map.set(ad, { total: 0, scheduled: 0, contracted: 0 });
-      const s = map.get(ad)!;
+      const adKey = l.link_anuncio || l.nome_anuncio;
+      if (!adKey) return;
+      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null });
+      const s = map.get(adKey)!;
       s.total++;
+      if (!s.image && l.imagem_origem) s.image = l.imagem_origem;
+      if (!s.name && l.nome_anuncio) s.name = l.nome_anuncio;
       if (scheduledLeadIds.has(l.id)) s.scheduled++;
       if (contractedLeadIds.has(l.id)) s.contracted++;
     });
-    return Array.from(map.entries()).map(([name, v]) => ({
-      name, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
+    return Array.from(map.entries()).map(([link, v]) => ({
+      link, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
