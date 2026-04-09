@@ -1191,22 +1191,29 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
-  // By ad (grouped by link_anuncio, with image)
+  // By ad (grouped by descricao_anuncio to merge same creative across locations)
   const byAd = useMemo(() => {
-    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null }>();
+    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; links: Set<string>; sources: Set<string> }>();
     leads.forEach(l => {
-      const adKey = l.link_anuncio || l.nome_anuncio;
+      // Use description as the grouping key to merge duplicates; fallback to link or name
+      const desc = (l as any).descricao_anuncio;
+      const adKey = desc || l.link_anuncio || l.nome_anuncio;
       if (!adKey) return;
-      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null });
+      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, links: new Set(), sources: new Set() });
       const s = map.get(adKey)!;
       s.total++;
       if (!s.image && l.imagem_origem) s.image = l.imagem_origem;
       if (!s.name && l.nome_anuncio) s.name = l.nome_anuncio;
+      if (l.link_anuncio) s.links.add(l.link_anuncio);
+      if (l.source) s.sources.add(l.source);
       if (scheduledLeadIds.has(l.id)) s.scheduled++;
       if (contractedLeadIds.has(l.id)) s.contracted++;
     });
-    return Array.from(map.entries()).map(([link, v]) => ({
-      link, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
+    return Array.from(map.entries()).map(([key, v]) => ({
+      key, ...v,
+      linksArr: Array.from(v.links),
+      sourcesArr: Array.from(v.sources),
+      convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
