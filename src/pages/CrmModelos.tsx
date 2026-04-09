@@ -357,7 +357,7 @@ export default function CrmModelos() {
             {paginated.map(t => (
               <div key={t.id} className="bg-card rounded-lg border border-border p-4 hover:border-primary/30 transition-all shadow-card">
                 <div className="flex items-start justify-between mb-2">
-                  <div className="font-semibold text-sm text-foreground">{t.name.replace(/_[a-z0-9]{4,8}$/, '')}</div>
+                  <div className="font-semibold text-sm text-foreground break-all" title={t.name}>{t.name}</div>
                   <div className="flex items-center gap-1">{headerIcon(t.header_type)}</div>
                 </div>
                 <div className="flex items-center gap-2 mb-2">{categoryBadge(t.category)} {statusBadge(t.status)}</div>
