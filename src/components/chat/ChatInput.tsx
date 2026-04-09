@@ -579,7 +579,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               onSelectTemplate={(t) => {
                 setNewMessage(`[Template: ${t.name}]`);
                 setSlashActive(false);
-                toast.info(`Template "${t.name}" selecionado. Pressione Enter para enviar.`);
+                toast.info(`Template "${cleanTemplateName(t.name)}" selecionado. Pressione Enter para enviar.`);
               }}
               onSelectBot={() => {}}
               onClose={() => setSlashActive(false)}

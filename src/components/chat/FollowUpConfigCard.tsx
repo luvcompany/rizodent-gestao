@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { cleanTemplateName } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
@@ -184,7 +185,7 @@ export default function FollowUpConfigCard({ stageId, stages, templates }: Props
             <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Selecionar template" /></SelectTrigger>
             <SelectContent>
               {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
-              {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+              {templates.map(t => <SelectItem key={t.id} value={t.id}>{cleanTemplateName(t.name)}</SelectItem>)}
             </SelectContent>
           </Select>
         )}
