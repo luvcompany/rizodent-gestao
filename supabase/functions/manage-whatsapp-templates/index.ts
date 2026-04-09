@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
         nextUrl = metaData.paging?.next || null;
       }
 
-      const templates = (metaData.data || []).map((t: any) => {
+      const templates = allMetaTemplates.map((t: any) => {
         const headerComp = t.components?.find((c: any) => c.type === "HEADER");
         const bodyComp = t.components?.find((c: any) => c.type === "BODY");
         const footerComp = t.components?.find((c: any) => c.type === "FOOTER");
