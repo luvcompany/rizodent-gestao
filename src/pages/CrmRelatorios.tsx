@@ -538,7 +538,7 @@ export default function CrmRelatorios() {
 
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => drillDown(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {})}>
           <CardContent className="pt-5 pb-4">
             <Users size={18} className="text-primary mb-1" />
             <p className="text-2xl font-bold text-foreground">{filteredLeads.length}</p>
@@ -559,7 +559,7 @@ export default function CrmRelatorios() {
             <p className="text-xs text-muted-foreground">Resp. Lead</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:border-destructive/50 transition-colors" onClick={() => drillDown({ ghost: "true", ...(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {}) })}>
           <CardContent className="pt-5 pb-4">
             <Ghost size={18} className="text-red-500 mb-1" />
             <p className="text-2xl font-bold text-foreground">{ghostLeadsData.total}</p>
@@ -573,7 +573,7 @@ export default function CrmRelatorios() {
             <p className="text-xs text-muted-foreground">Lead → Contrato</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:border-yellow-500/50 transition-colors" onClick={() => drillDown({ inactive_days: String(parseInt(inactiveDays) || 3), ...(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {}) })}>
           <CardContent className="pt-5 pb-4">
             <AlertTriangle size={18} className="text-yellow-500 mb-1" />
             <p className="text-2xl font-bold text-foreground">{inactiveLeads.length}</p>
@@ -593,19 +593,19 @@ export default function CrmRelatorios() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "confirmed" })}>
               <p className="text-2xl font-bold text-foreground">{appointmentReport.total}</p>
               <p className="text-xs text-muted-foreground">Total Agendados</p>
             </div>
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "attended" })}>
               <p className="text-2xl font-bold text-green-600">{appointmentReport.attended}</p>
               <p className="text-xs text-muted-foreground">Compareceram</p>
             </div>
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "rescheduled" })}>
               <p className="text-2xl font-bold text-orange-500">{appointmentReport.rescheduled}</p>
               <p className="text-xs text-muted-foreground">Remarcaram</p>
             </div>
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "missed" })}>
               <p className="text-2xl font-bold text-red-500">{appointmentReport.missed}</p>
               <p className="text-xs text-muted-foreground">Faltaram</p>
             </div>
