@@ -187,7 +187,7 @@ export default function CrmConversa() {
     setActiveExecution(null);
   };
 
-  if (leadLoading || !lead) {
+  if (leadLoading || !lead || lead.id !== id) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -226,12 +226,16 @@ export default function CrmConversa() {
         <div className="flex-1 overflow-y-auto p-4 space-y-2 relative" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
           <ChatActivityToast activities={chat.activityToasts} onDismiss={chat.dismissToast} />
 
-          {chat.messages.length === 0 && (
+          {chat.loading ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
+          ) : chat.messages.length === 0 && (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
               Nenhuma mensagem ainda. Inicie a conversa!
             </div>
           )}
-          {chat.messages.map((msg, idx) => {
+          {!chat.loading && chat.messages.map((msg, idx) => {
             const msgDate = new Date(msg.created_at);
             const prevDate = idx > 0 ? new Date(chat.messages[idx - 1].created_at) : null;
             const showDateSep = !prevDate || msgDate.toDateString() !== prevDate.toDateString();

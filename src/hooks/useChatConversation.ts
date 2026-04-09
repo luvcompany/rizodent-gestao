@@ -35,6 +35,10 @@ export type ChatStage = {
   pipeline_id: string;
 };
 
+const stageCache = { data: null as ChatStage[] | null, timestamp: 0 };
+const STAGE_CACHE_TTL = 5 * 60_000;
+const repairedMediaLeadCache = new Set<string>();
+
 type ActivityToast = { id: string; content: string };
 
 export function useChatConversation(leadId: string | null | undefined) {
@@ -61,6 +65,8 @@ export function useChatConversation(leadId: string | null | undefined) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const initialLoadDone = useRef(false);
+  const activeLeadRef = useRef<string | null>(leadId ?? null);
+  const fetchRequestRef = useRef(0);
 
   // Filtered templates
   const filteredTemplates = useMemo(() => {
@@ -79,29 +85,53 @@ export function useChatConversation(leadId: string | null | undefined) {
 
   const fetchStages = useCallback(async () => {
     if (stagesLoadedRef.current && stages.length > 0) return;
+
+    if (stageCache.data && Date.now() - stageCache.timestamp < STAGE_CACHE_TTL) {
+      setStages(stageCache.data);
+      stagesLoadedRef.current = true;
+      return;
+    }
+
     const { data } = await supabase.from("crm_stages").select("*").order("position");
     if (data) {
-      setStages(data as ChatStage[]);
+      const nextStages = data as ChatStage[];
+      stageCache.data = nextStages;
+      stageCache.timestamp = Date.now();
+      setStages(nextStages);
       stagesLoadedRef.current = true;
     }
   }, [stages.length]);
 
   // ─── Fetch messages with cache ───
   const fetchMessages = useCallback(async (skipCache = false) => {
-    if (!leadId) return;
+    const targetLeadId = leadId;
+    if (!targetLeadId) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
+
+    const requestId = ++fetchRequestRef.current;
+    const isCurrentRequest = () => activeLeadRef.current === targetLeadId && fetchRequestRef.current === requestId;
+    const applyMessages = (nextMessages: ChatMessage[]) => {
+      if (!isCurrentRequest()) return false;
+      setMessages(nextMessages);
+      setLoading(false);
+      return true;
+    };
 
     // Serve from cache instantly if available and fresh
     if (!skipCache) {
-      const cached = messageCache.get(leadId);
+      const cached = messageCache.get(targetLeadId);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        setMessages(cached.messages as unknown as ChatMessage[]);
-        setLoading(false);
+        applyMessages(cached.messages as ChatMessage[]);
         // Still refresh in background
-        supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true }).then(({ data }) => {
+        supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true }).then(({ data }) => {
           if (data) {
-            messageCache.set(leadId, { messages: data, timestamp: Date.now() });
-            setMessages(data as unknown as ChatMessage[]);
-            const mediaUrls = data.filter((m: any) => m.media_url?.startsWith("http")).map((m: any) => m.media_url!);
+            const nextMessages = data as ChatMessage[];
+            messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
+            if (!applyMessages(nextMessages)) return;
+            const mediaUrls = nextMessages.filter((m) => m.media_url?.startsWith("http")).map((m) => m.media_url!);
             if (mediaUrls.length > 0) batchSignMediaUrls(mediaUrls).catch(() => {});
           }
         });
@@ -111,10 +141,10 @@ export function useChatConversation(leadId: string | null | undefined) {
 
     setLoading(true);
     try {
-      const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
+      const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       const msgs = (data as unknown as ChatMessage[]) || [];
-      messageCache.set(leadId, { messages: msgs, timestamp: Date.now() });
-      setMessages(msgs);
+      messageCache.set(targetLeadId, { messages: msgs, timestamp: Date.now() });
+      if (!applyMessages(msgs)) return;
       // Pre-sign all media URLs in background so they're cached when rendering
       const mediaUrls = msgs.filter(m => m.media_url?.startsWith("http")).map(m => m.media_url!);
       if (mediaUrls.length > 0) {
@@ -122,26 +152,55 @@ export function useChatConversation(leadId: string | null | undefined) {
       }
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
+      if (isCurrentRequest()) setLoading(false);
     }
-    setLoading(false);
   }, [leadId]);
 
   useEffect(() => { fetchMessages(); fetchStages(); }, [fetchMessages, fetchStages]);
 
+  useEffect(() => {
+    activeLeadRef.current = leadId ?? null;
+    initialLoadDone.current = false;
+    setReplyTo(null);
+    setForwardMsg(null);
+    setMediaPreview(null);
+    setActivityToasts([]);
+
+    if (!leadId) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
+
+    const cached = messageCache.get(leadId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      setMessages(cached.messages as ChatMessage[]);
+      setLoading(false);
+      return;
+    }
+
+    setMessages([]);
+    setLoading(true);
+  }, [leadId]);
+
   // ─── Repair legacy media (deferred, non-blocking) ───
   useEffect(() => {
-    if (!leadId) return;
+    if (!leadId || repairedMediaLeadCache.has(leadId)) return;
     const timer = setTimeout(async () => {
+      repairedMediaLeadCache.add(leadId);
       try {
+        if (activeLeadRef.current !== leadId) return;
         const { data, error } = await supabase.functions.invoke("repair-chat-media", {
           body: { leadId },
         });
         if (error) { console.error("[useChatConversation] Repair error:", error); return; }
         if (data?.repaired?.length) {
           console.log(`[useChatConversation] Repaired ${data.repaired.length} media`);
-          fetchMessages();
+          fetchMessages(true);
         }
-      } catch {}
+      } catch {
+        repairedMediaLeadCache.delete(leadId);
+      }
     }, 3000); // Defer 3s to not block initial render
     return () => clearTimeout(timer);
   }, [leadId, fetchMessages]);
@@ -163,32 +222,36 @@ export function useChatConversation(leadId: string | null | undefined) {
   // Reset on lead change
   useEffect(() => {
     initialLoadDone.current = false;
-    setReplyTo(null);
-    setForwardMsg(null);
   }, [leadId]);
 
   // ─── Realtime subscription ───
   useEffect(() => {
-    if (!leadId) return;
+    const targetLeadId = leadId;
+    if (!targetLeadId) return;
+
     const channel = supabase
-      .channel("chat-messages-" + leadId)
+      .channel("chat-messages-" + targetLeadId)
       .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "messages", filter: `lead_id=eq.${leadId}`,
+        event: "INSERT", schema: "public", table: "messages", filter: `lead_id=eq.${targetLeadId}`,
       }, (payload) => {
+        if (activeLeadRef.current !== targetLeadId) return;
         const newMsg = payload.new as ChatMessage;
         setMessages((prev) => {
+          if (activeLeadRef.current !== targetLeadId) return prev;
           if (prev.some((m) => m.id === newMsg.id)) return prev;
           const updated = [...prev, newMsg];
-          if (leadId) messageCache.set(leadId, { messages: updated, timestamp: Date.now() });
+          messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
           return updated;
         });
       })
       .on("postgres_changes", {
-        event: "UPDATE", schema: "public", table: "messages", filter: `lead_id=eq.${leadId}`,
+        event: "UPDATE", schema: "public", table: "messages", filter: `lead_id=eq.${targetLeadId}`,
       }, (payload) => {
+        if (activeLeadRef.current !== targetLeadId) return;
         setMessages((prev) => {
+          if (activeLeadRef.current !== targetLeadId) return prev;
           const updated = prev.map((m) => m.id === (payload.new as ChatMessage).id ? (payload.new as ChatMessage) : m);
-          if (leadId) messageCache.set(leadId, { messages: updated, timestamp: Date.now() });
+          messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
           return updated;
         });
       })
@@ -198,15 +261,26 @@ export function useChatConversation(leadId: string | null | undefined) {
 
   // ─── Polling fallback (less frequent, realtime handles most updates) ───
   useEffect(() => {
-    if (!leadId) return;
+    const targetLeadId = leadId;
+    if (!targetLeadId) return;
+
     const interval = setInterval(async () => {
-      const { data } = await supabase.from("messages").select("*").eq("lead_id", leadId).order("created_at", { ascending: true });
-      if (data) {
+      const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
+      if (data && activeLeadRef.current === targetLeadId) {
+        const nextMessages = data as ChatMessage[];
         setMessages((prev) => {
-          if (data.length !== prev.length) return data as unknown as ChatMessage[];
-          const newFingerprint = data.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
+          if (activeLeadRef.current !== targetLeadId) return prev;
+          if (nextMessages.length !== prev.length) {
+            messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
+            return nextMessages;
+          }
+          const newFingerprint = nextMessages.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
           const oldFingerprint = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
-          return newFingerprint !== oldFingerprint ? (data as unknown as ChatMessage[]) : prev;
+          if (newFingerprint !== oldFingerprint) {
+            messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
+            return nextMessages;
+          }
+          return prev;
         });
       }
     }, 15000);
@@ -401,12 +475,20 @@ export function useChatConversation(leadId: string | null | undefined) {
   const handleOptimisticMessage = useCallback((optimisticMsg: any) => {
     setMessages((prev) => {
       if (prev.some((m) => m.id === optimisticMsg.id)) return prev;
-      return [...prev, optimisticMsg];
+      const updated = [...prev, optimisticMsg];
+      const currentLeadId = activeLeadRef.current;
+      if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
+      return updated;
     });
   }, []);
 
   const handleMessageError = useCallback((tempId: string) => {
-    setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: "error" } : m));
+    setMessages((prev) => {
+      const updated = prev.map((m) => m.id === tempId ? { ...m, status: "error" } : m);
+      const currentLeadId = activeLeadRef.current;
+      if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
+      return updated;
+    });
   }, []);
 
   // ─── Helpers ───
