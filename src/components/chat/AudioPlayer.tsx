@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Play, Pause, Mic } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Play, Pause } from "lucide-react";
 
 const SPEEDS = [1, 1.5, 2] as const;
 
@@ -16,34 +16,45 @@ export default function AudioPlayer({ src }: { src: string }) {
     const onTime = () => setProgress(audio.currentTime);
     const onMeta = () => setDuration(audio.duration);
     const onEnd = () => setPlaying(false);
+    const onPlay = () => {
+      // Re-apply playback rate every time audio starts playing
+      audio.playbackRate = SPEEDS[speedIdx];
+    };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onMeta);
     audio.addEventListener("ended", onEnd);
+    audio.addEventListener("play", onPlay);
     return () => {
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("loadedmetadata", onMeta);
       audio.removeEventListener("ended", onEnd);
+      audio.removeEventListener("play", onPlay);
     };
-  }, []);
+  }, [speedIdx]);
 
-  const toggle = () => {
+  const toggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     const audio = audioRef.current;
     if (!audio) return;
-    if (playing) { audio.pause(); } else { audio.play(); }
+    if (playing) { audio.pause(); } else { audio.playbackRate = SPEEDS[speedIdx]; audio.play(); }
     setPlaying(!playing);
-  };
+  }, [playing, speedIdx]);
 
-  const cycleSpeed = () => {
+  const cycleSpeed = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     const next = (speedIdx + 1) % SPEEDS.length;
     setSpeedIdx(next);
-    if (audioRef.current) audioRef.current.playbackRate = SPEEDS[next];
-  };
+    if (audioRef.current) {
+      audioRef.current.playbackRate = SPEEDS[next];
+    }
+  }, [speedIdx]);
 
-  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
     if (audioRef.current) audioRef.current.currentTime = pct * duration;
-  };
+  }, [duration]);
 
   const fmt = (s: number) => {
     if (!s || !isFinite(s)) return "0:00";
