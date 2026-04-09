@@ -13,6 +13,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw, MoreVertical, Copy } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -85,7 +86,7 @@ export default function CrmAutomacoes() {
       const [stagesRes, autoRes, tplRes, chRes, fuRes, botsRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
-        supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED"),
+        supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED").order("created_at", { ascending: false }),
         supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
         supabase.from("crm_followup_configs").select("id, stage_id, is_active, disparo1_type, disparo1_delay_minutes, max_attempts"),
         supabase.from("bots").select("id, name").eq("status", "published").order("name"),
@@ -696,13 +697,11 @@ export default function CrmAutomacoes() {
               <div className="space-y-3">
                 <div>
                   <Label>Template</Label>
-                  <Select value={(autoForm.action_config.template_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, template_id: v } }))}>
-                    <SelectTrigger><SelectValue placeholder="Selecionar template" /></SelectTrigger>
-                    <SelectContent>
-                      {templates.length === 0 && <SelectItem value="none" disabled>Nenhum template aprovado</SelectItem>}
-                      {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <TemplateSearchSelect
+                    templates={templates}
+                    value={(autoForm.action_config.template_id as string) || undefined}
+                    onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, template_id: v } }))}
+                  />
                 </div>
                 <div className="flex items-center gap-3">
                   <Checkbox

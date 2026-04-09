@@ -94,7 +94,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
   useEffect(() => {
     const loadSlashData = async () => {
-      const { data: t } = await supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED");
+      const { data: t } = await supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED").order("created_at", { ascending: false });
       setSlashTemplates(t || []);
     };
     loadSlashData();
