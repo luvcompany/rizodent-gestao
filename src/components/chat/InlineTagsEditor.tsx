@@ -126,15 +126,17 @@ export default function InlineTagsEditor({
 
   const loadAds = async () => {
     setLoadingAds(true);
-    const { data } = await supabase
+    const seen = new Map<string, AdOption>();
+
+    // 1) From crm_leads
+    const { data: leadsData } = await supabase
       .from("crm_leads")
       .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio")
       .not("ad_id", "is", null)
       .limit(1000);
 
-    if (data) {
-      const seen = new Map<string, AdOption>();
-      for (const row of data) {
+    if (leadsData) {
+      for (const row of leadsData) {
         const key = `${normalizeImgUrl(row.imagem_origem)}::${row.descricao_anuncio || row.ad_id}`;
         if (!seen.has(key)) {
           seen.set(key, {
@@ -146,8 +148,31 @@ export default function InlineTagsEditor({
           });
         }
       }
-      setAds(Array.from(seen.values()));
     }
+
+    // 2) From messages (captures ads not yet linked to leads)
+    const { data: msgData } = await supabase
+      .from("messages")
+      .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url")
+      .not("ad_source_id", "is", null)
+      .limit(1000);
+
+    if (msgData) {
+      for (const row of msgData) {
+        const key = `${normalizeImgUrl(row.ad_image_url)}::${row.ad_body || row.ad_source_id}`;
+        if (!seen.has(key)) {
+          seen.set(key, {
+            ad_id: row.ad_source_id!,
+            imagem_origem: row.ad_image_url,
+            nome_anuncio: row.ad_headline,
+            descricao_anuncio: row.ad_body,
+            link_anuncio: row.ad_source_url,
+          });
+        }
+      }
+    }
+
+    setAds(Array.from(seen.values()));
     setLoadingAds(false);
   };
 
