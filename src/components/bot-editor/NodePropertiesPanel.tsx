@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { X, Trash2, Plus, Minus, Upload, Search, Loader2 } from "lucide-react";
 import { NODE_DEFINITIONS } from "@/types/bot";
 import VariableTextarea from "./VariableTextarea";
+import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import BotAudioRecorder from "./BotAudioRecorder";
 import type { Node } from "@xyflow/react";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,7 +43,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
       if (data) setPipelines(data);
     });
     supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons, language, header_type, footer_text").eq("status", "APPROVED").order("created_at", { ascending: false }).then(({ data }) => {
-      if (data) setTemplates(data);
+      if (data) setTemplates(deduplicateTemplates(data));
     });
     // Fetch unique tags
     supabase.from("crm_leads").select("tags").then(({ data }) => {
@@ -110,7 +111,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     updateMultiple({ templateId, templateName: tpl.name, templateLanguage: tpl.language || "pt_BR", text: tpl.body_text || "", templateButtons: btns });
   };
 
-  const displayTemplateName = (name: string) => name.replace(/_[a-z0-9]{4,8}$/, '');
+  const displayTemplateName = (name: string) => cleanTemplateName(name);
 
   const filteredTemplates = useMemo(() => {
     if (!templateSearch.trim()) return templates;
