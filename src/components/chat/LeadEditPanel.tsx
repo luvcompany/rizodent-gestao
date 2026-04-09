@@ -81,6 +81,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
   const [nomeAnuncio, setNomeAnuncio] = useState(lead.nome_anuncio || "");
   const [descricaoAnuncio, setDescricaoAnuncio] = useState(lead.descricao_anuncio || "");
   const [linkAnuncio, setLinkAnuncio] = useState(lead.link_anuncio || "");
+  const [adAccountId, setAdAccountId] = useState(lead.ad_account_id || "");
+  const [adAccountName, setAdAccountName] = useState(lead.ad_account_name || "");
 
   // Ad selector
   const [ads, setAds] = useState<AdOption[]>([]);
@@ -106,6 +108,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
       setNomeAnuncio(lead.nome_anuncio || "");
       setDescricaoAnuncio(lead.descricao_anuncio || "");
       setLinkAnuncio(lead.link_anuncio || "");
+      setAdAccountId(lead.ad_account_id || "");
+      setAdAccountName(lead.ad_account_name || "");
       setShowAdSelector(false);
     }
   }, [editOpen, lead]);
