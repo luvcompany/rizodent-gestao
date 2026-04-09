@@ -226,8 +226,36 @@ export default function CrmKanban() {
       toast.error("Nome e etapa são obrigatórios");
       return;
     }
-    const tagsArray = newLead.tags ? newLead.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
     const normalizedPhone = newLead.phone ? normalizePhone(newLead.phone) : null;
+
+    // Check for duplicate phone
+    if (normalizedPhone) {
+      const { data: existing } = await supabase
+        .from("crm_leads")
+        .select("id, name, assigned_to")
+        .eq("phone", normalizedPhone)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        const dup = existing[0];
+        const ownerProfile = profiles.find(p => p.id === dup.assigned_to);
+        setDuplicateInfo({
+          existingLeadId: dup.id,
+          existingLeadName: dup.name,
+          ownerName: ownerProfile?.nome || "Sem responsável",
+          ownerId: dup.assigned_to,
+          phone: normalizedPhone,
+        });
+        return;
+      }
+    }
+
+    await insertNewLead(normalizedPhone);
+  };
+
+  const insertNewLead = async (normalizedPhone: string | null) => {
+    if (!pipeline) return;
+    const tagsArray = newLead.tags ? newLead.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
     const { error } = await supabase.from("crm_leads").insert({
       name: newLead.name,
       phone: normalizedPhone,
@@ -245,6 +273,26 @@ export default function CrmKanban() {
     setNewLeadOpen(false);
     setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "" });
     fetchData();
+  };
+
+  const handleTransferDuplicate = async () => {
+    if (!duplicateInfo || !user) return;
+    setTransferring(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("transfer-lead", {
+        body: { leadId: duplicateInfo.existingLeadId, newUserId: user.id },
+      });
+      if (error) throw error;
+      toast.success(`Lead "${duplicateInfo.existingLeadName}" transferido para você com todo o histórico!`);
+      setDuplicateInfo(null);
+      setNewLeadOpen(false);
+      setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "" });
+      fetchData();
+    } catch (err: any) {
+      toast.error("Erro ao transferir: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setTransferring(false);
+    }
   };
 
   const handleAddStage = async () => {
