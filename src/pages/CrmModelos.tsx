@@ -38,6 +38,7 @@ export default function CrmModelos() {
   const [submitting, setSubmitting] = useState(false);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedIntegration, setSelectedIntegration] = useState<string>("");
+  const [syncing, setSyncing] = useState(false);
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
