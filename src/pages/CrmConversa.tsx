@@ -29,7 +29,7 @@ import NotesBar from "@/components/chat/NotesBar";
 import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
 
 import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
-import LeadAdInfo from "@/components/chat/LeadAdInfo";
+
 import TaskPanel from "@/components/chat/TaskPanel";
 import AppointmentConfirmBar from "@/components/chat/AppointmentConfirmBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
