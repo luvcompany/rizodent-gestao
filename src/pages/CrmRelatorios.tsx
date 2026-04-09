@@ -219,12 +219,16 @@ export default function CrmRelatorios() {
     const contractedLeadIds = new Set([...contractedHistoryLeadIds, ...contractedCurrentLeadIds]);
     const contractedCount = contractedLeadIds.size;
 
+    const agendStageId = filteredStages.find(s => s.name.toLowerCase().includes("agend"))?.id || "";
+    const contratadoStageId = filteredStages.find(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não"))?.id || "";
+    const pipelineParam = selectedPipelineId !== "all" ? selectedPipelineId : "";
+
     const steps = [
-      { name: "Leads Entraram", value: totalEnteredLead, color: "hsl(var(--primary))" },
-      { name: "Responderam", value: respondedCount, color: "#3b82f6" },
-      { name: "Agendaram", value: scheduledCount, color: "#f59e0b" },
-      { name: "Compareceram", value: attendedCount, color: "#10b981" },
-      { name: "Contrataram", value: contractedCount, color: "#22c55e" },
+      { name: "Leads Entraram", value: totalEnteredLead, color: "hsl(var(--primary))", drillParams: { ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Responderam", value: respondedCount, color: "#3b82f6", drillParams: { ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Agendaram", value: scheduledCount, color: "#f59e0b", drillParams: { ...(agendStageId ? { stage_id: agendStageId } : {}), ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Compareceram", value: attendedCount, color: "#10b981", drillParams: { appointment_status: "attended", ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Contrataram", value: contractedCount, color: "#22c55e", drillParams: { ...(contratadoStageId ? { stage_id: contratadoStageId } : {}), ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
     ];
 
     return steps.map((step, i) => ({
