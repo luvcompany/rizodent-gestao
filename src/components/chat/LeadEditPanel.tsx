@@ -222,6 +222,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
       nome_anuncio: nomeAnuncio || null,
       descricao_anuncio: descricaoAnuncio || null,
       link_anuncio: linkAnuncio || null,
+      ad_account_id: adAccountId || null,
+      ad_account_name: adAccountName || null,
       updated_at: new Date().toISOString(),
     };
     const { error } = await supabase.from("crm_leads").update(updates).eq("id", lead.id);
@@ -321,6 +323,9 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{nomeAnuncio || "Anúncio vinculado"}</p>
+                      {adAccountName && (
+                        <p className="text-xs text-primary/70">Conta: {adAccountName}</p>
+                      )}
                       {descricaoAnuncio && (
                         <p className="text-xs text-muted-foreground line-clamp-2">{descricaoAnuncio}</p>
                       )}
@@ -360,6 +365,9 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                               )}
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">{ad.nome_anuncio || "Sem nome"}</p>
+                                {ad.ad_account_name && (
+                                  <p className="text-[11px] text-primary/70 truncate">Conta: {ad.ad_account_name}</p>
+                                )}
                                 {ad.descricao_anuncio && (
                                   <p className="text-xs text-muted-foreground line-clamp-1">{ad.descricao_anuncio}</p>
                                 )}
