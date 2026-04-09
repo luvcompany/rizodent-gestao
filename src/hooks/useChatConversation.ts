@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { deduplicateTemplates } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { batchSignMediaUrls } from "@/lib/mediaUtils";
@@ -432,7 +433,7 @@ export function useChatConversation(leadId: string | null | undefined) {
   // ─── Templates ───
   const loadTemplates = useCallback(async () => {
     const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED").order("created_at", { ascending: false });
-    setTemplates(data || []);
+    setTemplates(deduplicateTemplates(data || []));
     setTemplatesOpen(true);
   }, []);
 

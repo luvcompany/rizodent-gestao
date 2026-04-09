@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { deduplicateTemplates, cleanTemplateName } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,7 @@ export default function CrmCampanhas() {
 
   useEffect(() => {
     load();
-    supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED").order("created_at", { ascending: false }).then(({ data }) => setTemplates(data || []));
+    supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED").order("created_at", { ascending: false }).then(({ data }) => setTemplates(deduplicateTemplates(data || [])));
     supabase.from("crm_pipelines").select("id, name").then(({ data }) => setPipelines(data || []));
   }, [load]);
 
