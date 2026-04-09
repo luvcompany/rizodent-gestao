@@ -177,46 +177,13 @@ export default function CrmKanban() {
         status: "system",
       });
 
-      // Execute automations for the new stage
-      try {
-        const { data: stageAutomations } = await supabase
-          .from("crm_automations")
-          .select("*")
-          .eq("stage_id", newStageId)
-          .eq("trigger_type", "on_enter")
-          .eq("is_active", true);
-
-        if (stageAutomations?.length) {
-          const leadPhone = movedLead?.phone;
-          for (const auto of stageAutomations) {
-            const config = (auto.action_config || {}) as Record<string, unknown>;
-            try {
-              if (auto.action_type === "send_bot" && config.bot_id) {
-                supabase.functions.invoke("bot-engine", {
-                  body: { leadId, botId: config.bot_id, trigger: "automation" },
-                }).catch(e => console.error("[Kanban] Bot trigger error:", e));
-              } else if (auto.action_type === "send_template" && config.template_id && leadPhone) {
-                const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", config.template_id as string).single();
-                if (tpl) {
-                  supabase.functions.invoke("send-whatsapp-message", {
-                    body: { lead_id: leadId, to: leadPhone, type: "template", template_name: tpl.name, template_language: tpl.language },
-                  }).catch(e => console.error("[Kanban] Template trigger error:", e));
-                }
-              } else if (auto.action_type === "webhook" && config.url) {
-                fetch(config.url as string, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ lead_id: leadId, stage_id: newStageId, event: "stage_enter" }),
-                }).catch(() => {});
-              }
-            } catch (e) {
-              console.error("[Kanban] Automation error:", e);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("[Kanban] Automations fetch error:", e);
-      }
+      // Execute automations for the new stage (on_enter + on_create_or_enter)
+      executeStageAutomations({
+        leadId,
+        stageId: newStageId,
+        leadPhone: movedLead?.phone,
+        triggerTypes: ["on_enter", "on_create_or_enter"],
+      });
     }
 
   };
@@ -267,6 +234,18 @@ export default function CrmKanban() {
     });
     if (error) { toast.error("Erro ao criar lead"); return; }
     toast.success("Lead criado com sucesso");
+    // Execute automations for lead creation (on_create + on_create_or_enter)
+    const createdStageId = newLead.stage_id;
+    const { data: createdLeads } = await supabase.from("crm_leads").select("id").eq("phone", normalizedPhone || "").eq("stage_id", createdStageId).order("created_at", { ascending: false }).limit(1);
+    const createdLeadId = createdLeads?.[0]?.id;
+    if (createdLeadId) {
+      executeStageAutomations({
+        leadId: createdLeadId,
+        stageId: createdStageId,
+        leadPhone: normalizedPhone,
+        triggerTypes: ["on_create", "on_create_or_enter"],
+      });
+    }
     setNewLeadOpen(false);
     setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "" });
     fetchData();
