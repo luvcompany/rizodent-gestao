@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { FileText, Bot, Search } from "lucide-react";
+import { cleanTemplateName } from "@/lib/templateUtils";
 
 type Template = {
   id: string;
@@ -32,7 +33,7 @@ export default function SlashCommandMenu({ query, templates, bots, onSelectTempl
     const q = query.toLowerCase();
     const tItems = templates
       .filter(t => t.name.toLowerCase().includes(q) || (t.body_text || "").toLowerCase().includes(q))
-      .map(t => ({ type: "template" as const, data: t, label: t.name, desc: t.body_text?.substring(0, 60) || "" }));
+      .map(t => ({ type: "template" as const, data: t, label: cleanTemplateName(t.name), desc: t.body_text?.substring(0, 60) || "" }));
     const bItems = bots
       .filter(b => b.name.toLowerCase().includes(q) || (b.description || "").toLowerCase().includes(q))
       .map(b => ({ type: "bot" as const, data: b, label: b.name, desc: b.description?.substring(0, 60) || "" }));

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
@@ -103,27 +104,11 @@ export default function CrmModelos() {
     }
   };
 
-  // Helper to extract base name without random suffix
-  const baseName = (name: string) => name.replace(/_[a-z0-9]{4,10}$/, '');
-
-  // Deduplicate templates by base name, keeping the most recent one
-  const deduped = (() => {
-    const map = new Map<string, WhatsAppTemplate>();
-    for (const t of templates) {
-      const key = baseName(t.name);
-      const existing = map.get(key);
-      if (!existing || new Date(t.updated_at) > new Date(existing.updated_at)) {
-        map.set(key, t);
-      }
-    }
-    return Array.from(map.values());
-  })();
-
-  const filtered = deduped.filter(t => {
+  const filtered = deduplicateTemplates(templates).filter(t => {
     if (tab === "aprovados" && t.status !== "APPROVED") return false;
     if (tab === "pendentes" && t.status !== "PENDING" && t.status !== "REJECTED") return false;
-    const cleanName = baseName(t.name).toLowerCase();
-    if (search && !cleanName.includes(search.toLowerCase()) && !(t.body_text || "").toLowerCase().includes(search.toLowerCase())) return false;
+    const clean = cleanTemplateName(t.name).toLowerCase();
+    if (search && !clean.includes(search.toLowerCase()) && !(t.body_text || "").toLowerCase().includes(search.toLowerCase())) return false;
     if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
     return true;
   });
@@ -374,7 +359,7 @@ export default function CrmModelos() {
             {paginated.map(t => (
               <div key={t.id} className="bg-card rounded-lg border border-border p-4 hover:border-primary/30 transition-all shadow-card">
                 <div className="flex items-start justify-between mb-2">
-                  <div className="font-semibold text-sm text-foreground break-all" title={t.name}>{baseName(t.name)}</div>
+                  <div className="font-semibold text-sm text-foreground break-all" title={t.name}>{cleanTemplateName(t.name)}</div>
                   <div className="flex items-center gap-1">{headerIcon(t.header_type)}</div>
                 </div>
                 <div className="flex items-center gap-2 mb-2">{categoryBadge(t.category)} {statusBadge(t.status)}</div>

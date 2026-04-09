@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -95,7 +96,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   useEffect(() => {
     const loadSlashData = async () => {
       const { data: t } = await supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED").order("created_at", { ascending: false });
-      setSlashTemplates(t || []);
+      setSlashTemplates(deduplicateTemplates(t || []));
     };
     loadSlashData();
   }, []);

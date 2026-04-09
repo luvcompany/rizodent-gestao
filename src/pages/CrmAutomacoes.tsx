@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { deduplicateTemplates } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -93,7 +94,7 @@ export default function CrmAutomacoes() {
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
-      setTemplates((tplRes.data as Template[]) || []);
+      setTemplates(deduplicateTemplates((tplRes.data as Template[]) || []));
       setChannels((chRes.data as FunnelChannel[]) || []);
       setFollowUpConfigs((fuRes.data as FollowUpCfg[]) || []);
       setPublishedBots((botsRes.data as BotEntry[]) || []);

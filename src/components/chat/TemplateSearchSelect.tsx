@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cleanTemplateName } from "@/lib/templateUtils";
 import { Search } from "lucide-react";
 
 interface Template {
@@ -17,8 +18,6 @@ interface Props {
   /** Show a "Nenhum" option at the top */
   allowNone?: boolean;
   noneLabel?: string;
-  /** Clean template name (remove random suffixes) */
-  cleanName?: (name: string) => string;
 }
 
 export default function TemplateSearchSelect({
@@ -28,7 +27,6 @@ export default function TemplateSearchSelect({
   placeholder = "Selecionar template",
   allowNone = false,
   noneLabel = "Nenhum",
-  cleanName,
 }: Props) {
   const [search, setSearch] = useState("");
 
@@ -42,7 +40,7 @@ export default function TemplateSearchSelect({
     );
   }, [templates, search]);
 
-  const display = (name: string) => (cleanName ? cleanName(name) : name);
+  const display = (name: string) => cleanTemplateName(name);
 
   return (
     <div className="space-y-1.5">
