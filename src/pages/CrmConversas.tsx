@@ -370,14 +370,24 @@ export default function CrmConversas() {
       }
       if (filters.pipelineId && l.pipeline_id !== filters.pipelineId) return false;
       if (filters.stageId && l.stage_id !== filters.stageId) return false;
+      if (filters.assignedTo && l.assigned_to !== filters.assignedTo) return false;
       if (filters.status === "open" && l.last_direction !== "inbound") return false;
       if (filters.status === "replied" && l.last_direction !== "outbound") return false;
       if (filters.status === "no_reply" && !!l.last_direction) return false;
       if (filters.tags.length && !filters.tags.some((t) => l.tags?.includes(t))) return false;
       if (filters.source && l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
+      // Special URL filters
+      if (urlGhost && ghostLeadIds && ghostLeadIds.has(l.id)) return false; // ghost = NOT in inbound set
+      if (urlAppointmentStatus && appointmentLeadIds && !appointmentLeadIds.has(l.id)) return false;
+      if (urlInactiveDays) {
+        const days = parseInt(urlInactiveDays) || 3;
+        const threshold = days * 86400000;
+        const lastActivity = l.last_message_at ? new Date(l.last_message_at).getTime() : new Date(l.created_at).getTime();
+        if (Date.now() - lastActivity < threshold) return false;
+      }
       return true;
     });
-  }, [leads, search, filters, user?.id]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays]);
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
