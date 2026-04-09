@@ -1659,6 +1659,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_duplicate_phone: {
+        Args: { p_phone: string }
+        Returns: {
+          assigned_to: string
+          lead_id: string
+          lead_name: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
