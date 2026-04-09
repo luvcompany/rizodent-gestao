@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
-  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings, ClipboardList,
+  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings, ClipboardList, Sun, Moon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfileDialog from "@/components/EditProfileDialog";
+import { useTheme } from "@/hooks/useTheme";
 import logo from "@/assets/logo-rizodent.webp";
 
 const navItems = [
@@ -27,6 +28,7 @@ const AppLayout = () => {
   const { signOut, profile, user, refreshProfile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const handleLogout = async () => {
     await signOut();
@@ -96,6 +98,13 @@ const AppLayout = () => {
               <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           )}
+          <button
+            onClick={toggleTheme}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            {theme === "dark" ? "Modo Claro" : "Modo Escuro"}
+          </button>
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
