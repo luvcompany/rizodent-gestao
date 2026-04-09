@@ -93,7 +93,7 @@ export default function CrmRelatorios() {
         supabase.from("crm_pipelines").select("id, name, color").order("created_at"),
         supabase.from("crm_stages").select("id, name, color, position, pipeline_id").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem" as any),
+        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio" as any),
         supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id"),
         supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
@@ -1191,22 +1191,29 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
-  // By ad (grouped by link_anuncio, with image)
+  // By ad (grouped by descricao_anuncio to merge same creative across locations)
   const byAd = useMemo(() => {
-    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null }>();
+    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; links: Set<string>; sources: Set<string> }>();
     leads.forEach(l => {
-      const adKey = l.link_anuncio || l.nome_anuncio;
+      // Use description as the grouping key to merge duplicates; fallback to link or name
+      const desc = (l as any).descricao_anuncio;
+      const adKey = desc || l.link_anuncio || l.nome_anuncio;
       if (!adKey) return;
-      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null });
+      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, links: new Set(), sources: new Set() });
       const s = map.get(adKey)!;
       s.total++;
       if (!s.image && l.imagem_origem) s.image = l.imagem_origem;
       if (!s.name && l.nome_anuncio) s.name = l.nome_anuncio;
+      if (l.link_anuncio) s.links.add(l.link_anuncio);
+      if (l.source) s.sources.add(l.source);
       if (scheduledLeadIds.has(l.id)) s.scheduled++;
       if (contractedLeadIds.has(l.id)) s.contracted++;
     });
-    return Array.from(map.entries()).map(([link, v]) => ({
-      link, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
+    return Array.from(map.entries()).map(([key, v]) => ({
+      key, ...v,
+      linksArr: Array.from(v.links),
+      sourcesArr: Array.from(v.sources),
+      convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
@@ -1268,29 +1275,42 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
             </TableHeader>
             <TableBody>
               {byAd.slice(0, 30).map((row) => (
-                <TableRow key={row.link} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.link })}>
+                <TableRow key={row.key} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.key })}>
                   <TableCell className="font-medium text-foreground">
                     <div className="flex items-center gap-3">
-                      {row.image && (
+                      {row.image ? (
                         <img
                           src={row.image}
                           alt="Ad"
                           className="w-12 h-12 rounded object-cover flex-shrink-0"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                         />
+                      ) : (
+                        <div className="w-12 h-12 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                          <span className="text-xs text-muted-foreground">Vídeo</span>
+                        </div>
                       )}
                       <div className="min-w-0">
                         {row.name && <p className="text-sm font-medium truncate">{row.name}</p>}
-                        {row.link && (
-                          <a
-                            href={row.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline truncate block max-w-[250px]"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {row.link}
-                          </a>
+                        {row.linksArr.length > 0 && (
+                          <div className="flex flex-col gap-0.5">
+                            {row.linksArr.slice(0, 3).map((link, i) => (
+                              <a
+                                key={i}
+                                href={link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline truncate block max-w-[250px]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {link}
+                              </a>
+                            ))}
+                            {row.linksArr.length > 3 && <span className="text-xs text-muted-foreground">+{row.linksArr.length - 3} links</span>}
+                          </div>
+                        )}
+                        {row.sourcesArr.length > 1 && (
+                          <p className="text-xs text-muted-foreground">{row.sourcesArr.length} origens</p>
                         )}
                       </div>
                     </div>
