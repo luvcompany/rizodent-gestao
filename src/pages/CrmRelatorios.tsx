@@ -494,7 +494,10 @@ export default function CrmRelatorios() {
           <div className="flex items-center gap-1 overflow-x-auto pb-2">
             {funnelData.map((step, i) => (
               <div key={step.name} className="flex items-center gap-1">
-                <div className="flex flex-col items-center min-w-[110px]">
+                <div
+                  className="flex flex-col items-center min-w-[110px] cursor-pointer hover:bg-muted/50 rounded-lg p-2 transition-colors"
+                  onClick={() => step.value > 0 && drillDown(step.drillParams)}
+                >
                   <p className="text-2xl font-bold text-foreground">{step.value}</p>
                   <p className="text-xs text-muted-foreground text-center whitespace-nowrap">{step.name}</p>
                   {i > 0 && (
