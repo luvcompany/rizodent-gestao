@@ -186,7 +186,28 @@ export default function CrmConversas() {
     fetchLeads();
   }, []);
 
-  // Sync selected lead when leads or selection changes
+  // Load special URL filter data (ghost leads, appointment leads)
+  useEffect(() => {
+    if (!urlGhost && !urlAppointmentStatus && !urlInactiveDays) return;
+    const loadSpecialFilters = async () => {
+      if (urlGhost) {
+        const { data: msgs } = await supabase.from("messages").select("lead_id").eq("direction", "inbound").neq("status", "system");
+        const inboundIds = new Set((msgs || []).map((m: any) => m.lead_id));
+        // Ghost = leads NOT in inboundIds → we store inbound ids and invert in filter
+        setGhostLeadIds(inboundIds);
+      }
+      if (urlAppointmentStatus) {
+        const statuses = urlAppointmentStatus === "rescheduled" ? ["rescheduled"]
+          : urlAppointmentStatus === "missed" ? ["missed", "faltou"]
+          : urlAppointmentStatus === "attended" ? ["completed", "contratou", "nao_contratou"]
+          : [urlAppointmentStatus];
+        const { data: apts } = await supabase.from("crm_appointments").select("lead_id").in("status", statuses);
+        setAppointmentLeadIds(new Set((apts || []).map((a: any) => a.lead_id)));
+      }
+    };
+    loadSpecialFilters();
+  }, [urlGhost, urlAppointmentStatus, urlInactiveDays]);
+
   useEffect(() => {
     if (!selectedLeadId) {
       setSelectedLead(null);
