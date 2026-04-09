@@ -95,14 +95,40 @@ export default function CrmRelatorios() {
         supabase.from("crm_stages").select("id, name, color, position, pipeline_id").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
         supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio" as any),
-        supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id"),
+        supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id, ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url"),
         supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
       setPipelines((pipelinesRes.data as Pipeline[]) || []);
       setStages((stagesRes.data as Stage[]) || []);
       setHistory((historyRes.data as unknown as StageHistory[]) || []);
-      setLeads((leadsRes.data as unknown as Lead[]) || []);
-      setMessages((messagesRes.data as Message[]) || []);
+
+      // Enrich leads missing ad data from their messages
+      const rawLeads = (leadsRes.data as unknown as Lead[]) || [];
+      const rawMessages = (messagesRes.data as any[]) || [];
+      const adMsgByLead = new Map<string, any>();
+      for (const m of rawMessages) {
+        if (m.ad_source_id && !adMsgByLead.has(m.lead_id)) {
+          adMsgByLead.set(m.lead_id, m);
+        }
+      }
+      const enrichedLeads = rawLeads.map(l => {
+        if (!l.imagem_origem && !l.descricao_anuncio) {
+          const adMsg = adMsgByLead.get(l.id);
+          if (adMsg) {
+            return {
+              ...l,
+              imagem_origem: adMsg.ad_image_url || l.imagem_origem,
+              nome_anuncio: adMsg.ad_headline || l.nome_anuncio,
+              descricao_anuncio: adMsg.ad_body || l.descricao_anuncio,
+              link_anuncio: adMsg.ad_source_url || l.link_anuncio,
+            };
+          }
+        }
+        return l;
+      });
+
+      setLeads(enrichedLeads);
+      setMessages(rawMessages as Message[]);
       setAppointments((appointmentsRes.data as Appointment[]) || []);
       setLoading(false);
     };
