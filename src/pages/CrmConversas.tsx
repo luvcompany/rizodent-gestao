@@ -33,7 +33,7 @@ import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2
 } from "lucide-react";
 import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
@@ -82,6 +82,11 @@ export default function CrmConversas() {
 
   // Unified chat hook
   const chat = useChatConversation(selectedLeadId);
+
+  const handleSelectLead = useCallback((lead: LeadConversation) => {
+    setSelectedLeadId(lead.id);
+    setSelectedLead(lead);
+  }, []);
 
   // ===== Bot Active Execution State =====
   const checkExecution = useCallback(async () => {
@@ -164,7 +169,10 @@ export default function CrmConversas() {
 
   // Sync selected lead when leads or selection changes
   useEffect(() => {
-    if (!selectedLeadId) return;
+    if (!selectedLeadId) {
+      setSelectedLead(null);
+      return;
+    }
     const lead = leads.find((l) => l.id === selectedLeadId) || null;
     setSelectedLead(lead);
   }, [selectedLeadId, leads]);
@@ -369,7 +377,7 @@ export default function CrmConversas() {
                     {filtered.slice(0, 6).map((lead) => (
                       <button
                         key={lead.id}
-                        onClick={() => { setSelectedLeadId(lead.id); setSearch(""); }}
+                          onClick={() => { handleSelectLead(lead); setSearch(""); }}
                         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/50 transition-colors border-b border-border last:border-b-0"
                       >
                         <Avatar className="h-6 w-6">
@@ -405,7 +413,7 @@ export default function CrmConversas() {
                     return (
                       <button
                         key={lead.id}
-                        onClick={() => setSelectedLeadId(lead.id)}
+                        onClick={() => handleSelectLead(lead)}
                         className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
                           isActive
                             ? "bg-primary/15 border-l-2 border-l-primary"
@@ -451,7 +459,7 @@ export default function CrmConversas() {
 
         {/* CENTER PANEL - Chat */}
         <ResizablePanel defaultSize={rightPanelVisible ? 46 : 76} minSize={38} className="min-w-0 overflow-hidden">
-          {selectedLeadId && selectedLead ? (
+          {selectedLeadId && selectedLead && selectedLead.id === selectedLeadId ? (
             <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden relative">
               {/* Chat header */}
               <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
@@ -492,10 +500,14 @@ export default function CrmConversas() {
               <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
                 <ChatActivityToast activities={chat.activityToasts} onDismiss={chat.dismissToast} />
 
-                {chat.messages.length === 0 && (
+                {chat.loading ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  </div>
+                ) : chat.messages.length === 0 && (
                   <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Nenhuma mensagem ainda</div>
                 )}
-                {chat.messages.map((msg, idx) => {
+                {!chat.loading && chat.messages.map((msg, idx) => {
                   const msgDate = new Date(msg.created_at);
                   const prevDate = idx > 0 ? new Date(chat.messages[idx - 1].created_at) : null;
                   const showDateSep = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
@@ -570,6 +582,10 @@ export default function CrmConversas() {
                 </div>
               )}
             </div>
+          ) : selectedLeadId ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
@@ -581,7 +597,7 @@ export default function CrmConversas() {
         </ResizablePanel>
 
         {/* RIGHT PANEL - Lead details */}
-        {rightPanelVisible && selectedLeadId && selectedLead && (
+        {rightPanelVisible && selectedLeadId && selectedLead && selectedLead.id === selectedLeadId && (
           <>
             <ResizableHandle />
             <ResizablePanel defaultSize={30} minSize={24} maxSize={34} className="min-w-0 overflow-hidden">
