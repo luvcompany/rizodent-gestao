@@ -1275,29 +1275,42 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
             </TableHeader>
             <TableBody>
               {byAd.slice(0, 30).map((row) => (
-                <TableRow key={row.link} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.link })}>
+                <TableRow key={row.key} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.key })}>
                   <TableCell className="font-medium text-foreground">
                     <div className="flex items-center gap-3">
-                      {row.image && (
+                      {row.image ? (
                         <img
                           src={row.image}
                           alt="Ad"
                           className="w-12 h-12 rounded object-cover flex-shrink-0"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                         />
+                      ) : (
+                        <div className="w-12 h-12 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                          <span className="text-xs text-muted-foreground">Vídeo</span>
+                        </div>
                       )}
                       <div className="min-w-0">
                         {row.name && <p className="text-sm font-medium truncate">{row.name}</p>}
-                        {row.link && (
-                          <a
-                            href={row.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline truncate block max-w-[250px]"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {row.link}
-                          </a>
+                        {row.linksArr.length > 0 && (
+                          <div className="flex flex-col gap-0.5">
+                            {row.linksArr.slice(0, 3).map((link, i) => (
+                              <a
+                                key={i}
+                                href={link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline truncate block max-w-[250px]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {link}
+                              </a>
+                            ))}
+                            {row.linksArr.length > 3 && <span className="text-xs text-muted-foreground">+{row.linksArr.length - 3} links</span>}
+                          </div>
+                        )}
+                        {row.sourcesArr.length > 1 && (
+                          <p className="text-xs text-muted-foreground">{row.sourcesArr.length} origens</p>
                         )}
                       </div>
                     </div>
