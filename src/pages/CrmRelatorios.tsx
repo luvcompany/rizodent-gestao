@@ -90,8 +90,8 @@ export default function CrmRelatorios() {
       ]);
       setPipelines((pipelinesRes.data as Pipeline[]) || []);
       setStages((stagesRes.data as Stage[]) || []);
-      setHistory((historyRes.data as StageHistory[]) || []);
-      setLeads((leadsRes.data as Lead[]) || []);
+      setHistory((historyRes.data as unknown as StageHistory[]) || []);
+      setLeads((leadsRes.data as unknown as Lead[]) || []);
       setMessages((messagesRes.data as Message[]) || []);
       setAppointments((appointmentsRes.data as Appointment[]) || []);
       setLoading(false);
