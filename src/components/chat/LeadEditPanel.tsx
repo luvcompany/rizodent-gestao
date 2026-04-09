@@ -30,6 +30,8 @@ type Lead = {
   nome_anuncio?: string | null;
   descricao_anuncio?: string | null;
   link_anuncio?: string | null;
+  ad_account_id?: string | null;
+  ad_account_name?: string | null;
 };
 
 type AdOption = {
@@ -38,6 +40,8 @@ type AdOption = {
   nome_anuncio: string | null;
   descricao_anuncio: string | null;
   link_anuncio: string | null;
+  ad_account_id: string | null;
+  ad_account_name: string | null;
 };
 
 type Props = {

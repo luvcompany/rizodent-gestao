@@ -25,7 +25,7 @@ type Lead = {
   created_at: string; score?: number; last_message_at?: string | null; assigned_to?: string | null;
   first_inbound_at?: string | null; source?: string | null; nome_anuncio?: string | null;
   paciente_id?: string | null; link_anuncio?: string | null; imagem_origem?: string | null;
-  descricao_anuncio?: string | null;
+  descricao_anuncio?: string | null; ad_account_id?: string | null; ad_account_name?: string | null;
 };
 type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
 type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string };
