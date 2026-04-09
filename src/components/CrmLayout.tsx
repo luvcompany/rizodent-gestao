@@ -3,8 +3,9 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
-  Home, Settings, ChevronDown, Send,
+  Home, Settings, ChevronDown, Send, Sun, Moon,
 } from "lucide-react";
+import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
 
@@ -54,6 +55,7 @@ const CrmLayout = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { theme, toggleTheme } = useTheme();
   const [unreadCount, setUnreadCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
 
@@ -208,6 +210,16 @@ const CrmLayout = () => {
             isGroup(entry) ? renderNavGroup(entry) : renderNavItem(entry)
           )}
         </nav>
+
+        <div className="border-t border-sidebar-border p-4">
+          <button
+            onClick={toggleTheme}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            {theme === "dark" ? "Modo Claro" : "Modo Escuro"}
+          </button>
+        </div>
       </aside>
 
       <div className={`flex min-w-0 flex-1 flex-col transition-all ${sidebarCollapsed ? "lg:pl-0" : "lg:pl-64"}`}>
