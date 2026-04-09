@@ -807,7 +807,7 @@ export default function CrmRelatorios() {
                   </TableHeader>
                   <TableBody>
                     {inactiveLeads.slice(0, 100).map((lead) => (
-                      <TableRow key={lead.id}>
+                      <TableRow key={lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/crm/conversas?lead_id=${lead.id}`)}>
                         <TableCell className="font-medium text-foreground">{lead.name}</TableCell>
                         <TableCell className="text-muted-foreground text-sm">{lead.phone || "—"}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px]">{lead.pipelineName}</Badge></TableCell>
