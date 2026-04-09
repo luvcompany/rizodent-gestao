@@ -24,7 +24,7 @@ type Lead = {
   id: string; name: string; phone: string | null; stage_id: string; pipeline_id: string;
   created_at: string; score?: number; last_message_at?: string | null; assigned_to?: string | null;
   first_inbound_at?: string | null; source?: string | null; nome_anuncio?: string | null;
-  paciente_id?: string | null;
+  paciente_id?: string | null; link_anuncio?: string | null; imagem_origem?: string | null;
 };
 type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
 type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string };
@@ -93,7 +93,7 @@ export default function CrmRelatorios() {
         supabase.from("crm_pipelines").select("id, name, color").order("created_at"),
         supabase.from("crm_stages").select("id, name, color, position, pipeline_id").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id" as any),
+        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem" as any),
         supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id"),
         supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
@@ -1191,20 +1191,22 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
-  // By ad name
+  // By ad (grouped by link_anuncio, with image)
   const byAd = useMemo(() => {
-    const map = new Map<string, { total: number; scheduled: number; contracted: number }>();
+    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null }>();
     leads.forEach(l => {
-      const ad = l.nome_anuncio;
-      if (!ad) return;
-      if (!map.has(ad)) map.set(ad, { total: 0, scheduled: 0, contracted: 0 });
-      const s = map.get(ad)!;
+      const adKey = l.link_anuncio || l.nome_anuncio;
+      if (!adKey) return;
+      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null });
+      const s = map.get(adKey)!;
       s.total++;
+      if (!s.image && l.imagem_origem) s.image = l.imagem_origem;
+      if (!s.name && l.nome_anuncio) s.name = l.nome_anuncio;
       if (scheduledLeadIds.has(l.id)) s.scheduled++;
       if (contractedLeadIds.has(l.id)) s.contracted++;
     });
-    return Array.from(map.entries()).map(([name, v]) => ({
-      name, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
+    return Array.from(map.entries()).map(([link, v]) => ({
+      link, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
@@ -1248,10 +1250,68 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     </Card>
   );
 
+  const renderAdTable = () => {
+    if (byAd.length === 0) return null;
+    return (
+      <Card>
+        <CardHeader><CardTitle className="text-base">Por Anúncio</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Anúncio</TableHead>
+                <TableHead>Leads</TableHead>
+                <TableHead>Agendaram</TableHead>
+                <TableHead>Contrataram</TableHead>
+                <TableHead>Taxa Conversão</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {byAd.slice(0, 30).map((row) => (
+                <TableRow key={row.link} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.link })}>
+                  <TableCell className="font-medium text-foreground">
+                    <div className="flex items-center gap-3">
+                      {row.image && (
+                        <img
+                          src={row.image}
+                          alt="Ad"
+                          className="w-12 h-12 rounded object-cover flex-shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      )}
+                      <div className="min-w-0">
+                        {row.name && <p className="text-sm font-medium truncate">{row.name}</p>}
+                        {row.link && (
+                          <a
+                            href={row.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline truncate block max-w-[250px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {row.link}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{row.total}</TableCell>
+                  <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
+                  <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
+                  <TableCell><Badge variant={row.convRate >= 30 ? "default" : row.convRate >= 15 ? "secondary" : "outline"}>{row.convRate}%</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <>
       {renderTable(bySource, "Por Origem", "source")}
-      {byAd.length > 0 && renderTable(byAd, "Por Anúncio", "ad_name")}
+      {renderAdTable()}
       {renderTable(byCidade, "Por Cidade", "city")}
     </>
   );
