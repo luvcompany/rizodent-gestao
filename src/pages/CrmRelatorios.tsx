@@ -239,7 +239,8 @@ export default function CrmRelatorios() {
     const ghosts = filteredLeads.filter(l => !inboundLeadIds.has(l.id));
     const bySource = new Map<string, number>();
     ghosts.forEach(l => {
-      const src = l.nome_anuncio || l.source || "Desconhecida";
+      const raw = l.nome_anuncio || l.source || "Desconhecida";
+      const src = ["facebook_ad", "instagram_ad"].includes(raw.toLowerCase()) ? "Anúncio" : raw;
       bySource.set(src, (bySource.get(src) || 0) + 1);
     });
     const sorted = Array.from(bySource.entries()).sort((a, b) => b[1] - a[1]);
