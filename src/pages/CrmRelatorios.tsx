@@ -239,7 +239,8 @@ export default function CrmRelatorios() {
     const ghosts = filteredLeads.filter(l => !inboundLeadIds.has(l.id));
     const bySource = new Map<string, number>();
     ghosts.forEach(l => {
-      const src = l.nome_anuncio || l.source || "Desconhecida";
+      const raw = l.nome_anuncio || l.source || "Desconhecida";
+      const src = ["facebook_ad", "instagram_ad"].includes(raw.toLowerCase()) ? "Anúncio" : raw;
       bySource.set(src, (bySource.get(src) || 0) + 1);
     });
     const sorted = Array.from(bySource.entries()).sort((a, b) => b[1] - a[1]);
@@ -1179,7 +1180,8 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
   const bySource = useMemo(() => {
     const map = new Map<string, { total: number; scheduled: number; contracted: number }>();
     leads.forEach(l => {
-      const src = l.source || "Desconhecida";
+      const raw = l.source || "Desconhecida";
+      const src = ["facebook_ad", "instagram_ad"].includes(raw.toLowerCase()) ? "Anúncio" : raw;
       if (!map.has(src)) map.set(src, { total: 0, scheduled: 0, contracted: 0 });
       const s = map.get(src)!;
       s.total++;
@@ -1195,10 +1197,10 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
   const byAd = useMemo(() => {
     const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; links: Set<string>; sources: Set<string> }>();
     leads.forEach(l => {
-      // Use description as the grouping key to merge duplicates; fallback to link or name
+      // Group by visual + description to unify same creative across ad accounts
       const desc = (l as any).descricao_anuncio;
-      const adKey = desc || l.link_anuncio || l.nome_anuncio;
-      if (!adKey) return;
+      const adKey = `${l.imagem_origem || "no-img"}::${desc || l.link_anuncio || l.nome_anuncio}`;
+      if (adKey === "no-img::undefined" || adKey === "no-img::null") return;
       if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, links: new Set(), sources: new Set() });
       const s = map.get(adKey)!;
       s.total++;
