@@ -29,6 +29,32 @@ const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px r
 
 
 const Dashboard = () => {
+  const ct = useChartTheme();
+
+  const renderBarLabel = (props: any) => {
+    const { x, y, width, value } = props;
+    if (!value) return null;
+    const label = typeof value === "number" && value >= 1000 ? formatCurrency(value) : String(value);
+    return (
+      <text x={x + width / 2} y={y - 6} fill={ct.labelColor} textAnchor="middle" fontSize={10} fontWeight={600}>
+        {label}
+      </text>);
+  };
+
+  const ChartCard = ({ title, children }: {title: string; children: React.ReactNode}) => (
+    <Card className="gradient-card border-border shadow-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {children}
+      </CardContent>
+    </Card>
+  );
+
+  const tooltipStyle = ct.tooltipStyle;
+  const tooltipLabelStyle = ct.tooltipLabelStyle;
+  const tooltipItemStyle = ct.tooltipItemStyle;
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaFiltro, setClinicaFiltro] = useState("todas");
   const [canalFiltro, setCanalFiltro] = useState("todos");
