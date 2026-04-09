@@ -307,6 +307,9 @@ export default function InlineTagsEditor({
                           )}
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium truncate">{ad.nome_anuncio || "Sem nome"}</p>
+                            {ad.ad_account_name && (
+                              <p className="text-[10px] text-primary/70 truncate">Conta: {ad.ad_account_name}</p>
+                            )}
                             {ad.descricao_anuncio && (
                               <p className="text-[10px] text-muted-foreground line-clamp-1">{ad.descricao_anuncio}</p>
                             )}
