@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -66,6 +67,7 @@ type LeadConversation = {
 
 export default function CrmConversas() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [leads, setLeads] = useState<LeadConversation[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -74,7 +76,23 @@ export default function CrmConversas() {
   const [newNote, setNewNote] = useState("");
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
-  const [filters, setFilters] = useState<ConversationFilterValues>(emptyFilters);
+  const [urlFiltersApplied, setUrlFiltersApplied] = useState(false);
+  const [filters, setFilters] = useState<ConversationFilterValues>(() => {
+    // Initialize from URL params if present
+    const pipeline = searchParams.get("pipeline") || "";
+    const stageId = searchParams.get("stage_id") || "";
+    const assignedTo = searchParams.get("assigned_to") || "";
+    if (pipeline || stageId || assignedTo) {
+      return { ...emptyFilters, pipelineId: pipeline, stageId, assignedTo };
+    }
+    return emptyFilters;
+  });
+  // Special URL filters not part of ConversationFilters
+  const urlGhost = searchParams.get("ghost") === "true";
+  const urlInactiveDays = searchParams.get("inactive_days");
+  const urlAppointmentStatus = searchParams.get("appointment_status");
+  const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
+  const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
   const [activeExecution, setActiveExecution] = useState<{
@@ -168,7 +186,28 @@ export default function CrmConversas() {
     fetchLeads();
   }, []);
 
-  // Sync selected lead when leads or selection changes
+  // Load special URL filter data (ghost leads, appointment leads)
+  useEffect(() => {
+    if (!urlGhost && !urlAppointmentStatus && !urlInactiveDays) return;
+    const loadSpecialFilters = async () => {
+      if (urlGhost) {
+        const { data: msgs } = await supabase.from("messages").select("lead_id").eq("direction", "inbound").neq("status", "system");
+        const inboundIds = new Set((msgs || []).map((m: any) => m.lead_id));
+        // Ghost = leads NOT in inboundIds → we store inbound ids and invert in filter
+        setGhostLeadIds(inboundIds);
+      }
+      if (urlAppointmentStatus) {
+        const statuses = urlAppointmentStatus === "rescheduled" ? ["rescheduled"]
+          : urlAppointmentStatus === "missed" ? ["missed", "faltou"]
+          : urlAppointmentStatus === "attended" ? ["completed", "contratou", "nao_contratou"]
+          : [urlAppointmentStatus];
+        const { data: apts } = await supabase.from("crm_appointments").select("lead_id").in("status", statuses);
+        setAppointmentLeadIds(new Set((apts || []).map((a: any) => a.lead_id)));
+      }
+    };
+    loadSpecialFilters();
+  }, [urlGhost, urlAppointmentStatus, urlInactiveDays]);
+
   useEffect(() => {
     if (!selectedLeadId) {
       setSelectedLead(null);
@@ -291,8 +330,9 @@ export default function CrmConversas() {
   // Apply filters
   const filtered = useMemo(() => {
     return leads.filter((l) => {
-      // Filter by assigned user - each user sees only their leads
-      if (user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
+      // Filter by assigned user - skip when drill-down filter is active
+      const hasUrlFilters = urlGhost || urlAppointmentStatus || urlInactiveDays || searchParams.get("assigned_to") || searchParams.get("stage_id") || searchParams.get("pipeline");
+      if (!hasUrlFilters && user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
       const normalizedSearch = search.trim().toLowerCase();
       if (normalizedSearch) {
         const searchDigits = normalizedSearch.replace(/\D/g, "");
@@ -331,14 +371,24 @@ export default function CrmConversas() {
       }
       if (filters.pipelineId && l.pipeline_id !== filters.pipelineId) return false;
       if (filters.stageId && l.stage_id !== filters.stageId) return false;
+      if (filters.assignedTo && l.assigned_to !== filters.assignedTo) return false;
       if (filters.status === "open" && l.last_direction !== "inbound") return false;
       if (filters.status === "replied" && l.last_direction !== "outbound") return false;
       if (filters.status === "no_reply" && !!l.last_direction) return false;
       if (filters.tags.length && !filters.tags.some((t) => l.tags?.includes(t))) return false;
       if (filters.source && l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
+      // Special URL filters
+      if (urlGhost && ghostLeadIds && ghostLeadIds.has(l.id)) return false; // ghost = NOT in inbound set
+      if (urlAppointmentStatus && appointmentLeadIds && !appointmentLeadIds.has(l.id)) return false;
+      if (urlInactiveDays) {
+        const days = parseInt(urlInactiveDays) || 3;
+        const threshold = days * 86400000;
+        const lastActivity = l.last_message_at ? new Date(l.last_message_at).getTime() : new Date(l.created_at).getTime();
+        if (Date.now() - lastActivity < threshold) return false;
+      }
       return true;
     });
-  }, [leads, search, filters, user?.id]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays]);
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
@@ -349,6 +399,15 @@ export default function CrmConversas() {
         {leftPanelVisible && (
         <><ResizablePanel defaultSize={24} minSize={20} maxSize={28} className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-hidden">
+              {/* URL filter banner */}
+              {(urlGhost || urlAppointmentStatus || urlInactiveDays) && (
+                <div className="flex items-center gap-1 mb-2 flex-wrap">
+                  {urlGhost && <Badge variant="destructive" className="text-[10px]">Leads Fantasma</Badge>}
+                  {urlAppointmentStatus && <Badge variant="secondary" className="text-[10px]">Agendamento: {urlAppointmentStatus}</Badge>}
+                  {urlInactiveDays && <Badge variant="secondary" className="text-[10px]">Inativos +{urlInactiveDays}d</Badge>}
+                  <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={() => setSearchParams({})}>✕ Limpar</Button>
+                </div>
+              )}
             <div className="flex-shrink-0 px-4 py-3 border-b border-border">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-bold text-foreground text-sm">Conversas</h2>

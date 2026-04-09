@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +63,7 @@ function getPeriodRange(period: PeriodFilter, customFrom?: string, customTo?: st
 }
 
 export default function CrmRelatorios() {
+  const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("all");
   const [period, setPeriod] = useState<PeriodFilter>("this_month");
@@ -76,6 +78,12 @@ export default function CrmRelatorios() {
   const [inactiveDays, setInactiveDays] = useState("3");
   const [inactiveUnit, setInactiveUnit] = useState<"days" | "weeks" | "months">("days");
   const chartTheme = useChartTheme();
+
+  // Navigation helper for drill-down
+  const drillDown = useCallback((params: Record<string, string>) => {
+    const qs = new URLSearchParams(params).toString();
+    navigate(`/crm/conversas?${qs}`);
+  }, [navigate]);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -211,12 +219,16 @@ export default function CrmRelatorios() {
     const contractedLeadIds = new Set([...contractedHistoryLeadIds, ...contractedCurrentLeadIds]);
     const contractedCount = contractedLeadIds.size;
 
+    const agendStageId = filteredStages.find(s => s.name.toLowerCase().includes("agend"))?.id || "";
+    const contratadoStageId = filteredStages.find(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não"))?.id || "";
+    const pipelineParam = selectedPipelineId !== "all" ? selectedPipelineId : "";
+
     const steps = [
-      { name: "Leads Entraram", value: totalEnteredLead, color: "hsl(var(--primary))" },
-      { name: "Responderam", value: respondedCount, color: "#3b82f6" },
-      { name: "Agendaram", value: scheduledCount, color: "#f59e0b" },
-      { name: "Compareceram", value: attendedCount, color: "#10b981" },
-      { name: "Contrataram", value: contractedCount, color: "#22c55e" },
+      { name: "Leads Entraram", value: totalEnteredLead, color: "hsl(var(--primary))", drillParams: { ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Responderam", value: respondedCount, color: "#3b82f6", drillParams: { ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Agendaram", value: scheduledCount, color: "#f59e0b", drillParams: { ...(agendStageId ? { stage_id: agendStageId } : {}), ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Compareceram", value: attendedCount, color: "#10b981", drillParams: { appointment_status: "attended", ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Contrataram", value: contractedCount, color: "#22c55e", drillParams: { ...(contratadoStageId ? { stage_id: contratadoStageId } : {}), ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
     ];
 
     return steps.map((step, i) => ({
@@ -362,7 +374,33 @@ export default function CrmRelatorios() {
     });
   }, [selectedPipelineId, pipelines, leads, stages]);
 
-  // Period label
+  // Cross-funnel flow data
+  const crossFunnelFlow = useMemo(() => {
+    if (pipelines.length < 2) return null;
+    // For each pipeline pair, count leads that moved between them
+    const flows: { from: Pipeline; to: Pipeline; count: number; leadIds: string[] }[] = [];
+    const stageToPlMap = new Map(stages.map(s => [s.id, s.pipeline_id]));
+
+    for (const fromPl of pipelines) {
+      for (const toPl of pipelines) {
+        if (fromPl.id === toPl.id) continue;
+        const movedLeadIds = new Set<string>();
+        history.forEach(h => {
+          if (!h.from_stage_id) return;
+          const fromPlId = stageToPlMap.get(h.from_stage_id);
+          const toPlId = stageToPlMap.get(h.stage_id);
+          if (fromPlId === fromPl.id && toPlId === toPl.id) {
+            movedLeadIds.add(h.lead_id);
+          }
+        });
+        if (movedLeadIds.size > 0) {
+          flows.push({ from: fromPl, to: toPl, count: movedLeadIds.size, leadIds: Array.from(movedLeadIds) });
+        }
+      }
+    }
+    return flows.length > 0 ? flows : null;
+  }, [pipelines, stages, history]);
+
   const periodLabel = useMemo(() => {
     switch (period) {
       case "this_month": return format(new Date(), "MMMM yyyy", { locale: ptBR });
@@ -456,7 +494,10 @@ export default function CrmRelatorios() {
           <div className="flex items-center gap-1 overflow-x-auto pb-2">
             {funnelData.map((step, i) => (
               <div key={step.name} className="flex items-center gap-1">
-                <div className="flex flex-col items-center min-w-[110px]">
+                <div
+                  className="flex flex-col items-center min-w-[110px] cursor-pointer hover:bg-muted/50 rounded-lg p-2 transition-colors"
+                  onClick={() => step.value > 0 && drillDown(step.drillParams)}
+                >
                   <p className="text-2xl font-bold text-foreground">{step.value}</p>
                   <p className="text-xs text-muted-foreground text-center whitespace-nowrap">{step.name}</p>
                   {i > 0 && (
@@ -474,7 +515,7 @@ export default function CrmRelatorios() {
           {/* Visual bar representation */}
           <div className="mt-4 space-y-2">
             {funnelData.map((step) => (
-              <div key={step.name} className="flex items-center gap-3">
+              <div key={step.name} className="flex items-center gap-3 cursor-pointer hover:bg-muted/30 rounded p-1 transition-colors" onClick={() => step.value > 0 && drillDown(step.drillParams)}>
                 <span className="text-xs text-muted-foreground w-28 text-right truncate">{step.name}</span>
                 <div className="flex-1 bg-muted rounded-full h-6 overflow-hidden">
                   <div
@@ -497,7 +538,7 @@ export default function CrmRelatorios() {
 
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        <Card>
+        <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => drillDown(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {})}>
           <CardContent className="pt-5 pb-4">
             <Users size={18} className="text-primary mb-1" />
             <p className="text-2xl font-bold text-foreground">{filteredLeads.length}</p>
@@ -518,7 +559,7 @@ export default function CrmRelatorios() {
             <p className="text-xs text-muted-foreground">Resp. Lead</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:border-destructive/50 transition-colors" onClick={() => drillDown({ ghost: "true", ...(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {}) })}>
           <CardContent className="pt-5 pb-4">
             <Ghost size={18} className="text-red-500 mb-1" />
             <p className="text-2xl font-bold text-foreground">{ghostLeadsData.total}</p>
@@ -532,7 +573,7 @@ export default function CrmRelatorios() {
             <p className="text-xs text-muted-foreground">Lead → Contrato</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:border-yellow-500/50 transition-colors" onClick={() => drillDown({ inactive_days: String(parseInt(inactiveDays) || 3), ...(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {}) })}>
           <CardContent className="pt-5 pb-4">
             <AlertTriangle size={18} className="text-yellow-500 mb-1" />
             <p className="text-2xl font-bold text-foreground">{inactiveLeads.length}</p>
@@ -552,19 +593,19 @@ export default function CrmRelatorios() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "confirmed" })}>
               <p className="text-2xl font-bold text-foreground">{appointmentReport.total}</p>
               <p className="text-xs text-muted-foreground">Total Agendados</p>
             </div>
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "attended" })}>
               <p className="text-2xl font-bold text-green-600">{appointmentReport.attended}</p>
               <p className="text-xs text-muted-foreground">Compareceram</p>
             </div>
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "rescheduled" })}>
               <p className="text-2xl font-bold text-orange-500">{appointmentReport.rescheduled}</p>
               <p className="text-xs text-muted-foreground">Remarcaram</p>
             </div>
-            <div className="text-center p-3 bg-muted/50 rounded-lg">
+            <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "missed" })}>
               <p className="text-2xl font-bold text-red-500">{appointmentReport.missed}</p>
               <p className="text-xs text-muted-foreground">Faltaram</p>
             </div>
@@ -653,8 +694,10 @@ export default function CrmRelatorios() {
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 space-y-1">
-              {stageTimeData.map((s) => (
-                <div key={s.name} className="flex items-center justify-between text-xs">
+              {stageTimeData.map((s) => {
+                const stageObj = filteredStages.find(st => st.name === s.name);
+                return (
+                <div key={s.name} className="flex items-center justify-between text-xs cursor-pointer hover:bg-muted/50 rounded p-1 transition-colors" onClick={() => stageObj && drillDown({ stage_id: stageObj.id })}>
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
                     <span className="text-foreground">{s.name}</span>
@@ -664,7 +707,8 @@ export default function CrmRelatorios() {
                     <span className="font-medium text-foreground">{s.avgFormatted}</span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -690,15 +734,18 @@ export default function CrmRelatorios() {
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-2 w-full">
-                  {stageDistribution.map(s => (
-                    <div key={s.name} className="flex items-center justify-between text-sm">
+                  {stageDistribution.map(s => {
+                    const stageObj = filteredStages.find(st => st.name === s.name);
+                    return (
+                    <div key={s.name} className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/50 rounded p-1 transition-colors" onClick={() => stageObj && drillDown({ stage_id: stageObj.id })}>
                       <div className="flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
                         <span className="text-foreground">{s.name}</span>
                       </div>
                       <span className="font-semibold text-foreground">{s.value} leads</span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
@@ -712,7 +759,45 @@ export default function CrmRelatorios() {
       <LeadScoreSection leads={filteredLeads} stages={filteredStages} />
 
       {/* Attendant Metrics Section */}
-      <AttendantMetricsSection messages={filteredMessages} leads={filteredLeads} allLeads={allLeadsForPipeline} appointments={filteredAppointments} stages={filteredStages} history={filteredHistory} />
+      <AttendantMetricsSection messages={filteredMessages} leads={filteredLeads} allLeads={allLeadsForPipeline} appointments={filteredAppointments} stages={filteredStages} history={filteredHistory} onDrillDown={drillDown} />
+
+      {/* ═══════════════════════════════════════
+          FLUXO ENTRE FUNIS
+          ═══════════════════════════════════════ */}
+      {crossFunnelFlow && crossFunnelFlow.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ArrowRight size={16} /> Fluxo entre Funis
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {crossFunnelFlow.map((flow, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg cursor-pointer hover:bg-muted/60 transition-colors"
+                  onClick={() => {
+                    const toStages = stages.filter(s => s.pipeline_id === flow.to.id);
+                    if (toStages.length > 0) drillDown({ pipeline: flow.to.id });
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: flow.from.color || "hsl(var(--primary))" }} />
+                    <span className="text-sm font-medium text-foreground">{flow.from.name}</span>
+                  </div>
+                  <ArrowRight size={16} className="text-muted-foreground" />
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: flow.to.color || "hsl(var(--primary))" }} />
+                    <span className="text-sm font-medium text-foreground">{flow.to.name}</span>
+                  </div>
+                  <Badge variant="secondary" className="ml-auto">{flow.count} leads</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Inactive Leads */}
       <Card>
@@ -760,7 +845,7 @@ export default function CrmRelatorios() {
                   </TableHeader>
                   <TableBody>
                     {inactiveLeads.slice(0, 100).map((lead) => (
-                      <TableRow key={lead.id}>
+                      <TableRow key={lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/crm/conversas?lead_id=${lead.id}`)}>
                         <TableCell className="font-medium text-foreground">{lead.name}</TableCell>
                         <TableCell className="text-muted-foreground text-sm">{lead.phone || "—"}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px]">{lead.pipelineName}</Badge></TableCell>
@@ -848,9 +933,10 @@ function LeadScoreSection({ leads, stages }: { leads: Lead[]; stages: Stage[] })
 /* ═══════════════════════════════════════════════════
    Métricas por Atendente Section (EXPANDED)
    ═══════════════════════════════════════════════════ */
-function AttendantMetricsSection({ messages, leads, allLeads, appointments, stages, history }: {
+function AttendantMetricsSection({ messages, leads, allLeads, appointments, stages, history, onDrillDown }: {
   messages: Message[]; leads: Lead[]; allLeads: Lead[];
   appointments: Appointment[]; stages: Stage[]; history: StageHistory[];
+  onDrillDown?: (params: Record<string, string>) => void;
 }) {
   const [metrics, setMetrics] = useState<any[]>([]);
 
@@ -935,6 +1021,7 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
         const convRate = assigned > 0 ? Math.round((converted / assigned) * 100) : 0;
         const frtArr = firstResponseTimes.get(uid) || [];
         return {
+          userId: uid,
           name: profileMap.get(uid) || uid.slice(0, 8),
           totalMsgs: grouped.get(uid)?.msgs || 0,
           leadsAtendidos: grouped.get(uid)?.leads.size || 0,
@@ -975,7 +1062,7 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
             </TableHeader>
             <TableBody>
               {metrics.map((m, i) => (
-                <TableRow key={i}>
+                <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => onDrillDown?.({ assigned_to: m.userId })}>
                   <TableCell className="font-medium">{m.name}</TableCell>
                   <TableCell>{m.totalMsgs}</TableCell>
                   <TableCell>{m.leadsAtendidos}</TableCell>
