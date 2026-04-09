@@ -374,7 +374,33 @@ export default function CrmRelatorios() {
     });
   }, [selectedPipelineId, pipelines, leads, stages]);
 
-  // Period label
+  // Cross-funnel flow data
+  const crossFunnelFlow = useMemo(() => {
+    if (pipelines.length < 2) return null;
+    // For each pipeline pair, count leads that moved between them
+    const flows: { from: Pipeline; to: Pipeline; count: number; leadIds: string[] }[] = [];
+    const stageToPlMap = new Map(stages.map(s => [s.id, s.pipeline_id]));
+
+    for (const fromPl of pipelines) {
+      for (const toPl of pipelines) {
+        if (fromPl.id === toPl.id) continue;
+        const movedLeadIds = new Set<string>();
+        history.forEach(h => {
+          if (!h.from_stage_id) return;
+          const fromPlId = stageToPlMap.get(h.from_stage_id);
+          const toPlId = stageToPlMap.get(h.stage_id);
+          if (fromPlId === fromPl.id && toPlId === toPl.id) {
+            movedLeadIds.add(h.lead_id);
+          }
+        });
+        if (movedLeadIds.size > 0) {
+          flows.push({ from: fromPl, to: toPl, count: movedLeadIds.size, leadIds: Array.from(movedLeadIds) });
+        }
+      }
+    }
+    return flows.length > 0 ? flows : null;
+  }, [pipelines, stages, history]);
+
   const periodLabel = useMemo(() => {
     switch (period) {
       case "this_month": return format(new Date(), "MMMM yyyy", { locale: ptBR });
