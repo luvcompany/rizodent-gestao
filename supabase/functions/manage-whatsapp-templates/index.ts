@@ -82,20 +82,28 @@ Deno.serve(async (req) => {
 
     // ACTION: LIST - Fetch all templates from Meta API
     if (action === "list") {
-      const url = `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?limit=100`;
-      const metaRes = await fetch(url, {
-        headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
-      });
-      const metaData = await metaRes.json();
+      // Fetch all templates from Meta with pagination
+      let allMetaTemplates: any[] = [];
+      let nextUrl: string | null = `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?limit=100`;
 
-      if (!metaRes.ok) {
-        return new Response(
-          JSON.stringify({ error: "Erro ao buscar templates da Meta", details: metaData }),
-          { status: metaRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      while (nextUrl) {
+        const metaRes = await fetch(nextUrl, {
+          headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+        });
+        const metaData = await metaRes.json();
+
+        if (!metaRes.ok) {
+          return new Response(
+            JSON.stringify({ error: "Erro ao buscar templates da Meta", details: metaData }),
+            { status: metaRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        allMetaTemplates = allMetaTemplates.concat(metaData.data || []);
+        nextUrl = metaData.paging?.next || null;
       }
 
-      const templates = (metaData.data || []).map((t: any) => {
+      const templates = allMetaTemplates.map((t: any) => {
         const headerComp = t.components?.find((c: any) => c.type === "HEADER");
         const bodyComp = t.components?.find((c: any) => c.type === "BODY");
         const footerComp = t.components?.find((c: any) => c.type === "FOOTER");
@@ -116,19 +124,20 @@ Deno.serve(async (req) => {
       });
 
       // Sync to local database
+      const metaTemplateIds = templates.map((t: any) => t.meta_template_id).filter(Boolean);
+
       for (const tmpl of templates) {
         const { data: existing } = await supabase
           .from("crm_whatsapp_templates")
           .select("id")
-          .eq("name", tmpl.name)
-          .eq("language", tmpl.language)
+          .eq("meta_template_id", tmpl.meta_template_id)
           .maybeSingle();
 
         if (existing) {
           await supabase
             .from("crm_whatsapp_templates")
             .update({
-              meta_template_id: tmpl.meta_template_id,
+              name: tmpl.name,
               status: tmpl.status,
               category: tmpl.category,
               header_type: tmpl.header_type,
@@ -145,6 +154,23 @@ Deno.serve(async (req) => {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
+        }
+      }
+
+      // Remove local templates that no longer exist on Meta
+      if (metaTemplateIds.length > 0) {
+        const { data: localTemplates } = await supabase
+          .from("crm_whatsapp_templates")
+          .select("id, meta_template_id")
+          .not("meta_template_id", "is", null);
+
+        if (localTemplates) {
+          const toDelete = localTemplates.filter(
+            (lt: any) => !metaTemplateIds.includes(lt.meta_template_id)
+          );
+          for (const d of toDelete) {
+            await supabase.from("crm_whatsapp_templates").delete().eq("id", d.id);
+          }
         }
       }
 
