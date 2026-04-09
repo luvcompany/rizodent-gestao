@@ -1193,13 +1193,17 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     })).sort((a, b) => b.total - a.total);
   }, [leads, scheduledLeadIds, contractedLeadIds]);
 
-  // By ad (grouped by descricao_anuncio to merge same creative across locations)
+  const normalizeImgUrl = (url: string | null) => {
+    if (!url) return "no-img";
+    try { return new URL(url).origin + new URL(url).pathname; } catch { return url; }
+  };
+
+  // By ad (grouped by visual + description to merge same creative across locations)
   const byAd = useMemo(() => {
     const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; links: Set<string>; sources: Set<string> }>();
     leads.forEach(l => {
-      // Group by visual + description to unify same creative across ad accounts
       const desc = (l as any).descricao_anuncio;
-      const adKey = `${l.imagem_origem || "no-img"}::${desc || l.link_anuncio || l.nome_anuncio}`;
+      const adKey = `${normalizeImgUrl(l.imagem_origem || null)}::${desc || l.link_anuncio || l.nome_anuncio}`;
       if (adKey === "no-img::undefined" || adKey === "no-img::null") return;
       if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, links: new Set(), sources: new Set() });
       const s = map.get(adKey)!;
