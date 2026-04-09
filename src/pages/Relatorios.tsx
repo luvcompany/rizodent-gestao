@@ -25,6 +25,10 @@ const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumF
 
 const Relatorios = () => {
   const navigate = useNavigate();
+  const ct = useChartTheme();
+  const tooltipStyle = ct.tooltipStyle;
+  const tooltipLabelStyle = ct.tooltipLabelStyle;
+  const tooltipItemStyle = ct.tooltipItemStyle;
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaFiltro, setClinicaFiltro] = useState("todas");
   const [pagamentos, setPagamentos] = useState<any[]>([]);
