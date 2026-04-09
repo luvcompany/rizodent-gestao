@@ -63,6 +63,7 @@ function getPeriodRange(period: PeriodFilter, customFrom?: string, customTo?: st
 }
 
 export default function CrmRelatorios() {
+  const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("all");
   const [period, setPeriod] = useState<PeriodFilter>("this_month");
@@ -77,6 +78,12 @@ export default function CrmRelatorios() {
   const [inactiveDays, setInactiveDays] = useState("3");
   const [inactiveUnit, setInactiveUnit] = useState<"days" | "weeks" | "months">("days");
   const chartTheme = useChartTheme();
+
+  // Navigation helper for drill-down
+  const drillDown = useCallback((params: Record<string, string>) => {
+    const qs = new URLSearchParams(params).toString();
+    navigate(`/crm/conversas?${qs}`);
+  }, [navigate]);
 
   useEffect(() => {
     const fetchAll = async () => {
