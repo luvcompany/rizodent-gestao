@@ -68,10 +68,13 @@ const CrmLayout = () => {
 
   useEffect(() => {
     const fetchUnread = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
       const { data } = await supabase
         .from("crm_leads")
         .select("last_inbound_at, last_outbound_at")
-        .not("last_inbound_at", "is", null);
+        .not("last_inbound_at", "is", null)
+        .or(`assigned_to.eq.${user.id},assigned_to.is.null`);
       const count = (data || []).filter((l) => {
         if (!l.last_outbound_at) return true;
         return new Date(l.last_inbound_at!) > new Date(l.last_outbound_at);
