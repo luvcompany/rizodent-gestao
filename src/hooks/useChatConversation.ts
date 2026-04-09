@@ -130,7 +130,7 @@ export function useChatConversation(leadId: string | null | undefined) {
         // Still refresh in background
         supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true }).then(({ data }) => {
           if (data) {
-            const nextMessages = data as ChatMessage[];
+            const nextMessages = data as unknown as ChatMessage[];
             messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
             if (!applyMessages(nextMessages)) return;
             const mediaUrls = nextMessages.filter((m) => m.media_url?.startsWith("http")).map((m) => m.media_url!);
@@ -269,7 +269,7 @@ export function useChatConversation(leadId: string | null | undefined) {
     const interval = setInterval(async () => {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       if (data && activeLeadRef.current === targetLeadId) {
-        const nextMessages = data as ChatMessage[];
+        const nextMessages = data as unknown as ChatMessage[];
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (nextMessages.length !== prev.length) {

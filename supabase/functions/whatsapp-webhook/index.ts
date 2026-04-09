@@ -588,6 +588,8 @@ Deno.serve(async (req) => {
                 ad_image_url: adImageUrl || null,
                 ad_source_url: adSourceUrl || null,
                 ad_source_id: adSourceId || null,
+                ad_account_id: adAccountId || null,
+                ad_account_name: adAccountName || null,
               };
               const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
 
