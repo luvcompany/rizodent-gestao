@@ -1250,10 +1250,68 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     </Card>
   );
 
+  const renderAdTable = () => {
+    if (byAd.length === 0) return null;
+    return (
+      <Card>
+        <CardHeader><CardTitle className="text-base">Por Anúncio</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Anúncio</TableHead>
+                <TableHead>Leads</TableHead>
+                <TableHead>Agendaram</TableHead>
+                <TableHead>Contrataram</TableHead>
+                <TableHead>Taxa Conversão</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {byAd.slice(0, 30).map((row) => (
+                <TableRow key={row.link} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.link })}>
+                  <TableCell className="font-medium text-foreground">
+                    <div className="flex items-center gap-3">
+                      {row.image && (
+                        <img
+                          src={row.image}
+                          alt="Ad"
+                          className="w-12 h-12 rounded object-cover flex-shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      )}
+                      <div className="min-w-0">
+                        {row.name && <p className="text-sm font-medium truncate">{row.name}</p>}
+                        {row.link && (
+                          <a
+                            href={row.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline truncate block max-w-[250px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {row.link}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{row.total}</TableCell>
+                  <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
+                  <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
+                  <TableCell><Badge variant={row.convRate >= 30 ? "default" : row.convRate >= 15 ? "secondary" : "outline"}>{row.convRate}%</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <>
       {renderTable(bySource, "Por Origem", "source")}
-      {byAd.length > 0 && renderTable(byAd, "Por Anúncio", "ad_name")}
+      {renderAdTable()}
       {renderTable(byCidade, "Por Cidade", "city")}
     </>
   );
