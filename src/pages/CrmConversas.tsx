@@ -330,8 +330,9 @@ export default function CrmConversas() {
   // Apply filters
   const filtered = useMemo(() => {
     return leads.filter((l) => {
-      // Filter by assigned user - each user sees only their leads
-      if (user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
+      // Filter by assigned user - skip when drill-down filter is active
+      const hasUrlFilters = urlGhost || urlAppointmentStatus || urlInactiveDays || searchParams.get("assigned_to") || searchParams.get("stage_id") || searchParams.get("pipeline");
+      if (!hasUrlFilters && user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
       const normalizedSearch = search.trim().toLowerCase();
       if (normalizedSearch) {
         const searchDigits = normalizedSearch.replace(/\D/g, "");
