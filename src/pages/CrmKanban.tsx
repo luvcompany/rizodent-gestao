@@ -228,20 +228,17 @@ export default function CrmKanban() {
     }
     const normalizedPhone = newLead.phone ? normalizePhone(newLead.phone) : null;
 
-    // Check for duplicate phone
+    // Check for duplicate phone using security definer function (bypasses RLS)
     if (normalizedPhone) {
       const { data: existing } = await supabase
-        .from("crm_leads")
-        .select("id, name, assigned_to")
-        .eq("phone", normalizedPhone)
-        .limit(1);
+        .rpc("check_duplicate_phone", { p_phone: normalizedPhone });
 
       if (existing && existing.length > 0) {
         const dup = existing[0];
         const ownerProfile = profiles.find(p => p.id === dup.assigned_to);
         setDuplicateInfo({
-          existingLeadId: dup.id,
-          existingLeadName: dup.name,
+          existingLeadId: dup.lead_id,
+          existingLeadName: dup.lead_name,
           ownerName: ownerProfile?.nome || "Sem responsável",
           ownerId: dup.assigned_to,
           phone: normalizedPhone,
