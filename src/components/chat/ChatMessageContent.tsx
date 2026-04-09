@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Mic, File as FileIcon, Image } from "lucide-react";
+import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
@@ -58,7 +59,7 @@ function TemplateMessageBubble({ templateName }: { templateName: string }) {
   }
 
   if (!template) {
-    return <p className="text-sm whitespace-pre-wrap">📋 Template: {templateName}</p>;
+    return <p className="text-sm whitespace-pre-wrap">📋 Template: {cleanTemplateName(templateName)}</p>;
   }
 
   return (
