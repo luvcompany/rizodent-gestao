@@ -24,7 +24,7 @@ type Lead = {
   id: string; name: string; phone: string | null; stage_id: string; pipeline_id: string;
   created_at: string; score?: number; last_message_at?: string | null; assigned_to?: string | null;
   first_inbound_at?: string | null; source?: string | null; nome_anuncio?: string | null;
-  paciente_id?: string | null;
+  paciente_id?: string | null; link_anuncio?: string | null; imagem_origem?: string | null;
 };
 type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
 type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string };
@@ -93,7 +93,7 @@ export default function CrmRelatorios() {
         supabase.from("crm_pipelines").select("id, name, color").order("created_at"),
         supabase.from("crm_stages").select("id, name, color, position, pipeline_id").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id" as any),
+        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem" as any),
         supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id"),
         supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
