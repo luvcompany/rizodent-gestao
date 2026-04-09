@@ -126,13 +126,13 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     // 1) From crm_leads
     const { data: leadsData } = await supabase
       .from("crm_leads")
-      .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio")
+      .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio, ad_account_id, ad_account_name")
       .not("ad_id", "is", null)
       .limit(1000);
 
     if (leadsData) {
       for (const row of leadsData) {
-        const key = `${normalizeImgUrl(row.imagem_origem)}::${row.descricao_anuncio || row.ad_id}`;
+        const key = `${normalizeImgUrl(row.imagem_origem)}::${row.descricao_anuncio || row.ad_id}::${(row as any).ad_account_id || ""}`;
         if (!seen.has(key)) {
           seen.set(key, {
             ad_id: row.ad_id!,
@@ -140,6 +140,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
             nome_anuncio: row.nome_anuncio,
             descricao_anuncio: row.descricao_anuncio,
             link_anuncio: row.link_anuncio,
+            ad_account_id: (row as any).ad_account_id || null,
+            ad_account_name: (row as any).ad_account_name || null,
           });
         }
       }
@@ -148,13 +150,13 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     // 2) From messages (captures ads not yet linked to leads)
     const { data: msgData } = await supabase
       .from("messages")
-      .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url")
+      .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name")
       .not("ad_source_id", "is", null)
       .limit(1000);
 
     if (msgData) {
       for (const row of msgData) {
-        const key = `${normalizeImgUrl(row.ad_image_url)}::${row.ad_body || row.ad_source_id}`;
+        const key = `${normalizeImgUrl(row.ad_image_url)}::${row.ad_body || row.ad_source_id}::${(row as any).ad_account_id || ""}`;
         if (!seen.has(key)) {
           seen.set(key, {
             ad_id: row.ad_source_id!,
@@ -162,6 +164,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
             nome_anuncio: row.ad_headline,
             descricao_anuncio: row.ad_body,
             link_anuncio: row.ad_source_url,
+            ad_account_id: (row as any).ad_account_id || null,
+            ad_account_name: (row as any).ad_account_name || null,
           });
         }
       }
@@ -182,7 +186,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     setNomeAnuncio(ad.nome_anuncio || "");
     setDescricaoAnuncio(ad.descricao_anuncio || "");
     setLinkAnuncio(ad.link_anuncio || "");
-    // Auto-set source
+    setAdAccountId(ad.ad_account_id || "");
+    setAdAccountName(ad.ad_account_name || "");
     const src = ad.link_anuncio?.includes("instagram") ? "instagram_ad" : "facebook_ad";
     setSource(src);
     setShowAdSelector(false);
@@ -194,6 +199,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     setNomeAnuncio("");
     setDescricaoAnuncio("");
     setLinkAnuncio("");
+    setAdAccountId("");
+    setAdAccountName("");
   };
 
   const handleSave = async () => {
