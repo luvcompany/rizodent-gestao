@@ -1,84 +1,71 @@
 
 
-# Plano: Relatórios Operacionais Completos do CRM
+# Plano: Relatórios Interativos + Integração dos 3 Funis
 
 ## Objetivo
-Transformar a página de relatórios em um painel operacional completo que responda todas as perguntas que um gestor de clínica precisa: quanto tempo leva para agendar, quantos agendaram, quantos contrataram, quantos são "leads fantasma", performance por atendente com tempo de primeira resposta, e funil de conversão com números absolutos e taxas.
+Tornar cada número, gráfico e card nos relatórios clicável, navegando para a lista filtrada de leads correspondente. Integrar os 3 funis (principal, não contratados, remarcações) de forma harmônica nos relatórios.
 
-## O que já temos
-- Tempo médio por etapa (gráfico de barras)
-- Conversão por etapa (% entre etapas)
-- Tempo de resposta médio (atendente e lead)
-- Leads inativos (filtro configurável)
-- Score de leads
-- Produtividade por atendente (msgs enviadas, leads atendidos, agendados)
-- Filtro por funil
-- Distribuição por etapa (pizza)
+## Abordagem Técnica
 
-## O que FALTA (gaps reais para a operação)
+### 1. Navegação Clicável (Drill-down)
+Ao clicar em qualquer métrica do relatório, o usuário é redirecionado para `/crm/conversas` com query params que filtram a lista automaticamente. Exemplos:
 
-### 1. Filtro por período (mês/semana/customizado)
-Hoje os relatórios mostram dados de "todos os tempos". O gestor precisa filtrar por mês para saber: "Em março, quantos leads agendaram?"
-
-### 2. Funil de Conversão com números absolutos
-Falta a visão clássica em cascata:
 ```text
-Leads Entraram → Responderam → Agendaram → Compareceram → Contrataram
-     100            68             42            31              19
-                   68%            62%           74%             61%
+Clique em "42 Agendaram"    → /crm/conversas?stage=agendado&pipeline=xxx
+Clique em "19 Contrataram"  → /crm/conversas?stage=contratado&pipeline=xxx
+Clique em "5 Remarcaram"    → /crm/conversas?appointment_status=rescheduled
+Clique em "Leads Fantasma"  → /crm/conversas?ghost=true
+Clique em etapa no gráfico  → /crm/conversas?stage_id=uuid
+Clique em atendente         → /crm/conversas?assigned_to=uuid
+Clique em "Inativos"        → /crm/conversas?inactive_days=3
 ```
 
-### 3. Leads Fantasma (só clicaram no anúncio)
-Leads que nunca enviaram uma mensagem sequer (0 msgs inbound). Segmentados por origem/anúncio para saber qual anúncio gera leads que não respondem.
+### 2. Atualizar CrmConversas para ler query params
+O componente `CrmConversas` já possui `ConversationFilters` com filtros por funil, etapa, tags e período. Precisamos:
+- Ler `searchParams` da URL ao montar
+- Pré-selecionar os filtros correspondentes (pipeline, stage, etc.)
+- Adicionar filtros especiais: `ghost=true` (leads sem msgs inbound), `appointment_status`, `inactive_days`
 
-### 4. Relatório de Agendamentos do Mês
-- Total agendados no período
-- Compareceram (status `completed`/`contratou`/`nao_contratou`)
-- Remarcaram (status `rescheduled`)
-- Faltaram (status `missed`/`faltou`)
-- Taxa de presença
+### 3. Integração dos 3 Funis nos Relatórios
+Quando "Todos os Funis" estiver selecionado, exibir:
+- **Visão cruzada**: card por funil com métricas-resumo (leads, agendados, contratados) — já existe parcialmente
+- **Fluxo entre funis**: quantos leads do funil principal foram para "Não Contratados" e quantos de lá foram para "Remarcações"
+- **Métricas por funil em paralelo**: comparação lado a lado (funil principal vs recuperação vs remarcações)
+- Os cards de pipeline já são clicáveis para filtrar — manter e expandir
 
-### 5. Performance por Atendente expandida
-- Tempo médio de **primeira resposta** (tempo entre lead entrar e atendente mandar 1ª msg)
-- Taxa de conversão individual (leads que chegaram em "Contratado" / leads atribuídos)
+### 4. Seção "Fluxo entre Funis"
+Nova seção que mostra a movimentação entre pipelines:
+- Quantos leads saíram do funil principal e entraram no de "Não Contratados"
+- Quantos do "Não Contratados" foram recuperados (voltaram ou agendaram no funil de remarcações)
+- Cada número clicável para ver a lista
 
-### 6. Tempo total do funil (Lead → Contrato)
-Média de dias desde `created_at` até chegar na etapa final (Contratado).
+## Arquivos Afetados
 
-### 7. Coluna `first_inbound_at` em `crm_leads`
-Necessária para calcular "leads fantasma" e "tempo de primeira resposta do lead" de forma precisa, sem varrer toda a tabela de mensagens.
-
----
-
-## Etapas de Implementação
-
-### Etapa 1 — Migration
-- Adicionar coluna `first_inbound_at` (timestamptz, nullable) em `crm_leads`
-- Adicionar coluna `from_stage_id` (uuid, nullable) em `crm_lead_stage_history` para rastrear origem da movimentação
-
-### Etapa 2 — Gravar `first_inbound_at`
-- Atualizar `whatsapp-webhook/index.ts`: ao receber mensagem inbound, se `first_inbound_at` for null, setar o timestamp
-- Backfill: criar lógica no frontend (botão admin) ou migration com subquery para preencher dados existentes
-
-### Etapa 3 — Gravar `from_stage_id` nas movimentações
-- Atualizar `CrmKanban.tsx` e `useChatConversation.ts` para incluir `from_stage_id` ao inserir no histórico
-
-### Etapa 4 — Reescrever `CrmRelatorios.tsx`
-Adicionar as seguintes seções (sem remover as existentes):
-
-1. **Filtro de Período** — Seletor de mês ou intervalo customizado que filtra leads por `created_at` e mensagens/agendamentos por data
-2. **Funil de Conversão Visual** — Barras horizontais em cascata com números absolutos e taxas entre cada etapa
-3. **Leads Fantasma** — Card com total de leads com 0 msgs inbound + tabela agrupada por `source`/`nome_anuncio`
-4. **Relatório de Agendamentos** — Cards com total, presença, falta, remarcação + taxa de presença
-5. **Performance Expandida** — Colunas adicionais na tabela de atendentes: tempo de 1ª resposta, taxa de conversão
-6. **Tempo Total do Funil** — KPI card mostrando média de dias lead→contrato
-
-### Arquivos afetados
 | Arquivo | Ação |
 |---|---|
-| Migration SQL | Adicionar `first_inbound_at` e `from_stage_id` |
-| `supabase/functions/whatsapp-webhook/index.ts` | Gravar `first_inbound_at` |
-| `src/pages/CrmKanban.tsx` | Gravar `from_stage_id` |
-| `src/hooks/useChatConversation.ts` | Gravar `from_stage_id` |
-| `src/pages/CrmRelatorios.tsx` | Adicionar seções de relatório |
+| `src/pages/CrmRelatorios.tsx` | Adicionar `onClick` + `navigate()` em todos os cards, barras do funil, linhas de tabela, gráficos |
+| `src/pages/CrmConversas.tsx` | Ler `useSearchParams`, pré-aplicar filtros, adicionar filtros especiais (ghost, inactive) |
+| `src/components/chat/ConversationFilters.tsx` | Verificar se aceita valores iniciais via props |
+
+## Detalhes de Implementação
+
+### Etapa 1 — CrmConversas: aceitar filtros via URL
+- Usar `useSearchParams` para ler `pipeline`, `stage_id`, `ghost`, `assigned_to`, `appointment_status`, `inactive_days`
+- Ao montar, inicializar os filtros do `ConversationFilters` com os valores da URL
+- Filtrar a lista de leads conforme os params especiais (ghost = leads sem mensagens inbound)
+
+### Etapa 2 — CrmRelatorios: tornar tudo clicável
+- Cada step do funil de conversão → click navega para conversas filtradas por etapa
+- Cards KPI (Leads Fantasma, Inativos) → click navega com filtro correspondente
+- Agendamentos (Compareceram, Remarcaram, Faltaram) → click filtra por status de agendamento
+- Distribuição por etapa (pizza + lista) → click filtra por stage_id
+- Tempo médio por etapa (barras) → click filtra por stage_id
+- Tabela de atendentes → click filtra por assigned_to
+- Leads inativos (já tem tabela, adicionar link para conversa individual)
+- Estilo: cursor-pointer + hover effect nos elementos clicáveis
+
+### Etapa 3 — Seção de Fluxo entre Funis
+- Calcular leads que mudaram de pipeline usando `crm_lead_stage_history` (from_stage em pipeline A → stage em pipeline B)
+- Exibir diagrama simplificado com setas e números
+- Cada número clicável
 
