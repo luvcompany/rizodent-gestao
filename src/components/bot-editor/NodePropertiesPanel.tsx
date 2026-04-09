@@ -41,7 +41,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     supabase.from("crm_pipelines").select("id, name").then(({ data }) => {
       if (data) setPipelines(data);
     });
-    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons, language, header_type, footer_text").eq("status", "APPROVED").then(({ data }) => {
+    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons, language, header_type, footer_text").eq("status", "APPROVED").order("created_at", { ascending: false }).then(({ data }) => {
       if (data) setTemplates(data);
     });
     // Fetch unique tags

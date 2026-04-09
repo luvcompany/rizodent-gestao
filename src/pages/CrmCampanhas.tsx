@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { Plus, Send, Users } from "lucide-react";
 import { format } from "date-fns";
+import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
 
 export default function CrmCampanhas() {
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
@@ -27,7 +28,7 @@ export default function CrmCampanhas() {
 
   useEffect(() => {
     load();
-    supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED").then(({ data }) => setTemplates(data || []));
+    supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED").order("created_at", { ascending: false }).then(({ data }) => setTemplates(data || []));
     supabase.from("crm_pipelines").select("id, name").then(({ data }) => setPipelines(data || []));
   }, [load]);
 
@@ -97,7 +98,7 @@ export default function CrmCampanhas() {
             <DialogHeader><DialogTitle>Nova Campanha</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div><Label>Nome</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
-              <div><Label>Template</Label><Select value={form.template_id} onValueChange={v => setForm(p => ({ ...p, template_id: v }))}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label>Template</Label><TemplateSearchSelect templates={templates} value={form.template_id || undefined} onValueChange={v => setForm(p => ({ ...p, template_id: v }))} placeholder="Selecione..." /></div>
               <div><Label>Funil (filtro)</Label><Select value={form.pipeline_id} onValueChange={v => setForm(p => ({ ...p, pipeline_id: v, stage_id: "" }))}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent>{pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
               {form.pipeline_id && <div><Label>Etapa (filtro)</Label><Select value={form.stage_id} onValueChange={v => setForm(p => ({ ...p, stage_id: v }))}><SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger><SelectContent>{stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>}
               <div className="flex items-center gap-3">

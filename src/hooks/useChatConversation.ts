@@ -431,7 +431,7 @@ export function useChatConversation(leadId: string | null | undefined) {
 
   // ─── Templates ───
   const loadTemplates = useCallback(async () => {
-    const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED");
+    const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED").order("created_at", { ascending: false });
     setTemplates(data || []);
     setTemplatesOpen(true);
   }, []);
