@@ -515,7 +515,7 @@ export default function CrmRelatorios() {
           {/* Visual bar representation */}
           <div className="mt-4 space-y-2">
             {funnelData.map((step) => (
-              <div key={step.name} className="flex items-center gap-3">
+              <div key={step.name} className="flex items-center gap-3 cursor-pointer hover:bg-muted/30 rounded p-1 transition-colors" onClick={() => step.value > 0 && drillDown(step.drillParams)}>
                 <span className="text-xs text-muted-foreground w-28 text-right truncate">{step.name}</span>
                 <div className="flex-1 bg-muted rounded-full h-6 overflow-hidden">
                   <div
