@@ -723,6 +723,8 @@ export default function CrmConversas() {
                   nomeAnuncio={selectedLead.nome_anuncio}
                   descricaoAnuncio={selectedLead.descricao_anuncio}
                   linkAnuncio={selectedLead.link_anuncio}
+                  adAccountId={(selectedLead as any).ad_account_id}
+                  adAccountName={(selectedLead as any).ad_account_name}
                   onUpdated={(updates) => {
                     setSelectedLead((prev) => prev ? { ...prev, ...updates } as any : prev);
                     setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
