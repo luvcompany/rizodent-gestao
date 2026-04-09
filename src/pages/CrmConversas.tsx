@@ -716,20 +716,15 @@ export default function CrmConversas() {
                   leadId={selectedLead.id}
                   tags={selectedLead.tags || []}
                   source={selectedLead.source}
+                  adId={selectedLead.ad_id}
+                  imagemOrigem={selectedLead.imagem_origem}
+                  nomeAnuncio={selectedLead.nome_anuncio}
+                  descricaoAnuncio={selectedLead.descricao_anuncio}
+                  linkAnuncio={selectedLead.link_anuncio}
                   onUpdated={(updates) => {
                     setSelectedLead((prev) => prev ? { ...prev, ...updates } as any : prev);
                     setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
                   }}
-                />
-
-                <LeadAdInfo
-                  imagemOrigem={selectedLead.imagem_origem}
-                  tituloAnuncio={selectedLead.titulo_anuncio}
-                  descricaoAnuncio={selectedLead.descricao_anuncio}
-                  linkAnuncio={selectedLead.link_anuncio}
-                  adId={selectedLead.ad_id}
-                  nomeAnuncio={selectedLead.nome_anuncio}
-                  source={selectedLead.source}
                 />
 
                 <LeadBudgetPanel

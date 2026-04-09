@@ -367,23 +367,17 @@ export default function CrmConversa() {
           </div>
         </div>
 
-        {/* Inline Tags & Source Editor */}
+        {/* Inline Tags, Source & Ad Editor */}
         <InlineTagsEditor
           leadId={lead.id}
           tags={lead.tags || []}
           source={lead.source}
-          onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
-        />
-
-        {/* Ad Info */}
-        <LeadAdInfo
+          adId={lead.ad_id}
           imagemOrigem={lead.imagem_origem}
-          tituloAnuncio={lead.titulo_anuncio}
+          nomeAnuncio={lead.nome_anuncio}
           descricaoAnuncio={lead.descricao_anuncio}
           linkAnuncio={lead.link_anuncio}
-          adId={lead.ad_id}
-          nomeAnuncio={lead.nome_anuncio}
-          source={lead.source}
+          onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
         />
 
         {/* Budget Panel */}
