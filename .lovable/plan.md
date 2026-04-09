@@ -1,71 +1,85 @@
 
 
-# Plano: Relatórios Interativos + Integração dos 3 Funis
+# Plano: Abas de Relatório + Correções de Visualização
 
-## Objetivo
-Tornar cada número, gráfico e card nos relatórios clicável, navegando para a lista filtrada de leads correspondente. Integrar os 3 funis (principal, não contratados, remarcações) de forma harmônica nos relatórios.
+## Problemas Identificados
 
-## Abordagem Técnica
+1. **Etapas duplicadas no "Tempo Médio por Etapa"**: Quando "Todos os Funis" está selecionado, etapas com o mesmo nome em pipelines diferentes aparecem duplicadas sem distinção.
+2. **Score de Leads**: Não tem paginação, não é clicável, e está posicionado antes de seções mais relevantes.
+3. **Faltam relatórios de Bots, Follow-ups, Templates, Cidades e Origens**.
 
-### 1. Navegação Clicável (Drill-down)
-Ao clicar em qualquer métrica do relatório, o usuário é redirecionado para `/crm/conversas` com query params que filtram a lista automaticamente. Exemplos:
+## Solução: Organizar em Abas (Tabs)
+
+Reestruturar `CrmRelatorios.tsx` com abas no topo:
 
 ```text
-Clique em "42 Agendaram"    → /crm/conversas?stage=agendado&pipeline=xxx
-Clique em "19 Contrataram"  → /crm/conversas?stage=contratado&pipeline=xxx
-Clique em "5 Remarcaram"    → /crm/conversas?appointment_status=rescheduled
-Clique em "Leads Fantasma"  → /crm/conversas?ghost=true
-Clique em etapa no gráfico  → /crm/conversas?stage_id=uuid
-Clique em atendente         → /crm/conversas?assigned_to=uuid
-Clique em "Inativos"        → /crm/conversas?inactive_days=3
+[ Operação ] [ Bots ] [ Follow-ups ] [ Origens & Cidades ]
 ```
 
-### 2. Atualizar CrmConversas para ler query params
-O componente `CrmConversas` já possui `ConversationFilters` com filtros por funil, etapa, tags e período. Precisamos:
-- Ler `searchParams` da URL ao montar
-- Pré-selecionar os filtros correspondentes (pipeline, stage, etc.)
-- Adicionar filtros especiais: `ghost=true` (leads sem msgs inbound), `appointment_status`, `inactive_days`
+### Aba 1 — Operação (conteúdo atual, com ajustes)
+- **Etapas duplicadas**: Quando "Todos os Funis" estiver selecionado, agrupar etapas com mesmo nome (somando leads e fazendo média ponderada dos tempos). Alternativa: adicionar prefixo do funil no label (ex: "Principal > Conversando").
+- **Score de Leads**: Mover para o final da aba. Adicionar paginação (10 por página com seletor 10/30/50/100). Cada lead clicável navegando para `/crm/conversas?lead_id=UUID`. Score atualiza automaticamente ao carregar a página via RPC batch.
+- Restante do conteúdo mantido (Funil, KPIs, Agendamentos, Fantasma, Gráficos, Atendentes, Fluxo entre Funis, Inativos).
 
-### 3. Integração dos 3 Funis nos Relatórios
-Quando "Todos os Funis" estiver selecionado, exibir:
-- **Visão cruzada**: card por funil com métricas-resumo (leads, agendados, contratados) — já existe parcialmente
-- **Fluxo entre funis**: quantos leads do funil principal foram para "Não Contratados" e quantos de lá foram para "Remarcações"
-- **Métricas por funil em paralelo**: comparação lado a lado (funil principal vs recuperação vs remarcações)
-- Os cards de pipeline já são clicáveis para filtrar — manter e expandir
+### Aba 2 — Bots
+Dados das tabelas `bot_executions` e `bot_execution_logs`:
+- **Resumo**: Total de execuções no período, completadas, canceladas, em andamento.
+- **Taxa de conclusão por bot**: Quantos leads chegaram até o final do fluxo vs quantos pararam no meio.
+- **Node drop-off**: Em qual nó do bot os leads mais abandonam (usando `bot_execution_logs` para ver o último nó registrado por execução).
+- **Ranking de bots**: Lista dos bots com execuções, taxa de conclusão, e média de nós percorridos.
+- Clicável — cada bot navega para o editor.
 
-### 4. Seção "Fluxo entre Funis"
-Nova seção que mostra a movimentação entre pipelines:
-- Quantos leads saíram do funil principal e entraram no de "Não Contratados"
-- Quantos do "Não Contratados" foram recuperados (voltaram ou agendaram no funil de remarcações)
-- Cada número clicável para ver a lista
+### Aba 3 — Follow-ups & Templates
+Dados das tabelas `crm_followup_queue`, `crm_followup_configs`, `crm_whatsapp_templates` e `messages`:
+- **Follow-ups**: Total enviados, taxa de resposta (leads que responderam após follow-up), follow-ups por etapa.
+- **Templates**: Quais templates WhatsApp foram mais usados, taxa de resposta por template (mensagem outbound com template → lead respondeu inbound depois).
+- **Ranking de conversão por template**: Template que mais gerou avanço de etapa ou agendamento.
+- Clicável — cada linha navega para conversas filtradas.
 
-## Arquivos Afetados
+### Aba 4 — Origens & Cidades
+Dados de `crm_leads.source`, `crm_leads.nome_anuncio`, e paciente/lead geolocalização:
+- **Por Origem (source)**: Tabela com leads, agendamentos, conversões, taxa de conversão — por fonte.
+- **Por Anúncio (nome_anuncio)**: Mesma análise por anúncio individual.
+- **Por Cidade**: Usar campo `source` ou dados de `pacientes.cidade` via `paciente_id` — leads, agendamentos, conversões por cidade.
+- Cada linha clicável para drill-down na lista de conversas.
 
+## Detalhes Técnicos
+
+### Correção de etapas duplicadas
+Quando `selectedPipelineId === "all"`, prefixar o nome da etapa com o nome do pipeline:
+```typescript
+const label = selectedPipelineId === "all" 
+  ? `${pipeline.name} > ${stage.name}` 
+  : stage.name;
+```
+
+### Paginação do Score
+```typescript
+const [scorePage, setScorePage] = useState(1);
+const [scorePageSize, setScorePageSize] = useState(10);
+const paginatedScores = scoreLeads.slice((scorePage-1)*scorePageSize, scorePage*scorePageSize);
+const totalPages = Math.ceil(scoreLeads.length / scorePageSize);
+```
+
+### Dados de Bots (nova query)
+```typescript
+const [botExecs] = await supabase.from("bot_executions")
+  .select("id, bot_id, status, started_at, completed_at, bots(name)");
+const [botLogs] = await supabase.from("bot_execution_logs")
+  .select("execution_id, node_id, action, created_at");
+```
+
+### Dados de Follow-ups (nova query)
+```typescript
+const [followupQueue] = await supabase.from("crm_followup_queue")
+  .select("id, lead_id, status, attempt_count, config_id, created_at");
+```
+
+### Dados de Templates (calcular via messages)
+Identificar mensagens outbound que contêm referência a template (via `type` ou conteúdo) e correlacionar com resposta inbound subsequente do mesmo lead.
+
+## Arquivo Afetado
 | Arquivo | Ação |
 |---|---|
-| `src/pages/CrmRelatorios.tsx` | Adicionar `onClick` + `navigate()` em todos os cards, barras do funil, linhas de tabela, gráficos |
-| `src/pages/CrmConversas.tsx` | Ler `useSearchParams`, pré-aplicar filtros, adicionar filtros especiais (ghost, inactive) |
-| `src/components/chat/ConversationFilters.tsx` | Verificar se aceita valores iniciais via props |
-
-## Detalhes de Implementação
-
-### Etapa 1 — CrmConversas: aceitar filtros via URL
-- Usar `useSearchParams` para ler `pipeline`, `stage_id`, `ghost`, `assigned_to`, `appointment_status`, `inactive_days`
-- Ao montar, inicializar os filtros do `ConversationFilters` com os valores da URL
-- Filtrar a lista de leads conforme os params especiais (ghost = leads sem mensagens inbound)
-
-### Etapa 2 — CrmRelatorios: tornar tudo clicável
-- Cada step do funil de conversão → click navega para conversas filtradas por etapa
-- Cards KPI (Leads Fantasma, Inativos) → click navega com filtro correspondente
-- Agendamentos (Compareceram, Remarcaram, Faltaram) → click filtra por status de agendamento
-- Distribuição por etapa (pizza + lista) → click filtra por stage_id
-- Tempo médio por etapa (barras) → click filtra por stage_id
-- Tabela de atendentes → click filtra por assigned_to
-- Leads inativos (já tem tabela, adicionar link para conversa individual)
-- Estilo: cursor-pointer + hover effect nos elementos clicáveis
-
-### Etapa 3 — Seção de Fluxo entre Funis
-- Calcular leads que mudaram de pipeline usando `crm_lead_stage_history` (from_stage em pipeline A → stage em pipeline B)
-- Exibir diagrama simplificado com setas e números
-- Cada número clicável
+| `src/pages/CrmRelatorios.tsx` | Adicionar sistema de Tabs, corrigir duplicatas, paginar scores, criar 3 novas seções de relatório |
 
