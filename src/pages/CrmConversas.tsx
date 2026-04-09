@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cleanTemplateName } from "@/lib/templateUtils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -740,7 +741,7 @@ export default function CrmConversas() {
             {chat.filteredTemplates.length === 0 && <p className="text-sm text-muted-foreground py-4 text-center">Nenhum template encontrado.</p>}
             {chat.filteredTemplates.map((t) => (
               <button key={t.id} onClick={() => handleSendTemplate(t)} className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/30 bg-secondary/50 hover:bg-secondary transition-colors">
-                <div className="font-medium text-sm text-foreground">{t.name}</div>
+                <div className="font-medium text-sm text-foreground">{cleanTemplateName(t.name)}</div>
                 <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{t.body_text}</div>
               </button>
             ))}
