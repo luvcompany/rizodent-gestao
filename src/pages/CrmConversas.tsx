@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -66,6 +67,7 @@ type LeadConversation = {
 
 export default function CrmConversas() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [leads, setLeads] = useState<LeadConversation[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -74,7 +76,23 @@ export default function CrmConversas() {
   const [newNote, setNewNote] = useState("");
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
-  const [filters, setFilters] = useState<ConversationFilterValues>(emptyFilters);
+  const [urlFiltersApplied, setUrlFiltersApplied] = useState(false);
+  const [filters, setFilters] = useState<ConversationFilterValues>(() => {
+    // Initialize from URL params if present
+    const pipeline = searchParams.get("pipeline") || "";
+    const stageId = searchParams.get("stage_id") || "";
+    const assignedTo = searchParams.get("assigned_to") || "";
+    if (pipeline || stageId || assignedTo) {
+      return { ...emptyFilters, pipelineId: pipeline, stageId, assignedTo };
+    }
+    return emptyFilters;
+  });
+  // Special URL filters not part of ConversationFilters
+  const urlGhost = searchParams.get("ghost") === "true";
+  const urlInactiveDays = searchParams.get("inactive_days");
+  const urlAppointmentStatus = searchParams.get("appointment_status");
+  const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
+  const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
   const [activeExecution, setActiveExecution] = useState<{
