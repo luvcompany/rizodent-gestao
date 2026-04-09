@@ -1,91 +1,84 @@
 
 
-## Plano: Página "Funções Extras" do CRM
+# Plano: Relatórios Operacionais Completos do CRM
 
-Criar uma única página `/crm/extras` com abas para testar as 8 funcionalidades antes de integrá-las ao painel principal.
+## Objetivo
+Transformar a página de relatórios em um painel operacional completo que responda todas as perguntas que um gestor de clínica precisa: quanto tempo leva para agendar, quantos agendaram, quantos contrataram, quantos são "leads fantasma", performance por atendente com tempo de primeira resposta, e funil de conversão com números absolutos e taxas.
 
----
+## O que já temos
+- Tempo médio por etapa (gráfico de barras)
+- Conversão por etapa (% entre etapas)
+- Tempo de resposta médio (atendente e lead)
+- Leads inativos (filtro configurável)
+- Score de leads
+- Produtividade por atendente (msgs enviadas, leads atendidos, agendados)
+- Filtro por funil
+- Distribuição por etapa (pizza)
 
-### Estrutura
+## O que FALTA (gaps reais para a operação)
 
-Uma página com `Tabs` contendo 8 abas:
+### 1. Filtro por período (mês/semana/customizado)
+Hoje os relatórios mostram dados de "todos os tempos". O gestor precisa filtrar por mês para saber: "Em março, quantos leads agendaram?"
 
-1. **Respostas Rápidas** — CRUD de snippets (título, conteúdo, mídia opcional)
-2. **Score de Lead** — Visualização e recálculo manual do score dos leads
-3. **Métricas por Atendente** — Tabela com tempo de resposta, leads atendidos, conversões por usuário
-4. **Distribuição Automática** — Configuração de round-robin (lista de atendentes, método, pipeline)
-5. **Importação em Massa** — Upload CSV, mapeamento de colunas, preview e importação
-6. **Campanhas (Broadcast)** — Criar campanha com template + filtros, enviar em lote
-7. **Webhook Genérico** — Exibir URL do endpoint, documentação do payload, log de entradas
-8. **Notificações** — Preferências de notificação e teste de Web Push
+### 2. Funil de Conversão com números absolutos
+Falta a visão clássica em cascata:
+```text
+Leads Entraram → Responderam → Agendaram → Compareceram → Contrataram
+     100            68             42            31              19
+                   68%            62%           74%             61%
+```
 
----
+### 3. Leads Fantasma (só clicaram no anúncio)
+Leads que nunca enviaram uma mensagem sequer (0 msgs inbound). Segmentados por origem/anúncio para saber qual anúncio gera leads que não respondem.
 
-### Fase 1 — Migration (banco de dados)
+### 4. Relatório de Agendamentos do Mês
+- Total agendados no período
+- Compareceram (status `completed`/`contratou`/`nao_contratou`)
+- Remarcaram (status `rescheduled`)
+- Faltaram (status `missed`/`faltou`)
+- Taxa de presença
 
-Uma única migration criando:
+### 5. Performance por Atendente expandida
+- Tempo médio de **primeira resposta** (tempo entre lead entrar e atendente mandar 1ª msg)
+- Taxa de conversão individual (leads que chegaram em "Contratado" / leads atribuídos)
 
-- `crm_quick_replies` (id, title, content, media_url, media_type, created_by, created_at) com RLS para autenticados
-- `crm_broadcasts` (id, name, template_id, filter_pipeline_id, filter_stage_id, filter_tags, status, total_leads, sent_count, created_by, created_at, scheduled_at)
-- `crm_broadcast_recipients` (id, broadcast_id, lead_id, status, sent_at, error)
-- `crm_notification_preferences` (id, user_id, notify_task_due, notify_new_lead, notify_lead_reply, browser_push_enabled)
-- Adicionar colunas em `crm_leads`: `score` (int default 0), `assigned_to` (uuid nullable)
-- Adicionar coluna em `messages`: `sender_id` (uuid nullable) para rastrear qual atendente enviou
-- RLS em todas as novas tabelas (authenticated pode SELECT, staff pode INSERT/UPDATE/DELETE)
-- Realtime habilitado em `crm_broadcasts` e `crm_broadcast_recipients`
+### 6. Tempo total do funil (Lead → Contrato)
+Média de dias desde `created_at` até chegar na etapa final (Contratado).
 
----
-
-### Fase 2 — Edge Functions
-
-- **`broadcast-engine`** — Processa fila de envios com throttling (usa `send-whatsapp-message` internamente)
-- **`generic-lead-webhook`** — POST endpoint que aceita `{name, phone, tags[], pipeline, source}`, normaliza telefone, cria lead, aplica distribuição
-
----
-
-### Fase 3 — Página e componentes
-
-- `src/pages/CrmExtras.tsx` — Página principal com Tabs
-- Cada aba como componente inline ou seção dentro do arquivo
-- Rota `/crm/extras` no `App.tsx` dentro do bloco CrmLayout
-- Item "Funções Extras" no menu lateral do `CrmLayout.tsx` com ícone `Beaker`/`FlaskConical`
+### 7. Coluna `first_inbound_at` em `crm_leads`
+Necessária para calcular "leads fantasma" e "tempo de primeira resposta do lead" de forma precisa, sem varrer toda a tabela de mensagens.
 
 ---
 
-### Fase 4 — Lógica por aba
+## Etapas de Implementação
 
-**Respostas Rápidas**: Tabela listando snippets + dialog de criação/edição. Campo título + textarea conteúdo.
+### Etapa 1 — Migration
+- Adicionar coluna `first_inbound_at` (timestamptz, nullable) em `crm_leads`
+- Adicionar coluna `from_stage_id` (uuid, nullable) em `crm_lead_stage_history` para rastrear origem da movimentação
 
-**Score de Lead**: Função SQL `recalculate_lead_score` (+10 resposta, +15 avanço de etapa, -1/dia inativo). Tabela mostrando top leads por score com botão "Recalcular todos".
+### Etapa 2 — Gravar `first_inbound_at`
+- Atualizar `whatsapp-webhook/index.ts`: ao receber mensagem inbound, se `first_inbound_at` for null, setar o timestamp
+- Backfill: criar lógica no frontend (botão admin) ou migration com subquery para preencher dados existentes
 
-**Métricas por Atendente**: Query cruzando `messages.sender_id` com `profiles` para calcular tempo médio de primeira resposta, total de leads, taxa de conversão. Exibição em tabela.
+### Etapa 3 — Gravar `from_stage_id` nas movimentações
+- Atualizar `CrmKanban.tsx` e `useChatConversation.ts` para incluir `from_stage_id` ao inserir no histórico
 
-**Distribuição**: Form com seleção de método (round-robin/menor carga), lista de usuários elegíveis, pipeline alvo. Salva config em `crm_automations` com `action_type = 'assign_lead'`.
+### Etapa 4 — Reescrever `CrmRelatorios.tsx`
+Adicionar as seguintes seções (sem remover as existentes):
 
-**Importação**: Input file CSV, parser client-side, step de mapeamento (nome, telefone, tags, pipeline, stage), preview 5 registros, botão importar com progresso.
+1. **Filtro de Período** — Seletor de mês ou intervalo customizado que filtra leads por `created_at` e mensagens/agendamentos por data
+2. **Funil de Conversão Visual** — Barras horizontais em cascata com números absolutos e taxas entre cada etapa
+3. **Leads Fantasma** — Card com total de leads com 0 msgs inbound + tabela agrupada por `source`/`nome_anuncio`
+4. **Relatório de Agendamentos** — Cards com total, presença, falta, remarcação + taxa de presença
+5. **Performance Expandida** — Colunas adicionais na tabela de atendentes: tempo de 1ª resposta, taxa de conversão
+6. **Tempo Total do Funil** — KPI card mostrando média de dias lead→contrato
 
-**Broadcast**: Selecionar template aprovado + filtros (pipeline, stage, tags). Preview quantidade. Botão enviar que cria `crm_broadcasts` + `crm_broadcast_recipients` e chama edge function.
-
-**Webhook**: Exibe URL do endpoint (`/functions/v1/generic-lead-webhook`), exemplo de payload JSON, e lista últimos leads criados via webhook (filtro `source = 'webhook'`).
-
-**Notificações**: Toggles de preferência (tarefa vencendo, novo lead, resposta de lead). Botão "Testar notificação" que dispara Web Push de teste.
-
----
-
-### Arquivos criados/editados
-
+### Arquivos afetados
 | Arquivo | Ação |
 |---|---|
-| Migration SQL | Criar tabelas e colunas |
-| `src/pages/CrmExtras.tsx` | Nova página |
-| `src/App.tsx` | Adicionar rota `/crm/extras` |
-| `src/components/CrmLayout.tsx` | Adicionar item no menu |
-| `supabase/functions/broadcast-engine/index.ts` | Nova edge function |
-| `supabase/functions/generic-lead-webhook/index.ts` | Nova edge function |
-
-### Ordem de execução
-1. Migration
-2. Edge functions
-3. Página CrmExtras com todas as abas
-4. Rota + menu lateral
+| Migration SQL | Adicionar `first_inbound_at` e `from_stage_id` |
+| `supabase/functions/whatsapp-webhook/index.ts` | Gravar `first_inbound_at` |
+| `src/pages/CrmKanban.tsx` | Gravar `from_stage_id` |
+| `src/hooks/useChatConversation.ts` | Gravar `from_stage_id` |
+| `src/pages/CrmRelatorios.tsx` | Adicionar seções de relatório |
 
