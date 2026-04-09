@@ -1,42 +1,45 @@
 
 
-# Plano: Dropdown de Origem + Vinculação a Anúncio com Miniatura
+# Plano: Diferenciar anúncios por conta de anúncio (Ad Account)
 
-## Objetivo
-No `LeadEditPanel`, substituir o campo de texto livre "Origem" por um dropdown com opções pré-definidas e adicionar um seletor visual de anúncios que mostra miniaturas dos criativos já cadastrados no sistema.
+## Problema
+O mesmo criativo (mesma imagem e descrição) é usado em 4 contas de anúncio diferentes (uma por cidade). Com a deduplicação atual por imagem+descrição, todos aparecem como um só.
+
+## Solução
+Capturar o **ID e nome da conta de anúncio** via Meta Graph API e usá-lo para diferenciar criativos idênticos entre contas.
 
 ## O que será feito
 
-### 1. Dropdown de Origem
-Substituir o `<Input>` de origem por um `<Select>` com opções:
-- `whatsapp` / `facebook_ad` / `instagram_ad` / `indicação` / `orgânico` / `site` / `ligação` / `outro`
-- Quando "outro" for selecionado, exibir campo de texto livre
+### 1. Novas colunas no banco
+Adicionar `ad_account_id` (text) e `ad_account_name` (text) nas tabelas `crm_leads` e `messages`.
 
-### 2. Seletor Visual de Anúncio
-Abaixo do dropdown de origem, adicionar uma seção "Vincular a Anúncio" que:
-- Busca anúncios distintos do banco (`crm_leads` com `ad_id IS NOT NULL`), agrupados por `descricao_anuncio` (para não duplicar criativos iguais)
-- Exibe uma lista/grid com miniatura (`imagem_origem`), nome do anúncio e trecho da descrição
-- Ao clicar, vincula o lead preenchendo: `ad_id`, `imagem_origem`, `nome_anuncio`, `descricao_anuncio`, `link_anuncio`, e atualiza `source` para `facebook_ad` ou `instagram_ad`
-- Botão para desvincular anúncio se já houver um vinculado
-- Placeholder de vídeo para anúncios sem imagem
-
-### 3. Tipo Lead expandido
-Expandir o tipo `Lead` no componente para incluir os campos de anúncio (`ad_id`, `imagem_origem`, `nome_anuncio`, `descricao_anuncio`, `link_anuncio`) e salvá-los no `handleSave`.
-
-## Detalhes Técnicos
-
-### Query de anúncios distintos
-```typescript
-const { data: ads } = await supabase
-  .from("crm_leads")
-  .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio")
-  .not("ad_id", "is", null)
-  .limit(500);
-// Agrupar por descricao_anuncio para deduplificar
+### 2. Webhook: capturar conta de anúncio
+Na chamada à Graph API que já existe no webhook (linha 341), adicionar `account_id` aos fields solicitados:
 ```
+fields=id,name,permalink_url,account_id,creative{...}
+```
+E fazer uma segunda chamada rápida para buscar o nome da conta:
+```
+GET /{account_id}?fields=name
+```
+Salvar ambos nos campos novos do lead e da mensagem.
 
-### Arquivo afetado
+### 3. Atualizar deduplicação no seletor e relatórios
+A chave de agrupamento passa a incluir `ad_account_id`:
+```typescript
+const key = `${normalizeImgUrl(img)}::${desc}::${ad_account_id || ""}`;
+```
+No seletor visual, exibir o nome da conta abaixo do nome do anúncio para facilitar a identificação (ex: "Conta: Rizodent BH").
+
+### 4. Enriquecimento retroativo (opcional)
+Criar script/edge function que percorre os leads existentes com `ad_id` preenchido e busca o `account_id` via Graph API para preencher os campos novos.
+
+## Arquivos afetados
 | Arquivo | Ação |
 |---|---|
-| `src/components/chat/LeadEditPanel.tsx` | Adicionar Select de origem, seletor visual de anúncio com miniaturas, salvar campos de anúncio |
+| Migração SQL | Adicionar colunas `ad_account_id` e `ad_account_name` em `crm_leads` e `messages` |
+| `whatsapp-webhook/index.ts` | Buscar e salvar account_id/name na criação do lead e mensagem |
+| `InlineTagsEditor.tsx` | Incluir account na chave de dedup e exibir nome da conta |
+| `LeadEditPanel.tsx` | Idem |
+| `CrmRelatorios.tsx` | Idem para relatórios |
 
