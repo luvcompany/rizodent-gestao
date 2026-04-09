@@ -95,7 +95,7 @@ export default function CrmRelatorios() {
         supabase.from("crm_stages").select("id, name, color, position, pipeline_id").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
         supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio, ad_account_id, ad_account_name" as any),
-        supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id, ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url"),
+        supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id, ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name"),
         supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
       setPipelines((pipelinesRes.data as Pipeline[]) || []);
@@ -121,6 +121,8 @@ export default function CrmRelatorios() {
               nome_anuncio: adMsg.ad_headline || l.nome_anuncio,
               descricao_anuncio: adMsg.ad_body || l.descricao_anuncio,
               link_anuncio: adMsg.ad_source_url || l.link_anuncio,
+              ad_account_id: adMsg.ad_account_id || l.ad_account_id,
+              ad_account_name: adMsg.ad_account_name || l.ad_account_name,
             };
           }
         }
