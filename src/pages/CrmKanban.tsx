@@ -221,7 +221,7 @@ export default function CrmKanban() {
   const insertNewLead = async (normalizedPhone: string | null) => {
     if (!pipeline) return;
     const tagsArray = newLead.tags ? newLead.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-    const { error } = await supabase.from("crm_leads").insert({
+    const { data: insertedLead, error } = await supabase.from("crm_leads").insert({
       name: newLead.name,
       phone: normalizedPhone,
       stage_id: newLead.stage_id,
@@ -232,17 +232,14 @@ export default function CrmKanban() {
       notes: newLead.notes || null,
       position: leads.filter(l => l.stage_id === newLead.stage_id).length,
       assigned_to: user?.id || null,
-    });
+    }).select("id").single();
     if (error) { toast.error("Erro ao criar lead"); return; }
     toast.success("Lead criado com sucesso");
     // Execute automations for lead creation (on_create + on_create_or_enter)
-    const createdStageId = newLead.stage_id;
-    const { data: createdLeads } = await supabase.from("crm_leads").select("id").eq("phone", normalizedPhone || "").eq("stage_id", createdStageId).order("created_at", { ascending: false }).limit(1);
-    const createdLeadId = createdLeads?.[0]?.id;
-    if (createdLeadId) {
+    if (insertedLead?.id) {
       executeStageAutomations({
-        leadId: createdLeadId,
-        stageId: createdStageId,
+        leadId: insertedLead.id,
+        stageId: newLead.stage_id,
         leadPhone: normalizedPhone,
         triggerTypes: ["on_create", "on_create_or_enter"],
       });
