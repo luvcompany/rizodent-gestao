@@ -13,20 +13,9 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import DashboardFunnel from "@/components/DashboardFunnel";
+import { useChartTheme } from "@/hooks/useChartTheme";
 
 const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(200, 70%, 50%)", "hsl(280, 60%, 55%)"];
-
-const tooltipStyle = {
-  background: "hsl(0,0%,8%)",
-  border: "1px solid hsl(0,0%,18%)",
-  borderRadius: "10px",
-  color: "#fff",
-  padding: "10px 14px",
-  boxShadow: "0 8px 24px rgba(0,0,0,0.5)"
-};
-
-const tooltipLabelStyle = { color: "hsl(0,0%,70%)", fontSize: 12, marginBottom: 4 };
-const tooltipItemStyle = { color: "hsl(25,100%,50%)" };
 
 const formatAxisValue = (v: number) => {
   if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
@@ -37,27 +26,6 @@ const formatAxisValue = (v: number) => {
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
-
-const renderBarLabel = (props: any) => {
-  const { x, y, width, value } = props;
-  if (!value) return null;
-  const label = typeof value === "number" && value >= 1000 ? formatCurrency(value) : String(value);
-  return (
-    <text x={x + width / 2} y={y - 6} fill="hsl(0,0%,75%)" textAnchor="middle" fontSize={10} fontWeight={600}>
-      {label}
-    </text>);
-
-};
-
-const ChartCard = ({ title, children }: {title: string;children: React.ReactNode;}) =>
-<Card className="gradient-card border-border shadow-card">
-    <CardHeader className="pb-2">
-      <CardTitle className="text-sm font-semibold">{title}</CardTitle>
-    </CardHeader>
-    <CardContent className="pt-0">
-      {children}
-    </CardContent>
-  </Card>;
 
 
 const Dashboard = () => {
