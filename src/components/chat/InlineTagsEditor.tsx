@@ -198,6 +198,8 @@ export default function InlineTagsEditor({
       nome_anuncio: ad.nome_anuncio,
       descricao_anuncio: ad.descricao_anuncio,
       link_anuncio: ad.link_anuncio,
+      ad_account_id: ad.ad_account_id,
+      ad_account_name: ad.ad_account_name,
     });
     setShowAdSelector(false);
   };
@@ -209,6 +211,8 @@ export default function InlineTagsEditor({
       nome_anuncio: null,
       descricao_anuncio: null,
       link_anuncio: null,
+      ad_account_id: null,
+      ad_account_name: null,
     });
   };
 
@@ -257,6 +261,9 @@ export default function InlineTagsEditor({
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate">{nomeAnuncio || "Anúncio vinculado"}</p>
+                  {adAccountName && (
+                    <p className="text-[10px] text-muted-foreground">Conta: {adAccountName}</p>
+                  )}
                   {descricaoAnuncio && (
                     <p className="text-[10px] text-muted-foreground line-clamp-2">{descricaoAnuncio}</p>
                   )}
