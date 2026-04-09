@@ -1021,6 +1021,7 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
         const convRate = assigned > 0 ? Math.round((converted / assigned) * 100) : 0;
         const frtArr = firstResponseTimes.get(uid) || [];
         return {
+          userId: uid,
           name: profileMap.get(uid) || uid.slice(0, 8),
           totalMsgs: grouped.get(uid)?.msgs || 0,
           leadsAtendidos: grouped.get(uid)?.leads.size || 0,
@@ -1061,7 +1062,7 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
             </TableHeader>
             <TableBody>
               {metrics.map((m, i) => (
-                <TableRow key={i}>
+                <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => onDrillDown?.({ assigned_to: m.userId })}>
                   <TableCell className="font-medium">{m.name}</TableCell>
                   <TableCell>{m.totalMsgs}</TableCell>
                   <TableCell>{m.leadsAtendidos}</TableCell>
