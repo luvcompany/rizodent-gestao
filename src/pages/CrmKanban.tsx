@@ -160,12 +160,13 @@ export default function CrmKanban() {
         await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() }).eq("id", openEntry.id);
       }
 
-      // Insert new stage history entry
+      // Insert new stage history entry (with from_stage_id)
       await supabase.from("crm_lead_stage_history").insert({
         lead_id: leadId,
         stage_id: newStageId,
+        from_stage_id: previousStageId,
         entered_at: new Date().toISOString(),
-      });
+      } as any);
 
       // Insert system message
       const fromName = stages.find(s => s.id === previousStageId)?.name || "?";
