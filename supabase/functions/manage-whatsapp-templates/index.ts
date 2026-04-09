@@ -82,17 +82,25 @@ Deno.serve(async (req) => {
 
     // ACTION: LIST - Fetch all templates from Meta API
     if (action === "list") {
-      const url = `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?limit=100`;
-      const metaRes = await fetch(url, {
-        headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
-      });
-      const metaData = await metaRes.json();
+      // Fetch all templates from Meta with pagination
+      let allMetaTemplates: any[] = [];
+      let nextUrl: string | null = `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?limit=100`;
 
-      if (!metaRes.ok) {
-        return new Response(
-          JSON.stringify({ error: "Erro ao buscar templates da Meta", details: metaData }),
-          { status: metaRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      while (nextUrl) {
+        const metaRes = await fetch(nextUrl, {
+          headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+        });
+        const metaData = await metaRes.json();
+
+        if (!metaRes.ok) {
+          return new Response(
+            JSON.stringify({ error: "Erro ao buscar templates da Meta", details: metaData }),
+            { status: metaRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        allMetaTemplates = allMetaTemplates.concat(metaData.data || []);
+        nextUrl = metaData.paging?.next || null;
       }
 
       const templates = (metaData.data || []).map((t: any) => {
