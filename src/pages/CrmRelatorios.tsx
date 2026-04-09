@@ -933,9 +933,10 @@ function LeadScoreSection({ leads, stages }: { leads: Lead[]; stages: Stage[] })
 /* ═══════════════════════════════════════════════════
    Métricas por Atendente Section (EXPANDED)
    ═══════════════════════════════════════════════════ */
-function AttendantMetricsSection({ messages, leads, allLeads, appointments, stages, history }: {
+function AttendantMetricsSection({ messages, leads, allLeads, appointments, stages, history, onDrillDown }: {
   messages: Message[]; leads: Lead[]; allLeads: Lead[];
   appointments: Appointment[]; stages: Stage[]; history: StageHistory[];
+  onDrillDown?: (params: Record<string, string>) => void;
 }) {
   const [metrics, setMetrics] = useState<any[]>([]);
 
