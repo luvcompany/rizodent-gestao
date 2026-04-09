@@ -8,22 +8,16 @@ interface ChannelBadgeIconProps {
 }
 
 export default function ChannelBadgeIcon({ source, size = 16, className = "" }: ChannelBadgeIconProps) {
-  const s = (source || "").toLowerCase();
-  let logo: string | null = null;
-
-  if (s.includes("instagram")) {
-    logo = instagramLogo;
-  } else if (s.includes("whatsapp") || s.includes("facebook") || s === "" || !s) {
-    // Default to WhatsApp for most CRM leads
-    logo = whatsappLogo;
-  }
+  // Always show WhatsApp as the channel icon since WhatsApp is the active integration.
+  // The source field indicates ad origin (facebook_ad, instagram_ad), not the messaging channel.
+  const logo = whatsappLogo;
 
   if (!logo) return null;
 
   return (
     <img
       src={logo}
-      alt={s.includes("instagram") ? "Instagram" : "WhatsApp"}
+      alt="WhatsApp"
       width={size}
       height={size}
       loading="lazy"

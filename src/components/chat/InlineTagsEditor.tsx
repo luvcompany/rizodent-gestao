@@ -130,7 +130,7 @@ export default function InlineTagsEditor({
     if (data) {
       const seen = new Map<string, AdOption>();
       for (const row of data) {
-        const key = row.descricao_anuncio || row.ad_id || "";
+        const key = row.ad_id || "";
         if (!seen.has(key)) {
           seen.set(key, {
             ad_id: row.ad_id!,

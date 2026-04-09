@@ -501,7 +501,9 @@ export default function CrmConversas() {
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             {lead.source && (
-                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{lead.source}</Badge>
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                                {["facebook_ad", "instagram_ad"].includes(lead.source.toLowerCase()) ? "anúncio" : lead.source}
+                              </Badge>
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.last_message || "Sem mensagens"}</p>
