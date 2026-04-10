@@ -111,10 +111,9 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
           <ChevronDown size={12} className="shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className={cn("w-auto p-0 pointer-events-auto", className)} align="start">
-        <div className="flex">
-          {/* Preset sidebar */}
-          <div className="border-r border-border p-2 space-y-0.5 min-w-[140px]">
+      <PopoverContent className={cn("w-auto p-0 pointer-events-auto", className)} align="start" side="bottom">
+        {value.preset !== "custom" ? (
+          <div className="p-2 space-y-0.5 min-w-[160px]">
             {presets.map((p) => (
               <button
                 key={p.value}
@@ -130,20 +129,31 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
               </button>
             ))}
           </div>
-          {/* Calendar for custom range */}
-          {value.preset === "custom" && (
-            <div className="p-2">
-              <Calendar
-                mode="range"
-                selected={calendarRange}
-                onSelect={handleRangeSelect}
-                numberOfMonths={2}
-                locale={ptBR}
-                className="pointer-events-auto"
-              />
+        ) : (
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between px-3 pt-2">
+              <button
+                onClick={() => onChange({ preset: "all" })}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                ← Voltar aos presets
+              </button>
+              {value.customFrom && value.customTo && (
+                <span className="text-xs text-muted-foreground">
+                  {format(value.customFrom, "dd/MM/yy")} — {format(value.customTo, "dd/MM/yy")}
+                </span>
+              )}
             </div>
-          )}
-        </div>
+            <Calendar
+              mode="range"
+              selected={calendarRange}
+              onSelect={handleRangeSelect}
+              numberOfMonths={1}
+              locale={ptBR}
+              className="pointer-events-auto p-3"
+            />
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
