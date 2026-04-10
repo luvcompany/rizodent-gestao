@@ -15,6 +15,7 @@ import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw, MoreVerti
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
+import AutomationModal from "@/components/automation/AutomationModal";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
@@ -268,8 +269,30 @@ export default function CrmAutomacoes() {
       send_template: "Enviar template WhatsApp",
       send_audio: "Enviar áudio",
       send_bot: "Enviar Bot",
+      send_file: "Enviar arquivo",
+      add_tag: "Criar tag",
       move_stage: "Mover para etapa",
+      notify_assignee: "Notificar responsável",
       webhook: "Chamar webhook",
+      combo: "Combinação de ações",
+    };
+    return map[type] || type;
+  };
+
+  const triggerLabel = (type: string) => {
+    const map: Record<string, string> = {
+      on_enter: "Ao mover",
+      on_create: "Ao criar",
+      on_create_or_enter: "Ao mover/criar",
+      lead_created_date: "Por data",
+      no_response: "Sem resposta",
+      progressive_reengagement: "Reengajamento",
+      lead_stale: "Lead parado",
+      time_window: "Janela horário",
+      keyword_response: "Palavra-chave",
+      after_appointment_confirmed: "Pós-agendamento",
+      no_show: "No-show",
+      cold_lead_return: "Lead frio",
     };
     return map[type] || type;
   };
@@ -493,13 +516,7 @@ export default function CrmAutomacoes() {
                                     <div key={auto.id} className="bg-primary/10 border border-primary/20 rounded p-2 text-xs">
                                       <div className="flex items-center gap-1 text-primary mb-1">
                                         <Bot size={12} />
-                                        <span className="font-medium">
-                                          {auto.trigger_type === "on_enter" ? "Ao mover" : 
-                                           auto.trigger_type === "on_create" ? "Ao criar" :
-                                           auto.trigger_type === "on_create_or_enter" ? "Ao mover/criar" :
-                                           auto.trigger_type === "lead_created_date" ? "Por data" :
-                                           auto.trigger_type === "no_response" ? "Sem resposta" : auto.trigger_type}
-                                        </span>
+                                        <span className="font-medium">{triggerLabel(auto.trigger_type)}</span>
                                       </div>
                                       <div className="text-foreground">{actionLabel(auto.action_type)}</div>
                                       <div className="flex items-center gap-1 mt-1">
@@ -609,163 +626,16 @@ export default function CrmAutomacoes() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={autoModalOpen} onOpenChange={setAutoModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle><Zap size={16} className="inline mr-1 text-primary" />Configurar Automação</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Evento</Label>
-              <Select value={autoForm.trigger_type} onValueChange={v => setAutoForm(p => ({ ...p, trigger_type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="on_create">Quando criado nesta etapa</SelectItem>
-                  <SelectItem value="on_enter">Quando movido para esta etapa</SelectItem>
-                  <SelectItem value="on_create_or_enter">Quando movido para ou criado nesta etapa</SelectItem>
-                  <SelectItem value="lead_created_date">Leads de determinada data</SelectItem>
-                  <SelectItem value="no_response">Leads sem resposta há X tempo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Lead date filter */}
-            {autoForm.trigger_type === "lead_created_date" && (
-              <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-                <Label className="text-xs">Data de criação do lead</Label>
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <Label className="text-[10px] text-muted-foreground">De</Label>
-                    <Input
-                      type="date"
-                      value={(autoForm.action_config.date_from as string) || ""}
-                      onChange={e => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, date_from: e.target.value } }))}
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Label className="text-[10px] text-muted-foreground">Até</Label>
-                    <Input
-                      type="date"
-                      value={(autoForm.action_config.date_to as string) || ""}
-                      onChange={e => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, date_to: e.target.value } }))}
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* No response filter */}
-            {autoForm.trigger_type === "no_response" && (
-              <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-                <Label className="text-xs">Lead sem resposta há</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    value={(autoForm.action_config.no_response_amount as number) || 1}
-                    onChange={e => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, no_response_amount: parseInt(e.target.value) || 1 } }))}
-                    className="h-8 text-xs w-20"
-                  />
-                  <Select
-                    value={(autoForm.action_config.no_response_unit as string) || "hours"}
-                    onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, no_response_unit: v } }))}
-                  >
-                    <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="hours">Horas</SelectItem>
-                      <SelectItem value="days">Dias</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-[10px] text-muted-foreground">Dispara a ação para leads que não responderam dentro do período definido.</p>
-              </div>
-            )}
-            <div>
-              <Label>Ação</Label>
-              <Select value={autoForm.action_type} onValueChange={v => setAutoForm(p => ({ ...p, action_type: v, action_config: {} }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="send_template">Enviar template WhatsApp</SelectItem>
-                  <SelectItem value="send_bot">Enviar Bot</SelectItem>
-                  <SelectItem value="send_audio">Enviar áudio</SelectItem>
-                  <SelectItem value="move_stage">Mover para etapa</SelectItem>
-                  <SelectItem value="webhook">Chamar webhook</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {autoForm.action_type === "send_template" && (
-              <div className="space-y-3">
-                <div>
-                  <Label>Template</Label>
-                  <TemplateSearchSelect
-                    templates={templates}
-                    value={(autoForm.action_config.template_id as string) || undefined}
-                    onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, template_id: v } }))}
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    id="send-to-all-tpl"
-                    checked={!!(autoForm.action_config.send_to_all_existing)}
-                    onCheckedChange={(v) => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, send_to_all_existing: !!v } }))}
-                  />
-                  <label htmlFor="send-to-all-tpl" className="text-sm text-foreground cursor-pointer">
-                    Enviar para todos os leads que já estão nesta etapa
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {autoForm.action_type === "send_bot" && (
-              <div className="space-y-3">
-                <div>
-                  <Label>Bot</Label>
-                  <Select value={(autoForm.action_config.bot_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, bot_id: v } }))}>
-                    <SelectTrigger><SelectValue placeholder="Selecionar bot" /></SelectTrigger>
-                    <SelectContent>
-                      {publishedBots.length === 0 && <SelectItem value="none" disabled>Nenhum bot publicado</SelectItem>}
-                      {publishedBots.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    id="send-to-all"
-                    checked={!!(autoForm.action_config.send_to_all_existing)}
-                    onCheckedChange={(v) => setAutoForm(p => ({ ...p, action_config: { ...p.action_config, send_to_all_existing: !!v } }))}
-                  />
-                  <label htmlFor="send-to-all" className="text-sm text-foreground cursor-pointer">
-                    Enviar para todos os leads que já estão nesta etapa
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {autoForm.action_type === "move_stage" && (
-              <div>
-                <Label>Mover para</Label>
-                <Select value={(autoForm.action_config.target_stage_id as string) || undefined} onValueChange={v => setAutoForm(p => ({ ...p, action_config: { target_stage_id: v } }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar etapa" /></SelectTrigger>
-                  <SelectContent>
-                    {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {autoForm.action_type === "webhook" && (
-              <div>
-                <Label>URL do Webhook</Label>
-                <Input placeholder="https://..." value={(autoForm.action_config.url as string) || ""} onChange={e => setAutoForm(p => ({ ...p, action_config: { url: e.target.value } }))} />
-              </div>
-            )}
-
-            <Button className="w-full" onClick={handleSaveAutomation}>Salvar Automação</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
+      <AutomationModal
+        open={autoModalOpen}
+        onOpenChange={setAutoModalOpen}
+        autoForm={autoForm}
+        setAutoForm={setAutoForm}
+        stages={stages}
+        templates={templates}
+        publishedBots={publishedBots}
+        onSave={handleSaveAutomation}
+      />
       <Dialog open={newPipelineOpen} onOpenChange={(open) => { setNewPipelineOpen(open); if (!open) setUseCustomPipelineColor(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Novo Funil</DialogTitle></DialogHeader>
