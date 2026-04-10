@@ -636,6 +636,7 @@ export default function CrmAutomacoes() {
         publishedBots={publishedBots}
         onSave={handleSaveAutomation}
       />
+      <Dialog open={newPipelineOpen} onOpenChange={(open) => { setNewPipelineOpen(open); if (!open) setUseCustomPipelineColor(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Novo Funil</DialogTitle></DialogHeader>
           <div className="space-y-3">
