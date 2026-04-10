@@ -499,7 +499,7 @@ export default function CrmConversas() {
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {filtered.map((lead) => {
+                  {visibleLeads.map((lead) => {
                     const initials = lead.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
                     const isActive = lead.id === selectedLeadId;
                     const stageDot = chat.stages.find((s) => s.id === lead.stage_id);
@@ -545,6 +545,14 @@ export default function CrmConversas() {
                       </button>
                     );
                   })}
+                  {visibleCount < filtered.length && (
+                    <button
+                      className="w-full py-3 text-xs text-primary hover:bg-secondary/50 transition-colors"
+                      onClick={() => setVisibleCount((c) => c + 50)}
+                    >
+                      Carregar mais ({filtered.length - visibleCount} restantes)
+                    </button>
+                  )}
                 </div>
               )}
             </div>
