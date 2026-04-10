@@ -1,45 +1,77 @@
 
 
-# Plano: Diferenciar anúncios por conta de anúncio (Ad Account)
+# Plano: Implementar backend para todos os gatilhos e ações de automação
 
-## Problema
-O mesmo criativo (mesma imagem e descrição) é usado em 4 contas de anúncio diferentes (uma por cidade). Com a deduplicação atual por imagem+descrição, todos aparecem como um só.
+## Resumo
+Os 7 novos gatilhos e 4 novas ações existem apenas na UI. Este plano implementa o processamento real de cada um.
 
-## Solução
-Capturar o **ID e nome da conta de anúncio** via Meta Graph API e usá-lo para diferenciar criativos idênticos entre contas.
+## Arquitetura
+
+Dois mecanismos de execução:
+
+1. **Gatilhos reativos (tempo real)** — processados no momento do evento:
+   - `keyword_response` → interceptado no webhook de mensagem recebida
+   - `cold_lead_return` → interceptado no webhook de mensagem recebida
+   - `after_appointment_confirmed` → interceptado quando status do agendamento muda
+
+2. **Gatilhos periódicos (cron/scheduled)** — processados por uma edge function chamada periodicamente:
+   - `progressive_reengagement` → verifica camadas de tempo por lead
+   - `lead_stale` → verifica leads sem movimentação há N dias
+   - `no_show` → verifica consultas passadas sem check-in
+   - `time_window` → libera ações enfileiradas quando entrar na janela
 
 ## O que será feito
 
-### 1. Novas colunas no banco
-Adicionar `ad_account_id` (text) e `ad_account_name` (text) nas tabelas `crm_leads` e `messages`.
+### 1. Migração: tabela de fila de automação
+Criar `crm_automation_queue` para enfileirar ações pendentes (usado por `time_window` e sequências):
 
-### 2. Webhook: capturar conta de anúncio
-Na chamada à Graph API que já existe no webhook (linha 341), adicionar `account_id` aos fields solicitados:
-```
-fields=id,name,permalink_url,account_id,creative{...}
-```
-E fazer uma segunda chamada rápida para buscar o nome da conta:
-```
-GET /{account_id}?fields=name
-```
-Salvar ambos nos campos novos do lead e da mensagem.
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | uuid | PK |
+| automation_id | uuid | FK para crm_automations |
+| lead_id | uuid | FK para crm_leads |
+| action_type | text | Ação a executar |
+| action_config | jsonb | Config da ação |
+| scheduled_at | timestamptz | Quando deve disparar |
+| status | text | pending / sent / cancelled |
+| layer_index | int | Índice da camada (reengajamento) |
 
-### 3. Atualizar deduplicação no seletor e relatórios
-A chave de agrupamento passa a incluir `ad_account_id`:
-```typescript
-const key = `${normalizeImgUrl(img)}::${desc}::${ad_account_id || ""}`;
-```
-No seletor visual, exibir o nome da conta abaixo do nome do anúncio para facilitar a identificação (ex: "Conta: Rizodent BH").
+### 2. Atualizar `automationUtils.ts` — novas ações
+Adicionar processamento para: `send_audio`, `send_file`, `add_tag`, `notify_owner` e `combo` (executa array de sub-ações).
 
-### 4. Enriquecimento retroativo (opcional)
-Criar script/edge function que percorre os leads existentes com `ad_id` preenchido e busca o `account_id` via Graph API para preencher os campos novos.
+### 3. Atualizar `whatsapp-webhook/index.ts` — gatilhos reativos
+No ponto onde uma mensagem inbound é processada:
+- Buscar automações ativas do tipo `keyword_response` na etapa atual do lead; se a mensagem contiver alguma das palavras-chave, executar a ação.
+- Buscar automações do tipo `cold_lead_return`; se o lead estiver em etapa marcada como "fria"/arquivada, executar a ação (mover + notificar).
+
+### 4. Nova edge function `automation-engine/index.ts`
+Função periódica (chamada por cron externo ou manualmente) que processa:
+
+- **`progressive_reengagement`**: Para cada automação ativa desse tipo, verificar leads na etapa associada que não responderam. Criar entradas na fila para cada camada de tempo. Se o lead respondeu desde a última camada, cancelar as pendentes.
+- **`lead_stale`**: Buscar leads com `updated_at` ou `last_message_at` mais antigo que N dias. Executar ação e opcionalmente mover de etapa.
+- **`no_show`**: Buscar agendamentos passados com status != "compareceu". Disparar sequência de reagendamento.
+- **`time_window`**: Verificar itens na fila com `scheduled_at` passado. Se dentro da janela de horário configurada, executar; senão, reagendar para próxima janela.
+
+### 5. Gatilho `after_appointment_confirmed`
+No fluxo onde o agendamento é confirmado (via chat ou UI), chamar `executeStageAutomations` com o trigger type correto, iniciando a sequência de lembretes na fila.
+
+### 6. Configurar cron para `automation-engine`
+Adicionar chamada periódica (a cada 5 min) via `pg_cron` ou instrução para o usuário configurar um cron externo.
 
 ## Arquivos afetados
+
 | Arquivo | Ação |
 |---|---|
-| Migração SQL | Adicionar colunas `ad_account_id` e `ad_account_name` em `crm_leads` e `messages` |
-| `whatsapp-webhook/index.ts` | Buscar e salvar account_id/name na criação do lead e mensagem |
-| `InlineTagsEditor.tsx` | Incluir account na chave de dedup e exibir nome da conta |
-| `LeadEditPanel.tsx` | Idem |
-| `CrmRelatorios.tsx` | Idem para relatórios |
+| Migração SQL | Criar tabela `crm_automation_queue` + habilitar RLS |
+| `src/lib/automationUtils.ts` | Adicionar ações: send_audio, send_file, add_tag, notify_owner, combo |
+| `supabase/functions/whatsapp-webhook/index.ts` | Adicionar verificação de keyword_response e cold_lead_return no fluxo inbound |
+| `supabase/functions/automation-engine/index.ts` | Nova função para processar gatilhos periódicos |
+| `src/pages/CrmCalendario.tsx` ou fluxo de agendamento | Disparar automação after_appointment_confirmed |
+
+## Ordem de execução
+1. Migração do banco (tabela de fila)
+2. Atualizar automationUtils.ts (novas ações)
+3. Criar automation-engine (gatilhos periódicos)
+4. Atualizar whatsapp-webhook (gatilhos reativos)
+5. Integrar gatilho de agendamento confirmado
 
