@@ -253,7 +253,7 @@ const Dashboard = () => {
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.leads]);
+  }, [dateFrom, dateTo, filtered.leads, useMonthlyChart]);
 
   // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
   const fatClinicaRaw = clinicas.map((c) => {
