@@ -203,7 +203,10 @@ const Dashboard = () => {
       });
     }
     const start = new Date(dateFrom + "T12:00:00");
-    const end = new Date(dateTo + "T12:00:00");
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const endRaw = new Date(dateTo + "T12:00:00");
+    const end = endRaw > today ? today : endRaw;
     const pgMap = new Map<string, number>();
     filtered.pagamentos.forEach((p) => {
       pgMap.set(p.data_pagamento, (pgMap.get(p.data_pagamento) || 0) + Number(p.valor));
@@ -236,7 +239,10 @@ const Dashboard = () => {
       });
     }
     const start = new Date(dateFrom + "T12:00:00");
-    const end = new Date(dateTo + "T12:00:00");
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const endRaw = new Date(dateTo + "T12:00:00");
+    const end = endRaw > today ? today : endRaw;
     const leadsMap = new Map<string, number>();
     filtered.leads.forEach((l) => {
       leadsMap.set(l.data, (leadsMap.get(l.data) || 0) + l.leads_novos);
