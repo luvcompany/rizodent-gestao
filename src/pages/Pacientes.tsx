@@ -31,7 +31,6 @@ const Pacientes = () => {
   const [busca, setBusca] = useState("");
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "all" });
   const [statusFiltro, setStatusFiltro] = useState("todos");
-  const [statusFiltro, setStatusFiltro] = useState("todos");
   const [pacientes, setPacientes] = useState<PacienteView[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
