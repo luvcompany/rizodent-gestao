@@ -77,9 +77,9 @@ const LEADS_CACHE_TTL = 2 * 60_000; // 2 minutes
 export default function CrmConversas() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [leads, setLeads] = useState<LeadConversation[]>([]);
+  const [leads, setLeads] = useState<LeadConversation[]>(() => leadsListCache.leads || []);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!leadsListCache.leads);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
