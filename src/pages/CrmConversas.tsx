@@ -37,7 +37,8 @@ import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
   Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2
 } from "lucide-react";
-import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
+import { isWithinInterval } from "date-fns";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
 
@@ -345,29 +346,11 @@ export default function CrmConversas() {
         const matchesPhone = searchDigits.length >= 3 && phoneDigits.includes(searchDigits);
         if (!matchesText && !matchesPhone) return false;
       }
-      if (filters.dateRange) {
+      if (filters.dateFilter.preset !== "all") {
         if (!l.last_message_at) return false;
         const msgDate = new Date(l.last_message_at);
-        if (filters.dateRange === "today" && !isToday(msgDate)) return false;
-        if (filters.dateRange === "yesterday" && !isYesterday(msgDate)) return false;
-        if (filters.dateRange === "7days" && !isAfter(msgDate, subDays(new Date(), 7))) return false;
-        if (filters.dateRange === "this_month") {
-          const start = startOfMonth(new Date());
-          if (msgDate < start) return false;
-        }
-        if (filters.dateRange === "last_month") {
-          const start = startOfMonth(subMonths(new Date(), 1));
-          const end = endOfMonth(subMonths(new Date(), 1));
-          if (msgDate < start || msgDate > end) return false;
-        }
-        if (filters.dateRange === "custom") {
-          if (filters.customDateFrom && msgDate < filters.customDateFrom) return false;
-          if (filters.customDateTo) {
-            const end = new Date(filters.customDateTo);
-            end.setHours(23, 59, 59, 999);
-            if (msgDate > end) return false;
-          }
-        }
+        const range = getDateRangeFromFilter(filters.dateFilter);
+        if (range && !isWithinInterval(msgDate, { start: range.start, end: range.end })) return false;
       }
       if (filters.pipelineId && l.pipeline_id !== filters.pipelineId) return false;
       if (filters.stageId && l.stage_id !== filters.stageId) return false;

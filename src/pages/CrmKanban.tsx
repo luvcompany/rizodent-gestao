@@ -19,7 +19,8 @@ import {
   Plus, LayoutGrid, List, Zap, Search,
   Calendar, AlertTriangle, Clock, TrendingUp, Users, MessageSquare, RefreshCw
 } from "lucide-react";
-import { isToday, isYesterday, subDays, isAfter, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { isWithinInterval } from "date-fns";
+import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 type Stage = {
@@ -308,25 +309,10 @@ export default function CrmKanban() {
         const matchesPhone = searchDigits.length >= 3 && phoneDigits.includes(searchDigits);
         if (!matchesText && !matchesPhone) return false;
       }
-      if (kanbanFilters.dateRange) {
+      if (kanbanFilters.dateFilter.preset !== "all") {
         const d = new Date(l.created_at);
-        if (kanbanFilters.dateRange === "today" && !isToday(d)) return false;
-        if (kanbanFilters.dateRange === "yesterday" && !isYesterday(d)) return false;
-        if (kanbanFilters.dateRange === "7days" && !isAfter(d, subDays(new Date(), 7))) return false;
-        if (kanbanFilters.dateRange === "this_month" && d < startOfMonth(new Date())) return false;
-        if (kanbanFilters.dateRange === "last_month") {
-          const start = startOfMonth(subMonths(new Date(), 1));
-          const end = endOfMonth(subMonths(new Date(), 1));
-          if (d < start || d > end) return false;
-        }
-        if (kanbanFilters.dateRange === "custom") {
-          if (kanbanFilters.customDateFrom && d < kanbanFilters.customDateFrom) return false;
-          if (kanbanFilters.customDateTo) {
-            const e = new Date(kanbanFilters.customDateTo);
-            e.setHours(23, 59, 59, 999);
-            if (d > e) return false;
-          }
-        }
+        const range = getDateRangeFromFilter(kanbanFilters.dateFilter);
+        if (range && !isWithinInterval(d, { start: range.start, end: range.end })) return false;
       }
       if (kanbanFilters.stageId && l.stage_id !== kanbanFilters.stageId) return false;
       if (kanbanFilters.tags.length && !kanbanFilters.tags.some((t) => l.tags?.includes(t))) return false;
