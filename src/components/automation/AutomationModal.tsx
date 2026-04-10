@@ -7,7 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, Zap } from "lucide-react";
-import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandGroup } from "@/components/ui/command";
+import { cleanTemplateName } from "@/lib/templateUtils";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Stage = { id: string; name: string; color: string };
 type Template = { id: string; name: string; status: string };
@@ -30,6 +34,66 @@ interface Props {
   templates: Template[];
   publishedBots: BotEntry[];
   onSave: () => void;
+}
+
+const TRIGGER_DESCRIPTIONS: Record<string, string> = {
+  on_create: "Dispara quando um novo lead é criado diretamente nesta etapa.",
+  on_enter: "Dispara quando um lead existente é movido para esta etapa.",
+  on_create_or_enter: "Dispara tanto na criação quanto na movimentação para esta etapa.",
+  lead_created_date: "Selecione um intervalo de datas para disparar a ação em leads criados nesse período.",
+  no_response: "Dispara quando o lead não responde após um tempo definido.",
+  progressive_reengagement: "Crie múltiplas camadas de tentativa com tempos crescentes. Se o lead responder, a sequência para.",
+  lead_stale: "Dispara quando o lead fica parado sem nenhuma movimentação ou mensagem por N dias.",
+  time_window: "Define uma janela de horário e dias da semana. Fora dela, as automações ficam em fila.",
+  keyword_response: "Dispara quando o lead responde com palavras ou frases específicas que você definir.",
+  after_appointment_confirmed: "Inicia uma sequência automática após a confirmação de um agendamento (ex: lembretes e follow-up).",
+  no_show: "Dispara quando o paciente não comparece à consulta. Permite sequência de reagendamento.",
+  cold_lead_return: "Dispara quando um lead frio ou arquivado envia qualquer mensagem nova.",
+};
+
+function TemplateCombobox({
+  templates,
+  value,
+  onValueChange,
+}: {
+  templates: Template[];
+  value: string;
+  onValueChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = templates.find(t => t.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between h-8 text-xs font-normal">
+          {selected ? cleanTemplateName(selected.name) : "Selecionar template"}
+          <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Pesquisar template..." className="h-8 text-xs" />
+          <CommandList>
+            <CommandEmpty className="py-3 text-xs text-center">Nenhum template encontrado</CommandEmpty>
+            <CommandGroup>
+              {templates.map(t => (
+                <CommandItem
+                  key={t.id}
+                  value={t.name}
+                  onSelect={() => { onValueChange(t.id); setOpen(false); }}
+                  className="text-xs"
+                >
+                  <Check className={cn("mr-2 h-3 w-3", value === t.id ? "opacity-100" : "opacity-0")} />
+                  {cleanTemplateName(t.name)}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 const DAYS_OF_WEEK = [
@@ -63,12 +127,14 @@ function ActionConfigFields({
   const key = (k: string) => prefix ? `${prefix}_${k}` : k;
 
   if (actionType === "send_template") {
+    const selectedId = (config[key("template_id")] as string) || "";
+    const selectedTemplate = templates.find(t => t.id === selectedId);
     return (
       <div>
         <Label className="text-xs">Template</Label>
-        <TemplateSearchSelect
+        <TemplateCombobox
           templates={templates}
-          value={(config[key("template_id")] as string) || undefined}
+          value={selectedId}
           onValueChange={v => onChange({ [key("template_id")]: v })}
         />
       </div>
@@ -392,6 +458,9 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <SelectItem value="cold_lead_return">Retorno de lead frio</SelectItem>
               </SelectContent>
             </Select>
+            {TRIGGER_DESCRIPTIONS[autoForm.trigger_type] && (
+              <p className="text-[10px] text-muted-foreground mt-1">{TRIGGER_DESCRIPTIONS[autoForm.trigger_type]}</p>
+            )}
           </div>
 
           {/* TRIGGER-SPECIFIC CONFIGS */}
