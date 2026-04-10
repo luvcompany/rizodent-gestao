@@ -26,6 +26,7 @@ type Lead = {
   first_inbound_at?: string | null; source?: string | null; nome_anuncio?: string | null;
   paciente_id?: string | null; link_anuncio?: string | null; imagem_origem?: string | null;
   descricao_anuncio?: string | null; ad_account_id?: string | null; ad_account_name?: string | null;
+  ad_id?: string | null;
 };
 type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
 type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string };
@@ -94,7 +95,7 @@ export default function CrmRelatorios() {
         supabase.from("crm_pipelines").select("id, name, color").order("created_at"),
         supabase.from("crm_stages").select("id, name, color, position, pipeline_id").order("position"),
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio, ad_account_id, ad_account_name" as any),
+        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio, ad_account_id, ad_account_name, ad_id" as any),
         supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id, ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name"),
         supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
       ]);
@@ -105,28 +106,58 @@ export default function CrmRelatorios() {
       // Enrich leads missing ad data from their messages
       const rawLeads = (leadsRes.data as unknown as Lead[]) || [];
       const rawMessages = (messagesRes.data as any[]) || [];
+
+      // Build map: ad_source_id -> { ad_account_id, ad_account_name } from messages
+      const adAccountFromMsg = new Map<string, { id: string; name: string }>();
+      for (const m of rawMessages) {
+        if (m.ad_source_id && m.ad_account_id && !adAccountFromMsg.has(m.ad_source_id)) {
+          adAccountFromMsg.set(m.ad_source_id, { id: m.ad_account_id, name: m.ad_account_name || "" });
+        }
+      }
+
+      // Build map: ad_id -> { ad_account_id, ad_account_name } from leads that have it
+      const adAccountFromLeads = new Map<string, { id: string; name: string }>();
+      for (const l of rawLeads) {
+        if (l.ad_id && l.ad_account_id && !adAccountFromLeads.has(l.ad_id)) {
+          adAccountFromLeads.set(l.ad_id, { id: l.ad_account_id, name: l.ad_account_name || "" });
+        }
+      }
+
+      // Build map: lead_id -> first ad message (for image/name backfill)
       const adMsgByLead = new Map<string, any>();
       for (const m of rawMessages) {
         if (m.ad_source_id && !adMsgByLead.has(m.lead_id)) {
           adMsgByLead.set(m.lead_id, m);
         }
       }
+
       const enrichedLeads = rawLeads.map(l => {
-        if (!l.imagem_origem && !l.descricao_anuncio) {
-          const adMsg = adMsgByLead.get(l.id);
+        let lead = { ...l };
+
+        // Backfill ad image/name from messages if lead has none
+        if (!lead.imagem_origem && !lead.descricao_anuncio) {
+          const adMsg = adMsgByLead.get(lead.id);
           if (adMsg) {
-            return {
-              ...l,
-              imagem_origem: adMsg.ad_image_url || l.imagem_origem,
-              nome_anuncio: adMsg.ad_headline || l.nome_anuncio,
-              descricao_anuncio: adMsg.ad_body || l.descricao_anuncio,
-              link_anuncio: adMsg.ad_source_url || l.link_anuncio,
-              ad_account_id: adMsg.ad_account_id || l.ad_account_id,
-              ad_account_name: adMsg.ad_account_name || l.ad_account_name,
-            };
+            lead.imagem_origem = adMsg.ad_image_url || lead.imagem_origem;
+            lead.nome_anuncio = adMsg.ad_headline || lead.nome_anuncio;
+            lead.descricao_anuncio = adMsg.ad_body || lead.descricao_anuncio;
+            lead.link_anuncio = adMsg.ad_source_url || lead.link_anuncio;
+            if (!lead.ad_id) lead.ad_id = adMsg.ad_source_id;
           }
         }
-        return l;
+
+        // Backfill ad_account from messages or sibling leads with same ad_id
+        if (!lead.ad_account_id && lead.ad_id) {
+          const fromMsg = adAccountFromMsg.get(lead.ad_id);
+          const fromSibling = adAccountFromLeads.get(lead.ad_id);
+          const source = fromMsg || fromSibling;
+          if (source) {
+            lead.ad_account_id = source.id;
+            lead.ad_account_name = source.name;
+          }
+        }
+
+        return lead;
       });
 
       setLeads(enrichedLeads);
