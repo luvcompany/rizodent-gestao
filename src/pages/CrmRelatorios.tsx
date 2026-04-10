@@ -106,28 +106,58 @@ export default function CrmRelatorios() {
       // Enrich leads missing ad data from their messages
       const rawLeads = (leadsRes.data as unknown as Lead[]) || [];
       const rawMessages = (messagesRes.data as any[]) || [];
+
+      // Build map: ad_source_id -> { ad_account_id, ad_account_name } from messages
+      const adAccountFromMsg = new Map<string, { id: string; name: string }>();
+      for (const m of rawMessages) {
+        if (m.ad_source_id && m.ad_account_id && !adAccountFromMsg.has(m.ad_source_id)) {
+          adAccountFromMsg.set(m.ad_source_id, { id: m.ad_account_id, name: m.ad_account_name || "" });
+        }
+      }
+
+      // Build map: ad_id -> { ad_account_id, ad_account_name } from leads that have it
+      const adAccountFromLeads = new Map<string, { id: string; name: string }>();
+      for (const l of rawLeads) {
+        if (l.ad_id && l.ad_account_id && !adAccountFromLeads.has(l.ad_id)) {
+          adAccountFromLeads.set(l.ad_id, { id: l.ad_account_id, name: l.ad_account_name || "" });
+        }
+      }
+
+      // Build map: lead_id -> first ad message (for image/name backfill)
       const adMsgByLead = new Map<string, any>();
       for (const m of rawMessages) {
         if (m.ad_source_id && !adMsgByLead.has(m.lead_id)) {
           adMsgByLead.set(m.lead_id, m);
         }
       }
+
       const enrichedLeads = rawLeads.map(l => {
-        if (!l.imagem_origem && !l.descricao_anuncio) {
-          const adMsg = adMsgByLead.get(l.id);
+        let lead = { ...l };
+
+        // Backfill ad image/name from messages if lead has none
+        if (!lead.imagem_origem && !lead.descricao_anuncio) {
+          const adMsg = adMsgByLead.get(lead.id);
           if (adMsg) {
-            return {
-              ...l,
-              imagem_origem: adMsg.ad_image_url || l.imagem_origem,
-              nome_anuncio: adMsg.ad_headline || l.nome_anuncio,
-              descricao_anuncio: adMsg.ad_body || l.descricao_anuncio,
-              link_anuncio: adMsg.ad_source_url || l.link_anuncio,
-              ad_account_id: adMsg.ad_account_id || l.ad_account_id,
-              ad_account_name: adMsg.ad_account_name || l.ad_account_name,
-            };
+            lead.imagem_origem = adMsg.ad_image_url || lead.imagem_origem;
+            lead.nome_anuncio = adMsg.ad_headline || lead.nome_anuncio;
+            lead.descricao_anuncio = adMsg.ad_body || lead.descricao_anuncio;
+            lead.link_anuncio = adMsg.ad_source_url || lead.link_anuncio;
+            if (!lead.ad_id) lead.ad_id = adMsg.ad_source_id;
           }
         }
-        return l;
+
+        // Backfill ad_account from messages or sibling leads with same ad_id
+        if (!lead.ad_account_id && lead.ad_id) {
+          const fromMsg = adAccountFromMsg.get(lead.ad_id);
+          const fromSibling = adAccountFromLeads.get(lead.ad_id);
+          const source = fromMsg || fromSibling;
+          if (source) {
+            lead.ad_account_id = source.id;
+            lead.ad_account_name = source.name;
+          }
+        }
+
+        return lead;
       });
 
       setLeads(enrichedLeads);
