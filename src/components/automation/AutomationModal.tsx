@@ -458,6 +458,9 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <SelectItem value="cold_lead_return">Retorno de lead frio</SelectItem>
               </SelectContent>
             </Select>
+            {TRIGGER_DESCRIPTIONS[autoForm.trigger_type] && (
+              <p className="text-[10px] text-muted-foreground mt-1">{TRIGGER_DESCRIPTIONS[autoForm.trigger_type]}</p>
+            )}
           </div>
 
           {/* TRIGGER-SPECIFIC CONFIGS */}
