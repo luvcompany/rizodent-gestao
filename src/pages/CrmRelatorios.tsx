@@ -13,7 +13,8 @@ import {
 } from "recharts";
 import { Clock, Timer, Users, TrendingUp, AlertTriangle, Zap, RefreshCw, Filter, Ghost, Calendar, UserCheck, ArrowRight, Bot, Send, MapPin, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { format, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, subWeeks, isWithinInterval } from "date-fns";
+import { format, isWithinInterval } from "date-fns";
+import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { ptBR } from "date-fns/locale";
 import { useChartTheme } from "@/hooks/useChartTheme";
 
@@ -49,30 +50,13 @@ function formatDays(ms: number): string {
   return `${days} dias`;
 }
 
-type PeriodFilter = "all" | "this_month" | "last_month" | "this_week" | "last_week" | "custom";
-
-function getPeriodRange(period: PeriodFilter, customFrom?: string, customTo?: string): { start: Date; end: Date } | null {
-  const now = new Date();
-  switch (period) {
-    case "this_month": return { start: startOfMonth(now), end: endOfMonth(now) };
-    case "last_month": return { start: startOfMonth(subMonths(now, 1)), end: endOfMonth(subMonths(now, 1)) };
-    case "this_week": return { start: startOfWeek(now, { locale: ptBR }), end: endOfWeek(now, { locale: ptBR }) };
-    case "last_week": return { start: startOfWeek(subWeeks(now, 1), { locale: ptBR }), end: endOfWeek(subWeeks(now, 1), { locale: ptBR }) };
-    case "custom":
-      if (customFrom && customTo) return { start: new Date(customFrom), end: new Date(customTo + "T23:59:59") };
-      if (customFrom) return { start: new Date(customFrom), end: now };
-      return null;
-    default: return null;
-  }
-}
+// Period filter now uses shared DateRangeFilter component
 
 export default function CrmRelatorios() {
   const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("all");
-  const [period, setPeriod] = useState<PeriodFilter>("this_month");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const [stages, setStages] = useState<Stage[]>([]);
   const [history, setHistory] = useState<StageHistory[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -168,7 +152,7 @@ export default function CrmRelatorios() {
     fetchAll();
   }, []);
 
-  const periodRange = useMemo(() => getPeriodRange(period, customFrom, customTo), [period, customFrom, customTo]);
+  const periodRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
 
   const filteredStages = useMemo(() => {
     if (selectedPipelineId === "all") return stages;
@@ -445,15 +429,10 @@ export default function CrmRelatorios() {
   }, [pipelines, stages, history]);
 
   const periodLabel = useMemo(() => {
-    switch (period) {
-      case "this_month": return format(new Date(), "MMMM yyyy", { locale: ptBR });
-      case "last_month": return format(subMonths(new Date(), 1), "MMMM yyyy", { locale: ptBR });
-      case "this_week": return "Esta semana";
-      case "last_week": return "Semana passada";
-      case "custom": return customFrom && customTo ? `${customFrom} a ${customTo}` : "Período personalizado";
-      default: return "Todo o período";
-    }
-  }, [period, customFrom, customTo]);
+    const range = getDateRangeFromFilter(dateFilter);
+    if (!range) return "Todo o período";
+    return `${format(range.start, "dd/MM/yy")} — ${format(range.end, "dd/MM/yy")}`;
+  }, [dateFilter]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando relatórios...</div>;
@@ -468,23 +447,7 @@ export default function CrmRelatorios() {
           <p className="text-sm text-muted-foreground">Operação completa — {periodLabel}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Select value={period} onValueChange={(v) => setPeriod(v as PeriodFilter)}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Período" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todo período</SelectItem>
-              <SelectItem value="this_month">Este mês</SelectItem>
-              <SelectItem value="last_month">Mês passado</SelectItem>
-              <SelectItem value="this_week">Esta semana</SelectItem>
-              <SelectItem value="last_week">Semana passada</SelectItem>
-              <SelectItem value="custom">Personalizado</SelectItem>
-            </SelectContent>
-          </Select>
-          {period === "custom" && (
-            <>
-              <Input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="w-36" />
-              <Input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="w-36" />
-            </>
-          )}
+          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
           <Filter size={16} className="text-muted-foreground" />
           <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
             <SelectTrigger className="w-48"><SelectValue placeholder="Filtrar por funil" /></SelectTrigger>
