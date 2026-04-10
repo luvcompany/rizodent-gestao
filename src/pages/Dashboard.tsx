@@ -64,8 +64,15 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
+  const isAllPeriod = dateFilter.preset === "all";
   const dateFrom = useMemo(() => dateRange ? dateRange.start.toISOString().split("T")[0] : "2020-01-01", [dateRange]);
   const dateTo = useMemo(() => dateRange ? dateRange.end.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
+  // Determine if charts should aggregate by month (when range > 60 days)
+  const useMonthlyChart = useMemo(() => {
+    const d1 = new Date(dateFrom);
+    const d2 = new Date(dateTo);
+    return (d2.getTime() - d1.getTime()) / 86400000 > 60;
+  }, [dateFrom, dateTo]);
 
   useEffect(() => {
     const fetchAll = async () => {
