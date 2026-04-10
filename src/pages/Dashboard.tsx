@@ -190,6 +190,19 @@ const Dashboard = () => {
 
   // Chart: Venda Diária (todos os dias úteis do período)
   const vendaDiaria = useMemo(() => {
+    if (useMonthlyChart) {
+      // Aggregate by month
+      const monthMap = new Map<string, number>();
+      filtered.pagamentos.forEach((p) => {
+        const key = p.data_pagamento.substring(0, 7); // "YYYY-MM"
+        monthMap.set(key, (monthMap.get(key) || 0) + Number(p.valor));
+      });
+      const sorted = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+      return sorted.map(([key, valor]) => {
+        const [y, m] = key.split("-");
+        return { dia: `${m}/${y.slice(2)}`, valor };
+      });
+    }
     const start = new Date(dateFrom + "T12:00:00");
     const end = new Date(dateTo + "T12:00:00");
     const pgMap = new Map<string, number>();
@@ -207,10 +220,22 @@ const Dashboard = () => {
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.pagamentos]);
+  }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart]);
 
   // Chart: Leads Novos Diários (todos os dias úteis do período)
   const leadsDiario = useMemo(() => {
+    if (useMonthlyChart) {
+      const monthMap = new Map<string, number>();
+      filtered.leads.forEach((l) => {
+        const key = l.data.substring(0, 7);
+        monthMap.set(key, (monthMap.get(key) || 0) + l.leads_novos);
+      });
+      const sorted = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+      return sorted.map(([key, leads]) => {
+        const [y, m] = key.split("-");
+        return { dia: `${m}/${y.slice(2)}`, leads };
+      });
+    }
     const start = new Date(dateFrom + "T12:00:00");
     const end = new Date(dateTo + "T12:00:00");
     const leadsMap = new Map<string, number>();
