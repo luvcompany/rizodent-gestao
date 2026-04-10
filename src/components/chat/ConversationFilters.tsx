@@ -2,13 +2,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { CalendarIcon, Filter, X } from "lucide-react";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { cn } from "@/lib/utils";
+import { Filter, X } from "lucide-react";
+import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 
 type Stage = { id: string; name: string; color: string; pipeline_id?: string };
 type Profile = { id: string; nome: string };
@@ -16,9 +12,7 @@ type Pipeline = { id: string; name: string };
 
 export type ConversationFilterValues = {
   pipelineId: string;
-  dateRange: string;
-  customDateFrom?: Date;
-  customDateTo?: Date;
+  dateFilter: DateRangeFilterValue;
   stageId: string;
   status: string;
   tags: string[];
@@ -28,7 +22,7 @@ export type ConversationFilterValues = {
 
 const emptyFilters: ConversationFilterValues = {
   pipelineId: "",
-  dateRange: "",
+  dateFilter: { preset: "all" },
   stageId: "",
   status: "",
   tags: [],
@@ -39,7 +33,7 @@ const emptyFilters: ConversationFilterValues = {
 function countActive(f: ConversationFilterValues): number {
   let c = 0;
   if (f.pipelineId) c++;
-  if (f.dateRange) c++;
+  if (f.dateFilter.preset !== "all") c++;
   if (f.stageId) c++;
   if (f.status) c++;
   if (f.tags.length) c++;
@@ -72,7 +66,6 @@ export default function ConversationFilters({
     setOpen(true);
   };
 
-  // Filter stages by selected pipeline
   const filteredStages = draft.pipelineId
     ? stages.filter((s) => (s as any).pipeline_id === draft.pipelineId)
     : stages;
@@ -134,43 +127,10 @@ export default function ConversationFilters({
             {/* Date */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Data</label>
-              <Select value={draft.dateRange} onValueChange={(v) => setDraft({ ...draft, dateRange: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Qualquer hora" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Hoje</SelectItem>
-                  <SelectItem value="yesterday">Ontem</SelectItem>
-                  <SelectItem value="7days">Últimos 7 dias</SelectItem>
-                  <SelectItem value="this_month">Este mês</SelectItem>
-                  <SelectItem value="last_month">Mês passado</SelectItem>
-                  <SelectItem value="custom">Personalizado</SelectItem>
-                </SelectContent>
-              </Select>
-              {draft.dateRange === "custom" && (
-                <div className="flex gap-2 mt-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className={cn("h-8 text-xs flex-1", !draft.customDateFrom && "text-muted-foreground")}>
-                        <CalendarIcon size={12} className="mr-1" />
-                        {draft.customDateFrom ? format(draft.customDateFrom, "dd/MM/yy") : "De"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={draft.customDateFrom} onSelect={(d) => setDraft({ ...draft, customDateFrom: d || undefined })} locale={ptBR} className="p-3 pointer-events-auto" />
-                    </PopoverContent>
-                  </Popover>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className={cn("h-8 text-xs flex-1", !draft.customDateTo && "text-muted-foreground")}>
-                        <CalendarIcon size={12} className="mr-1" />
-                        {draft.customDateTo ? format(draft.customDateTo, "dd/MM/yy") : "Até"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={draft.customDateTo} onSelect={(d) => setDraft({ ...draft, customDateTo: d || undefined })} locale={ptBR} className="p-3 pointer-events-auto" />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              )}
+              <DateRangeFilter
+                value={draft.dateFilter}
+                onChange={(v) => setDraft({ ...draft, dateFilter: v })}
+              />
             </div>
 
             {/* Status */}
@@ -252,4 +212,4 @@ export default function ConversationFilters({
   );
 }
 
-export { emptyFilters, countActive };
+export { emptyFilters, countActive, getDateRangeFromFilter };
