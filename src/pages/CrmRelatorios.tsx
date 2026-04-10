@@ -468,11 +468,11 @@ export default function CrmRelatorios() {
 
       {/* TABS */}
       <Tabs defaultValue="operacao" className="w-full">
-        <TabsList className="w-full justify-start">
-          <TabsTrigger value="operacao" className="flex items-center gap-1.5"><TrendingUp size={14} /> Operação</TabsTrigger>
-          <TabsTrigger value="bots" className="flex items-center gap-1.5"><Bot size={14} /> Bots</TabsTrigger>
-          <TabsTrigger value="followups" className="flex items-center gap-1.5"><Send size={14} /> Follow-ups & Templates</TabsTrigger>
-          <TabsTrigger value="origens" className="flex items-center gap-1.5"><MapPin size={14} /> Origens & Cidades</TabsTrigger>
+        <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
+          <TabsTrigger value="operacao" className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm"><TrendingUp size={14} /> Operação</TabsTrigger>
+          <TabsTrigger value="bots" className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm"><Bot size={14} /> Bots</TabsTrigger>
+          <TabsTrigger value="followups" className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm"><Send size={14} /> Follow-ups</TabsTrigger>
+          <TabsTrigger value="origens" className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm"><MapPin size={14} /> Origens</TabsTrigger>
         </TabsList>
 
         {/* ══════════════════════════════════════════
@@ -910,7 +910,7 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
       <CardContent>
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Msgs Enviadas</TableHead><TableHead>Leads Atendidos</TableHead><TableHead>Leads Atribuídos</TableHead><TableHead>Agendados</TableHead><TableHead>Contratados</TableHead><TableHead>Taxa Conversão</TableHead><TableHead>1ª Resposta (média)</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Msgs</TableHead><TableHead>Atendidos</TableHead><TableHead>Atribuídos</TableHead><TableHead>Agend.</TableHead><TableHead>Contrat.</TableHead><TableHead>Taxa</TableHead><TableHead>1ª Resp.</TableHead></TableRow></TableHeader>
             <TableBody>
               {metrics.map((m, i) => (
                 <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => onDrillDown?.({ assigned_to: m.userId })}>
@@ -1222,12 +1222,27 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
   };
 
   // By ad (grouped by visual + description + account to differentiate same creative across accounts)
+  // Only include leads that have ad account info to match byAccount totals
   const byAd = useMemo(() => {
     const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; accountName: string | null; links: Set<string>; sources: Set<string> }>();
     leads.forEach(l => {
+      // Must have account name to be included (consistency with byAccount)
+      if (!l.ad_account_name) return;
       const desc = l.descricao_anuncio;
+      const adIdentifier = l.imagem_origem || l.descricao_anuncio || l.link_anuncio || l.nome_anuncio;
+      if (!adIdentifier) {
+        // Lead has account but no ad creative info — group as "Sem criativo identificado" per account
+        const fallbackKey = `__no_creative__::${l.ad_account_id || ""}`;
+        if (!map.has(fallbackKey)) map.set(fallbackKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: "Sem criativo identificado", accountName: null, links: new Set(), sources: new Set() });
+        const s = map.get(fallbackKey)!;
+        s.total++;
+        if (!s.accountName && l.ad_account_name) s.accountName = l.ad_account_name;
+        if (l.source) s.sources.add(l.source);
+        if (scheduledLeadIds.has(l.id)) s.scheduled++;
+        if (contractedLeadIds.has(l.id)) s.contracted++;
+        return;
+      }
       const adKey = `${normalizeImgUrl(l.imagem_origem || null)}::${desc || l.link_anuncio || l.nome_anuncio}::${l.ad_account_id || ""}`;
-      if (adKey === "no-img::undefined::" || adKey === "no-img::null::") return;
       if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, accountName: null, links: new Set(), sources: new Set() });
       const s = map.get(adKey)!;
       s.total++;
@@ -1285,21 +1300,23 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
     <Card>
       <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader><TableRow><TableHead>{title.split(" ")[1] || title}</TableHead><TableHead>Leads</TableHead><TableHead>Agendaram</TableHead><TableHead>Contrataram</TableHead><TableHead>Taxa Conversão</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {data.slice(0, 30).map((row: any) => (
-              <TableRow key={row.name} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ [filterKey]: row.name })}>
-                <TableCell className="font-medium text-foreground max-w-[200px] truncate">{row.name}</TableCell>
-                <TableCell>{row.total}</TableCell>
-                <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
-                <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
-                <TableCell><Badge variant={row.convRate >= 30 ? "default" : row.convRate >= 15 ? "secondary" : "outline"}>{row.convRate}%</Badge></TableCell>
-              </TableRow>
-            ))}
-            {data.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Sem dados</TableCell></TableRow>}
-          </TableBody>
-        </Table>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader><TableRow><TableHead className="min-w-[120px]">{title.split(" ")[1] || title}</TableHead><TableHead>Leads</TableHead><TableHead>Agendaram</TableHead><TableHead>Contrataram</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {data.slice(0, 30).map((row: any) => (
+                <TableRow key={row.name} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ [filterKey]: row.name })}>
+                  <TableCell className="font-medium text-foreground max-w-[180px] truncate">{row.name}</TableCell>
+                  <TableCell>{row.total}</TableCell>
+                  <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
+                  <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
+                  <TableCell><Badge variant={row.convRate >= 30 ? "default" : row.convRate >= 15 ? "secondary" : "outline"}>{row.convRate}%</Badge></TableCell>
+                </TableRow>
+              ))}
+              {data.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Sem dados</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );
@@ -1310,69 +1327,62 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
       <Card>
         <CardHeader><CardTitle className="text-base">Por Anúncio</CardTitle></CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Anúncio</TableHead>
-                <TableHead>Leads</TableHead>
-                <TableHead>Agendaram</TableHead>
-                <TableHead>Contrataram</TableHead>
-                <TableHead>Taxa Conversão</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {byAd.slice(0, 30).map((row) => (
-                <TableRow key={row.key} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.key })}>
-                  <TableCell className="font-medium text-foreground">
-                    <div className="flex items-center gap-3">
-                      {row.image ? (
-                        <img
-                          src={row.image}
-                          alt="Ad"
-                          className="w-12 h-12 rounded object-cover flex-shrink-0"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded bg-muted flex items-center justify-center flex-shrink-0">
-                          <span className="text-xs text-muted-foreground">Vídeo</span>
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        {row.name && <p className="text-sm font-medium truncate">{row.name}</p>}
-                        {row.accountName && (
-                          <p className="text-xs text-primary/70">Conta: {row.accountName}</p>
-                        )}
-                        {row.linksArr.length > 0 && (
-                          <div className="flex flex-col gap-0.5">
-                            {row.linksArr.slice(0, 3).map((link, i) => (
-                              <a
-                                key={i}
-                                href={link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-primary hover:underline truncate block max-w-[250px]"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {link}
-                              </a>
-                            ))}
-                            {row.linksArr.length > 3 && <span className="text-xs text-muted-foreground">+{row.linksArr.length - 3} links</span>}
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[200px]">Anúncio</TableHead>
+                  <TableHead>Leads</TableHead>
+                  <TableHead>Agendaram</TableHead>
+                  <TableHead>Contrataram</TableHead>
+                  <TableHead>Taxa</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {byAd.slice(0, 30).map((row) => (
+                  <TableRow key={row.key} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.key })}>
+                    <TableCell className="font-medium text-foreground">
+                      <div className="flex items-center gap-3">
+                        {row.image ? (
+                          <img
+                            src={row.image}
+                            alt="Ad"
+                            className="w-10 h-10 rounded object-cover flex-shrink-0"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                            <span className="text-[10px] text-muted-foreground">Vídeo</span>
                           </div>
                         )}
-                        {row.sourcesArr.length > 1 && (
-                          <p className="text-xs text-muted-foreground">{row.sourcesArr.length} origens</p>
-                        )}
+                        <div className="min-w-0 max-w-[200px]">
+                          {row.name && <p className="text-sm font-medium truncate">{row.name}</p>}
+                          {row.accountName && (
+                            <p className="text-xs text-primary/70 truncate">Conta: {row.accountName}</p>
+                          )}
+                          {row.linksArr.length > 0 && (
+                            <a
+                              href={row.linksArr[0]}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary hover:underline truncate block max-w-[180px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {row.linksArr[0]}
+                            </a>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{row.total}</TableCell>
-                  <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
-                  <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
-                  <TableCell><Badge variant={row.convRate >= 30 ? "default" : row.convRate >= 15 ? "secondary" : "outline"}>{row.convRate}%</Badge></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </TableCell>
+                    <TableCell>{row.total}</TableCell>
+                    <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
+                    <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
+                    <TableCell><Badge variant={row.convRate >= 30 ? "default" : row.convRate >= 15 ? "secondary" : "outline"}>{row.convRate}%</Badge></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     );
