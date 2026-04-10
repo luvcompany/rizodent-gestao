@@ -64,7 +64,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
-  const dateFrom = useMemo(() => dateRange ? dateRange.start.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
+  const dateFrom = useMemo(() => dateRange ? dateRange.start.toISOString().split("T")[0] : "2020-01-01", [dateRange]);
   const dateTo = useMemo(() => dateRange ? dateRange.end.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
 
   useEffect(() => {
