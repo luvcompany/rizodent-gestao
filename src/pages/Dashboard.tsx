@@ -146,36 +146,35 @@ const Dashboard = () => {
   const fatRecorrentes = filtered.pagamentos.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
   const totalPacientes = new Set(filtered.pagamentos.map((p) => p.paciente_id)).size;
 
-  // Dias úteis passados no período (seg-sáb, excluindo domingos)
+  // Dias úteis com dados (seg-sáb, apenas dias que tiveram pagamentos)
   const diasUteisPassados = useMemo(() => {
-    const start = new Date(dateFrom + "T12:00:00");
-    const today = new Date();
-    const endDate = new Date(dateTo + "T12:00:00");
-    const limit = endDate < today ? endDate : today;
+    const datesWithData = new Set<string>();
+    filtered.pagamentos.forEach((p) => {
+      const d = new Date(p.data_pagamento + "T12:00:00");
+      if (d.getDay() !== 0) { // excl domingo
+        datesWithData.add(p.data_pagamento);
+      }
+    });
+    return Math.max(datesWithData.size, 1);
+  }, [filtered.pagamentos]);
+
+  // Total de dias úteis do mês para projeção — conta a partir da primeira data com dados
+  const diasUteisMes = useMemo(() => {
+    if (!filtered.pagamentos.length) return 26;
+    // Find first payment date in period
+    const dates = filtered.pagamentos.map(p => p.data_pagamento).sort();
+    const firstDate = new Date(dates[0] + "T12:00:00");
+    const lastDay = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
     let count = 0;
-    const current = new Date(start);
-    while (current <= limit) {
+    const current = new Date(firstDate);
+    while (current <= lastDay) {
       if (current.getDay() !== 0) count++;
       current.setDate(current.getDate() + 1);
     }
     return Math.max(count, 1);
-  }, [dateFrom, dateTo]);
+  }, [filtered.pagamentos]);
 
-  // Total de dias úteis do mês completo
-  const diasUteisMes = useMemo(() => {
-    const refDate = new Date(dateFrom + "T12:00:00");
-    const year = refDate.getFullYear();
-    const month = refDate.getMonth();
-    const totalDays = new Date(year, month + 1, 0).getDate();
-    let count = 0;
-    for (let day = 1; day <= totalDays; day++) {
-      const dow = new Date(year, month, day).getDay();
-      if (dow !== 0) count++;
-    }
-    return count;
-  }, [dateFrom]);
-
-  // Ticket médio = faturamento / dias úteis passados
+  // Ticket médio = faturamento / dias com dados
   const ticketMedio = fatTotal / diasUteisPassados;
   const projecaoMensal = ticketMedio * diasUteisMes;
 
