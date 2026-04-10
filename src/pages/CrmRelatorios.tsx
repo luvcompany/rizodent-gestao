@@ -910,7 +910,7 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
       <CardContent>
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Msgs Enviadas</TableHead><TableHead>Leads Atendidos</TableHead><TableHead>Leads Atribuídos</TableHead><TableHead>Agendados</TableHead><TableHead>Contratados</TableHead><TableHead>Taxa Conversão</TableHead><TableHead>1ª Resposta (média)</TableHead></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Msgs</TableHead><TableHead>Atendidos</TableHead><TableHead>Atribuídos</TableHead><TableHead>Agend.</TableHead><TableHead>Contrat.</TableHead><TableHead>Taxa</TableHead><TableHead>1ª Resp.</TableHead></TableRow></TableHeader>
             <TableBody>
               {metrics.map((m, i) => (
                 <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => onDrillDown?.({ assigned_to: m.userId })}>
