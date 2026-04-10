@@ -419,6 +419,11 @@ export default function CrmConversas() {
     });
   }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays]);
 
+  // Render limit for performance — show more on scroll
+  const [visibleCount, setVisibleCount] = useState(50);
+  useEffect(() => { setVisibleCount(50); }, [search, filters]);
+  const visibleLeads = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
   return (
