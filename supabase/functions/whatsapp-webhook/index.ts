@@ -658,6 +658,83 @@ Deno.serve(async (req) => {
                 console.error("[WEBHOOK] Erro ao verificar follow-up queue:", fqErr.message);
               }
 
+              // ===== REACTIVE AUTOMATIONS: keyword_response & cold_lead_return =====
+              try {
+                const { data: currentLeadData } = await supabase
+                  .from("crm_leads")
+                  .select("stage_id, phone, name, assigned_to")
+                  .eq("id", lead.id)
+                  .single();
+
+                if (currentLeadData?.stage_id) {
+                  const { data: reactiveAutos } = await supabase
+                    .from("crm_automations")
+                    .select("*")
+                    .eq("stage_id", currentLeadData.stage_id)
+                    .eq("is_active", true)
+                    .in("trigger_type", ["keyword_response", "cold_lead_return"]);
+
+                  for (const ra of reactiveAutos || []) {
+                    const raCfg = (ra.action_config || {}) as Record<string, any>;
+
+                    if (ra.trigger_type === "keyword_response") {
+                      const keywords = (raCfg.keywords || []) as string[];
+                      const lowerContent = (content || "").toLowerCase();
+                      const matched = keywords.some((kw: string) => lowerContent.includes(kw.toLowerCase()));
+                      if (!matched) continue;
+                      console.log(`[WEBHOOK] Keyword matched for lead ${lead.id}, automation ${ra.id}`);
+                    }
+
+                    if (ra.trigger_type === "cold_lead_return") {
+                      // Only trigger if configured cold stages include current stage
+                      const coldStages = (raCfg.cold_stages || []) as string[];
+                      if (coldStages.length > 0 && !coldStages.includes(currentLeadData.stage_id)) continue;
+                      console.log(`[WEBHOOK] Cold lead return for lead ${lead.id}, automation ${ra.id}`);
+                    }
+
+                    // Execute actions server-side
+                    const supabaseUrlVal = Deno.env.get("SUPABASE_URL") || "";
+                    const serviceKeyVal = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+                    // Move stage if configured
+                    if (raCfg.target_stage_id) {
+                      await supabase.from("crm_leads").update({ stage_id: raCfg.target_stage_id }).eq("id", lead.id);
+                    }
+
+                    // Send template
+                    if (ra.action_type === "send_template" && raCfg.template_id && currentLeadData.phone) {
+                      const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", raCfg.template_id).single();
+                      if (tpl) {
+                        fetch(`${supabaseUrlVal}/functions/v1/send-whatsapp-message`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKeyVal}`, apikey: serviceKeyVal },
+                          body: JSON.stringify({ lead_id: lead.id, to: currentLeadData.phone, type: "template", template_name: tpl.name, template_language: tpl.language }),
+                        }).then(r => r.text()).catch(() => {});
+                      }
+                    } else if (ra.action_type === "send_bot" && raCfg.bot_id) {
+                      fetch(`${supabaseUrlVal}/functions/v1/bot-engine`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKeyVal}`, apikey: serviceKeyVal },
+                        body: JSON.stringify({ leadId: lead.id, botId: raCfg.bot_id, trigger: "automation" }),
+                      }).then(r => r.text()).catch(() => {});
+                    }
+
+                    // Notify owner
+                    if (raCfg.notify_owner && currentLeadData.assigned_to) {
+                      await supabase.from("crm_notifications").insert({
+                        user_id: currentLeadData.assigned_to,
+                        lead_id: lead.id,
+                        title: ra.trigger_type === "cold_lead_return" ? "Lead frio retornou!" : "Palavra-chave detectada",
+                        body: `Lead ${currentLeadData.name}: "${content?.substring(0, 80) || ""}"`,
+                        type: "automation",
+                      });
+                    }
+                  }
+                }
+              } catch (raErr: any) {
+                console.error("[WEBHOOK] Erro ao verificar automações reativas:", raErr.message);
+              }
+
               // Check for active bot execution waiting for reply
               try {
                 const { data: botExec } = await supabase

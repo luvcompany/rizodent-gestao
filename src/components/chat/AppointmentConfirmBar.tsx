@@ -9,6 +9,7 @@ import { format, isPast } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { executeStageAutomations } from "@/lib/automationUtils";
 
 type Task = {
   id: string;
@@ -137,6 +138,15 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       content: `✅ Agendamento confirmado: ${format(date, "dd/MM/yyyy")} às ${time}`, status: "system",
     });
 
+    // Trigger after_appointment_confirmed automations
+    const { data: leadForAuto } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
+    if (leadForAuto) {
+      executeStageAutomations({
+        leadId, stageId: leadForAuto.stage_id, leadPhone: leadForAuto.phone,
+        triggerTypes: ["after_appointment_confirmed"],
+      }).catch(e => console.error("[Appointment] Automation error:", e));
+    }
+
     toast.success("Agendamento confirmado!");
     setConfirmingId(null); setDate(undefined); setTime("09:00"); setSaving(false);
   };
@@ -170,6 +180,15 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       lead_id: leadId, direction: "outbound", type: "system",
       content: `✅ ${label} confirmado: ${format(manualDate, "dd/MM/yyyy")} às ${manualTime}`, status: "system",
     });
+
+    // Trigger after_appointment_confirmed automations
+    const { data: leadForAuto2 } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
+    if (leadForAuto2) {
+      executeStageAutomations({
+        leadId, stageId: leadForAuto2.stage_id, leadPhone: leadForAuto2.phone,
+        triggerTypes: ["after_appointment_confirmed"],
+      }).catch(e => console.error("[Appointment] Automation error:", e));
+    }
 
     toast.success(`${label} confirmado!`);
     setManualOpen(false); setManualDate(undefined); setManualTime("09:00"); setManualNotes(""); setManualSaving(false);
