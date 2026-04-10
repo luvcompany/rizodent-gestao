@@ -4,10 +4,9 @@ import {
 "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
@@ -63,10 +62,10 @@ const Dashboard = () => {
   const [pacientes, setPacientes] = useState<any[]>([]);
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date();d.setDate(1);return d.toISOString().split("T")[0];
-  });
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
+  const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
+  const dateFrom = useMemo(() => dateRange ? dateRange.start.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
+  const dateTo = useMemo(() => dateRange ? dateRange.end.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -352,26 +351,7 @@ const Dashboard = () => {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Visão geral do desempenho</p>
         </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2 bg-secondary border-border text-sm">
-              <CalendarIcon size={16} className="text-primary" />
-              {dateFrom && dateTo ?
-              `${new Date(dateFrom + "T12:00:00").toLocaleDateString("pt-BR")} — ${new Date(dateTo + "T12:00:00").toLocaleDateString("pt-BR")}` :
-              "Selecione o período"}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-4 space-y-3" align="end">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Data Início</Label>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Data Fim</Label>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border" />
-            </div>
-          </PopoverContent>
-        </Popover>
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
       </div>
 
       {/* Filters */}
