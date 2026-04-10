@@ -111,9 +111,9 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
           <ChevronDown size={12} className="shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className={cn("w-auto p-0 pointer-events-auto", className)} align="start" side="bottom">
+      <PopoverContent className={cn("w-[200px] p-0 pointer-events-auto", value.preset === "custom" && "w-auto", className)} align="end" side="bottom">
         {value.preset !== "custom" ? (
-          <div className="p-2 space-y-0.5 min-w-[160px]">
+          <div className="p-2 space-y-0.5">
             {presets.map((p) => (
               <button
                 key={p.value}
