@@ -15,6 +15,7 @@ import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw, MoreVerti
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
+import AutomationModal from "@/components/automation/AutomationModal";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
 type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
