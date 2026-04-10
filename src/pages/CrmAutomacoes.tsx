@@ -269,8 +269,30 @@ export default function CrmAutomacoes() {
       send_template: "Enviar template WhatsApp",
       send_audio: "Enviar áudio",
       send_bot: "Enviar Bot",
+      send_file: "Enviar arquivo",
+      add_tag: "Criar tag",
       move_stage: "Mover para etapa",
+      notify_assignee: "Notificar responsável",
       webhook: "Chamar webhook",
+      combo: "Combinação de ações",
+    };
+    return map[type] || type;
+  };
+
+  const triggerLabel = (type: string) => {
+    const map: Record<string, string> = {
+      on_enter: "Ao mover",
+      on_create: "Ao criar",
+      on_create_or_enter: "Ao mover/criar",
+      lead_created_date: "Por data",
+      no_response: "Sem resposta",
+      progressive_reengagement: "Reengajamento",
+      lead_stale: "Lead parado",
+      time_window: "Janela horário",
+      keyword_response: "Palavra-chave",
+      after_appointment_confirmed: "Pós-agendamento",
+      no_show: "No-show",
+      cold_lead_return: "Lead frio",
     };
     return map[type] || type;
   };
