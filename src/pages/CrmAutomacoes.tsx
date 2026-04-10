@@ -516,13 +516,7 @@ export default function CrmAutomacoes() {
                                     <div key={auto.id} className="bg-primary/10 border border-primary/20 rounded p-2 text-xs">
                                       <div className="flex items-center gap-1 text-primary mb-1">
                                         <Bot size={12} />
-                                        <span className="font-medium">
-                                          {auto.trigger_type === "on_enter" ? "Ao mover" : 
-                                           auto.trigger_type === "on_create" ? "Ao criar" :
-                                           auto.trigger_type === "on_create_or_enter" ? "Ao mover/criar" :
-                                           auto.trigger_type === "lead_created_date" ? "Por data" :
-                                           auto.trigger_type === "no_response" ? "Sem resposta" : auto.trigger_type}
-                                        </span>
+                                        <span className="font-medium">{triggerLabel(auto.trigger_type)}</span>
                                       </div>
                                       <div className="text-foreground">{actionLabel(auto.action_type)}</div>
                                       <div className="flex items-center gap-1 mt-1">
