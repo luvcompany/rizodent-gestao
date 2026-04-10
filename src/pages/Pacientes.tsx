@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 
 interface PacienteView {
   id: string;
@@ -26,18 +27,10 @@ interface PacienteView {
   clinica_nome: string | null;
 }
 
-const FILTROS_PERIODO = [
-  { label: "Todos", value: "todos" },
-  { label: "Últimos 7 dias", value: "7" },
-  { label: "Últimos 15 dias", value: "15" },
-  { label: "Últimos 30 dias", value: "30" },
-  { label: "Últimos 60 dias", value: "60" },
-  { label: "Últimos 90 dias", value: "90" },
-];
-
 const Pacientes = () => {
   const [busca, setBusca] = useState("");
-  const [periodo, setPeriodo] = useState("todos");
+  const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "all" });
+  const [statusFiltro, setStatusFiltro] = useState("todos");
   const [statusFiltro, setStatusFiltro] = useState("todos");
   const [pacientes, setPacientes] = useState<PacienteView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,12 +72,9 @@ const Pacientes = () => {
       });
 
       // Date filter
-      let dataMinima: string | null = null;
-      if (periodo !== "todos") {
-        const d = new Date();
-        d.setDate(d.getDate() - Number(periodo));
-        dataMinima = d.toISOString().split("T")[0];
-      }
+      const range = getDateRangeFromFilter(dateFilter);
+      const dataMinima = range ? range.start.toISOString().split("T")[0] : null;
+      const dataMaxima = range ? range.end.toISOString().split("T")[0] : null;
 
       const result: PacienteView[] = [];
       for (const p of pacs) {
@@ -92,8 +82,12 @@ const Pacientes = () => {
         const valorContratado = contratadoMap.get(p.id) || 0;
         let pags = pagMap.get(p.id) || [];
 
-        if (dataMinima) {
-          pags = pags.filter((pg) => pg.data_pagamento >= dataMinima!);
+        if (dataMinima || dataMaxima) {
+          pags = pags.filter((pg) => {
+            if (dataMinima && pg.data_pagamento < dataMinima) return false;
+            if (dataMaxima && pg.data_pagamento > dataMaxima) return false;
+            return true;
+          });
           if (pags.length === 0) continue;
         }
 
@@ -114,7 +108,7 @@ const Pacientes = () => {
       setLoading(false);
     };
     fetchAll();
-  }, [periodo]);
+  }, [dateFilter]);
 
   const filtered = useMemo(() => {
     let result = pacientes.filter(
@@ -161,16 +155,7 @@ const Pacientes = () => {
         </div>
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">Período</span>
-          <Select value={periodo} onValueChange={setPeriodo}>
-            <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border">
-              <SelectValue placeholder="Período" />
-            </SelectTrigger>
-            <SelectContent>
-              {FILTROS_PERIODO.map((f) => (
-                <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         </div>
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">Status</span>
