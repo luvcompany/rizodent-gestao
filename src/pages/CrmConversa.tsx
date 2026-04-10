@@ -58,6 +58,10 @@ type Lead = {
   nome_anuncio?: string | null;
 };
 
+// Global profiles cache shared with CrmConversas
+const profilesCacheConv = { data: null as { id: string; nome: string }[] | null, timestamp: 0 };
+const PROFILES_CACHE_TTL = 5 * 60_000;
+
 export default function CrmConversa() {
   const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
@@ -65,21 +69,30 @@ export default function CrmConversa() {
   const [lead, setLead] = useState<Lead | null>(null);
   const [templateMessage, setTemplateMessage] = useState("");
   const [newNote, setNewNote] = useState("");
-  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
+  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => profilesCacheConv.data || []);
 
   const chat = useChatConversation(id);
 
-  // Fetch lead + profiles in parallel
+  // Fetch lead + profiles in parallel (with profile cache)
   const [leadLoading, setLeadLoading] = useState(true);
   useEffect(() => {
     if (!id) return;
     setLeadLoading(true);
+
+    const profilesPromise = profilesCacheConv.data && Date.now() - profilesCacheConv.timestamp < PROFILES_CACHE_TTL
+      ? Promise.resolve({ data: profilesCacheConv.data })
+      : supabase.from("profiles").select("id, nome");
+
     Promise.all([
       supabase.from("crm_leads").select("*").eq("id", id).single(),
-      supabase.from("profiles").select("id, nome"),
+      profilesPromise,
     ]).then(([leadRes, profilesRes]) => {
       if (leadRes.data) setLead(leadRes.data as Lead);
-      if (profilesRes.data) setProfiles(profilesRes.data);
+      if (profilesRes.data) {
+        profilesCacheConv.data = profilesRes.data as any;
+        profilesCacheConv.timestamp = Date.now();
+        setProfiles(profilesRes.data as any);
+      }
       setLeadLoading(false);
     });
   }, [id]);

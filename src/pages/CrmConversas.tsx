@@ -66,12 +66,20 @@ type LeadConversation = {
   nome_anuncio?: string | null;
 };
 
+// Global cache for leads list — survives component remounts
+const leadsListCache = {
+  leads: null as LeadConversation[] | null,
+  profiles: null as { id: string; nome: string }[] | null,
+  pipelines: null as { id: string; name: string }[] | null,
+  timestamp: 0,
+};
+const LEADS_CACHE_TTL = 2 * 60_000; // 2 minutes
 export default function CrmConversas() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [leads, setLeads] = useState<LeadConversation[]>([]);
+  const [leads, setLeads] = useState<LeadConversation[]>(() => leadsListCache.leads || []);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!leadsListCache.leads);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
@@ -94,8 +102,8 @@ export default function CrmConversas() {
   const urlAppointmentStatus = searchParams.get("appointment_status");
   const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
   const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
-  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
-  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
+  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => leadsListCache.profiles || []);
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(() => leadsListCache.pipelines || []);
   const [activeExecution, setActiveExecution] = useState<{
     id: string; status: string; bot_name?: string;
   } | null>(null);
@@ -156,19 +164,9 @@ export default function CrmConversas() {
     setActiveExecution(null);
   };
 
-  // Fetch leads list
+  // Fetch leads list with global cache
   useEffect(() => {
-    const fetchLeads = async () => {
-      const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
-        supabase
-          .from("crm_leads")
-          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio")
-          .order("last_message_at", { ascending: false, nullsFirst: false }),
-        supabase.from("profiles").select("id, nome"),
-        supabase.from("crm_pipelines").select("id, name").order("created_at"),
-      ]);
-      const rawLeads = (leadsRes.data || []) as (LeadConversation & { last_inbound_at?: string; last_outbound_at?: string })[];
-
+    const processLeads = (rawLeads: (LeadConversation & { last_inbound_at?: string; last_outbound_at?: string })[]) => {
       rawLeads.forEach((l) => {
         if (l.last_inbound_at && l.last_outbound_at) {
           l.last_direction = new Date(l.last_inbound_at) > new Date(l.last_outbound_at) ? "inbound" : "outbound";
@@ -178,10 +176,58 @@ export default function CrmConversas() {
           l.last_direction = "outbound";
         }
       });
+      return rawLeads;
+    };
+
+    // If cache is fresh, skip network fetch entirely
+    if (leadsListCache.leads && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL) {
+      setLeads(leadsListCache.leads);
+      setProfiles(leadsListCache.profiles || []);
+      setPipelines(leadsListCache.pipelines || []);
+      setLoading(false);
+      // Still refresh in background
+      (async () => {
+        const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
+          supabase.from("crm_leads")
+            .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio")
+            .order("last_message_at", { ascending: false, nullsFirst: false }),
+          supabase.from("profiles").select("id, nome"),
+          supabase.from("crm_pipelines").select("id, name").order("created_at"),
+        ]);
+        const rawLeads = processLeads((leadsRes.data || []) as any);
+        const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
+        const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
+        leadsListCache.leads = rawLeads;
+        leadsListCache.profiles = profs;
+        leadsListCache.pipelines = pipes;
+        leadsListCache.timestamp = Date.now();
+        setLeads(rawLeads);
+        setProfiles(profs);
+        setPipelines(pipes);
+      })();
+      return;
+    }
+
+    const fetchLeads = async () => {
+      const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
+        supabase.from("crm_leads")
+          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio")
+          .order("last_message_at", { ascending: false, nullsFirst: false }),
+        supabase.from("profiles").select("id, nome"),
+        supabase.from("crm_pipelines").select("id, name").order("created_at"),
+      ]);
+      const rawLeads = processLeads((leadsRes.data || []) as any);
+      const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
+      const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
+
+      leadsListCache.leads = rawLeads;
+      leadsListCache.profiles = profs;
+      leadsListCache.pipelines = pipes;
+      leadsListCache.timestamp = Date.now();
 
       setLeads(rawLeads);
-      setProfiles((profilesRes.data as { id: string; nome: string }[]) || []);
-      setPipelines((pipelinesRes.data as { id: string; name: string }[]) || []);
+      setProfiles(profs);
+      setPipelines(pipes);
       setLoading(false);
     };
     fetchLeads();
@@ -373,6 +419,11 @@ export default function CrmConversas() {
     });
   }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays]);
 
+  // Render limit for performance — show more on scroll
+  const [visibleCount, setVisibleCount] = useState(50);
+  useEffect(() => { setVisibleCount(50); }, [search, filters]);
+  const visibleLeads = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
   return (
@@ -448,7 +499,7 @@ export default function CrmConversas() {
                 </div>
               ) : (
                 <div className="divide-y divide-border">
-                  {filtered.map((lead) => {
+                  {visibleLeads.map((lead) => {
                     const initials = lead.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
                     const isActive = lead.id === selectedLeadId;
                     const stageDot = chat.stages.find((s) => s.id === lead.stage_id);
@@ -494,6 +545,14 @@ export default function CrmConversas() {
                       </button>
                     );
                   })}
+                  {visibleCount < filtered.length && (
+                    <button
+                      className="w-full py-3 text-xs text-primary hover:bg-secondary/50 transition-colors"
+                      onClick={() => setVisibleCount((c) => c + 50)}
+                    >
+                      Carregar mais ({filtered.length - visibleCount} restantes)
+                    </button>
+                  )}
                 </div>
               )}
             </div>
