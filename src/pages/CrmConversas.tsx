@@ -66,6 +66,14 @@ type LeadConversation = {
   nome_anuncio?: string | null;
 };
 
+// Global cache for leads list — survives component remounts
+const leadsListCache = {
+  leads: null as LeadConversation[] | null,
+  profiles: null as { id: string; nome: string }[] | null,
+  pipelines: null as { id: string; name: string }[] | null,
+  timestamp: 0,
+};
+const LEADS_CACHE_TTL = 2 * 60_000; // 2 minutes
 export default function CrmConversas() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
