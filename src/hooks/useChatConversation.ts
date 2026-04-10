@@ -7,7 +7,7 @@ import { batchSignMediaUrls } from "@/lib/mediaUtils";
 
 // Global message cache to avoid re-fetching when switching between leads
 const messageCache = new Map<string, { messages: any[]; timestamp: number }>();
-const CACHE_TTL = 60_000; // 1 minute
+const CACHE_TTL = 3 * 60_000; // 3 minutes
 
 export type ChatMessage = {
   id: string;
@@ -261,12 +261,13 @@ export function useChatConversation(leadId: string | null | undefined) {
     return () => { supabase.removeChannel(channel); };
   }, [leadId]);
 
-  // ─── Polling fallback (less frequent, realtime handles most updates) ───
+  // ─── Polling fallback (very infrequent, realtime handles most updates) ───
   useEffect(() => {
     const targetLeadId = leadId;
     if (!targetLeadId) return;
 
     const interval = setInterval(async () => {
+      if (activeLeadRef.current !== targetLeadId) return;
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       if (data && activeLeadRef.current === targetLeadId) {
         const nextMessages = data as unknown as ChatMessage[];
@@ -276,16 +277,10 @@ export function useChatConversation(leadId: string | null | undefined) {
             messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
             return nextMessages;
           }
-          const newFingerprint = nextMessages.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
-          const oldFingerprint = prev.map(m => `${m.id}:${m.media_url ?? ""}:${m.status}`).join("|");
-          if (newFingerprint !== oldFingerprint) {
-            messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
-            return nextMessages;
-          }
           return prev;
         });
       }
-    }, 15000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [leadId]);
 

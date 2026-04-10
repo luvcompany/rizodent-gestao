@@ -52,9 +52,17 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
     };
     fetch();
 
-    // Poll for updates
-    const interval = setInterval(fetch, 10000);
-    return () => clearInterval(interval);
+    // Use realtime instead of polling
+    const channel = supabase
+      .channel(`stage-history-${leadId}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "crm_lead_stage_history",
+        filter: `lead_id=eq.${leadId}`,
+      }, () => fetch())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [leadId]);
 
   const getStageName = (stageId: string) => stages.find((s) => s.id === stageId)?.name || "Desconhecida";
