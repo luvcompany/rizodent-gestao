@@ -1,20 +1,20 @@
-import { useMemo, useSyncExternalStore } from "react";
-
-function subscribeToTheme(cb: () => void) {
-  const observer = new MutationObserver(cb);
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-  return () => observer.disconnect();
-}
-
-function getIsDark() {
-  return document.documentElement.classList.contains("dark");
-}
+import { useMemo, useState, useEffect } from "react";
 
 // Theme-aware chart styling hook
 // Returns computed values so charts adapt to light/dark mode
 
 export function useChartTheme() {
-  const isDark = useSyncExternalStore(subscribeToTheme, getIsDark);
+  const [isDark, setIsDark] = useState(() =>
+    document.documentElement.classList.contains("dark")
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   return useMemo(() => {
     const axisColor = isDark ? "hsl(0,0%,64%)" : "hsl(0,0%,40%)";
