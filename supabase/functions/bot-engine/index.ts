@@ -484,6 +484,22 @@ async function executeFlow(
       result = await executeNode(supabase, supabaseUrl, serviceKey, authHeader, node, lead, vars, executionId);
     } catch (error: any) {
       console.error(`[bot-engine] Node execution failed at ${currentNodeId}:`, error?.message || error);
+      // Instead of killing the bot, try to follow the timeout edge to continue the flow
+      const timeoutEdge = edges.find(
+        (e: any) => e.source === currentNodeId && (e.sourceHandle === "timeout" || e.sourceHandle === "no-response")
+      );
+      if (timeoutEdge) {
+        console.log(`[bot-engine] Node ${currentNodeId} failed but has timeout edge, scheduling timeout fallback`);
+        const timeoutAt = calculateTimeoutAt(node.data) || new Date(Date.now() + 60000).toISOString();
+        await supabase.from("bot_executions").update({
+          status: "waiting_reply",
+          current_node_id: currentNodeId,
+          variables: vars,
+          timeout_at: timeoutAt,
+        }).eq("id", executionId);
+        return { stopped_at: currentNodeId, reason: "node_failed_waiting_timeout" };
+      }
+      // No timeout edge — mark as error
       await supabase.from("bot_executions").update({
         status: "error",
         completed_at: new Date().toISOString(),
