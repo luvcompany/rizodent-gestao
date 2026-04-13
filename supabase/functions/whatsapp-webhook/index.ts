@@ -893,7 +893,19 @@ Deno.serve(async (req) => {
           for (const status of statuses) {
             const messageId = status.id;
             const statusValue = status.status;
+            const failureDetails = Array.isArray(status.errors) && status.errors.length > 0
+              ? JSON.stringify(status.errors)
+              : null;
+
             console.log(`Status update: ${messageId} -> ${statusValue}`);
+            await supabase
+              .from("messages")
+              .update({ status: statusValue })
+              .eq("whatsapp_message_id", messageId);
+
+            if (statusValue === "failed") {
+              console.error(`[WEBHOOK] Delivery failed for ${messageId}: ${failureDetails || JSON.stringify(status)}`);
+            }
           }
         }
       }

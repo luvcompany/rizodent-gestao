@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Mic, File as FileIcon, Image } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
 
 type ChatMessage = {
+  lead_id?: string;
   type: string;
   content: string | null;
   media_url: string | null;
@@ -32,22 +33,44 @@ const getDocumentLabel = (message: ChatMessage) => {
   }
 };
 
-/** Replace {{1}}, {{2}}, etc. in template body with lead data */
 function replaceTemplatePlaceholders(text: string, leadName: string): string {
   if (!text) return text;
-  // {{1}} is typically the lead name; additional placeholders get the same fallback
-    const name = leadName || "cliente";
-    const fallbacks = [name];
-  return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_match, index) => {
-    const i = Number(index) - 1;
-    return fallbacks[i] ?? name;
-  });
+  const safeLeadName = leadName.trim() || "cliente";
+  return text.replace(/\{\{\s*(\d+)\s*\}\}/g, () => safeLeadName);
 }
 
-function TemplateMessageBubble({ templateName, leadName }: { templateName: string; leadName?: string }) {
+function TemplateMessageBubble({
+  templateName,
+  leadName,
+  leadId,
+}: {
+  templateName: string;
+  leadName?: string;
+  leadId?: string;
+}) {
   const [template, setTemplate] = useState<TemplateData | null>(null);
   const [loading, setLoading] = useState(true);
   const [headerSignedUrl, setHeaderSignedUrl] = useState<string | null>(null);
+  const [resolvedLeadName, setResolvedLeadName] = useState<string>(leadName?.trim() || "");
+
+  useEffect(() => {
+    setResolvedLeadName(leadName?.trim() || "");
+  }, [leadName]);
+
+  useEffect(() => {
+    if (leadName?.trim() || !leadId) return;
+
+    supabase
+      .from("crm_leads")
+      .select("name")
+      .eq("id", leadId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.name?.trim()) {
+          setResolvedLeadName(data.name.trim());
+        }
+      });
+  }, [leadId, leadName]);
 
   useEffect(() => {
     supabase
@@ -62,7 +85,7 @@ function TemplateMessageBubble({ templateName, leadName }: { templateName: strin
             ...data,
             buttons: data.buttons as TemplateData["buttons"],
           });
-          // If header is IMAGE, resolve signed URL
+
           if (data.header_type === "IMAGE" && data.header_content) {
             const storagePath = extractStoragePath(data.header_content);
             if (storagePath) {
@@ -85,7 +108,7 @@ function TemplateMessageBubble({ templateName, leadName }: { templateName: strin
   }
 
   const resolvedBodyText = template.body_text
-    ? replaceTemplatePlaceholders(template.body_text, leadName || "cliente")
+    ? replaceTemplatePlaceholders(template.body_text, resolvedLeadName || "cliente")
     : null;
 
   return (
@@ -133,9 +156,6 @@ function TemplateMessageBubble({ templateName, leadName }: { templateName: strin
   );
 }
 
-/**
- * Hook to resolve a media URL to a signed URL if it's a chat-media storage URL.
- */
 function useSignedUrl(mediaUrl: string | null): string | null {
   const [signedUrl, setSignedUrl] = useState<string | null>(mediaUrl);
 
@@ -156,17 +176,24 @@ function useSignedUrl(mediaUrl: string | null): string | null {
   return signedUrl;
 }
 
-export default function ChatMessageContent({ message, onMediaClick, leadName }: { message: ChatMessage; onMediaClick?: (url: string, type: "image" | "video") => void; leadName?: string }) {
+export default function ChatMessageContent({
+  message,
+  onMediaClick,
+  leadName,
+}: {
+  message: ChatMessage;
+  onMediaClick?: (url: string, type: "image" | "video") => void;
+  leadName?: string;
+}) {
   const resolvedUrl = useSignedUrl(message.media_url);
   const hasResolvedMedia = isMediaUrl(resolvedUrl);
 
-  // Template messages
   if (message.type === "template" || message.content?.startsWith("📋 Template:")) {
     const name = message.type === "template"
       ? message.content?.replace("📋 Template: ", "").trim() || ""
       : message.content?.replace("📋 Template: ", "").trim() || "";
     if (name) {
-      return <TemplateMessageBubble templateName={name} leadName={leadName} />;
+      return <TemplateMessageBubble templateName={name} leadName={leadName} leadId={message.lead_id} />;
     }
   }
 
