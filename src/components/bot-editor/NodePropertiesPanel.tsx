@@ -564,14 +564,10 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                 />
               </div>
             )}
-            {(node.data.templateId as string) && (node.data.templateButtons as any[])?.length > 0 && (
-              <>
-                {renderTimeoutFields()}
-                <p className="text-[10px] text-muted-foreground">
-                  Cada botão do modelo cria um ramo. O ramo "Sem resposta" ativa após este tempo.
-                </p>
-              </>
-            )}
+            {renderTimeoutFields()}
+            <p className="text-[10px] text-muted-foreground">
+              Se o lead não responder dentro deste tempo, o bot segue pelo ramo "Timeout".
+            </p>
           </div>
         );
 
