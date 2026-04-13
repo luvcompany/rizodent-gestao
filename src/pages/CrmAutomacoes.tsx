@@ -262,7 +262,7 @@ export default function CrmAutomacoes() {
     setAutomations(prev => prev.filter(a => a.id !== id));
   };
 
-  const getAutomationsForStage = (stageId: string) => automations.filter(a => a.stage_id === stageId);
+  const getAutomationsForStage = (stageId: string) => automations.filter(a => a.stage_id === stageId && a.action_type !== "assign_lead");
 
   const actionLabel = (type: string) => {
     const map: Record<string, string> = {
