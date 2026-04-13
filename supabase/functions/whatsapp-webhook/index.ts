@@ -701,23 +701,8 @@ Deno.serve(async (req) => {
                       await supabase.from("crm_leads").update({ stage_id: raCfg.target_stage_id }).eq("id", lead.id);
                     }
 
-                    // Send template
-                    if (ra.action_type === "send_template" && raCfg.template_id && currentLeadData.phone) {
-                      const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", raCfg.template_id).single();
-                      if (tpl) {
-                        fetch(`${supabaseUrlVal}/functions/v1/send-whatsapp-message`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKeyVal}`, apikey: serviceKeyVal },
-                          body: JSON.stringify({ lead_id: lead.id, to: currentLeadData.phone, type: "template", template_name: tpl.name, template_language: tpl.language }),
-                        }).then(r => r.text()).catch(() => {});
-                      }
-                    } else if (ra.action_type === "send_bot" && raCfg.bot_id) {
-                      fetch(`${supabaseUrlVal}/functions/v1/bot-engine`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKeyVal}`, apikey: serviceKeyVal },
-                        body: JSON.stringify({ leadId: lead.id, botId: raCfg.bot_id, trigger: "automation" }),
-                      }).then(r => r.text()).catch(() => {});
-                    }
+                    // Execute the action with await to prevent runtime shutdown
+                    await executeWebhookAction(supabase, supabaseUrlVal, serviceKeyVal, ra.action_type, raCfg, lead.id, currentLeadData.phone);
 
                     // Notify owner
                     if (raCfg.notify_owner && currentLeadData.assigned_to) {
