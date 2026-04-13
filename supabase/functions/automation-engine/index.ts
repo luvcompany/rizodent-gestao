@@ -280,6 +280,8 @@ Deno.serve(async (req) => {
       }
 
       const now = Date.now();
+      // Brazil timezone offset (UTC-3) — times stored without timezone
+      const TZ_OFFSET = "-03:00";
 
       // Check appointments
       if (scheduledType === "appointment" || scheduledType === "both") {
@@ -287,6 +289,8 @@ Deno.serve(async (req) => {
           .from("crm_appointments")
           .select("id, lead_id, scheduled_date, scheduled_time")
           .in("status", ["confirmed", "pending"]);
+
+        console.log(`[BEFORE_SCHEDULED] Checking ${appointments?.length || 0} appointments, beforeMs=${beforeMs}, now=${new Date(now).toISOString()}`);
 
         for (const appt of appointments || []) {
           // Check lead is in the automation's stage
@@ -298,8 +302,11 @@ Deno.serve(async (req) => {
             .maybeSingle();
           if (!lead) continue;
 
-          const scheduledAt = new Date(`${appt.scheduled_date}T${appt.scheduled_time || "00:00:00"}`).getTime();
+          const timeStr = appt.scheduled_time || "00:00:00";
+          const scheduledAt = new Date(`${appt.scheduled_date}T${timeStr}${TZ_OFFSET}`).getTime();
           const fireAt = scheduledAt - beforeMs;
+
+          console.log(`[BEFORE_SCHEDULED] Appt ${appt.id}: scheduledAt=${new Date(scheduledAt).toISOString()}, fireAt=${new Date(fireAt).toISOString()}, now=${new Date(now).toISOString()}, shouldFire=${fireAt <= now && scheduledAt > now}`);
 
           // Fire if we're within the window (fireAt <= now && scheduledAt > now)
           if (fireAt > now || scheduledAt <= now) continue;
@@ -310,11 +317,12 @@ Deno.serve(async (req) => {
             .select("id")
             .eq("automation_id", auto.id)
             .eq("lead_id", lead.id)
-            .gte("created_at", new Date(scheduledAt - 86400000 * 7).toISOString()) // within last 7 days
+            .gte("created_at", new Date(scheduledAt - 86400000 * 7).toISOString())
             .in("status", ["pending", "sent"])
             .limit(1);
           if (existing && existing.length > 0) continue;
 
+          console.log(`[BEFORE_SCHEDULED] FIRING for lead ${lead.id}, appt ${appt.id}`);
           await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
           await supabase.from("crm_automation_queue").insert({
             automation_id: auto.id,
@@ -345,6 +353,7 @@ Deno.serve(async (req) => {
             .maybeSingle();
           if (!lead) continue;
 
+          // due_date already has timezone info from timestamptz
           const scheduledAt = new Date(task.due_date).getTime();
           const fireAt = scheduledAt - beforeMs;
 
