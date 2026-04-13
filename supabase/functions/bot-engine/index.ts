@@ -98,6 +98,20 @@ function calculateTimeoutAt(nodeData: any): string | null {
   return new Date(Date.now() + totalMs).toISOString();
 }
 
+function getTemplatePlaceholderIndexes(content: string | null | undefined): number[] {
+  if (!content) return [];
+
+  const indexes = new Set<number>();
+  for (const match of content.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value > 0) {
+      indexes.add(value);
+    }
+  }
+
+  return [...indexes].sort((a, b) => a - b);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -226,7 +240,9 @@ Deno.serve(async (req) => {
 
       // Find the timeout edge from the current node
       const timeoutEdge = edges.find(
-        (e: any) => e.source === execution.current_node_id && e.sourceHandle === "timeout"
+        (e: any) =>
+          e.source === execution.current_node_id &&
+          (e.sourceHandle === "timeout" || e.sourceHandle === "no-response")
       );
 
       if (!timeoutEdge) {
@@ -463,7 +479,20 @@ async function executeFlow(
     await supabase.from("bot_executions").update({ current_node_id: currentNodeId, variables: vars }).eq("id", executionId);
 
     // Execute node
-    const result = await executeNode(supabase, supabaseUrl, serviceKey, authHeader, node, lead, vars, executionId);
+    let result;
+    try {
+      result = await executeNode(supabase, supabaseUrl, serviceKey, authHeader, node, lead, vars, executionId);
+    } catch (error: any) {
+      console.error(`[bot-engine] Node execution failed at ${currentNodeId}:`, error?.message || error);
+      await supabase.from("bot_executions").update({
+        status: "error",
+        completed_at: new Date().toISOString(),
+        current_node_id: currentNodeId,
+        variables: vars,
+        timeout_at: null,
+      }).eq("id", executionId);
+      return { stopped_at: currentNodeId, reason: error?.message || "node_execution_failed" };
+    }
 
     if (result.stop) {
       // Calculate timeout_at for waiting nodes
@@ -580,6 +609,67 @@ async function executeNode(
     }, text);
   };
 
+  const sendAndAssert = async (payload: Record<string, any>, context: string) => {
+    const result = await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, payload);
+    if (result?.error) {
+      const details = result?.details ? ` ${JSON.stringify(result.details)}` : "";
+      throw new Error(`${context}: ${result.error}${details}`);
+    }
+    return result;
+  };
+
+  const resolveTemplateParamValue = (rawValue: any, fallbackValue: string) => {
+    if (rawValue == null) return fallbackValue;
+
+    if (typeof rawValue === "string") {
+      const resolved = replaceVars(rawValue).trim();
+      return resolved || fallbackValue;
+    }
+
+    if (typeof rawValue === "object") {
+      const candidate = rawValue.value ?? rawValue.variable ?? rawValue.text ?? rawValue.label ?? "";
+      const resolved = replaceVars(String(candidate)).trim();
+      return resolved || fallbackValue;
+    }
+
+    const resolved = replaceVars(String(rawValue)).trim();
+    return resolved || fallbackValue;
+  };
+
+  const buildTemplateComponent = (componentType: "body" | "header", templateText: string | null | undefined) => {
+    const placeholderIndexes = getTemplatePlaceholderIndexes(templateText);
+    if (!placeholderIndexes.length) return null;
+
+    const configuredParams = Array.isArray(data.templateParams)
+      ? data.templateParams
+      : Array.isArray(data.templateVariables)
+        ? data.templateVariables
+        : [];
+
+    const safeFallback = (lead.name || variables.last_reply || "cliente").trim() || "cliente";
+    const fallbackValues = [
+      lead.name || safeFallback,
+      variables.last_reply || safeFallback,
+      lead.phone || safeFallback,
+      lead.source || safeFallback,
+      lead.last_message || safeFallback,
+      lead.value != null ? String(lead.value) : safeFallback,
+    ];
+
+    return {
+      type: componentType,
+      parameters: placeholderIndexes.map((placeholderIndex, position) => {
+        const configuredValue = configuredParams[placeholderIndex - 1] ?? configuredParams[position];
+        const fallbackValue = String(fallbackValues[position] ?? safeFallback).trim() || safeFallback;
+
+        return {
+          type: "text",
+          text: resolveTemplateParamValue(configuredValue, fallbackValue),
+        };
+      }),
+    };
+  };
+
   switch (node.type) {
     case "start":
       return {};
@@ -591,7 +681,7 @@ async function executeNode(
         let templateLanguage = data.templateLanguage || "pt_BR";
         const { data: tplRow } = await supabase
           .from("crm_whatsapp_templates")
-          .select("name, language")
+          .select("name, language, body_text, header_content")
           .eq("id", data.templateId)
           .single();
         if (tplRow) {
@@ -602,13 +692,22 @@ async function executeNode(
           console.error(`[bot-engine] Template ${data.templateId} not found in DB`);
           return {};
         }
-        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+
+        const templateComponents = [
+          buildTemplateComponent("header", tplRow?.header_content),
+          buildTemplateComponent("body", tplRow?.body_text || data.text),
+        ].filter(Boolean);
+
+        console.log(`[bot-engine] Sending template ${templateName} with ${templateComponents.length} component(s) for node ${node.id}`);
+
+        await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
           type: "template",
           template_name: templateName,
           template_language: templateLanguage,
-        });
+          template_components: templateComponents,
+        }, `template_send_failed:${node.id}`);
         // Templates with buttons OR with timeout: wait for reply
         if ((data.templateButtons && Array.isArray(data.templateButtons) && data.templateButtons.length > 0) ||
             (data.timeoutHours > 0 || data.timeoutMinutes > 0 || data.timeoutSeconds > 0)) {
@@ -620,12 +719,12 @@ async function executeNode(
       // Otherwise send as plain text
       const text = replaceVars(data.text || "");
       if (text && lead.phone) {
-        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+        await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
           type: "text",
           message: text,
-        });
+        }, `text_send_failed:${node.id}`);
       }
       // If timeout is configured on plain text, wait for reply too
       if (data.timeoutHours > 0 || data.timeoutMinutes > 0 || data.timeoutSeconds > 0) {
@@ -637,26 +736,26 @@ async function executeNode(
     case "send_image": {
       const caption = replaceVars(data.caption || "");
       if (data.imageUrl && lead.phone) {
-        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+        await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
           type: "image",
           media_url: data.imageUrl,
           message: caption || undefined,
-        });
+        }, `image_send_failed:${node.id}`);
       }
       return {};
     }
 
     case "send_audio": {
       if (data.audioUrl && lead.phone) {
-        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+        await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
           type: "audio",
           media_url: data.audioUrl,
           audio_voice: true,
-        });
+        }, `audio_send_failed:${node.id}`);
       }
       return {};
     }
@@ -665,13 +764,13 @@ async function executeNode(
       const caption = replaceVars(data.caption || "");
       const fileType = data.fileType || "document";
       if (data.fileUrl && lead.phone) {
-        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+        await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
           type: fileType,
           media_url: data.fileUrl,
           message: caption || undefined,
-        });
+        }, `file_send_failed:${node.id}`);
       }
       return {};
     }
@@ -679,13 +778,13 @@ async function executeNode(
     case "send_video": {
       const caption = replaceVars(data.caption || "");
       if (data.videoUrl && lead.phone) {
-        await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+        await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
           type: "video",
           media_url: data.videoUrl,
           message: caption || undefined,
-        });
+        }, `video_send_failed:${node.id}`);
       }
       return {};
     }
@@ -815,7 +914,7 @@ async function executeNode(
               description: (r.description || "").slice(0, 72),
             })),
           }));
-          await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+          await sendAndAssert({
             lead_id: lead.id,
             to: lead.phone,
             type: "interactive",
@@ -825,9 +924,9 @@ async function executeNode(
             footer: data.footerText ? replaceVars(data.footerText) : undefined,
             button_text: data.buttonLabel || "Ver opções",
             sections: waSections,
-          });
+          }, `menu_list_send_failed:${node.id}`);
         } else if (buttons.length > 0) {
-          await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+          await sendAndAssert({
             lead_id: lead.id,
             to: lead.phone,
             type: "interactive",
@@ -837,14 +936,14 @@ async function executeNode(
               type: "reply",
               reply: { id: b.id, title: (b.title || "").slice(0, 20) },
             })),
-          });
+          }, `menu_button_send_failed:${node.id}`);
         } else {
-          await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+          await sendAndAssert({
             lead_id: lead.id,
             to: lead.phone,
             type: "text",
             message: menuBody,
-          });
+          }, `menu_text_send_failed:${node.id}`);
         }
       }
       return { stop: true, status: "waiting_reply", reason: "waiting_menu_reply" };
