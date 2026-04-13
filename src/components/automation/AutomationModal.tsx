@@ -418,8 +418,8 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
   };
 
   const isCombo = autoForm.action_type === "combo";
-  const isSequenceTrigger = ["after_appointment_confirmed", "no_show"].includes(autoForm.trigger_type);
-  const isReengagement = autoForm.trigger_type === "progressive_reengagement";
+  const isSequenceTrigger = false; // simplified - no more sequence triggers in main list
+  const isReengagement = false; // simplified
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
