@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
     no_show: 0,
     time_window: 0,
     bot_timeout: 0,
+    before_scheduled: 0,
   };
 
   try {
