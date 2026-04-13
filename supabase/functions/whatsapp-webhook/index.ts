@@ -7,6 +7,124 @@ const corsHeaders = {
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
+// Centralized server-side action executor — always awaits to prevent runtime shutdown
+async function executeWebhookAction(
+  supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  actionType: string,
+  config: Record<string, any>,
+  leadId: string,
+  phone: string | null
+) {
+  try {
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey };
+    switch (actionType) {
+      case "send_template":
+        if (config.template_id && phone) {
+          const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", config.template_id).single();
+          if (tpl) {
+            const r = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+              method: "POST", headers,
+              body: JSON.stringify({ lead_id: leadId, to: phone, type: "template", template_name: tpl.name, template_language: tpl.language }),
+            });
+            await r.text();
+            console.log(`[WEBHOOK-ACTION] send_template ${tpl.name} to ${phone} => ${r.status}`);
+          }
+        }
+        break;
+      case "send_bot":
+        if (config.bot_id) {
+          const r = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+            method: "POST", headers,
+            body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation" }),
+          });
+          await r.text();
+          console.log(`[WEBHOOK-ACTION] send_bot ${config.bot_id} for lead ${leadId} => ${r.status}`);
+        }
+        break;
+      case "send_audio":
+        if (config.audio_url && phone) {
+          const r = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+            method: "POST", headers,
+            body: JSON.stringify({ lead_id: leadId, to: phone, type: "audio", media_url: config.audio_url }),
+          });
+          await r.text();
+        }
+        break;
+      case "send_file":
+        if (config.file_url && phone) {
+          const r = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+            method: "POST", headers,
+            body: JSON.stringify({ lead_id: leadId, to: phone, type: "document", media_url: config.file_url, filename: config.filename || "arquivo" }),
+          });
+          await r.text();
+        }
+        break;
+      case "add_tag": {
+        const tag = config.tag as string;
+        if (tag) {
+          const { data: ld } = await supabase.from("crm_leads").select("tags").eq("id", leadId).single();
+          const existing = (ld?.tags || []) as string[];
+          if (!existing.includes(tag)) {
+            await supabase.from("crm_leads").update({ tags: [...existing, tag] }).eq("id", leadId);
+          }
+        }
+        break;
+      }
+      case "notify_owner": {
+        const { data: ld } = await supabase.from("crm_leads").select("assigned_to, name").eq("id", leadId).single();
+        if (ld?.assigned_to) {
+          await supabase.from("crm_notifications").insert({
+            user_id: ld.assigned_to, lead_id: leadId,
+            title: config.notification_title || "Automação disparada",
+            body: config.notification_body || `Automação para ${ld.name}`,
+            type: "automation",
+          });
+        }
+        break;
+      }
+      case "move_stage":
+        if (config.target_stage_id) {
+          await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", leadId);
+        }
+        break;
+      case "combo": {
+        const actions = (config.actions || []) as Array<{ action_type: string; action_config: Record<string, any> }>;
+        for (const sub of actions) {
+          await executeWebhookAction(supabase, supabaseUrl, serviceKey, sub.action_type, sub.action_config || {}, leadId, phone);
+        }
+        break;
+      }
+    }
+  } catch (e: any) {
+    console.error(`[WEBHOOK-ACTION] Error (${actionType}):`, e.message);
+  }
+}
+
+// Execute on_enter stage automations server-side
+async function executeOnEnterAutomations(supabase: any, leadId: string, stageId: string, phone: string | null) {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+    const { data: automations } = await supabase
+      .from("crm_automations")
+      .select("*")
+      .eq("stage_id", stageId)
+      .eq("is_active", true)
+      .eq("trigger_type", "on_enter");
+
+    for (const auto of automations || []) {
+      const config = (auto.action_config || {}) as Record<string, any>;
+      console.log(`[WEBHOOK] on_enter automation ${auto.id} (${auto.action_type}) for lead ${leadId}`);
+      await executeWebhookAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, leadId, phone);
+    }
+  } catch (e: any) {
+    console.error("[WEBHOOK] on_enter automations error:", e.message);
+  }
+}
+
 async function resolveAutoAssignment(supabase: any, pipelineId: string): Promise<string | null> {
   try {
     const { data: rules } = await supabase
