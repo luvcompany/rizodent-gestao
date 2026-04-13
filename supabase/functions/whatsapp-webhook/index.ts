@@ -735,25 +735,27 @@ Deno.serve(async (req) => {
                   console.log(`[WEBHOOK] Bot execution ${botExec.id} waiting for reply, triggering continue`);
                   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
                   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-                  // Call bot-engine to continue (consume response to prevent resource leak)
-                  fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${serviceKey}`,
-                      "apikey": serviceKey,
-                    },
-                    body: JSON.stringify({
-                      leadId: lead.id,
-                      trigger: "continue",
-                      executionId: botExec.id,
-                      replyText: content || "",
-                      replyOptionId,
-                    }),
-                  }).then(async (res) => {
-                    const body = await res.text();
-                    console.log(`[WEBHOOK] Bot-engine continue response (${res.status}): ${body}`);
-                  }).catch((err: any) => console.error("[WEBHOOK] Bot-engine continue error:", err.message));
+                  try {
+                    const botRes = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${serviceKey}`,
+                        "apikey": serviceKey,
+                      },
+                      body: JSON.stringify({
+                        leadId: lead.id,
+                        trigger: "continue",
+                        executionId: botExec.id,
+                        replyText: content || "",
+                        replyOptionId,
+                      }),
+                    });
+                    const botBody = await botRes.text();
+                    console.log(`[WEBHOOK] Bot-engine continue response (${botRes.status}): ${botBody}`);
+                  } catch (err: any) {
+                    console.error("[WEBHOOK] Bot-engine continue error:", err.message);
+                  }
                 }
               } catch (botErr: any) {
                 console.error("[WEBHOOK] Erro ao verificar bot execution:", botErr.message);
