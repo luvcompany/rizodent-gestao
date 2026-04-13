@@ -5,13 +5,107 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const PUBLIC_TEMPLATE_MEDIA_BUCKET = "avatars";
+const PUBLIC_TEMPLATE_MEDIA_PREFIX = "whatsapp-template-media";
+
+const isHttpUrl = (value: string | null | undefined) => Boolean(value && /^https?:\/\//i.test(value));
+
+const sanitizePathSegment = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "template";
+
+const extensionFromMime = (mimeType: string) => {
+  const mimeMap: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  };
+
+  return mimeMap[mimeType.toLowerCase()] || "bin";
+};
+
+const getTemplatePlaceholderIndexes = (content: string | null | undefined): number[] => {
+  if (!content) return [];
+
+  const indexes = new Set<number>();
+  for (const match of content.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value > 0) indexes.add(value);
+  }
+
+  return [...indexes].sort((a, b) => a - b);
+};
+
+const buildTemplateFallbacks = (lead: { name?: string | null; phone?: string | null; source?: string | null } | null) => {
+  const safeLeadName = lead?.name?.trim() || "cliente";
+  return [safeLeadName, lead?.phone?.trim() || safeLeadName, lead?.source?.trim() || safeLeadName];
+};
+
+const buildMediaHeaderComponent = (headerType: string, link: string) => {
+  if (headerType === "IMAGE") {
+    return { type: "header", parameters: [{ type: "image", image: { link } }] };
+  }
+
+  if (headerType === "VIDEO") {
+    return { type: "header", parameters: [{ type: "video", video: { link } }] };
+  }
+
+  if (headerType === "DOCUMENT") {
+    return { type: "header", parameters: [{ type: "document", document: { link } }] };
+  }
+
+  return null;
+};
+
+async function ensurePublicTemplateMediaLink(
+  supabase: any,
+  templateName: string,
+  headerType: string,
+  originalValue: string,
+) {
+  if (!originalValue) return null;
+  if (!isHttpUrl(originalValue)) return originalValue;
+  if (originalValue.includes("/storage/v1/object/public/")) return originalValue;
+
+  const response = await fetch(originalValue);
+  if (!response.ok) {
+    throw new Error(`Failed to download template media (${response.status})`);
+  }
+
+  const mediaBlob = await response.blob();
+  const contentType = mediaBlob.type || (headerType === "VIDEO" ? "video/mp4" : headerType === "DOCUMENT" ? "application/pdf" : "image/jpeg");
+  const extension = extensionFromMime(contentType);
+  const filePath = `${PUBLIC_TEMPLATE_MEDIA_PREFIX}/${sanitizePathSegment(templateName)}-${Date.now()}.${extension}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(PUBLIC_TEMPLATE_MEDIA_BUCKET)
+    .upload(filePath, mediaBlob, {
+      contentType,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw new Error(`Failed to cache template media: ${uploadError.message}`);
+  }
+
+  const { data } = supabase.storage.from(PUBLIC_TEMPLATE_MEDIA_BUCKET).getPublicUrl(filePath);
+  return data.publicUrl;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Validate authenticated user or service role key
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing authorization header" }), {
@@ -39,7 +133,28 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { lead_id, to, message, type = "text", media_url, template_name, template_language, template_components, reply_to_wamid, reply_to_message_id, reaction_emoji, reaction_to_message_id, audio_voice = false, interactive_type, body, buttons, button_text, sections, header, footer } = await req.json();
+    const {
+      lead_id,
+      to,
+      message,
+      type = "text",
+      media_url,
+      template_name,
+      template_language,
+      template_components,
+      reply_to_wamid,
+      reply_to_message_id,
+      reaction_emoji,
+      reaction_to_message_id,
+      audio_voice = false,
+      interactive_type,
+      body,
+      buttons,
+      button_text,
+      sections,
+      header,
+      footer,
+    } = await req.json();
 
     if (!lead_id || !to) {
       return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
@@ -47,7 +162,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Resolve WhatsApp credentials from lead's pipeline integration
     let whatsappToken = Deno.env.get("WHATSAPP_TOKEN") || "";
     let phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
 
@@ -69,23 +183,22 @@ Deno.serve(async (req) => {
         const integrationKey = (funnelChannel.channel_config as any)?.integration_key;
         if (integrationKey) {
           const { data: integration } = await supabase
-              .from("integrations")
-              .select("config, status")
-              .eq("key", integrationKey)
-              .maybeSingle();
+            .from("integrations")
+            .select("config, status")
+            .eq("key", integrationKey)
+            .maybeSingle();
 
-            // Block sending if integration is disabled
-            if (integration?.status === "disabled") {
-              return new Response(JSON.stringify({ error: "Integração desativada" }), {
-                status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-              });
-            }
+          if (integration?.status === "disabled") {
+            return new Response(JSON.stringify({ error: "Integração desativada" }), {
+              status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
 
-            if (integration?.config) {
-              const cfg = integration.config as any;
-              const resolvedToken = cfg.access_token || cfg.token;
-              if (resolvedToken) whatsappToken = resolvedToken;
-              if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
+          if (integration?.config) {
+            const cfg = integration.config as any;
+            const resolvedToken = cfg.access_token || cfg.token;
+            if (resolvedToken) whatsappToken = resolvedToken;
+            if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
           }
         }
       }
@@ -97,7 +210,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Resolve reply context wamid
     let resolvedWamid = reply_to_wamid || null;
     if (!resolvedWamid && reply_to_message_id) {
       const { data: origMsg } = await supabase
@@ -108,7 +220,6 @@ Deno.serve(async (req) => {
       resolvedWamid = origMsg?.whatsapp_message_id || null;
     }
 
-    // Handle reaction type
     if (type === "reaction") {
       let reactionWamid = null;
       if (reaction_to_message_id) {
@@ -155,7 +266,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Save reaction to the target message's reactions column
       const { data: targetMsg } = await supabase
         .from("messages")
         .select("reactions")
@@ -163,7 +273,6 @@ Deno.serve(async (req) => {
         .single();
 
       const existingReactions = Array.isArray(targetMsg?.reactions) ? targetMsg.reactions : [];
-      // Replace existing reaction from "me" instead of appending
       const filtered = existingReactions.filter((r: any) => r.from !== "me");
       const updatedReactions = [...filtered, { emoji: reaction_emoji || "👍", from: "me" }];
 
@@ -177,16 +286,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    let finalType = type; // may be corrected for audio files
+    let finalType = type;
     let waBody: any = { messaging_product: "whatsapp", to };
 
-    // Add reply context
     if (resolvedWamid) {
       waBody.context = { message_id: resolvedWamid };
     }
 
     if (type === "interactive") {
-      // Interactive messages: buttons or lists
       waBody.type = "interactive";
       const interactiveBody = body || message || "Escolha uma opção:";
 
@@ -210,7 +317,6 @@ Deno.serve(async (req) => {
         if (footer) listInteractive.footer = { text: String(footer).slice(0, 60) };
         waBody.interactive = listInteractive;
       } else {
-        // Button type (max 3 reply buttons)
         waBody.interactive = {
           type: "button",
           body: { text: interactiveBody },
@@ -228,68 +334,88 @@ Deno.serve(async (req) => {
     } else if (type === "template") {
       waBody.type = "template";
 
-      // Auto-resolve template components if not provided
-      let resolvedComponents = template_components || [];
-      if (!resolvedComponents.length && template_name) {
-        // Look up the template from DB to build components automatically
-        const { data: tplRow } = await supabase
-          .from("crm_whatsapp_templates")
-          .select("body_text, header_type, header_content")
-          .eq("name", template_name)
-          .maybeSingle();
+      let resolvedComponents = Array.isArray(template_components) ? [...template_components] : [];
 
-        if (tplRow) {
-          // Get lead data for variable replacement
-          const { data: tplLead } = await supabase
+      if (template_name) {
+        const [{ data: tplRow }, { data: tplLead }] = await Promise.all([
+          supabase
+            .from("crm_whatsapp_templates")
+            .select("body_text, header_type, header_content")
+            .eq("name", template_name)
+            .maybeSingle(),
+          supabase
             .from("crm_leads")
             .select("name, phone, source")
             .eq("id", lead_id)
-            .maybeSingle();
+            .maybeSingle(),
+        ]);
 
-          const leadName = tplLead?.name || "cliente";
-
-          // Build header component for IMAGE/VIDEO/DOCUMENT
+        if (tplRow) {
           const headerType = (tplRow.header_type || "").toUpperCase();
-          if (headerType === "IMAGE" && tplRow.header_content) {
-            resolvedComponents.push({
-              type: "header",
-              parameters: [{ type: "image", image: { link: tplRow.header_content } }],
-            });
-          } else if (headerType === "VIDEO" && tplRow.header_content) {
-            resolvedComponents.push({
-              type: "header",
-              parameters: [{ type: "video", video: { link: tplRow.header_content } }],
-            });
-          } else if (headerType === "DOCUMENT" && tplRow.header_content) {
-            resolvedComponents.push({
-              type: "header",
-              parameters: [{ type: "document", document: { link: tplRow.header_content } }],
-            });
-          }
-
-          // Build body component for {{1}}, {{2}}, etc.
           const bodyText = tplRow.body_text || "";
-          const placeholders = [...bodyText.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map(m => Number(m[1])).sort((a, b) => a - b);
-          const uniquePlaceholders = [...new Set(placeholders)];
-          if (uniquePlaceholders.length > 0) {
-            const fallbacks = [leadName, tplLead?.phone || leadName, tplLead?.source || leadName];
-            resolvedComponents.push({
-              type: "body",
-              parameters: uniquePlaceholders.map((_, i) => ({
-                type: "text",
-                text: (fallbacks[i] || leadName).trim() || "cliente",
-              })),
-            });
+          const placeholderIndexes = getTemplatePlaceholderIndexes(bodyText);
+          const fallbackValues = buildTemplateFallbacks(tplLead || null);
+
+          if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType) && tplRow.header_content) {
+            resolvedComponents = resolvedComponents.filter((component: any) => String(component?.type || "").toLowerCase() !== "header");
+
+            const stableHeaderLink = await ensurePublicTemplateMediaLink(
+              supabase,
+              template_name,
+              headerType,
+              tplRow.header_content,
+            );
+
+            if (stableHeaderLink && stableHeaderLink !== tplRow.header_content) {
+              await supabase
+                .from("crm_whatsapp_templates")
+                .update({ header_content: stableHeaderLink, updated_at: new Date().toISOString() })
+                .eq("name", template_name);
+            }
+
+            const headerComponent = stableHeaderLink ? buildMediaHeaderComponent(headerType, stableHeaderLink) : null;
+            if (headerComponent) {
+              resolvedComponents.unshift(headerComponent);
+            }
           }
 
-          console.log(`[send-whatsapp] Auto-resolved ${resolvedComponents.length} component(s) for template ${template_name}`);
+          if (placeholderIndexes.length > 0) {
+            const bodyIndex = resolvedComponents.findIndex((component: any) => String(component?.type || "").toLowerCase() === "body");
+            const existingBody = bodyIndex >= 0 ? resolvedComponents[bodyIndex] : null;
+            const existingParams = Array.isArray(existingBody?.parameters) ? existingBody.parameters : [];
+            const shouldRebuildBody =
+              bodyIndex === -1 ||
+              existingParams.length !== placeholderIndexes.length ||
+              existingParams.some((parameter: any) => {
+                const textValue = String(parameter?.text || "").trim().toLowerCase();
+                return !textValue || textValue === "cliente" || textValue.includes("{{");
+              });
+
+            if (shouldRebuildBody) {
+              const bodyComponent = {
+                type: "body",
+                parameters: placeholderIndexes.map((_, index) => ({
+                  type: "text",
+                  text: (fallbackValues[index] || fallbackValues[0]).trim() || "cliente",
+                })),
+              };
+
+              if (bodyIndex >= 0) {
+                resolvedComponents[bodyIndex] = bodyComponent;
+              } else {
+                resolvedComponents.push(bodyComponent);
+              }
+            }
+          }
+
+          console.log(`[send-whatsapp] Resolved ${resolvedComponents.length} component(s) for template ${template_name}`);
         }
       }
 
       waBody.template = {
         name: template_name,
         language: { code: template_language || "pt_BR" },
-        components: resolvedComponents,
+        ...(resolvedComponents.length > 0 ? { components: resolvedComponents } : {}),
       };
     } else if (type === "text") {
       if (!message) {
@@ -300,25 +426,22 @@ Deno.serve(async (req) => {
       waBody.type = "text";
       waBody.text = { body: message };
     } else if (media_url) {
-      // Download file from storage (handle private bucket)
       console.log(`[send-whatsapp] Downloading media: ${media_url}, type: ${type}`);
-      
+
       let fileBlob: Blob;
-      // Check if this is a Supabase storage URL - use storage API for private bucket
       const chatMediaMarker = "/storage/v1/object/";
       const isChatMedia = media_url.includes(chatMediaMarker) && media_url.includes("chat-media");
-      
+
       if (isChatMedia) {
-        // Extract path from storage URL
         const pathMatch = media_url.match(/chat-media\/(.+?)(?:\?|$)/);
         const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
-        
+
         if (storagePath) {
           console.log(`[send-whatsapp] Downloading from private bucket, path: ${storagePath}`);
           const { data: fileData, error: downloadError } = await supabase.storage
             .from("chat-media")
             .download(storagePath);
-          
+
           if (downloadError || !fileData) {
             console.error(`[send-whatsapp] Failed to download from storage: ${JSON.stringify(downloadError)}`);
             return new Response(JSON.stringify({ error: "Failed to download file from storage", details: downloadError }), {
@@ -327,7 +450,6 @@ Deno.serve(async (req) => {
           }
           fileBlob = fileData;
         } else {
-          // Fallback to direct fetch with signed URL
           const { data: signedData } = await supabase.storage.from("chat-media").createSignedUrl(media_url, 300);
           const fileResponse = await fetch(signedData?.signedUrl || media_url);
           if (!fileResponse.ok) {
@@ -338,7 +460,6 @@ Deno.serve(async (req) => {
           fileBlob = await fileResponse.blob();
         }
       } else {
-        // External URL - fetch directly
         const fileResponse = await fetch(media_url);
         if (!fileResponse.ok) {
           console.error(`[send-whatsapp] Failed to download file: ${fileResponse.status}`);
@@ -348,7 +469,7 @@ Deno.serve(async (req) => {
         }
         fileBlob = await fileResponse.blob();
       }
-      
+
       let filename = "file";
       try {
         const parsedUrl = new URL(media_url);
@@ -361,7 +482,6 @@ Deno.serve(async (req) => {
 
       const ext = filename.split(".").pop()?.toLowerCase() || "";
 
-      // Content type mapping — audio files are now pre-converted to OGG/OPUS on client
       const contentTypeMap: Record<string, string> = {
         ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/ogg",
         webm: type === "audio" ? "audio/ogg" : "video/webm",
@@ -376,7 +496,6 @@ Deno.serve(async (req) => {
       };
       const contentType = contentTypeMap[ext] || fileBlob.type || "application/octet-stream";
 
-      // Force audio type detection from file extension/content-type
       const audioExtensions = new Set(["ogg", "oga", "opus", "mp3", "m4a", "wav", "aac", "webm", "amr"]);
       const isAudioFile = type === "audio" || audioExtensions.has(ext) || contentType.toLowerCase().startsWith("audio/");
       if (isAudioFile && type !== "audio") {
@@ -385,13 +504,11 @@ Deno.serve(async (req) => {
       finalType = isAudioFile ? "audio" : type;
       const resolvedType = finalType;
 
-      // For audio, always force OGG content type for Meta compatibility
       const uploadFilename = resolvedType === "audio" ? filename.replace(/\.\w+$/, ".ogg") : filename;
       const uploadContentType = resolvedType === "audio" ? "audio/ogg" : contentType;
 
       console.log(`[send-whatsapp] Uploading to Meta: filename=${uploadFilename}, contentType=${uploadContentType}, size=${fileBlob.size}, resolvedType=${resolvedType}`);
 
-      // Upload to Meta
       const formData = new FormData();
       formData.append("messaging_product", "whatsapp");
       formData.append("file", new File([fileBlob], uploadFilename, { type: uploadContentType }));
@@ -440,7 +557,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Send message via WhatsApp API
     const waResponse = await fetch(
       `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
       {
@@ -461,8 +577,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Save message to DB
     const sentWamid = waData?.messages?.[0]?.id || null;
+    const initialStatus = waData?.messages?.[0]?.message_status || "accepted";
     const dbContent = type === "template" ? `📋 Template: ${template_name}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
     const dbType = type === "template" || type === "interactive" ? "text" : finalType;
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
@@ -471,7 +587,7 @@ Deno.serve(async (req) => {
       type: dbType,
       content: dbContent,
       media_url: media_url || null,
-      status: "sent",
+      status: initialStatus,
       whatsapp_message_id: sentWamid,
       reply_to_message_id: reply_to_message_id || null,
     }).select().single();
@@ -493,7 +609,8 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    const message = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
