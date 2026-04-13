@@ -284,8 +284,10 @@ export default function CrmAutomacoes() {
       on_enter: "Ao mover",
       on_create: "Ao criar",
       on_create_or_enter: "Ao mover/criar",
-      lead_created_date: "Por data",
       no_response: "Sem resposta",
+      before_scheduled: "Antes de agendamento",
+      // Legacy triggers still show labels for existing automations
+      lead_created_date: "Por data",
       progressive_reengagement: "Reengajamento",
       lead_stale: "Lead parado",
       time_window: "Janela horário",
