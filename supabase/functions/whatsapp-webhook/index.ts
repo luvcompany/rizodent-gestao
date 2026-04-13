@@ -652,6 +652,11 @@ Deno.serve(async (req) => {
 
                   lead = newLead;
                   console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, assigned: ${assignedTo || 'none'}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
+
+                  // Execute on_enter automations immediately for the new lead's first stage
+                  if (newLead?.id) {
+                    await executeOnEnterAutomations(supabase, newLead.id, stage.id, from);
+                  }
                 }
               }
             } else {
