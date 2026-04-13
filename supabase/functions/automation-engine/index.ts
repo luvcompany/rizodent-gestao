@@ -256,7 +256,127 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================
-    // 4. PROCESS PENDING QUEUE (time_window + scheduled items)
+    // 5. BEFORE_SCHEDULED — fire X time before appointment/task
+    // =========================================================
+    const { data: beforeScheduledAutomations } = await supabase
+      .from("crm_automations")
+      .select("*")
+      .eq("trigger_type", "before_scheduled")
+      .eq("is_active", true);
+
+    for (const auto of beforeScheduledAutomations || []) {
+      const config = (auto.action_config || {}) as Record<string, any>;
+      const beforeAmount = config.before_amount ?? 1;
+      const beforeUnit = config.before_unit || "hours";
+      const scheduledType = config.scheduled_type || "appointment";
+
+      // Convert before_amount to milliseconds
+      let beforeMs = 0;
+      switch (beforeUnit) {
+        case "seconds": beforeMs = beforeAmount * 1000; break;
+        case "minutes": beforeMs = beforeAmount * 60000; break;
+        case "hours": beforeMs = beforeAmount * 3600000; break;
+        case "days": beforeMs = beforeAmount * 86400000; break;
+      }
+
+      const now = Date.now();
+
+      // Check appointments
+      if (scheduledType === "appointment" || scheduledType === "both") {
+        const { data: appointments } = await supabase
+          .from("crm_appointments")
+          .select("id, lead_id, scheduled_date, scheduled_time")
+          .in("status", ["confirmed", "pending"]);
+
+        for (const appt of appointments || []) {
+          // Check lead is in the automation's stage
+          const { data: lead } = await supabase
+            .from("crm_leads")
+            .select("id, phone, stage_id")
+            .eq("id", appt.lead_id)
+            .eq("stage_id", auto.stage_id)
+            .maybeSingle();
+          if (!lead) continue;
+
+          const scheduledAt = new Date(`${appt.scheduled_date}T${appt.scheduled_time || "00:00:00"}`).getTime();
+          const fireAt = scheduledAt - beforeMs;
+
+          // Fire if we're within the window (fireAt <= now && scheduledAt > now)
+          if (fireAt > now || scheduledAt <= now) continue;
+
+          // Check if already fired
+          const { data: existing } = await supabase
+            .from("crm_automation_queue")
+            .select("id")
+            .eq("automation_id", auto.id)
+            .eq("lead_id", lead.id)
+            .gte("created_at", new Date(scheduledAt - 86400000 * 7).toISOString()) // within last 7 days
+            .in("status", ["pending", "sent"])
+            .limit(1);
+          if (existing && existing.length > 0) continue;
+
+          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+          await supabase.from("crm_automation_queue").insert({
+            automation_id: auto.id,
+            lead_id: lead.id,
+            action_type: auto.action_type,
+            action_config: config,
+            scheduled_at: new Date().toISOString(),
+            status: "sent",
+            layer_index: 0,
+          });
+          results.before_scheduled++;
+        }
+      }
+
+      // Check tasks
+      if (scheduledType === "task" || scheduledType === "both") {
+        const { data: tasks } = await supabase
+          .from("crm_tasks")
+          .select("id, lead_id, due_date")
+          .eq("status", "pending");
+
+        for (const task of tasks || []) {
+          const { data: lead } = await supabase
+            .from("crm_leads")
+            .select("id, phone, stage_id")
+            .eq("id", task.lead_id)
+            .eq("stage_id", auto.stage_id)
+            .maybeSingle();
+          if (!lead) continue;
+
+          const scheduledAt = new Date(task.due_date).getTime();
+          const fireAt = scheduledAt - beforeMs;
+
+          if (fireAt > now || scheduledAt <= now) continue;
+
+          const { data: existing } = await supabase
+            .from("crm_automation_queue")
+            .select("id")
+            .eq("automation_id", auto.id)
+            .eq("lead_id", lead.id)
+            .gte("created_at", new Date(scheduledAt - 86400000 * 7).toISOString())
+            .in("status", ["pending", "sent"])
+            .limit(1);
+          if (existing && existing.length > 0) continue;
+
+          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+          await supabase.from("crm_automation_queue").insert({
+            automation_id: auto.id,
+            lead_id: lead.id,
+            action_type: auto.action_type,
+            action_config: config,
+            scheduled_at: new Date().toISOString(),
+            status: "sent",
+            layer_index: 0,
+          });
+          results.before_scheduled++;
+        }
+      }
+    }
+
+    // =========================================================
+    // 6. PROCESS PENDING QUEUE (time_window + scheduled items)
     // =========================================================
     const { data: pendingQueue } = await supabase
       .from("crm_automation_queue")
