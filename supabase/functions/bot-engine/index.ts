@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
     }
 
     // ===== MANUAL START or AUTOMATION =====
-    if (trigger === "manual_start" || trigger === "automation") {
+    if (trigger === "manual_start" || trigger === "automation" || trigger === "automation_bulk") {
       if (!botId) return json({ error: "Missing botId" }, 400);
 
       // Cancel any active executions for this lead
