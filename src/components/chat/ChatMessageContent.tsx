@@ -40,7 +40,7 @@ function replaceTemplatePlaceholders(text: string, leadName: string): string {
     const fallbacks = [name];
   return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_match, index) => {
     const i = Number(index) - 1;
-    return fallbacks[i] ?? leadName || "cliente";
+    return fallbacks[i] ?? name;
   });
 }
 
