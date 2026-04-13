@@ -7,6 +7,124 @@ const corsHeaders = {
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
+// Centralized server-side action executor — always awaits to prevent runtime shutdown
+async function executeWebhookAction(
+  supabase: any,
+  supabaseUrl: string,
+  serviceKey: string,
+  actionType: string,
+  config: Record<string, any>,
+  leadId: string,
+  phone: string | null
+) {
+  try {
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey };
+    switch (actionType) {
+      case "send_template":
+        if (config.template_id && phone) {
+          const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", config.template_id).single();
+          if (tpl) {
+            const r = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+              method: "POST", headers,
+              body: JSON.stringify({ lead_id: leadId, to: phone, type: "template", template_name: tpl.name, template_language: tpl.language }),
+            });
+            await r.text();
+            console.log(`[WEBHOOK-ACTION] send_template ${tpl.name} to ${phone} => ${r.status}`);
+          }
+        }
+        break;
+      case "send_bot":
+        if (config.bot_id) {
+          const r = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+            method: "POST", headers,
+            body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation" }),
+          });
+          await r.text();
+          console.log(`[WEBHOOK-ACTION] send_bot ${config.bot_id} for lead ${leadId} => ${r.status}`);
+        }
+        break;
+      case "send_audio":
+        if (config.audio_url && phone) {
+          const r = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+            method: "POST", headers,
+            body: JSON.stringify({ lead_id: leadId, to: phone, type: "audio", media_url: config.audio_url }),
+          });
+          await r.text();
+        }
+        break;
+      case "send_file":
+        if (config.file_url && phone) {
+          const r = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+            method: "POST", headers,
+            body: JSON.stringify({ lead_id: leadId, to: phone, type: "document", media_url: config.file_url, filename: config.filename || "arquivo" }),
+          });
+          await r.text();
+        }
+        break;
+      case "add_tag": {
+        const tag = config.tag as string;
+        if (tag) {
+          const { data: ld } = await supabase.from("crm_leads").select("tags").eq("id", leadId).single();
+          const existing = (ld?.tags || []) as string[];
+          if (!existing.includes(tag)) {
+            await supabase.from("crm_leads").update({ tags: [...existing, tag] }).eq("id", leadId);
+          }
+        }
+        break;
+      }
+      case "notify_owner": {
+        const { data: ld } = await supabase.from("crm_leads").select("assigned_to, name").eq("id", leadId).single();
+        if (ld?.assigned_to) {
+          await supabase.from("crm_notifications").insert({
+            user_id: ld.assigned_to, lead_id: leadId,
+            title: config.notification_title || "Automação disparada",
+            body: config.notification_body || `Automação para ${ld.name}`,
+            type: "automation",
+          });
+        }
+        break;
+      }
+      case "move_stage":
+        if (config.target_stage_id) {
+          await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", leadId);
+        }
+        break;
+      case "combo": {
+        const actions = (config.actions || []) as Array<{ action_type: string; action_config: Record<string, any> }>;
+        for (const sub of actions) {
+          await executeWebhookAction(supabase, supabaseUrl, serviceKey, sub.action_type, sub.action_config || {}, leadId, phone);
+        }
+        break;
+      }
+    }
+  } catch (e: any) {
+    console.error(`[WEBHOOK-ACTION] Error (${actionType}):`, e.message);
+  }
+}
+
+// Execute on_enter stage automations server-side
+async function executeOnEnterAutomations(supabase: any, leadId: string, stageId: string, phone: string | null) {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+    const { data: automations } = await supabase
+      .from("crm_automations")
+      .select("*")
+      .eq("stage_id", stageId)
+      .eq("is_active", true)
+      .eq("trigger_type", "on_enter");
+
+    for (const auto of automations || []) {
+      const config = (auto.action_config || {}) as Record<string, any>;
+      console.log(`[WEBHOOK] on_enter automation ${auto.id} (${auto.action_type}) for lead ${leadId}`);
+      await executeWebhookAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, leadId, phone);
+    }
+  } catch (e: any) {
+    console.error("[WEBHOOK] on_enter automations error:", e.message);
+  }
+}
+
 async function resolveAutoAssignment(supabase: any, pipelineId: string): Promise<string | null> {
   try {
     const { data: rules } = await supabase
@@ -534,6 +652,11 @@ Deno.serve(async (req) => {
 
                   lead = newLead;
                   console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, assigned: ${assignedTo || 'none'}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
+
+                  // Execute on_enter automations immediately for the new lead's first stage
+                  if (newLead?.id) {
+                    await executeOnEnterAutomations(supabase, newLead.id, stage.id, from);
+                  }
                 }
               }
             } else {
@@ -701,23 +824,8 @@ Deno.serve(async (req) => {
                       await supabase.from("crm_leads").update({ stage_id: raCfg.target_stage_id }).eq("id", lead.id);
                     }
 
-                    // Send template
-                    if (ra.action_type === "send_template" && raCfg.template_id && currentLeadData.phone) {
-                      const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", raCfg.template_id).single();
-                      if (tpl) {
-                        fetch(`${supabaseUrlVal}/functions/v1/send-whatsapp-message`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKeyVal}`, apikey: serviceKeyVal },
-                          body: JSON.stringify({ lead_id: lead.id, to: currentLeadData.phone, type: "template", template_name: tpl.name, template_language: tpl.language }),
-                        }).then(r => r.text()).catch(() => {});
-                      }
-                    } else if (ra.action_type === "send_bot" && raCfg.bot_id) {
-                      fetch(`${supabaseUrlVal}/functions/v1/bot-engine`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKeyVal}`, apikey: serviceKeyVal },
-                        body: JSON.stringify({ leadId: lead.id, botId: raCfg.bot_id, trigger: "automation" }),
-                      }).then(r => r.text()).catch(() => {});
-                    }
+                    // Execute the action with await to prevent runtime shutdown
+                    await executeWebhookAction(supabase, supabaseUrlVal, serviceKeyVal, ra.action_type, raCfg, lead.id, currentLeadData.phone);
 
                     // Notify owner
                     if (raCfg.notify_owner && currentLeadData.assigned_to) {
@@ -750,25 +858,27 @@ Deno.serve(async (req) => {
                   console.log(`[WEBHOOK] Bot execution ${botExec.id} waiting for reply, triggering continue`);
                   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
                   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-                  // Call bot-engine to continue (consume response to prevent resource leak)
-                  fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${serviceKey}`,
-                      "apikey": serviceKey,
-                    },
-                    body: JSON.stringify({
-                      leadId: lead.id,
-                      trigger: "continue",
-                      executionId: botExec.id,
-                      replyText: content || "",
-                      replyOptionId,
-                    }),
-                  }).then(async (res) => {
-                    const body = await res.text();
-                    console.log(`[WEBHOOK] Bot-engine continue response (${res.status}): ${body}`);
-                  }).catch((err: any) => console.error("[WEBHOOK] Bot-engine continue error:", err.message));
+                  try {
+                    const botRes = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${serviceKey}`,
+                        "apikey": serviceKey,
+                      },
+                      body: JSON.stringify({
+                        leadId: lead.id,
+                        trigger: "continue",
+                        executionId: botExec.id,
+                        replyText: content || "",
+                        replyOptionId,
+                      }),
+                    });
+                    const botBody = await botRes.text();
+                    console.log(`[WEBHOOK] Bot-engine continue response (${botRes.status}): ${botBody}`);
+                  } catch (err: any) {
+                    console.error("[WEBHOOK] Bot-engine continue error:", err.message);
+                  }
                 }
               } catch (botErr: any) {
                 console.error("[WEBHOOK] Erro ao verificar bot execution:", botErr.message);
