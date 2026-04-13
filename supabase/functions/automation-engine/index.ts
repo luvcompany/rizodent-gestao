@@ -23,9 +23,43 @@ Deno.serve(async (req) => {
     lead_stale: 0,
     no_show: 0,
     time_window: 0,
+    bot_timeout: 0,
   };
 
   try {
+    // =========================================================
+    // 0. BOT TIMEOUT — check waiting_reply executions with expired timeout_at
+    // =========================================================
+    const { data: expiredExecutions } = await supabase
+      .from("bot_executions")
+      .select("id, lead_id")
+      .eq("status", "waiting_reply")
+      .not("timeout_at", "is", null)
+      .lte("timeout_at", new Date().toISOString())
+      .limit(50);
+
+    for (const exec of expiredExecutions || []) {
+      try {
+        console.log(`[AUTOMATION-ENGINE] Bot timeout fired for execution ${exec.id}, lead ${exec.lead_id}`);
+        await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+            apikey: serviceKey,
+          },
+          body: JSON.stringify({
+            leadId: exec.lead_id,
+            executionId: exec.id,
+            trigger: "timeout",
+          }),
+        });
+        results.bot_timeout++;
+      } catch (e: any) {
+        console.error(`[AUTOMATION-ENGINE] Bot timeout error for ${exec.id}:`, e.message);
+      }
+    }
+
     // =========================================================
     // 1. PROGRESSIVE REENGAGEMENT
     // =========================================================
@@ -40,7 +74,6 @@ Deno.serve(async (req) => {
       const layers = (config.layers || []) as Array<{ delay_minutes: number; action_type: string; action_config: Record<string, any> }>;
       if (!layers.length) continue;
 
-      // Get leads in this stage that have no inbound since last outbound
       const { data: leads } = await supabase
         .from("crm_leads")
         .select("id, phone, last_inbound_at, last_outbound_at")
@@ -52,7 +85,6 @@ Deno.serve(async (req) => {
         const lastOut = new Date(lead.last_outbound_at).getTime();
         const lastIn = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
 
-        // Lead responded after our last message → skip and cancel pending
         if (lastIn > lastOut) {
           await supabase
             .from("crm_automation_queue")
@@ -69,7 +101,6 @@ Deno.serve(async (req) => {
           const layer = layers[i];
           if (minutesSinceLastOut < layer.delay_minutes) continue;
 
-          // Check if this layer was already queued
           const { data: existing } = await supabase
             .from("crm_automation_queue")
             .select("id")
@@ -81,7 +112,6 @@ Deno.serve(async (req) => {
 
           if (existing && existing.length > 0) continue;
 
-          // Queue this layer
           await supabase.from("crm_automation_queue").insert({
             automation_id: auto.id,
             lead_id: lead.id,
@@ -118,7 +148,6 @@ Deno.serve(async (req) => {
         .lt("updated_at", cutoff);
 
       for (const lead of leads || []) {
-        // Check already processed
         const { data: existing } = await supabase
           .from("crm_automation_queue")
           .select("id")
@@ -129,15 +158,12 @@ Deno.serve(async (req) => {
 
         if (existing && existing.length > 0) continue;
 
-        // Execute action directly
         await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
 
-        // Move stage if configured
         if (config.target_stage_id) {
           await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
         }
 
-        // Mark as processed
         await supabase.from("crm_automation_queue").insert({
           automation_id: auto.id,
           lead_id: lead.id,
@@ -165,7 +191,6 @@ Deno.serve(async (req) => {
       const hoursAfter = config.hours_after || 2;
       const cutoffTime = new Date(Date.now() - hoursAfter * 3600000).toISOString();
 
-      // Find appointments that are past due and not marked as attended
       const { data: appointments } = await supabase
         .from("crm_appointments")
         .select("id, lead_id, scheduled_date, scheduled_time, status")
@@ -173,7 +198,6 @@ Deno.serve(async (req) => {
         .lt("scheduled_date", new Date().toISOString().split("T")[0]);
 
       for (const appt of appointments || []) {
-        // Check lead is in the automation's stage
         const { data: lead } = await supabase
           .from("crm_leads")
           .select("id, phone, stage_id")
@@ -183,7 +207,6 @@ Deno.serve(async (req) => {
 
         if (!lead) continue;
 
-        // Check already processed
         const { data: existing } = await supabase
           .from("crm_automation_queue")
           .select("id")
@@ -194,7 +217,6 @@ Deno.serve(async (req) => {
 
         if (existing && existing.length > 0) continue;
 
-        // Queue the no-show sequence
         const steps = (config.steps || []) as Array<{ delay_minutes: number; action_type: string; action_config: Record<string, any> }>;
         if (steps.length > 0) {
           for (let i = 0; i < steps.length; i++) {
@@ -222,7 +244,6 @@ Deno.serve(async (req) => {
           });
         }
 
-        // Move to no-show stage if configured
         if (config.target_stage_id) {
           await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
         }
@@ -246,7 +267,6 @@ Deno.serve(async (req) => {
       const autoConfig = ((item as any).crm_automations?.action_config || {}) as Record<string, any>;
       const triggerType = (item as any).crm_automations?.trigger_type;
 
-      // Check time_window restriction
       if (triggerType === "time_window" || autoConfig.time_window) {
         const tw = autoConfig.time_window || autoConfig;
         const startHour = tw.start_hour ?? 8;
@@ -258,7 +278,6 @@ Deno.serve(async (req) => {
         const currentDay = now.getDay();
 
         if (!allowedDays.includes(currentDay) || currentHour < startHour || currentHour >= endHour) {
-          // Reschedule to next valid window
           const nextDate = getNextValidWindow(startHour, allowedDays);
           await supabase.from("crm_automation_queue")
             .update({ scheduled_at: nextDate.toISOString() })
@@ -267,7 +286,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Get lead phone
       const { data: lead } = await supabase
         .from("crm_leads")
         .select("phone")
@@ -303,12 +321,10 @@ function getNextValidWindow(startHour: number, allowedDays: number[]): Date {
   const next = new Date(now);
   next.setHours(startHour, 0, 0, 0);
 
-  // If today's window hasn't passed, check if today is allowed
   if (now.getHours() < startHour && allowedDays.includes(now.getDay())) {
     return next;
   }
 
-  // Find next allowed day
   for (let i = 1; i <= 7; i++) {
     next.setDate(now.getDate() + i);
     next.setHours(startHour, 0, 0, 0);
@@ -316,7 +332,6 @@ function getNextValidWindow(startHour: number, allowedDays: number[]): Date {
       return next;
     }
   }
-  // Fallback: tomorrow
   next.setDate(now.getDate() + 1);
   next.setHours(startHour, 0, 0, 0);
   return next;

@@ -59,6 +59,7 @@ export type Database = {
           lead_id: string
           started_at: string
           status: string
+          timeout_at: string | null
           updated_at: string
           variables: Json
         }
@@ -71,6 +72,7 @@ export type Database = {
           lead_id: string
           started_at?: string
           status?: string
+          timeout_at?: string | null
           updated_at?: string
           variables?: Json
         }
@@ -83,6 +85,7 @@ export type Database = {
           lead_id?: string
           started_at?: string
           status?: string
+          timeout_at?: string | null
           updated_at?: string
           variables?: Json
         }

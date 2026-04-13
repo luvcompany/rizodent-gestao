@@ -1,0 +1,1 @@
+ALTER TABLE public.bot_executions ADD COLUMN timeout_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;

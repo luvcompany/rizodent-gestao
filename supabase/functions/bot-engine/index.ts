@@ -73,7 +73,6 @@ function autoAdvanceCapturedReply(
     if (!node.data?.saveToField) break;
 
     nextVariables[node.data.saveToField] = replyValue;
-
     nextVariables.last_reply = replyValue;
 
     const replyEdge = edges.find(
@@ -87,6 +86,16 @@ function autoAdvanceCapturedReply(
   }
 
   return { nextNodeId, nextVariables, autoAdvanced };
+}
+
+/** Calculate timeout_at from a node's timeout configuration */
+function calculateTimeoutAt(nodeData: any): string | null {
+  const hours = nodeData?.timeoutHours ?? 1;
+  const minutes = nodeData?.timeoutMinutes ?? 0;
+  const seconds = nodeData?.timeoutSeconds ?? 0;
+  const totalMs = (hours * 3600 + minutes * 60 + seconds) * 1000;
+  if (totalMs <= 0) return null;
+  return new Date(Date.now() + totalMs).toISOString();
 }
 
 Deno.serve(async (req) => {
@@ -186,6 +195,69 @@ Deno.serve(async (req) => {
       return json({ success: true, executionId: execution.id, ...result });
     }
 
+    // ===== TIMEOUT (automation-engine detected expired timeout) =====
+    if (trigger === "timeout") {
+      if (!executionId) return json({ error: "Missing executionId for timeout" }, 400);
+
+      const { data: execution } = await supabase
+        .from("bot_executions")
+        .select("*, bots(flow_json, current_version)")
+        .eq("id", executionId)
+        .eq("status", "waiting_reply")
+        .single();
+
+      if (!execution) return json({ skipped: true, reason: "no_waiting_execution" });
+
+      // Get the flow
+      let flowJson = (execution as any).bots?.flow_json;
+      if (execution.bot_version_id) {
+        const { data: version } = await supabase
+          .from("bot_versions")
+          .select("flow_json")
+          .eq("id", execution.bot_version_id)
+          .single();
+        if (version) flowJson = version.flow_json;
+      }
+
+      if (!flowJson) return json({ error: "Flow not found" }, 404);
+
+      const nodes = flowJson.nodes || [];
+      const edges = flowJson.edges || [];
+
+      // Find the timeout edge from the current node
+      const timeoutEdge = edges.find(
+        (e: any) => e.source === execution.current_node_id && e.sourceHandle === "timeout"
+      );
+
+      if (!timeoutEdge) {
+        // No timeout path configured — complete the execution
+        console.log(`[bot-engine] Timeout fired for node ${execution.current_node_id} but no timeout edge found, completing`);
+        await supabase.from("bot_executions").update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          timeout_at: null,
+        }).eq("id", executionId);
+        return json({ completed: true, reason: "timeout_no_path" });
+      }
+
+      console.log(`[bot-engine] Timeout fired for execution ${executionId}, following timeout edge to ${timeoutEdge.target}`);
+
+      // Clear timeout and continue
+      await supabase.from("bot_executions").update({
+        status: "active",
+        timeout_at: null,
+        variables: execution.variables,
+      }).eq("id", executionId);
+
+      const result = await executeFlow(
+        supabase, supabaseUrl, serviceKey, authHeader,
+        executionId, flowJson, timeoutEdge.target, execution.lead_id,
+        (execution.variables as any) || {}
+      );
+
+      return json({ success: true, ...result });
+    }
+
     // ===== CONTINUE (after reply) =====
     if (trigger === "continue") {
       if (!executionId && !leadId) return json({ error: "Missing executionId or leadId" }, 400);
@@ -261,7 +333,6 @@ Deno.serve(async (req) => {
         // FALLBACK: If still no edge found, re-send the menu and keep waiting
         if (!nextEdge && currentNode.type === "send_menu") {
           console.log(`[bot-engine] No edge for reply "${replyText}" at node ${execution.current_node_id}, re-sending menu`);
-          // Re-send a hint message and keep waiting
           if (lead?.phone) {
             await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
               lead_id: leadId,
@@ -270,8 +341,9 @@ Deno.serve(async (req) => {
               message: "Por favor, selecione uma das opções do menu acima. 👆",
             });
           }
-          // Keep execution in waiting_reply status
-          await supabase.from("bot_executions").update({ status: "waiting_reply", variables }).eq("id", execution.id);
+          // Reset timeout since lead interacted
+          const newTimeoutAt = calculateTimeoutAt(currentNode.data);
+          await supabase.from("bot_executions").update({ status: "waiting_reply", variables, timeout_at: newTimeoutAt }).eq("id", execution.id);
           return json({ success: true, waiting: true, reason: "re_prompted_menu" });
         }
       } else {
@@ -282,9 +354,8 @@ Deno.serve(async (req) => {
       }
 
       if (!nextEdge) {
-        // Complete gracefully but log the issue
         console.log(`[bot-engine] No path found from node ${execution.current_node_id} after reply "${replyText}"`);
-        await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", execution.id);
+        await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString(), timeout_at: null }).eq("id", execution.id);
         return json({ completed: true, reason: "no_reply_path" });
       }
 
@@ -301,10 +372,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      await supabase.from("bot_executions").update({ variables: nextVariables, status: "active" }).eq("id", execution.id);
+      // Clear timeout since lead replied
+      await supabase.from("bot_executions").update({ variables: nextVariables, status: "active", timeout_at: null }).eq("id", execution.id);
 
       if (!nextTargetNodeId) {
-        await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString(), variables: nextVariables }).eq("id", execution.id);
+        await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString(), variables: nextVariables, timeout_at: null }).eq("id", execution.id);
         return json({ completed: true, reason: "flow_completed_after_reply" });
       }
 
@@ -394,10 +466,18 @@ async function executeFlow(
     const result = await executeNode(supabase, supabaseUrl, serviceKey, authHeader, node, lead, vars, executionId);
 
     if (result.stop) {
+      // Calculate timeout_at for waiting nodes
+      let timeoutAt: string | null = null;
+      if (result.status === "waiting_reply") {
+        timeoutAt = calculateTimeoutAt(node.data);
+        console.log(`[bot-engine] Waiting at node ${currentNodeId}, timeout_at: ${timeoutAt}`);
+      }
+
       await supabase.from("bot_executions").update({
         status: result.status || "waiting_reply",
         current_node_id: currentNodeId,
         variables: vars,
+        timeout_at: timeoutAt,
       }).eq("id", executionId);
       return { stopped_at: currentNodeId, reason: result.reason || "paused" };
     }
@@ -423,6 +503,7 @@ async function executeFlow(
         completed_at: new Date().toISOString(),
         current_node_id: currentNodeId,
         variables: vars,
+        timeout_at: null,
       }).eq("id", executionId);
       return { stopped_at: currentNodeId, reason: "flow_completed" };
     }
@@ -486,7 +567,6 @@ async function executeNode(
       last_reply: variables.last_reply || "",
     };
 
-    // Add all saved custom variables (from saveToField in wait_reply nodes)
     Object.entries(variables).forEach(([key, value]) => {
       if (!replacements[key]) {
         replacements[key] = String(value || "");
@@ -507,7 +587,6 @@ async function executeNode(
     case "send_text": {
       // If a template is selected, send as official WhatsApp template
       if (data.templateId && lead.phone) {
-        // Always fetch the real template name from the database to avoid suffix mismatch
         let templateName = data.templateName;
         let templateLanguage = data.templateLanguage || "pt_BR";
         const { data: tplRow } = await supabase
@@ -530,9 +609,10 @@ async function executeNode(
           template_name: templateName,
           template_language: templateLanguage,
         });
-        // If template has buttons, wait for reply
-        if (data.templateButtons && Array.isArray(data.templateButtons) && data.templateButtons.length > 0) {
-          return { stop: true, status: "waiting_reply", reason: "waiting_template_button" };
+        // Templates with buttons OR with timeout: wait for reply
+        if ((data.templateButtons && Array.isArray(data.templateButtons) && data.templateButtons.length > 0) ||
+            (data.timeoutHours > 0 || data.timeoutMinutes > 0 || data.timeoutSeconds > 0)) {
+          return { stop: true, status: "waiting_reply", reason: "waiting_template_reply" };
         }
         return {};
       }
@@ -546,6 +626,10 @@ async function executeNode(
           type: "text",
           message: text,
         });
+      }
+      // If timeout is configured on plain text, wait for reply too
+      if (data.timeoutHours > 0 || data.timeoutMinutes > 0 || data.timeoutSeconds > 0) {
+        return { stop: true, status: "waiting_reply", reason: "waiting_text_reply" };
       }
       return {};
     }
@@ -579,7 +663,7 @@ async function executeNode(
 
     case "send_file": {
       const caption = replaceVars(data.caption || "");
-      const fileType = data.fileType || "document"; // image, video, or document
+      const fileType = data.fileType || "document";
       if (data.fileUrl && lead.phone) {
         await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
           lead_id: lead.id,
@@ -607,18 +691,14 @@ async function executeNode(
     }
 
     case "delay": {
+      // Legacy delay block — cap at 10s inline
       const amount = data.delaySeconds || 5;
       const unit = data.unit || "seconds";
       let ms = amount * 1000;
       if (unit === "minutes") ms = amount * 60 * 1000;
       if (unit === "hours") ms = amount * 3600 * 1000;
-
-      // Cap delay at 10 seconds to prevent Edge Function timeout
       const maxDelay = 10000;
-      if (ms > maxDelay) {
-        console.log(`[bot-engine] Delay of ${ms}ms capped to ${maxDelay}ms to prevent timeout`);
-        ms = maxDelay;
-      }
+      if (ms > maxDelay) ms = maxDelay;
       await new Promise((r) => setTimeout(r, ms));
       return {};
     }
@@ -727,7 +807,6 @@ async function executeNode(
         const listSections = data.listSections || [];
         
         if (data.menuType === "list" && listSections.length > 0) {
-          // Build WhatsApp list sections from structured data
           const waSections = listSections.map((s: any) => ({
             title: (s.title || "").slice(0, 24),
             rows: (s.rows || []).map((r: any) => ({
@@ -773,6 +852,34 @@ async function executeNode(
 
     case "transfer_human": {
       return { stop: true, status: "completed", reason: "transferred_to_human" };
+    }
+
+    case "trigger_bot": {
+      if (data.botId) {
+        // Complete current execution and start the new bot
+        await supabase.from("bot_executions").update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          timeout_at: null,
+        }).eq("id", executionId);
+
+        await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+            apikey: serviceKey,
+          },
+          body: JSON.stringify({
+            leadId: lead.id,
+            botId: data.botId,
+            trigger: "automation",
+          }),
+        });
+
+        return { stop: true, status: "completed", reason: "triggered_another_bot" };
+      }
+      return {};
     }
 
     default:

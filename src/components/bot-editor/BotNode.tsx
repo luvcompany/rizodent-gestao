@@ -56,16 +56,22 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   } else if (isWaitReply) {
     branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
     branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
-  } else if (hasTemplateButtons) {
-    templateButtons.forEach((btn) => {
-      branchHandles.push({ id: `btn-${btn.id}`, label: btn.title, color: "#3b82f6" });
-    });
-    branchHandles.push({ id: "no-response", label: "Sem resposta", color: "#f97316" });
-  } else if (hasMenuButtons) {
-    menuItems.forEach((btn) => {
-      branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "#3b82f6" });
-    });
-    branchHandles.push({ id: "no-response", label: "Sem resposta", color: "#f97316" });
+  } else if (isSendText) {
+    if (hasTemplateButtons) {
+      templateButtons.forEach((btn) => {
+        branchHandles.push({ id: `btn-${btn.id}`, label: btn.title, color: "#3b82f6" });
+      });
+    }
+    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
+    branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
+  } else if (isSendMenu) {
+    if (hasMenuButtons) {
+      menuItems.forEach((btn) => {
+        branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "#3b82f6" });
+      });
+    }
+    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
+    branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
   }
 
   const hasBranching = branchHandles.length > 0;
