@@ -227,10 +227,69 @@ Deno.serve(async (req) => {
       }
     } else if (type === "template") {
       waBody.type = "template";
+
+      // Auto-resolve template components if not provided
+      let resolvedComponents = template_components || [];
+      if (!resolvedComponents.length && template_name) {
+        // Look up the template from DB to build components automatically
+        const { data: tplRow } = await supabase
+          .from("crm_whatsapp_templates")
+          .select("body_text, header_type, header_content")
+          .eq("name", template_name)
+          .maybeSingle();
+
+        if (tplRow) {
+          // Get lead data for variable replacement
+          const { data: tplLead } = await supabase
+            .from("crm_leads")
+            .select("name, phone, source")
+            .eq("id", lead_id)
+            .maybeSingle();
+
+          const leadName = tplLead?.name || "cliente";
+
+          // Build header component for IMAGE/VIDEO/DOCUMENT
+          const headerType = (tplRow.header_type || "").toUpperCase();
+          if (headerType === "IMAGE" && tplRow.header_content) {
+            resolvedComponents.push({
+              type: "header",
+              parameters: [{ type: "image", image: { link: tplRow.header_content } }],
+            });
+          } else if (headerType === "VIDEO" && tplRow.header_content) {
+            resolvedComponents.push({
+              type: "header",
+              parameters: [{ type: "video", video: { link: tplRow.header_content } }],
+            });
+          } else if (headerType === "DOCUMENT" && tplRow.header_content) {
+            resolvedComponents.push({
+              type: "header",
+              parameters: [{ type: "document", document: { link: tplRow.header_content } }],
+            });
+          }
+
+          // Build body component for {{1}}, {{2}}, etc.
+          const bodyText = tplRow.body_text || "";
+          const placeholders = [...bodyText.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map(m => Number(m[1])).sort((a, b) => a - b);
+          const uniquePlaceholders = [...new Set(placeholders)];
+          if (uniquePlaceholders.length > 0) {
+            const fallbacks = [leadName, tplLead?.phone || leadName, tplLead?.source || leadName];
+            resolvedComponents.push({
+              type: "body",
+              parameters: uniquePlaceholders.map((_, i) => ({
+                type: "text",
+                text: (fallbacks[i] || leadName).trim() || "cliente",
+              })),
+            });
+          }
+
+          console.log(`[send-whatsapp] Auto-resolved ${resolvedComponents.length} component(s) for template ${template_name}`);
+        }
+      }
+
       waBody.template = {
         name: template_name,
         language: { code: template_language || "pt_BR" },
-        components: template_components || [],
+        components: resolvedComponents,
       };
     } else if (type === "text") {
       if (!message) {
