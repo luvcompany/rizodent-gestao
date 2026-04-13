@@ -450,22 +450,6 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
           </div>
 
           {/* TRIGGER-SPECIFIC CONFIGS */}
-          {autoForm.trigger_type === "lead_created_date" && (
-            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-              <Label className="text-xs">Data de criação do lead</Label>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label className="text-[10px] text-muted-foreground">De</Label>
-                  <Input type="date" value={(autoForm.action_config.date_from as string) || ""} onChange={e => updateConfig({ date_from: e.target.value })} className="h-8 text-xs" />
-                </div>
-                <div className="flex-1">
-                  <Label className="text-[10px] text-muted-foreground">Até</Label>
-                  <Input type="date" value={(autoForm.action_config.date_to as string) || ""} onChange={e => updateConfig({ date_to: e.target.value })} className="h-8 text-xs" />
-                </div>
-              </div>
-            </div>
-          )}
-
           {autoForm.trigger_type === "no_response" && (
             <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
               <Label className="text-xs">Lead sem resposta há</Label>
@@ -483,143 +467,34 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             </div>
           )}
 
-          {isReengagement && (
-            <ReengagementLayers config={autoForm.action_config} setConfig={setConfig} templates={templates} publishedBots={publishedBots} stages={stages} />
-          )}
-
-          {autoForm.trigger_type === "lead_stale" && (
+          {autoForm.trigger_type === "before_scheduled" && (
             <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-              <Label className="text-xs">Lead sem movimentação há</Label>
+              <Label className="text-xs">Tipo de evento</Label>
+              <Select value={(autoForm.action_config.scheduled_type as string) || "appointment"} onValueChange={v => updateConfig({ scheduled_type: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="appointment">Agendamento</SelectItem>
+                  <SelectItem value="task">Tarefa</SelectItem>
+                  <SelectItem value="both">Ambos</SelectItem>
+                </SelectContent>
+              </Select>
+              <Label className="text-xs">Disparar com antecedência de</Label>
               <div className="flex items-center gap-2">
-                <Input type="number" min={1} value={(autoForm.action_config.stale_days as number) || 7}
-                  onChange={e => updateConfig({ stale_days: parseInt(e.target.value) || 1 })} className="h-8 text-xs w-20" />
-                <span className="text-xs text-muted-foreground">dias</span>
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <Checkbox id="stale-move" checked={!!(autoForm.action_config.stale_auto_move)}
-                  onCheckedChange={v => updateConfig({ stale_auto_move: !!v })} />
-                <label htmlFor="stale-move" className="text-xs text-foreground cursor-pointer">Mover lead automaticamente para outra etapa</label>
-              </div>
-              {autoForm.action_config.stale_auto_move && (
-                <Select value={(autoForm.action_config.stale_target_stage_id as string) || ""} onValueChange={v => updateConfig({ stale_target_stage_id: v })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar etapa destino" /></SelectTrigger>
+                <Input type="number" min={0} value={(autoForm.action_config.before_amount as number) ?? 1}
+                  onChange={e => updateConfig({ before_amount: parseInt(e.target.value) || 0 })} className="h-8 text-xs w-16" />
+                <Select value={(autoForm.action_config.before_unit as string) || "hours"} onValueChange={v => updateConfig({ before_unit: v })}>
+                  <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    <SelectItem value="seconds">Segundos</SelectItem>
+                    <SelectItem value="minutes">Minutos</SelectItem>
+                    <SelectItem value="hours">Horas</SelectItem>
+                    <SelectItem value="days">Dias</SelectItem>
                   </SelectContent>
                 </Select>
-              )}
-              <p className="text-[10px] text-muted-foreground">Dispara quando o lead não teve nenhuma mudança de etapa ou mensagem no período.</p>
-            </div>
-          )}
-
-          {autoForm.trigger_type === "time_window" && (
-            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-              <Label className="text-xs">Janela de envio</Label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <Label className="text-[10px] text-muted-foreground">Hora início</Label>
-                  <Input type="time" value={(autoForm.action_config.window_start as string) || "08:00"} onChange={e => updateConfig({ window_start: e.target.value })} className="h-8 text-xs" />
-                </div>
-                <div className="flex-1">
-                  <Label className="text-[10px] text-muted-foreground">Hora fim</Label>
-                  <Input type="time" value={(autoForm.action_config.window_end as string) || "18:00"} onChange={e => updateConfig({ window_end: e.target.value })} className="h-8 text-xs" />
-                </div>
               </div>
-              <Label className="text-[10px] text-muted-foreground">Dias da semana</Label>
-              <div className="flex flex-wrap gap-1">
-                {DAYS_OF_WEEK.map(d => {
-                  const selected = ((autoForm.action_config.window_days as string[]) || ["mon", "tue", "wed", "thu", "fri"]).includes(d.value);
-                  return (
-                    <button
-                      key={d.value}
-                      onClick={() => {
-                        const current = (autoForm.action_config.window_days as string[]) || ["mon", "tue", "wed", "thu", "fri"];
-                        const updated = selected ? current.filter(x => x !== d.value) : [...current, d.value];
-                        updateConfig({ window_days: updated });
-                      }}
-                      className={`px-2 py-1 rounded text-[10px] font-medium border transition-colors ${selected ? "bg-primary text-primary-foreground border-primary" : "bg-secondary text-muted-foreground border-border"}`}
-                    >
-                      {d.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[10px] text-muted-foreground">Fora dessa janela, as automações ficam em fila e disparam quando o horário permitido chegar.</p>
-            </div>
-          )}
-
-          {autoForm.trigger_type === "keyword_response" && (
-            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-              <Label className="text-xs">Palavras-chave (uma por linha)</Label>
-              <Textarea
-                className="text-xs min-h-[80px]"
-                placeholder={"quanto custa\nquero agendar\nnão tenho interesse"}
-                value={(autoForm.action_config.keywords as string) || ""}
-                onChange={e => updateConfig({ keywords: e.target.value })}
-              />
-              <div className="flex items-center gap-2">
-                <Checkbox id="kw-exact" checked={!!(autoForm.action_config.keyword_exact_match)}
-                  onCheckedChange={v => updateConfig({ keyword_exact_match: !!v })} />
-                <label htmlFor="kw-exact" className="text-[10px] text-foreground cursor-pointer">Correspondência exata (não buscar dentro da frase)</label>
-              </div>
-              <p className="text-[10px] text-muted-foreground">A automação dispara quando o lead responde com uma dessas palavras/frases.</p>
-            </div>
-          )}
-
-          {autoForm.trigger_type === "after_appointment_confirmed" && (
-            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-              <p className="text-[10px] text-muted-foreground">Configure a sequência que será disparada após a confirmação do agendamento. Ex: confirmação imediata → lembrete 24h antes → lembrete 2h antes → follow-up pós-consulta.</p>
-              <SequenceSteps config={autoForm.action_config} setConfig={setConfig} templates={templates} publishedBots={publishedBots} stages={stages} />
-            </div>
-          )}
-
-          {autoForm.trigger_type === "no_show" && (
-            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-              <Label className="text-xs">Janela de resposta para reagendamento</Label>
-              <div className="flex items-center gap-2">
-                <Input type="number" min={1} value={(autoForm.action_config.response_window_hours as number) || 24}
-                  onChange={e => updateConfig({ response_window_hours: parseInt(e.target.value) || 1 })} className="h-8 text-xs w-20" />
-                <span className="text-xs text-muted-foreground">horas</span>
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                <Checkbox id="noshow-move" checked={!!(autoForm.action_config.noshow_auto_move)}
-                  onCheckedChange={v => updateConfig({ noshow_auto_move: !!v })} />
-                <label htmlFor="noshow-move" className="text-xs text-foreground cursor-pointer">Mover para etapa de no-show se não responder</label>
-              </div>
-              {autoForm.action_config.noshow_auto_move && (
-                <Select value={(autoForm.action_config.noshow_target_stage_id as string) || ""} onValueChange={v => updateConfig({ noshow_target_stage_id: v })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Etapa de no-show" /></SelectTrigger>
-                  <SelectContent>
-                    {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              <p className="text-[10px] text-muted-foreground">Configure a sequência de reagendamento abaixo:</p>
-              <SequenceSteps config={autoForm.action_config} setConfig={setConfig} templates={templates} publishedBots={publishedBots} stages={stages} />
-            </div>
-          )}
-
-          {autoForm.trigger_type === "cold_lead_return" && (
-            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-              <p className="text-[10px] text-muted-foreground">Quando um lead arquivado ou em etapa fria enviar qualquer mensagem, a automação dispara alerta e pode mover o lead para uma etapa ativa.</p>
-              <div className="flex items-center gap-2">
-                <Checkbox id="cold-move" checked={!!(autoForm.action_config.cold_auto_move)}
-                  onCheckedChange={v => updateConfig({ cold_auto_move: !!v })} />
-                <label htmlFor="cold-move" className="text-xs text-foreground cursor-pointer">Mover automaticamente para etapa ativa</label>
-              </div>
-              {autoForm.action_config.cold_auto_move && (
-                <Select value={(autoForm.action_config.cold_target_stage_id as string) || ""} onValueChange={v => updateConfig({ cold_target_stage_id: v })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar etapa destino" /></SelectTrigger>
-                  <SelectContent>
-                    {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              <div className="flex items-center gap-2 pt-1">
-                <Checkbox id="cold-notify" checked={autoForm.action_config.cold_notify !== false}
-                  onCheckedChange={v => updateConfig({ cold_notify: !!v })} />
-                <label htmlFor="cold-notify" className="text-xs text-foreground cursor-pointer">Notificar responsável</label>
-              </div>
+              <p className="text-[10px] text-muted-foreground">
+                A ação será disparada automaticamente antes da data/hora marcada. Ex: 1 hora antes do agendamento, 1 dia antes da tarefa.
+              </p>
             </div>
           )}
 
