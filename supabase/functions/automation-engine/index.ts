@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     for (const exec of expiredExecutions || []) {
       try {
         console.log(`[AUTOMATION-ENGINE] Bot timeout fired for execution ${exec.id}, lead ${exec.lead_id}`);
-        await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+        const resp = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -54,6 +54,8 @@ Deno.serve(async (req) => {
             trigger: "timeout",
           }),
         });
+        const respText = await resp.text();
+        console.log(`[AUTOMATION-ENGINE] Bot timeout response for ${exec.id}: ${resp.status} ${respText.substring(0, 200)}`);
         results.bot_timeout++;
       } catch (e: any) {
         console.error(`[AUTOMATION-ENGINE] Bot timeout error for ${exec.id}:`, e.message);
