@@ -107,6 +107,74 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); };
   }, [leadId, fetchTasks, fetchAppointments, checkRescheduleMode]);
 
+  const moveLeadToScheduledStage = useCallback(async () => {
+    const { data: leadData } = await supabase
+      .from("crm_leads")
+      .select("stage_id, pipeline_id")
+      .eq("id", leadId)
+      .single();
+
+    if (!leadData) return null;
+
+    const { data: allStages } = await supabase
+      .from("crm_stages")
+      .select("id, name, pipeline_id")
+      .eq("pipeline_id", leadData.pipeline_id)
+      .order("position");
+
+    const currentStageId = leadData.stage_id;
+    const currentStage = allStages?.find((stage) => stage.id === currentStageId);
+    const scheduledStage = allStages?.find((stage) => {
+      const name = stage.name.toLowerCase();
+      return name.includes("agendado") || name.includes("agendamento");
+    });
+
+    if (!scheduledStage || scheduledStage.id === currentStageId) {
+      return leadData.stage_id;
+    }
+
+    const nowIso = new Date().toISOString();
+
+    const { error: moveError } = await supabase
+      .from("crm_leads")
+      .update({ stage_id: scheduledStage.id, updated_at: nowIso })
+      .eq("id", leadId);
+
+    if (moveError) throw moveError;
+
+    const { data: openEntry } = await supabase
+      .from("crm_lead_stage_history")
+      .select("id")
+      .eq("lead_id", leadId)
+      .eq("stage_id", currentStageId)
+      .is("exited_at", null)
+      .maybeSingle();
+
+    if (openEntry) {
+      await supabase
+        .from("crm_lead_stage_history")
+        .update({ exited_at: nowIso })
+        .eq("id", openEntry.id);
+    }
+
+    await supabase.from("crm_lead_stage_history").insert({
+      lead_id: leadId,
+      stage_id: scheduledStage.id,
+      from_stage_id: currentStageId,
+      entered_at: nowIso,
+    } as any);
+
+    await supabase.from("messages").insert({
+      lead_id: leadId,
+      direction: "outbound",
+      type: "system",
+      content: `📋 Etapa alterada: ${currentStage?.name || "Etapa anterior"} → ${scheduledStage.name}`,
+      status: "system",
+    });
+
+    return scheduledStage.id;
+  }, [leadId]);
+
   const handleConfirm = async (task: Task) => {
     if (!date) { toast.error("Selecione a data do agendamento"); return; }
     setSaving(true);
@@ -123,26 +191,19 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
 
     await supabase.from("crm_tasks").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", task.id);
 
-    // Move to agendado stage
-    const { data: leadData } = await supabase.from("crm_leads").select("stage_id, pipeline_id").eq("id", leadId).single();
-    if (leadData) {
-      const { data: allStages } = await supabase.from("crm_stages").select("id, name, pipeline_id").eq("pipeline_id", leadData.pipeline_id).order("position");
-      const agendadoStage = allStages?.find(s => s.name.toLowerCase().includes("agendado") || s.name.toLowerCase().includes("agendamento"));
-      if (agendadoStage && agendadoStage.id !== leadData.stage_id) {
-        await supabase.from("crm_leads").update({ stage_id: agendadoStage.id, updated_at: new Date().toISOString() }).eq("id", leadId);
-      }
-    }
+    const movedStageId = await moveLeadToScheduledStage();
 
     await supabase.from("messages").insert({
       lead_id: leadId, direction: "outbound", type: "system",
       content: `✅ Agendamento confirmado: ${format(date, "dd/MM/yyyy")} às ${time}`, status: "system",
     });
 
-    // Trigger after_appointment_confirmed automations
     const { data: leadForAuto } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
     if (leadForAuto) {
       executeStageAutomations({
-        leadId, stageId: leadForAuto.stage_id, leadPhone: leadForAuto.phone,
+        leadId,
+        stageId: movedStageId || leadForAuto.stage_id,
+        leadPhone: leadForAuto.phone,
         triggerTypes: ["after_appointment_confirmed"],
       }).catch(e => console.error("[Appointment] Automation error:", e));
     }
@@ -165,15 +226,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     });
     if (apptError) { toast.error("Erro ao criar agendamento"); setManualSaving(false); return; }
 
-    // Move to agendado stage
-    const { data: leadData } = await supabase.from("crm_leads").select("stage_id, pipeline_id").eq("id", leadId).single();
-    if (leadData) {
-      const { data: allStages } = await supabase.from("crm_stages").select("id, name, pipeline_id").eq("pipeline_id", leadData.pipeline_id).order("position");
-      const agendadoStage = allStages?.find(s => s.name.toLowerCase().includes("agendado") || s.name.toLowerCase().includes("agendamento"));
-      if (agendadoStage && agendadoStage.id !== leadData.stage_id) {
-        await supabase.from("crm_leads").update({ stage_id: agendadoStage.id, updated_at: new Date().toISOString() }).eq("id", leadId);
-      }
-    }
+    const movedStageId = await moveLeadToScheduledStage();
 
     const label = isRescheduleMode ? "Reagendamento" : "Agendamento";
     await supabase.from("messages").insert({
@@ -181,11 +234,12 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       content: `✅ ${label} confirmado: ${format(manualDate, "dd/MM/yyyy")} às ${manualTime}`, status: "system",
     });
 
-    // Trigger after_appointment_confirmed automations
     const { data: leadForAuto2 } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
     if (leadForAuto2) {
       executeStageAutomations({
-        leadId, stageId: leadForAuto2.stage_id, leadPhone: leadForAuto2.phone,
+        leadId,
+        stageId: movedStageId || leadForAuto2.stage_id,
+        leadPhone: leadForAuto2.phone,
         triggerTypes: ["after_appointment_confirmed"],
       }).catch(e => console.error("[Appointment] Automation error:", e));
     }

@@ -280,8 +280,8 @@ Deno.serve(async (req) => {
       }
 
       const now = Date.now();
-      // Brazil timezone offset (UTC-3) — times stored without timezone
       const TZ_OFFSET = "-03:00";
+      const CRON_GRACE_MS = 90 * 1000;
 
       // Check appointments
       if (scheduledType === "appointment" || scheduledType === "both") {
@@ -293,7 +293,6 @@ Deno.serve(async (req) => {
         console.log(`[BEFORE_SCHEDULED] Checking ${appointments?.length || 0} appointments, beforeMs=${beforeMs}, now=${new Date(now).toISOString()}`);
 
         for (const appt of appointments || []) {
-          // Check lead is in the automation's stage
           const { data: lead } = await supabase
             .from("crm_leads")
             .select("id, phone, stage_id")
@@ -305,13 +304,12 @@ Deno.serve(async (req) => {
           const timeStr = appt.scheduled_time || "00:00:00";
           const scheduledAt = new Date(`${appt.scheduled_date}T${timeStr}${TZ_OFFSET}`).getTime();
           const fireAt = scheduledAt - beforeMs;
+          const withinWindow = now >= fireAt && now <= scheduledAt + CRON_GRACE_MS;
 
-          console.log(`[BEFORE_SCHEDULED] Appt ${appt.id}: scheduledAt=${new Date(scheduledAt).toISOString()}, fireAt=${new Date(fireAt).toISOString()}, now=${new Date(now).toISOString()}, shouldFire=${fireAt <= now && scheduledAt > now}`);
+          console.log(`[BEFORE_SCHEDULED] Appt ${appt.id}: scheduledAt=${new Date(scheduledAt).toISOString()}, fireAt=${new Date(fireAt).toISOString()}, now=${new Date(now).toISOString()}, withinWindow=${withinWindow}`);
 
-          // Fire if we're within the window (fireAt <= now && scheduledAt > now)
-          if (fireAt > now || scheduledAt <= now) continue;
+          if (!withinWindow) continue;
 
-          // Check if already fired
           const { data: existing } = await supabase
             .from("crm_automation_queue")
             .select("id")
@@ -353,11 +351,11 @@ Deno.serve(async (req) => {
             .maybeSingle();
           if (!lead) continue;
 
-          // due_date already has timezone info from timestamptz
           const scheduledAt = new Date(task.due_date).getTime();
           const fireAt = scheduledAt - beforeMs;
+          const withinWindow = now >= fireAt && now <= scheduledAt + CRON_GRACE_MS;
 
-          if (fireAt > now || scheduledAt <= now) continue;
+          if (!withinWindow) continue;
 
           const { data: existing } = await supabase
             .from("crm_automation_queue")
