@@ -36,7 +36,8 @@ const getDocumentLabel = (message: ChatMessage) => {
 function replaceTemplatePlaceholders(text: string, leadName: string): string {
   if (!text) return text;
   // {{1}} is typically the lead name; additional placeholders get the same fallback
-  const fallbacks = [leadName || "cliente"];
+    const name = leadName || "cliente";
+    const fallbacks = [name];
   return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_match, index) => {
     const i = Number(index) - 1;
     return fallbacks[i] ?? leadName || "cliente";
