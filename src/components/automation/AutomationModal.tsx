@@ -40,15 +40,8 @@ const TRIGGER_DESCRIPTIONS: Record<string, string> = {
   on_create: "Dispara quando um novo lead é criado diretamente nesta etapa.",
   on_enter: "Dispara quando um lead existente é movido para esta etapa.",
   on_create_or_enter: "Dispara tanto na criação quanto na movimentação para esta etapa.",
-  lead_created_date: "Selecione um intervalo de datas para disparar a ação em leads criados nesse período.",
   no_response: "Dispara quando o lead não responde após um tempo definido.",
-  progressive_reengagement: "Crie múltiplas camadas de tentativa com tempos crescentes. Se o lead responder, a sequência para.",
-  lead_stale: "Dispara quando o lead fica parado sem nenhuma movimentação ou mensagem por N dias.",
-  time_window: "Define uma janela de horário e dias da semana. Fora dela, as automações ficam em fila.",
-  keyword_response: "Dispara quando o lead responde com palavras ou frases específicas que você definir.",
-  after_appointment_confirmed: "Inicia uma sequência automática após a confirmação de um agendamento (ex: lembretes e follow-up).",
-  no_show: "Dispara quando o paciente não comparece à consulta. Permite sequência de reagendamento.",
-  cold_lead_return: "Dispara quando um lead frio ou arquivado envia qualquer mensagem nova.",
+  before_scheduled: "Dispara X tempo antes de um agendamento ou tarefa marcada. Ideal para lembretes automáticos.",
 };
 
 function TemplateCombobox({
