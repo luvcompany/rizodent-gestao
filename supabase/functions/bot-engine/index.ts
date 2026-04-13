@@ -697,7 +697,7 @@ async function executeNode(
         let templateLanguage = data.templateLanguage || "pt_BR";
         const { data: tplRow } = await supabase
           .from("crm_whatsapp_templates")
-          .select("name, language, body_text, header_content")
+          .select("name, language, body_text, header_content, header_type")
           .eq("id", data.templateId)
           .single();
         if (tplRow) {
@@ -709,10 +709,32 @@ async function executeNode(
           return {};
         }
 
-        const templateComponents = [
-          buildTemplateComponent("header", tplRow?.header_content),
-          buildTemplateComponent("body", tplRow?.body_text || data.text),
-        ].filter(Boolean);
+        // Build template components — handle IMAGE/VIDEO/DOCUMENT headers specially
+        const headerType = (tplRow?.header_type || "").toUpperCase();
+        const templateComponents: any[] = [];
+
+        if (headerType === "IMAGE" && tplRow?.header_content) {
+          templateComponents.push({
+            type: "header",
+            parameters: [{ type: "image", image: { link: tplRow.header_content } }],
+          });
+        } else if (headerType === "VIDEO" && tplRow?.header_content) {
+          templateComponents.push({
+            type: "header",
+            parameters: [{ type: "video", video: { link: tplRow.header_content } }],
+          });
+        } else if (headerType === "DOCUMENT" && tplRow?.header_content) {
+          templateComponents.push({
+            type: "header",
+            parameters: [{ type: "document", document: { link: tplRow.header_content } }],
+          });
+        } else {
+          const headerComp = buildTemplateComponent("header", tplRow?.header_content);
+          if (headerComp) templateComponents.push(headerComp);
+        }
+
+        const bodyComp = buildTemplateComponent("body", tplRow?.body_text || data.text);
+        if (bodyComp) templateComponents.push(bodyComp);
 
         console.log(`[bot-engine] Sending template ${templateName} with ${templateComponents.length} component(s) for node ${node.id}`);
 
