@@ -439,16 +439,9 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
               <SelectContent>
                 <SelectItem value="on_create">Quando criado nesta etapa</SelectItem>
                 <SelectItem value="on_enter">Quando movido para esta etapa</SelectItem>
-                <SelectItem value="on_create_or_enter">Quando movido para ou criado nesta etapa</SelectItem>
-                <SelectItem value="lead_created_date">Leads de determinada data</SelectItem>
+                <SelectItem value="on_create_or_enter">Quando movido ou criado nesta etapa</SelectItem>
                 <SelectItem value="no_response">Leads sem resposta há X tempo</SelectItem>
-                <SelectItem value="progressive_reengagement">Reengajamento progressivo</SelectItem>
-                <SelectItem value="lead_stale">Lead parado há X dias</SelectItem>
-                <SelectItem value="time_window">Gatilho por janela de horário</SelectItem>
-                <SelectItem value="keyword_response">Palavra-chave na resposta</SelectItem>
-                <SelectItem value="after_appointment_confirmed">Após agendamento confirmado</SelectItem>
-                <SelectItem value="no_show">Lead não compareceu (no-show)</SelectItem>
-                <SelectItem value="cold_lead_return">Retorno de lead frio</SelectItem>
+                <SelectItem value="before_scheduled">Antes de agendamento/tarefa</SelectItem>
               </SelectContent>
             </Select>
             {TRIGGER_DESCRIPTIONS[autoForm.trigger_type] && (
