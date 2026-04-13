@@ -513,14 +513,27 @@ export default function CrmAutomacoes() {
 
                                 <div className="space-y-2">
                                   {stageAutos.map(auto => (
-                                    <div key={auto.id} className="bg-primary/10 border border-primary/20 rounded p-2 text-xs">
+                                    <div
+                                      key={auto.id}
+                                      className="bg-primary/10 border border-primary/20 rounded p-2 text-xs cursor-pointer hover:bg-primary/20 transition-colors"
+                                      onClick={() => {
+                                        setAutoForm({
+                                          stage_id: auto.stage_id,
+                                          trigger_type: auto.trigger_type,
+                                          action_type: auto.action_type,
+                                          action_config: auto.action_config || {},
+                                          editId: auto.id,
+                                        });
+                                        setAutoModalOpen(true);
+                                      }}
+                                    >
                                       <div className="flex items-center gap-1 text-primary mb-1">
                                         <Bot size={12} />
                                         <span className="font-medium">{triggerLabel(auto.trigger_type)}</span>
                                       </div>
                                       <div className="text-foreground">{actionLabel(auto.action_type)}</div>
                                       <div className="flex items-center gap-1 mt-1">
-                                        <button onClick={() => handleDeleteAutomation(auto.id)} className="text-destructive/70 hover:text-destructive">
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive">
                                           <Trash2 size={10} />
                                         </button>
                                       </div>
