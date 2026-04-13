@@ -32,9 +32,22 @@ const getDocumentLabel = (message: ChatMessage) => {
   }
 };
 
-function TemplateMessageBubble({ templateName }: { templateName: string }) {
+/** Replace {{1}}, {{2}}, etc. in template body with lead data */
+function replaceTemplatePlaceholders(text: string, leadName: string): string {
+  if (!text) return text;
+  // {{1}} is typically the lead name; additional placeholders get the same fallback
+    const name = leadName || "cliente";
+    const fallbacks = [name];
+  return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_match, index) => {
+    const i = Number(index) - 1;
+    return fallbacks[i] ?? name;
+  });
+}
+
+function TemplateMessageBubble({ templateName, leadName }: { templateName: string; leadName?: string }) {
   const [template, setTemplate] = useState<TemplateData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [headerSignedUrl, setHeaderSignedUrl] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -49,6 +62,15 @@ function TemplateMessageBubble({ templateName }: { templateName: string }) {
             ...data,
             buttons: data.buttons as TemplateData["buttons"],
           });
+          // If header is IMAGE, resolve signed URL
+          if (data.header_type === "IMAGE" && data.header_content) {
+            const storagePath = extractStoragePath(data.header_content);
+            if (storagePath) {
+              getSignedMediaUrl(data.header_content).then(setHeaderSignedUrl);
+            } else {
+              setHeaderSignedUrl(data.header_content);
+            }
+          }
         }
         setLoading(false);
       });
@@ -62,20 +84,34 @@ function TemplateMessageBubble({ templateName }: { templateName: string }) {
     return <p className="text-sm whitespace-pre-wrap">📋 Template: {cleanTemplateName(templateName)}</p>;
   }
 
+  const resolvedBodyText = template.body_text
+    ? replaceTemplatePlaceholders(template.body_text, leadName || "cliente")
+    : null;
+
   return (
     <div className="min-w-[220px]">
       {template.header_type && template.header_content && (
         <div className="mb-1">
           {template.header_type === "IMAGE" ? (
-            <div className="bg-muted rounded-t-lg h-[120px] flex items-center justify-center">
-              <Image size={32} className="text-muted-foreground" />
-            </div>
+            headerSignedUrl ? (
+              <img
+                src={headerSignedUrl}
+                alt="Template header"
+                className="rounded-t-lg max-h-[160px] w-full object-cover"
+              />
+            ) : (
+              <div className="bg-muted rounded-t-lg h-[120px] flex items-center justify-center">
+                <Image size={32} className="text-muted-foreground" />
+              </div>
+            )
           ) : (
             <p className="text-sm font-bold text-foreground">{template.header_content}</p>
           )}
         </div>
       )}
-      <p className="text-sm whitespace-pre-wrap text-foreground">{template.body_text}</p>
+      {resolvedBodyText && (
+        <p className="text-sm whitespace-pre-wrap text-foreground">{resolvedBodyText}</p>
+      )}
       {template.footer_text && (
         <p className="text-[11px] text-muted-foreground mt-1">{template.footer_text}</p>
       )}
@@ -109,12 +145,10 @@ function useSignedUrl(mediaUrl: string | null): string | null {
       return;
     }
 
-    // If it's a storage URL (public or signed), get a fresh signed URL
     const storagePath = extractStoragePath(mediaUrl);
     if (storagePath) {
       getSignedMediaUrl(mediaUrl).then(setSignedUrl);
     } else {
-      // External URL, use as-is
       setSignedUrl(mediaUrl);
     }
   }, [mediaUrl]);
@@ -122,7 +156,7 @@ function useSignedUrl(mediaUrl: string | null): string | null {
   return signedUrl;
 }
 
-export default function ChatMessageContent({ message, onMediaClick }: { message: ChatMessage; onMediaClick?: (url: string, type: "image" | "video") => void }) {
+export default function ChatMessageContent({ message, onMediaClick, leadName }: { message: ChatMessage; onMediaClick?: (url: string, type: "image" | "video") => void; leadName?: string }) {
   const resolvedUrl = useSignedUrl(message.media_url);
   const hasResolvedMedia = isMediaUrl(resolvedUrl);
 
@@ -132,7 +166,7 @@ export default function ChatMessageContent({ message, onMediaClick }: { message:
       ? message.content?.replace("📋 Template: ", "").trim() || ""
       : message.content?.replace("📋 Template: ", "").trim() || "";
     if (name) {
-      return <TemplateMessageBubble templateName={name} />;
+      return <TemplateMessageBubble templateName={name} leadName={leadName} />;
     }
   }
 

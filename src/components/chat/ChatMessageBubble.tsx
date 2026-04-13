@@ -129,7 +129,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                 </div>
               );
             })()}
-            <ChatMessageContent message={msg} onMediaClick={onMediaClick} />
+            <ChatMessageContent message={msg} onMediaClick={onMediaClick} leadName={leadName} />
             <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
               <span className="text-[10px] text-muted-foreground">
                 {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
