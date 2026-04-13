@@ -506,13 +506,28 @@ async function executeNode(
 
     case "send_text": {
       // If a template is selected, send as official WhatsApp template
-      if (data.templateId && data.templateName && lead.phone) {
-        const templateLanguage = data.templateLanguage || "pt_BR";
+      if (data.templateId && lead.phone) {
+        // Always fetch the real template name from the database to avoid suffix mismatch
+        let templateName = data.templateName;
+        let templateLanguage = data.templateLanguage || "pt_BR";
+        const { data: tplRow } = await supabase
+          .from("crm_whatsapp_templates")
+          .select("name, language")
+          .eq("id", data.templateId)
+          .single();
+        if (tplRow) {
+          templateName = tplRow.name;
+          templateLanguage = tplRow.language || templateLanguage;
+        }
+        if (!templateName) {
+          console.error(`[bot-engine] Template ${data.templateId} not found in DB`);
+          return {};
+        }
         await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
           lead_id: lead.id,
           to: lead.phone,
           type: "template",
-          template_name: data.templateName,
+          template_name: templateName,
           template_language: templateLanguage,
         });
         // If template has buttons, wait for reply
