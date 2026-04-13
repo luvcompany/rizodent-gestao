@@ -98,6 +98,20 @@ function calculateTimeoutAt(nodeData: any): string | null {
   return new Date(Date.now() + totalMs).toISOString();
 }
 
+function getTemplatePlaceholderIndexes(content: string | null | undefined): number[] {
+  if (!content) return [];
+
+  const indexes = new Set<number>();
+  for (const match of content.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value > 0) {
+      indexes.add(value);
+    }
+  }
+
+  return [...indexes].sort((a, b) => a - b);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -226,7 +240,9 @@ Deno.serve(async (req) => {
 
       // Find the timeout edge from the current node
       const timeoutEdge = edges.find(
-        (e: any) => e.source === execution.current_node_id && e.sourceHandle === "timeout"
+        (e: any) =>
+          e.source === execution.current_node_id &&
+          (e.sourceHandle === "timeout" || e.sourceHandle === "no-response")
       );
 
       if (!timeoutEdge) {
