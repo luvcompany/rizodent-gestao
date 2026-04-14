@@ -342,7 +342,7 @@ Deno.serve(async (req) => {
       let resolvedComponents = Array.isArray(template_components) ? [...template_components] : [];
 
       if (template_name) {
-        const [{ data: tplRow }, { data: tplLead }] = await Promise.all([
+        const [{ data: tplRow }, { data: tplLead }, { data: nextAppt }] = await Promise.all([
           supabase
             .from("crm_whatsapp_templates")
             .select("body_text, header_type, header_content")
@@ -350,8 +350,16 @@ Deno.serve(async (req) => {
             .maybeSingle(),
           supabase
             .from("crm_leads")
-            .select("name, phone, source")
+            .select("name, phone, source, servico_interesse")
             .eq("id", lead_id)
+            .maybeSingle(),
+          supabase
+            .from("crm_appointments")
+            .select("scheduled_date, scheduled_time")
+            .eq("lead_id", lead_id)
+            .in("status", ["confirmed", "pending"])
+            .order("scheduled_date", { ascending: true })
+            .limit(1)
             .maybeSingle(),
         ]);
 
