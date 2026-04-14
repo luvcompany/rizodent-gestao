@@ -34,6 +34,7 @@ type Appointment = {
   status: string;
   notes: string | null;
   lead_name?: string;
+  is_rescheduled?: boolean;
 };
 
 const typeLabels: Record<string, string> = {
@@ -96,11 +97,7 @@ export default function CrmDashboard() {
   [appointments, selectedDate]);
 
   const rescheduledCount = useMemo(() => {
-    const leadAppointmentCounts = new Map<string, number>();
-    appointments.forEach(a => {
-      leadAppointmentCounts.set(a.lead_id, (leadAppointmentCounts.get(a.lead_id) || 0) + 1);
-    });
-    return Array.from(leadAppointmentCounts.values()).filter(c => c > 1).length;
+    return appointments.filter(a => (a as any).is_rescheduled === true).length;
   }, [appointments]);
 
   const upcomingAppointments = useMemo(() => {
@@ -295,26 +292,33 @@ export default function CrmDashboard() {
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {dayAppointments.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento para este dia</p>}
-            {dayAppointments.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => (
-              <div key={appt.id} className="flex items-center gap-3 p-3 rounded-lg bg-green-500/5 border border-green-500/20">
-                <div className="p-2 rounded-lg bg-green-500/10">
-                  <CalendarDays size={16} className="text-green-600" />
+            {dayAppointments.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => {
+              const isReschedule = (appt as any).is_rescheduled === true;
+              return (
+              <div key={appt.id} className={cn(
+                "flex items-center gap-3 p-3 rounded-lg border",
+                isReschedule ? "bg-purple-500/5 border-purple-500/20" : "bg-green-500/5 border-green-500/20"
+              )}>
+                <div className={cn("p-2 rounded-lg", isReschedule ? "bg-purple-500/10" : "bg-green-500/10")}>
+                  <CalendarDays size={16} className={isReschedule ? "text-purple-600" : "text-green-600"} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{appt.lead_name}</p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                     <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
+                    {isReschedule && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-purple-500/10 text-purple-600">Reagendado</Badge>}
                     {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
                   </div>
                 </div>
-                <Badge variant="outline" className="text-[10px] border-green-500 text-green-600">
+                <Badge variant="outline" className={cn("text-[10px]", isReschedule ? "border-purple-500 text-purple-600" : "border-green-500 text-green-600")}>
                   {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : appt.status === "contracted" ? "Contratou" : appt.status === "not_contracted" ? "Não contratou" : "Pendente"}
                 </Badge>
                 <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
                   Ver
                 </Button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 
