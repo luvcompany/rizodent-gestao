@@ -36,7 +36,7 @@ import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck
 } from "lucide-react";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { isWithinInterval } from "date-fns";
@@ -521,7 +521,7 @@ export default function CrmConversas() {
                           isActive
                             ? "bg-primary/15 border-l-2 border-l-primary"
                             : isInbound
-                              ? "bg-primary/5 hover:bg-primary/10"
+                              ? "bg-orange-500/15 dark:bg-orange-400/20 border-l-[3px] border-l-orange-500 dark:border-l-orange-400 hover:bg-orange-500/25 dark:hover:bg-orange-400/30"
                               : "hover:bg-secondary/50"
                         }`}
                       >
@@ -601,6 +601,22 @@ export default function CrmConversas() {
                     )}
                   </div>
                 </div>
+                {selectedLead.last_direction === "inbound" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", selectedLead.id);
+                      setLeads(prev => prev.map(l => l.id === selectedLead.id ? { ...l, last_direction: "outbound", last_outbound_at: new Date().toISOString() } as any : l));
+                      setSelectedLead(prev => prev ? { ...prev, last_direction: "outbound" } : prev);
+                      toast.success("Conversa marcada como lida");
+                    }}
+                  >
+                    <CheckCheck size={14} /> Marcar lida
+                  </Button>
+                )}
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRightPanelVisible(!rightPanelVisible)}>
                   {rightPanelVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>
