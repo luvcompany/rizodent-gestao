@@ -78,9 +78,10 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     const { data: leadData } = await supabase.from("crm_leads").select("stage_id").eq("id", leadId).single();
     if (leadData?.stage_id) {
       const { data: stageData } = await supabase.from("crm_stages").select("name").eq("id", leadData.stage_id).single();
+      const sn = stageData?.name?.toLowerCase() || "";
       setIsRescheduleMode(
-        stageData?.name?.toLowerCase().includes("agendado") ||
-        stageData?.name?.toLowerCase().includes("reagend") || false
+        sn.includes("não compareceu") ||
+        sn.includes("reagend") || false
       );
     }
   }, [leadId]);
