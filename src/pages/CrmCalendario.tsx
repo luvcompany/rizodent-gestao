@@ -254,13 +254,30 @@ export default function CrmCalendario() {
 
   const dayTasks = selectedDay ? tasksByDay.get(format(selectedDay, "yyyy-MM-dd")) || [] : [];
 
-  // Appointment week days
+  // Appointment week days (Mon-Sat, no Sunday)
   const apptWeekDays = useMemo(() => {
-    return eachDayOfInterval({
+    const all = eachDayOfInterval({
       start: startOfWeek(currentDate, { weekStartsOn: 1 }),
       end: endOfWeek(currentDate, { weekStartsOn: 1 }),
     });
+    return all.filter(d => d.getDay() !== 0); // Exclude Sunday
   }, [currentDate]);
+
+  // Get unique cities from appointments for the matrix
+  const apptCities = useMemo(() => {
+    const cities = new Set<string>();
+    appointments.forEach(a => {
+      cities.add(a.lead_cidade || "Sem cidade");
+    });
+    const sorted = [...cities].sort();
+    // Put "Sem cidade" at the end
+    const idx = sorted.indexOf("Sem cidade");
+    if (idx > -1) {
+      sorted.splice(idx, 1);
+      sorted.push("Sem cidade");
+    }
+    return sorted.length > 0 ? sorted : ["Sem cidade"];
+  }, [appointments]);
 
   return (
     <div className="flex flex-col h-full -m-6 p-4" style={{ height: "calc(100vh - 4rem)" }}>
