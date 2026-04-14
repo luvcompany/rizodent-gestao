@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       stage_id: stageId,
       tags: tags || [],
       source: source || "webhook",
-      ...(assignedTo ? { assigned_to: assignedTo } : {}),
+      assigned_to: assignedTo,
     }).select("id").single();
 
     if (error) {
