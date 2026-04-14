@@ -400,6 +400,26 @@ export function useChatConversation(leadId: string | null | undefined) {
     }
   }, [leadId]);
 
+  // ─── Optimistic message handling ───
+  const handleOptimisticMessage = useCallback((optimisticMsg: any) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === optimisticMsg.id)) return prev;
+      const updated = [...prev, optimisticMsg];
+      const currentLeadId = activeLeadRef.current;
+      if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
+      return updated;
+    });
+  }, []);
+
+  const handleMessageError = useCallback((tempId: string) => {
+    setMessages((prev) => {
+      const updated = prev.map((m) => m.id === tempId ? { ...m, status: "error" } : m);
+      const currentLeadId = activeLeadRef.current;
+      if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
+      return updated;
+    });
+  }, []);
+
   // ─── Templates ───
   const loadTemplates = useCallback(async () => {
     const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED").order("created_at", { ascending: false });
