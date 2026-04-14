@@ -367,7 +367,15 @@ Deno.serve(async (req) => {
           const headerType = (tplRow.header_type || "").toUpperCase();
           const bodyText = tplRow.body_text || "";
           const placeholderIndexes = getTemplatePlaceholderIndexes(bodyText);
-          const fallbackValues = buildTemplateFallbacks(tplLead || null);
+
+          // Format appointment date for template
+          let formattedApptDate: string | null = null;
+          if (nextAppt?.scheduled_date) {
+            const [y, m, d] = nextAppt.scheduled_date.split("-");
+            const timePart = nextAppt.scheduled_time ? ` às ${nextAppt.scheduled_time.slice(0, 5)}` : "";
+            formattedApptDate = `${d}/${m}/${y}${timePart}`;
+          }
+          const fallbackValues = buildTemplateFallbacks(tplLead || null, formattedApptDate);
 
           if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType) && tplRow.header_content) {
             resolvedComponents = resolvedComponents.filter((component: any) => String(component?.type || "").toLowerCase() !== "header");
