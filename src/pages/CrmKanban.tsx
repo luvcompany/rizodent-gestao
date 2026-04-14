@@ -104,7 +104,7 @@ export default function CrmKanban() {
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
     setLoading(true);
     const [pipelinesRes, profilesRes] = await Promise.all([
-      supabase.from("crm_pipelines").select("*").order("created_at"),
+      supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
       supabase.from("profiles").select("id, nome"),
     ]);
     const pList = (pipelinesRes.data as Pipeline[]) || [];
@@ -116,13 +116,12 @@ export default function CrmKanban() {
     if (p) {
       setPipeline(p);
       const [stagesRes, leadsRes, fqRes] = await Promise.all([
-        supabase.from("crm_stages").select("*").eq("pipeline_id", p.id).order("position"),
-        supabase.from("crm_leads").select("*").eq("pipeline_id", p.id).order("position"),
+        supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
+        supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to").eq("pipeline_id", p.id).order("position"),
         supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setLeads((leadsRes.data as Lead[]) || []);
-      // Map lead_id -> status for follow-up indicator
       const fqMap: Record<string, string> = {};
       (fqRes.data || []).forEach((fq: any) => { fqMap[fq.lead_id] = fq.status; });
       setFollowUpLeads(fqMap);
