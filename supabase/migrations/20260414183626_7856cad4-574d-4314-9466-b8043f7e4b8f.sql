@@ -1,0 +1,1 @@
+ALTER TABLE public.crm_appointments ADD COLUMN IF NOT EXISTS is_rescheduled boolean NOT NULL DEFAULT false;
