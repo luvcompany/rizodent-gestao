@@ -192,7 +192,7 @@ export default function CrmConversas() {
       (async () => {
         const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
           supabase.from("crm_leads")
-            .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio")
+            .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse")
             .order("last_message_at", { ascending: false, nullsFirst: false }),
           supabase.from("profiles").select("id, nome"),
           supabase.from("crm_pipelines").select("id, name").order("created_at"),
@@ -214,7 +214,7 @@ export default function CrmConversas() {
     const fetchLeads = async () => {
       const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
         supabase.from("crm_leads")
-          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio")
+          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse")
           .order("last_message_at", { ascending: false, nullsFirst: false }),
         supabase.from("profiles").select("id, nome"),
         supabase.from("crm_pipelines").select("id, name").order("created_at"),
