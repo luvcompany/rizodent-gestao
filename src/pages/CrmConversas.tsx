@@ -405,7 +405,12 @@ export default function CrmConversas() {
       if (filters.status === "replied" && l.last_direction !== "outbound") return false;
       if (filters.status === "no_reply" && !!l.last_direction) return false;
       if (filters.tags.length && !filters.tags.some((t) => l.tags?.includes(t))) return false;
-      if (filters.source && l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
+      if (filters.source) {
+        if (filters.source === "anuncio") {
+          const s = (l.source || "").toLowerCase();
+          if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
+        } else if (l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
+      }
       // Special URL filters
       if (urlGhost && ghostLeadIds && ghostLeadIds.has(l.id)) return false; // ghost = NOT in inbound set
       if (urlAppointmentStatus && appointmentLeadIds && !appointmentLeadIds.has(l.id)) return false;
