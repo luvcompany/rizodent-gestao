@@ -103,32 +103,52 @@ export default function CrmKanban() {
 
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
     setLoading(true);
-    const [pipelinesRes, profilesRes] = await Promise.all([
-      supabase.from("crm_pipelines").select("*").order("created_at"),
+    // Fetch everything in a single parallel round when we know the pipeline
+    const targetPipelineId = selectedPipelineId || pipeline?.id;
+    
+    const [pipelinesRes, profilesRes, stagesRes, leadsRes, fqRes] = await Promise.all([
+      supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
       supabase.from("profiles").select("id, nome"),
+      targetPipelineId
+        ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
+        : Promise.resolve({ data: null }),
+      targetPipelineId
+        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to").eq("pipeline_id", targetPipelineId).order("position")
+        : Promise.resolve({ data: null }),
+      supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
+    
     const pList = (pipelinesRes.data as Pipeline[]) || [];
     setPipelines(pList);
     setProfiles((profilesRes.data as { id: string; nome: string }[]) || []);
-    const p = selectedPipelineId
-      ? pList.find(pp => pp.id === selectedPipelineId) || pList[0]
+    
+    const p = targetPipelineId
+      ? pList.find(pp => pp.id === targetPipelineId) || pList[0]
       : pList[0];
+    
     if (p) {
       setPipeline(p);
-      const [stagesRes, leadsRes, fqRes] = await Promise.all([
-        supabase.from("crm_stages").select("*").eq("pipeline_id", p.id).order("position"),
-        supabase.from("crm_leads").select("*").eq("pipeline_id", p.id).order("position"),
-        supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
-      ]);
-      setStages((stagesRes.data as Stage[]) || []);
-      setLeads((leadsRes.data as Lead[]) || []);
-      // Map lead_id -> status for follow-up indicator
+      
+      // If we already fetched for the right pipeline, use the data
+      if (targetPipelineId === p.id && stagesRes.data && leadsRes.data) {
+        setStages((stagesRes.data as Stage[]) || []);
+        setLeads((leadsRes.data as Lead[]) || []);
+      } else {
+        // Pipeline changed, need a second fetch for stages/leads only
+        const [s2, l2] = await Promise.all([
+          supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
+          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to").eq("pipeline_id", p.id).order("position"),
+        ]);
+        setStages((s2.data as Stage[]) || []);
+        setLeads((l2.data as Lead[]) || []);
+      }
+      
       const fqMap: Record<string, string> = {};
       (fqRes.data || []).forEach((fq: any) => { fqMap[fq.lead_id] = fq.status; });
       setFollowUpLeads(fqMap);
     }
     setLoading(false);
-  }, []);
+  }, [pipeline?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -362,10 +382,24 @@ export default function CrmKanban() {
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  if (loading) {
+  if (loading && leads.length === 0) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-muted-foreground">Carregando CRM...</div>
+      <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}>
+        <div className="bg-card border-b border-border px-6 py-3 flex items-center gap-4 h-14">
+          <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+          <div className="h-8 w-24 bg-muted animate-pulse rounded ml-auto" />
+        </div>
+        <div className="bg-card border-b border-border px-6 py-2 flex items-center gap-6 h-10">
+          {[1,2,3,4,5].map(i => <div key={i} className="h-4 w-28 bg-muted animate-pulse rounded" />)}
+        </div>
+        <div className="flex gap-3 p-4 flex-1">
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className="w-[280px] flex-shrink-0 bg-secondary/50 rounded-lg p-3 space-y-2">
+              <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+              {[1,2,3].map(j => <div key={j} className="h-16 bg-muted animate-pulse rounded" />)}
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
