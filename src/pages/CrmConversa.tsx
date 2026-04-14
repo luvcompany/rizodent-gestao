@@ -240,17 +240,6 @@ export default function CrmConversa() {
               )}
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
-            onClick={async () => {
-              await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
-              toast.success("Conversa marcada como lida");
-            }}
-          >
-            <CheckCheck size={14} /> Marcar lida
-          </Button>
         </div>
 
         {/* Notes Bar */}
