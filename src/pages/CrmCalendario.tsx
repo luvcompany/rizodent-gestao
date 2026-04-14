@@ -44,6 +44,7 @@ type Appointment = {
   status: string;
   notes: string | null;
   lead_name?: string;
+  lead_cidade?: string | null;
 };
 
 type Stage = { id: string; name: string; color: string; pipeline_id: string };
@@ -106,18 +107,23 @@ export default function CrmCalendario() {
     const [tasksRes, profilesRes, leadsRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("profiles").select("id, nome"),
-      supabase.from("crm_leads").select("id, name"),
+      supabase.from("crm_leads").select("id, name, cidade"),
       supabase.from("crm_appointments").select("*").order("scheduled_date"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
     ]);
     const rawTasks = (tasksRes.data || []) as Task[];
-    const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
+    const leadsData = ((leadsRes.data || []) as any[]);
+    const nameMap = new Map(leadsData.map((l) => [l.id, l.name]));
+    const cidadeMap = new Map(leadsData.map((l) => [l.id, l.cidade || null]));
     rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
     setTasks(rawTasks);
     setProfiles((profilesRes.data as Profile[]) || []);
     const rawAppts = (apptsRes.data || []) as Appointment[];
-    rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
+    rawAppts.forEach((a) => {
+      a.lead_name = nameMap.get(a.lead_id) || "Lead";
+      a.lead_cidade = cidadeMap.get(a.lead_id) || null;
+    });
     setAppointments(rawAppts);
     setCrmStages((stagesRes.data as Stage[]) || []);
     setCrmPipelines((pipelinesRes.data as Pipeline[]) || []);
@@ -248,13 +254,30 @@ export default function CrmCalendario() {
 
   const dayTasks = selectedDay ? tasksByDay.get(format(selectedDay, "yyyy-MM-dd")) || [] : [];
 
-  // Appointment week days
+  // Appointment week days (Mon-Sat, no Sunday)
   const apptWeekDays = useMemo(() => {
-    return eachDayOfInterval({
+    const all = eachDayOfInterval({
       start: startOfWeek(currentDate, { weekStartsOn: 1 }),
       end: endOfWeek(currentDate, { weekStartsOn: 1 }),
     });
+    return all.filter(d => d.getDay() !== 0); // Exclude Sunday
   }, [currentDate]);
+
+  // Get unique cities from appointments for the matrix
+  const apptCities = useMemo(() => {
+    const cities = new Set<string>();
+    appointments.forEach(a => {
+      cities.add(a.lead_cidade || "Sem cidade");
+    });
+    const sorted = [...cities].sort();
+    // Put "Sem cidade" at the end
+    const idx = sorted.indexOf("Sem cidade");
+    if (idx > -1) {
+      sorted.splice(idx, 1);
+      sorted.push("Sem cidade");
+    }
+    return sorted.length > 0 ? sorted : ["Sem cidade"];
+  }, [appointments]);
 
   return (
     <div className="flex flex-col h-full -m-6 p-4" style={{ height: "calc(100vh - 4rem)" }}>
@@ -516,40 +539,65 @@ export default function CrmCalendario() {
               }).length} agendamentos
             </span>
           </div>
-          <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden flex-1">
-            {apptWeekDays.map(day => {
-              const dayKey = format(day, "yyyy-MM-dd");
-              const dayAppts = appointments.filter(a => a.scheduled_date === dayKey);
-              return (
-                <div key={dayKey} className={cn("bg-card p-2 min-h-[200px] flex flex-col", isToday(day) && "ring-1 ring-primary/50")}>
-                  <div className={cn("text-xs font-medium mb-2 text-center", isToday(day) ? "text-primary" : "text-foreground")}>
-                    <div>{format(day, "EEE", { locale: ptBR })}</div>
-                    <div className={cn("text-sm font-bold", isToday(day) && "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center mx-auto")}>{format(day, "d")}</div>
-                  </div>
-                  <div className="space-y-1 flex-1 overflow-y-auto">
-                    {dayAppts.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => (
-                      <div
-                        key={appt.id}
-                        className={cn(
-                          "text-[10px] px-1.5 py-1.5 rounded transition-colors group relative",
-                          appt.status === "confirmed" ? "bg-green-500/15 text-green-700" :
-                          appt.status === "cancelled" ? "bg-destructive/10 text-destructive" :
-                          "bg-primary/10 text-foreground"
-                        )}
-                      >
-                        <div className="font-medium truncate cursor-pointer hover:underline" onClick={() => {
-                          setSelectedAppointment(appt);
-                          setApptResultStatus(appt.status);
-                          setApptMoveStageId("");
-                          setApptMovePipelineId("");
-                        }}>{appt.lead_name}</div>
-                      </div>
-                    ))}
-                    {dayAppts.length === 0 && <div className="text-[10px] text-muted-foreground text-center py-4">—</div>}
-                  </div>
+          {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
+          <div className="flex-1 overflow-auto rounded-lg border border-border">
+            <div className="grid min-w-[700px]" style={{ gridTemplateColumns: `140px repeat(${apptWeekDays.length}, 1fr)` }}>
+              {/* Header row: empty corner + day headers */}
+              <div className="bg-secondary/70 border-b border-r border-border p-2 text-xs font-semibold text-muted-foreground uppercase sticky top-0 z-10">
+                Cidade
+              </div>
+              {apptWeekDays.map(day => (
+                <div key={day.toISOString()} className={cn("bg-secondary/70 border-b border-border p-2 text-center sticky top-0 z-10", isToday(day) && "bg-primary/10")}>
+                  <div className="text-xs font-medium text-muted-foreground">{format(day, "EEE", { locale: ptBR })}</div>
+                  <div className={cn("text-sm font-bold", isToday(day) ? "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center mx-auto" : "text-foreground")}>{format(day, "d")}</div>
                 </div>
-              );
-            })}
+              ))}
+
+              {/* Data rows: one per city */}
+              {apptCities.map(city => (
+                <div key={city} className="contents">
+                  {/* City label */}
+                  <div className="bg-card border-b border-r border-border p-2 flex items-start">
+                    <span className="text-xs font-semibold text-foreground">{city}</span>
+                  </div>
+                  {/* Cells for each day */}
+                  {apptWeekDays.map(day => {
+                    const dayKey = format(day, "yyyy-MM-dd");
+                    const cellAppts = appointments.filter(a =>
+                      a.scheduled_date === dayKey &&
+                      (a.lead_cidade || "Sem cidade") === city
+                    ).sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+
+                    return (
+                      <div key={`${city}-${dayKey}`} className={cn("bg-card border-b border-border p-1.5 min-h-[80px]", isToday(day) && "bg-primary/5")}>
+                        <div className="space-y-1">
+                          {cellAppts.map(appt => (
+                            <div
+                              key={appt.id}
+                              className={cn(
+                                "text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm",
+                                appt.status === "confirmed" ? "bg-green-500/15 text-green-700" :
+                                appt.status === "cancelled" ? "bg-destructive/10 text-destructive" :
+                                "bg-primary/10 text-foreground"
+                              )}
+                              onClick={() => {
+                                setSelectedAppointment(appt);
+                                setApptResultStatus(appt.status);
+                                setApptMoveStageId("");
+                                setApptMovePipelineId("");
+                              }}
+                            >
+                              <div className="font-medium truncate">{appt.lead_name}</div>
+                              <div className="text-muted-foreground">{appt.scheduled_time?.slice(0, 5)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

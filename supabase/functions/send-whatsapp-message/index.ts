@@ -44,9 +44,14 @@ const getTemplatePlaceholderIndexes = (content: string | null | undefined): numb
   return [...indexes].sort((a, b) => a - b);
 };
 
-const buildTemplateFallbacks = (lead: { name?: string | null; phone?: string | null; source?: string | null } | null) => {
+const buildTemplateFallbacks = (
+  lead: { name?: string | null; phone?: string | null; source?: string | null; servico_interesse?: string | null } | null,
+  appointmentDate?: string | null,
+) => {
   const safeLeadName = lead?.name?.trim() || "cliente";
-  return [safeLeadName, lead?.phone?.trim() || safeLeadName, lead?.source?.trim() || safeLeadName];
+  const safeDate = appointmentDate || "data a confirmar";
+  const safeService = lead?.servico_interesse?.trim() || "consulta";
+  return [safeLeadName, safeDate, safeService, lead?.phone?.trim() || safeLeadName, lead?.source?.trim() || safeLeadName];
 };
 
 const buildMediaHeaderComponent = (headerType: string, link: string) => {
@@ -337,7 +342,7 @@ Deno.serve(async (req) => {
       let resolvedComponents = Array.isArray(template_components) ? [...template_components] : [];
 
       if (template_name) {
-        const [{ data: tplRow }, { data: tplLead }] = await Promise.all([
+        const [{ data: tplRow }, { data: tplLead }, { data: nextAppt }] = await Promise.all([
           supabase
             .from("crm_whatsapp_templates")
             .select("body_text, header_type, header_content")
@@ -345,8 +350,16 @@ Deno.serve(async (req) => {
             .maybeSingle(),
           supabase
             .from("crm_leads")
-            .select("name, phone, source")
+            .select("name, phone, source, servico_interesse")
             .eq("id", lead_id)
+            .maybeSingle(),
+          supabase
+            .from("crm_appointments")
+            .select("scheduled_date, scheduled_time")
+            .eq("lead_id", lead_id)
+            .in("status", ["confirmed", "pending"])
+            .order("scheduled_date", { ascending: true })
+            .limit(1)
             .maybeSingle(),
         ]);
 
@@ -354,7 +367,15 @@ Deno.serve(async (req) => {
           const headerType = (tplRow.header_type || "").toUpperCase();
           const bodyText = tplRow.body_text || "";
           const placeholderIndexes = getTemplatePlaceholderIndexes(bodyText);
-          const fallbackValues = buildTemplateFallbacks(tplLead || null);
+
+          // Format appointment date for template
+          let formattedApptDate: string | null = null;
+          if (nextAppt?.scheduled_date) {
+            const [y, m, d] = nextAppt.scheduled_date.split("-");
+            const timePart = nextAppt.scheduled_time ? ` às ${nextAppt.scheduled_time.slice(0, 5)}` : "";
+            formattedApptDate = `${d}/${m}/${y}${timePart}`;
+          }
+          const fallbackValues = buildTemplateFallbacks(tplLead || null, formattedApptDate);
 
           if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType) && tplRow.header_content) {
             resolvedComponents = resolvedComponents.filter((component: any) => String(component?.type || "").toLowerCase() !== "header");

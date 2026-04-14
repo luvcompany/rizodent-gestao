@@ -820,6 +820,7 @@ export type Database = {
           ad_id: string | null
           assigned_to: string | null
           automation_paused: boolean | null
+          cidade: string | null
           created_at: string
           descricao_anuncio: string | null
           first_inbound_at: string | null
@@ -840,6 +841,7 @@ export type Database = {
           pipeline_id: string
           position: number
           score: number
+          servico_interesse: string | null
           source: string | null
           stage_id: string
           tags: string[] | null
@@ -854,6 +856,7 @@ export type Database = {
           ad_id?: string | null
           assigned_to?: string | null
           automation_paused?: boolean | null
+          cidade?: string | null
           created_at?: string
           descricao_anuncio?: string | null
           first_inbound_at?: string | null
@@ -874,6 +877,7 @@ export type Database = {
           pipeline_id: string
           position?: number
           score?: number
+          servico_interesse?: string | null
           source?: string | null
           stage_id: string
           tags?: string[] | null
@@ -888,6 +892,7 @@ export type Database = {
           ad_id?: string | null
           assigned_to?: string | null
           automation_paused?: boolean | null
+          cidade?: string | null
           created_at?: string
           descricao_anuncio?: string | null
           first_inbound_at?: string | null
@@ -908,6 +913,7 @@ export type Database = {
           pipeline_id?: string
           position?: number
           score?: number
+          servico_interesse?: string | null
           source?: string | null
           stage_id?: string
           tags?: string[] | null
