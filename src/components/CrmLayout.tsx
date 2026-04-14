@@ -8,6 +8,7 @@ import {
 import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
+import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
 
 type NavItem = {
   to: string;
@@ -237,6 +238,7 @@ const CrmLayout = () => {
         </header>
 
         <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-6">
+          <TaskReminderWatcher />
           <Outlet />
         </main>
       </div>
