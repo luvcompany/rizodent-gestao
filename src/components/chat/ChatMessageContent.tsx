@@ -33,10 +33,39 @@ const getDocumentLabel = (message: ChatMessage) => {
   }
 };
 
-function replaceTemplatePlaceholders(text: string, leadName: string): string {
+const formatAppointmentLabel = (scheduledDate?: string | null, scheduledTime?: string | null) => {
+  if (!scheduledDate) return "data e horário a confirmar";
+
+  const [year, month, day] = scheduledDate.split("-");
+  const timeLabel = scheduledTime ? ` às ${scheduledTime.slice(0, 5)}` : "";
+  return `${day}/${month}/${year}${timeLabel}`;
+};
+
+function replaceTemplatePlaceholders(
+  text: string,
+  values: {
+    leadName: string;
+    appointmentLabel?: string | null;
+    serviceLabel?: string | null;
+  },
+): string {
   if (!text) return text;
-  const safeLeadName = leadName.trim() || "cliente";
-  return text.replace(/\{\{\s*(\d+)\s*\}\}/g, () => safeLeadName);
+
+  const safeLeadName = values.leadName.trim() || "cliente";
+  const safeAppointmentLabel = values.appointmentLabel?.trim() || "data e horário a confirmar";
+  const safeServiceLabel = values.serviceLabel?.trim() || "consulta";
+
+  return text
+    .replace(/\{\{\s*1\s*\}\}/g, safeLeadName)
+    .replace(/\{\{\s*2\s*\}\}/g, safeAppointmentLabel)
+    .replace(/\{\{\s*3\s*\}\}/g, safeServiceLabel)
+    .replace(/\[primeiro nome\]/gi, safeLeadName)
+    .replace(/\[nome\]/gi, safeLeadName)
+    .replace(/\[data e horário\]/gi, safeAppointmentLabel)
+    .replace(/\[data e horario\]/gi, safeAppointmentLabel)
+    .replace(/\[data\]/gi, safeAppointmentLabel)
+    .replace(/\[serviço\]/gi, safeServiceLabel)
+    .replace(/\[servico\]/gi, safeServiceLabel);
 }
 
 function TemplateMessageBubble({
@@ -52,24 +81,52 @@ function TemplateMessageBubble({
   const [loading, setLoading] = useState(true);
   const [headerSignedUrl, setHeaderSignedUrl] = useState<string | null>(null);
   const [resolvedLeadName, setResolvedLeadName] = useState<string>(leadName?.trim() || "");
+  const [resolvedAppointmentLabel, setResolvedAppointmentLabel] = useState<string>("data e horário a confirmar");
+  const [resolvedServiceLabel, setResolvedServiceLabel] = useState<string>("consulta");
 
   useEffect(() => {
-    setResolvedLeadName(leadName?.trim() || "");
-  }, [leadName]);
+    let isMounted = true;
 
-  useEffect(() => {
-    if (leadName?.trim() || !leadId) return;
+    if (!leadId) {
+      setResolvedLeadName(leadName?.trim() || "");
+      return () => {
+        isMounted = false;
+      };
+    }
 
-    supabase
-      .from("crm_leads")
-      .select("name")
-      .eq("id", leadId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.name?.trim()) {
-          setResolvedLeadName(data.name.trim());
-        }
-      });
+    Promise.all([
+      supabase
+        .from("crm_leads")
+        .select("name, servico_interesse")
+        .eq("id", leadId)
+        .maybeSingle(),
+      supabase
+        .from("crm_appointments")
+        .select("scheduled_date, scheduled_time")
+        .eq("lead_id", leadId)
+        .in("status", ["confirmed", "pending"])
+        .order("scheduled_date", { ascending: true })
+        .order("scheduled_time", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+    ]).then(([leadResult, appointmentResult]) => {
+      if (!isMounted) return;
+
+      const fetchedLeadName = leadResult.data?.name?.trim() || leadName?.trim() || "";
+      const fetchedService = leadResult.data?.servico_interesse?.trim() || "consulta";
+      const appointmentLabel = formatAppointmentLabel(
+        appointmentResult.data?.scheduled_date,
+        appointmentResult.data?.scheduled_time,
+      );
+
+      setResolvedLeadName(fetchedLeadName);
+      setResolvedServiceLabel(fetchedService);
+      setResolvedAppointmentLabel(appointmentLabel);
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [leadId, leadName]);
 
   useEffect(() => {
@@ -108,7 +165,11 @@ function TemplateMessageBubble({
   }
 
   const resolvedBodyText = template.body_text
-    ? replaceTemplatePlaceholders(template.body_text, resolvedLeadName || "cliente")
+    ? replaceTemplatePlaceholders(template.body_text, {
+        leadName: resolvedLeadName || "cliente",
+        appointmentLabel: resolvedAppointmentLabel,
+        serviceLabel: resolvedServiceLabel,
+      })
     : null;
 
   return (
