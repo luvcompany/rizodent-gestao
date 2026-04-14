@@ -316,7 +316,12 @@ export default function CrmKanban() {
       }
       if (kanbanFilters.stageId && l.stage_id !== kanbanFilters.stageId) return false;
       if (kanbanFilters.tags.length && !kanbanFilters.tags.some((t) => l.tags?.includes(t))) return false;
-      if (kanbanFilters.source && l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
+      if (kanbanFilters.source) {
+        if (kanbanFilters.source === "anuncio") {
+          const s = (l.source || "").toLowerCase();
+          if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
+        } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
+      }
       return true;
     });
   }, [searchTerm, kanbanFilters, user?.id]);

@@ -81,7 +81,47 @@ export async function executeAction(
 
     case "move_stage":
       if (config.target_stage_id) {
-        await supabase.from("crm_leads").update({ stage_id: config.target_stage_id as string }).eq("id", leadId);
+        const currentStageId = stageId;
+        if (currentStageId === config.target_stage_id) break;
+        
+        await supabase.from("crm_leads").update({ 
+          stage_id: config.target_stage_id as string,
+          updated_at: new Date().toISOString(),
+        }).eq("id", leadId);
+
+        // Close previous stage history
+        if (currentStageId) {
+          await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
+            .eq("lead_id", leadId).eq("stage_id", currentStageId).is("exited_at", null);
+        }
+        // Insert new stage history
+        await supabase.from("crm_lead_stage_history").insert({
+          lead_id: leadId,
+          stage_id: config.target_stage_id as string,
+          from_stage_id: currentStageId || null,
+          entered_at: new Date().toISOString(),
+        });
+
+        // System message
+        const { data: stageNames } = await supabase.from("crm_stages").select("id, name")
+          .in("id", [currentStageId, config.target_stage_id as string].filter(Boolean));
+        const fromName = stageNames?.find(s => s.id === currentStageId)?.name || "?";
+        const toName = stageNames?.find(s => s.id === config.target_stage_id)?.name || "?";
+        await supabase.from("messages").insert({
+          lead_id: leadId,
+          direction: "outbound",
+          type: "system",
+          content: `📋 Etapa alterada: ${fromName} → ${toName} (automação)`,
+          status: "system",
+        });
+
+        // Trigger on_enter automations on target stage (skip move_stage to prevent loops)
+        executeStageAutomations({
+          leadId,
+          stageId: config.target_stage_id as string,
+          leadPhone: phone,
+          triggerTypes: ["on_enter", "on_create_or_enter"],
+        });
       }
       break;
 

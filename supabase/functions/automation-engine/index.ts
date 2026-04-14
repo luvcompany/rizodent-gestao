@@ -631,18 +631,66 @@ async function sendAction(
 
       case "move_stage":
         if (config.target_stage_id) {
-          console.log(`[AUTOMATION-ENGINE] move_stage: moving lead ${leadId} to stage ${config.target_stage_id}`);
-          const { error: moveErr } = await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", leadId);
-          if (moveErr) console.error(`[AUTOMATION-ENGINE] move_stage error:`, moveErr);
-          else {
-            // Also update stage history
-            await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
-              .eq("lead_id", leadId).is("exited_at", null);
+          // Get current stage before moving
+          const { data: currentLead } = await supabase.from("crm_leads").select("stage_id").eq("id", leadId).single();
+          const previousStageId = currentLead?.stage_id;
+          
+          if (previousStageId === config.target_stage_id) {
+            console.log(`[AUTOMATION-ENGINE] move_stage: lead ${leadId} already in target stage, skipping`);
+            break;
+          }
+
+          console.log(`[AUTOMATION-ENGINE] move_stage: moving lead ${leadId} from ${previousStageId} to ${config.target_stage_id}`);
+          const { error: moveErr } = await supabase.from("crm_leads").update({ 
+            stage_id: config.target_stage_id,
+            updated_at: new Date().toISOString(),
+          }).eq("id", leadId);
+          
+          if (moveErr) {
+            console.error(`[AUTOMATION-ENGINE] move_stage error:`, moveErr);
+          } else {
+            // Close previous stage history entry
+            if (previousStageId) {
+              await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
+                .eq("lead_id", leadId).eq("stage_id", previousStageId).is("exited_at", null);
+            }
+            // Insert new stage history with from_stage_id
             await supabase.from("crm_lead_stage_history").insert({
               lead_id: leadId,
               stage_id: config.target_stage_id,
-              from_stage_id: null,
+              from_stage_id: previousStageId || null,
+              entered_at: new Date().toISOString(),
             });
+
+            // System message for stage change
+            const { data: stages } = await supabase.from("crm_stages").select("id, name").in("id", [previousStageId, config.target_stage_id].filter(Boolean));
+            const fromName = stages?.find((s: any) => s.id === previousStageId)?.name || "?";
+            const toName = stages?.find((s: any) => s.id === config.target_stage_id)?.name || "?";
+            await supabase.from("messages").insert({
+              lead_id: leadId,
+              direction: "outbound",
+              type: "system",
+              content: `📋 Etapa alterada: ${fromName} → ${toName} (automação)`,
+              status: "system",
+            });
+
+            // Trigger on_enter / on_create_or_enter automations on the TARGET stage (avoid infinite loops by not re-triggering move_stage)
+            const { data: targetAutomations } = await supabase
+              .from("crm_automations")
+              .select("*")
+              .eq("stage_id", config.target_stage_id)
+              .eq("is_active", true)
+              .in("trigger_type", ["on_enter", "on_create_or_enter"]);
+
+            for (const targetAuto of targetAutomations || []) {
+              if (targetAuto.action_type === "move_stage") {
+                console.log(`[AUTOMATION-ENGINE] Skipping chained move_stage to prevent loops (auto ${targetAuto.id})`);
+                continue;
+              }
+              const targetConfig = (targetAuto.action_config || {}) as Record<string, any>;
+              console.log(`[AUTOMATION-ENGINE] Chained trigger ${targetAuto.trigger_type} -> ${targetAuto.action_type} for lead ${leadId} on stage ${config.target_stage_id}`);
+              await sendAction(supabase, supabaseUrl, serviceKey, targetAuto.action_type, targetConfig, leadId, phone);
+            }
           }
         }
         break;

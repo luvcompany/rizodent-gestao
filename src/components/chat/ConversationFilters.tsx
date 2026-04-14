@@ -175,11 +175,14 @@ export default function ConversationFilters({
               <Select value={draft.source} onValueChange={(v) => setDraft({ ...draft, source: v })}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="anuncio">Anúncio</SelectItem>
                   <SelectItem value="whatsapp">WhatsApp</SelectItem>
                   <SelectItem value="instagram">Instagram</SelectItem>
                   <SelectItem value="facebook">Facebook</SelectItem>
                   <SelectItem value="site">Site</SelectItem>
                   <SelectItem value="indicacao">Indicação</SelectItem>
+                  <SelectItem value="organico">Orgânico</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
                 </SelectContent>
               </Select>
             </div>
