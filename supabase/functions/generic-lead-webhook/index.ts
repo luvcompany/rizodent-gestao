@@ -58,44 +58,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "no stage found" }), { status: 400, headers: corsHeaders });
     }
 
-    // Round-robin / least-load assignment
-    let assignedTo: string | null = null;
-    try {
-      const { data: rules } = await supabase
-        .from("crm_automations")
-        .select("action_config, is_active")
-        .eq("action_type", "assign_lead")
-        .eq("is_active", true);
-
-      if (rules && rules.length > 0) {
-        const rule = rules.find((r: any) => (r.action_config as any)?.pipeline_id === pipelineId);
-        if (rule) {
-          const cfg = rule.action_config as any;
-          const eligible: string[] = cfg?.eligible_users || [];
-          if (eligible.length > 0) {
-            const { data: allLeads } = await supabase
-              .from("crm_leads")
-              .select("assigned_to")
-              .eq("pipeline_id", pipelineId)
-              .in("assigned_to", eligible);
-            const counts: Record<string, number> = {};
-            for (const uid of eligible) counts[uid] = 0;
-            if (allLeads) {
-              for (const l of allLeads) {
-                if (l.assigned_to && counts[l.assigned_to] !== undefined) counts[l.assigned_to]++;
-              }
-            }
-            let min = Infinity, pick = eligible[0];
-            for (const uid of eligible) {
-              if (counts[uid] < min) { min = counts[uid]; pick = uid; }
-            }
-            assignedTo = pick;
-          }
-        }
-      }
-    } catch (e: any) {
-      console.error("[ROUND-ROBIN] Erro:", e.message);
-    }
+    // All leads assigned to Rizodent user
+    const assignedTo = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
 
     // Create lead
     const { data: lead, error } = await supabase.from("crm_leads").insert({
