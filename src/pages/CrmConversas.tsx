@@ -36,8 +36,9 @@ import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Ban, Star
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { isWithinInterval } from "date-fns";
 
@@ -428,10 +429,29 @@ export default function CrmConversas() {
     });
   }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays]);
 
+  // Sorting
+  const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
+
+  const sortedFiltered = useMemo(() => {
+    if (sortMode === "longest_wait") {
+      // Only unread (inbound) leads, sorted by oldest last_inbound_at first
+      const unread = filtered.filter(l => l.last_direction === "inbound");
+      const rest = filtered.filter(l => l.last_direction !== "inbound");
+      unread.sort((a, b) => {
+        const aTime = (a as any).last_inbound_at ? new Date((a as any).last_inbound_at).getTime() : 0;
+        const bTime = (b as any).last_inbound_at ? new Date((b as any).last_inbound_at).getTime() : 0;
+        return aTime - bTime; // oldest first
+      });
+      return [...unread, ...rest];
+    }
+    // "recent" is the default sort (already sorted by last_message_at desc)
+    return filtered;
+  }, [filtered, sortMode]);
+
   // Render limit for performance — show more on scroll
   const [visibleCount, setVisibleCount] = useState(50);
   useEffect(() => { setVisibleCount(50); }, [search, filters]);
-  const visibleLeads = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const visibleLeads = useMemo(() => sortedFiltered.slice(0, visibleCount), [sortedFiltered, visibleCount]);
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
@@ -463,7 +483,23 @@ export default function CrmConversas() {
                     onApply={setFilters}
                     pipelines={pipelines}
                   />
-                  <span className="text-xs text-muted-foreground">{filtered.length}</span>
+                   <span className="text-xs text-muted-foreground">{sortedFiltered.length}</span>
+                   <DropdownMenu>
+                     <DropdownMenuTrigger asChild>
+                       <Button variant="ghost" size="icon" className="h-7 w-7">
+                         <MoreHorizontal size={16} />
+                       </Button>
+                     </DropdownMenuTrigger>
+                     <DropdownMenuContent align="end" className="w-48">
+                       <DropdownMenuLabel className="text-xs text-muted-foreground">Ordenar</DropdownMenuLabel>
+                       <DropdownMenuItem onClick={() => setSortMode("recent")} className={sortMode === "recent" ? "text-primary font-medium" : ""}>
+                         Mais recentes {sortMode === "recent" && "✓"}
+                       </DropdownMenuItem>
+                       <DropdownMenuItem onClick={() => setSortMode("longest_wait")} className={sortMode === "longest_wait" ? "text-primary font-medium" : ""}>
+                         Longa espera {sortMode === "longest_wait" && "✓"}
+                       </DropdownMenuItem>
+                     </DropdownMenuContent>
+                   </DropdownMenu>
                 </div>
               </div>
               <div className="relative">
@@ -475,7 +511,7 @@ export default function CrmConversas() {
                   className="pl-8 h-8 text-sm bg-secondary"
                 />
                 {/* Search autocomplete dropdown */}
-                {search.trim().length >= 2 && filtered.length > 0 && filtered.length <= 8 && search.replace(/\D/g, "").length >= 3 && (
+                {search.trim().length >= 2 && sortedFiltered.length > 0 && sortedFiltered.length <= 8 && search.replace(/\D/g, "").length >= 3 && (
                   <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
                     {filtered.slice(0, 6).map((lead) => (
                       <button
@@ -501,7 +537,7 @@ export default function CrmConversas() {
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
-              ) : filtered.length === 0 ? (
+              ) : sortedFiltered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
                   <MessageSquare size={24} className="opacity-50" />
                   <p className="text-sm">Nenhuma conversa</p>
@@ -513,53 +549,85 @@ export default function CrmConversas() {
                     const isActive = lead.id === selectedLeadId;
                     const stageDot = chat.stages.find((s) => s.id === lead.stage_id);
                     const isInbound = lead.last_direction === "inbound";
-                    return (
-                      <button
-                        key={lead.id}
-                        onClick={() => handleSelectLead(lead)}
-                        className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
+                     return (
+                      <div key={lead.id} className={`relative group flex items-start gap-0 transition-colors ${
                           isActive
                             ? "bg-primary/15 border-l-2 border-l-primary"
                             : isInbound
                               ? "bg-orange-500/15 dark:bg-orange-400/20 border-l-[3px] border-l-orange-500 dark:border-l-orange-400 hover:bg-orange-500/25 dark:hover:bg-orange-400/30"
                               : "hover:bg-secondary/50"
-                        }`}
-                      >
-                        <div className="relative flex-shrink-0 mt-0.5">
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
-                          </Avatar>
-                          <div className="absolute -bottom-0.5 -left-0.5">
-                            <ChannelBadgeIcon source={lead.source} size={16} />
+                        }`}>
+                        <button
+                          onClick={() => handleSelectLead(lead)}
+                          className="flex-1 flex items-start gap-3 px-4 py-3 text-left min-w-0"
+                        >
+                          <div className="relative flex-shrink-0 mt-0.5">
+                            <Avatar className="h-9 w-9">
+                              <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+                            </Avatar>
+                            <div className="absolute -bottom-0.5 -left-0.5">
+                              <ChannelBadgeIcon source={lead.source} size={16} />
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
-                            {lead.last_message_at && (
-                              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                {new Date(lead.last_message_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                              </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
+                              {lead.last_message_at && (
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                  {new Date(lead.last_message_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {lead.source && (
+                                <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                                  {["facebook_ad", "instagram_ad"].includes(lead.source.toLowerCase()) ? "anúncio" : lead.source}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.last_message || "Sem mensagens"}</p>
+                          </div>
+                        </button>
+                        {/* Context menu */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="flex-shrink-0 p-2 mt-3 mr-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground">
+                              <MoreHorizontal size={16} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52">
+                            {isInbound && (
+                              <DropdownMenuItem onClick={async (e) => {
+                                e.stopPropagation();
+                                await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
+                                setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, last_direction: "outbound", last_outbound_at: new Date().toISOString() } as any : l));
+                                if (selectedLeadId === lead.id) setSelectedLead(prev => prev ? { ...prev, last_direction: "outbound" } : prev);
+                                toast.success("Conversa marcada como respondida");
+                              }}>
+                                <CheckCheck size={14} className="mr-2 text-primary" /> Marcar como respondida
+                              </DropdownMenuItem>
                             )}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            {lead.source && (
-                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
-                                {["facebook_ad", "instagram_ad"].includes(lead.source.toLowerCase()) ? "anúncio" : lead.source}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.last_message || "Sem mensagens"}</p>
-                        </div>
-                      </button>
-                    );
+                            <DropdownMenuItem onClick={async (e) => {
+                              e.stopPropagation();
+                              // Mark as closed by updating last_outbound_at
+                              await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
+                              setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, last_direction: "outbound", last_outbound_at: new Date().toISOString() } as any : l));
+                              if (selectedLeadId === lead.id) setSelectedLead(prev => prev ? { ...prev, last_direction: "outbound" } : prev);
+                              toast.success("Conversa fechada");
+                            }}>
+                              <Ban size={14} className="mr-2" /> Conversa fechada
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                     );
                   })}
-                  {visibleCount < filtered.length && (
+                  {visibleCount < sortedFiltered.length && (
                     <button
                       className="w-full py-3 text-xs text-primary hover:bg-secondary/50 transition-colors"
                       onClick={() => setVisibleCount((c) => c + 50)}
                     >
-                      Carregar mais ({filtered.length - visibleCount} restantes)
+                      Carregar mais ({sortedFiltered.length - visibleCount} restantes)
                     </button>
                   )}
                 </div>
@@ -601,22 +669,6 @@ export default function CrmConversas() {
                     )}
                   </div>
                 </div>
-                {selectedLead.last_direction === "inbound" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 gap-1 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", selectedLead.id);
-                      setLeads(prev => prev.map(l => l.id === selectedLead.id ? { ...l, last_direction: "outbound", last_outbound_at: new Date().toISOString() } as any : l));
-                      setSelectedLead(prev => prev ? { ...prev, last_direction: "outbound" } : prev);
-                      toast.success("Conversa marcada como lida");
-                    }}
-                  >
-                    <CheckCheck size={14} /> Marcar lida
-                  </Button>
-                )}
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRightPanelVisible(!rightPanelVisible)}>
                   {rightPanelVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>
