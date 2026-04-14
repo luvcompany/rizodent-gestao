@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
       const config = (auto.action_config || {}) as Record<string, any>;
       const beforeAmount = config.before_amount ?? 1;
       const beforeUnit = config.before_unit || "hours";
-      const scheduledType = config.scheduled_type || "appointment";
+      const scheduledType = config.scheduled_type || "both";
 
       // Convert before_amount to milliseconds
       let beforeMs = 0;
@@ -340,8 +340,10 @@ Deno.serve(async (req) => {
       if (scheduledType === "task" || scheduledType === "both") {
         const { data: tasks } = await supabase
           .from("crm_tasks")
-          .select("id, lead_id, due_date")
+          .select("id, lead_id, due_date, title")
           .eq("status", "pending");
+
+        console.log(`[BEFORE_SCHEDULED] Checking ${tasks?.length || 0} pending tasks, beforeMs=${beforeMs}`);
 
         for (const task of tasks || []) {
           const { data: lead } = await supabase
@@ -422,20 +424,20 @@ Deno.serve(async (req) => {
         const elapsed = nowMs - referenceTime;
         if (elapsed < thresholdMs) continue;
 
-        // Check for duplicate (already sent for this automation+lead combo)
+        // Check for duplicate — must match automation_id + lead_id + action_type (so config changes allow re-fire)
         const { data: existing } = await supabase
           .from("crm_automation_queue")
           .select("id, created_at")
           .eq("automation_id", auto.id)
           .eq("lead_id", lead.id)
+          .eq("action_type", auto.action_type)
           .in("status", ["sent"])
           .order("created_at", { ascending: false })
           .limit(1);
 
-        // If already sent and the reference time hasn't changed (lead didn't respond then go silent again), skip
+        // If already sent with same action_type and the reference time hasn't changed, skip
         if (existing && existing.length > 0) {
           const sentAt = new Date(existing[0].created_at).getTime();
-          // Only re-fire if the reference point is newer than when we last sent (meaning lead responded then went silent again)
           if (referenceTime <= sentAt) continue;
         }
 
@@ -629,7 +631,19 @@ async function sendAction(
 
       case "move_stage":
         if (config.target_stage_id) {
-          await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", leadId);
+          console.log(`[AUTOMATION-ENGINE] move_stage: moving lead ${leadId} to stage ${config.target_stage_id}`);
+          const { error: moveErr } = await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", leadId);
+          if (moveErr) console.error(`[AUTOMATION-ENGINE] move_stage error:`, moveErr);
+          else {
+            // Also update stage history
+            await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
+              .eq("lead_id", leadId).is("exited_at", null);
+            await supabase.from("crm_lead_stage_history").insert({
+              lead_id: leadId,
+              stage_id: config.target_stage_id,
+              from_stage_id: null,
+            });
+          }
         }
         break;
 

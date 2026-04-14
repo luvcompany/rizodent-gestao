@@ -1,0 +1,1 @@
+DELETE FROM crm_automation_queue WHERE automation_id = 'fde3e121-3a90-4819-88d4-0751ee2a87ef';
