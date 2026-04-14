@@ -44,6 +44,7 @@ type Appointment = {
   status: string;
   notes: string | null;
   lead_name?: string;
+  lead_cidade?: string | null;
 };
 
 type Stage = { id: string; name: string; color: string; pipeline_id: string };
