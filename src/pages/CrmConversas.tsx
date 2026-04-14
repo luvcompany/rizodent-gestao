@@ -483,7 +483,23 @@ export default function CrmConversas() {
                     onApply={setFilters}
                     pipelines={pipelines}
                   />
-                  <span className="text-xs text-muted-foreground">{filtered.length}</span>
+                   <span className="text-xs text-muted-foreground">{sortedFiltered.length}</span>
+                   <DropdownMenu>
+                     <DropdownMenuTrigger asChild>
+                       <Button variant="ghost" size="icon" className="h-7 w-7">
+                         <MoreHorizontal size={16} />
+                       </Button>
+                     </DropdownMenuTrigger>
+                     <DropdownMenuContent align="end" className="w-48">
+                       <DropdownMenuLabel className="text-xs text-muted-foreground">Ordenar</DropdownMenuLabel>
+                       <DropdownMenuItem onClick={() => setSortMode("recent")} className={sortMode === "recent" ? "text-primary font-medium" : ""}>
+                         Mais recentes {sortMode === "recent" && "✓"}
+                       </DropdownMenuItem>
+                       <DropdownMenuItem onClick={() => setSortMode("longest_wait")} className={sortMode === "longest_wait" ? "text-primary font-medium" : ""}>
+                         Longa espera {sortMode === "longest_wait" && "✓"}
+                       </DropdownMenuItem>
+                     </DropdownMenuContent>
+                   </DropdownMenu>
                 </div>
               </div>
               <div className="relative">
