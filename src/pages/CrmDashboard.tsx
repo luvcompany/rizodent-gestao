@@ -389,7 +389,8 @@ export default function CrmDashboard() {
                           Ver
                         </Button>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
