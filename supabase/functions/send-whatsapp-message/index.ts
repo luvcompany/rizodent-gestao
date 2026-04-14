@@ -32,32 +32,15 @@ const extensionFromMime = (mimeType: string) => {
   return mimeMap[mimeType.toLowerCase()] || "bin";
 };
 
-// Known bracket-style placeholders mapped to their positional index
-const BRACKET_PLACEHOLDER_MAP: Record<string, number> = {
-  "[primeiro nome]": 1,
-  "[nome]": 1,
-  "[data e horário]": 2,
-  "[data e horario]": 2,
-  "[data]": 2,
-  "[serviço]": 3,
-  "[servico]": 3,
-};
-
 const getTemplatePlaceholderIndexes = (content: string | null | undefined): number[] => {
   if (!content) return [];
 
   const indexes = new Set<number>();
 
-  // Detect {{N}} style placeholders
+  // Only detect {{N}} style placeholders (Meta's official format)
   for (const match of content.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
     const value = Number(match[1]);
     if (Number.isFinite(value) && value > 0) indexes.add(value);
-  }
-
-  // Detect [Bracket] style placeholders
-  const lowerContent = content.toLowerCase();
-  for (const [pattern, idx] of Object.entries(BRACKET_PLACEHOLDER_MAP)) {
-    if (lowerContent.includes(pattern)) indexes.add(idx);
   }
 
   return [...indexes].sort((a, b) => a - b);
