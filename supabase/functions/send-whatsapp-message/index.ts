@@ -36,6 +36,8 @@ const getTemplatePlaceholderIndexes = (content: string | null | undefined): numb
   if (!content) return [];
 
   const indexes = new Set<number>();
+
+  // Only detect {{N}} style placeholders (Meta's official format)
   for (const match of content.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
     const value = Number(match[1]);
     if (Number.isFinite(value) && value > 0) indexes.add(value);
