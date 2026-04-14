@@ -429,7 +429,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          console.log(`[send-whatsapp] Resolved ${resolvedComponents.length} component(s) for template ${template_name}`);
+          console.log(`[send-whatsapp] Resolved ${resolvedComponents.length} component(s) for template ${template_name}`, JSON.stringify(resolvedComponents));
         }
       }
 
