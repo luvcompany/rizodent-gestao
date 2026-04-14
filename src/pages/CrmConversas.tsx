@@ -36,8 +36,9 @@ import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Ban, Star
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { isWithinInterval } from "date-fns";
 
@@ -428,10 +429,29 @@ export default function CrmConversas() {
     });
   }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays]);
 
+  // Sorting
+  const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
+
+  const sortedFiltered = useMemo(() => {
+    if (sortMode === "longest_wait") {
+      // Only unread (inbound) leads, sorted by oldest last_inbound_at first
+      const unread = filtered.filter(l => l.last_direction === "inbound");
+      const rest = filtered.filter(l => l.last_direction !== "inbound");
+      unread.sort((a, b) => {
+        const aTime = (a as any).last_inbound_at ? new Date((a as any).last_inbound_at).getTime() : 0;
+        const bTime = (b as any).last_inbound_at ? new Date((b as any).last_inbound_at).getTime() : 0;
+        return aTime - bTime; // oldest first
+      });
+      return [...unread, ...rest];
+    }
+    // "recent" is the default sort (already sorted by last_message_at desc)
+    return filtered;
+  }, [filtered, sortMode]);
+
   // Render limit for performance — show more on scroll
   const [visibleCount, setVisibleCount] = useState(50);
   useEffect(() => { setVisibleCount(50); }, [search, filters]);
-  const visibleLeads = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const visibleLeads = useMemo(() => sortedFiltered.slice(0, visibleCount), [sortedFiltered, visibleCount]);
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
