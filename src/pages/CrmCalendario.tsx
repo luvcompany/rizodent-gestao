@@ -115,17 +115,25 @@ export default function CrmCalendario() {
   const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>(calendarCache.pipelines || []);
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
 
+  const weekRange = useMemo(() => ({
+    start: format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+    end: format(endOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+  }), [currentDate]);
+
   const fetchTasks = useCallback(async () => {
-    // Serve cached data instantly, then refresh in background
     const isCacheValid = calendarCache.timestamp && Date.now() - calendarCache.timestamp < CALENDAR_CACHE_TTL;
-    if (isCacheValid && calendarCache.tasks) {
-      // Data already set from initial state, just do background refresh
+    if (isCacheValid && calendarCache.tasks && calendarCache.appointments) {
+      setTasks(calendarCache.tasks);
+      setProfiles(calendarCache.profiles || []);
+      setAppointments(calendarCache.appointments);
+      setCrmStages(calendarCache.stages || []);
+      setCrmPipelines(calendarCache.pipelines || []);
     }
 
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
-      supabase.from("crm_tasks").select("*, crm_leads(name)").order("due_date"),
+      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, crm_leads(name)").order("due_date"),
       supabase.from("profiles").select("id, nome"),
-      supabase.from("crm_appointments").select("*, crm_leads(name, cidade)").order("scheduled_date"),
+      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, crm_leads(name, cidade)").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
     ]);
@@ -156,9 +164,8 @@ export default function CrmCalendario() {
     setAppointments(rawAppts);
     setCrmStages(stgs);
     setCrmPipelines(pipes);
-  }, []);
+  }, [weekRange.end, weekRange.start]);
 
-  // Refetch when currentDate changes (for appointment window) or on mount
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   const handleMarkDone = async (task: Task) => {

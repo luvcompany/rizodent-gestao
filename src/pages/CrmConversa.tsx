@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { Suspense, lazy, useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,19 +20,7 @@ import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
 import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
-import LeadEditPanel from "@/components/chat/LeadEditPanel";
-import LeadCustomFields from "@/components/chat/LeadCustomFields";
-import LeadExtraFields from "@/components/chat/LeadExtraFields";
-import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
-import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
-import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import NotesBar from "@/components/chat/NotesBar";
-import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
-
-import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
-
-import TaskPanel from "@/components/chat/TaskPanel";
-import AppointmentConfirmBar from "@/components/chat/AppointmentConfirmBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog } from "lucide-react";
 
@@ -64,6 +52,24 @@ type Lead = {
 // Global profiles cache shared with CrmConversas
 const profilesCacheConv = { data: null as { id: string; nome: string }[] | null, timestamp: 0 };
 const PROFILES_CACHE_TTL = 5 * 60_000;
+const LeadEditPanel = lazy(() => import("@/components/chat/LeadEditPanel"));
+const LeadCustomFields = lazy(() => import("@/components/chat/LeadCustomFields"));
+const LeadExtraFields = lazy(() => import("@/components/chat/LeadExtraFields"));
+const LeadStageTimeline = lazy(() => import("@/components/chat/LeadStageTimeline"));
+const LeadResponseTimes = lazy(() => import("@/components/chat/LeadResponseTimes"));
+const LeadBudgetPanel = lazy(() => import("@/components/chat/LeadBudgetPanel"));
+const InlineTagsEditor = lazy(() => import("@/components/chat/InlineTagsEditor"));
+const LeadFollowUpPanel = lazy(() => import("@/components/chat/LeadFollowUpPanel"));
+const TaskPanel = lazy(() => import("@/components/chat/TaskPanel"));
+const AppointmentConfirmBar = lazy(() => import("@/components/chat/AppointmentConfirmBar"));
+
+const SidePanelFallback = () => (
+  <div className="space-y-3 p-4">
+    <div className="h-20 rounded-lg bg-secondary/60 animate-pulse" />
+    <div className="h-24 rounded-lg bg-secondary/40 animate-pulse" />
+    <div className="h-24 rounded-lg bg-secondary/40 animate-pulse" />
+  </div>
+);
 
 export default function CrmConversa() {
   const { user } = useAuth();
@@ -87,7 +93,11 @@ export default function CrmConversa() {
       : supabase.from("profiles").select("id, nome");
 
     Promise.all([
-      supabase.from("crm_leads").select("*").eq("id", id).single(),
+      supabase
+        .from("crm_leads")
+        .select("id, name, phone, stage_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
+        .eq("id", id)
+        .single(),
       profilesPromise,
     ]).then(([leadRes, profilesRes]) => {
       if (leadRes.data) setLead(leadRes.data as Lead);
@@ -341,7 +351,7 @@ export default function CrmConversa() {
 
       {/* RIGHT COLUMN - Lead Panel (30%) */}
       <div className="w-[30%] flex flex-col bg-card overflow-y-auto">
-        {/* Lead Info Header */}
+        <Suspense fallback={<SidePanelFallback />}>
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-3 mb-3">
             <Avatar className="h-14 w-14">
@@ -463,6 +473,7 @@ export default function CrmConversa() {
             Criado em {new Date(lead.created_at).toLocaleDateString("pt-BR")}
           </div>
         </div>
+        </Suspense>
       </div>
 
 

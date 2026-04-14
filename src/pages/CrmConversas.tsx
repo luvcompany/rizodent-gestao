@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { Suspense, lazy, useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,20 +19,9 @@ import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
 import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
-import LeadEditPanel from "@/components/chat/LeadEditPanel";
-import LeadCustomFields from "@/components/chat/LeadCustomFields";
-import LeadExtraFields from "@/components/chat/LeadExtraFields";
-
-import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
-import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
-import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
 import NotesBar from "@/components/chat/NotesBar";
-import InlineTagsEditor from "@/components/chat/InlineTagsEditor";
-import TaskPanel from "@/components/chat/TaskPanel";
-import AppointmentConfirmBar from "@/components/chat/AppointmentConfirmBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 
-import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
@@ -79,6 +68,24 @@ const leadsListCache = {
   timestamp: 0,
 };
 const LEADS_CACHE_TTL = 2 * 60_000; // 2 minutes
+const LeadEditPanel = lazy(() => import("@/components/chat/LeadEditPanel"));
+const LeadCustomFields = lazy(() => import("@/components/chat/LeadCustomFields"));
+const LeadExtraFields = lazy(() => import("@/components/chat/LeadExtraFields"));
+const LeadStageTimeline = lazy(() => import("@/components/chat/LeadStageTimeline"));
+const LeadResponseTimes = lazy(() => import("@/components/chat/LeadResponseTimes"));
+const LeadBudgetPanel = lazy(() => import("@/components/chat/LeadBudgetPanel"));
+const InlineTagsEditor = lazy(() => import("@/components/chat/InlineTagsEditor"));
+const TaskPanel = lazy(() => import("@/components/chat/TaskPanel"));
+const AppointmentConfirmBar = lazy(() => import("@/components/chat/AppointmentConfirmBar"));
+const LeadFollowUpPanel = lazy(() => import("@/components/chat/LeadFollowUpPanel"));
+
+const SidePanelFallback = () => (
+  <div className="space-y-3 p-4">
+    <div className="h-20 rounded-lg bg-secondary/60 animate-pulse" />
+    <div className="h-24 rounded-lg bg-secondary/40 animate-pulse" />
+    <div className="h-24 rounded-lg bg-secondary/40 animate-pulse" />
+  </div>
+);
 export default function CrmConversas() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -774,6 +781,7 @@ export default function CrmConversas() {
           <>
             <ResizableHandle />
             <ResizablePanel defaultSize={30} minSize={24} maxSize={34} className="min-w-0 overflow-hidden">
+              <Suspense fallback={<SidePanelFallback />}>
               <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-y-auto">
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center gap-3 mb-3">
@@ -901,6 +909,7 @@ export default function CrmConversas() {
                   </div>
                 </div>
               </div>
+              </Suspense>
             </ResizablePanel>
           </>
         )}
