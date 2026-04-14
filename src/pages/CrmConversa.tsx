@@ -22,6 +22,7 @@ import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
 import LeadEditPanel from "@/components/chat/LeadEditPanel";
 import LeadCustomFields from "@/components/chat/LeadCustomFields";
+import LeadExtraFields from "@/components/chat/LeadExtraFields";
 import LeadStageTimeline from "@/components/chat/LeadStageTimeline";
 import LeadResponseTimes from "@/components/chat/LeadResponseTimes";
 import LeadBudgetPanel from "@/components/chat/LeadBudgetPanel";
@@ -56,6 +57,8 @@ type Lead = {
   link_anuncio?: string | null;
   ad_id?: string | null;
   nome_anuncio?: string | null;
+  cidade?: string | null;
+  servico_interesse?: string | null;
 };
 
 // Global profiles cache shared with CrmConversas
@@ -415,6 +418,14 @@ export default function CrmConversa() {
           leadId={lead.id}
           stages={chat.stages}
           lastInboundAt={chat.lastInboundAt}
+        />
+
+        {/* Extra Fields (Cidade & Serviço de Interesse) */}
+        <LeadExtraFields
+          leadId={lead.id}
+          cidade={lead.cidade || null}
+          servicoInteresse={lead.servico_interesse || null}
+          onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
         />
 
         {/* Custom Fields */}
