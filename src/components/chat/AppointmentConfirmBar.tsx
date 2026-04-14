@@ -223,7 +223,8 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       scheduled_date: format(manualDate, "yyyy-MM-dd"), scheduled_time: manualTime,
       status: "confirmed", notes: manualNotes || null,
       confirmed_by: userId || null, confirmed_at: new Date().toISOString(),
-    });
+      is_rescheduled: isRescheduleMode,
+    } as any);
     if (apptError) { toast.error("Erro ao criar agendamento"); setManualSaving(false); return; }
 
     const movedStageId = await moveLeadToScheduledStage();

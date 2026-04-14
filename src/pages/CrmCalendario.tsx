@@ -45,6 +45,7 @@ type Appointment = {
   notes: string | null;
   lead_name?: string;
   lead_cidade?: string | null;
+  is_rescheduled?: boolean;
 };
 
 type Stage = { id: string; name: string; color: string; pipeline_id: string };
@@ -137,6 +138,7 @@ export default function CrmCalendario() {
       ...a,
       lead_name: a.crm_leads?.name || "Lead",
       lead_cidade: a.crm_leads?.cidade || null,
+      is_rescheduled: a.is_rescheduled || false,
     })) as Appointment[];
     const stgs = (stagesRes.data as Stage[]) || [];
     const pipes = (pipelinesRes.data as Pipeline[]) || [];
