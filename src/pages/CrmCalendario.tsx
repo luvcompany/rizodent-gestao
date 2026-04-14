@@ -104,11 +104,16 @@ export default function CrmCalendario() {
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
 
   const fetchTasks = useCallback(async () => {
+    // Only fetch appointments for a 5-week window around current date for speed
+    const weekStart = format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const windowEnd = format(addDays(endOfWeek(currentDate, { weekStartsOn: 1 }), 28), "yyyy-MM-dd");
+    const windowStart = format(addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), -28), "yyyy-MM-dd");
+
     const [tasksRes, profilesRes, leadsRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("profiles").select("id, nome"),
       supabase.from("crm_leads").select("id, name, cidade"),
-      supabase.from("crm_appointments").select("*").order("scheduled_date"),
+      supabase.from("crm_appointments").select("*").gte("scheduled_date", windowStart).lte("scheduled_date", windowEnd).order("scheduled_date"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
     ]);
@@ -129,6 +134,7 @@ export default function CrmCalendario() {
     setCrmPipelines((pipelinesRes.data as Pipeline[]) || []);
   }, []);
 
+  // Refetch when currentDate changes (for appointment window) or on mount
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   const handleMarkDone = async (task: Task) => {
