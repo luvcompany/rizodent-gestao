@@ -511,7 +511,7 @@ export default function CrmConversas() {
                   className="pl-8 h-8 text-sm bg-secondary"
                 />
                 {/* Search autocomplete dropdown */}
-                {search.trim().length >= 2 && filtered.length > 0 && filtered.length <= 8 && search.replace(/\D/g, "").length >= 3 && (
+                {search.trim().length >= 2 && sortedFiltered.length > 0 && sortedFiltered.length <= 8 && search.replace(/\D/g, "").length >= 3 && (
                   <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
                     {filtered.slice(0, 6).map((lead) => (
                       <button
@@ -537,7 +537,7 @@ export default function CrmConversas() {
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
-              ) : filtered.length === 0 ? (
+              ) : sortedFiltered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 text-muted-foreground gap-2">
                   <MessageSquare size={24} className="opacity-50" />
                   <p className="text-sm">Nenhuma conversa</p>
@@ -622,12 +622,12 @@ export default function CrmConversas() {
                       </div>
                      );
                   })}
-                  {visibleCount < filtered.length && (
+                  {visibleCount < sortedFiltered.length && (
                     <button
                       className="w-full py-3 text-xs text-primary hover:bg-secondary/50 transition-colors"
                       onClick={() => setVisibleCount((c) => c + 50)}
                     >
-                      Carregar mais ({filtered.length - visibleCount} restantes)
+                      Carregar mais ({sortedFiltered.length - visibleCount} restantes)
                     </button>
                   )}
                 </div>
