@@ -1,77 +1,56 @@
 
 
-# Plano: Implementar backend para todos os gatilhos e ações de automação
+## Plan: Fix "Leads sem resposta" Trigger
 
-## Resumo
-Os 7 novos gatilhos e 4 novas ações existem apenas na UI. Este plano implementa o processamento real de cada um.
+### Problem
+The `no_response` trigger type has a UI form but **zero backend processing logic** in the `automation-engine`. The engine simply never checks for it. Additionally, the time unit selector is missing "Minutos" and "Semanas" options.
 
-## Arquitetura
+### Behavior Requirements
+- "Leads sem resposta há 1 hora" means: any lead with >= 1 hour without inbound response fires the action (1h, 1h20, 1h50 all qualify)
+- Applies to all leads **currently in the configured stage** that match the no-response condition
+- Leads moved/dragged into the stage also get checked on the next cron cycle
+- If a lead responds (inbound message), cancel pending actions and stop firing
+- Time units: Minutos, Horas, Dias, Semanas
 
-Dois mecanismos de execução:
+### Changes
 
-1. **Gatilhos reativos (tempo real)** — processados no momento do evento:
-   - `keyword_response` → interceptado no webhook de mensagem recebida
-   - `cold_lead_return` → interceptado no webhook de mensagem recebida
-   - `after_appointment_confirmed` → interceptado quando status do agendamento muda
+#### 1. UI — `src/components/automation/AutomationModal.tsx`
+- Add `minutes` and `weeks` to the `no_response_unit` selector (currently only has `hours` and `days`)
 
-2. **Gatilhos periódicos (cron/scheduled)** — processados por uma edge function chamada periodicamente:
-   - `progressive_reengagement` → verifica camadas de tempo por lead
-   - `lead_stale` → verifica leads sem movimentação há N dias
-   - `no_show` → verifica consultas passadas sem check-in
-   - `time_window` → libera ações enfileiradas quando entrar na janela
+#### 2. Backend — `supabase/functions/automation-engine/index.ts`
+Add a new section (between the existing sections) to process `no_response` automations:
 
-## O que será feito
+- Query all active `no_response` automations
+- For each, read `no_response_amount` and `no_response_unit` from `action_config`, convert to milliseconds
+- Query all leads in the automation's `stage_id` where `automation_paused` is not true
+- For each lead:
+  - Determine the "last activity" timestamp: use `last_inbound_at` if it exists, otherwise fall back to `last_outbound_at` or `created_at`
+  - The trigger fires if the lead has **no inbound response** after the last outbound message AND the elapsed time since `last_outbound_at` >= the configured threshold
+  - If `last_inbound_at > last_outbound_at`, the lead HAS responded — skip and cancel any pending queue items
+  - If no `last_outbound_at` exists, check time since `created_at` (lead was never contacted but also never responded)
+  - Check `crm_automation_queue` to avoid duplicate sends (one send per automation per lead, reset if lead re-enters stage or responds then goes silent again)
+- Execute the configured action via `sendAction()`
+- Insert a record into `crm_automation_queue` with status `sent`
 
-### 1. Migração: tabela de fila de automação
-Criar `crm_automation_queue` para enfileirar ações pendentes (usado por `time_window` e sequências):
+The time conversion will support: `minutes` (×60000), `hours` (×3600000), `days` (×86400000), `weeks` (×604800000).
 
-| Coluna | Tipo | Descrição |
-|---|---|---|
-| id | uuid | PK |
-| automation_id | uuid | FK para crm_automations |
-| lead_id | uuid | FK para crm_leads |
-| action_type | text | Ação a executar |
-| action_config | jsonb | Config da ação |
-| scheduled_at | timestamptz | Quando deve disparar |
-| status | text | pending / sent / cancelled |
-| layer_index | int | Índice da camada (reengajamento) |
+### Technical Details
 
-### 2. Atualizar `automationUtils.ts` — novas ações
-Adicionar processamento para: `send_audio`, `send_file`, `add_tag`, `notify_owner` e `combo` (executa array de sub-ações).
-
-### 3. Atualizar `whatsapp-webhook/index.ts` — gatilhos reativos
-No ponto onde uma mensagem inbound é processada:
-- Buscar automações ativas do tipo `keyword_response` na etapa atual do lead; se a mensagem contiver alguma das palavras-chave, executar a ação.
-- Buscar automações do tipo `cold_lead_return`; se o lead estiver em etapa marcada como "fria"/arquivada, executar a ação (mover + notificar).
-
-### 4. Nova edge function `automation-engine/index.ts`
-Função periódica (chamada por cron externo ou manualmente) que processa:
-
-- **`progressive_reengagement`**: Para cada automação ativa desse tipo, verificar leads na etapa associada que não responderam. Criar entradas na fila para cada camada de tempo. Se o lead respondeu desde a última camada, cancelar as pendentes.
-- **`lead_stale`**: Buscar leads com `updated_at` ou `last_message_at` mais antigo que N dias. Executar ação e opcionalmente mover de etapa.
-- **`no_show`**: Buscar agendamentos passados com status != "compareceu". Disparar sequência de reagendamento.
-- **`time_window`**: Verificar itens na fila com `scheduled_at` passado. Se dentro da janela de horário configurada, executar; senão, reagendar para próxima janela.
-
-### 5. Gatilho `after_appointment_confirmed`
-No fluxo onde o agendamento é confirmado (via chat ou UI), chamar `executeStageAutomations` com o trigger type correto, iniciando a sequência de lembretes na fila.
-
-### 6. Configurar cron para `automation-engine`
-Adicionar chamada periódica (a cada 5 min) via `pg_cron` ou instrução para o usuário configurar um cron externo.
-
-## Arquivos afetados
-
-| Arquivo | Ação |
-|---|---|
-| Migração SQL | Criar tabela `crm_automation_queue` + habilitar RLS |
-| `src/lib/automationUtils.ts` | Adicionar ações: send_audio, send_file, add_tag, notify_owner, combo |
-| `supabase/functions/whatsapp-webhook/index.ts` | Adicionar verificação de keyword_response e cold_lead_return no fluxo inbound |
-| `supabase/functions/automation-engine/index.ts` | Nova função para processar gatilhos periódicos |
-| `src/pages/CrmCalendario.tsx` ou fluxo de agendamento | Disparar automação after_appointment_confirmed |
-
-## Ordem de execução
-1. Migração do banco (tabela de fila)
-2. Atualizar automationUtils.ts (novas ações)
-3. Criar automation-engine (gatilhos periódicos)
-4. Atualizar whatsapp-webhook (gatilhos reativos)
-5. Integrar gatilho de agendamento confirmado
+```text
+automation-engine cron (every 60s)
+  │
+  ├── ... existing sections (bot_timeout, reengagement, stale, no_show, before_scheduled)
+  │
+  └── NEW: no_response section
+       ├── fetch automations WHERE trigger_type='no_response' AND is_active=true
+       ├── for each automation:
+       │    ├── parse no_response_amount + no_response_unit → thresholdMs
+       │    ├── fetch leads in stage_id
+       │    └── for each lead:
+       │         ├── if last_inbound_at > last_outbound_at → skip (responded)
+       │         ├── referenceTime = last_outbound_at || created_at
+       │         ├── if (now - referenceTime) >= thresholdMs → FIRE
+       │         ├── check crm_automation_queue for duplicates
+       │         └── sendAction() + insert queue record
+```
 
