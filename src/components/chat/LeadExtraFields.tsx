@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MapPin, Briefcase } from "lucide-react";
 
 const CIDADES = [
@@ -94,20 +93,17 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
         <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
           <MapPin size={10} /> Cidade
         </label>
-        <Select
+        <select
           value={cidadeValue}
-          onValueChange={handleCidadeChange}
+          onChange={(e) => void handleCidadeChange(e.target.value)}
+          disabled={saving}
+          className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <SelectTrigger className="bg-secondary border-border text-sm h-8">
-            <SelectValue placeholder="Selecionar cidade..." />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">—</SelectItem>
-            {CIDADES.map((c) => (
-              <SelectItem key={c} value={c}>{c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <option value="none">Sem localização</option>
+          {CIDADES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
 
       <div>
