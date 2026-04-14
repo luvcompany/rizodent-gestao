@@ -82,11 +82,22 @@ function statusBg(st: string) {
   return "bg-primary/10 text-primary";
 }
 
+// Page-level cache to avoid refetching on every render
+const calendarCache = {
+  tasks: null as Task[] | null,
+  profiles: null as Profile[] | null,
+  appointments: null as Appointment[] | null,
+  stages: null as Stage[] | null,
+  pipelines: null as Pipeline[] | null,
+  timestamp: 0,
+};
+const CALENDAR_CACHE_TTL = 2 * 60_000;
+
 export default function CrmCalendario() {
   const navigate = useNavigate();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [tasks, setTasks] = useState<Task[]>(calendarCache.tasks || []);
+  const [profiles, setProfiles] = useState<Profile[]>(calendarCache.profiles || []);
+  const [appointments, setAppointments] = useState<Appointment[]>(calendarCache.appointments || []);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [mainView, setMainView] = useState<MainView>("agendamentos");
   const [taskView, setTaskView] = useState<TaskViewMode>("events");
@@ -99,40 +110,51 @@ export default function CrmCalendario() {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [apptResultStatus, setApptResultStatus] = useState("");
   const [apptMoveStageId, setApptMoveStageId] = useState("");
-  const [crmStages, setCrmStages] = useState<Stage[]>([]);
-  const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>([]);
+  const [crmStages, setCrmStages] = useState<Stage[]>(calendarCache.stages || []);
+  const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>(calendarCache.pipelines || []);
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
 
   const fetchTasks = useCallback(async () => {
-    // Only fetch appointments for a 5-week window around current date for speed
-    const weekStart = format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
-    const windowEnd = format(addDays(endOfWeek(currentDate, { weekStartsOn: 1 }), 28), "yyyy-MM-dd");
-    const windowStart = format(addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), -28), "yyyy-MM-dd");
+    // Serve cached data instantly, then refresh in background
+    const isCacheValid = calendarCache.timestamp && Date.now() - calendarCache.timestamp < CALENDAR_CACHE_TTL;
+    if (isCacheValid && calendarCache.tasks) {
+      // Data already set from initial state, just do background refresh
+    }
 
-    const [tasksRes, profilesRes, leadsRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
-      supabase.from("crm_tasks").select("*").order("due_date"),
+    const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
+      supabase.from("crm_tasks").select("*, crm_leads(name)").order("due_date"),
       supabase.from("profiles").select("id, nome"),
-      supabase.from("crm_leads").select("id, name, cidade"),
-      supabase.from("crm_appointments").select("*").gte("scheduled_date", windowStart).lte("scheduled_date", windowEnd).order("scheduled_date"),
+      supabase.from("crm_appointments").select("*, crm_leads(name, cidade)").order("scheduled_date"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
     ]);
-    const rawTasks = (tasksRes.data || []) as Task[];
-    const leadsData = ((leadsRes.data || []) as any[]);
-    const nameMap = new Map(leadsData.map((l) => [l.id, l.name]));
-    const cidadeMap = new Map(leadsData.map((l) => [l.id, l.cidade || null]));
-    rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
+    const rawTasks = (tasksRes.data || []).map((t: any) => ({
+      ...t,
+      lead_name: t.crm_leads?.name || "Lead",
+    })) as Task[];
+    const profs = (profilesRes.data as Profile[]) || [];
+    const rawAppts = (apptsRes.data || []).map((a: any) => ({
+      ...a,
+      lead_name: a.crm_leads?.name || "Lead",
+      lead_cidade: a.crm_leads?.cidade || null,
+    })) as Appointment[];
+    const stgs = (stagesRes.data as Stage[]) || [];
+    const pipes = (pipelinesRes.data as Pipeline[]) || [];
+
+    // Update cache
+    calendarCache.tasks = rawTasks;
+    calendarCache.profiles = profs;
+    calendarCache.appointments = rawAppts;
+    calendarCache.stages = stgs;
+    calendarCache.pipelines = pipes;
+    calendarCache.timestamp = Date.now();
+
     setTasks(rawTasks);
-    setProfiles((profilesRes.data as Profile[]) || []);
-    const rawAppts = (apptsRes.data || []) as Appointment[];
-    rawAppts.forEach((a) => {
-      a.lead_name = nameMap.get(a.lead_id) || "Lead";
-      a.lead_cidade = cidadeMap.get(a.lead_id) || null;
-    });
+    setProfiles(profs);
     setAppointments(rawAppts);
-    setCrmStages((stagesRes.data as Stage[]) || []);
-    setCrmPipelines((pipelinesRes.data as Pipeline[]) || []);
-  }, [currentDate]);
+    setCrmStages(stgs);
+    setCrmPipelines(pipes);
+  }, []);
 
   // Refetch when currentDate changes (for appointment window) or on mount
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
