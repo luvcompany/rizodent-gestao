@@ -23,11 +23,13 @@ type Props = {
 export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUpdated }: Props) {
   const [saving, setSaving] = useState(false);
 
-  const updateField = useCallback(async (field: string, value: string | null) => {
+  const updateField = useCallback(async (field: "cidade" | "servico_interesse", value: string | null) => {
     setSaving(true);
+    const payload = { updated_at: new Date().toISOString() } as any;
+    payload[field] = value || null;
     const { error } = await supabase
       .from("crm_leads")
-      .update({ [field]: value || null, updated_at: new Date().toISOString() })
+      .update(payload)
       .eq("id", leadId);
     setSaving(false);
     if (error) {
