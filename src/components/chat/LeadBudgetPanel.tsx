@@ -7,12 +7,10 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin } from "lucide-react";
 
-const CIDADES = ["Vitória da Conquista", "Itabuna", "Ipiaú", "Guanambi", "Sem localização"];
+const CIDADES = ["Vitória da Conquista", "Guanambi", "Ipiaú", "Itabuna"];
+const EMPTY_CITY_VALUE = "none";
 
 type Lead = {
   id: string;
@@ -20,6 +18,7 @@ type Lead = {
   phone: string | null;
   paciente_id: string | null;
   value: number | null;
+  cidade?: string | null;
 };
 
 type Paciente = {
@@ -49,11 +48,16 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const [orcamentos, setOrcamentos] = useState<OrcamentoComPago[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
   const [totalBudgeted, setTotalBudgeted] = useState(0);
-  const [cidade, setCidade] = useState("");
+  const [cidade, setCidade] = useState(lead.cidade || EMPTY_CITY_VALUE);
   const [linkOpen, setLinkOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<Paciente[]>([]);
   const [searching, setSearching] = useState(false);
+  const [savingCity, setSavingCity] = useState(false);
+
+  useEffect(() => {
+    setCidade(lead.cidade || EMPTY_CITY_VALUE);
+  }, [lead.id, lead.cidade]);
 
   useEffect(() => {
     if (lead.paciente_id) {
@@ -75,7 +79,6 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
     if (pRes.data) {
       setPaciente(pRes.data);
-      if (pRes.data.cidade) setCidade(pRes.data.cidade);
     }
 
     const payments = pagRes.data || [];
@@ -99,10 +102,30 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   };
 
   const handleCidadeChange = async (val: string) => {
+    const normalizedCity = val === EMPTY_CITY_VALUE ? null : val;
+    const previousCity = cidade;
+
     setCidade(val);
-    // Save to paciente if linked
-    if (lead.paciente_id) {
-      await supabase.from("pacientes").update({ cidade: val }).eq("id", lead.paciente_id);
+    onLeadUpdated({ cidade: normalizedCity });
+    setSavingCity(true);
+
+    const [leadRes, pacienteRes] = await Promise.all([
+      supabase
+        .from("crm_leads")
+        .update({ cidade: normalizedCity, updated_at: new Date().toISOString() })
+        .eq("id", lead.id),
+      lead.paciente_id
+        ? supabase.from("pacientes").update({ cidade: normalizedCity }).eq("id", lead.paciente_id)
+        : Promise.resolve({ error: null }),
+    ]);
+
+    setSavingCity(false);
+
+    if (leadRes.error || pacienteRes.error) {
+      const rollbackCity = previousCity === EMPTY_CITY_VALUE ? null : previousCity;
+      setCidade(previousCity);
+      onLeadUpdated({ cidade: rollbackCity });
+      toast.error("Erro ao salvar cidade");
     }
   };
 
@@ -137,16 +160,21 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   };
 
   const createAndLinkPaciente = async () => {
+    const normalizedCity = cidade === EMPTY_CITY_VALUE ? null : cidade;
+
     const { data, error } = await supabase.from("pacientes").insert({
       nome: lead.name,
       telefone: stripCountryCode(lead.phone || ""),
-      cidade: cidade || null,
+      cidade: normalizedCity,
     }).select("id").single();
     if (error || !data) { toast.error("Erro ao criar paciente"); return; }
 
     // Link lead to patient
-    await supabase.from("crm_leads").update({ paciente_id: data.id }).eq("id", lead.id);
-    onLeadUpdated({ paciente_id: data.id });
+    await supabase
+      .from("crm_leads")
+      .update({ paciente_id: data.id, cidade: normalizedCity, updated_at: new Date().toISOString() })
+      .eq("id", lead.id);
+    onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
     setLinkOpen(false);
     toast.success("Paciente criado e vinculado!");
 
@@ -185,16 +213,17 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           <MapPin size={12} className="text-muted-foreground" />
           <span className="text-xs text-muted-foreground">Cidade</span>
         </div>
-        <Select value={cidade} onValueChange={handleCidadeChange}>
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue placeholder="Selecionar cidade..." />
-          </SelectTrigger>
-          <SelectContent>
-            {CIDADES.map(c => (
-              <SelectItem key={c} value={c}>{c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <select
+          value={cidade}
+          onChange={(e) => void handleCidadeChange(e.target.value)}
+          disabled={savingCity}
+          className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value={EMPTY_CITY_VALUE}>Sem localização</option>
+          {CIDADES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
 
       {lead.paciente_id && paciente ? (
@@ -287,16 +316,16 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
             {/* City selection before creating */}
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Cidade do Lead</label>
-              <Select value={cidade} onValueChange={setCidade}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Selecionar cidade..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {CIDADES.map(c => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <select
+                value={cidade}
+                onChange={(e) => setCidade(e.target.value)}
+                className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value={EMPTY_CITY_VALUE}>Sem localização</option>
+                {CIDADES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
           </div>
           <DialogFooter>
