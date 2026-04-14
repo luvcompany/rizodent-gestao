@@ -25,6 +25,7 @@ Deno.serve(async (req) => {
     time_window: 0,
     bot_timeout: 0,
     before_scheduled: 0,
+    no_response: 0,
   };
 
   try {
@@ -383,7 +384,86 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================
-    // 6. PROCESS PENDING QUEUE (time_window + scheduled items)
+    // 6. NO_RESPONSE — leads without inbound reply for X time
+    // =========================================================
+    const { data: noResponseAutomations } = await supabase
+      .from("crm_automations")
+      .select("*")
+      .eq("trigger_type", "no_response")
+      .eq("is_active", true);
+
+    const noResponseUnitsMs: Record<string, number> = {
+      minutes: 60 * 1000,
+      hours: 60 * 60 * 1000,
+      days: 24 * 60 * 60 * 1000,
+      weeks: 7 * 24 * 60 * 60 * 1000,
+    };
+
+    for (const auto of noResponseAutomations || []) {
+      const config = (auto.action_config || {}) as Record<string, any>;
+      const amount = config.no_response_amount || 1;
+      const unit = config.no_response_unit || "hours";
+      const thresholdMs = amount * (noResponseUnitsMs[unit] || 3600000);
+      const nowMs = Date.now();
+
+      const { data: leads } = await supabase
+        .from("crm_leads")
+        .select("id, phone, last_inbound_at, last_outbound_at, created_at")
+        .eq("stage_id", auto.stage_id)
+        .not("automation_paused", "is", true);
+
+      for (const lead of leads || []) {
+        // If lead responded after last outbound → skip
+        if (lead.last_inbound_at && lead.last_outbound_at && new Date(lead.last_inbound_at).getTime() > new Date(lead.last_outbound_at).getTime()) {
+          continue;
+        }
+
+        // Reference time: last outbound, or created_at if never contacted
+        const referenceTime = lead.last_outbound_at
+          ? new Date(lead.last_outbound_at).getTime()
+          : new Date(lead.created_at).getTime();
+
+        const elapsed = nowMs - referenceTime;
+        if (elapsed < thresholdMs) continue;
+
+        // Check for duplicate (already sent for this automation+lead combo)
+        const { data: existing } = await supabase
+          .from("crm_automation_queue")
+          .select("id, created_at")
+          .eq("automation_id", auto.id)
+          .eq("lead_id", lead.id)
+          .in("status", ["sent"])
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        // If already sent and the reference time hasn't changed (lead didn't respond then go silent again), skip
+        if (existing && existing.length > 0) {
+          const sentAt = new Date(existing[0].created_at).getTime();
+          // Only re-fire if the reference point is newer than when we last sent (meaning lead responded then went silent again)
+          if (referenceTime <= sentAt) continue;
+        }
+
+        console.log(`[AUTOMATION-ENGINE] no_response FIRING for lead ${lead.id}, automation ${auto.id}, elapsed=${Math.round(elapsed/1000)}s, threshold=${Math.round(thresholdMs/1000)}s`);
+
+        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+
+        await supabase.from("crm_automation_queue").insert({
+          automation_id: auto.id,
+          lead_id: lead.id,
+          action_type: auto.action_type,
+          action_config: config,
+          scheduled_at: new Date().toISOString(),
+          status: "sent",
+          layer_index: 0,
+        });
+
+        if (!results.no_response) results.no_response = 0;
+        results.no_response++;
+      }
+    }
+
+    // =========================================================
+    // 7. PROCESS PENDING QUEUE (time_window + scheduled items)
     // =========================================================
     const { data: pendingQueue } = await supabase
       .from("crm_automation_queue")

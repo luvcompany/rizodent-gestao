@@ -459,8 +459,10 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <Select value={(autoForm.action_config.no_response_unit as string) || "hours"} onValueChange={v => updateConfig({ no_response_unit: v })}>
                   <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="minutes">Minutos</SelectItem>
                     <SelectItem value="hours">Horas</SelectItem>
                     <SelectItem value="days">Dias</SelectItem>
+                    <SelectItem value="weeks">Semanas</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
