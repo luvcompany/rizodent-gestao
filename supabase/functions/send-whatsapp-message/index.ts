@@ -44,9 +44,14 @@ const getTemplatePlaceholderIndexes = (content: string | null | undefined): numb
   return [...indexes].sort((a, b) => a - b);
 };
 
-const buildTemplateFallbacks = (lead: { name?: string | null; phone?: string | null; source?: string | null } | null) => {
+const buildTemplateFallbacks = (
+  lead: { name?: string | null; phone?: string | null; source?: string | null; servico_interesse?: string | null } | null,
+  appointmentDate?: string | null,
+) => {
   const safeLeadName = lead?.name?.trim() || "cliente";
-  return [safeLeadName, lead?.phone?.trim() || safeLeadName, lead?.source?.trim() || safeLeadName];
+  const safeDate = appointmentDate || "data a confirmar";
+  const safeService = lead?.servico_interesse?.trim() || "consulta";
+  return [safeLeadName, safeDate, safeService, lead?.phone?.trim() || safeLeadName, lead?.source?.trim() || safeLeadName];
 };
 
 const buildMediaHeaderComponent = (headerType: string, link: string) => {
