@@ -410,6 +410,24 @@ export function useChatConversation(leadId: string | null | undefined) {
   const sendTemplate = useCallback(async (template: any, leadPhone: string | null) => {
     if (!leadPhone) { toast.error("Lead sem telefone configurado"); return; }
     setTemplatesOpen(false);
+
+    // Optimistic: show template message instantly
+    const tempId = crypto.randomUUID();
+    const bodyText = template.body_text || template.name;
+    const optimisticMsg: ChatMessage = {
+      id: tempId,
+      lead_id: leadId!,
+      direction: "outbound",
+      type: "template",
+      content: bodyText,
+      media_url: null,
+      status: "sending",
+      created_at: new Date().toISOString(),
+      whatsapp_message_id: null,
+      reply_to_message_id: null,
+    };
+    handleOptimisticMessage(optimisticMsg);
+
     try {
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
         body: {
@@ -420,12 +438,17 @@ export function useChatConversation(leadId: string | null | undefined) {
           template_language: template.language,
         },
       });
-      if (error || data?.error) { toast.error("Erro ao enviar template"); return; }
+      if (error || data?.error) {
+        handleMessageError(tempId);
+        toast.error("Erro ao enviar template");
+        return;
+      }
       toast.success("Template enviado");
     } catch {
+      handleMessageError(tempId);
       toast.error("Erro inesperado ao enviar template");
     }
-  }, [leadId]);
+  }, [leadId, handleOptimisticMessage, handleMessageError]);
 
   // ─── Notes ───
   const saveNotes = useCallback(async (updatedNotes: string) => {
