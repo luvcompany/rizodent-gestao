@@ -263,21 +263,9 @@ export default function CrmCalendario() {
     return all.filter(d => d.getDay() !== 0); // Exclude Sunday
   }, [currentDate]);
 
-  // Get unique cities from appointments for the matrix
-  const apptCities = useMemo(() => {
-    const cities = new Set<string>();
-    appointments.forEach(a => {
-      cities.add(a.lead_cidade || "Sem cidade");
-    });
-    const sorted = [...cities].sort();
-    // Put "Sem cidade" at the end
-    const idx = sorted.indexOf("Sem cidade");
-    if (idx > -1) {
-      sorted.splice(idx, 1);
-      sorted.push("Sem cidade");
-    }
-    return sorted.length > 0 ? sorted : ["Sem cidade"];
-  }, [appointments]);
+  // Fixed city rows for the appointment matrix
+  const FIXED_CITIES = ["Vitória da Conquista", "Guanambi", "Ipiaú", "Itabuna"];
+  const apptCities = FIXED_CITIES;
 
   return (
     <div className="flex flex-col h-full -m-6 p-4" style={{ height: "calc(100vh - 4rem)" }}>

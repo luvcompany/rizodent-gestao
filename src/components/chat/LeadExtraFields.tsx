@@ -6,10 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MapPin, Briefcase } from "lucide-react";
 
 const CIDADES = [
-  "Itabuna",
-  "Ipiaú",
-  "Guanambi",
   "Vitória da Conquista",
+  "Guanambi",
+  "Ipiaú",
+  "Itabuna",
   "VCA",
 ];
 
