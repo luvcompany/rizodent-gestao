@@ -36,7 +36,7 @@ import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Ban, Star
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Star
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
@@ -195,7 +195,8 @@ export default function CrmConversas() {
         const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
           supabase.from("crm_leads")
             .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse")
-            .order("last_message_at", { ascending: false, nullsFirst: false }),
+            .order("last_message_at", { ascending: false, nullsFirst: false })
+            .limit(500),
           supabase.from("profiles").select("id, nome"),
           supabase.from("crm_pipelines").select("id, name").order("created_at"),
         ]);
@@ -217,7 +218,8 @@ export default function CrmConversas() {
       const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
         supabase.from("crm_leads")
           .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse")
-          .order("last_message_at", { ascending: false, nullsFirst: false }),
+          .order("last_message_at", { ascending: false, nullsFirst: false })
+          .limit(500),
         supabase.from("profiles").select("id, nome"),
         supabase.from("crm_pipelines").select("id, name").order("created_at"),
       ]);
