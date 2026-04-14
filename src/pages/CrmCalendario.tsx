@@ -132,7 +132,7 @@ export default function CrmCalendario() {
     setAppointments(rawAppts);
     setCrmStages((stagesRes.data as Stage[]) || []);
     setCrmPipelines((pipelinesRes.data as Pipeline[]) || []);
-  }, []);
+  }, [currentDate]);
 
   // Refetch when currentDate changes (for appointment window) or on mount
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
