@@ -241,6 +241,16 @@ export function useChatConversation(leadId: string | null | undefined) {
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (prev.some((m) => m.id === newMsg.id)) return prev;
+          // Replace optimistic "sending" message with the real one (match by direction + content proximity)
+          const optimisticIdx = newMsg.direction === "outbound"
+            ? prev.findIndex((m) => m.status === "sending" && m.direction === "outbound" && m.type === newMsg.type)
+            : -1;
+          if (optimisticIdx >= 0) {
+            const updated = [...prev];
+            updated[optimisticIdx] = newMsg;
+            messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
+            return updated;
+          }
           const updated = [...prev, newMsg];
           messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
           return updated;
