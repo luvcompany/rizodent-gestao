@@ -34,7 +34,7 @@ import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import TaskPanel from "@/components/chat/TaskPanel";
 import AppointmentConfirmBar from "@/components/chat/AppointmentConfirmBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
-import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog } from "lucide-react";
+import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, CheckCheck } from "lucide-react";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
 
@@ -232,8 +232,25 @@ export default function CrmConversa() {
             <div className="font-semibold text-foreground truncate">{lead.name}</div>
             <div className="text-xs text-muted-foreground">
               {lead.phone && <span>{lead.phone}</span>}
+              {currentStage && (
+                <span className="ml-2 inline-flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentStage.color }} />
+                  {currentStage.name}
+                </span>
+              )}
             </div>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1 text-xs text-orange-600 dark:text-orange-400 hover:bg-orange-500/10"
+            onClick={async () => {
+              await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
+              toast.success("Conversa marcada como lida");
+            }}
+          >
+            <CheckCheck size={14} /> Marcar lida
+          </Button>
         </div>
 
         {/* Notes Bar */}
