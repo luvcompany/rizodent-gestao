@@ -592,6 +592,7 @@ export default function CrmCalendario() {
                               key={appt.id}
                               className={cn(
                                 "text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm",
+                                (appt as any).is_rescheduled ? "bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30" :
                                 appt.status === "confirmed" ? "bg-green-500/15 text-green-700" :
                                 appt.status === "cancelled" ? "bg-destructive/10 text-destructive" :
                                 "bg-primary/10 text-foreground"

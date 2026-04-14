@@ -607,16 +607,6 @@ export default function CrmConversas() {
                                 <CheckCheck size={14} className="mr-2 text-primary" /> Marcar como respondida
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem onClick={async (e) => {
-                              e.stopPropagation();
-                              // Mark as closed by updating last_outbound_at
-                              await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
-                              setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, last_direction: "outbound", last_outbound_at: new Date().toISOString() } as any : l));
-                              if (selectedLeadId === lead.id) setSelectedLead(prev => prev ? { ...prev, last_direction: "outbound" } : prev);
-                              toast.success("Conversa fechada");
-                            }}>
-                              <Ban size={14} className="mr-2" /> Conversa fechada
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
