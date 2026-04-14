@@ -463,13 +463,6 @@ export default function CrmKanban() {
         <div
           style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }}
           className="p-4"
-          onWheel={(e) => {
-            // Allow horizontal scroll with mouse wheel (no shift needed)
-            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-              e.currentTarget.scrollLeft += e.deltaY;
-              e.preventDefault();
-            }
-          }}
         >
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-3 h-full min-w-max">

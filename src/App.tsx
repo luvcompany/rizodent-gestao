@@ -7,6 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
+import AppLayout from "./components/AppLayout";
+import CrmLayout from "./components/CrmLayout";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Atendimento = lazy(() => import("./pages/Atendimento"));
 const Pacientes = lazy(() => import("./pages/Pacientes"));
@@ -34,8 +36,6 @@ const CrmExtras = lazy(() => import("./pages/CrmExtras"));
 const CrmConfiguracoes = lazy(() => import("./pages/CrmConfiguracoes"));
 const CrmRespostasRapidas = lazy(() => import("./pages/CrmRespostasRapidas"));
 const CrmCampanhas = lazy(() => import("./pages/CrmCampanhas"));
-const AppLayout = lazy(() => import("./components/AppLayout"));
-const CrmLayout = lazy(() => import("./components/CrmLayout"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
