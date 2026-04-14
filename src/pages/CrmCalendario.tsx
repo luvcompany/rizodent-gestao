@@ -606,7 +606,10 @@ export default function CrmCalendario() {
                                 setApptMovePipelineId("");
                               }}
                             >
-                              <div className="font-medium truncate">{appt.lead_name}</div>
+                              <div className="font-medium truncate">
+                                {(appt as any).is_rescheduled && <span className="text-purple-500 mr-0.5">↻</span>}
+                                {appt.lead_name}
+                              </div>
                               <div className="text-muted-foreground">{appt.scheduled_time?.slice(0, 5)}</div>
                             </div>
                           ))}
