@@ -241,6 +241,16 @@ export function useChatConversation(leadId: string | null | undefined) {
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (prev.some((m) => m.id === newMsg.id)) return prev;
+          // Replace optimistic "sending" message with the real one (match by direction + content proximity)
+          const optimisticIdx = newMsg.direction === "outbound"
+            ? prev.findIndex((m) => m.status === "sending" && m.direction === "outbound" && m.type === newMsg.type)
+            : -1;
+          if (optimisticIdx >= 0) {
+            const updated = [...prev];
+            updated[optimisticIdx] = newMsg;
+            messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
+            return updated;
+          }
           const updated = [...prev, newMsg];
           messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
           return updated;
@@ -390,48 +400,6 @@ export function useChatConversation(leadId: string | null | undefined) {
     }
   }, [leadId]);
 
-  // ─── Templates ───
-  const loadTemplates = useCallback(async () => {
-    const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED").order("created_at", { ascending: false });
-    setTemplates(deduplicateTemplates(data || []));
-    setTemplatesOpen(true);
-  }, []);
-
-  const sendTemplate = useCallback(async (template: any, leadPhone: string | null) => {
-    if (!leadPhone) { toast.error("Lead sem telefone configurado"); return; }
-    setTemplatesOpen(false);
-    try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: {
-          lead_id: leadId,
-          to: leadPhone,
-          type: "template",
-          template_name: template.name,
-          template_language: template.language,
-        },
-      });
-      if (error || data?.error) { toast.error("Erro ao enviar template"); return; }
-      toast.success("Template enviado");
-    } catch {
-      toast.error("Erro inesperado ao enviar template");
-    }
-  }, [leadId]);
-
-  // ─── Notes ───
-  const saveNotes = useCallback(async (updatedNotes: string) => {
-    if (!leadId) return;
-    const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", leadId);
-    if (error) toast.error("Erro ao salvar nota");
-    return !error;
-  }, [leadId]);
-
-  const addNote = useCallback(async (noteText: string, currentNotes: string | null) => {
-    if (!noteText.trim()) return;
-    const timestamp = new Date().toLocaleString("pt-BR");
-    const updatedNotes = `${currentNotes || ""}\n[${timestamp}] ${noteText.trim()}`.trim();
-    return saveNotes(updatedNotes);
-  }, [saveNotes]);
-
   // ─── Optimistic message handling ───
   const handleOptimisticMessage = useCallback((optimisticMsg: any) => {
     setMessages((prev) => {
@@ -451,6 +419,72 @@ export function useChatConversation(leadId: string | null | undefined) {
       return updated;
     });
   }, []);
+
+  // ─── Templates ───
+  const loadTemplates = useCallback(async () => {
+    const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED").order("created_at", { ascending: false });
+    setTemplates(deduplicateTemplates(data || []));
+    setTemplatesOpen(true);
+  }, []);
+
+  const sendTemplate = useCallback(async (template: any, leadPhone: string | null) => {
+    if (!leadPhone) { toast.error("Lead sem telefone configurado"); return; }
+    setTemplatesOpen(false);
+
+    // Optimistic: show template message instantly
+    const tempId = crypto.randomUUID();
+    const bodyText = template.body_text || template.name;
+    const optimisticMsg: ChatMessage = {
+      id: tempId,
+      lead_id: leadId!,
+      direction: "outbound",
+      type: "template",
+      content: bodyText,
+      media_url: null,
+      status: "sending",
+      created_at: new Date().toISOString(),
+      whatsapp_message_id: null,
+      reply_to_message_id: null,
+    };
+    handleOptimisticMessage(optimisticMsg);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          lead_id: leadId,
+          to: leadPhone,
+          type: "template",
+          template_name: template.name,
+          template_language: template.language,
+        },
+      });
+      if (error || data?.error) {
+        handleMessageError(tempId);
+        toast.error("Erro ao enviar template");
+        return;
+      }
+      toast.success("Template enviado");
+    } catch {
+      handleMessageError(tempId);
+      toast.error("Erro inesperado ao enviar template");
+    }
+  }, [leadId, handleOptimisticMessage, handleMessageError]);
+
+  // ─── Notes ───
+  const saveNotes = useCallback(async (updatedNotes: string) => {
+    if (!leadId) return;
+    const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", leadId);
+    if (error) toast.error("Erro ao salvar nota");
+    return !error;
+  }, [leadId]);
+
+  const addNote = useCallback(async (noteText: string, currentNotes: string | null) => {
+    if (!noteText.trim()) return;
+    const timestamp = new Date().toLocaleString("pt-BR");
+    const updatedNotes = `${currentNotes || ""}\n[${timestamp}] ${noteText.trim()}`.trim();
+    return saveNotes(updatedNotes);
+  }, [saveNotes]);
+
 
   // ─── Helpers ───
   const isSystemMessage = useCallback((msg: ChatMessage) => msg.type === "system" || msg.status === "system", []);
