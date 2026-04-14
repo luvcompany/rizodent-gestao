@@ -356,13 +356,17 @@ export default function CrmDashboard() {
                     {isDateToday ? "Hoje" : format(date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
                   </div>
                   <div className="space-y-1.5">
-                    {appts.map(appt => (
-                      <div key={appt.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border">
+                    {appts.map(appt => {
+                      const isReschedule = (appt as any).is_rescheduled === true;
+                      return (
+                      <div key={appt.id} className={cn("flex items-center gap-3 p-3 rounded-lg border", isReschedule ? "bg-purple-500/5 border-purple-500/20" : "bg-secondary/50 border-border")}>
                         <div className={cn(
                           "p-2 rounded-lg",
+                          isReschedule ? "bg-purple-500/10" :
                           appt.status === "confirmed" ? "bg-green-500/10" : appt.status === "cancelled" ? "bg-destructive/10" : "bg-primary/10"
                         )}>
                           <CalendarDays size={16} className={cn(
+                            isReschedule ? "text-purple-600" :
                             appt.status === "confirmed" ? "text-green-600" : appt.status === "cancelled" ? "text-destructive" : "text-primary"
                           )} />
                         </div>
@@ -370,6 +374,7 @@ export default function CrmDashboard() {
                           <p className="text-sm font-medium truncate">{appt.lead_name}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                             <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
+                            {isReschedule && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-purple-500/10 text-purple-600">Reagendado</Badge>}
                             {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
                           </div>
                         </div>
