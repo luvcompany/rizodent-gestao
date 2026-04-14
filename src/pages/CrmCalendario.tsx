@@ -107,18 +107,23 @@ export default function CrmCalendario() {
     const [tasksRes, profilesRes, leadsRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
       supabase.from("profiles").select("id, nome"),
-      supabase.from("crm_leads").select("id, name"),
+      supabase.from("crm_leads").select("id, name, cidade"),
       supabase.from("crm_appointments").select("*").order("scheduled_date"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
     ]);
     const rawTasks = (tasksRes.data || []) as Task[];
-    const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
+    const leadsData = ((leadsRes.data || []) as any[]);
+    const nameMap = new Map(leadsData.map((l) => [l.id, l.name]));
+    const cidadeMap = new Map(leadsData.map((l) => [l.id, l.cidade || null]));
     rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
     setTasks(rawTasks);
     setProfiles((profilesRes.data as Profile[]) || []);
     const rawAppts = (apptsRes.data || []) as Appointment[];
-    rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
+    rawAppts.forEach((a) => {
+      a.lead_name = nameMap.get(a.lead_id) || "Lead";
+      a.lead_cidade = cidadeMap.get(a.lead_id) || null;
+    });
     setAppointments(rawAppts);
     setCrmStages((stagesRes.data as Stage[]) || []);
     setCrmPipelines((pipelinesRes.data as Pipeline[]) || []);
