@@ -32,6 +32,10 @@ const extensionFromMime = (mimeType: string) => {
   return mimeMap[mimeType.toLowerCase()] || "bin";
 };
 
+const TEMPLATE_SELECT = "name, body_text, header_type, header_content, status, updated_at, created_at";
+
+const cleanTemplateName = (name: string) => name.replace(/_[a-z0-9]{4,10}$/i, "");
+
 const getTemplatePlaceholderIndexes = (content: string | null | undefined): number[] => {
   if (!content) return [];
 
@@ -45,6 +49,43 @@ const getTemplatePlaceholderIndexes = (content: string | null | undefined): numb
 
   return [...indexes].sort((a, b) => a - b);
 };
+
+const hasOfficialTemplatePlaceholders = (content: string | null | undefined) =>
+  getTemplatePlaceholderIndexes(content).length > 0;
+
+async function resolveTemplateForSend(supabase: any, templateName: string) {
+  const { data: exactTemplate } = await supabase
+    .from("crm_whatsapp_templates")
+    .select(TEMPLATE_SELECT)
+    .eq("name", templateName)
+    .maybeSingle();
+
+  if (exactTemplate?.body_text && hasOfficialTemplatePlaceholders(exactTemplate.body_text)) {
+    return exactTemplate;
+  }
+
+  const baseName = cleanTemplateName(templateName);
+  const { data: relatedTemplates } = await supabase
+    .from("crm_whatsapp_templates")
+    .select(TEMPLATE_SELECT)
+    .eq("status", "APPROVED")
+    .like("name", `${baseName}_%`)
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  const preferredTemplate = (relatedTemplates || []).find((candidate: any) =>
+    cleanTemplateName(candidate.name) === baseName && hasOfficialTemplatePlaceholders(candidate.body_text)
+  );
+
+  if (preferredTemplate && preferredTemplate.name !== exactTemplate?.name) {
+    console.log(
+      `[send-whatsapp] Switching template ${templateName} -> ${preferredTemplate.name} to use the official body placeholders.`,
+    );
+    return preferredTemplate;
+  }
+
+  return exactTemplate || null;
+}
 
 const buildTemplateFallbacks = (
   lead: { name?: string | null; phone?: string | null; source?: string | null; servico_interesse?: string | null } | null,
@@ -341,20 +382,18 @@ Deno.serve(async (req) => {
     } else if (type === "template") {
       waBody.type = "template";
 
+      let resolvedTemplateName = template_name;
       let resolvedComponents = Array.isArray(template_components) ? [...template_components] : [];
 
       if (template_name) {
-        const [{ data: tplRow }, { data: tplLead }, { data: nextAppt }] = await Promise.all([
-          supabase
-            .from("crm_whatsapp_templates")
-            .select("body_text, header_type, header_content")
-            .eq("name", template_name)
-            .maybeSingle(),
+        const [tplRow, tplLead, nextAppt] = await Promise.all([
+          resolveTemplateForSend(supabase, template_name),
           supabase
             .from("crm_leads")
             .select("name, phone, source, servico_interesse")
             .eq("id", lead_id)
-            .maybeSingle(),
+            .maybeSingle()
+            .then(({ data }) => data),
           supabase
             .from("crm_appointments")
             .select("scheduled_date, scheduled_time")
@@ -362,15 +401,16 @@ Deno.serve(async (req) => {
             .in("status", ["confirmed", "pending"])
             .order("scheduled_date", { ascending: true })
             .limit(1)
-            .maybeSingle(),
+            .maybeSingle()
+            .then(({ data }) => data),
         ]);
 
         if (tplRow) {
+          resolvedTemplateName = tplRow.name;
           const headerType = (tplRow.header_type || "").toUpperCase();
           const bodyText = tplRow.body_text || "";
           const placeholderIndexes = getTemplatePlaceholderIndexes(bodyText);
 
-          // Format appointment date for template
           let formattedApptDate: string | null = null;
           if (nextAppt?.scheduled_date) {
             const [y, m, d] = nextAppt.scheduled_date.split("-");
@@ -384,7 +424,7 @@ Deno.serve(async (req) => {
 
             const stableHeaderLink = await ensurePublicTemplateMediaLink(
               supabase,
-              template_name,
+              resolvedTemplateName,
               headerType,
               tplRow.header_content,
             );
@@ -393,7 +433,7 @@ Deno.serve(async (req) => {
               await supabase
                 .from("crm_whatsapp_templates")
                 .update({ header_content: stableHeaderLink, updated_at: new Date().toISOString() })
-                .eq("name", template_name);
+                .eq("name", resolvedTemplateName);
             }
 
             const headerComponent = stableHeaderLink ? buildMediaHeaderComponent(headerType, stableHeaderLink) : null;
@@ -431,15 +471,16 @@ Deno.serve(async (req) => {
             }
           }
 
-          console.log(`[send-whatsapp] Resolved ${resolvedComponents.length} component(s) for template ${template_name}`, JSON.stringify(resolvedComponents));
+          console.log(`[send-whatsapp] Resolved ${resolvedComponents.length} component(s) for template ${resolvedTemplateName}`, JSON.stringify(resolvedComponents));
         }
       }
 
       waBody.template = {
-        name: template_name,
+        name: resolvedTemplateName,
         language: { code: template_language || "pt_BR" },
         ...(resolvedComponents.length > 0 ? { components: resolvedComponents } : {}),
       };
+      template_name = resolvedTemplateName;
     } else if (type === "text") {
       if (!message) {
         return new Response(JSON.stringify({ error: "Missing message for text type" }), {
@@ -602,7 +643,7 @@ Deno.serve(async (req) => {
 
     const sentWamid = waData?.messages?.[0]?.id || null;
     const initialStatus = waData?.messages?.[0]?.message_status || "accepted";
-    const dbContent = type === "template" ? `📋 Template: ${template_name}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
+    const dbContent = type === "template" ? `📋 Template: ${template_name || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
     const dbType = type === "template" || type === "interactive" ? "text" : finalType;
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,
