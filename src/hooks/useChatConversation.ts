@@ -7,7 +7,7 @@ import { batchSignMediaUrls } from "@/lib/mediaUtils";
 
 // Global message cache to avoid re-fetching when switching between leads
 const messageCache = new Map<string, { messages: any[]; timestamp: number }>();
-const CACHE_TTL = 3 * 60_000; // 3 minutes
+const CACHE_TTL = 5 * 60_000; // 5 minutes
 
 export type ChatMessage = {
   id: string;

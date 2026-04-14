@@ -45,6 +45,7 @@ type Appointment = {
   notes: string | null;
   lead_name?: string;
   lead_cidade?: string | null;
+  is_rescheduled?: boolean;
 };
 
 type Stage = { id: string; name: string; color: string; pipeline_id: string };
@@ -137,6 +138,7 @@ export default function CrmCalendario() {
       ...a,
       lead_name: a.crm_leads?.name || "Lead",
       lead_cidade: a.crm_leads?.cidade || null,
+      is_rescheduled: a.is_rescheduled || false,
     })) as Appointment[];
     const stgs = (stagesRes.data as Stage[]) || [];
     const pipes = (pipelinesRes.data as Pipeline[]) || [];
@@ -592,6 +594,7 @@ export default function CrmCalendario() {
                               key={appt.id}
                               className={cn(
                                 "text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm",
+                                (appt as any).is_rescheduled ? "bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30" :
                                 appt.status === "confirmed" ? "bg-green-500/15 text-green-700" :
                                 appt.status === "cancelled" ? "bg-destructive/10 text-destructive" :
                                 "bg-primary/10 text-foreground"
@@ -603,7 +606,10 @@ export default function CrmCalendario() {
                                 setApptMovePipelineId("");
                               }}
                             >
-                              <div className="font-medium truncate">{appt.lead_name}</div>
+                              <div className="font-medium truncate">
+                                {(appt as any).is_rescheduled && <span className="text-purple-500 mr-0.5">↻</span>}
+                                {appt.lead_name}
+                              </div>
                               <div className="text-muted-foreground">{appt.scheduled_time?.slice(0, 5)}</div>
                             </div>
                           ))}

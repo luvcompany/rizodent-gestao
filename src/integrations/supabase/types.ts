@@ -271,6 +271,7 @@ export type Database = {
           confirmed_by: string | null
           created_at: string
           id: string
+          is_rescheduled: boolean
           lead_id: string
           notes: string | null
           scheduled_date: string
@@ -284,6 +285,7 @@ export type Database = {
           confirmed_by?: string | null
           created_at?: string
           id?: string
+          is_rescheduled?: boolean
           lead_id: string
           notes?: string | null
           scheduled_date: string
@@ -297,6 +299,7 @@ export type Database = {
           confirmed_by?: string | null
           created_at?: string
           id?: string
+          is_rescheduled?: boolean
           lead_id?: string
           notes?: string | null
           scheduled_date?: string
