@@ -340,8 +340,10 @@ Deno.serve(async (req) => {
       if (scheduledType === "task" || scheduledType === "both") {
         const { data: tasks } = await supabase
           .from("crm_tasks")
-          .select("id, lead_id, due_date")
+          .select("id, lead_id, due_date, title")
           .eq("status", "pending");
+
+        console.log(`[BEFORE_SCHEDULED] Checking ${tasks?.length || 0} pending tasks, beforeMs=${beforeMs}`);
 
         for (const task of tasks || []) {
           const { data: lead } = await supabase
@@ -629,7 +631,19 @@ async function sendAction(
 
       case "move_stage":
         if (config.target_stage_id) {
-          await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", leadId);
+          console.log(`[AUTOMATION-ENGINE] move_stage: moving lead ${leadId} to stage ${config.target_stage_id}`);
+          const { error: moveErr } = await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", leadId);
+          if (moveErr) console.error(`[AUTOMATION-ENGINE] move_stage error:`, moveErr);
+          else {
+            // Also update stage history
+            await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
+              .eq("lead_id", leadId).is("exited_at", null);
+            await supabase.from("crm_lead_stage_history").insert({
+              lead_id: leadId,
+              stage_id: config.target_stage_id,
+              from_stage_id: null,
+            });
+          }
         }
         break;
 
