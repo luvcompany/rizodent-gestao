@@ -549,46 +549,78 @@ export default function CrmConversas() {
                     const isActive = lead.id === selectedLeadId;
                     const stageDot = chat.stages.find((s) => s.id === lead.stage_id);
                     const isInbound = lead.last_direction === "inbound";
-                    return (
-                      <button
-                        key={lead.id}
-                        onClick={() => handleSelectLead(lead)}
-                        className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
+                     return (
+                      <div key={lead.id} className={`relative group flex items-start gap-0 transition-colors ${
                           isActive
                             ? "bg-primary/15 border-l-2 border-l-primary"
                             : isInbound
                               ? "bg-orange-500/15 dark:bg-orange-400/20 border-l-[3px] border-l-orange-500 dark:border-l-orange-400 hover:bg-orange-500/25 dark:hover:bg-orange-400/30"
                               : "hover:bg-secondary/50"
-                        }`}
-                      >
-                        <div className="relative flex-shrink-0 mt-0.5">
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
-                          </Avatar>
-                          <div className="absolute -bottom-0.5 -left-0.5">
-                            <ChannelBadgeIcon source={lead.source} size={16} />
+                        }`}>
+                        <button
+                          onClick={() => handleSelectLead(lead)}
+                          className="flex-1 flex items-start gap-3 px-4 py-3 text-left min-w-0"
+                        >
+                          <div className="relative flex-shrink-0 mt-0.5">
+                            <Avatar className="h-9 w-9">
+                              <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+                            </Avatar>
+                            <div className="absolute -bottom-0.5 -left-0.5">
+                              <ChannelBadgeIcon source={lead.source} size={16} />
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
-                            {lead.last_message_at && (
-                              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                {new Date(lead.last_message_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                              </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
+                              {lead.last_message_at && (
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                  {new Date(lead.last_message_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {lead.source && (
+                                <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
+                                  {["facebook_ad", "instagram_ad"].includes(lead.source.toLowerCase()) ? "anúncio" : lead.source}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.last_message || "Sem mensagens"}</p>
+                          </div>
+                        </button>
+                        {/* Context menu */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="flex-shrink-0 p-2 mt-3 mr-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground">
+                              <MoreHorizontal size={16} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52">
+                            {isInbound && (
+                              <DropdownMenuItem onClick={async (e) => {
+                                e.stopPropagation();
+                                await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
+                                setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, last_direction: "outbound", last_outbound_at: new Date().toISOString() } as any : l));
+                                if (selectedLeadId === lead.id) setSelectedLead(prev => prev ? { ...prev, last_direction: "outbound" } : prev);
+                                toast.success("Conversa marcada como respondida");
+                              }}>
+                                <CheckCheck size={14} className="mr-2 text-primary" /> Marcar como respondida
+                              </DropdownMenuItem>
                             )}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            {lead.source && (
-                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
-                                {["facebook_ad", "instagram_ad"].includes(lead.source.toLowerCase()) ? "anúncio" : lead.source}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.last_message || "Sem mensagens"}</p>
-                        </div>
-                      </button>
-                    );
+                            <DropdownMenuItem onClick={async (e) => {
+                              e.stopPropagation();
+                              // Mark as closed by updating last_outbound_at
+                              await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
+                              setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, last_direction: "outbound", last_outbound_at: new Date().toISOString() } as any : l));
+                              if (selectedLeadId === lead.id) setSelectedLead(prev => prev ? { ...prev, last_direction: "outbound" } : prev);
+                              toast.success("Conversa fechada");
+                            }}>
+                              <Ban size={14} className="mr-2" /> Conversa fechada
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                     );
                   })}
                   {visibleCount < filtered.length && (
                     <button
