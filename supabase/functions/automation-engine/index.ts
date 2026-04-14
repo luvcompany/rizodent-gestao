@@ -421,6 +421,20 @@ Deno.serve(async (req) => {
           ? new Date(lead.last_inbound_at).getTime()
           : new Date(lead.created_at).getTime();
 
+        const { data: currentStageEntry } = await supabase
+          .from("crm_lead_stage_history")
+          .select("entered_at")
+          .eq("lead_id", lead.id)
+          .eq("stage_id", auto.stage_id)
+          .is("exited_at", null)
+          .order("entered_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const currentStageEnteredAt = currentStageEntry?.entered_at
+          ? new Date(currentStageEntry.entered_at).getTime()
+          : 0;
+
         const elapsed = nowMs - referenceTime;
         if (elapsed < thresholdMs) continue;
 
@@ -435,10 +449,18 @@ Deno.serve(async (req) => {
           .order("created_at", { ascending: false })
           .limit(1);
 
-        // If already sent with same action_type and the reference time hasn't changed, skip
+        // If already sent in the current stage cycle and the lead hasn't replied since, skip
         if (existing && existing.length > 0) {
           const sentAt = new Date(existing[0].created_at).getTime();
-          if (referenceTime <= sentAt) continue;
+          const alreadyProcessedCurrentStageCycle = sentAt >= currentStageEnteredAt;
+          const leadRepliedAfterLastSend = referenceTime > sentAt;
+
+          if (alreadyProcessedCurrentStageCycle && !leadRepliedAfterLastSend) {
+            console.log(
+              `[AUTOMATION-ENGINE] no_response skipping lead ${lead.id}, automation ${auto.id}, sentAt=${existing[0].created_at}, stageEnteredAt=${currentStageEntry?.entered_at || "n/a"}, referenceTime=${new Date(referenceTime).toISOString()}`
+            );
+            continue;
+          }
         }
 
         console.log(`[AUTOMATION-ENGINE] no_response FIRING for lead ${lead.id}, automation ${auto.id}, elapsed=${Math.round(elapsed/1000)}s, threshold=${Math.round(thresholdMs/1000)}s`);
