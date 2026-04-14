@@ -361,10 +361,24 @@ export default function CrmKanban() {
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  if (loading) {
+  if (loading && leads.length === 0) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-muted-foreground">Carregando CRM...</div>
+      <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}>
+        <div className="bg-card border-b border-border px-6 py-3 flex items-center gap-4 h-14">
+          <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+          <div className="h-8 w-24 bg-muted animate-pulse rounded ml-auto" />
+        </div>
+        <div className="bg-card border-b border-border px-6 py-2 flex items-center gap-6 h-10">
+          {[1,2,3,4,5].map(i => <div key={i} className="h-4 w-28 bg-muted animate-pulse rounded" />)}
+        </div>
+        <div className="flex gap-3 p-4 flex-1">
+          {[1,2,3,4,5].map(i => (
+            <div key={i} className="w-[280px] flex-shrink-0 bg-secondary/50 rounded-lg p-3 space-y-2">
+              <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+              {[1,2,3].map(j => <div key={j} className="h-16 bg-muted animate-pulse rounded" />)}
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
