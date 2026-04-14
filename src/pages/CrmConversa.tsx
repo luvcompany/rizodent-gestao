@@ -34,7 +34,7 @@ import LeadFollowUpPanel from "@/components/chat/LeadFollowUpPanel";
 import TaskPanel from "@/components/chat/TaskPanel";
 import AppointmentConfirmBar from "@/components/chat/AppointmentConfirmBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
-import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, CheckCheck } from "lucide-react";
+import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog } from "lucide-react";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
 
