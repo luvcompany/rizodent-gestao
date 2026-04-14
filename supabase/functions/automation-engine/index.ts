@@ -413,14 +413,10 @@ Deno.serve(async (req) => {
         .not("automation_paused", "is", true);
 
       for (const lead of leads || []) {
-        // If lead responded after last outbound → skip
-        if (lead.last_inbound_at && lead.last_outbound_at && new Date(lead.last_inbound_at).getTime() > new Date(lead.last_outbound_at).getTime()) {
-          continue;
-        }
-
-        // Reference time: last outbound, or created_at if never contacted
-        const referenceTime = lead.last_outbound_at
-          ? new Date(lead.last_outbound_at).getTime()
+        // "Sem resposta" = lead hasn't sent any inbound message in X time
+        // Reference: last_inbound_at (last time lead messaged us), or created_at if they never messaged
+        const referenceTime = lead.last_inbound_at
+          ? new Date(lead.last_inbound_at).getTime()
           : new Date(lead.created_at).getTime();
 
         const elapsed = nowMs - referenceTime;
