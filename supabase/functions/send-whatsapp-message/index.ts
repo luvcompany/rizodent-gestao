@@ -335,6 +335,7 @@ Deno.serve(async (req) => {
     }
 
     let finalType = type;
+    let sentTemplateName = template_name || null;
     let waBody: any = { messaging_product: "whatsapp", to };
 
     if (resolvedWamid) {
@@ -480,7 +481,7 @@ Deno.serve(async (req) => {
         language: { code: template_language || "pt_BR" },
         ...(resolvedComponents.length > 0 ? { components: resolvedComponents } : {}),
       };
-      template_name = resolvedTemplateName;
+      sentTemplateName = resolvedTemplateName || sentTemplateName;
     } else if (type === "text") {
       if (!message) {
         return new Response(JSON.stringify({ error: "Missing message for text type" }), {
@@ -643,7 +644,7 @@ Deno.serve(async (req) => {
 
     const sentWamid = waData?.messages?.[0]?.id || null;
     const initialStatus = waData?.messages?.[0]?.message_status || "accepted";
-    const dbContent = type === "template" ? `📋 Template: ${template_name || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
+    const dbContent = type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
     const dbType = type === "template" || type === "interactive" ? "text" : finalType;
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,
