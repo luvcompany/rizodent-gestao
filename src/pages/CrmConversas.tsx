@@ -425,6 +425,7 @@ export default function CrmConversas() {
           if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
         } else if (l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
       }
+      if (filters.cidade && (l.cidade || "") !== filters.cidade) return false;
       // Special URL filters
       if (urlGhost && ghostLeadIds && ghostLeadIds.has(l.id)) return false; // ghost = NOT in inbound set
       if (urlAppointmentStatus && appointmentLeadIds && !appointmentLeadIds.has(l.id)) return false;
