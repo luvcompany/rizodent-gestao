@@ -241,9 +241,9 @@ export function useChatConversation(leadId: string | null | undefined) {
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (prev.some((m) => m.id === newMsg.id)) return prev;
-          // Replace optimistic "sending" message with the real one (match by direction + content proximity)
+          // Replace optimistic message with the real one (match by direction + type, any optimistic status)
           const optimisticIdx = newMsg.direction === "outbound"
-            ? prev.findIndex((m) => m.status === "sending" && m.direction === "outbound" && m.type === newMsg.type)
+            ? prev.findIndex((m) => (m.status === "sending" || m.status === "sent") && m.direction === "outbound" && m.type === newMsg.type && !m.whatsapp_message_id)
             : -1;
           if (optimisticIdx >= 0) {
             const updated = [...prev];
@@ -472,12 +472,13 @@ export function useChatConversation(leadId: string | null | undefined) {
         toast.error("Erro ao enviar template");
         return;
       }
+      handleMessageSuccess(tempId);
       toast.success("Template enviado");
     } catch {
       handleMessageError(tempId);
       toast.error("Erro inesperado ao enviar template");
     }
-  }, [leadId, handleOptimisticMessage, handleMessageError]);
+  }, [leadId, handleOptimisticMessage, handleMessageError, handleMessageSuccess]);
 
   // ─── Notes ───
   const saveNotes = useCallback(async (updatedNotes: string) => {
