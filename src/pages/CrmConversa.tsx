@@ -83,6 +83,7 @@ export default function CrmConversa() {
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => profilesCacheConv.data || []);
 
   const chat = useChatConversation(id);
+  const convNotes = useConversationNotes(id);
 
   // Fetch lead + profiles in parallel (with profile cache)
   const [leadLoading, setLeadLoading] = useState(true);
@@ -293,7 +294,7 @@ export default function CrmConversa() {
             }
 
             return (
-              <div key={msg.id}>
+              <div key={msg.id} className="group">
                 {dateSep}
                 <ChatMessageBubble
                   ref={(el) => { chat.messageRefs.current[msg.id] = el; }}
@@ -305,6 +306,20 @@ export default function CrmConversa() {
                   onReact={(m, emoji) => chat.handleReact(m, emoji, lead.phone)}
                   onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                   onScrollToMessage={chat.scrollToMessage}
+                />
+                {convNotes.notesByMessageId(msg.id).map((note) => (
+                  <ConversationInlineNote
+                    key={note.id}
+                    note={note}
+                    authorName={convNotes.profiles[note.author_id || ""]}
+                    onDeleted={convNotes.removeNote}
+                    onUpdated={convNotes.updateNote}
+                  />
+                ))}
+                <AddInlineNoteButton
+                  messageId={msg.id}
+                  leadId={lead.id}
+                  onNoteAdded={convNotes.addNote}
                 />
               </div>
             );
