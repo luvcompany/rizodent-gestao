@@ -478,7 +478,7 @@ export function useChatConversation(leadId: string | null | undefined) {
       handleMessageError(tempId);
       toast.error("Erro inesperado ao enviar template");
     }
-  }, [leadId, handleOptimisticMessage, handleMessageError]);
+  }, [leadId, handleOptimisticMessage, handleMessageError, handleMessageSuccess]);
 
   // ─── Notes ───
   const saveNotes = useCallback(async (updatedNotes: string) => {
