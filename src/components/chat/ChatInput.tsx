@@ -69,25 +69,37 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingDiscardedRef = useRef(false);
-  const recorderWarmupDoneRef = useRef(false);
 
   // Waveform refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const waveformLevelsRef = useRef<number[]>([]);
+
+  const getCanvasTokenColor = useCallback((token: string, fallback: string, alpha = 1) => {
+    if (typeof window === "undefined") return fallback;
+    const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+    return value ? `hsl(${value} / ${alpha})` : fallback;
+  }, []);
 
   // Pre-load opus module on mount
   useEffect(() => { preloadOpusRecorder(); }, []);
 
   // Waveform drawing (bar style for visibility)
   const drawWaveform = useCallback(() => {
+    if (animFrameRef.current !== null) return;
+
     const canvas = canvasRef.current;
     const analyser = analyserRef.current;
     if (!canvas || !analyser) return;
 
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
+    const barCount = 32;
+    waveformLevelsRef.current = waveformLevelsRef.current.length === barCount
+      ? waveformLevelsRef.current
+      : Array.from({ length: barCount }, () => 0.18);
 
     const draw = () => {
       animFrameRef.current = requestAnimationFrame(draw);
@@ -114,31 +126,51 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       const h = rect.height;
       ctx.clearRect(0, 0, w, h);
 
-      const barCount = 45;
-      const gap = 2;
+      const gap = 3;
       const barWidth = Math.max(2, (w - gap * (barCount - 1)) / barCount);
       const step = Math.max(1, Math.floor(bufferLength / barCount));
+      const trackColor = getCanvasTokenColor("--muted", "hsl(24 10% 80% / 0.45)", 0.35);
+      const activeColor = getCanvasTokenColor("--primary", "hsl(24 95% 53%)", recordingPaused ? 0.45 : 0.95);
+      const levels = waveformLevelsRef.current;
 
       for (let i = 0; i < barCount; i++) {
-        const sample = dataArray[i * step];
-        const amplitude = Math.abs(sample - 128) / 128;
-        const minBarH = 3;
-        const barH = Math.max(minBarH, amplitude * h * 0.85);
+        let totalAmplitude = 0;
+        for (let j = 0; j < step; j++) {
+          const index = Math.min(bufferLength - 1, i * step + j);
+          totalAmplitude += Math.abs(dataArray[index] - 128) / 128;
+        }
+
+        const averageAmplitude = totalAmplitude / step;
+        const targetLevel = recordingPaused ? 0.08 : Math.max(0.12, averageAmplitude * 2.4);
+        levels[i] = levels[i] * 0.6 + targetLevel * 0.4;
+
+        const trackHeight = Math.max(6, h * 0.28);
+        const minBarH = Math.max(8, h * 0.24);
+        const barH = Math.max(minBarH, Math.min(h - 2, levels[i] * h));
         const x = i * (barWidth + gap);
+        const trackY = (h - trackHeight) / 2;
         const y = (h - barH) / 2;
 
-        ctx.fillStyle = "#f97316";
-        ctx.beginPath();
-        ctx.roundRect(x, y, barWidth, barH, 1.5);
-        ctx.fill();
+        ctx.fillStyle = trackColor;
+        ctx.fillRect(x, trackY, barWidth, trackHeight);
+
+        ctx.fillStyle = activeColor;
+        ctx.fillRect(x, y, barWidth, barH);
       }
     };
     draw();
-  }, []);
+  }, [getCanvasTokenColor, recordingPaused]);
 
   const stopWaveform = useCallback(() => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     animFrameRef.current = null;
+    waveformLevelsRef.current = [];
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
 
     if (audioCtxRef.current) {
       audioCtxRef.current.close().catch(() => {});
@@ -146,6 +178,17 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
     analyserRef.current = null;
   }, []);
+
+  useEffect(() => {
+    if (!recording || !analyserRef.current || !canvasRef.current) return;
+    drawWaveform();
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    };
+  }, [recording, drawWaveform]);
 
   useEffect(() => () => stopWaveform(), [stopWaveform]);
 
@@ -452,7 +495,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       await audioCtx.resume();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.82;
       source.connect(analyser);
       audioCtxRef.current = audioCtx;
       analyserRef.current = analyser;
@@ -482,39 +526,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           { mimeType: "audio/ogg;codecs=opus" },
           workerOptions
         );
-      }
-
-      if (!recorderWarmupDoneRef.current) {
-        recorderWarmupDoneRef.current = true;
-        await new Promise<void>((resolve) => {
-          let finished = false;
-          const finish = () => {
-            if (finished) return;
-            finished = true;
-            recorder.ondataavailable = null;
-            recorder.onstop = null;
-            resolve();
-          };
-
-          recorder.ondataavailable = () => {};
-          recorder.onstop = () => {
-            setTimeout(finish, 120);
-          };
-
-          recorder.start(60);
-
-          setTimeout(() => {
-            try {
-              if (recorder.state !== "inactive") {
-                recorder.stop();
-              } else {
-                finish();
-              }
-            } catch {
-              finish();
-            }
-          }, 180);
-        });
       }
 
       mediaRecorderRef.current = recorder;
@@ -554,7 +565,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         await sendRecordedAudio(oggBlob);
       };
 
-      recorder.start(1000);
+      recorder.start(250);
       setRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => {
@@ -562,8 +573,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           setRecordingTime((t) => t + 1);
         }
       }, 1000);
-
-      requestAnimationFrame(() => drawWaveform());
     } catch (err) {
       console.error("Recording start failed:", err);
       stopWaveform();
@@ -691,11 +700,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </button>
           <div className="flex-1 flex items-center gap-2 min-w-0">
             <span className={`w-3 h-3 rounded-full flex-shrink-0 ${recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"}`} />
-            <canvas
-              ref={canvasRef}
-              className="flex-1 min-w-0 h-10 rounded bg-muted/50"
-              style={{ minWidth: 100 }}
-            />
+            <div className="flex-1 min-w-0 h-12 rounded-2xl border border-border bg-secondary/80 px-2 flex items-center">
+              <canvas
+                ref={canvasRef}
+                className="h-8 w-full min-w-0"
+                style={{ minWidth: 100 }}
+              />
+            </div>
             <span className="text-sm font-medium text-foreground flex-shrink-0">
               {formatTime(recordingTime)}
             </span>
