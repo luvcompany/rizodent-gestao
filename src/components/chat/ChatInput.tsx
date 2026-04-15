@@ -657,8 +657,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             <span className={`w-3 h-3 rounded-full flex-shrink-0 ${recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"}`} />
             <canvas
               ref={canvasRef}
-              className="flex-1 min-w-0 h-8 rounded"
-              style={{ minWidth: 80 }}
+              className="flex-1 min-w-0 h-10 rounded bg-muted/50"
+              style={{ minWidth: 100 }}
             />
             <span className="text-sm font-medium text-foreground flex-shrink-0">
               {formatTime(recordingTime)}
