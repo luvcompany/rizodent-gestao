@@ -713,7 +713,7 @@ export default function CrmConversas() {
                     );
                   }
                   return (
-                    <div key={msg.id}>
+                    <div key={msg.id} className="group">
                       {dateSep}
                       <ChatMessageBubble
                         ref={(el) => { chat.messageRefs.current[msg.id] = el; }}
@@ -725,6 +725,20 @@ export default function CrmConversas() {
                         onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone)}
                         onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                         onScrollToMessage={chat.scrollToMessage}
+                      />
+                      {convNotes.notesByMessageId(msg.id).map((note) => (
+                        <ConversationInlineNote
+                          key={note.id}
+                          note={note}
+                          authorName={convNotes.profiles[note.author_id || ""]}
+                          onDeleted={convNotes.removeNote}
+                          onUpdated={convNotes.updateNote}
+                        />
+                      ))}
+                      <AddInlineNoteButton
+                        messageId={msg.id}
+                        leadId={selectedLead.id}
+                        onNoteAdded={convNotes.addNote}
                       />
                     </div>
                   );
