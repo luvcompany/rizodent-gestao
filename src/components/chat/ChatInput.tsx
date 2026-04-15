@@ -55,7 +55,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const { profile } = useAuth();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
-  const [recordingInitializing, setRecordingInitializing] = useState(false);
   const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
@@ -483,10 +482,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   };
 
   const startRecording = async () => {
-    if (recording || recordingInitializing) return;
+    if (recording) return;
 
     try {
-      setRecordingInitializing(true);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       recordingDiscardedRef.current = false;
@@ -533,20 +531,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      recorder.onstart = () => {
-        setRecordingInitializing(false);
-        setRecording(true);
-        setRecordingPaused(false);
-        setRecordingTime(0);
-
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = setInterval(() => {
-          if (mediaRecorderRef.current?.state === "recording") {
-            setRecordingTime((t) => t + 1);
-          }
-        }, 1000);
-      };
-
       recorder.ondataavailable = (e: any) => {
         if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
       };
@@ -555,7 +539,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
         streamRef.current = null;
         if (timerRef.current) clearInterval(timerRef.current);
-        setRecordingInitializing(false);
         stopWaveform();
         setRecording(false);
         setRecordingPaused(false);
@@ -583,9 +566,15 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       };
 
       recorder.start(250);
+      setRecording(true);
+      setRecordingTime(0);
+      timerRef.current = setInterval(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          setRecordingTime((t) => t + 1);
+        }
+      }, 1000);
     } catch (err) {
       console.error("Recording start failed:", err);
-      setRecordingInitializing(false);
       stopWaveform();
       toast.error("Não foi possível acessar o microfone");
     }
@@ -623,7 +612,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
     if (timerRef.current) clearInterval(timerRef.current);
     stopWaveform();
-    setRecordingInitializing(false);
     setRecording(false);
     setRecordingTime(0);
     audioChunksRef.current = [];
@@ -705,7 +693,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             </Button>
           </div>
         </div>
-      ) : recording || recordingInitializing ? (
+      ) : recording ? (
         <div className="flex items-center gap-3">
           <button onClick={cancelRecording} className="p-2 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors" title="Cancelar gravação">
             <Square size={18} />
@@ -720,13 +708,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               />
             </div>
             <span className="text-sm font-medium text-foreground flex-shrink-0">
-              {recordingInitializing ? "..." : formatTime(recordingTime)}
+              {formatTime(recordingTime)}
             </span>
           </div>
-          <button onClick={togglePauseRecording} className="p-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-40" title={recordingPaused ? "Retomar" : "Pausar"} disabled={recordingInitializing}>
+          <button onClick={togglePauseRecording} className="p-2 text-muted-foreground hover:text-primary transition-colors" title={recordingPaused ? "Retomar" : "Pausar"}>
             {recordingPaused ? <Play size={18} /> : <Pause size={18} />}
           </button>
-          <Button size="icon" onClick={stopRecording} variant="default" title="Enviar áudio" disabled={recordingInitializing}>
+          <Button size="icon" onClick={stopRecording} variant="default" title="Enviar áudio">
             <Send size={16} />
           </Button>
         </div>
