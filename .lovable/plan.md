@@ -1,56 +1,38 @@
 
+Vou corrigir os dois problemas na raiz, em vez de tentar mais um ajuste superficial.
 
-## Plan: Fix "Leads sem resposta" Trigger
+1. Corrigir o relógio preso no visualizador
+- Revisar a normalização de status no hook `useChatConversation`.
+- Tratar explicitamente os status reais que já existem no banco, especialmente `played`, além de `accepted`, `sent`, `delivered`, `read` e falhas.
+- Ajustar a UI de `ChatMessageBubble` para que status válidos não caiam no `default` do relógio.
+- Reforçar a reconciliação da mensagem otimista com a mensagem confirmada pelo backend para texto, áudio, imagem e documento, tanto em `CrmConversa` quanto em `CrmConversas`.
+- Melhorar o match da mensagem temporária com a mensagem real usando mais sinais além de apenas `type` e ausência de `whatsapp_message_id`, para evitar ficar presa quando o backend salva com tipo/status diferente.
 
-### Problem
-The `no_response` trigger type has a UI form but **zero backend processing logic** in the `automation-engine`. The engine simply never checks for it. Additionally, the time unit selector is missing "Minutos" and "Semanas" options.
+2. Corrigir a onda de gravação durante o áudio
+- Refazer a renderização visual da gravação em `ChatInput` para garantir contraste e visibilidade no espaço exato do input.
+- Desacoplar o desenho da onda da medição atual do canvas que hoje pode estar ficando invisível.
+- Adicionar trilha/base visível e barras animadas com fallback mínimo, para que mesmo com volume baixo apareça atividade.
+- Aplicar o mesmo comportamento nas duas telas porque ambas usam o mesmo `ChatInput`.
 
-### Behavior Requirements
-- "Leads sem resposta há 1 hora" means: any lead with >= 1 hour without inbound response fires the action (1h, 1h20, 1h50 all qualify)
-- Applies to all leads **currently in the configured stage** that match the no-response condition
-- Leads moved/dragged into the stage also get checked on the next cron cycle
-- If a lead responds (inbound message), cancel pending actions and stop firing
-- Time units: Minutos, Horas, Dias, Semanas
+3. Validar o fluxo inteiro do chat
+- Conferir os pontos de integração de `ChatInput` com `CrmConversa` e `CrmConversas`.
+- Garantir que `onMessageSent`, `onMessageSuccess` e `onMessageError` atualizem a lista local e o cache global sem divergência.
+- Verificar compatibilidade com mídias assinadas e com o retorno da função de envio.
 
-### Changes
+4. Testes que vou executar após implementar
+- Enviar texto e confirmar que o relógio vira check imediatamente.
+- Enviar áudio e confirmar que o relógio não fica preso.
+- Enviar imagem/documento e confirmar o mesmo comportamento.
+- Gravar áudio e verificar que a onda aparece durante toda a gravação no local que você indicou.
+- Validar isso nas duas telas: `CrmConversa` e `CrmConversas`.
 
-#### 1. UI — `src/components/automation/AutomationModal.tsx`
-- Add `minutes` and `weeks` to the `no_response_unit` selector (currently only has `hours` and `days`)
+Detalhes técnicos
+- Achei um bug concreto: o balão de mensagem hoje só renderiza ícones corretos para `read`, `delivered` e `sent`. No banco já existem mensagens outbound com status `played`, e esse status está caindo no `default`, que mostra o relógio.
+- Também há fragilidade na troca da mensagem otimista pela mensagem real: se o backend confirmar com tipo/status diferente do temporário, a UI pode continuar exibindo o item errado.
+- A gravação está entrando no modo correto, mas a onda atual depende de um desenho em canvas que pode ficar visualmente “invisível”; vou tornar esse bloco visual robusto e claramente visível.
 
-#### 2. Backend — `supabase/functions/automation-engine/index.ts`
-Add a new section (between the existing sections) to process `no_response` automations:
-
-- Query all active `no_response` automations
-- For each, read `no_response_amount` and `no_response_unit` from `action_config`, convert to milliseconds
-- Query all leads in the automation's `stage_id` where `automation_paused` is not true
-- For each lead:
-  - Determine the "last activity" timestamp: use `last_inbound_at` if it exists, otherwise fall back to `last_outbound_at` or `created_at`
-  - The trigger fires if the lead has **no inbound response** after the last outbound message AND the elapsed time since `last_outbound_at` >= the configured threshold
-  - If `last_inbound_at > last_outbound_at`, the lead HAS responded — skip and cancel any pending queue items
-  - If no `last_outbound_at` exists, check time since `created_at` (lead was never contacted but also never responded)
-  - Check `crm_automation_queue` to avoid duplicate sends (one send per automation per lead, reset if lead re-enters stage or responds then goes silent again)
-- Execute the configured action via `sendAction()`
-- Insert a record into `crm_automation_queue` with status `sent`
-
-The time conversion will support: `minutes` (×60000), `hours` (×3600000), `days` (×86400000), `weeks` (×604800000).
-
-### Technical Details
-
-```text
-automation-engine cron (every 60s)
-  │
-  ├── ... existing sections (bot_timeout, reengagement, stale, no_show, before_scheduled)
-  │
-  └── NEW: no_response section
-       ├── fetch automations WHERE trigger_type='no_response' AND is_active=true
-       ├── for each automation:
-       │    ├── parse no_response_amount + no_response_unit → thresholdMs
-       │    ├── fetch leads in stage_id
-       │    └── for each lead:
-       │         ├── if last_inbound_at > last_outbound_at → skip (responded)
-       │         ├── referenceTime = last_outbound_at || created_at
-       │         ├── if (now - referenceTime) >= thresholdMs → FIRE
-       │         ├── check crm_automation_queue for duplicates
-       │         └── sendAction() + insert queue record
-```
-
+Implementação prevista
+- `src/hooks/useChatConversation.ts`
+- `src/components/chat/ChatMessageBubble.tsx`
+- `src/components/chat/ChatInput.tsx`
+- Possivelmente pequenos ajustes em `src/pages/CrmConversa.tsx` e `src/pages/CrmConversas.tsx` se eu precisar reforçar o fluxo de callbacks, mas a maior parte deve ficar centralizada no hook e no input.
