@@ -79,43 +79,51 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   // Pre-load opus module on mount
   useEffect(() => { preloadOpusRecorder(); }, []);
 
-  // Waveform drawing
+  // Waveform drawing (bar style for visibility)
   const drawWaveform = useCallback(() => {
     const canvas = canvasRef.current;
     const analyser = analyserRef.current;
     if (!canvas || !analyser) return;
 
+    // Match canvas internal resolution to CSS size
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    ctx.scale(dpr, dpr);
 
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
     const draw = () => {
       animFrameRef.current = requestAnimationFrame(draw);
-      analyser.getByteTimeDomainData(dataArray);
+      analyser.getByteFrequencyData(dataArray);
 
-      const w = canvas.width;
-      const h = canvas.height;
+      const w = rect.width;
+      const h = rect.height;
       ctx.clearRect(0, 0, w, h);
 
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()
-        ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()})`
-        : "#f97316";
-      ctx.beginPath();
+      const barCount = 40;
+      const gap = 2;
+      const barWidth = (w - gap * (barCount - 1)) / barCount;
+      const step = Math.floor(bufferLength / barCount);
 
-      const sliceWidth = w / bufferLength;
-      let x = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        const v = dataArray[i] / 128.0;
-        const y = (v * h) / 2;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-        x += sliceWidth;
+      const color = "#f97316";
+
+      for (let i = 0; i < barCount; i++) {
+        const value = dataArray[i * step] / 255;
+        const barH = Math.max(2, value * h * 0.9);
+        const x = i * (barWidth + gap);
+        const y = (h - barH) / 2;
+
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, barH, 1);
+        ctx.fill();
       }
-      ctx.lineTo(w, h / 2);
-      ctx.stroke();
     };
     draw();
   }, []);
