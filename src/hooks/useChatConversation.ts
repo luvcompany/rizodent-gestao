@@ -43,9 +43,11 @@ const repairedMediaLeadCache = new Set<string>();
 
 type ActivityToast = { id: string; content: string };
 
+const CONFIRMED_STATUSES = new Set(["sent", "delivered", "read", "played", "accepted", "failed", "error", "system"]);
+
 const normalizeOutboundStatus = (message: ChatMessage): ChatMessage => {
   if (message.direction !== "outbound") return message;
-  if (message.status === "accepted") return { ...message, status: "sent" };
+  // Keep all real statuses as-is; the UI now handles them properly
   return message;
 };
 
@@ -247,8 +249,16 @@ export function useChatConversation(leadId: string | null | undefined) {
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (prev.some((m) => m.id === newMsg.id)) return prev;
+          // Find optimistic message to replace: must be outbound, not yet confirmed (no whatsapp_message_id),
+          // and still in a transient status. Match by type loosely (audio/template may differ).
           const optimisticIdx = newMsg.direction === "outbound"
-            ? prev.findIndex((m) => (m.status === "sending" || m.status === "sent") && m.direction === "outbound" && m.type === newMsg.type && !m.whatsapp_message_id)
+            ? prev.findIndex((m) =>
+                m.direction === "outbound" &&
+                !m.whatsapp_message_id &&
+                !CONFIRMED_STATUSES.has(m.status) &&
+                // Loose type match: text↔text, audio↔audio, template↔template, image↔image, etc.
+                (m.type === newMsg.type || (m.type === "text" && newMsg.type === "text"))
+              )
             : -1;
           if (optimisticIdx >= 0) {
             const updated = [...prev];

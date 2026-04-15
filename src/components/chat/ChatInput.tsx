@@ -85,43 +85,51 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     const analyser = analyserRef.current;
     if (!canvas || !analyser) return;
 
-    // Match canvas internal resolution to CSS size
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(dpr, dpr);
-
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
     const draw = () => {
       animFrameRef.current = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
+
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const cw = Math.round(rect.width * dpr);
+      const ch = Math.round(rect.height * dpr);
+      if (canvas.width !== cw || canvas.height !== ch) {
+        canvas.width = cw;
+        canvas.height = ch;
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      analyser.getByteTimeDomainData(dataArray);
 
       const w = rect.width;
       const h = rect.height;
       ctx.clearRect(0, 0, w, h);
 
-      const barCount = 40;
+      const barCount = 45;
       const gap = 2;
-      const barWidth = (w - gap * (barCount - 1)) / barCount;
-      const step = Math.floor(bufferLength / barCount);
-
-      const color = "#f97316";
+      const barWidth = Math.max(2, (w - gap * (barCount - 1)) / barCount);
+      const step = Math.max(1, Math.floor(bufferLength / barCount));
 
       for (let i = 0; i < barCount; i++) {
-        const value = dataArray[i * step] / 255;
-        const barH = Math.max(2, value * h * 0.9);
+        // Use time-domain data: 128 = silence, deviation = amplitude
+        const sample = dataArray[i * step];
+        const amplitude = Math.abs(sample - 128) / 128;
+        const minBarH = 3;
+        const barH = Math.max(minBarH, amplitude * h * 0.85);
         const x = i * (barWidth + gap);
         const y = (h - barH) / 2;
 
-        ctx.fillStyle = color;
+        ctx.fillStyle = "#f97316";
         ctx.beginPath();
-        ctx.roundRect(x, y, barWidth, barH, 1);
+        ctx.roundRect(x, y, barWidth, barH, 1.5);
         ctx.fill();
       }
     };
@@ -649,8 +657,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             <span className={`w-3 h-3 rounded-full flex-shrink-0 ${recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"}`} />
             <canvas
               ref={canvasRef}
-              className="flex-1 min-w-0 h-8 rounded"
-              style={{ minWidth: 80 }}
+              className="flex-1 min-w-0 h-10 rounded bg-muted/50"
+              style={{ minWidth: 100 }}
             />
             <span className="text-sm font-medium text-foreground flex-shrink-0">
               {formatTime(recordingTime)}
