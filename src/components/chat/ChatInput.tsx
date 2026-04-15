@@ -36,7 +36,7 @@ type ChatInputProps = {
   onExternalMessageConsumed?: () => void;
   onMessageSent?: (optimisticMsg: any) => void;
   onMessageError?: (tempId: string) => void;
-  onMessageSuccess?: (tempId: string) => void;
+  onMessageSuccess?: (tempId: string, confirmedMessage?: any) => void;
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
@@ -272,7 +272,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             onMessageError?.(tempId);
             toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
           } else {
-            onMessageSuccess?.(tempId);
+            onMessageSuccess?.(tempId, data?.message);
           }
         } catch (err: any) {
           onMessageError?.(tempId);
@@ -313,7 +313,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         onMessageError?.(tempId);
         toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
       } else {
-        onMessageSuccess?.(tempId);
+        onMessageSuccess?.(tempId, data?.message);
       }
     } catch (err: any) {
       onMessageError?.(tempId);
@@ -418,7 +418,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           onMessageError?.(tempId);
           toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
         } else {
-          onMessageSuccess?.(tempId);
+          onMessageSuccess?.(tempId, data?.message);
         }
       } catch {
         onMessageError?.(tempId);
