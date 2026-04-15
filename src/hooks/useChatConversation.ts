@@ -420,6 +420,15 @@ export function useChatConversation(leadId: string | null | undefined) {
     });
   }, []);
 
+  const handleMessageSuccess = useCallback((tempId: string) => {
+    setMessages((prev) => {
+      const updated = prev.map((m) => m.id === tempId && m.status === "sending" ? { ...m, status: "sent" } : m);
+      const currentLeadId = activeLeadRef.current;
+      if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
+      return updated;
+    });
+  }, []);
+
   // ─── Templates ───
   const loadTemplates = useCallback(async () => {
     const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED").order("created_at", { ascending: false });
@@ -527,6 +536,7 @@ export function useChatConversation(leadId: string | null | undefined) {
     addNote,
     handleOptimisticMessage,
     handleMessageError,
+    handleMessageSuccess,
     dismissToast,
     showActivityToast,
     isSystemMessage,
