@@ -35,10 +35,23 @@ type Props = {
 
 function getStatusIcon(status: string) {
   switch (status) {
-    case "read": return <CheckCheck size={14} className="text-blue-400" />;
+    case "read":
+    case "played":
+      return <CheckCheck size={14} className="text-blue-400" />;
     case "delivered": return <CheckCheck size={14} className="text-muted-foreground" />;
-    case "sent": return <Check size={14} className="text-muted-foreground" />;
-    default: return <Clock size={14} className="text-muted-foreground" />;
+    case "sent":
+    case "accepted":
+      return <Check size={14} className="text-muted-foreground" />;
+    case "failed":
+    case "error":
+      return <Clock size={14} className="text-destructive" />;
+    case "sending":
+      return <Clock size={14} className="text-muted-foreground animate-pulse" />;
+    case "system":
+      return null;
+    default:
+      // Any other confirmed status (e.g. future API statuses) → show as sent
+      return <Check size={14} className="text-muted-foreground" />;
   }
 }
 
