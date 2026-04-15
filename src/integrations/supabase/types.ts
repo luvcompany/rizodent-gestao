@@ -526,6 +526,51 @@ export type Database = {
           },
         ]
       }
+      crm_conversation_notes: {
+        Row: {
+          after_message_id: string | null
+          author_id: string | null
+          content: string
+          created_at: string
+          id: string
+          lead_id: string
+          updated_at: string
+        }
+        Insert: {
+          after_message_id?: string | null
+          author_id?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          updated_at?: string
+        }
+        Update: {
+          after_message_id?: string | null
+          author_id?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_conversation_notes_after_message_id_fkey"
+            columns: ["after_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_conversation_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_custom_fields: {
         Row: {
           created_at: string
