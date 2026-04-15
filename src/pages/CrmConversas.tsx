@@ -124,6 +124,7 @@ export default function CrmConversas() {
 
   // Unified chat hook
   const chat = useChatConversation(selectedLeadId);
+  const convNotes = useConversationNotes(selectedLeadId);
 
   const handleSelectLead = useCallback((lead: LeadConversation) => {
     setSelectedLeadId(lead.id);
