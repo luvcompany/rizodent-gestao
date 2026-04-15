@@ -43,6 +43,12 @@ const repairedMediaLeadCache = new Set<string>();
 
 type ActivityToast = { id: string; content: string };
 
+const normalizeOutboundStatus = (message: ChatMessage): ChatMessage => {
+  if (message.direction !== "outbound") return message;
+  if (message.status === "accepted") return { ...message, status: "sent" };
+  return message;
+};
+
 export function useChatConversation(leadId: string | null | undefined) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [stages, setStages] = useState<ChatStage[]>([]);
@@ -130,7 +136,7 @@ export function useChatConversation(leadId: string | null | undefined) {
         // Still refresh in background
         supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true }).then(({ data }) => {
           if (data) {
-            const nextMessages = data as unknown as ChatMessage[];
+            const nextMessages = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
             messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
             if (!applyMessages(nextMessages)) return;
             const mediaUrls = nextMessages.filter((m) => m.media_url?.startsWith("http")).map((m) => m.media_url!);
@@ -144,7 +150,7 @@ export function useChatConversation(leadId: string | null | undefined) {
     setLoading(true);
     try {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
-      const msgs = (data as unknown as ChatMessage[]) || [];
+      const msgs = ((data as unknown as ChatMessage[]) || []).map(normalizeOutboundStatus);
       messageCache.set(targetLeadId, { messages: msgs, timestamp: Date.now() });
       if (!applyMessages(msgs)) return;
       // Pre-sign all media URLs in background so they're cached when rendering
@@ -237,11 +243,10 @@ export function useChatConversation(leadId: string | null | undefined) {
         event: "INSERT", schema: "public", table: "messages", filter: `lead_id=eq.${targetLeadId}`,
       }, (payload) => {
         if (activeLeadRef.current !== targetLeadId) return;
-        const newMsg = payload.new as ChatMessage;
+        const newMsg = normalizeOutboundStatus(payload.new as ChatMessage);
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (prev.some((m) => m.id === newMsg.id)) return prev;
-          // Replace optimistic message with the real one (match by direction + type, any optimistic status)
           const optimisticIdx = newMsg.direction === "outbound"
             ? prev.findIndex((m) => (m.status === "sending" || m.status === "sent") && m.direction === "outbound" && m.type === newMsg.type && !m.whatsapp_message_id)
             : -1;
@@ -262,7 +267,8 @@ export function useChatConversation(leadId: string | null | undefined) {
         if (activeLeadRef.current !== targetLeadId) return;
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
-          const updated = prev.map((m) => m.id === (payload.new as ChatMessage).id ? (payload.new as ChatMessage) : m);
+          const updatedMessage = normalizeOutboundStatus(payload.new as ChatMessage);
+          const updated = prev.map((m) => m.id === updatedMessage.id ? updatedMessage : m);
           messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
           return updated;
         });
@@ -280,10 +286,10 @@ export function useChatConversation(leadId: string | null | undefined) {
       if (activeLeadRef.current !== targetLeadId) return;
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       if (data && activeLeadRef.current === targetLeadId) {
-        const nextMessages = data as unknown as ChatMessage[];
+        const nextMessages = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
-          if (nextMessages.length !== prev.length) {
+          if (nextMessages.length !== prev.length || nextMessages.some((message, index) => message.id !== prev[index]?.id || message.status !== prev[index]?.status)) {
             messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
             return nextMessages;
           }
@@ -420,9 +426,12 @@ export function useChatConversation(leadId: string | null | undefined) {
     });
   }, []);
 
-  const handleMessageSuccess = useCallback((tempId: string) => {
+  const handleMessageSuccess = useCallback((tempId: string, confirmedMessage?: ChatMessage) => {
     setMessages((prev) => {
-      const updated = prev.map((m) => m.id === tempId && m.status === "sending" ? { ...m, status: "sent" } : m);
+      const normalizedConfirmed = confirmedMessage ? normalizeOutboundStatus(confirmedMessage) : null;
+      const updated = prev.map((m) => m.id === tempId
+        ? (normalizedConfirmed ? normalizedConfirmed : (m.status === "sending" ? { ...m, status: "sent" } : m))
+        : m);
       const currentLeadId = activeLeadRef.current;
       if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
       return updated;
