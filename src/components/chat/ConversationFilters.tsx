@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Filter, X } from "lucide-react";
@@ -18,6 +19,7 @@ export type ConversationFilterValues = {
   tags: string[];
   source: string;
   assignedTo: string;
+  cidade: string;
 };
 
 const emptyFilters: ConversationFilterValues = {
@@ -28,7 +30,15 @@ const emptyFilters: ConversationFilterValues = {
   tags: [],
   source: "",
   assignedTo: "",
+  cidade: "",
 };
+
+const CIDADES = [
+  "Vitória da Conquista",
+  "Guanambi",
+  "Ipiaú",
+  "Itabuna",
+];
 
 function countActive(f: ConversationFilterValues): number {
   let c = 0;
@@ -39,6 +49,7 @@ function countActive(f: ConversationFilterValues): number {
   if (f.tags.length) c++;
   if (f.source) c++;
   if (f.assignedTo) c++;
+  if (f.cidade) c++;
   return c;
 }
 
@@ -59,16 +70,33 @@ export default function ConversationFilters({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConversationFilterValues>(filters);
+  const [tagSearch, setTagSearch] = useState("");
   const activeCount = countActive(filters);
 
   const handleOpen = () => {
     setDraft(filters);
+    setTagSearch("");
     setOpen(true);
   };
 
   const filteredStages = draft.pipelineId
     ? stages.filter((s) => (s as any).pipeline_id === draft.pipelineId)
     : stages;
+
+  const matchingTags = useMemo(() => {
+    if (!tagSearch.trim()) return [];
+    const q = tagSearch.toLowerCase();
+    return allTags.filter((t) => t.toLowerCase().includes(q) && !draft.tags.includes(t)).slice(0, 10);
+  }, [tagSearch, allTags, draft.tags]);
+
+  const removeTag = (tag: string) => {
+    setDraft({ ...draft, tags: draft.tags.filter((t) => t !== tag) });
+  };
+
+  const addTag = (tag: string) => {
+    setDraft({ ...draft, tags: [...draft.tags, tag] });
+    setTagSearch("");
+  };
 
   return (
     <>
@@ -146,27 +174,56 @@ export default function ConversationFilters({
               </Select>
             </div>
 
-            {/* Tags */}
+            {/* Cidade */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Cidade</label>
+              <Select value={draft.cidade} onValueChange={(v) => setDraft({ ...draft, cidade: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                <SelectContent>
+                  {CIDADES.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Tags - autocomplete */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Tags</label>
-              <div className="flex flex-wrap gap-1">
-                {allTags.map((t) => (
-                  <Badge
-                    key={t}
-                    variant={draft.tags.includes(t) ? "default" : "outline"}
-                    className="cursor-pointer text-[10px]"
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        tags: draft.tags.includes(t) ? draft.tags.filter((x) => x !== t) : [...draft.tags, t],
-                      })
-                    }
-                  >
-                    {t}
-                  </Badge>
-                ))}
-                {allTags.length === 0 && <span className="text-xs text-muted-foreground">Sem tags</span>}
+              {draft.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {draft.tags.map((t) => (
+                    <Badge key={t} variant="default" className="text-[10px] gap-1 pr-1">
+                      {t}
+                      <button onClick={() => removeTag(t)} className="ml-0.5 hover:text-destructive-foreground">
+                        <X size={10} />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div className="relative">
+                <Input
+                  placeholder="Digitar nome da tag..."
+                  value={tagSearch}
+                  onChange={(e) => setTagSearch(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                {matchingTags.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-32 overflow-y-auto">
+                    {matchingTags.map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => addTag(tag)}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-secondary transition-colors"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+              {allTags.length === 0 && <span className="text-xs text-muted-foreground">Sem tags</span>}
             </div>
 
             {/* Source */}
