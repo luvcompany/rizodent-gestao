@@ -344,6 +344,7 @@ export default function CrmConversa() {
             onReplySent={() => chat.setReplyTo(null)}
             onMessageSent={chat.handleOptimisticMessage}
             onMessageError={chat.handleMessageError}
+            onMessageSuccess={chat.handleMessageSuccess}
             lastInboundAt={chat.lastInboundAt}
           />
         )}

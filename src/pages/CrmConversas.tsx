@@ -758,6 +758,7 @@ export default function CrmConversas() {
                 onExternalMessageConsumed={() => {}}
                 onMessageSent={chat.handleOptimisticMessage}
                 onMessageError={chat.handleMessageError}
+                onMessageSuccess={chat.handleMessageSuccess}
                 replyTo={chat.replyTo}
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}

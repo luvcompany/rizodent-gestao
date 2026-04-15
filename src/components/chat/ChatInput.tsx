@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
@@ -36,12 +36,22 @@ type ChatInputProps = {
   onExternalMessageConsumed?: () => void;
   onMessageSent?: (optimisticMsg: any) => void;
   onMessageError?: (tempId: string) => void;
+  onMessageSuccess?: (tempId: string) => void;
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
+// Pre-load opus-media-recorder module
+let opusModulePromise: Promise<any> | null = null;
+function preloadOpusRecorder() {
+  if (!opusModulePromise) {
+    opusModulePromise = import("opus-media-recorder").then(m => m.default).catch(() => null);
+  }
+  return opusModulePromise;
+}
+
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
   const { profile } = useAuth();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [recording, setRecording] = useState(false);
@@ -59,6 +69,66 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingDiscardedRef = useRef(false);
+
+  // Waveform refs
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Pre-load opus module on mount
+  useEffect(() => { preloadOpusRecorder(); }, []);
+
+  // Waveform drawing
+  const drawWaveform = useCallback(() => {
+    const canvas = canvasRef.current;
+    const analyser = analyserRef.current;
+    if (!canvas || !analyser) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+      animFrameRef.current = requestAnimationFrame(draw);
+      analyser.getByteTimeDomainData(dataArray);
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()
+        ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()})`
+        : "#f97316";
+      ctx.beginPath();
+
+      const sliceWidth = w / bufferLength;
+      let x = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * h) / 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += sliceWidth;
+      }
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+    };
+    draw();
+  }, []);
+
+  const stopWaveform = useCallback(() => {
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    animFrameRef.current = null;
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    analyserRef.current = null;
+  }, []);
 
   // Fetch published bots
   useEffect(() => {
@@ -193,6 +263,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           if (error || data?.error) {
             onMessageError?.(tempId);
             toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+          } else {
+            onMessageSuccess?.(tempId);
           }
         } catch (err: any) {
           onMessageError?.(tempId);
@@ -232,6 +304,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       if (error || data?.error) {
         onMessageError?.(tempId);
         toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+      } else {
+        onMessageSuccess?.(tempId);
       }
     } catch (err: any) {
       onMessageError?.(tempId);
@@ -335,6 +409,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         if (error || data?.error) {
           onMessageError?.(tempId);
           toast.error(`Erro ao enviar áudio: ${error?.message || JSON.stringify(data?.error)}`);
+        } else {
+          onMessageSuccess?.(tempId);
         }
       } catch {
         onMessageError?.(tempId);
@@ -350,20 +426,42 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       recordingDiscardedRef.current = false;
       setRecordingPaused(false);
 
-      // Use opus-media-recorder for guaranteed OGG/OPUS output
-      const OpusMediaRecorder = (await import("opus-media-recorder")).default;
+      // Setup waveform analyser
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      audioCtxRef.current = audioCtx;
+      analyserRef.current = analyser;
 
-      const workerOptions = {
-        OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
-        WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
-        encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
-      };
+      // Try native MediaRecorder with OGG/OPUS first (Firefox)
+      let recorder: any;
+      const nativeOgg = typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/ogg;codecs=opus");
 
-      const recorder = new OpusMediaRecorder(
-        stream,
-        { mimeType: "audio/ogg;codecs=opus" },
-        workerOptions
-      );
+      if (nativeOgg) {
+        recorder = new MediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" });
+      } else {
+        // Fall back to opus-media-recorder (WASM polyfill)
+        const OpusMediaRecorder = await preloadOpusRecorder();
+        if (!OpusMediaRecorder) {
+          toast.error("Erro ao carregar gravador de áudio");
+          stream.getTracks().forEach(t => t.stop());
+          stopWaveform();
+          return;
+        }
+        const workerOptions = {
+          OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+          WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+          encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
+        };
+        recorder = new OpusMediaRecorder(
+          stream,
+          { mimeType: "audio/ogg;codecs=opus" },
+          workerOptions
+        );
+      }
+
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
@@ -375,6 +473,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
         streamRef.current = null;
         if (timerRef.current) clearInterval(timerRef.current);
+        stopWaveform();
         setRecording(false);
         setRecordingPaused(false);
         setRecordingTime(0);
@@ -400,7 +499,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         await sendRecordedAudio(oggBlob);
       };
 
-      recorder.start();
+      recorder.start(1000); // Request data every 1s for faster finalization
       setRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => {
@@ -408,8 +507,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           setRecordingTime((t) => t + 1);
         }
       }, 1000);
+
+      // Start waveform after state update
+      requestAnimationFrame(() => drawWaveform());
     } catch (err) {
       console.error("Recording start failed:", err);
+      stopWaveform();
       toast.error("Não foi possível acessar o microfone");
     }
   };
@@ -447,6 +550,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       streamRef.current = null;
     }
     if (timerRef.current) clearInterval(timerRef.current);
+    stopWaveform();
     setRecording(false);
     setRecordingTime(0);
     audioChunksRef.current = [];
@@ -457,7 +561,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   // 24h window logic
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30000); // update every 30s
+    const interval = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -533,10 +637,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           <button onClick={cancelRecording} className="p-2 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors" title="Cancelar gravação">
             <Square size={18} />
           </button>
-          <div className="flex-1 flex items-center gap-2">
-            <span className={`w-3 h-3 rounded-full ${recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"}`} />
-            <span className="text-sm font-medium text-foreground">
-              {recordingPaused ? "Pausado" : "Gravando"} {formatTime(recordingTime)}
+          <div className="flex-1 flex items-center gap-2 min-w-0">
+            <span className={`w-3 h-3 rounded-full flex-shrink-0 ${recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"}`} />
+            <canvas
+              ref={canvasRef}
+              width={200}
+              height={32}
+              className="flex-1 min-w-0 max-w-[200px] h-8 rounded"
+            />
+            <span className="text-sm font-medium text-foreground flex-shrink-0">
+              {formatTime(recordingTime)}
             </span>
           </div>
           <button onClick={togglePauseRecording} className="p-2 text-muted-foreground hover:text-primary transition-colors" title={recordingPaused ? "Retomar" : "Pausar"}>
