@@ -34,7 +34,7 @@ const crmNavItems: SidebarEntry[] = [
   { to: "/crm/dashboard", icon: Home, label: "Dashboard" },
   { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
   { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
-  { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
+  { to: "/crm/calendario", icon: CalendarDays, label: "Calendário", badgeKey: "tasks" },
   {
     label: "Automações",
     icon: Bot,
@@ -58,6 +58,7 @@ const CrmLayout = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
 
   const toggleGroup = (label: string) => {
@@ -91,6 +92,23 @@ const CrmLayout = () => {
     return () => { supabase.removeChannel(ch); };
   }, []);
 
+  useEffect(() => {
+    const fetchTodayTasks = async () => {
+      const today = new Date().toISOString().split("T")[0];
+      const { count } = await supabase
+        .from("crm_tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending")
+        .lte("due_date", `${today}T23:59:59`);
+      setTodayTaskCount(count || 0);
+    };
+    fetchTodayTasks();
+    const ch = supabase.channel("task-badge")
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, fetchTodayTasks)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
   const renderNavItem = (item: NavItem) => (
     <NavLink
       key={item.to}
@@ -110,6 +128,11 @@ const CrmLayout = () => {
       {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
         <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
           {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
+      {"badgeKey" in item && item.badgeKey === "tasks" && todayTaskCount > 0 && (
+        <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+          {todayTaskCount > 99 ? "99+" : todayTaskCount}
         </span>
       )}
     </NavLink>
