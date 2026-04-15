@@ -49,6 +49,7 @@ type Lead = {
   last_message: string | null;
   last_message_at: string | null;
   assigned_to: string | null;
+  cidade: string | null;
 };
 
 type Pipeline = {
@@ -113,7 +114,7 @@ export default function CrmKanban() {
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       targetPipelineId
-        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to").eq("pipeline_id", targetPipelineId).order("position")
+        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
@@ -137,7 +138,7 @@ export default function CrmKanban() {
         // Pipeline changed, need a second fetch for stages/leads only
         const [s2, l2] = await Promise.all([
           supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
-          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to").eq("pipeline_id", p.id).order("position"),
+          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade").eq("pipeline_id", p.id).order("position"),
         ]);
         setStages((s2.data as Stage[]) || []);
         setLeads((l2.data as Lead[]) || []);
@@ -342,6 +343,7 @@ export default function CrmKanban() {
           if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
         } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
       }
+      if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
       return true;
     });
   }, [searchTerm, kanbanFilters, user?.id]);
