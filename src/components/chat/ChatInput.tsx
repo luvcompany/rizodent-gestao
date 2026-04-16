@@ -312,7 +312,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
   const isWindowExpired = windowInfo.expired;
 
-  const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
+  const sendRecordedAudio = useCallback(async (audioBlob: Blob) => {
     if (!leadPhone) {
       toast.error("Lead sem telefone para envio do áudio");
       throw new Error("Lead sem telefone");
@@ -323,10 +323,18 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       throw new Error("Janela expirada");
     }
 
+    // Dynamic extension based on actual MIME type
+    const getExtFromMime = (mime: string) => {
+      if (mime.includes("ogg")) return "ogg";
+      if (mime.includes("webm")) return "webm";
+      if (mime.includes("mp4")) return "m4a";
+      return "webm";
+    };
+    const ext = getExtFromMime(audioBlob.type);
     const audioFile = new globalThis.File(
-      [oggBlob],
-      `audio_${Date.now()}.ogg`,
-      { type: oggBlob.type || "audio/ogg" }
+      [audioBlob],
+      `audio_${Date.now()}.${ext}`,
+      { type: audioBlob.type || "audio/ogg" }
     );
 
     const tempId = crypto.randomUUID();
