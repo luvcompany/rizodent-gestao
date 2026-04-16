@@ -266,15 +266,28 @@ export default function AudioRecorderComposer({
         }
       }
 
-      // Create recorder with best available mime type
-      const mimeType = pickMimeType();
-      let recorder: MediaRecorder;
+      // Create recorder — prefer native OGG/Opus, fallback to polyfill
+      let recorder: any;
 
-      if (mimeType) {
-        recorder = new MediaRecorder(stream, { mimeType });
+      if (supportsNativeOgg()) {
+        recorder = new MediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" });
       } else {
-        // Last resort: let browser pick
-        recorder = new MediaRecorder(stream);
+        // Safari and browsers without native OGG: use opus-media-recorder polyfill
+        const OpusMediaRecorder = await preloadOpusRecorder();
+        if (OpusMediaRecorder) {
+          recorder = new OpusMediaRecorder(
+            stream,
+            { mimeType: "audio/ogg;codecs=opus" },
+            {
+              OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+              WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+              encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
+            },
+          );
+        } else {
+          // Last resort: use whatever the browser supports
+          recorder = new MediaRecorder(stream);
+        }
       }
 
       mediaRecorderRef.current = recorder;
