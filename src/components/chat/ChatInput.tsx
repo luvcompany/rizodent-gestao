@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
-  Send, Paperclip, Mic, FileText, Image, File, Video,
+  Send, Paperclip, FileText, Image, File, Video, X,
   Loader2, Clock, AlertTriangle, Bot
 } from "lucide-react";
 import {
