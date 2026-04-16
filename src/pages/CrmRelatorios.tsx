@@ -1533,7 +1533,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
       const day = dayBy.get(key)!;
       let scheduled = 0;
       for (const lid of leadSet) {
-        const dates = apptDatesByLead.get(lid);
+        const dates = apptCreatedDatesByLead.get(lid);
         if (dates && dates.has(day)) scheduled++;
       }
       return {
@@ -1616,7 +1616,10 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
           <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Conversão Diária por Atendente (CRC)</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-muted-foreground mb-3">Para cada atendente e dia: leads únicos contatados (mensagens outbound) e quantos foram agendados no mesmo dia.</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Para cada atendente e dia: leads únicos contatados (mensagens outbound) × quantos desses leads tiveram um agendamento
+            <strong> criado no mesmo dia</strong> (independente da data agendada). Mede o poder de conversão real do atendimento.
+          </p>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -1624,7 +1627,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
                   <TableHead>Atendente</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Contatos</TableHead>
-                  <TableHead>Agendados (mesmo dia)</TableHead>
+                  <TableHead>Agendados</TableHead>
                   <TableHead>Conversão</TableHead>
                 </TableRow>
               </TableHeader>
