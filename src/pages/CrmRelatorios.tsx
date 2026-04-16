@@ -1,1729 +1,508 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
-} from "recharts";
-import { Clock, Timer, Users, TrendingUp, AlertTriangle, Zap, RefreshCw, Filter, Ghost, Calendar, UserCheck, ArrowRight, Bot, Send, MapPin, ChevronLeft, ChevronRight } from "lucide-react";
-import { toast } from "sonner";
-import { format, isWithinInterval } from "date-fns";
-import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
-import { ptBR } from "date-fns/locale";
-import { useChartTheme } from "@/hooks/useChartTheme";
+import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
+import DashboardFunnel from "@/components/DashboardFunnel";
+import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp } from "lucide-react";
 
-type Pipeline = { id: string; name: string; color: string | null };
+// ---------- Tipos ----------
+type Pipeline = { id: string; name: string };
 type Stage = { id: string; name: string; color: string; position: number; pipeline_id: string };
-type StageHistory = { lead_id: string; stage_id: string; entered_at: string; exited_at: string | null; from_stage_id?: string | null };
 type Lead = {
-  id: string; name: string; phone: string | null; stage_id: string; pipeline_id: string;
-  created_at: string; score?: number; last_message_at?: string | null; assigned_to?: string | null;
-  first_inbound_at?: string | null; source?: string | null; nome_anuncio?: string | null;
-  paciente_id?: string | null; link_anuncio?: string | null; imagem_origem?: string | null;
-  descricao_anuncio?: string | null; ad_account_id?: string | null; ad_account_name?: string | null;
-  ad_id?: string | null;
+  id: string; name: string; pipeline_id: string; stage_id: string; cidade: string | null;
+  created_at: string; last_inbound_at: string | null; first_inbound_at: string | null;
 };
-type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
-type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string; created_at?: string };
+type StageHistory = { lead_id: string; stage_id: string; entered_at: string };
+type Appointment = { id: string; lead_id: string; created_at: string; scheduled_date: string; status: string };
+type Msg = { id: string; lead_id: string; direction: string; created_at: string };
 
-function formatDuration(ms: number): string {
-  if (ms <= 0) return "—";
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ${minutes % 60}min`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ${hours % 24}h`;
+const FUNNEL_COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#06b6d4", "#3b82f6", "#ef4444", "#84cc16", "#a855f7"];
+
+// ---------- Helpers ----------
+const lower = (s: string | null | undefined) => (s || "").toLowerCase();
+const isAgendStage = (n: string) => /agend/.test(lower(n)) && !/n[aã]o\s*agend/.test(lower(n));
+const isReagendStage = (n: string) => /(reagend|remarc)/.test(lower(n));
+const isComparStage = (n: string) => /compar/.test(lower(n)) && !/n[aã]o\s*compar/.test(lower(n));
+const isFaltouStage = (n: string) => /(n[aã]o\s*compar|faltou|n[aã]o\s*compareceu)/.test(lower(n));
+const isContratStage = (n: string) => /contrat/.test(lower(n)) && !/n[aã]o\s*contrat/.test(lower(n));
+const isProtectedStage = (n: string) => isAgendStage(n) || isReagendStage(n) || isContratStage(n);
+
+function fmtDuration(ms: number): string {
+  if (!isFinite(ms) || ms <= 0) return "—";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}min`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
 }
 
-function formatDays(ms: number): string {
-  const days = Math.round(ms / 86400000 * 10) / 10;
-  if (days < 1) return formatDuration(ms);
-  return `${days} dias`;
+function median(arr: number[]): number {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+function mean(arr: number[]): number {
+  if (!arr.length) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
-function isDateInRange(dateValue: string | Date, periodRange: { start: Date; end: Date } | null): boolean {
-  if (!periodRange) return true;
-  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
-  return isWithinInterval(date, { start: periodRange.start, end: periodRange.end });
-}
-
-// Period filter now uses shared DateRangeFilter component
-
+// ---------- Página ----------
 export default function CrmRelatorios() {
   const navigate = useNavigate();
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
-  const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
-  const [stages, setStages] = useState<Stage[]>([]);
-  const [history, setHistory] = useState<StageHistory[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [inactiveDays, setInactiveDays] = useState("3");
-  const [inactiveUnit, setInactiveUnit] = useState<"days" | "weeks" | "months">("days");
-  const chartTheme = useChartTheme();
 
-  const drillDown = useCallback((params: Record<string, string>) => {
-    const qs = new URLSearchParams(params).toString();
-    navigate(`/crm/conversas?${qs}`);
-  }, [navigate]);
+  // Filtros
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [pipelineId, setPipelineId] = useState<string>("");
+  const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "this_month" });
 
+  // Dados
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [history, setHistory] = useState<StageHistory[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [messages, setMessages] = useState<Msg[]>([]);
+
+  // Carregar pipelines
   useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true);
-      const [pipelinesRes, stagesRes, historyRes, leadsRes, messagesRes, appointmentsRes] = await Promise.all([
-        supabase.from("crm_pipelines").select("id, name, color").order("created_at"),
-        supabase.from("crm_stages").select("id, name, color, position, pipeline_id").order("position"),
-        supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
-        supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio, ad_account_id, ad_account_name, ad_id" as any),
-        supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id, ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name"),
-        supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date, created_at"),
-      ]);
-      setPipelines((pipelinesRes.data as Pipeline[]) || []);
-      setStages((stagesRes.data as Stage[]) || []);
-      setHistory((historyRes.data as unknown as StageHistory[]) || []);
-
-      // Enrich leads missing ad data from their messages
-      const rawLeads = (leadsRes.data as unknown as Lead[]) || [];
-      const rawMessages = (messagesRes.data as any[]) || [];
-
-      // Build map: ad_source_id -> { ad_account_id, ad_account_name } from messages
-      const adAccountFromMsg = new Map<string, { id: string; name: string }>();
-      for (const m of rawMessages) {
-        if (m.ad_source_id && m.ad_account_id && !adAccountFromMsg.has(m.ad_source_id)) {
-          adAccountFromMsg.set(m.ad_source_id, { id: m.ad_account_id, name: m.ad_account_name || "" });
-        }
+    supabase.from("crm_pipelines").select("id, name").order("created_at").then(({ data }) => {
+      const list = (data || []) as Pipeline[];
+      setPipelines(list);
+      if (list.length) {
+        const principal = list.find(p => /principal/i.test(p.name)) || list[0];
+        setPipelineId(prev => prev || principal.id);
       }
-
-      // Build map: ad_id -> { ad_account_id, ad_account_name } from leads that have it
-      const adAccountFromLeads = new Map<string, { id: string; name: string }>();
-      for (const l of rawLeads) {
-        if (l.ad_id && l.ad_account_id && !adAccountFromLeads.has(l.ad_id)) {
-          adAccountFromLeads.set(l.ad_id, { id: l.ad_account_id, name: l.ad_account_name || "" });
-        }
-      }
-
-      // Build map: lead_id -> first ad message (for image/name backfill)
-      const adMsgByLead = new Map<string, any>();
-      for (const m of rawMessages) {
-        if (m.ad_source_id && !adMsgByLead.has(m.lead_id)) {
-          adMsgByLead.set(m.lead_id, m);
-        }
-      }
-
-      const enrichedLeads = rawLeads.map(l => {
-        let lead = { ...l };
-
-        // Backfill ad image/name from messages if lead has none
-        if (!lead.imagem_origem && !lead.descricao_anuncio) {
-          const adMsg = adMsgByLead.get(lead.id);
-          if (adMsg) {
-            lead.imagem_origem = adMsg.ad_image_url || lead.imagem_origem;
-            lead.nome_anuncio = adMsg.ad_headline || lead.nome_anuncio;
-            lead.descricao_anuncio = adMsg.ad_body || lead.descricao_anuncio;
-            lead.link_anuncio = adMsg.ad_source_url || lead.link_anuncio;
-            if (!lead.ad_id) lead.ad_id = adMsg.ad_source_id;
-          }
-        }
-
-        // Backfill ad_account from messages or sibling leads with same ad_id
-        if (!lead.ad_account_id && lead.ad_id) {
-          const fromMsg = adAccountFromMsg.get(lead.ad_id);
-          const fromSibling = adAccountFromLeads.get(lead.ad_id);
-          const source = fromMsg || fromSibling;
-          if (source) {
-            lead.ad_account_id = source.id;
-            lead.ad_account_name = source.name;
-          }
-        }
-
-        return lead;
-      });
-
-      setLeads(enrichedLeads);
-      setMessages(rawMessages as Message[]);
-      setAppointments((appointmentsRes.data as Appointment[]) || []);
-      setLoading(false);
-    };
-    fetchAll();
+    });
   }, []);
 
+  const range = useMemo(() => getDateRangeFromFilter(period), [period]);
+
+  // Carregar dados quando filtros mudam
   useEffect(() => {
-    if (pipelines.length === 0) return;
+    if (!pipelineId) return;
+    setLoading(true);
+    const startISO = range?.start.toISOString();
+    const endISO = range?.end.toISOString();
 
-    const hasValidSelection = pipelines.some((pipeline) => pipeline.id === selectedPipelineId);
-    if (hasValidSelection) return;
+    (async () => {
+      const stagesRes = await supabase.from("crm_stages").select("id, name, color, position, pipeline_id").eq("pipeline_id", pipelineId).order("position");
+      const stagesList = (stagesRes.data || []) as Stage[];
+      setStages(stagesList);
 
-    const preferredPipeline =
-      pipelines.find((pipeline) => pipeline.name.toLowerCase().includes("principal")) || pipelines[0];
+      const leadsRes = await supabase.from("crm_leads").select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at").eq("pipeline_id", pipelineId);
+      const leadsAll = (leadsRes.data || []) as Lead[];
+      setLeads(leadsAll);
 
-    if (preferredPipeline) {
-      setSelectedPipelineId(preferredPipeline.id);
-    }
-  }, [pipelines, selectedPipelineId]);
+      const leadIds = leadsAll.map(l => l.id);
 
-  const periodRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
+      let histRows: StageHistory[] = [];
+      let apptRows: Appointment[] = [];
+      let msgRows: Msg[] = [];
 
-  const filteredStages = useMemo(() => {
-    return stages.filter(s => s.pipeline_id === selectedPipelineId);
-  }, [stages, selectedPipelineId]);
+      for (let i = 0; i < leadIds.length; i += 500) {
+        const chunk = leadIds.slice(i, i + 500);
+        const [h, a, m] = await Promise.all([
+          supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").in("lead_id", chunk),
+          supabase.from("crm_appointments").select("id, lead_id, created_at, scheduled_date, status").in("lead_id", chunk),
+          startISO && endISO
+            ? supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).gte("created_at", startISO).lte("created_at", endISO).order("created_at")
+            : supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).order("created_at"),
+        ]);
+        if (h.data) histRows = histRows.concat(h.data as StageHistory[]);
+        if (a.data) apptRows = apptRows.concat(a.data as Appointment[]);
+        if (m.data) msgRows = msgRows.concat(m.data as Msg[]);
+      }
 
-  const filteredStageIds = useMemo(() => new Set(filteredStages.map(s => s.id)), [filteredStages]);
+      setHistory(histRows);
+      setAppointments(apptRows);
+      setMessages(msgRows);
+      setLoading(false);
+    })();
+  }, [pipelineId, range]);
 
-  const allHistoryForPipeline = useMemo(() => {
-    return history.filter(h => filteredStageIds.has(h.stage_id));
-  }, [history, filteredStageIds]);
+  const inRange = (iso: string | null | undefined): boolean => {
+    if (!iso) return false;
+    if (!range) return true;
+    const d = new Date(iso).getTime();
+    return d >= range.start.getTime() && d <= range.end.getTime();
+  };
 
-  const filteredLeads = useMemo(() => {
-    let list = leads.filter(l => l.pipeline_id === selectedPipelineId);
-    if (periodRange) {
-      list = list.filter(l => isDateInRange(l.created_at, periodRange));
-    }
-    return list;
-  }, [leads, selectedPipelineId, periodRange]);
+  // Coorte = leads criados no período
+  const cohort = useMemo(() => leads.filter(l => inRange(l.created_at)), [leads, range]);
+  const cohortIds = useMemo(() => new Set(cohort.map(l => l.id)), [cohort]);
+  const stageById = useMemo(() => new Map(stages.map(s => [s.id, s])), [stages]);
+  const lastStage = useMemo(() => stages.length ? stages[stages.length - 1] : null, [stages]);
 
-  const allLeadsForPipeline = useMemo(() => {
-    return leads.filter(l => l.pipeline_id === selectedPipelineId);
-  }, [leads, selectedPipelineId]);
-
-  const filteredLeadIds = useMemo(() => new Set(filteredLeads.map(l => l.id)), [filteredLeads]);
-
-  const allMessagesForPipeline = useMemo(() => {
-    const allPipelineLeadIds = new Set(allLeadsForPipeline.map(l => l.id));
-    return messages.filter(m => allPipelineLeadIds.has(m.lead_id));
-  }, [messages, allLeadsForPipeline]);
-
-  const allAppointmentsForPipeline = useMemo(() => {
-    const allPipelineLeadIds = new Set(allLeadsForPipeline.map(l => l.id));
-    return appointments.filter(a => allPipelineLeadIds.has(a.lead_id));
-  }, [appointments, allLeadsForPipeline]);
-
-  const cohortMessages = useMemo(() => {
-    return allMessagesForPipeline.filter(m => filteredLeadIds.has(m.lead_id));
-  }, [allMessagesForPipeline, filteredLeadIds]);
-
-  const cohortAppointments = useMemo(() => {
-    return allAppointmentsForPipeline.filter(a => filteredLeadIds.has(a.lead_id));
-  }, [allAppointmentsForPipeline, filteredLeadIds]);
-
-  const cohortHistory = useMemo(() => {
-    return allHistoryForPipeline.filter(h => filteredLeadIds.has(h.lead_id));
-  }, [allHistoryForPipeline, filteredLeadIds]);
-
-  const filteredHistory = useMemo(() => {
-    let list = allHistoryForPipeline;
-    if (periodRange) {
-      list = list.filter(h => isDateInRange(h.entered_at, periodRange));
-    }
-    return list;
-  }, [allHistoryForPipeline, periodRange]);
-
-  const filteredMessages = useMemo(() => {
-    let list = allMessagesForPipeline;
-    if (periodRange) {
-      list = list.filter(m => isDateInRange(m.created_at, periodRange));
-    }
-    return list;
-  }, [allMessagesForPipeline, periodRange]);
-
-  const filteredAppointments = useMemo(() => {
-    let list = allAppointmentsForPipeline;
-    if (periodRange) {
-      list = list.filter(a => isDateInRange(a.scheduled_date, periodRange));
-    }
-    return list;
-  }, [allAppointmentsForPipeline, periodRange]);
-
-  const inactiveThresholdMs = useMemo(() => {
-    const val = parseInt(inactiveDays) || 3;
-    switch (inactiveUnit) {
-      case "weeks": return val * 7 * 86400000;
-      case "months": return val * 30 * 86400000;
-      default: return val * 86400000;
-    }
-  }, [inactiveDays, inactiveUnit]);
-
-  const inactiveThresholdLabel = useMemo(() => {
-    const val = inactiveDays;
-    switch (inactiveUnit) {
-      case "weeks": return `${val} sem.`;
-      case "months": return `${val} mês(es)`;
-      default: return `${val}d`;
-    }
-  }, [inactiveDays, inactiveUnit]);
-
-  // ═══ FUNNEL ═══
+  // 1. Funil visual
   const funnelData = useMemo(() => {
-    const totalEnteredLead = filteredLeads.length;
-    const respondedLeadIds = new Set(
-      cohortMessages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id)
-    );
-    const respondedCount = filteredLeads.filter(l => respondedLeadIds.has(l.id)).length;
-
-    const appointedLeadIds = new Set(cohortAppointments.map(a => a.lead_id));
-    const agendStageIds = new Set(filteredStages.filter(s => s.name.toLowerCase().includes("agend")).map(s => s.id));
-    const agendHistoryLeadIds = new Set(cohortHistory.filter(h => agendStageIds.has(h.stage_id)).map(h => h.lead_id));
-    const scheduledLeadIds = new Set([...appointedLeadIds, ...agendHistoryLeadIds]);
-    const scheduledCount = filteredLeads.filter(l => scheduledLeadIds.has(l.id)).length;
-
-    const attendedStatuses = ["completed", "contratou", "nao_contratou"];
-    const attendedLeadIds = new Set(cohortAppointments.filter(a => attendedStatuses.includes(a.status)).map(a => a.lead_id));
-    const attendedCount = attendedLeadIds.size;
-
-    const contratadoStageIds = new Set(filteredStages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id));
-    const contractedHistoryLeadIds = new Set(cohortHistory.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
-    const contractedCurrentLeadIds = new Set(filteredLeads.filter(l => contratadoStageIds.has(l.stage_id)).map(l => l.id));
-    const contractedLeadIds = new Set([...contractedHistoryLeadIds, ...contractedCurrentLeadIds]);
-    const contractedCount = contractedLeadIds.size;
-
-    const agendStageId = filteredStages.find(s => s.name.toLowerCase().includes("agend"))?.id || "";
-    const contratadoStageId = filteredStages.find(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não"))?.id || "";
-    const pipelineParam = selectedPipelineId;
-
-    const steps = [
-      { name: "Leads Entraram", value: totalEnteredLead, color: "hsl(var(--primary))", drillParams: { pipeline: pipelineParam } },
-      { name: "Responderam", value: respondedCount, color: "#3b82f6", drillParams: { pipeline: pipelineParam } },
-      { name: "Agendaram", value: scheduledCount, color: "#f59e0b", drillParams: { ...(agendStageId ? { stage_id: agendStageId } : {}), pipeline: pipelineParam } },
-      { name: "Compareceram", value: attendedCount, color: "#10b981", drillParams: { appointment_status: "attended", pipeline: pipelineParam } },
-      { name: "Contrataram", value: contractedCount, color: "#22c55e", drillParams: { ...(contratadoStageId ? { stage_id: contratadoStageId } : {}), pipeline: pipelineParam } },
-    ];
-
-    return steps.map((step, i) => ({
-      ...step,
-      rate: i > 0 && steps[i - 1].value > 0 ? Math.round((step.value / steps[i - 1].value) * 100) : 100,
-      totalRate: totalEnteredLead > 0 ? Math.round((step.value / totalEnteredLead) * 100) : 0,
+    return stages.map((s, i) => ({
+      name: s.name,
+      value: cohort.filter(l => l.stage_id === s.id).length,
+      fill: s.color || FUNNEL_COLORS[i % FUNNEL_COLORS.length],
     }));
-  }, [filteredLeads, cohortMessages, cohortAppointments, filteredStages, cohortHistory, selectedPipelineId]);
+  }, [stages, cohort]);
 
-  // ═══ GHOST LEADS ═══
-  const ghostLeadsData = useMemo(() => {
-    const inboundLeadIds = new Set(
-      cohortMessages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id)
-    );
-    const ghosts = filteredLeads.filter(l => !inboundLeadIds.has(l.id));
-    const bySource = new Map<string, number>();
-    ghosts.forEach(l => {
-      const raw = l.nome_anuncio || l.source || "Desconhecida";
-      const src = ["facebook_ad", "instagram_ad"].includes(raw.toLowerCase()) ? "Anúncio" : raw;
-      bySource.set(src, (bySource.get(src) || 0) + 1);
+  // 2. Agenda por etapa
+  const agenda = useMemo(() => {
+    let agendados = 0, compareceram = 0, remarcaram = 0, faltaram = 0;
+    cohort.forEach(l => {
+      const st = stageById.get(l.stage_id);
+      if (!st) return;
+      const n = st.name;
+      if (isAgendStage(n) || isReagendStage(n) || isComparStage(n) || isFaltouStage(n) || isContratStage(n)) agendados++;
+      if (isComparStage(n) || isContratStage(n)) compareceram++;
+      if (isReagendStage(n)) remarcaram++;
+      if (isFaltouStage(n)) faltaram++;
     });
-    const sorted = Array.from(bySource.entries()).sort((a, b) => b[1] - a[1]);
-    return { total: ghosts.length, bySource: sorted, totalLeads: filteredLeads.length };
-  }, [filteredLeads, cohortMessages]);
+    const presenca = (compareceram + faltaram) > 0 ? (compareceram / (compareceram + faltaram)) * 100 : 0;
+    return { agendados, compareceram, remarcaram, faltaram, presenca };
+  }, [cohort, stageById]);
 
-  // ═══ APPOINTMENTS ═══
-  const appointmentReport = useMemo(() => {
-    const total = filteredAppointments.length;
-    const attended = filteredAppointments.filter(a => ["completed", "contratou", "nao_contratou"].includes(a.status)).length;
-    const rescheduled = filteredAppointments.filter(a => a.status === "rescheduled").length;
-    const missed = filteredAppointments.filter(a => ["missed", "faltou"].includes(a.status)).length;
-    const confirmed = filteredAppointments.filter(a => a.status === "confirmed").length;
-    const presenceRate = total > 0 ? Math.round((attended / total) * 100) : 0;
-    return { total, attended, rescheduled, missed, confirmed, presenceRate };
-  }, [filteredAppointments]);
-
-  // ═══ TOTAL FUNNEL TIME ═══
-  const totalFunnelTime = useMemo(() => {
-    const contratadoStageIds = new Set(filteredStages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id));
-    const times: number[] = [];
-    cohortHistory.filter(h => contratadoStageIds.has(h.stage_id)).forEach(h => {
-      const lead = filteredLeads.find(l => l.id === h.lead_id);
-      if (lead) {
-        const duration = new Date(h.entered_at).getTime() - new Date(lead.created_at).getTime();
-        if (duration > 0) times.push(duration);
-      }
+  // 3. Tempo até contratação
+  const tempoContratacao = useMemo(() => {
+    if (!lastStage) return null;
+    const histByLead = new Map<string, StageHistory[]>();
+    history.forEach(h => {
+      if (!histByLead.has(h.lead_id)) histByLead.set(h.lead_id, []);
+      histByLead.get(h.lead_id)!.push(h);
     });
-    const avg = times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
-    return { avgMs: avg, count: times.length };
-  }, [filteredStages, cohortHistory, filteredLeads]);
-
-  // ═══ STAGE TIME ═══
-  const stageTimeData = useMemo(() => {
-    return filteredStages.map((stage) => {
-      const entries = cohortHistory.filter((h) => h.stage_id === stage.id);
-      const durations = entries.map((h) => {
-        const end = h.exited_at ? new Date(h.exited_at).getTime() : Date.now();
-        return end - new Date(h.entered_at).getTime();
-      });
-      const avg = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
-      const leadsInStage = filteredLeads.filter((l) => l.stage_id === stage.id).length;
-      return {
-        name: stage.name, stageId: stage.id, color: stage.color, avgMs: avg,
-        avgFormatted: formatDuration(avg),
-        avgHours: Math.round(avg / 3600000 * 10) / 10,
-        count: leadsInStage, totalEntries: entries.length,
-      };
+    const durations: number[] = [];
+    cohort.forEach(l => {
+      const hs = histByLead.get(l.id) || [];
+      const lastEntry = hs.filter(h => h.stage_id === lastStage.id).map(h => new Date(h.entered_at).getTime()).sort((a, b) => a - b)[0];
+      const target = lastEntry ?? (l.stage_id === lastStage.id ? new Date(l.created_at).getTime() : null);
+      if (target == null) return;
+      const dur = target - new Date(l.created_at).getTime();
+      if (dur > 0) durations.push(dur);
     });
-  }, [filteredStages, cohortHistory, filteredLeads]);
-
-  // ═══ RESPONSE TIMES ═══
-  const responseTimeData = useMemo(() => {
-    const msgByLead = new Map<string, Message[]>();
-    filteredMessages.forEach((m) => {
-      if (m.status === "system") return;
-      const arr = msgByLead.get(m.lead_id) || [];
-      arr.push(m);
-      msgByLead.set(m.lead_id, arr);
-    });
-    const allLeadDeltas: number[] = [];
-    const allUserDeltas: number[] = [];
-    msgByLead.forEach((msgs) => {
-      const sorted = msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-      for (let i = 1; i < sorted.length; i++) {
-        const prev = sorted[i - 1];
-        const curr = sorted[i];
-        const delta = new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime();
-        if (prev.direction === "outbound" && curr.direction === "inbound") allLeadDeltas.push(delta);
-        if (prev.direction === "inbound" && curr.direction === "outbound") allUserDeltas.push(delta);
-      }
-    });
-    const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    return { avgLeadResponse: avg(allLeadDeltas), avgUserResponse: avg(allUserDeltas), totalConversations: msgByLead.size };
-  }, [filteredMessages]);
-
-  // ═══ INACTIVE LEADS ═══
-  const inactiveLeads = useMemo(() => {
-    const now = Date.now();
-    return allLeadsForPipeline.filter((lead) => {
-      const allMsgs = messages.filter(m => m.lead_id === lead.id && m.status !== "system");
-      if (allMsgs.length === 0) return now - new Date(lead.created_at).getTime() > inactiveThresholdMs;
-      const lastMsgTime = Math.max(...allMsgs.map(m => new Date(m.created_at).getTime()));
-      return now - lastMsgTime > inactiveThresholdMs;
-    }).map((lead) => {
-      const allMsgs = messages.filter(m => m.lead_id === lead.id && m.status !== "system");
-      const lastMsgTime = allMsgs.length > 0 ? Math.max(...allMsgs.map(m => new Date(m.created_at).getTime())) : new Date(lead.created_at).getTime();
-      const stageName = stages.find((s) => s.id === lead.stage_id)?.name || "?";
-      const pipelineName = pipelines.find(p => p.id === lead.pipeline_id)?.name || "?";
-      return { ...lead, lastMessageAt: new Date(lastMsgTime).toISOString(), inactiveSince: now - lastMsgTime, stageName, pipelineName };
-    }).sort((a, b) => b.inactiveSince - a.inactiveSince);
-  }, [allLeadsForPipeline, messages, stages, pipelines, inactiveThresholdMs]);
-
-  // ═══ STAGE DISTRIBUTION ═══
-  const stageDistribution = useMemo(() => {
-    return filteredStages.map(stage => ({
-      name: stage.name,
-      stageId: stage.id,
-      value: filteredLeads.filter(l => l.stage_id === stage.id).length,
-      color: stage.color,
-    })).filter(s => s.value > 0);
-  }, [filteredStages, filteredLeads]);
-
-  const periodSummary = useMemo(() => {
-    const nonSystemMessages = filteredMessages.filter((message) => message.status !== "system").length;
-    const outboundContacts = new Set(
-      filteredMessages
-        .filter((message) => message.direction === "outbound" && message.sender_id && message.status !== "system")
-        .map((message) => message.lead_id)
-    ).size;
-
     return {
-      leadsCreated: filteredLeads.length,
-      messages: nonSystemMessages,
-      contacts: outboundContacts,
-      appointments: filteredAppointments.length,
+      count: durations.length,
+      media: mean(durations),
+      mediana: median(durations),
+      min: durations.length ? Math.min(...durations) : 0,
+      max: durations.length ? Math.max(...durations) : 0,
     };
-  }, [filteredLeads, filteredMessages, filteredAppointments]);
+  }, [cohort, history, lastStage]);
 
-  // ═══ PIPELINE SUMMARY / CROSS FUNNEL FLOW (desativados no relatório por funil único) ═══
-  const pipelineSummary: Array<{ id: string; name: string; color: string; totalLeads: number; totalStages: number }> = [];
-  const crossFunnelFlow: Array<{ from: Pipeline; to: Pipeline; count: number; leadIds: string[] }> = [];
+  // 4. Tempo até primeiro agendamento
+  const tempoAgendamento = useMemo(() => {
+    const apptByLead = new Map<string, number>();
+    appointments.forEach(a => {
+      const t = new Date(a.created_at).getTime();
+      const prev = apptByLead.get(a.lead_id);
+      if (prev === undefined || t < prev) apptByLead.set(a.lead_id, t);
+    });
+    const durations: number[] = [];
+    cohort.forEach(l => {
+      const t = apptByLead.get(l.id);
+      if (t == null) return;
+      const dur = t - new Date(l.created_at).getTime();
+      if (dur >= 0) durations.push(dur);
+    });
+    return { count: durations.length, media: mean(durations), mediana: median(durations) };
+  }, [cohort, appointments]);
 
-  const periodLabel = useMemo(() => {
-    const range = getDateRangeFromFilter(dateFilter);
-    if (!range) return "Todo o período";
-    return `${format(range.start, "dd/MM/yy")} — ${format(range.end, "dd/MM/yy")}`;
-  }, [dateFilter]);
+  // 5. Total por cidade
+  const porCidade = useMemo(() => {
+    const map = new Map<string, { agendamentos: number; comparecimentos: number; contratacoes: number }>();
+    const ensure = (c: string) => {
+      if (!map.has(c)) map.set(c, { agendamentos: 0, comparecimentos: 0, contratacoes: 0 });
+      return map.get(c)!;
+    };
+    const cidadeByLead = new Map(cohort.map(l => [l.id, (l.cidade || "Sem cidade").trim() || "Sem cidade"]));
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando relatórios...</div>;
+    appointments.forEach(a => {
+      if (!cohortIds.has(a.lead_id)) return;
+      if (!inRange(a.created_at)) return;
+      const c = cidadeByLead.get(a.lead_id)!;
+      ensure(c).agendamentos++;
+    });
+    cohort.forEach(l => {
+      const st = stageById.get(l.stage_id);
+      const c = cidadeByLead.get(l.id)!;
+      if (st && (isComparStage(st.name) || isContratStage(st.name))) ensure(c).comparecimentos++;
+      if (st && isContratStage(st.name)) ensure(c).contratacoes++;
+    });
+
+    return Array.from(map.entries())
+      .map(([cidade, v]) => ({ cidade, ...v }))
+      .sort((a, b) => b.contratacoes - a.contratacoes || b.agendamentos - a.agendamentos);
+  }, [cohort, appointments, stageById, cohortIds, range]);
+
+  // 6. Inativos
+  const inativos = useMemo(() => {
+    const now = Date.now();
+    const buckets = { d7: 0, d15: 0, d30: 0 };
+    leads.forEach(l => {
+      const st = stageById.get(l.stage_id);
+      if (st && isProtectedStage(st.name)) return;
+      if (!l.last_inbound_at) return;
+      const days = (now - new Date(l.last_inbound_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (days >= 30) buckets.d30++;
+      if (days >= 15) buckets.d15++;
+      if (days >= 7) buckets.d7++;
+    });
+    return buckets;
+  }, [leads, stageById]);
+
+  // 7. Tempo de resposta
+  const tempoResposta = useMemo(() => {
+    const byLead = new Map<string, Msg[]>();
+    messages.forEach(m => {
+      if (!byLead.has(m.lead_id)) byLead.set(m.lead_id, []);
+      byLead.get(m.lead_id)!.push(m);
+    });
+    const respLead: number[] = [];
+    const respCRC: number[] = [];
+    byLead.forEach(arr => {
+      arr.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      for (let i = 1; i < arr.length; i++) {
+        const prev = arr[i - 1], cur = arr[i];
+        if (prev.direction === cur.direction) continue;
+        const diff = new Date(cur.created_at).getTime() - new Date(prev.created_at).getTime();
+        if (diff <= 0 || diff > 7 * 24 * 60 * 60 * 1000) continue;
+        if (prev.direction === "outbound" && cur.direction === "inbound") respLead.push(diff);
+        if (prev.direction === "inbound" && cur.direction === "outbound") respCRC.push(diff);
+      }
+    });
+    return { lead: mean(respLead), crc: mean(respCRC), nLead: respLead.length, nCRC: respCRC.length };
+  }, [messages]);
+
+  // 8. Fantasmas
+  const fantasmas = useMemo(() => {
+    return cohort.filter(l => {
+      if (!l.first_inbound_at || !l.last_inbound_at) return false;
+      return l.first_inbound_at === l.last_inbound_at;
+    });
+  }, [cohort]);
+
+  if (loading && !leads.length) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with filters */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Relatórios CRM</h1>
-          <p className="text-sm text-muted-foreground">
-            Funil: {pipelines.find((p) => p.id === selectedPipelineId)?.name || "—"} · {periodLabel}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
-          <Filter size={16} className="text-muted-foreground" />
-          <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="Selecionar funil" /></SelectTrigger>
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
+        <p className="text-sm text-muted-foreground">Análise de conversão, tempo, cidade e inatividade — por funil.</p>
+      </div>
+
+      {/* Filtros */}
+      <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
+          <Select value={pipelineId} onValueChange={setPipelineId}>
+            <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {pipelines.map(p => (
-                <SelectItem key={p.id} value={p.id}>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color || "hsl(var(--primary))" }} />
-                    {p.name}
-                  </div>
-                </SelectItem>
-              ))}
+              {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
+          <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all"]} />
+        </div>
+        {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+        <div className="ml-auto text-xs text-muted-foreground">
+          {cohort.length} leads na coorte
+        </div>
+      </Card>
+
+      {/* 1. Funil */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <TrendingUp className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Distribuição por Etapa</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Onde estão os leads criados no período selecionado.</p>
+        {funnelData.some(d => d.value > 0) ? (
+          <DashboardFunnel data={funnelData} />
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-8">Sem leads no período.</p>
+        )}
+      </Card>
+
+      {/* 2. Agenda */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Calendar className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Agenda por Etapa do Funil</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Classificação pela etapa atual do lead. Faltou = "Não Compareceu", Remarcou = "Reagendado".</p>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <StatBox label="Total Agendados" value={agenda.agendados} />
+          <StatBox label="Compareceram" value={agenda.compareceram} color="text-green-600" />
+          <StatBox label="Remarcaram" value={agenda.remarcaram} color="text-orange-500" />
+          <StatBox label="Faltaram" value={agenda.faltaram} color="text-red-500" />
+          <StatBox label="Taxa de Presença" value={`${agenda.presenca.toFixed(0)}%`} color="text-primary" />
+        </div>
+      </Card>
+
+      {/* 3 + 4 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Clock className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold">Tempo até Contratação</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Da entrada do lead até chegar em <strong>{lastStage?.name || "última etapa"}</strong>.
+          </p>
+          {tempoContratacao && tempoContratacao.count > 0 ? (
+            <div className="grid grid-cols-2 gap-3">
+              <StatBox label="Média" value={fmtDuration(tempoContratacao.media)} />
+              <StatBox label="Mediana" value={fmtDuration(tempoContratacao.mediana)} />
+              <StatBox label="Mais rápido" value={fmtDuration(tempoContratacao.min)} color="text-green-600" />
+              <StatBox label="Mais lento" value={fmtDuration(tempoContratacao.max)} color="text-orange-500" />
+              <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
+                Baseado em {tempoContratacao.count} lead(s) contratado(s)
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead chegou em "{lastStage?.name}" no período.</p>
+          )}
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Clock className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold">Tempo até Agendamento</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">Quanto tempo entre a entrada do lead e o primeiro agendamento criado.</p>
+          {tempoAgendamento.count > 0 ? (
+            <div className="grid grid-cols-2 gap-3">
+              <StatBox label="Média" value={fmtDuration(tempoAgendamento.media)} />
+              <StatBox label="Mediana" value={fmtDuration(tempoAgendamento.mediana)} />
+              <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
+                Baseado em {tempoAgendamento.count} lead(s) agendado(s)
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento encontrado.</p>
+          )}
+        </Card>
       </div>
 
-      {/* TABS */}
-      <Tabs defaultValue="operacao" className="w-full">
-        <TabsList className="w-full justify-start overflow-x-auto flex-nowrap">
-          <TabsTrigger value="operacao" className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm"><TrendingUp size={14} /> Operação</TabsTrigger>
-          <TabsTrigger value="bots" className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm"><Bot size={14} /> Bots</TabsTrigger>
-          <TabsTrigger value="followups" className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm"><Send size={14} /> Follow-ups</TabsTrigger>
-          <TabsTrigger value="origens" className="flex items-center gap-1.5 whitespace-nowrap text-xs sm:text-sm"><MapPin size={14} /> Origens</TabsTrigger>
-        </TabsList>
-
-        {/* ══════════════════════════════════════════
-            ABA OPERAÇÃO
-            ══════════════════════════════════════════ */}
-        <TabsContent value="operacao" className="space-y-6 mt-4">
-          <Card className="border-dashed">
-            <CardContent className="pt-5 pb-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{periodSummary.leadsCreated}</p>
-                  <p className="text-xs text-muted-foreground">Leads criados no período</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{periodSummary.messages}</p>
-                  <p className="text-xs text-muted-foreground">Mensagens do período</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{periodSummary.contacts}</p>
-                  <p className="text-xs text-muted-foreground">Leads tocados no período</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">{periodSummary.appointments}</p>
-                  <p className="text-xs text-muted-foreground">Agendamentos na agenda do período</p>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                Funil, ghost e tempos usam a coorte de leads criados no período. Atendimento, CRC diário e agenda usam eventos ocorridos no período.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Pipeline Overview */}
-          {selectedPipelineId === "all" && pipelineSummary.length > 1 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {pipelineSummary.map(p => (
-                <Card key={p.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setSelectedPipelineId(p.id)}>
-                  <CardContent className="pt-5 pb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }} />
-                      <h3 className="font-semibold text-foreground">{p.name}</h3>
-                    </div>
-                    <p className="text-2xl font-bold text-foreground">{p.totalLeads} <span className="text-sm font-normal text-muted-foreground">leads</span></p>
-                  </CardContent>
-                </Card>
+      {/* 5. Cidade */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <MapPin className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Total por Cidade</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Agendamentos, comparecimentos e contratações por cidade do lead.</p>
+        {porCidade.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">Sem dados de cidade.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cidade</TableHead>
+                <TableHead className="text-right">Agendamentos</TableHead>
+                <TableHead className="text-right">Comparecimentos</TableHead>
+                <TableHead className="text-right">Contratações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {porCidade.map(r => (
+                <TableRow key={r.cidade}>
+                  <TableCell className="font-medium">{r.cidade}</TableCell>
+                  <TableCell className="text-right">{r.agendamentos}</TableCell>
+                  <TableCell className="text-right text-green-600 font-semibold">{r.comparecimentos}</TableCell>
+                  <TableCell className="text-right text-primary font-semibold">{r.contratacoes}</TableCell>
+                </TableRow>
               ))}
+              <TableRow className="font-semibold border-t-2">
+                <TableCell>Total</TableCell>
+                <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.agendamentos, 0)}</TableCell>
+                <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.comparecimentos, 0)}</TableCell>
+                <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.contratacoes, 0)}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      {/* 6. Inativos */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Bell className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Leads Inativos</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Leads sem responder há X dias. <strong>Exclui</strong> Contratados, Agendados e Reagendados.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <button onClick={() => navigate("/crm/conversas")} className="text-left">
+            <StatBox label="Sem resposta há +7 dias" value={inativos.d7} color="text-yellow-600" hover />
+          </button>
+          <button onClick={() => navigate("/crm/conversas")} className="text-left">
+            <StatBox label="Sem resposta há +15 dias" value={inativos.d15} color="text-orange-500" hover />
+          </button>
+          <button onClick={() => navigate("/crm/conversas")} className="text-left">
+            <StatBox label="Sem resposta há +30 dias" value={inativos.d30} color="text-red-500" hover />
+          </button>
+        </div>
+      </Card>
+
+      {/* 7. Resposta */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <MessageSquare className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Tempo Médio de Resposta</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Calculado sobre pares consecutivos de mensagens no período (ignora intervalos &gt; 7d).</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <StatBox label={`Resposta do Lead (${tempoResposta.nLead} amostras)`} value={fmtDuration(tempoResposta.lead)} color="text-blue-500" />
+          <StatBox label={`Resposta do Atendente (${tempoResposta.nCRC} amostras)`} value={fmtDuration(tempoResposta.crc)} color="text-primary" />
+        </div>
+      </Card>
+
+      {/* 8. Fantasmas */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Ghost className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Leads Fantasmas</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Leads que mandaram a primeira mensagem e nunca mais responderam.</p>
+        <div className="flex flex-col md:flex-row items-start md:items-end gap-6">
+          <div>
+            <p className="text-5xl font-bold text-primary">{fantasmas.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">de {cohort.length} na coorte ({cohort.length ? ((fantasmas.length / cohort.length) * 100).toFixed(0) : 0}%)</p>
+          </div>
+          {fantasmas.length > 0 && (
+            <div className="flex-1 max-h-40 overflow-y-auto border-l pl-4 w-full">
+              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase">Top 10</p>
+              <ul className="space-y-1">
+                {fantasmas.slice(0, 10).map(f => (
+                  <li key={f.id}>
+                    <button onClick={() => navigate(`/crm/conversa/${f.id}`)} className="text-sm text-foreground hover:text-primary text-left truncate w-full">
+                      {f.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
-
-          {/* Funnel */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><TrendingUp size={16} /> Funil da Coorte</CardTitle>
-              <p className="text-xs text-muted-foreground">Base: leads criados no período e a jornada completa desses leads.</p>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-1 overflow-x-auto pb-2">
-                {funnelData.map((step, i) => (
-                  <div key={step.name} className="flex items-center gap-1">
-                    <div className="flex flex-col items-center min-w-[110px] cursor-pointer hover:bg-muted/50 rounded-lg p-2 transition-colors" onClick={() => step.value > 0 && drillDown(step.drillParams)}>
-                      <p className="text-2xl font-bold text-foreground">{step.value}</p>
-                      <p className="text-xs text-muted-foreground text-center whitespace-nowrap">{step.name}</p>
-                      {i > 0 && (
-                        <Badge variant={step.rate >= 70 ? "default" : step.rate >= 40 ? "secondary" : "destructive"} className="mt-1 text-[10px]">{step.rate}%</Badge>
-                      )}
-                    </div>
-                    {i < funnelData.length - 1 && <ArrowRight size={16} className="text-muted-foreground flex-shrink-0" />}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 space-y-2">
-                {funnelData.map((step) => (
-                  <div key={step.name} className="flex items-center gap-3 cursor-pointer hover:bg-muted/30 rounded p-1 transition-colors" onClick={() => step.value > 0 && drillDown(step.drillParams)}>
-                    <span className="text-xs text-muted-foreground w-28 text-right truncate">{step.name}</span>
-                    <div className="flex-1 bg-muted rounded-full h-6 overflow-hidden">
-                      <div className="h-full rounded-full flex items-center px-2 transition-all" style={{ width: `${step.totalRate}%`, backgroundColor: step.color, minWidth: step.value > 0 ? "2rem" : "0" }}>
-                        <span className="text-xs font-medium text-white whitespace-nowrap">{step.value}</span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-medium text-foreground w-12">{step.totalRate}%</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => drillDown(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {})}>
-              <CardContent className="pt-5 pb-4"><Users size={18} className="text-primary mb-1" /><p className="text-2xl font-bold text-foreground">{filteredLeads.length}</p><p className="text-xs text-muted-foreground">Leads criados no período</p></CardContent>
-            </Card>
-            <Card><CardContent className="pt-5 pb-4"><Timer size={18} className="text-blue-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDuration(responseTimeData.avgUserResponse)}</p><p className="text-xs text-muted-foreground">Resp. Atendente (período)</p></CardContent></Card>
-            <Card><CardContent className="pt-5 pb-4"><Timer size={18} className="text-green-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDuration(responseTimeData.avgLeadResponse)}</p><p className="text-xs text-muted-foreground">Resp. Lead (período)</p></CardContent></Card>
-            <Card className="cursor-pointer hover:border-destructive/50 transition-colors" onClick={() => drillDown({ ghost: "true", ...(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {}) })}>
-              <CardContent className="pt-5 pb-4"><Ghost size={18} className="text-red-500 mb-1" /><p className="text-2xl font-bold text-foreground">{ghostLeadsData.total}</p><p className="text-xs text-muted-foreground">Ghost da coorte</p></CardContent>
-            </Card>
-            <Card><CardContent className="pt-5 pb-4"><Clock size={18} className="text-orange-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDays(totalFunnelTime.avgMs)}</p><p className="text-xs text-muted-foreground">Lead → Contrato (coorte)</p></CardContent></Card>
-            <Card className="cursor-pointer hover:border-yellow-500/50 transition-colors" onClick={() => drillDown({ inactive_days: String(parseInt(inactiveDays) || 3), ...(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {}) })}>
-              <CardContent className="pt-5 pb-4"><AlertTriangle size={18} className="text-yellow-500 mb-1" /><p className="text-2xl font-bold text-foreground">{inactiveLeads.length}</p><p className="text-xs text-muted-foreground">Inativos ({inactiveThresholdLabel}+)</p></CardContent>
-            </Card>
-          </div>
-
-          {/* Appointments */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><Calendar size={16} /> Agenda do Período</CardTitle>
-              <p className="text-xs text-muted-foreground">Base: agendamentos cuja data marcada cai dentro do período selecionado.</p>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "confirmed" })}><p className="text-2xl font-bold text-foreground">{appointmentReport.total}</p><p className="text-xs text-muted-foreground">Total Agendados</p></div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "attended" })}><p className="text-2xl font-bold text-green-600">{appointmentReport.attended}</p><p className="text-xs text-muted-foreground">Compareceram</p></div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "rescheduled" })}><p className="text-2xl font-bold text-orange-500">{appointmentReport.rescheduled}</p><p className="text-xs text-muted-foreground">Remarcaram</p></div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "missed" })}><p className="text-2xl font-bold text-red-500">{appointmentReport.missed}</p><p className="text-xs text-muted-foreground">Faltaram</p></div>
-                <div className="text-center p-3 bg-muted/50 rounded-lg"><p className="text-2xl font-bold text-foreground">{appointmentReport.presenceRate}%</p><p className="text-xs text-muted-foreground">Taxa de Presença</p></div>
-              </div>
-              {appointmentReport.confirmed > 0 && <p className="text-xs text-muted-foreground mt-3">{appointmentReport.confirmed} agendamento(s) ainda confirmado(s) — aguardando resultado.</p>}
-            </CardContent>
-          </Card>
-
-          {/* Ghost Leads */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base"><Ghost size={16} className="text-red-500" /> Leads Fantasma da Coorte</CardTitle>
-              <p className="text-xs text-muted-foreground">Leads criados no período que ainda não tiveram nenhuma resposta inbound.</p>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4 mb-4">
-                <div><p className="text-3xl font-bold text-foreground">{ghostLeadsData.total}</p><p className="text-xs text-muted-foreground">de {ghostLeadsData.totalLeads} leads</p></div>
-                {ghostLeadsData.totalLeads > 0 && (
-                  <Badge variant={ghostLeadsData.total / ghostLeadsData.totalLeads > 0.4 ? "destructive" : "secondary"} className="text-sm">{Math.round((ghostLeadsData.total / ghostLeadsData.totalLeads) * 100)}% fantasma</Badge>
-                )}
-              </div>
-              {ghostLeadsData.bySource.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-foreground mb-2">Por Origem / Anúncio:</p>
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead className="text-right">Leads Fantasma</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                      {ghostLeadsData.bySource.slice(0, 15).map(([source, count]) => (
-                        <TableRow key={source}><TableCell className="text-foreground">{source}</TableCell><TableCell className="text-right font-medium text-destructive">{count}</TableCell></TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base"><Clock size={16} /> Tempo Médio por Etapa</CardTitle>
-                <p className="text-xs text-muted-foreground">Base: histórico completo dos leads criados no período.</p>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={stageTimeData} layout="vertical">
-                    <XAxis type="number" tickFormatter={(v) => `${v}h`} tick={{ fill: chartTheme.axisColor, fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" width={selectedPipelineId === "all" ? 180 : 120} tick={{ fill: chartTheme.axisColor, fontSize: 11 }} />
-                    <Tooltip contentStyle={chartTheme.tooltipStyle} labelStyle={chartTheme.tooltipLabelStyle} formatter={(v: number) => `${v}h`} />
-                    <Bar dataKey="avgHours" radius={[0, 4, 4, 0]}>
-                      {stageTimeData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="mt-4 space-y-1">
-                  {stageTimeData.map((s) => (
-                    <div key={s.name} className="flex items-center justify-between text-xs cursor-pointer hover:bg-muted/50 rounded p-1 transition-colors" onClick={() => drillDown({ stage_id: s.stageId })}>
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                        <span className="text-foreground">{s.name}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-muted-foreground">{s.count} leads</span>
-                        <span className="font-medium text-foreground">{s.avgFormatted}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base"><Users size={16} /> Distribuição da Coorte por Etapa</CardTitle>
-                <p className="text-xs text-muted-foreground">Base: posição atual dos leads criados no período.</p>
-              </CardHeader>
-              <CardContent>
-                {stageDistribution.length > 0 ? (
-                  <div className="flex flex-col lg:flex-row items-center gap-6">
-                    <ResponsiveContainer width="100%" height={260} className="max-w-[300px]">
-                      <PieChart>
-                        <Pie data={stageDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
-                          {stageDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                        </Pie>
-                        <Tooltip contentStyle={chartTheme.tooltipStyle} labelStyle={chartTheme.tooltipLabelStyle} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="flex-1 space-y-2 w-full">
-                      {stageDistribution.map(s => (
-                        <div key={s.name} className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/50 rounded p-1 transition-colors" onClick={() => drillDown({ stage_id: s.stageId })}>
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
-                            <span className="text-foreground">{s.name}</span>
-                          </div>
-                          <span className="font-semibold text-foreground">{s.value} leads</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-8">Sem dados</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Attendant Metrics */}
-          <AttendantMetricsSection messages={filteredMessages} allLeads={allLeadsForPipeline} appointments={allAppointmentsForPipeline} stages={filteredStages} history={filteredHistory} periodRange={periodRange} onDrillDown={drillDown} />
-
-          {/* New Time-to-Conversion + City Ranking + CRC Daily Conversion */}
-          <ConversionMetricsSection
-            leads={filteredLeads}
-            appointments={allAppointmentsForPipeline}
-            messages={allMessagesForPipeline}
-            stages={filteredStages}
-            history={allHistoryForPipeline}
-            periodRange={periodRange}
-          />
-
-          {/* Cross-Funnel Flow */}
-          {crossFunnelFlow && crossFunnelFlow.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><ArrowRight size={16} /> Fluxo entre Funis</CardTitle></CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {crossFunnelFlow.map((flow, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg cursor-pointer hover:bg-muted/60 transition-colors" onClick={() => drillDown({ pipeline: flow.to.id })}>
-                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ backgroundColor: flow.from.color || "hsl(var(--primary))" }} /><span className="text-sm font-medium text-foreground">{flow.from.name}</span></div>
-                      <ArrowRight size={16} className="text-muted-foreground" />
-                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{ backgroundColor: flow.to.color || "hsl(var(--primary))" }} /><span className="text-sm font-medium text-foreground">{flow.to.name}</span></div>
-                      <Badge variant="secondary" className="ml-auto">{flow.count} leads</Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Inactive Leads */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <CardTitle className="flex items-center gap-2 text-base"><AlertTriangle size={16} className="text-yellow-500" /> Leads sem Interação</CardTitle>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Mais de</span>
-                  <Select value={inactiveDays} onValueChange={setInactiveDays}><SelectTrigger className="w-20"><SelectValue /></SelectTrigger><SelectContent>{["1","2","3","5","7","14","30"].map(v => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select>
-                  <Select value={inactiveUnit} onValueChange={(v) => setInactiveUnit(v as any)}><SelectTrigger className="w-28"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="days">Dias</SelectItem><SelectItem value="weeks">Semanas</SelectItem><SelectItem value="months">Meses</SelectItem></SelectContent></Select>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {inactiveLeads.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Nenhum lead inativo no período selecionado 🎉</p>
-              ) : (
-                <>
-                  <p className="text-sm text-muted-foreground mb-3">{inactiveLeads.length} leads sem interação</p>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader><TableRow><TableHead>Lead</TableHead><TableHead>Telefone</TableHead><TableHead>Funil</TableHead><TableHead>Etapa</TableHead><TableHead>Última Atividade</TableHead><TableHead>Tempo Inativo</TableHead></TableRow></TableHeader>
-                      <TableBody>
-                        {inactiveLeads.slice(0, 100).map((lead) => (
-                          <TableRow key={lead.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/crm/conversas?lead_id=${lead.id}`)}>
-                            <TableCell className="font-medium text-foreground">{lead.name}</TableCell>
-                            <TableCell className="text-muted-foreground text-sm">{lead.phone || "—"}</TableCell>
-                            <TableCell><Badge variant="outline" className="text-[10px]">{lead.pipelineName}</Badge></TableCell>
-                            <TableCell><Badge variant="secondary" className="text-[10px]">{lead.stageName}</Badge></TableCell>
-                            <TableCell className="text-muted-foreground text-sm">{format(new Date(lead.lastMessageAt), "dd/MM/yy HH:mm")}</TableCell>
-                            <TableCell className="text-destructive font-medium text-sm">{formatDuration(lead.inactiveSince)}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  {inactiveLeads.length > 100 && <p className="text-xs text-muted-foreground mt-2 text-center">Mostrando 100 de {inactiveLeads.length}</p>}
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Score de Leads (moved to end, with pagination) */}
-          <LeadScoreSection leads={filteredLeads} stages={filteredStages} pipelines={pipelines} navigate={navigate} />
-        </TabsContent>
-
-        {/* ══════════════════════════════════════════
-            ABA BOTS
-            ══════════════════════════════════════════ */}
-        <TabsContent value="bots" className="space-y-6 mt-4">
-          <BotsReportTab periodRange={periodRange} navigate={navigate} />
-        </TabsContent>
-
-        {/* ══════════════════════════════════════════
-            ABA FOLLOW-UPS & TEMPLATES
-            ══════════════════════════════════════════ */}
-        <TabsContent value="followups" className="space-y-6 mt-4">
-          <FollowupsReportTab periodRange={periodRange} drillDown={drillDown} />
-        </TabsContent>
-
-        {/* ══════════════════════════════════════════
-            ABA ORIGENS & CIDADES
-            ══════════════════════════════════════════ */}
-        <TabsContent value="origens" className="space-y-6 mt-4">
-          <OrigensReportTab leads={filteredLeads} stages={filteredStages} history={filteredHistory} appointments={filteredAppointments} messages={filteredMessages} pipelines={pipelines} drillDown={drillDown} />
-        </TabsContent>
-      </Tabs>
+        </div>
+      </Card>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════════════
-   Lead Score Section (with pagination + clickable)
-   ═══════════════════════════════════════════════════ */
-function LeadScoreSection({ leads, stages, pipelines, navigate }: { leads: Lead[]; stages: Stage[]; pipelines: Pipeline[]; navigate: any }) {
-  const [scoreLeads, setScoreLeads] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  const load = useCallback(async () => {
-    const { data } = await supabase.from("crm_leads").select("id, name, phone, score, stage_id, pipeline_id, last_message_at" as any).order("score", { ascending: false });
-    setScoreLeads(data || []);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const recalcAll = async () => {
-    setLoading(true);
-    await supabase.rpc("recalculate_all_lead_scores");
-    await load();
-    setLoading(false);
-    toast.success("Scores recalculados");
-  };
-
-  const avgScore = scoreLeads.length > 0 ? Math.round(scoreLeads.reduce((a: number, b: any) => a + (b.score || 0), 0) / scoreLeads.length) : 0;
-  const totalPages = Math.ceil(scoreLeads.length / pageSize);
-  const paginatedLeads = scoreLeads.slice((page - 1) * pageSize, page * pageSize);
-
-  useEffect(() => { setPage(1); }, [pageSize]);
-
+function StatBox({ label, value, color = "text-foreground", hover = false }: { label: string; value: string | number; color?: string; hover?: boolean }) {
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <CardTitle className="flex items-center gap-2 text-base"><Zap size={16} /> Score de Leads</CardTitle>
-          <div className="flex items-center gap-3">
-            <div className="text-right"><p className="text-2xl font-bold text-foreground">{avgScore}</p><p className="text-xs text-muted-foreground">Score Médio</p></div>
-            <Button size="sm" onClick={recalcAll} disabled={loading}><RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Recalcular</Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <p className="text-xs text-muted-foreground mb-3">+10 por resposta recebida, +15 por mudança de etapa, +5 por tarefa concluída, -1 por dia inativo.</p>
-        <Table>
-          <TableHeader><TableRow><TableHead>Lead</TableHead><TableHead>Telefone</TableHead><TableHead>Funil</TableHead><TableHead>Etapa</TableHead><TableHead>Score</TableHead><TableHead>Última Msg</TableHead></TableRow></TableHeader>
-          <TableBody>
-            {paginatedLeads.map((l: any) => {
-              const pipelineName = pipelines.find(p => p.id === l.pipeline_id)?.name;
-              return (
-                <TableRow key={l.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/crm/conversas?lead_id=${l.id}`)}>
-                  <TableCell className="font-medium text-foreground">{l.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{l.phone || "—"}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{pipelineName || "—"}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{stages.find(s => s.id === l.stage_id)?.name || "—"}</TableCell>
-                  <TableCell><Badge variant={l.score > 50 ? "default" : l.score > 20 ? "secondary" : "outline"}>{l.score}</Badge></TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{l.last_message_at ? format(new Date(l.last_message_at), "dd/MM HH:mm") : "—"}</TableCell>
-                </TableRow>
-              );
-            })}
-            {paginatedLeads.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">Nenhum lead</TableCell></TableRow>}
-          </TableBody>
-        </Table>
-        {/* Pagination */}
-        <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Exibir</span>
-            <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
-              <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {[10, 30, 50, 100].map(v => <SelectItem key={v} value={String(v)}>{v}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <span className="text-sm text-muted-foreground">por página</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft size={16} /></Button>
-            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
-              let pageNum: number;
-              if (totalPages <= 7) {
-                pageNum = i + 1;
-              } else if (page <= 4) {
-                pageNum = i + 1;
-              } else if (page >= totalPages - 3) {
-                pageNum = totalPages - 6 + i;
-              } else {
-                pageNum = page - 3 + i;
-              }
-              return (
-                <Button key={pageNum} variant={page === pageNum ? "default" : "outline"} size="icon" className="w-8 h-8 text-xs" onClick={() => setPage(pageNum)}>{pageNum}</Button>
-              );
-            })}
-            <Button variant="outline" size="icon" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight size={16} /></Button>
-          </div>
-          <span className="text-xs text-muted-foreground">{scoreLeads.length} leads total</span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   Attendant Metrics Section
-   ═══════════════════════════════════════════════════ */
-function AttendantMetricsSection({ messages, allLeads, appointments, stages, history, periodRange, onDrillDown }: {
-  messages: Message[]; allLeads: Lead[];
-  appointments: Appointment[]; stages: Stage[]; history: StageHistory[];
-  periodRange: { start: Date; end: Date } | null;
-  onDrillDown?: (params: Record<string, string>) => void;
-}) {
-  const [metrics, setMetrics] = useState<any[]>([]);
-
-  useEffect(() => {
-    const run = async () => {
-      const { data: profiles } = await supabase.from("profiles").select("id, nome");
-      if (!profiles) return;
-      const profileMap = new Map(profiles.map(p => [p.id, p.nome]));
-      const grouped = new Map<string, { msgs: number; leads: Set<string> }>();
-      for (const m of messages) {
-        if (m.direction !== "outbound" || !m.sender_id || m.status === "system") continue;
-        if (!grouped.has(m.sender_id)) grouped.set(m.sender_id, { msgs: 0, leads: new Set() });
-        const g = grouped.get(m.sender_id)!;
-        g.msgs++;
-        g.leads.add(m.lead_id);
-      }
-      const assignedCounts = new Map<string, number>();
-      for (const l of allLeads) { if (l.assigned_to) assignedCounts.set(l.assigned_to, (assignedCounts.get(l.assigned_to) || 0) + 1); }
-      const appointmentCounts = new Map<string, number>();
-      const leadAssignMap = new Map(allLeads.map(l => [l.id, l.assigned_to]));
-      for (const apt of appointments) {
-        if (periodRange && !isDateInRange((apt as any).created_at || apt.scheduled_date, periodRange)) continue;
-        const a = leadAssignMap.get(apt.lead_id);
-        if (a) appointmentCounts.set(a, (appointmentCounts.get(a) || 0) + 1);
-      }
-      const firstResponseTimes = new Map<string, number[]>();
-      const leadCreatedMap = new Map(allLeads.map(l => [l.id, new Date(l.created_at).getTime()]));
-      const msgByLead = new Map<string, Message[]>();
-      for (const m of messages) { if (m.status === "system") continue; const arr = msgByLead.get(m.lead_id) || []; arr.push(m); msgByLead.set(m.lead_id, arr); }
-      msgByLead.forEach((msgs, lid) => {
-        const sorted = msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        const firstOutbound = sorted.find(m => m.direction === "outbound" && m.sender_id);
-        if (firstOutbound?.sender_id) {
-          const leadCreated = leadCreatedMap.get(lid);
-          if (leadCreated) { const delta = new Date(firstOutbound.created_at).getTime() - leadCreated; if (delta > 0) { const arr = firstResponseTimes.get(firstOutbound.sender_id) || []; arr.push(delta); firstResponseTimes.set(firstOutbound.sender_id, arr); } }
-        }
-      });
-      const contratadoStageIds = new Set(stages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id));
-      const convertedByUser = new Map<string, number>();
-      const contractedLeadIds = new Set(history.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
-      allLeads.filter(l => contratadoStageIds.has(l.stage_id)).forEach(l => contractedLeadIds.add(l.id));
-      for (const lid of contractedLeadIds) { const lead = allLeads.find(l => l.id === lid); if (lead?.assigned_to) convertedByUser.set(lead.assigned_to, (convertedByUser.get(lead.assigned_to) || 0) + 1); }
-      const allUsers = new Set<string>();
-      grouped.forEach((_, uid) => allUsers.add(uid));
-      assignedCounts.forEach((_, uid) => allUsers.add(uid));
-      const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-      const result = Array.from(allUsers).map((uid) => {
-        const assigned = assignedCounts.get(uid) || 0;
-        const converted = convertedByUser.get(uid) || 0;
-        const convRate = assigned > 0 ? Math.round((converted / assigned) * 100) : 0;
-        const frtArr = firstResponseTimes.get(uid) || [];
-        return { userId: uid, name: profileMap.get(uid) || uid.slice(0, 8), totalMsgs: grouped.get(uid)?.msgs || 0, leadsAtendidos: grouped.get(uid)?.leads.size || 0, assignedLeads: assigned, agendados: appointmentCounts.get(uid) || 0, converted, convRate, avgFirstResponse: avg(frtArr) };
-      }).sort((a, b) => b.totalMsgs - a.totalMsgs);
-      setMetrics(result);
-    };
-    run();
-  }, [messages, allLeads, appointments, stages, history, periodRange]);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Performance por Atendente</CardTitle>
-        <p className="text-xs text-muted-foreground">Base: mensagens enviadas no período e agendamentos registrados no período para leads deste funil.</p>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead>Atendente</TableHead><TableHead>Msgs</TableHead><TableHead>Atendidos</TableHead><TableHead>Atribuídos</TableHead><TableHead>Agend.</TableHead><TableHead>Contrat.</TableHead><TableHead>Taxa</TableHead><TableHead>1ª Resp.</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {metrics.map((m, i) => (
-                <TableRow key={i} className="cursor-pointer hover:bg-muted/50" onClick={() => onDrillDown?.({ assigned_to: m.userId })}>
-                  <TableCell className="font-medium">{m.name}</TableCell>
-                  <TableCell>{m.totalMsgs}</TableCell>
-                  <TableCell>{m.leadsAtendidos}</TableCell>
-                  <TableCell>{m.assignedLeads}</TableCell>
-                  <TableCell>{m.agendados}</TableCell>
-                  <TableCell className="font-semibold text-green-600">{m.converted}</TableCell>
-                  <TableCell><Badge variant={m.convRate >= 30 ? "default" : m.convRate >= 15 ? "secondary" : "outline"}>{m.convRate}%</Badge></TableCell>
-                  <TableCell className="text-muted-foreground">{m.avgFirstResponse > 0 ? formatDuration(m.avgFirstResponse) : "—"}</TableCell>
-                </TableRow>
-              ))}
-              {metrics.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-6">Nenhuma métrica disponível</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   Bots Report Tab
-   ═══════════════════════════════════════════════════ */
-function BotsReportTab({ periodRange, navigate }: { periodRange: { start: Date; end: Date } | null; navigate: any }) {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetch = async () => {
-      setLoading(true);
-      const [botsRes, execsRes, logsRes] = await Promise.all([
-        supabase.from("bots").select("id, name, status"),
-        supabase.from("bot_executions").select("id, bot_id, status, started_at, completed_at"),
-        supabase.from("bot_execution_logs").select("execution_id, node_id, action, created_at"),
-      ]);
-      const bots = botsRes.data || [];
-      let execs = (execsRes.data || []) as any[];
-      const logs = (logsRes.data || []) as any[];
-
-      if (periodRange) {
-        execs = execs.filter((e: any) => {
-          const d = new Date(e.started_at);
-          return isWithinInterval(d, { start: periodRange.start, end: periodRange.end });
-        });
-      }
-
-      const totalExecs = execs.length;
-      const completed = execs.filter((e: any) => e.status === "completed").length;
-      const cancelled = execs.filter((e: any) => e.status === "cancelled" || e.status === "error").length;
-      const active = execs.filter((e: any) => e.status === "active").length;
-
-      // Per bot stats
-      const botStats = bots.map((bot: any) => {
-        const botExecs = execs.filter((e: any) => e.bot_id === bot.id);
-        const botCompleted = botExecs.filter((e: any) => e.status === "completed").length;
-        const completionRate = botExecs.length > 0 ? Math.round((botCompleted / botExecs.length) * 100) : 0;
-
-        // Avg nodes per exec
-        const execIds = new Set(botExecs.map((e: any) => e.id));
-        const botLogs = logs.filter((l: any) => execIds.has(l.execution_id));
-        const nodesPerExec = new Map<string, Set<string>>();
-        botLogs.forEach((l: any) => {
-          if (!nodesPerExec.has(l.execution_id)) nodesPerExec.set(l.execution_id, new Set());
-          nodesPerExec.get(l.execution_id)!.add(l.node_id);
-        });
-        const avgNodes = nodesPerExec.size > 0
-          ? Math.round(Array.from(nodesPerExec.values()).reduce((a, s) => a + s.size, 0) / nodesPerExec.size * 10) / 10
-          : 0;
-
-        // Last node (drop-off) for incomplete
-        const incompleteExecIds = botExecs.filter((e: any) => e.status !== "completed").map((e: any) => e.id);
-        const dropOffNodes = new Map<string, number>();
-        incompleteExecIds.forEach((eid: string) => {
-          const eLogs = logs.filter((l: any) => l.execution_id === eid).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-          if (eLogs.length > 0) {
-            const lastNode = eLogs[0].node_id;
-            dropOffNodes.set(lastNode, (dropOffNodes.get(lastNode) || 0) + 1);
-          }
-        });
-        const topDropOff = Array.from(dropOffNodes.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
-
-        return { id: bot.id, name: bot.name, status: bot.status, totalExecs: botExecs.length, completed: botCompleted, completionRate, avgNodes, topDropOff };
-      }).sort((a: any, b: any) => b.totalExecs - a.totalExecs);
-
-      setData({ totalExecs, completed, cancelled, active, botStats });
-      setLoading(false);
-    };
-    fetch();
-  }, [periodRange]);
-
-  if (loading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Carregando dados de bots...</div>;
-  if (!data) return null;
-
-  return (
-    <>
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card><CardContent className="pt-5 pb-4"><Bot size={18} className="text-primary mb-1" /><p className="text-2xl font-bold text-foreground">{data.totalExecs}</p><p className="text-xs text-muted-foreground">Total Execuções</p></CardContent></Card>
-        <Card><CardContent className="pt-5 pb-4"><p className="text-2xl font-bold text-green-600">{data.completed}</p><p className="text-xs text-muted-foreground">Completadas</p></CardContent></Card>
-        <Card><CardContent className="pt-5 pb-4"><p className="text-2xl font-bold text-red-500">{data.cancelled}</p><p className="text-xs text-muted-foreground">Canceladas / Erro</p></CardContent></Card>
-        <Card><CardContent className="pt-5 pb-4"><p className="text-2xl font-bold text-blue-500">{data.active}</p><p className="text-xs text-muted-foreground">Em Andamento</p></CardContent></Card>
-      </div>
-
-      {/* Bot ranking */}
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Bot size={16} /> Performance por Bot</CardTitle></CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader><TableRow><TableHead>Bot</TableHead><TableHead>Status</TableHead><TableHead>Execuções</TableHead><TableHead>Completadas</TableHead><TableHead>Taxa Conclusão</TableHead><TableHead>Média Nós</TableHead><TableHead>Top Drop-off</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {data.botStats.map((bot: any) => (
-                <TableRow key={bot.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/crm/bots/${bot.id}`)}>
-                  <TableCell className="font-medium text-foreground">{bot.name}</TableCell>
-                  <TableCell><Badge variant={bot.status === "active" ? "default" : "secondary"}>{bot.status === "active" ? "Ativo" : "Rascunho"}</Badge></TableCell>
-                  <TableCell>{bot.totalExecs}</TableCell>
-                  <TableCell className="text-green-600 font-medium">{bot.completed}</TableCell>
-                  <TableCell><Badge variant={bot.completionRate >= 60 ? "default" : bot.completionRate >= 30 ? "secondary" : "destructive"}>{bot.completionRate}%</Badge></TableCell>
-                  <TableCell className="text-muted-foreground">{bot.avgNodes}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{bot.topDropOff.length > 0 ? bot.topDropOff.map((d: any) => `${d[0].slice(0, 12)}… (${d[1]})`).join(", ") : "—"}</TableCell>
-                </TableRow>
-              ))}
-              {data.botStats.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Nenhum bot encontrado</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   Follow-ups & Templates Report Tab
-   ═══════════════════════════════════════════════════ */
-function FollowupsReportTab({ periodRange, drillDown }: { periodRange: { start: Date; end: Date } | null; drillDown: (p: Record<string, string>) => void }) {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetch = async () => {
-      setLoading(true);
-      const [queueRes, configsRes, templatesRes, messagesRes, stagesRes] = await Promise.all([
-        supabase.from("crm_followup_queue").select("id, lead_id, status, attempt_count, config_id, stage_id, created_at"),
-        supabase.from("crm_followup_configs").select("id, stage_id, is_active, max_attempts, disparos"),
-        supabase.from("crm_whatsapp_templates").select("id, name, status, category, body_text"),
-        supabase.from("messages").select("id, lead_id, direction, created_at, type"),
-        supabase.from("crm_stages").select("id, name, pipeline_id"),
-      ]);
-
-      let queue = (queueRes.data || []) as any[];
-      const configs = (configsRes.data || []) as any[];
-      const templates = (templatesRes.data || []) as any[];
-      const msgs = (messagesRes.data || []) as any[];
-      const stgs = (stagesRes.data || []) as any[];
-
-      if (periodRange) {
-        queue = queue.filter((q: any) => {
-          const d = new Date(q.created_at);
-          return isWithinInterval(d, { start: periodRange.start, end: periodRange.end });
-        });
-      }
-
-      const stageMap = new Map(stgs.map((s: any) => [s.id, s.name]));
-
-      // Follow-up stats
-      const totalQueued = queue.length;
-      const responded = queue.filter((q: any) => q.status === "responded").length;
-      const completed = queue.filter((q: any) => q.status === "completed" || q.status === "responded").length;
-      const pending = queue.filter((q: any) => q.status !== "completed" && q.status !== "responded" && q.status !== "cancelled").length;
-      const responseRate = totalQueued > 0 ? Math.round((responded / totalQueued) * 100) : 0;
-
-      // By stage
-      const byStage = new Map<string, { total: number; responded: number }>();
-      queue.forEach((q: any) => {
-        const sn = stageMap.get(q.stage_id) || q.stage_id;
-        if (!byStage.has(sn)) byStage.set(sn, { total: 0, responded: 0 });
-        const s = byStage.get(sn)!;
-        s.total++;
-        if (q.status === "responded") s.responded++;
-      });
-      const byStageArr = Array.from(byStage.entries()).map(([name, v]) => ({
-        name, total: v.total, responded: v.responded,
-        rate: v.total > 0 ? Math.round((v.responded / v.total) * 100) : 0,
-      })).sort((a, b) => b.total - a.total);
-
-      // Template usage (count outbound messages by type=template)
-      const templateMsgs = msgs.filter((m: any) => m.direction === "outbound" && m.type === "template");
-      const templateUsage = new Map<string, { sent: number; leadIds: Set<string> }>();
-      // We can't directly map msg→template, so we count by template type messages
-      // For now, show overall template stats
-      const templateStats = templates.map((t: any) => {
-        return { id: t.id, name: t.name, status: t.status, category: t.category };
-      });
-
-      setData({ totalQueued, responded, completed, pending, responseRate, byStageArr, templateStats, templateMsgsCount: templateMsgs.length });
-      setLoading(false);
-    };
-    fetch();
-  }, [periodRange]);
-
-  if (loading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Carregando dados de follow-ups...</div>;
-  if (!data) return null;
-
-  return (
-    <>
-      {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card><CardContent className="pt-5 pb-4"><Send size={18} className="text-primary mb-1" /><p className="text-2xl font-bold text-foreground">{data.totalQueued}</p><p className="text-xs text-muted-foreground">Follow-ups Enviados</p></CardContent></Card>
-        <Card><CardContent className="pt-5 pb-4"><p className="text-2xl font-bold text-green-600">{data.responded}</p><p className="text-xs text-muted-foreground">Responderam</p></CardContent></Card>
-        <Card><CardContent className="pt-5 pb-4"><p className="text-2xl font-bold text-blue-500">{data.pending}</p><p className="text-xs text-muted-foreground">Pendentes</p></CardContent></Card>
-        <Card><CardContent className="pt-5 pb-4"><Badge variant={data.responseRate >= 30 ? "default" : "secondary"} className="text-lg">{data.responseRate}%</Badge><p className="text-xs text-muted-foreground mt-1">Taxa de Resposta</p></CardContent></Card>
-        <Card><CardContent className="pt-5 pb-4"><p className="text-2xl font-bold text-foreground">{data.templateMsgsCount}</p><p className="text-xs text-muted-foreground">Templates Enviados</p></CardContent></Card>
-      </div>
-
-      {/* By stage */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Follow-ups por Etapa</CardTitle></CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader><TableRow><TableHead>Etapa</TableHead><TableHead>Total Enviados</TableHead><TableHead>Responderam</TableHead><TableHead>Taxa Resposta</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {data.byStageArr.map((s: any) => (
-                <TableRow key={s.name}>
-                  <TableCell className="font-medium text-foreground">{s.name}</TableCell>
-                  <TableCell>{s.total}</TableCell>
-                  <TableCell className="text-green-600 font-medium">{s.responded}</TableCell>
-                  <TableCell><Badge variant={s.rate >= 30 ? "default" : s.rate >= 15 ? "secondary" : "outline"}>{s.rate}%</Badge></TableCell>
-                </TableRow>
-              ))}
-              {data.byStageArr.length === 0 && <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Nenhum follow-up</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Templates */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Templates WhatsApp</CardTitle></CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Categoria</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {data.templateStats.map((t: any) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-medium text-foreground">{t.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{t.category}</TableCell>
-                  <TableCell><Badge variant={t.status === "APPROVED" ? "default" : t.status === "PENDING" ? "secondary" : "destructive"}>{t.status}</Badge></TableCell>
-                </TableRow>
-              ))}
-              {data.templateStats.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-6">Nenhum template</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   Origens & Cidades Report Tab
-   ═══════════════════════════════════════════════════ */
-function OrigensReportTab({ leads, stages, history, appointments, messages, pipelines, drillDown }: {
-  leads: Lead[]; stages: Stage[]; history: StageHistory[];
-  appointments: Appointment[]; messages: Message[]; pipelines: Pipeline[];
-  drillDown: (p: Record<string, string>) => void;
-}) {
-  const [pacientes, setPacientes] = useState<any[]>([]);
-
-  useEffect(() => {
-    supabase.from("pacientes").select("id, cidade").then(({ data }) => setPacientes(data || []));
-  }, []);
-
-  const agendStageIds = useMemo(() => new Set(stages.filter(s => s.name.toLowerCase().includes("agend")).map(s => s.id)), [stages]);
-  const contratadoStageIds = useMemo(() => new Set(stages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id)), [stages]);
-
-  const scheduledLeadIds = useMemo(() => {
-    const fromAppt = new Set(appointments.map(a => a.lead_id));
-    const fromHist = new Set(history.filter(h => agendStageIds.has(h.stage_id)).map(h => h.lead_id));
-    return new Set([...fromAppt, ...fromHist]);
-  }, [appointments, history, agendStageIds]);
-
-  const contractedLeadIds = useMemo(() => {
-    const fromHist = new Set(history.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
-    leads.filter(l => contratadoStageIds.has(l.stage_id)).forEach(l => fromHist.add(l.id));
-    return fromHist;
-  }, [history, contratadoStageIds, leads]);
-
-  // By source
-  const bySource = useMemo(() => {
-    const map = new Map<string, { total: number; scheduled: number; contracted: number }>();
-    leads.forEach(l => {
-      const raw = l.source || "Desconhecida";
-      const src = ["facebook_ad", "instagram_ad"].includes(raw.toLowerCase()) ? "Anúncio" : raw;
-      if (!map.has(src)) map.set(src, { total: 0, scheduled: 0, contracted: 0 });
-      const s = map.get(src)!;
-      s.total++;
-      if (scheduledLeadIds.has(l.id)) s.scheduled++;
-      if (contractedLeadIds.has(l.id)) s.contracted++;
-    });
-    return Array.from(map.entries()).map(([name, v]) => ({
-      name, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
-    })).sort((a, b) => b.total - a.total);
-  }, [leads, scheduledLeadIds, contractedLeadIds]);
-
-  const normalizeImgUrl = (url: string | null) => {
-    if (!url) return "no-img";
-    try { return new URL(url).origin + new URL(url).pathname; } catch { return url; }
-  };
-
-  // By ad (grouped by visual + description + account to differentiate same creative across accounts)
-  // Only include leads that have ad account info to match byAccount totals
-  const byAd = useMemo(() => {
-    const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; accountName: string | null; links: Set<string>; sources: Set<string> }>();
-    leads.forEach(l => {
-      // Include any lead that has ad-related data (ad_id, imagem_origem, nome_anuncio, etc.)
-      const hasAdData = l.ad_id || l.imagem_origem || l.nome_anuncio || l.descricao_anuncio || l.link_anuncio;
-      if (!hasAdData) return;
-      const desc = l.descricao_anuncio;
-      const adIdentifier = l.imagem_origem || l.descricao_anuncio || l.link_anuncio || l.nome_anuncio;
-      if (!adIdentifier) {
-        const fallbackKey = `__no_creative__::${l.ad_account_id || "none"}`;
-        if (!map.has(fallbackKey)) map.set(fallbackKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: "Sem criativo identificado", accountName: null, links: new Set(), sources: new Set() });
-        const s = map.get(fallbackKey)!;
-        s.total++;
-        if (!s.accountName && l.ad_account_name) s.accountName = l.ad_account_name;
-        if (l.source) s.sources.add(l.source);
-        if (scheduledLeadIds.has(l.id)) s.scheduled++;
-        if (contractedLeadIds.has(l.id)) s.contracted++;
-        return;
-      }
-      const adKey = `${normalizeImgUrl(l.imagem_origem || null)}::${desc || l.link_anuncio || l.nome_anuncio}::${l.ad_account_id || ""}`;
-      if (!map.has(adKey)) map.set(adKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: null, accountName: null, links: new Set(), sources: new Set() });
-      const s = map.get(adKey)!;
-      s.total++;
-      if (!s.image && l.imagem_origem) s.image = l.imagem_origem;
-      if (!s.name && l.nome_anuncio) s.name = l.nome_anuncio;
-      if (!s.accountName && l.ad_account_name) s.accountName = l.ad_account_name;
-      if (l.link_anuncio) s.links.add(l.link_anuncio);
-      if (l.source) s.sources.add(l.source);
-      if (scheduledLeadIds.has(l.id)) s.scheduled++;
-      if (contractedLeadIds.has(l.id)) s.contracted++;
-    });
-    return Array.from(map.entries()).map(([key, v]) => ({
-      key, ...v,
-      linksArr: Array.from(v.links),
-      sourcesArr: Array.from(v.sources),
-      convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
-    })).sort((a, b) => b.total - a.total);
-  }, [leads, scheduledLeadIds, contractedLeadIds]);
-
-  // By ad account (city-level grouping)
-  const byAccount = useMemo(() => {
-    const map = new Map<string, { total: number; scheduled: number; contracted: number }>();
-    leads.forEach(l => {
-      const accountName = l.ad_account_name || null;
-      if (!accountName) return;
-      if (!map.has(accountName)) map.set(accountName, { total: 0, scheduled: 0, contracted: 0 });
-      const s = map.get(accountName)!;
-      s.total++;
-      if (scheduledLeadIds.has(l.id)) s.scheduled++;
-      if (contractedLeadIds.has(l.id)) s.contracted++;
-    });
-    return Array.from(map.entries()).map(([name, v]) => ({
-      name, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
-    })).sort((a, b) => b.total - a.total);
-  }, [leads, scheduledLeadIds, contractedLeadIds]);
-
-  // By city (from pacientes)
-  const byCidade = useMemo(() => {
-    const pacienteMap = new Map(pacientes.map(p => [p.id, p.cidade]));
-    const map = new Map<string, { total: number; scheduled: number; contracted: number }>();
-    leads.forEach(l => {
-      const cidade = (l.paciente_id ? pacienteMap.get(l.paciente_id) : null) || "Não informada";
-      if (!map.has(cidade)) map.set(cidade, { total: 0, scheduled: 0, contracted: 0 });
-      const s = map.get(cidade)!;
-      s.total++;
-      if (scheduledLeadIds.has(l.id)) s.scheduled++;
-      if (contractedLeadIds.has(l.id)) s.contracted++;
-    });
-    return Array.from(map.entries()).map(([name, v]) => ({
-      name, ...v, convRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
-    })).sort((a, b) => b.total - a.total);
-  }, [leads, pacientes, scheduledLeadIds, contractedLeadIds]);
-
-  const renderTable = (data: any[], title: string, filterKey: string) => (
-    <Card>
-      <CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow><TableHead className="min-w-[120px]">{title.split(" ")[1] || title}</TableHead><TableHead>Leads</TableHead><TableHead>Agendaram</TableHead><TableHead>Contrataram</TableHead><TableHead>Taxa</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {data.slice(0, 30).map((row: any) => (
-                <TableRow key={row.name} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ [filterKey]: row.name })}>
-                  <TableCell className="font-medium text-foreground max-w-[180px] truncate">{row.name}</TableCell>
-                  <TableCell>{row.total}</TableCell>
-                  <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
-                  <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
-                  <TableCell><Badge variant={row.convRate >= 30 ? "default" : row.convRate >= 15 ? "secondary" : "outline"}>{row.convRate}%</Badge></TableCell>
-                </TableRow>
-              ))}
-              {data.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Sem dados</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
-  const renderAdTable = () => {
-    if (byAd.length === 0) return null;
-    return (
-      <Card>
-        <CardHeader><CardTitle className="text-base">Por Anúncio</CardTitle></CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[200px]">Anúncio</TableHead>
-                  <TableHead>Leads</TableHead>
-                  <TableHead>Agendaram</TableHead>
-                  <TableHead>Contrataram</TableHead>
-                  <TableHead>Taxa</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {byAd.slice(0, 30).map((row) => (
-                  <TableRow key={row.key} className="cursor-pointer hover:bg-muted/50" onClick={() => drillDown({ ad_name: row.name || row.key })}>
-                    <TableCell className="font-medium text-foreground">
-                      <div className="flex items-center gap-3">
-                        {row.image ? (
-                          <img
-                            src={row.image}
-                            alt="Ad"
-                            className="w-10 h-10 rounded object-cover flex-shrink-0"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-muted flex items-center justify-center flex-shrink-0">
-                            <span className="text-[10px] text-muted-foreground">Vídeo</span>
-                          </div>
-                        )}
-                        <div className="min-w-0 max-w-[200px]">
-                          {row.name && <p className="text-sm font-medium truncate">{row.name}</p>}
-                          {row.accountName && (
-                            <p className="text-xs text-primary/70 truncate">Conta: {row.accountName}</p>
-                          )}
-                          {row.linksArr.length > 0 && (
-                            <a
-                              href={row.linksArr[0]}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-primary hover:underline truncate block max-w-[180px]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {row.linksArr[0]}
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{row.total}</TableCell>
-                    <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
-                    <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
-                    <TableCell><Badge variant={row.convRate >= 30 ? "default" : row.convRate >= 15 ? "secondary" : "outline"}>{row.convRate}%</Badge></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  return (
-    <>
-      {renderTable(bySource, "Por Origem", "source")}
-      {byAccount.length > 0 && renderTable(byAccount, "Por Conta de Anúncio", "ad_account")}
-      {renderAdTable()}
-      {renderTable(byCidade, "Por Cidade", "city")}
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
-   Conversion Metrics: Time-to-Schedule, Time-to-Contract,
-   City Ranking, CRC Daily Conversion
-   ═══════════════════════════════════════════════════ */
-function ConversionMetricsSection({ leads, appointments, messages, stages, history, periodRange }: {
-  leads: Lead[]; appointments: Appointment[]; messages: Message[];
-  stages: Stage[]; history: StageHistory[]; periodRange: { start: Date; end: Date } | null;
-}) {
-  const [profileMap, setProfileMap] = useState<Map<string, string>>(new Map());
-  const [crcPage, setCrcPage] = useState(1);
-  const crcPageSize = 20;
-
-  useEffect(() => {
-    supabase.from("profiles").select("id, nome").then(({ data }) => {
-      if (data) setProfileMap(new Map(data.map((p: any) => [p.id, p.nome])));
-    });
-  }, []);
-
-  const median = (arr: number[]) => {
-    if (arr.length === 0) return 0;
-    const s = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(s.length / 2);
-    return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
-  };
-  const avg = (arr: number[]) => arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length;
-
-  // 1. Tempo até Agendamento
-  const timeToSchedule = useMemo(() => {
-    const apptByLead = new Map<string, number>();
-    for (const a of appointments) {
-      const t = new Date(a.scheduled_date).getTime();
-      const cur = apptByLead.get(a.lead_id);
-      if (cur === undefined || t < cur) apptByLead.set(a.lead_id, t);
-    }
-    const deltas: number[] = [];
-    for (const lead of leads) {
-      const apptT = apptByLead.get(lead.id);
-      if (apptT === undefined) continue;
-      const delta = apptT - new Date(lead.created_at).getTime();
-      if (delta > 0) deltas.push(delta);
-    }
-    return { avg: avg(deltas), median: median(deltas), count: deltas.length };
-  }, [leads, appointments]);
-
-  // 2. Tempo até Contratação
-  const timeToContract = useMemo(() => {
-    const contratadoStageIds = new Set(
-      stages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id)
-    );
-    const firstContractedAt = new Map<string, number>();
-    for (const h of history) {
-      if (!contratadoStageIds.has(h.stage_id)) continue;
-      const t = new Date(h.entered_at).getTime();
-      const cur = firstContractedAt.get(h.lead_id);
-      if (cur === undefined || t < cur) firstContractedAt.set(h.lead_id, t);
-    }
-    const deltas: number[] = [];
-    for (const lead of leads) {
-      const t = firstContractedAt.get(lead.id);
-      if (t === undefined) continue;
-      const delta = t - new Date(lead.created_at).getTime();
-      if (delta > 0) deltas.push(delta);
-    }
-    return { avg: avg(deltas), median: median(deltas), count: deltas.length };
-  }, [leads, history, stages]);
-
-  // 3. Ranking por Cidade
-  const cityRanking = useMemo(() => {
-    const contratadoStageIds = new Set(
-      stages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id)
-    );
-    const contractedLeadIds = new Set(history.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
-    leads.filter(l => contratadoStageIds.has(l.stage_id)).forEach(l => contractedLeadIds.add(l.id));
-    const apptLeadIds = new Set(
-      appointments
-        .filter((a) => isDateInRange((a as any).created_at || a.scheduled_date, periodRange))
-        .map(a => a.lead_id)
-    );
-    const inboundLeadIds = new Set(
-      messages
-        .filter(m => m.direction === "inbound" && m.status !== "system" && isDateInRange(m.created_at, periodRange))
-        .map(m => m.lead_id)
-    );
-    const map = new Map<string, { total: number; contacted: number; scheduled: number; contracted: number }>();
-    for (const lead of leads) {
-      const city = ((lead as any).cidade || "").trim() || "Sem cidade";
-      if (!map.has(city)) map.set(city, { total: 0, contacted: 0, scheduled: 0, contracted: 0 });
-      const r = map.get(city)!;
-      r.total++;
-      if (inboundLeadIds.has(lead.id)) r.contacted++;
-      if (apptLeadIds.has(lead.id)) r.scheduled++;
-      if (contractedLeadIds.has(lead.id)) r.contracted++;
-    }
-    return Array.from(map.entries()).map(([city, v]) => ({
-      city, ...v,
-      schedRate: v.total > 0 ? Math.round((v.scheduled / v.total) * 100) : 0,
-      contractRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
-    })).sort((a, b) => b.total - a.total);
-  }, [leads, appointments, messages, history, stages, periodRange]);
-
-  // 4. Conversão Diária por CRC
-  // Mede o poder de conversão real: para cada (atendente, dia), quantos leads únicos ele falou
-  // e quantos desses leads tiveram um agendamento *criado* no mesmo dia (independente da data agendada).
-  const crcDaily = useMemo(() => {
-    const apptCreatedDatesByLead = new Map<string, Set<string>>();
-    for (const a of appointments) {
-      if (periodRange && !isDateInRange((a as any).created_at || a.scheduled_date, periodRange)) continue;
-      // Usa created_at do agendamento (data em que foi marcado), não scheduled_date.
-      const createdAt = (a as any).created_at || a.scheduled_date;
-      const day = format(new Date(createdAt), "yyyy-MM-dd");
-      if (!apptCreatedDatesByLead.has(a.lead_id)) apptCreatedDatesByLead.set(a.lead_id, new Set());
-      apptCreatedDatesByLead.get(a.lead_id)!.add(day);
-    }
-    const contactsByKey = new Map<string, Set<string>>();
-    const sentBy = new Map<string, string>();
-    const dayBy = new Map<string, string>();
-    for (const m of messages) {
-      if (m.direction !== "outbound" || !m.sender_id || m.status === "system") continue;
-      const day = format(new Date(m.created_at), "yyyy-MM-dd");
-      const key = `${m.sender_id}|${day}`;
-      if (!contactsByKey.has(key)) {
-        contactsByKey.set(key, new Set());
-        sentBy.set(key, m.sender_id);
-        dayBy.set(key, day);
-      }
-      contactsByKey.get(key)!.add(m.lead_id);
-    }
-    const rows = Array.from(contactsByKey.entries()).map(([key, leadSet]) => {
-      const senderId = sentBy.get(key)!;
-      const day = dayBy.get(key)!;
-      let scheduled = 0;
-      for (const lid of leadSet) {
-        const dates = apptCreatedDatesByLead.get(lid);
-        if (dates && dates.has(day)) scheduled++;
-      }
-      return {
-        senderId, day,
-        name: profileMap.get(senderId) || senderId.slice(0, 8),
-        contacts: leadSet.size, scheduled,
-        rate: leadSet.size > 0 ? Math.round((scheduled / leadSet.size) * 100) : 0,
-      };
-    }).sort((a, b) => b.day.localeCompare(a.day) || b.contacts - a.contacts);
-    return rows;
-  }, [messages, appointments, profileMap, periodRange]);
-
-  const crcTotalPages = Math.max(1, Math.ceil(crcDaily.length / crcPageSize));
-  const crcPaginated = crcDaily.slice((crcPage - 1) * crcPageSize, crcPage * crcPageSize);
-
-  return (
-    <>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Clock size={16} className="text-orange-500" /> Tempo até Agendamento</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-3">
-              <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToSchedule.avg)}</p><p className="text-xs text-muted-foreground">Média</p></div>
-              <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToSchedule.median)}</p><p className="text-xs text-muted-foreground">Mediana</p></div>
-              <div><p className="text-2xl font-bold text-foreground">{timeToSchedule.count}</p><p className="text-xs text-muted-foreground">Leads</p></div>
-            </div>
-              <p className="text-xs text-muted-foreground mt-2">Coorte: leads criados no período. Considera o primeiro agendamento de cada lead.</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Clock size={16} className="text-green-600" /> Tempo até Contratação</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-3">
-              <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToContract.avg)}</p><p className="text-xs text-muted-foreground">Média</p></div>
-              <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToContract.median)}</p><p className="text-xs text-muted-foreground">Mediana</p></div>
-              <div><p className="text-2xl font-bold text-foreground">{timeToContract.count}</p><p className="text-xs text-muted-foreground">Leads</p></div>
-            </div>
-              <p className="text-xs text-muted-foreground mt-2">Coorte: leads criados no período. Considera a primeira entrada em etapa de contratado.</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MapPin size={16} /> Ranking por Cidade</CardTitle></CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cidade</TableHead>
-                  <TableHead>Leads</TableHead>
-                  <TableHead>Com Contato</TableHead>
-                  <TableHead>Agendados</TableHead>
-                  <TableHead>Contratados</TableHead>
-                  <TableHead>Taxa Agend.</TableHead>
-                  <TableHead>Taxa Contrat.</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cityRanking.map((row) => (
-                  <TableRow key={row.city}>
-                    <TableCell className="font-medium text-foreground">{row.city}</TableCell>
-                    <TableCell>{row.total}</TableCell>
-                    <TableCell className="text-blue-500">{row.contacted}</TableCell>
-                    <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
-                    <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
-                    <TableCell><Badge variant={row.schedRate >= 30 ? "default" : row.schedRate >= 15 ? "secondary" : "outline"}>{row.schedRate}%</Badge></TableCell>
-                    <TableCell><Badge variant={row.contractRate >= 20 ? "default" : row.contractRate >= 10 ? "secondary" : "outline"}>{row.contractRate}%</Badge></TableCell>
-                  </TableRow>
-                ))}
-                {cityRanking.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Sem dados de cidade</TableCell></TableRow>}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Conversão Diária por Atendente (CRC)</CardTitle>
-        </CardHeader>
-        <CardContent>
-              <p className="text-xs text-muted-foreground mb-3">
-                Base: atividade ocorrida no período. Para cada atendente e dia, mostra quantos leads únicos ele falou e quantos desses viraram agendamento
-                <strong> registrado no mesmo dia</strong>, mesmo que a consulta tenha ficado para outra data.
-              </p>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Atendente</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Contatos</TableHead>
-                  <TableHead>Agendados</TableHead>
-                  <TableHead>Conversão</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {crcPaginated.map((r, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium text-foreground">{r.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{format(new Date(r.day + "T12:00:00"), "dd/MM/yy", { locale: ptBR })}</TableCell>
-                    <TableCell>{r.contacts}</TableCell>
-                    <TableCell className="text-orange-500 font-medium">{r.scheduled}</TableCell>
-                    <TableCell><Badge variant={r.rate >= 30 ? "default" : r.rate >= 15 ? "secondary" : "outline"}>{r.rate}%</Badge></TableCell>
-                  </TableRow>
-                ))}
-                {crcPaginated.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Sem dados</TableCell></TableRow>}
-              </TableBody>
-            </Table>
-          </div>
-          {crcDaily.length > crcPageSize && (
-            <div className="flex items-center justify-between mt-3">
-              <span className="text-xs text-muted-foreground">{crcDaily.length} registros</span>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="icon" disabled={crcPage <= 1} onClick={() => setCrcPage(p => p - 1)}><ChevronLeft size={16} /></Button>
-                <span className="text-xs px-2">{crcPage} / {crcTotalPages}</span>
-                <Button variant="outline" size="icon" disabled={crcPage >= crcTotalPages} onClick={() => setCrcPage(p => p + 1)}><ChevronRight size={16} /></Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </>
+    <div className={`bg-secondary/40 rounded-lg p-4 text-center ${hover ? "hover:bg-secondary/70 transition cursor-pointer" : ""}`}>
+      <p className={`text-3xl font-bold ${color}`}>{value}</p>
+      <p className="text-xs text-muted-foreground mt-1">{label}</p>
+    </div>
   );
 }
