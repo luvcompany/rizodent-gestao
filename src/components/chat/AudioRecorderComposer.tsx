@@ -210,27 +210,6 @@ export default function AudioRecorderComposer({
       });
       streamRef.current = stream;
 
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack?.muted) {
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          const handleUnmute = () => {
-            if (settled) return;
-            settled = true;
-            window.clearTimeout(timeoutId);
-            audioTrack.removeEventListener?.("unmute", handleUnmute);
-            resolve();
-          };
-          const timeoutId = window.setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            audioTrack.removeEventListener?.("unmute", handleUnmute);
-            resolve();
-          }, 1000);
-          audioTrack.addEventListener?.("unmute", handleUnmute, { once: true });
-        });
-      }
-
       // Set up audio analyser
       const ACtor = window.AudioContext || (window as any).webkitAudioContext;
       if (ACtor) {
