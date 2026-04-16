@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { compressImage } from "./imageCompressor";
 import SlashCommandMenu from "./SlashCommandMenu";
 import AudioRecorderComposer from "./AudioRecorderComposer";
+import EmojiPickerButton from "./EmojiPickerButton";
 
 type ReplyMessage = {
   id: string;
@@ -53,6 +54,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
   const [startingBotId, setStartingBotId] = useState<string | null>(null);
   const [recorderActive, setRecorderActive] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Fetch published bots
   useEffect(() => {
@@ -94,6 +96,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     };
     loadSlashData();
   }, []);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [newMessage]);
 
   useEffect(() => {
     if (externalMessage) {
@@ -412,12 +422,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </div>
           <div className="flex items-center gap-2">
             <div className="flex-1 relative">
-              <Input
+              <Textarea
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Sessão expirada — use um template"
-                className="pr-10 bg-secondary border-border opacity-50"
+                className="pr-10 bg-secondary border-border opacity-50 min-h-[40px] max-h-[40px] resize-none py-2"
                 disabled
+                rows={1}
               />
             </div>
             <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
@@ -427,7 +438,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
+        <div className="flex items-end gap-2">
           {/* Hide normal controls when recorder is active, but NEVER unmount the recorder */}
           {!recorderActive && (
             <>
@@ -467,7 +478,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   onSelectBot={() => {}}
                   onClose={() => setSlashActive(false)}
                 />
-                <Input
+                <Textarea
+                  ref={textareaRef}
                   value={newMessage}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -487,10 +499,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                     handleKeyDown(e);
                   }}
                   placeholder="Digite / para atalhos ou uma mensagem..."
-                  className="pr-10 bg-secondary border-border"
+                  className="bg-secondary border-border min-h-[40px] max-h-[120px] resize-none py-2"
                   disabled={optimizing || uploading}
+                  rows={1}
                 />
               </div>
+
+              <EmojiPickerButton
+                disabled={optimizing || uploading}
+                onEmojiSelect={(emoji) => setNewMessage((prev) => prev + emoji)}
+              />
 
               <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
                 <FileText size={20} />

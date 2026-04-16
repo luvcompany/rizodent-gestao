@@ -210,27 +210,6 @@ export default function AudioRecorderComposer({
       });
       streamRef.current = stream;
 
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack?.muted) {
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          const handleUnmute = () => {
-            if (settled) return;
-            settled = true;
-            window.clearTimeout(timeoutId);
-            audioTrack.removeEventListener?.("unmute", handleUnmute);
-            resolve();
-          };
-          const timeoutId = window.setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            audioTrack.removeEventListener?.("unmute", handleUnmute);
-            resolve();
-          }, 1000);
-          audioTrack.addEventListener?.("unmute", handleUnmute, { once: true });
-        });
-      }
-
       // Set up audio analyser
       const ACtor = window.AudioContext || (window as any).webkitAudioContext;
       if (ACtor) {
@@ -292,10 +271,10 @@ export default function AudioRecorderComposer({
         finalizeDraft();
       };
 
-      // Wait for microphone to fully initialize before starting capture
-      await new Promise(resolve => setTimeout(resolve, 350));
+      // Minimal warm-up for mic hardware
+      await new Promise(resolve => setTimeout(resolve, 120));
 
-      // Start recording — use timeslice of 500ms for regular data chunks
+      // Start recording
       recorder.start(500);
     } catch (err: any) {
       resetToIdle();
