@@ -50,6 +50,12 @@ function formatDays(ms: number): string {
   return `${days} dias`;
 }
 
+function isDateInRange(dateValue: string | Date, periodRange: { start: Date; end: Date } | null): boolean {
+  if (!periodRange) return true;
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  return isWithinInterval(date, { start: periodRange.start, end: periodRange.end });
+}
+
 // Period filter now uses shared DateRangeFilter component
 
 export default function CrmRelatorios() {
@@ -174,13 +180,14 @@ export default function CrmRelatorios() {
 
   const filteredStageIds = useMemo(() => new Set(filteredStages.map(s => s.id)), [filteredStages]);
 
+  const allHistoryForPipeline = useMemo(() => {
+    return history.filter(h => filteredStageIds.has(h.stage_id));
+  }, [history, filteredStageIds]);
+
   const filteredLeads = useMemo(() => {
     let list = leads.filter(l => l.pipeline_id === selectedPipelineId);
     if (periodRange) {
-      list = list.filter(l => {
-        const d = new Date(l.created_at);
-        return isWithinInterval(d, { start: periodRange.start, end: periodRange.end });
-      });
+      list = list.filter(l => isDateInRange(l.created_at, periodRange));
     }
     return list;
   }, [leads, selectedPipelineId, periodRange]);
@@ -191,40 +198,51 @@ export default function CrmRelatorios() {
 
   const filteredLeadIds = useMemo(() => new Set(filteredLeads.map(l => l.id)), [filteredLeads]);
 
+  const allMessagesForPipeline = useMemo(() => {
+    const allPipelineLeadIds = new Set(allLeadsForPipeline.map(l => l.id));
+    return messages.filter(m => allPipelineLeadIds.has(m.lead_id));
+  }, [messages, allLeadsForPipeline]);
+
+  const allAppointmentsForPipeline = useMemo(() => {
+    const allPipelineLeadIds = new Set(allLeadsForPipeline.map(l => l.id));
+    return appointments.filter(a => allPipelineLeadIds.has(a.lead_id));
+  }, [appointments, allLeadsForPipeline]);
+
+  const cohortMessages = useMemo(() => {
+    return allMessagesForPipeline.filter(m => filteredLeadIds.has(m.lead_id));
+  }, [allMessagesForPipeline, filteredLeadIds]);
+
+  const cohortAppointments = useMemo(() => {
+    return allAppointmentsForPipeline.filter(a => filteredLeadIds.has(a.lead_id));
+  }, [allAppointmentsForPipeline, filteredLeadIds]);
+
+  const cohortHistory = useMemo(() => {
+    return allHistoryForPipeline.filter(h => filteredLeadIds.has(h.lead_id));
+  }, [allHistoryForPipeline, filteredLeadIds]);
+
   const filteredHistory = useMemo(() => {
-    let list = history.filter(h => filteredStageIds.has(h.stage_id));
+    let list = allHistoryForPipeline;
     if (periodRange) {
-      list = list.filter(h => {
-        const d = new Date(h.entered_at);
-        return isWithinInterval(d, { start: periodRange.start, end: periodRange.end });
-      });
+      list = list.filter(h => isDateInRange(h.entered_at, periodRange));
     }
     return list;
-  }, [history, filteredStageIds, periodRange]);
+  }, [allHistoryForPipeline, periodRange]);
 
   const filteredMessages = useMemo(() => {
-    const allPipelineLeadIds = new Set(allLeadsForPipeline.map(l => l.id));
-    let list = messages.filter(m => allPipelineLeadIds.has(m.lead_id));
+    let list = allMessagesForPipeline;
     if (periodRange) {
-      list = list.filter(m => {
-        const d = new Date(m.created_at);
-        return isWithinInterval(d, { start: periodRange.start, end: periodRange.end });
-      });
+      list = list.filter(m => isDateInRange(m.created_at, periodRange));
     }
     return list;
-  }, [messages, allLeadsForPipeline, periodRange]);
+  }, [allMessagesForPipeline, periodRange]);
 
   const filteredAppointments = useMemo(() => {
-    const allPipelineLeadIds = new Set(allLeadsForPipeline.map(l => l.id));
-    let list = appointments.filter(a => allPipelineLeadIds.has(a.lead_id));
+    let list = allAppointmentsForPipeline;
     if (periodRange) {
-      list = list.filter(a => {
-        const d = new Date(a.scheduled_date);
-        return isWithinInterval(d, { start: periodRange.start, end: periodRange.end });
-      });
+      list = list.filter(a => isDateInRange(a.scheduled_date, periodRange));
     }
     return list;
-  }, [appointments, allLeadsForPipeline, periodRange]);
+  }, [allAppointmentsForPipeline, periodRange]);
 
   const inactiveThresholdMs = useMemo(() => {
     const val = parseInt(inactiveDays) || 3;
@@ -248,22 +266,22 @@ export default function CrmRelatorios() {
   const funnelData = useMemo(() => {
     const totalEnteredLead = filteredLeads.length;
     const respondedLeadIds = new Set(
-      filteredMessages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id)
+      cohortMessages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id)
     );
     const respondedCount = filteredLeads.filter(l => respondedLeadIds.has(l.id)).length;
 
-    const appointedLeadIds = new Set(filteredAppointments.map(a => a.lead_id));
+    const appointedLeadIds = new Set(cohortAppointments.map(a => a.lead_id));
     const agendStageIds = new Set(filteredStages.filter(s => s.name.toLowerCase().includes("agend")).map(s => s.id));
-    const agendHistoryLeadIds = new Set(filteredHistory.filter(h => agendStageIds.has(h.stage_id)).map(h => h.lead_id));
+    const agendHistoryLeadIds = new Set(cohortHistory.filter(h => agendStageIds.has(h.stage_id)).map(h => h.lead_id));
     const scheduledLeadIds = new Set([...appointedLeadIds, ...agendHistoryLeadIds]);
     const scheduledCount = filteredLeads.filter(l => scheduledLeadIds.has(l.id)).length;
 
     const attendedStatuses = ["completed", "contratou", "nao_contratou"];
-    const attendedLeadIds = new Set(filteredAppointments.filter(a => attendedStatuses.includes(a.status)).map(a => a.lead_id));
+    const attendedLeadIds = new Set(cohortAppointments.filter(a => attendedStatuses.includes(a.status)).map(a => a.lead_id));
     const attendedCount = attendedLeadIds.size;
 
     const contratadoStageIds = new Set(filteredStages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id));
-    const contractedHistoryLeadIds = new Set(filteredHistory.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
+    const contractedHistoryLeadIds = new Set(cohortHistory.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
     const contractedCurrentLeadIds = new Set(filteredLeads.filter(l => contratadoStageIds.has(l.stage_id)).map(l => l.id));
     const contractedLeadIds = new Set([...contractedHistoryLeadIds, ...contractedCurrentLeadIds]);
     const contractedCount = contractedLeadIds.size;
@@ -285,12 +303,12 @@ export default function CrmRelatorios() {
       rate: i > 0 && steps[i - 1].value > 0 ? Math.round((step.value / steps[i - 1].value) * 100) : 100,
       totalRate: totalEnteredLead > 0 ? Math.round((step.value / totalEnteredLead) * 100) : 0,
     }));
-  }, [filteredLeads, filteredMessages, filteredAppointments, filteredStages, filteredHistory, selectedPipelineId]);
+  }, [filteredLeads, cohortMessages, cohortAppointments, filteredStages, cohortHistory, selectedPipelineId]);
 
   // ═══ GHOST LEADS ═══
   const ghostLeadsData = useMemo(() => {
     const inboundLeadIds = new Set(
-      filteredMessages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id)
+      cohortMessages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id)
     );
     const ghosts = filteredLeads.filter(l => !inboundLeadIds.has(l.id));
     const bySource = new Map<string, number>();
@@ -301,7 +319,7 @@ export default function CrmRelatorios() {
     });
     const sorted = Array.from(bySource.entries()).sort((a, b) => b[1] - a[1]);
     return { total: ghosts.length, bySource: sorted, totalLeads: filteredLeads.length };
-  }, [filteredLeads, filteredMessages]);
+  }, [filteredLeads, cohortMessages]);
 
   // ═══ APPOINTMENTS ═══
   const appointmentReport = useMemo(() => {
@@ -318,7 +336,7 @@ export default function CrmRelatorios() {
   const totalFunnelTime = useMemo(() => {
     const contratadoStageIds = new Set(filteredStages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id));
     const times: number[] = [];
-    filteredHistory.filter(h => contratadoStageIds.has(h.stage_id)).forEach(h => {
+    cohortHistory.filter(h => contratadoStageIds.has(h.stage_id)).forEach(h => {
       const lead = filteredLeads.find(l => l.id === h.lead_id);
       if (lead) {
         const duration = new Date(h.entered_at).getTime() - new Date(lead.created_at).getTime();
@@ -327,18 +345,18 @@ export default function CrmRelatorios() {
     });
     const avg = times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
     return { avgMs: avg, count: times.length };
-  }, [filteredStages, filteredHistory, filteredLeads]);
+  }, [filteredStages, cohortHistory, filteredLeads]);
 
   // ═══ STAGE TIME ═══
   const stageTimeData = useMemo(() => {
     return filteredStages.map((stage) => {
-      const entries = filteredHistory.filter((h) => h.stage_id === stage.id);
+      const entries = cohortHistory.filter((h) => h.stage_id === stage.id);
       const durations = entries.map((h) => {
         const end = h.exited_at ? new Date(h.exited_at).getTime() : Date.now();
         return end - new Date(h.entered_at).getTime();
       });
       const avg = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
-      const leadsInStage = allLeadsForPipeline.filter((l) => l.stage_id === stage.id).length;
+      const leadsInStage = filteredLeads.filter((l) => l.stage_id === stage.id).length;
       return {
         name: stage.name, stageId: stage.id, color: stage.color, avgMs: avg,
         avgFormatted: formatDuration(avg),
@@ -346,7 +364,7 @@ export default function CrmRelatorios() {
         count: leadsInStage, totalEntries: entries.length,
       };
     });
-  }, [filteredStages, filteredHistory, allLeadsForPipeline]);
+  }, [filteredStages, cohortHistory, filteredLeads]);
 
   // ═══ RESPONSE TIMES ═══
   const responseTimeData = useMemo(() => {
@@ -395,10 +413,26 @@ export default function CrmRelatorios() {
     return filteredStages.map(stage => ({
       name: stage.name,
       stageId: stage.id,
-      value: allLeadsForPipeline.filter(l => l.stage_id === stage.id).length,
+      value: filteredLeads.filter(l => l.stage_id === stage.id).length,
       color: stage.color,
     })).filter(s => s.value > 0);
-  }, [filteredStages, allLeadsForPipeline]);
+  }, [filteredStages, filteredLeads]);
+
+  const periodSummary = useMemo(() => {
+    const nonSystemMessages = filteredMessages.filter((message) => message.status !== "system").length;
+    const outboundContacts = new Set(
+      filteredMessages
+        .filter((message) => message.direction === "outbound" && message.sender_id && message.status !== "system")
+        .map((message) => message.lead_id)
+    ).size;
+
+    return {
+      leadsCreated: filteredLeads.length,
+      messages: nonSystemMessages,
+      contacts: outboundContacts,
+      appointments: filteredAppointments.length,
+    };
+  }, [filteredLeads, filteredMessages, filteredAppointments]);
 
   // ═══ PIPELINE SUMMARY / CROSS FUNNEL FLOW (desativados no relatório por funil único) ═══
   const pipelineSummary: Array<{ id: string; name: string; color: string; totalLeads: number; totalStages: number }> = [];
@@ -456,6 +490,32 @@ export default function CrmRelatorios() {
             ABA OPERAÇÃO
             ══════════════════════════════════════════ */}
         <TabsContent value="operacao" className="space-y-6 mt-4">
+          <Card className="border-dashed">
+            <CardContent className="pt-5 pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{periodSummary.leadsCreated}</p>
+                  <p className="text-xs text-muted-foreground">Leads criados no período</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{periodSummary.messages}</p>
+                  <p className="text-xs text-muted-foreground">Mensagens do período</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{periodSummary.contacts}</p>
+                  <p className="text-xs text-muted-foreground">Leads tocados no período</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{periodSummary.appointments}</p>
+                  <p className="text-xs text-muted-foreground">Agendamentos na agenda do período</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Funil, ghost e tempos usam a coorte de leads criados no período. Atendimento, CRC diário e agenda usam eventos ocorridos no período.
+              </p>
+            </CardContent>
+          </Card>
+
           {/* Pipeline Overview */}
           {selectedPipelineId === "all" && pipelineSummary.length > 1 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -475,7 +535,10 @@ export default function CrmRelatorios() {
 
           {/* Funnel */}
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><TrendingUp size={16} /> Funil de Conversão</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base"><TrendingUp size={16} /> Funil da Coorte</CardTitle>
+              <p className="text-xs text-muted-foreground">Base: leads criados no período e a jornada completa desses leads.</p>
+            </CardHeader>
             <CardContent>
               <div className="flex items-center gap-1 overflow-x-auto pb-2">
                 {funnelData.map((step, i) => (
@@ -510,14 +573,14 @@ export default function CrmRelatorios() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             <Card className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => drillDown(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {})}>
-              <CardContent className="pt-5 pb-4"><Users size={18} className="text-primary mb-1" /><p className="text-2xl font-bold text-foreground">{filteredLeads.length}</p><p className="text-xs text-muted-foreground">Leads no Período</p></CardContent>
+              <CardContent className="pt-5 pb-4"><Users size={18} className="text-primary mb-1" /><p className="text-2xl font-bold text-foreground">{filteredLeads.length}</p><p className="text-xs text-muted-foreground">Leads criados no período</p></CardContent>
             </Card>
-            <Card><CardContent className="pt-5 pb-4"><Timer size={18} className="text-blue-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDuration(responseTimeData.avgUserResponse)}</p><p className="text-xs text-muted-foreground">Resp. Atendente</p></CardContent></Card>
-            <Card><CardContent className="pt-5 pb-4"><Timer size={18} className="text-green-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDuration(responseTimeData.avgLeadResponse)}</p><p className="text-xs text-muted-foreground">Resp. Lead</p></CardContent></Card>
+            <Card><CardContent className="pt-5 pb-4"><Timer size={18} className="text-blue-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDuration(responseTimeData.avgUserResponse)}</p><p className="text-xs text-muted-foreground">Resp. Atendente (período)</p></CardContent></Card>
+            <Card><CardContent className="pt-5 pb-4"><Timer size={18} className="text-green-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDuration(responseTimeData.avgLeadResponse)}</p><p className="text-xs text-muted-foreground">Resp. Lead (período)</p></CardContent></Card>
             <Card className="cursor-pointer hover:border-destructive/50 transition-colors" onClick={() => drillDown({ ghost: "true", ...(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {}) })}>
-              <CardContent className="pt-5 pb-4"><Ghost size={18} className="text-red-500 mb-1" /><p className="text-2xl font-bold text-foreground">{ghostLeadsData.total}</p><p className="text-xs text-muted-foreground">Leads Fantasma</p></CardContent>
+              <CardContent className="pt-5 pb-4"><Ghost size={18} className="text-red-500 mb-1" /><p className="text-2xl font-bold text-foreground">{ghostLeadsData.total}</p><p className="text-xs text-muted-foreground">Ghost da coorte</p></CardContent>
             </Card>
-            <Card><CardContent className="pt-5 pb-4"><Clock size={18} className="text-orange-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDays(totalFunnelTime.avgMs)}</p><p className="text-xs text-muted-foreground">Lead → Contrato</p></CardContent></Card>
+            <Card><CardContent className="pt-5 pb-4"><Clock size={18} className="text-orange-500 mb-1" /><p className="text-2xl font-bold text-foreground">{formatDays(totalFunnelTime.avgMs)}</p><p className="text-xs text-muted-foreground">Lead → Contrato (coorte)</p></CardContent></Card>
             <Card className="cursor-pointer hover:border-yellow-500/50 transition-colors" onClick={() => drillDown({ inactive_days: String(parseInt(inactiveDays) || 3), ...(selectedPipelineId !== "all" ? { pipeline: selectedPipelineId } : {}) })}>
               <CardContent className="pt-5 pb-4"><AlertTriangle size={18} className="text-yellow-500 mb-1" /><p className="text-2xl font-bold text-foreground">{inactiveLeads.length}</p><p className="text-xs text-muted-foreground">Inativos ({inactiveThresholdLabel}+)</p></CardContent>
             </Card>
@@ -525,7 +588,10 @@ export default function CrmRelatorios() {
 
           {/* Appointments */}
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Calendar size={16} /> Agendamentos do Período</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base"><Calendar size={16} /> Agenda do Período</CardTitle>
+              <p className="text-xs text-muted-foreground">Base: agendamentos cuja data marcada cai dentro do período selecionado.</p>
+            </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="text-center p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors" onClick={() => drillDown({ appointment_status: "confirmed" })}><p className="text-2xl font-bold text-foreground">{appointmentReport.total}</p><p className="text-xs text-muted-foreground">Total Agendados</p></div>
@@ -540,7 +606,10 @@ export default function CrmRelatorios() {
 
           {/* Ghost Leads */}
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Ghost size={16} className="text-red-500" /> Leads Fantasma (nunca responderam)</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base"><Ghost size={16} className="text-red-500" /> Leads Fantasma da Coorte</CardTitle>
+              <p className="text-xs text-muted-foreground">Leads criados no período que ainda não tiveram nenhuma resposta inbound.</p>
+            </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4 mb-4">
                 <div><p className="text-3xl font-bold text-foreground">{ghostLeadsData.total}</p><p className="text-xs text-muted-foreground">de {ghostLeadsData.totalLeads} leads</p></div>
@@ -567,7 +636,10 @@ export default function CrmRelatorios() {
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Clock size={16} /> Tempo Médio por Etapa</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base"><Clock size={16} /> Tempo Médio por Etapa</CardTitle>
+                <p className="text-xs text-muted-foreground">Base: histórico completo dos leads criados no período.</p>
+              </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={stageTimeData} layout="vertical">
@@ -597,7 +669,10 @@ export default function CrmRelatorios() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Users size={16} /> Distribuição por Etapa</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base"><Users size={16} /> Distribuição da Coorte por Etapa</CardTitle>
+                <p className="text-xs text-muted-foreground">Base: posição atual dos leads criados no período.</p>
+              </CardHeader>
               <CardContent>
                 {stageDistribution.length > 0 ? (
                   <div className="flex flex-col lg:flex-row items-center gap-6">
@@ -629,18 +704,16 @@ export default function CrmRelatorios() {
           </div>
 
           {/* Attendant Metrics */}
-          <AttendantMetricsSection messages={filteredMessages} leads={filteredLeads} allLeads={allLeadsForPipeline} appointments={filteredAppointments} stages={filteredStages} history={filteredHistory} onDrillDown={drillDown} />
+          <AttendantMetricsSection messages={filteredMessages} allLeads={allLeadsForPipeline} appointments={allAppointmentsForPipeline} stages={filteredStages} history={filteredHistory} periodRange={periodRange} onDrillDown={drillDown} />
 
           {/* New Time-to-Conversion + City Ranking + CRC Daily Conversion */}
           <ConversionMetricsSection
             leads={filteredLeads}
-            allLeads={allLeadsForPipeline}
-            appointments={filteredAppointments}
-            messages={filteredMessages}
+            appointments={allAppointmentsForPipeline}
+            messages={allMessagesForPipeline}
             stages={filteredStages}
-            history={filteredHistory}
+            history={allHistoryForPipeline}
             periodRange={periodRange}
-            navigate={navigate}
           />
 
           {/* Cross-Funnel Flow */}
@@ -835,9 +908,10 @@ function LeadScoreSection({ leads, stages, pipelines, navigate }: { leads: Lead[
 /* ═══════════════════════════════════════════════════
    Attendant Metrics Section
    ═══════════════════════════════════════════════════ */
-function AttendantMetricsSection({ messages, leads, allLeads, appointments, stages, history, onDrillDown }: {
-  messages: Message[]; leads: Lead[]; allLeads: Lead[];
+function AttendantMetricsSection({ messages, allLeads, appointments, stages, history, periodRange, onDrillDown }: {
+  messages: Message[]; allLeads: Lead[];
   appointments: Appointment[]; stages: Stage[]; history: StageHistory[];
+  periodRange: { start: Date; end: Date } | null;
   onDrillDown?: (params: Record<string, string>) => void;
 }) {
   const [metrics, setMetrics] = useState<any[]>([]);
@@ -859,7 +933,11 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
       for (const l of allLeads) { if (l.assigned_to) assignedCounts.set(l.assigned_to, (assignedCounts.get(l.assigned_to) || 0) + 1); }
       const appointmentCounts = new Map<string, number>();
       const leadAssignMap = new Map(allLeads.map(l => [l.id, l.assigned_to]));
-      for (const apt of appointments) { const a = leadAssignMap.get(apt.lead_id); if (a) appointmentCounts.set(a, (appointmentCounts.get(a) || 0) + 1); }
+      for (const apt of appointments) {
+        if (periodRange && !isDateInRange((apt as any).created_at || apt.scheduled_date, periodRange)) continue;
+        const a = leadAssignMap.get(apt.lead_id);
+        if (a) appointmentCounts.set(a, (appointmentCounts.get(a) || 0) + 1);
+      }
       const firstResponseTimes = new Map<string, number[]>();
       const leadCreatedMap = new Map(allLeads.map(l => [l.id, new Date(l.created_at).getTime()]));
       const msgByLead = new Map<string, Message[]>();
@@ -891,11 +969,14 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
       setMetrics(result);
     };
     run();
-  }, [messages, leads, allLeads, appointments, stages, history]);
+  }, [messages, allLeads, appointments, stages, history, periodRange]);
 
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Performance por Atendente</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Performance por Atendente</CardTitle>
+        <p className="text-xs text-muted-foreground">Base: mensagens enviadas no período e agendamentos registrados no período para leads deste funil.</p>
+      </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
           <Table>
@@ -1391,9 +1472,9 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
    Conversion Metrics: Time-to-Schedule, Time-to-Contract,
    City Ranking, CRC Daily Conversion
    ═══════════════════════════════════════════════════ */
-function ConversionMetricsSection({ leads, allLeads, appointments, messages, stages, history, periodRange, navigate }: {
-  leads: Lead[]; allLeads: Lead[]; appointments: Appointment[]; messages: Message[];
-  stages: Stage[]; history: StageHistory[]; periodRange: { start: Date; end: Date } | null; navigate: any;
+function ConversionMetricsSection({ leads, appointments, messages, stages, history, periodRange }: {
+  leads: Lead[]; appointments: Appointment[]; messages: Message[];
+  stages: Stage[]; history: StageHistory[]; periodRange: { start: Date; end: Date } | null;
 }) {
   const [profileMap, setProfileMap] = useState<Map<string, string>>(new Map());
   const [crcPage, setCrcPage] = useState(1);
@@ -1460,8 +1541,16 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
     );
     const contractedLeadIds = new Set(history.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
     leads.filter(l => contratadoStageIds.has(l.stage_id)).forEach(l => contractedLeadIds.add(l.id));
-    const apptLeadIds = new Set(appointments.map(a => a.lead_id));
-    const inboundLeadIds = new Set(messages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id));
+    const apptLeadIds = new Set(
+      appointments
+        .filter((a) => isDateInRange((a as any).created_at || a.scheduled_date, periodRange))
+        .map(a => a.lead_id)
+    );
+    const inboundLeadIds = new Set(
+      messages
+        .filter(m => m.direction === "inbound" && m.status !== "system" && isDateInRange(m.created_at, periodRange))
+        .map(m => m.lead_id)
+    );
     const map = new Map<string, { total: number; contacted: number; scheduled: number; contracted: number }>();
     for (const lead of leads) {
       const city = ((lead as any).cidade || "").trim() || "Sem cidade";
@@ -1477,7 +1566,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
       schedRate: v.total > 0 ? Math.round((v.scheduled / v.total) * 100) : 0,
       contractRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
     })).sort((a, b) => b.total - a.total);
-  }, [leads, appointments, messages, history, stages]);
+  }, [leads, appointments, messages, history, stages, periodRange]);
 
   // 4. Conversão Diária por CRC
   // Mede o poder de conversão real: para cada (atendente, dia), quantos leads únicos ele falou
@@ -1485,6 +1574,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
   const crcDaily = useMemo(() => {
     const apptCreatedDatesByLead = new Map<string, Set<string>>();
     for (const a of appointments) {
+      if (periodRange && !isDateInRange((a as any).created_at || a.scheduled_date, periodRange)) continue;
       // Usa created_at do agendamento (data em que foi marcado), não scheduled_date.
       const createdAt = (a as any).created_at || a.scheduled_date;
       const day = format(new Date(createdAt), "yyyy-MM-dd");
@@ -1521,7 +1611,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
       };
     }).sort((a, b) => b.day.localeCompare(a.day) || b.contacts - a.contacts);
     return rows;
-  }, [messages, appointments, profileMap]);
+  }, [messages, appointments, profileMap, periodRange]);
 
   const crcTotalPages = Math.max(1, Math.ceil(crcDaily.length / crcPageSize));
   const crcPaginated = crcDaily.slice((crcPage - 1) * crcPageSize, crcPage * crcPageSize);
@@ -1537,7 +1627,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
               <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToSchedule.median)}</p><p className="text-xs text-muted-foreground">Mediana</p></div>
               <div><p className="text-2xl font-bold text-foreground">{timeToSchedule.count}</p><p className="text-xs text-muted-foreground">Leads</p></div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Tempo entre criação do lead e o primeiro agendamento.</p>
+              <p className="text-xs text-muted-foreground mt-2">Coorte: leads criados no período. Considera o primeiro agendamento de cada lead.</p>
           </CardContent>
         </Card>
         <Card>
@@ -1548,7 +1638,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
               <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToContract.median)}</p><p className="text-xs text-muted-foreground">Mediana</p></div>
               <div><p className="text-2xl font-bold text-foreground">{timeToContract.count}</p><p className="text-xs text-muted-foreground">Leads</p></div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Tempo entre criação do lead e a primeira entrada em etapa de contratado.</p>
+              <p className="text-xs text-muted-foreground mt-2">Coorte: leads criados no período. Considera a primeira entrada em etapa de contratado.</p>
           </CardContent>
         </Card>
       </div>
@@ -1593,10 +1683,10 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
           <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Conversão Diária por Atendente (CRC)</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-muted-foreground mb-3">
-            Para cada atendente e dia: leads únicos contatados (mensagens outbound) × quantos desses leads tiveram um agendamento
-            <strong> criado no mesmo dia</strong> (independente da data agendada). Mede o poder de conversão real do atendimento.
-          </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Base: atividade ocorrida no período. Para cada atendente e dia, mostra quantos leads únicos ele falou e quantos desses viraram agendamento
+                <strong> registrado no mesmo dia</strong>, mesmo que a consulta tenha ficado para outra data.
+              </p>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
