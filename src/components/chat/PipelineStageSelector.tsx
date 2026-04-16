@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 interface PipelineStageSelectorProps {
   stages: { id: string; name: string; color: string; pipeline_id: string }[];
   currentStageId: string;
-  onStageChange: (stageId: string) => void;
+  onStageChange: (stageId: string, pipelineId: string) => void;
 }
 
 export default function PipelineStageSelector({ stages, currentStageId, onStageChange }: PipelineStageSelectorProps) {
@@ -46,7 +46,7 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
       </div>
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">Etapa do Funil</label>
-        <Select value={currentStageId} onValueChange={onStageChange}>
+        <Select value={currentStageId} onValueChange={(val) => onStageChange(val, selectedPipelineId)}>
           <SelectTrigger className="bg-secondary border-border h-8 text-sm">
             <SelectValue />
           </SelectTrigger>

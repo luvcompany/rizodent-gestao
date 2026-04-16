@@ -34,6 +34,7 @@ type Lead = {
   name: string;
   phone: string | null;
   stage_id: string;
+  pipeline_id: string;
   tags: string[] | null;
   source: string | null;
   value: number | null;
@@ -98,7 +99,7 @@ export default function CrmConversa() {
     Promise.all([
       supabase
         .from("crm_leads")
-        .select("id, name, phone, stage_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
+        .select("id, name, phone, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
         .eq("id", id)
         .single(),
       profilesPromise,
@@ -138,12 +139,12 @@ export default function CrmConversa() {
     }
   }, [lead, id, profiles, chat, user]);
 
-  const handleStageChange = useCallback(async (stageId: string) => {
+  const handleStageChange = useCallback(async (stageId: string, pipelineId: string) => {
     if (!lead) return;
     const prevStageId = lead.stage_id;
-    await chat.handleStageChange(stageId, prevStageId, () => {
-      setLead((prev) => prev ? { ...prev, stage_id: stageId } : prev);
-    });
+    await chat.handleStageChange(stageId, prevStageId, (newStageId, newPipelineId) => {
+      setLead((prev) => prev ? { ...prev, stage_id: newStageId, pipeline_id: newPipelineId || prev.pipeline_id } : prev);
+    }, pipelineId);
   }, [lead, chat]);
 
   const handleSaveNotes = useCallback(async (updatedNotes: string) => {

@@ -254,10 +254,7 @@ export default function AudioRecorderComposer({
       };
       recorder.onerror = () => { toast.error("Erro ao gravar áudio"); resetToIdle(); };
       recorder.onstart = () => {
-        if (discardRecordingRef.current) return;
-        startMeter();
-        setMode("recording");
-        startRecordingTimer();
+        // Safety fallback — UI should already be active
       };
       recorder.onstop = () => {
         clearTimer();
@@ -271,11 +268,15 @@ export default function AudioRecorderComposer({
         finalizeDraft();
       };
 
-      // Minimal warm-up for mic hardware
-      await new Promise(resolve => setTimeout(resolve, 120));
-
-      // Start recording
+      // Start recording immediately — no warmup delay
       recorder.start(500);
+
+      // Show UI right away instead of waiting for onstart callback
+      if (!discardRecordingRef.current) {
+        startMeter();
+        setMode("recording");
+        startRecordingTimer();
+      }
     } catch (err: any) {
       resetToIdle();
       toast.error(err?.message || "Não foi possível acessar o microfone");
