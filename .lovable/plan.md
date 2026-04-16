@@ -1,38 +1,53 @@
 
-Vou corrigir os dois problemas na raiz, em vez de tentar mais um ajuste superficial.
+Vou corrigir isso pela causa real do bug, não com mais remendos.
 
-1. Corrigir o relógio preso no visualizador
-- Revisar a normalização de status no hook `useChatConversation`.
-- Tratar explicitamente os status reais que já existem no banco, especialmente `played`, além de `accepted`, `sent`, `delivered`, `read` e falhas.
-- Ajustar a UI de `ChatMessageBubble` para que status válidos não caiam no `default` do relógio.
-- Reforçar a reconciliação da mensagem otimista com a mensagem confirmada pelo backend para texto, áudio, imagem e documento, tanto em `CrmConversa` quanto em `CrmConversas`.
-- Melhorar o match da mensagem temporária com a mensagem real usando mais sinais além de apenas `type` e ausência de `whatsapp_message_id`, para evitar ficar presa quando o backend salva com tipo/status diferente.
+1. Corrigir o gravador que “nem abre”
+- Reestruturar `ChatInput.tsx` para existir apenas uma instância estável do gravador.
+- Hoje o componente é renderizado em dois lugares diferentes e, ao trocar para `recorderActive`, ele desmonta a instância que acabou de iniciar a captura.
+- Isso mata `MediaRecorder`, `stream`, `AudioContext` e cleanup roda no meio do fluxo.
+- Vou manter a mesma posição visual que você quer, mas sem trocar de instância durante a gravação.
 
-2. Corrigir a onda de gravação durante o áudio
-- Refazer a renderização visual da gravação em `ChatInput` para garantir contraste e visibilidade no espaço exato do input.
-- Desacoplar o desenho da onda da medição atual do canvas que hoje pode estar ficando invisível.
-- Adicionar trilha/base visível e barras animadas com fallback mínimo, para que mesmo com volume baixo apareça atividade.
-- Aplicar o mesmo comportamento nas duas telas porque ambas usam o mesmo `ChatInput`.
+2. Corrigir o corte dos primeiros segundos do áudio
+- Ajustar `AudioRecorderComposer.tsx` para separar:
+  - pedido de permissão
+  - inicialização do stream/encoder
+  - momento em que a UI mostra “gravando”
+- Em vez de “simular warmup”, vou prender o início visível/contagem ao momento real em que a captura já está pronta.
+- Também vou revisar `start`, `requestData`, `stop` e o fluxo do polyfill/nativo para não perder o começo do buffer na primeira gravação.
 
-3. Validar o fluxo inteiro do chat
-- Conferir os pontos de integração de `ChatInput` com `CrmConversa` e `CrmConversas`.
-- Garantir que `onMessageSent`, `onMessageSuccess` e `onMessageError` atualizem a lista local e o cache global sem divergência.
-- Verificar compatibilidade com mídias assinadas e com o retorno da função de envio.
+3. Fazer a waveform aparecer de verdade no estilo esperado
+- Manter a posição atual do input, sem criar bubble novo.
+- Refazer a barra visual de gravação para sempre renderizar uma trilha base + barras ativas, evitando o “quadrado cinza”.
+- Ajustar contraste, altura mínima, largura e distribuição das barras para ficar mais próximo do visual do Kommo, mas dentro do layout atual.
+- Garantir que a waveform continue viva durante gravação, pausa e preview.
 
-4. Testes que vou executar após implementar
-- Enviar texto e confirmar que o relógio vira check imediatamente.
-- Enviar áudio e confirmar que o relógio não fica preso.
-- Enviar imagem/documento e confirmar o mesmo comportamento.
-- Gravar áudio e verificar que a onda aparece durante toda a gravação no local que você indicou.
-- Validar isso nas duas telas: `CrmConversa` e `CrmConversas`.
+4. Manter a prévia antes do envio
+- Preservar o comportamento de ouvir antes de enviar, mas sem quebrar o fluxo do campo.
+- A prévia deve aparecer no mesmo espaço do composer, não como mensagem no histórico.
+- Validar envio/cancelamento sem desmontar o estado do gravador.
 
-Detalhes técnicos
-- Achei um bug concreto: o balão de mensagem hoje só renderiza ícones corretos para `read`, `delivered` e `sent`. No banco já existem mensagens outbound com status `played`, e esse status está caindo no `default`, que mostra o relógio.
-- Também há fragilidade na troca da mensagem otimista pela mensagem real: se o backend confirmar com tipo/status diferente do temporário, a UI pode continuar exibindo o item errado.
-- A gravação está entrando no modo correto, mas a onda atual depende de um desenho em canvas que pode ficar visualmente “invisível”; vou tornar esse bloco visual robusto e claramente visível.
+5. Revalidar o envio e status no chat
+- Confirmar que `sendRecordedAudio` continua integrando corretamente com `onMessageSent`, `onMessageSuccess` e `onMessageError`.
+- Garantir que o áudio enviado saia do estado otimista e não fique preso.
+- Confirmar comportamento igual em `CrmConversa` e `CrmConversas`, já que ambos usam o mesmo `ChatInput`.
 
-Implementação prevista
-- `src/hooks/useChatConversation.ts`
-- `src/components/chat/ChatMessageBubble.tsx`
+Arquivos que vou corrigir
 - `src/components/chat/ChatInput.tsx`
-- Possivelmente pequenos ajustes em `src/pages/CrmConversa.tsx` e `src/pages/CrmConversas.tsx` se eu precisar reforçar o fluxo de callbacks, mas a maior parte deve ficar centralizada no hook e no input.
+- `src/components/chat/AudioRecorderComposer.tsx`
+- Se necessário, pequenos ajustes em:
+  - `src/hooks/useChatConversation.ts`
+  - `src/pages/CrmConversa.tsx`
+  - `src/pages/CrmConversas.tsx`
+
+O problema exato que encontrei
+- O bug principal está em `ChatInput.tsx`: existem duas renderizações possíveis de `AudioRecorderComposer`.
+- Quando o gravador chama `onModeChange(true)`, o pai troca de layout e desmonta justamente a instância que começou a gravar.
+- Isso explica o comportamento “completamente bugado”: não abrir, cortar início, sumir waveform, falhar preview e parecer aleatório.
+- O corte inicial também é compatível com atraso real do encoder/polyfill na primeira captura, então vou tratar isso no fluxo de inicialização, não só no visual.
+
+Resultado esperado após a implementação
+- Clicar no microfone abre e mantém o gravador sem travar.
+- A waveform aparece no local atual, sem bubble novo.
+- O começo do áudio não é mais cortado.
+- Dá para ouvir antes de enviar.
+- Funciona igual em `CRM Conversa` e `CRM Conversas`.
