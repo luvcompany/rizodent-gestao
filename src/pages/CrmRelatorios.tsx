@@ -1226,13 +1226,13 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
   const byAd = useMemo(() => {
     const map = new Map<string, { total: number; scheduled: number; contracted: number; image: string | null; name: string | null; accountName: string | null; links: Set<string>; sources: Set<string> }>();
     leads.forEach(l => {
-      // Must have account name to be included (consistency with byAccount)
-      if (!l.ad_account_name) return;
+      // Include any lead that has ad-related data (ad_id, imagem_origem, nome_anuncio, etc.)
+      const hasAdData = l.ad_id || l.imagem_origem || l.nome_anuncio || l.descricao_anuncio || l.link_anuncio;
+      if (!hasAdData) return;
       const desc = l.descricao_anuncio;
       const adIdentifier = l.imagem_origem || l.descricao_anuncio || l.link_anuncio || l.nome_anuncio;
       if (!adIdentifier) {
-        // Lead has account but no ad creative info — group as "Sem criativo identificado" per account
-        const fallbackKey = `__no_creative__::${l.ad_account_id || ""}`;
+        const fallbackKey = `__no_creative__::${l.ad_account_id || "none"}`;
         if (!map.has(fallbackKey)) map.set(fallbackKey, { total: 0, scheduled: 0, contracted: 0, image: null, name: "Sem criativo identificado", accountName: null, links: new Set(), sources: new Set() });
         const s = map.get(fallbackKey)!;
         s.total++;

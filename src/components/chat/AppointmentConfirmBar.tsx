@@ -366,8 +366,8 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
 
       {/* Manual scheduling button */}
       {!manualOpen ? (
-        <Button variant="outline" size="sm" className="w-full h-7 text-xs gap-1 mb-2" onClick={() => setManualOpen(true)}>
-          <Plus size={12} /> {isRescheduleMode ? "Reagendar" : "Agendar manualmente"}
+        <Button variant="outline" size="sm" className="w-full h-8 text-sm gap-1.5 mb-2" onClick={() => setManualOpen(true)}>
+          <Plus size={14} /> {isRescheduleMode ? "Reagendar" : "Agendar manualmente"}
         </Button>
       ) : (
         <div className="space-y-2 mb-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
