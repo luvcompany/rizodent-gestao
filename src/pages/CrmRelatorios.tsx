@@ -285,43 +285,6 @@ export default function CrmRelatorios() {
     return { lead: mean(respLead), crc: mean(respCRC), nLead: respLead.length, nCRC: respCRC.length };
   }, [messages]);
 
-  // Ações do dia: movimentações de etapa hoje + leads que falaram hoje
-  const acoesHoje = useMemo(() => {
-    const now = new Date();
-    const startDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const endDay = startDay + 24 * 60 * 60 * 1000 - 1;
-    const stageIds = new Set(stages.map(s => s.id));
-
-    // Movimentações por stage hoje (lead distinct)
-    const moveByStage = new Map<string, Set<string>>();
-    history.forEach(h => {
-      if (!stageIds.has(h.stage_id)) return;
-      const t = new Date(h.entered_at).getTime();
-      if (t < startDay || t > endDay) return;
-      if (!moveByStage.has(h.stage_id)) moveByStage.set(h.stage_id, new Set());
-      moveByStage.get(h.stage_id)!.add(h.lead_id);
-    });
-
-    const funnel = stages.map((s, i) => ({
-      name: s.name,
-      value: moveByStage.get(s.id)?.size || 0,
-      fill: s.color || FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-    }));
-
-    // Leads do pipeline que mandaram inbound hoje
-    const leadsPipeline = new Set(leads.map(l => l.id));
-    const falaramSet = new Set<string>();
-    messages.forEach(m => {
-      if (m.direction !== "inbound") return;
-      if (!leadsPipeline.has(m.lead_id)) return;
-      const t = new Date(m.created_at).getTime();
-      if (t < startDay || t > endDay) return;
-      falaramSet.add(m.lead_id);
-    });
-
-    return { funnel, falaram: falaramSet.size, totalMov: funnel.reduce((a, b) => a + b.value, 0) };
-  }, [stages, history, leads, messages]);
-
   // 8. Fantasmas
   const fantasmas = useMemo(() => {
     return cohort.filter(l => {
