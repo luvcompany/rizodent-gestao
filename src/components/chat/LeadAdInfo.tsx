@@ -8,6 +8,7 @@ type Props = {
   adId?: string | null;
   nomeAnuncio?: string | null;
   source?: string | null;
+  adAccountName?: string | null;
 };
 
 const fbIcon = (
@@ -29,7 +30,7 @@ function detectInstagram(source?: string | null, linkAnuncio?: string | null, ad
   return [linkAnuncio, adId, imagemOrigem].some(v => v && v.toLowerCase().includes("instagram"));
 }
 
-export default function LeadAdInfo({ imagemOrigem, tituloAnuncio, descricaoAnuncio, linkAnuncio, adId, nomeAnuncio, source }: Props) {
+export default function LeadAdInfo({ imagemOrigem, tituloAnuncio, descricaoAnuncio, linkAnuncio, adId, nomeAnuncio, source, adAccountName }: Props) {
   const hasAdData = tituloAnuncio || descricaoAnuncio || imagemOrigem || nomeAnuncio || adId;
   if (!hasAdData) return null;
 
@@ -55,6 +56,9 @@ export default function LeadAdInfo({ imagemOrigem, tituloAnuncio, descricaoAnunc
         )}
         {(tituloAnuncio || nomeAnuncio) && (
           <p className="text-sm font-semibold text-foreground">{tituloAnuncio || nomeAnuncio}</p>
+        )}
+        {adAccountName && (
+          <p className="text-[11px] text-primary/70 font-medium">Conta: {adAccountName}</p>
         )}
         {descricaoAnuncio && (
           <p className="text-xs text-muted-foreground line-clamp-3">{descricaoAnuncio}</p>
