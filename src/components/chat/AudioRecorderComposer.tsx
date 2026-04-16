@@ -27,6 +27,7 @@ function preloadOpusRecorder() {
 }
 
 const createEmptyBars = () => Array.from({ length: BAR_COUNT }, () => MIN_LEVEL);
+
 const clampLevel = (v: number) => Math.min(1, Math.max(MIN_LEVEL, v));
 
 const compressLevelsToBars = (levels: number[]) => {
@@ -46,15 +47,6 @@ const compressLevelsToBars = (levels: number[]) => {
   });
 };
 
-/** Check if this browser supports native OGG/Opus recording */
-function supportsNativeOgg(): boolean {
-  return (
-    typeof MediaRecorder !== "undefined" &&
-    typeof MediaRecorder.isTypeSupported === "function" &&
-    MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
-  );
-}
-
 export default function AudioRecorderComposer({
   disabled = false,
   onSendAudio,
@@ -71,7 +63,7 @@ export default function AudioRecorderComposer({
   const [previewProgress, setPreviewProgress] = useState(0);
   const [previewDuration, setPreviewDuration] = useState(0);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaRecorderRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -83,13 +75,6 @@ export default function AudioRecorderComposer({
   const currentDraftUrlRef = useRef<string | null>(null);
   const discardRecordingRef = useRef(false);
   const pausedRef = useRef(false);
-  const mountedRef = useRef(true);
-
-  // Track mounted state to avoid setState after unmount
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
 
   const setManagedDraftUrl = useCallback((url: string | null) => {
     if (currentDraftUrlRef.current?.startsWith("blob:")) {
@@ -112,29 +97,22 @@ export default function AudioRecorderComposer({
     analyserRef.current = null;
     const ctx = audioContextRef.current;
     audioContextRef.current = null;
-    if (ctx) {
-      try {
-        if (ctx.state !== "closed") ctx.close().catch(() => {});
-      } catch {
-        // already closed or invalid
-      }
+    if (ctx && ctx.state !== "closed") {
+      ctx.close().catch(() => undefined);
     }
   }, [clearSampler]);
-
-  const killStream = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch {} });
-      streamRef.current = null;
-    }
-  }, []);
 
   const resetToIdle = useCallback(() => {
     clearTimer();
     stopAudioProcessing();
-    killStream();
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
 
     const audio = previewAudioRef.current;
-    if (audio) { try { audio.pause(); audio.currentTime = 0; } catch {} }
+    if (audio) { audio.pause(); audio.currentTime = 0; }
 
     mediaRecorderRef.current = null;
     audioChunksRef.current = [];
@@ -142,18 +120,16 @@ export default function AudioRecorderComposer({
     discardRecordingRef.current = false;
     pausedRef.current = false;
 
-    if (mountedRef.current) {
-      setRecordingPaused(false);
-      setRecordingTime(0);
-      setWaveformBars(createEmptyBars());
-      setDraftBlob(null);
-      setManagedDraftUrl(null);
-      setPreviewPlaying(false);
-      setPreviewProgress(0);
-      setPreviewDuration(0);
-      setMode("idle");
-    }
-  }, [clearTimer, setManagedDraftUrl, stopAudioProcessing, killStream]);
+    setRecordingPaused(false);
+    setRecordingTime(0);
+    setWaveformBars(createEmptyBars());
+    setDraftBlob(null);
+    setManagedDraftUrl(null);
+    setPreviewPlaying(false);
+    setPreviewProgress(0);
+    setPreviewDuration(0);
+    setMode("idle");
+  }, [clearTimer, setManagedDraftUrl, stopAudioProcessing]);
 
   const startMeter = useCallback(() => {
     clearSampler();
@@ -163,11 +139,7 @@ export default function AudioRecorderComposer({
     const dataArray = new Uint8Array(analyser.fftSize);
 
     sampleTimerRef.current = setInterval(() => {
-      try {
-        analyser.getByteTimeDomainData(dataArray);
-      } catch {
-        return;
-      }
+      analyser.getByteTimeDomainData(dataArray);
       let peak = 0;
       for (let i = 0; i < dataArray.length; i++) {
         peak = Math.max(peak, Math.abs(dataArray[i] - 128) / 128);
@@ -177,15 +149,14 @@ export default function AudioRecorderComposer({
       const smooth = prev * 0.45 + target * 0.55;
       const next = [...waveformHistoryRef.current, clampLevel(smooth)].slice(-MAX_WAVEFORM_SAMPLES);
       waveformHistoryRef.current = next;
-      if (mountedRef.current) setWaveformBars(compressLevelsToBars(next));
+      setWaveformBars(compressLevelsToBars(next));
     }, LIVE_SAMPLE_MS);
   }, [clearSampler]);
 
   const startRecordingTimer = useCallback(() => {
     clearTimer();
     timerRef.current = setInterval(() => {
-      const rec = mediaRecorderRef.current;
-      if (rec && rec.state === "recording" && !pausedRef.current) {
+      if (mediaRecorderRef.current?.state === "recording" && !pausedRef.current) {
         setRecordingTime((t) => t + 1);
       }
     }, 1000);
@@ -237,175 +208,106 @@ export default function AudioRecorderComposer({
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-
-      // If user cancelled during mic permission dialog
-      if (discardRecordingRef.current || !mountedRef.current) {
-        stream.getTracks().forEach((t) => t.stop());
-        if (mountedRef.current) resetToIdle();
-        return;
-      }
-
       streamRef.current = stream;
 
       // Set up audio analyser
       const ACtor = window.AudioContext || (window as any).webkitAudioContext;
       if (ACtor) {
-        try {
-          const ctx = new ACtor();
-          await ctx.resume();
-          const source = ctx.createMediaStreamSource(stream);
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 1024;
-          analyser.smoothingTimeConstant = 0.72;
-          source.connect(analyser);
-          audioContextRef.current = ctx;
-          analyserRef.current = analyser;
-          startMeter();
-        } catch {
-          // Non-fatal: waveform won't animate but recording still works
-        }
+        const ctx = new ACtor();
+        await ctx.resume();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.72;
+        source.connect(analyser);
+        audioContextRef.current = ctx;
+        analyserRef.current = analyser;
+        startMeter();
       }
 
-      // Create recorder — prefer native OGG/Opus, fallback to polyfill
+      // Create recorder
       let recorder: any;
+      const nativeOgg =
+        typeof MediaRecorder !== "undefined" &&
+        typeof MediaRecorder.isTypeSupported === "function" &&
+        MediaRecorder.isTypeSupported("audio/ogg;codecs=opus");
 
-      if (supportsNativeOgg()) {
+      if (nativeOgg) {
         recorder = new MediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" });
       } else {
-        // Safari and browsers without native OGG: use opus-media-recorder polyfill
         const OpusMediaRecorder = await preloadOpusRecorder();
-        if (OpusMediaRecorder) {
-          recorder = new OpusMediaRecorder(
-            stream,
-            { mimeType: "audio/ogg;codecs=opus" },
-            {
-              OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
-              WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
-              encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
-            },
-          );
-        } else {
-          // Last resort: use whatever the browser supports
-          recorder = new MediaRecorder(stream);
-        }
+        if (!OpusMediaRecorder) throw new Error("Erro ao carregar gravador de áudio");
+        recorder = new OpusMediaRecorder(
+          stream,
+          { mimeType: "audio/ogg;codecs=opus" },
+          {
+            OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+            WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+            encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
+          },
+        );
       }
 
       mediaRecorderRef.current = recorder;
 
-      recorder.ondataavailable = (e) => {
+      recorder.ondataavailable = (e: any) => {
         if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-      recorder.onerror = () => {
-        toast.error("Erro ao gravar áudio");
-        resetToIdle();
-      };
+      recorder.onerror = () => { toast.error("Erro ao gravar áudio"); resetToIdle(); };
       recorder.onstop = () => {
         clearTimer();
         stopAudioProcessing();
-        killStream();
-        if (mountedRef.current) {
-          setRecordingPaused(false);
-          pausedRef.current = false;
-          finalizeDraft();
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
         }
+        setRecordingPaused(false);
+        pausedRef.current = false;
+        finalizeDraft();
       };
 
       // Wait for microphone to fully initialize before starting capture
       await new Promise(resolve => setTimeout(resolve, 350));
 
-      // Check again if user cancelled during warmup
-      if (discardRecordingRef.current || !mountedRef.current) {
-        killStream();
-        stopAudioProcessing();
-        if (mountedRef.current) resetToIdle();
-        return;
-      }
-
+      // Start recording — use timeslice of 250ms for regular data chunks
       recorder.start(250);
 
-      if (!discardRecordingRef.current && mountedRef.current) {
+      if (!discardRecordingRef.current) {
         setMode("recording");
         startRecordingTimer();
       }
     } catch (err: any) {
       resetToIdle();
-      const msg = err?.message || "Não foi possível acessar o microfone";
-      if (!msg.includes("Erro ao carregar")) {
-        toast.error(msg);
-      } else {
-        toast.error("Não foi possível acessar o microfone");
-      }
+      toast.error(err?.message || "Não foi possível acessar o microfone");
     }
-  }, [disabled, finalizeDraft, mode, resetToIdle, startMeter, startRecordingTimer, clearTimer, stopAudioProcessing, killStream]);
+  }, [disabled, finalizeDraft, mode, resetToIdle, startMeter, startRecordingTimer, clearTimer, stopAudioProcessing]);
 
   const togglePauseRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
     if (!rec || mode === "preparing") return;
-    try {
-      if (rec.state === "recording") {
-        rec.pause();
-        pausedRef.current = true;
-        setRecordingPaused(true);
-      } else if (rec.state === "paused") {
-        rec.resume();
-        pausedRef.current = false;
-        setRecordingPaused(false);
-      }
-    } catch {
-      // Recorder in invalid state, reset
-      resetToIdle();
+    if (rec.state === "recording") {
+      rec.pause();
+      pausedRef.current = true;
+      setRecordingPaused(true);
+    } else if (rec.state === "paused") {
+      rec.resume();
+      pausedRef.current = false;
+      setRecordingPaused(false);
     }
-  }, [mode, resetToIdle]);
+  }, [mode]);
 
   const stopRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
-    if (!rec) {
-      resetToIdle();
-      return;
-    }
-    try {
-      // Resume first if paused, so onstop fires properly
-      if (rec.state === "paused") {
-        rec.resume();
-      }
-      if (rec.state === "recording") {
-        try { rec.requestData(); } catch {}
-        rec.stop();
-      } else if (rec.state === "inactive") {
-        // Already stopped, finalize
-        finalizeDraft();
-      }
-    } catch {
-      resetToIdle();
-    }
-  }, [resetToIdle, finalizeDraft]);
+    if (!rec) return;
+    try { rec.requestData?.(); } catch {}
+    rec.stop();
+  }, []);
 
   const discardCurrentAudio = useCallback(() => {
     if (mode === "preview") { resetToIdle(); return; }
-    if (mode === "preparing") {
-      // During preparing, recorder may not exist yet (warmup delay)
+    if (mode === "preparing" || mode === "recording") {
       discardRecordingRef.current = true;
-      // If recorder already exists, stop it; otherwise resetToIdle will be called after warmup
-      const rec = mediaRecorderRef.current;
-      if (rec && rec.state !== "inactive") {
-        try { rec.stop(); } catch { resetToIdle(); }
-      } else if (!rec) {
-        resetToIdle();
-      }
-      return;
-    }
-    if (mode === "recording") {
-      discardRecordingRef.current = true;
-      const rec = mediaRecorderRef.current;
-      if (rec) {
-        try {
-          if (rec.state === "paused") rec.resume();
-          if (rec.state === "recording") rec.stop();
-          else resetToIdle();
-        } catch { resetToIdle(); }
-      } else {
-        resetToIdle();
-      }
+      try { mediaRecorderRef.current?.stop(); } catch { resetToIdle(); }
       return;
     }
     resetToIdle();
@@ -426,6 +328,7 @@ export default function AudioRecorderComposer({
       await onSendAudio(draftBlob);
       resetToIdle();
     } catch {
+      // Error toasts are shown by onSendAudio — just return to preview
       setMode("preview");
     }
   }, [draftBlob, mode, onSendAudio, resetToIdle]);
@@ -453,10 +356,8 @@ export default function AudioRecorderComposer({
     };
   }, [draftUrl]);
 
-  // Cleanup on unmount — use ref to avoid re-running on every resetToIdle change
-  const resetRef = useRef(resetToIdle);
-  resetRef.current = resetToIdle;
-  useEffect(() => () => { resetRef.current(); }, []);
+  // Cleanup on unmount
+  useEffect(() => () => resetToIdle(), [resetToIdle]);
 
   // Notify parent
   useEffect(() => { onModeChange?.(mode !== "idle"); }, [mode, onModeChange]);
