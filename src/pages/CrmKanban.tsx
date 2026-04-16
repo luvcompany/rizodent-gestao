@@ -65,7 +65,46 @@ const PRESET_COLORS = [
   "#ec4899", "#f43f5e", "#78716c", "#64748b", "#1e293b",
 ];
 
-export default function CrmKanban() {
+function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, currentPipelineId, value, onChange }: {
+  pipelineId: string;
+  allPipelines: Pipeline[];
+  currentStages: Stage[];
+  currentPipelineId: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [otherStages, setOtherStages] = useState<Stage[]>([]);
+
+  useEffect(() => {
+    if (!pipelineId || pipelineId === currentPipelineId) {
+      setOtherStages([]);
+      return;
+    }
+    supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", pipelineId).order("position").then(({ data }) => {
+      setOtherStages((data as Stage[]) || []);
+    });
+  }, [pipelineId, currentPipelineId]);
+
+  const displayStages = pipelineId === currentPipelineId ? currentStages : otherStages;
+
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger><SelectValue placeholder="Selecione a etapa" /></SelectTrigger>
+      <SelectContent>
+        {displayStages.map(s => (
+          <SelectItem key={s.id} value={s.id}>
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+              {s.name}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
