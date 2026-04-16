@@ -249,6 +249,32 @@ Deno.serve(async (req) => {
             if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
           }
         }
+      } else {
+        // No funnel_channels for this pipeline — fall back to any active WhatsApp integration
+        const { data: fallbackChannel } = await supabase
+          .from("funnel_channels")
+          .select("channel_config")
+          .eq("channel_type", "whatsapp")
+          .limit(1)
+          .maybeSingle();
+
+        if (fallbackChannel?.channel_config) {
+          const integrationKey = (fallbackChannel.channel_config as any)?.integration_key;
+          if (integrationKey) {
+            const { data: integration } = await supabase
+              .from("integrations")
+              .select("config, status")
+              .eq("key", integrationKey)
+              .maybeSingle();
+
+            if (integration?.status !== "disabled" && integration?.config) {
+              const cfg = integration.config as any;
+              const resolvedToken = cfg.access_token || cfg.token;
+              if (resolvedToken) whatsappToken = resolvedToken;
+              if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
+            }
+          }
+        }
       }
     }
 
