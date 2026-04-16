@@ -1385,6 +1385,7 @@ export type Database = {
           content: string | null
           created_at: string
           direction: string
+          error_reason: string | null
           id: string
           lead_id: string
           media_url: string | null
@@ -1406,6 +1407,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           direction?: string
+          error_reason?: string | null
           id?: string
           lead_id: string
           media_url?: string | null
@@ -1427,6 +1429,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           direction?: string
+          error_reason?: string | null
           id?: string
           lead_id?: string
           media_url?: string | null

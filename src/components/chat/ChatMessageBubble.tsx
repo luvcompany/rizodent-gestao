@@ -21,6 +21,7 @@ type Message = {
   ad_image_url?: string | null;
   ad_source_url?: string | null;
   ad_source_id?: string | null;
+  error_reason?: string | null;
 };
 
 type Props = {
@@ -159,8 +160,8 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                       <span className="text-[11px] font-semibold">Erro</span>
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[250px] text-xs">
-                    Falha ao enviar mensagem. Verifique a conexão com o WhatsApp e tente reenviar.
+                  <TooltipContent side="top" className="max-w-[280px] text-xs">
+                    {msg.error_reason || "Falha ao enviar mensagem. Verifique a conexão com o WhatsApp e tente reenviar."}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
