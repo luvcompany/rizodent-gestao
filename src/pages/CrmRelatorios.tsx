@@ -351,6 +351,7 @@ export default function CrmRelatorios() {
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="acoes-dia">Ações por Dia</TabsTrigger>
+          <TabsTrigger value="antecedencia">Antecedência de Agendamento</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
