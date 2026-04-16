@@ -110,8 +110,17 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       toast.error(`Erro ao fazer upload: ${error.message}`);
       return null;
     }
-    const { data } = await supabase.storage.from("chat-media").createSignedUrl(path, 3600);
-    return data?.signedUrl || null;
+
+    const { data, error: signedUrlError } = await supabase.storage
+      .from("chat-media")
+      .createSignedUrl(path, 3600);
+
+    if (signedUrlError || !data?.signedUrl) {
+      toast.error(`Erro ao preparar mídia: ${signedUrlError?.message || "URL assinada indisponível"}`);
+      return null;
+    }
+
+    return data.signedUrl;
   };
 
   const getMessageType = (file: globalThis.File): string => {
@@ -323,22 +332,29 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       throw new Error("Janela expirada");
     }
 
-    // Dynamic extension based on actual MIME type
     const getExtFromMime = (mime: string) => {
       if (mime.includes("ogg")) return "ogg";
       if (mime.includes("webm")) return "webm";
       if (mime.includes("mp4")) return "m4a";
-      return "webm";
+      return "ogg";
     };
+
     const ext = getExtFromMime(audioBlob.type);
     const audioFile = new globalThis.File(
       [audioBlob],
       `audio_${Date.now()}.${ext}`,
-      { type: audioBlob.type || "audio/ogg" }
+      { type: audioBlob.type || "audio/ogg;codecs=opus" }
     );
 
     const tempId = crypto.randomUUID();
     const optimisticUrl = URL.createObjectURL(audioBlob);
+    let handledError = false;
+
+    const fail = (message: string) => {
+      handledError = true;
+      onMessageError?.(tempId);
+      throw new Error(message);
+    };
 
     onMessageSent?.({
       id: tempId,
@@ -358,25 +374,32 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       const url = await uploadFile(audioFile, "audio");
       if (!url) {
-        onMessageError?.(tempId);
-        toast.error("Falha no upload do áudio");
-        return;
+        fail("Falha no upload do áudio");
       }
 
+      const isOggVoice = audioFile.type.includes("ogg") || audioFile.name.endsWith(".ogg");
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
+        body: {
+          lead_id: leadId,
+          to: leadPhone,
+          type: "audio",
+          media_url: url,
+          audio_voice: isOggVoice,
+        },
       });
 
       if (error || data?.error) {
-        onMessageError?.(tempId);
-        toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
-        return;
+        fail(error?.message || data?.error?.message || JSON.stringify(data?.error) || "Erro ao enviar áudio");
       }
 
       onMessageSuccess?.(tempId, data?.message);
     } catch (err: any) {
-      onMessageError?.(tempId);
-      toast.error(err?.message || "Erro ao enviar áudio");
+      if (!handledError) {
+        onMessageError?.(tempId);
+      }
+      const message = err?.message || "Erro ao enviar áudio";
+      toast.error(message);
+      throw err instanceof Error ? err : new Error(message);
     }
   }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess]);
 

@@ -227,7 +227,6 @@ export default function AudioRecorderComposer({
       });
       streamRef.current = stream;
 
-      // Set up audio analyser
       const ACtor = window.AudioContext || (window as any).webkitAudioContext;
       if (ACtor) {
         const ctx = new ACtor();
@@ -242,14 +241,27 @@ export default function AudioRecorderComposer({
         startMeter();
       }
 
-      // Dynamic MIME type — no polyfill needed
-      const mimeType = getBestMimeType();
-      console.log(`[AudioRecorder] Using MIME type: ${mimeType || "(default)"}`);
+      let recorder: any;
 
-      const recorderOptions: MediaRecorderOptions = {};
-      if (mimeType) recorderOptions.mimeType = mimeType;
+      try {
+        const OpusMediaRecorder = (await import("opus-media-recorder")).default;
+        const workerOptions = {
+          OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+          WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+          encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
+        };
 
-      const recorder = new MediaRecorder(stream, recorderOptions);
+        recorder = new OpusMediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" }, workerOptions);
+        console.log("[AudioRecorder] Using Opus recorder: audio/ogg;codecs=opus");
+      } catch (polyfillError) {
+        const mimeType = getBestMimeType();
+        const recorderOptions: MediaRecorderOptions = {};
+        if (mimeType) recorderOptions.mimeType = mimeType;
+        recorder = new MediaRecorder(stream, recorderOptions);
+        console.warn("[AudioRecorder] Falling back to native MediaRecorder", polyfillError);
+        console.log(`[AudioRecorder] Using fallback MIME type: ${mimeType || "(default)"}`);
+      }
+
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (e: BlobEvent) => {
@@ -269,8 +281,7 @@ export default function AudioRecorderComposer({
         finalizeDraft();
       };
 
-      // Start recording with timeslice for regular chunks
-      recorder.start(250);
+      recorder.start();
 
       if (!discardRecordingRef.current) {
         setMode("recording");
