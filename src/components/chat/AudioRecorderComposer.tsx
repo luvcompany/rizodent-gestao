@@ -266,11 +266,12 @@ export default function AudioRecorderComposer({
         finalizeDraft();
       };
 
+      // Wait for microphone to fully initialize before starting capture
+      await new Promise(resolve => setTimeout(resolve, 350));
+
       // Start recording — use timeslice of 250ms for regular data chunks
       recorder.start(250);
 
-      // Transition to recording immediately — no artificial warmup delay
-      // The encoder is already capturing from the moment start() is called
       if (!discardRecordingRef.current) {
         setMode("recording");
         startRecordingTimer();
