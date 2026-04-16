@@ -30,7 +30,7 @@ type Lead = {
   ad_id?: string | null;
 };
 type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
-type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string };
+type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string; created_at?: string };
 
 function formatDuration(ms: number): string {
   if (ms <= 0) return "—";
@@ -81,7 +81,7 @@ export default function CrmRelatorios() {
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
         supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio, ad_account_id, ad_account_name, ad_id" as any),
         supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id, ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name"),
-        supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
+        supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date, created_at"),
       ]);
       setPipelines((pipelinesRes.data as Pipeline[]) || []);
       setStages((stagesRes.data as Stage[]) || []);
