@@ -292,21 +292,26 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     setAttachedFile({ file, type });
   };
 
-  const sendRecordedAudio = async (oggBlob: Blob) => {
+  const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
     if (!leadPhone) {
-      throw new Error("Lead sem telefone para envio do áudio");
+      toast.error("Lead sem telefone para envio do áudio");
+      throw new Error("Lead sem telefone");
+    }
+
+    if (windowInfo.expired) {
+      toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
+      throw new Error("Janela expirada");
     }
 
     const audioFile = new globalThis.File(
       [oggBlob],
       `audio_${Date.now()}.ogg`,
-      { type: "audio/ogg" }
+      { type: oggBlob.type || "audio/ogg" }
     );
 
     const tempId = crypto.randomUUID();
     const optimisticUrl = URL.createObjectURL(oggBlob);
 
-    // Show message instantly in chat
     onMessageSent?.({
       id: tempId,
       lead_id: leadId,
@@ -321,12 +326,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     });
 
     try {
-      console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
+      console.log(`[ChatInput] Sending audio: size=${audioFile.size}, type=${audioFile.type}`);
 
       const url = await uploadFile(audioFile, "audio");
       if (!url) {
         onMessageError?.(tempId);
-        throw new Error("Falha no upload do áudio");
+        toast.error("Falha no upload do áudio");
+        return;
       }
 
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
@@ -335,16 +341,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       if (error || data?.error) {
         onMessageError?.(tempId);
-        throw new Error(error?.message || JSON.stringify(data?.error) || "Erro ao enviar áudio");
+        toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+        return;
       }
 
       onMessageSuccess?.(tempId, data?.message);
-    } catch (error: any) {
+    } catch (err: any) {
       onMessageError?.(tempId);
-      toast.error(error?.message || "Erro ao enviar áudio");
-      throw error;
+      toast.error(err?.message || "Erro ao enviar áudio");
     }
-  };
+  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess]);
 
   // 24h window logic
   const [now, setNow] = useState(Date.now());
