@@ -550,6 +550,13 @@ export default function CrmRelatorios() {
           )}
         </div>
       </Card>
+
+        </TabsContent>
+
+        <TabsContent value="acoes-dia" className="mt-4">
+          <AcoesPorDiaTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
