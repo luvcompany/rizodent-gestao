@@ -45,7 +45,7 @@ function getStatusIcon(status: string) {
       return <Check size={14} className="text-muted-foreground" />;
     case "failed":
     case "error":
-      return <Clock size={14} className="text-destructive" />;
+      return null;
     case "sending":
       return <Clock size={14} className="text-muted-foreground animate-pulse" />;
     case "system":
