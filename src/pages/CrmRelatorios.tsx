@@ -55,7 +55,7 @@ function formatDays(ms: number): string {
 export default function CrmRelatorios() {
   const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("all");
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const [stages, setStages] = useState<Stage[]>([]);
   const [history, setHistory] = useState<StageHistory[]>([]);
@@ -151,6 +151,20 @@ export default function CrmRelatorios() {
     };
     fetchAll();
   }, []);
+
+  useEffect(() => {
+    if (pipelines.length === 0) return;
+
+    const hasValidSelection = pipelines.some((pipeline) => pipeline.id === selectedPipelineId);
+    if (hasValidSelection) return;
+
+    const preferredPipeline =
+      pipelines.find((pipeline) => pipeline.name.toLowerCase().includes("principal")) || pipelines[0];
+
+    if (preferredPipeline) {
+      setSelectedPipelineId(preferredPipeline.id);
+    }
+  }, [pipelines, selectedPipelineId]);
 
   const periodRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
 
