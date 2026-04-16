@@ -1503,12 +1503,16 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
   }, [leads, appointments, messages, history, stages]);
 
   // 4. Conversão Diária por CRC
+  // Mede o poder de conversão real: para cada (atendente, dia), quantos leads únicos ele falou
+  // e quantos desses leads tiveram um agendamento *criado* no mesmo dia (independente da data agendada).
   const crcDaily = useMemo(() => {
-    const apptDatesByLead = new Map<string, Set<string>>();
+    const apptCreatedDatesByLead = new Map<string, Set<string>>();
     for (const a of appointments) {
-      const day = format(new Date(a.scheduled_date), "yyyy-MM-dd");
-      if (!apptDatesByLead.has(a.lead_id)) apptDatesByLead.set(a.lead_id, new Set());
-      apptDatesByLead.get(a.lead_id)!.add(day);
+      // Usa created_at do agendamento (data em que foi marcado), não scheduled_date.
+      const createdAt = (a as any).created_at || a.scheduled_date;
+      const day = format(new Date(createdAt), "yyyy-MM-dd");
+      if (!apptCreatedDatesByLead.has(a.lead_id)) apptCreatedDatesByLead.set(a.lead_id, new Set());
+      apptCreatedDatesByLead.get(a.lead_id)!.add(day);
     }
     const contactsByKey = new Map<string, Set<string>>();
     const sentBy = new Map<string, string>();
