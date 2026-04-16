@@ -111,9 +111,12 @@ export default function CrmRelatorios() {
         const [h, a, m] = await Promise.all([
           supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").in("lead_id", chunk),
           supabase.from("crm_appointments").select("id, lead_id, created_at, scheduled_date, status").in("lead_id", chunk),
-          startISO && endISO
-            ? supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).gte("created_at", startISO).lte("created_at", endISO).order("created_at")
-            : supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).order("created_at"),
+          (() => {
+            // Sempre inclui o dia de hoje para o bloco "Ações do Dia"
+            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+            const lower = startISO && new Date(startISO) < todayStart ? startISO : todayStart.toISOString();
+            return supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).gte("created_at", lower).order("created_at");
+          })(),
         ]);
         if (h.data) histRows = histRows.concat(h.data as StageHistory[]);
         if (a.data) apptRows = apptRows.concat(a.data as Appointment[]);
