@@ -413,12 +413,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </div>
           <div className="flex items-center gap-2">
             <div className="flex-1 relative">
-              <Input
+              <Textarea
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Sessão expirada — use um template"
-                className="pr-10 bg-secondary border-border opacity-50"
+                className="pr-10 bg-secondary border-border opacity-50 min-h-[40px] max-h-[40px] resize-none py-2"
                 disabled
+                rows={1}
               />
             </div>
             <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
@@ -468,7 +469,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   onSelectBot={() => {}}
                   onClose={() => setSlashActive(false)}
                 />
-                <Input
+                <Textarea
                   value={newMessage}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -488,8 +489,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                     handleKeyDown(e);
                   }}
                   placeholder="Digite / para atalhos ou uma mensagem..."
-                  className="pr-10 bg-secondary border-border"
+                  className="bg-secondary border-border min-h-[40px] max-h-[120px] resize-none py-2"
                   disabled={optimizing || uploading}
+                  rows={1}
                 />
               </div>
 
