@@ -663,8 +663,40 @@ Deno.serve(async (req) => {
     const waData = await waResponse.json();
 
     if (!waResponse.ok) {
-      return new Response(JSON.stringify({ error: "WhatsApp API error", details: waData }), {
-        status: waResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      const metaError = waData?.error?.message || waData?.error?.error_user_msg || JSON.stringify(waData?.error || waData);
+      const metaErrorCode = waData?.error?.code || waResponse.status;
+      console.error(`[send-whatsapp] META API error (${metaErrorCode}): ${metaError}`);
+
+      // Translate common META errors to user-friendly Portuguese
+      let friendlyError = metaError;
+      if (metaError.includes("Re-engage") || metaError.includes("24 hour")) {
+        friendlyError = "Janela de 24h expirada. Use um template para reabrir a conversa.";
+      } else if (metaError.includes("not a valid WhatsApp") || metaError.includes("Recipient phone number not in allowed")) {
+        friendlyError = "Número não registrado no WhatsApp.";
+      } else if (metaError.includes("template") && metaError.includes("not found")) {
+        friendlyError = "Template não encontrado ou não aprovado pela META.";
+      } else if (metaError.includes("rate limit") || metaError.includes("throttl")) {
+        friendlyError = "Limite de envio atingido. Tente novamente em alguns minutos.";
+      } else if (metaError.includes("spam") || metaError.includes("blocked")) {
+        friendlyError = "Mensagem bloqueada pela META (possível spam ou bloqueio do contato).";
+      }
+
+      // Still insert the message as failed so user can see it in chat
+      const dbContent = type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
+      const dbType = type === "template" || type === "interactive" ? "text" : finalType;
+      const { data: failedMsg } = await supabase.from("messages").insert({
+        lead_id,
+        direction: "outbound",
+        type: dbType,
+        content: dbContent,
+        media_url: media_url || null,
+        status: "failed",
+        error_reason: friendlyError,
+        reply_to_message_id: reply_to_message_id || null,
+      }).select().single();
+
+      return new Response(JSON.stringify({ ok: false, error: friendlyError, error_code: metaErrorCode, message: failedMsg }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
