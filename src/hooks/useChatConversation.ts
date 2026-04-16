@@ -443,9 +443,12 @@ export function useChatConversation(leadId: string | null | undefined) {
   const handleMessageSuccess = useCallback((tempId: string, confirmedMessage?: ChatMessage) => {
     setMessages((prev) => {
       const normalizedConfirmed = confirmedMessage ? normalizeOutboundStatus(confirmedMessage) : null;
-      const updated = prev.map((m) => m.id === tempId
-        ? (normalizedConfirmed ? normalizedConfirmed : (m.status === "sending" ? { ...m, status: "sent" } : m))
-        : m);
+      const updated = prev.map((m) => {
+        if (m.id !== tempId) return m;
+        if (normalizedConfirmed) return normalizedConfirmed;
+        return m;
+      });
+
       const currentLeadId = activeLeadRef.current;
       if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
       return updated;
