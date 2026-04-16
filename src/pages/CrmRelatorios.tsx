@@ -654,6 +654,18 @@ export default function CrmRelatorios() {
           {/* Attendant Metrics */}
           <AttendantMetricsSection messages={filteredMessages} leads={filteredLeads} allLeads={allLeadsForPipeline} appointments={filteredAppointments} stages={filteredStages} history={filteredHistory} onDrillDown={drillDown} />
 
+          {/* New Time-to-Conversion + City Ranking + CRC Daily Conversion */}
+          <ConversionMetricsSection
+            leads={filteredLeads}
+            allLeads={allLeadsForPipeline}
+            appointments={filteredAppointments}
+            messages={filteredMessages}
+            stages={filteredStages}
+            history={filteredHistory}
+            periodRange={periodRange}
+            navigate={navigate}
+          />
+
           {/* Cross-Funnel Flow */}
           {crossFunnelFlow && crossFunnelFlow.length > 0 && (
             <Card>
@@ -1394,6 +1406,250 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
       {byAccount.length > 0 && renderTable(byAccount, "Por Conta de Anúncio", "ad_account")}
       {renderAdTable()}
       {renderTable(byCidade, "Por Cidade", "city")}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Conversion Metrics: Time-to-Schedule, Time-to-Contract,
+   City Ranking, CRC Daily Conversion
+   ═══════════════════════════════════════════════════ */
+function ConversionMetricsSection({ leads, allLeads, appointments, messages, stages, history, periodRange, navigate }: {
+  leads: Lead[]; allLeads: Lead[]; appointments: Appointment[]; messages: Message[];
+  stages: Stage[]; history: StageHistory[]; periodRange: { start: Date; end: Date } | null; navigate: any;
+}) {
+  const [profileMap, setProfileMap] = useState<Map<string, string>>(new Map());
+  const [crcPage, setCrcPage] = useState(1);
+  const crcPageSize = 20;
+
+  useEffect(() => {
+    supabase.from("profiles").select("id, nome").then(({ data }) => {
+      if (data) setProfileMap(new Map(data.map((p: any) => [p.id, p.nome])));
+    });
+  }, []);
+
+  const median = (arr: number[]) => {
+    if (arr.length === 0) return 0;
+    const s = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
+  };
+  const avg = (arr: number[]) => arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length;
+
+  // 1. Tempo até Agendamento
+  const timeToSchedule = useMemo(() => {
+    const apptByLead = new Map<string, number>();
+    for (const a of appointments) {
+      const t = new Date(a.scheduled_date).getTime();
+      const cur = apptByLead.get(a.lead_id);
+      if (cur === undefined || t < cur) apptByLead.set(a.lead_id, t);
+    }
+    const deltas: number[] = [];
+    for (const lead of leads) {
+      const apptT = apptByLead.get(lead.id);
+      if (apptT === undefined) continue;
+      const delta = apptT - new Date(lead.created_at).getTime();
+      if (delta > 0) deltas.push(delta);
+    }
+    return { avg: avg(deltas), median: median(deltas), count: deltas.length };
+  }, [leads, appointments]);
+
+  // 2. Tempo até Contratação
+  const timeToContract = useMemo(() => {
+    const contratadoStageIds = new Set(
+      stages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id)
+    );
+    const firstContractedAt = new Map<string, number>();
+    for (const h of history) {
+      if (!contratadoStageIds.has(h.stage_id)) continue;
+      const t = new Date(h.entered_at).getTime();
+      const cur = firstContractedAt.get(h.lead_id);
+      if (cur === undefined || t < cur) firstContractedAt.set(h.lead_id, t);
+    }
+    const deltas: number[] = [];
+    for (const lead of leads) {
+      const t = firstContractedAt.get(lead.id);
+      if (t === undefined) continue;
+      const delta = t - new Date(lead.created_at).getTime();
+      if (delta > 0) deltas.push(delta);
+    }
+    return { avg: avg(deltas), median: median(deltas), count: deltas.length };
+  }, [leads, history, stages]);
+
+  // 3. Ranking por Cidade
+  const cityRanking = useMemo(() => {
+    const contratadoStageIds = new Set(
+      stages.filter(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não")).map(s => s.id)
+    );
+    const contractedLeadIds = new Set(history.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
+    leads.filter(l => contratadoStageIds.has(l.stage_id)).forEach(l => contractedLeadIds.add(l.id));
+    const apptLeadIds = new Set(appointments.map(a => a.lead_id));
+    const inboundLeadIds = new Set(messages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id));
+    const map = new Map<string, { total: number; contacted: number; scheduled: number; contracted: number }>();
+    for (const lead of leads) {
+      const city = ((lead as any).cidade || "").trim() || "Sem cidade";
+      if (!map.has(city)) map.set(city, { total: 0, contacted: 0, scheduled: 0, contracted: 0 });
+      const r = map.get(city)!;
+      r.total++;
+      if (inboundLeadIds.has(lead.id)) r.contacted++;
+      if (apptLeadIds.has(lead.id)) r.scheduled++;
+      if (contractedLeadIds.has(lead.id)) r.contracted++;
+    }
+    return Array.from(map.entries()).map(([city, v]) => ({
+      city, ...v,
+      schedRate: v.total > 0 ? Math.round((v.scheduled / v.total) * 100) : 0,
+      contractRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
+    })).sort((a, b) => b.total - a.total);
+  }, [leads, appointments, messages, history, stages]);
+
+  // 4. Conversão Diária por CRC
+  const crcDaily = useMemo(() => {
+    const apptDatesByLead = new Map<string, Set<string>>();
+    for (const a of appointments) {
+      const day = format(new Date(a.scheduled_date), "yyyy-MM-dd");
+      if (!apptDatesByLead.has(a.lead_id)) apptDatesByLead.set(a.lead_id, new Set());
+      apptDatesByLead.get(a.lead_id)!.add(day);
+    }
+    const contactsByKey = new Map<string, Set<string>>();
+    const sentBy = new Map<string, string>();
+    const dayBy = new Map<string, string>();
+    for (const m of messages) {
+      if (m.direction !== "outbound" || !m.sender_id || m.status === "system") continue;
+      const day = format(new Date(m.created_at), "yyyy-MM-dd");
+      const key = `${m.sender_id}|${day}`;
+      if (!contactsByKey.has(key)) {
+        contactsByKey.set(key, new Set());
+        sentBy.set(key, m.sender_id);
+        dayBy.set(key, day);
+      }
+      contactsByKey.get(key)!.add(m.lead_id);
+    }
+    const rows = Array.from(contactsByKey.entries()).map(([key, leadSet]) => {
+      const senderId = sentBy.get(key)!;
+      const day = dayBy.get(key)!;
+      let scheduled = 0;
+      for (const lid of leadSet) {
+        const dates = apptDatesByLead.get(lid);
+        if (dates && dates.has(day)) scheduled++;
+      }
+      return {
+        senderId, day,
+        name: profileMap.get(senderId) || senderId.slice(0, 8),
+        contacts: leadSet.size, scheduled,
+        rate: leadSet.size > 0 ? Math.round((scheduled / leadSet.size) * 100) : 0,
+      };
+    }).sort((a, b) => b.day.localeCompare(a.day) || b.contacts - a.contacts);
+    return rows;
+  }, [messages, appointments, profileMap]);
+
+  const crcTotalPages = Math.max(1, Math.ceil(crcDaily.length / crcPageSize));
+  const crcPaginated = crcDaily.slice((crcPage - 1) * crcPageSize, crcPage * crcPageSize);
+
+  return (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Clock size={16} className="text-orange-500" /> Tempo até Agendamento</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3">
+              <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToSchedule.avg)}</p><p className="text-xs text-muted-foreground">Média</p></div>
+              <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToSchedule.median)}</p><p className="text-xs text-muted-foreground">Mediana</p></div>
+              <div><p className="text-2xl font-bold text-foreground">{timeToSchedule.count}</p><p className="text-xs text-muted-foreground">Leads</p></div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Tempo entre criação do lead e o primeiro agendamento.</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Clock size={16} className="text-green-600" /> Tempo até Contratação</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3">
+              <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToContract.avg)}</p><p className="text-xs text-muted-foreground">Média</p></div>
+              <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToContract.median)}</p><p className="text-xs text-muted-foreground">Mediana</p></div>
+              <div><p className="text-2xl font-bold text-foreground">{timeToContract.count}</p><p className="text-xs text-muted-foreground">Leads</p></div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Tempo entre criação do lead e a primeira entrada em etapa de contratado.</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MapPin size={16} /> Ranking por Cidade</CardTitle></CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cidade</TableHead>
+                  <TableHead>Leads</TableHead>
+                  <TableHead>Com Contato</TableHead>
+                  <TableHead>Agendados</TableHead>
+                  <TableHead>Contratados</TableHead>
+                  <TableHead>Taxa Agend.</TableHead>
+                  <TableHead>Taxa Contrat.</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cityRanking.map((row) => (
+                  <TableRow key={row.city}>
+                    <TableCell className="font-medium text-foreground">{row.city}</TableCell>
+                    <TableCell>{row.total}</TableCell>
+                    <TableCell className="text-blue-500">{row.contacted}</TableCell>
+                    <TableCell className="text-orange-500 font-medium">{row.scheduled}</TableCell>
+                    <TableCell className="text-green-600 font-medium">{row.contracted}</TableCell>
+                    <TableCell><Badge variant={row.schedRate >= 30 ? "default" : row.schedRate >= 15 ? "secondary" : "outline"}>{row.schedRate}%</Badge></TableCell>
+                    <TableCell><Badge variant={row.contractRate >= 20 ? "default" : row.contractRate >= 10 ? "secondary" : "outline"}>{row.contractRate}%</Badge></TableCell>
+                  </TableRow>
+                ))}
+                {cityRanking.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Sem dados de cidade</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Conversão Diária por Atendente (CRC)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground mb-3">Para cada atendente e dia: leads únicos contatados (mensagens outbound) e quantos foram agendados no mesmo dia.</p>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Atendente</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Contatos</TableHead>
+                  <TableHead>Agendados (mesmo dia)</TableHead>
+                  <TableHead>Conversão</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {crcPaginated.map((r, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium text-foreground">{r.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{format(new Date(r.day + "T12:00:00"), "dd/MM/yy", { locale: ptBR })}</TableCell>
+                    <TableCell>{r.contacts}</TableCell>
+                    <TableCell className="text-orange-500 font-medium">{r.scheduled}</TableCell>
+                    <TableCell><Badge variant={r.rate >= 30 ? "default" : r.rate >= 15 ? "secondary" : "outline"}>{r.rate}%</Badge></TableCell>
+                  </TableRow>
+                ))}
+                {crcPaginated.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Sem dados</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </div>
+          {crcDaily.length > crcPageSize && (
+            <div className="flex items-center justify-between mt-3">
+              <span className="text-xs text-muted-foreground">{crcDaily.length} registros</span>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon" disabled={crcPage <= 1} onClick={() => setCrcPage(p => p - 1)}><ChevronLeft size={16} /></Button>
+                <span className="text-xs px-2">{crcPage} / {crcTotalPages}</span>
+                <Button variant="outline" size="icon" disabled={crcPage >= crcTotalPages} onClick={() => setCrcPage(p => p + 1)}><ChevronRight size={16} /></Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </>
   );
 }
