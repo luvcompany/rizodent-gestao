@@ -585,13 +585,15 @@ export default function CrmConversas() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
                               <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
-                              <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Data de entrada do lead">
+                              <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Última mensagem">
                                 {(() => {
-                                  const d = new Date(lead.created_at);
+                                  const ts = lead.last_message_at || lead.created_at;
+                                  if (!ts) return "";
+                                  const d = new Date(ts);
                                   const today = new Date();
                                   const yest = new Date(Date.now() - 86400000);
                                   if (d.toDateString() === today.toDateString())
-                                    return `Hoje ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+                                    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                                   if (d.toDateString() === yest.toDateString()) return "Ontem";
                                   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
                                 })()}
