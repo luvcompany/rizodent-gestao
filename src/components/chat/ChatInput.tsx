@@ -97,7 +97,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     loadSlashData();
   }, []);
 
+  // Auto-resize textarea
   useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [newMessage]);
+
     if (externalMessage) {
       setNewMessage(externalMessage);
       onExternalMessageConsumed?.();
