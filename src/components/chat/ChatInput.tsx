@@ -338,7 +338,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     );
 
     const tempId = crypto.randomUUID();
-    const optimisticUrl = URL.createObjectURL(oggBlob);
+    const optimisticUrl = URL.createObjectURL(audioBlob);
 
     onMessageSent?.({
       id: tempId,
