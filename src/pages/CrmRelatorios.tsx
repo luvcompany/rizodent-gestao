@@ -452,66 +452,6 @@ export default function CrmRelatorios() {
         </Card>
       </div>
 
-      {/* 4b. Distribuição de dias até o agendamento */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <CalendarIcon className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Quando o lead agenda?</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Diferença em dias entre quando o agendamento foi <strong>criado</strong> e a <strong>data marcada</strong>.
-          Útil para entender se os leads marcam para o mesmo dia ou para frente.
-        </p>
-
-        {distribAgendamento.total === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento no período.</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-              <StatBox label="Mesmo dia" value={distribAgendamento.buckets.mesmoDia} color="text-green-600" />
-              <StatBox label="Próximo dia" value={distribAgendamento.buckets.proximoDia} color="text-emerald-500" />
-              <StatBox label="2 a 6 dias (esta semana)" value={distribAgendamento.buckets.restanteSemana} color="text-blue-500" />
-              <StatBox label="7 a 13 dias (próx. semana)" value={distribAgendamento.buckets.semanaSeguinte} color="text-orange-500" />
-              <StatBox label="14+ dias" value={distribAgendamento.buckets.maisLonge} color="text-red-500" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-              <StatBox label="Total de agendamentos" value={distribAgendamento.total} />
-              <StatBox label="Média de dias até marcar" value={distribAgendamento.mediaDias.toFixed(1)} color="text-primary" />
-              <StatBox label="Mediana de dias" value={distribAgendamento.medianaDias.toFixed(1)} color="text-primary" />
-            </div>
-
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase">Detalhamento por dias de antecedência</p>
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Dias entre criação e data marcada</TableHead>
-                      <TableHead className="text-right">Agendamentos</TableHead>
-                      <TableHead className="text-right">% do total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {distribAgendamento.detalhe.map(d => (
-                      <TableRow key={d.dias}>
-                        <TableCell className="font-medium">
-                          {d.dias === 0 ? "Mesmo dia" : d.dias === 1 ? "1 dia depois" : `${d.dias} dias depois`}
-                        </TableCell>
-                        <TableCell className="text-right">{d.count}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {((d.count / distribAgendamento.total) * 100).toFixed(1)}%
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          </>
-        )}
-      </Card>
-
       {/* 5. Cidade */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
