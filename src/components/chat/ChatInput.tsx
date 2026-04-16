@@ -292,6 +292,26 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     setAttachedFile({ file, type });
   };
 
+  // 24h window logic
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const windowInfo = useMemo(() => {
+    if (!lastInboundAt) return { expired: true, remaining: "" };
+    const inboundTime = new Date(lastInboundAt).getTime();
+    const expiresAt = inboundTime + 24 * 60 * 60 * 1000;
+    const diff = expiresAt - now;
+    if (diff <= 0) return { expired: true, remaining: "" };
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return { expired: false, remaining: `${hours}h ${mins.toString().padStart(2, "0")}m` };
+  }, [lastInboundAt, now]);
+
+  const isWindowExpired = windowInfo.expired;
+
   const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
     if (!leadPhone) {
       toast.error("Lead sem telefone para envio do áudio");
@@ -351,26 +371,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       toast.error(err?.message || "Erro ao enviar áudio");
     }
   }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess]);
-
-  // 24h window logic
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const windowInfo = useMemo(() => {
-    if (!lastInboundAt) return { expired: true, remaining: "" };
-    const inboundTime = new Date(lastInboundAt).getTime();
-    const expiresAt = inboundTime + 24 * 60 * 60 * 1000;
-    const diff = expiresAt - now;
-    if (diff <= 0) return { expired: true, remaining: "" };
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    return { expired: false, remaining: `${hours}h ${mins.toString().padStart(2, "0")}m` };
-  }, [lastInboundAt, now]);
-
-  const isWindowExpired = windowInfo.expired;
 
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
