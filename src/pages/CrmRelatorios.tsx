@@ -5,8 +5,15 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { ptBR } from "date-fns/locale";
+import { format } from "date-fns";
 import DashboardFunnel from "@/components/DashboardFunnel";
-import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp } from "lucide-react";
+import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity } from "lucide-react";
 
 // ---------- Tipos ----------
 type Pipeline = { id: string; name: string };
@@ -278,43 +285,6 @@ export default function CrmRelatorios() {
     return { lead: mean(respLead), crc: mean(respCRC), nLead: respLead.length, nCRC: respCRC.length };
   }, [messages]);
 
-  // Ações do dia: movimentações de etapa hoje + leads que falaram hoje
-  const acoesHoje = useMemo(() => {
-    const now = new Date();
-    const startDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const endDay = startDay + 24 * 60 * 60 * 1000 - 1;
-    const stageIds = new Set(stages.map(s => s.id));
-
-    // Movimentações por stage hoje (lead distinct)
-    const moveByStage = new Map<string, Set<string>>();
-    history.forEach(h => {
-      if (!stageIds.has(h.stage_id)) return;
-      const t = new Date(h.entered_at).getTime();
-      if (t < startDay || t > endDay) return;
-      if (!moveByStage.has(h.stage_id)) moveByStage.set(h.stage_id, new Set());
-      moveByStage.get(h.stage_id)!.add(h.lead_id);
-    });
-
-    const funnel = stages.map((s, i) => ({
-      name: s.name,
-      value: moveByStage.get(s.id)?.size || 0,
-      fill: s.color || FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-    }));
-
-    // Leads do pipeline que mandaram inbound hoje
-    const leadsPipeline = new Set(leads.map(l => l.id));
-    const falaramSet = new Set<string>();
-    messages.forEach(m => {
-      if (m.direction !== "inbound") return;
-      if (!leadsPipeline.has(m.lead_id)) return;
-      const t = new Date(m.created_at).getTime();
-      if (t < startDay || t > endDay) return;
-      falaramSet.add(m.lead_id);
-    });
-
-    return { funnel, falaram: falaramSet.size, totalMov: funnel.reduce((a, b) => a + b.value, 0) };
-  }, [stages, history, leads, messages]);
-
   // 8. Fantasmas
   const fantasmas = useMemo(() => {
     return cohort.filter(l => {
@@ -337,6 +307,14 @@ export default function CrmRelatorios() {
         <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
         <p className="text-sm text-muted-foreground">Análise de conversão, tempo, cidade e inatividade — por funil.</p>
       </div>
+
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList>
+          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="acoes-dia">Ações por Dia</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-4">
 
       {/* Filtros */}
       <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
@@ -373,41 +351,6 @@ export default function CrmRelatorios() {
         )}
       </Card>
 
-      {/* 1b. Ações do Dia */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <TrendingUp className="w-5 h-5 text-orange-500" />
-          <h2 className="text-lg font-semibold">
-            Ações do Dia — {new Date().toLocaleDateString("pt-BR")}
-          </h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Movimentações de etapa feitas <strong>hoje</strong> neste funil (ignora o filtro de período acima). Conta leads novos e antigos.
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-          <StatBox label="Pessoas que falaram hoje" value={acoesHoje.falaram} color="text-primary" />
-          <StatBox label="Total de movimentações" value={acoesHoje.totalMov} />
-          <StatBox label="Etapas com ação" value={acoesHoje.funnel.filter(f => f.value > 0).length} />
-        </div>
-        {acoesHoje.funnel.some(d => d.value > 0) ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {acoesHoje.funnel.map(s => (
-              <div
-                key={s.name}
-                className="rounded-lg border border-border p-3 flex flex-col gap-1"
-                style={{ borderLeftWidth: 4, borderLeftColor: s.fill }}
-              >
-                <span className="text-xs text-muted-foreground truncate" title={s.name}>{s.name}</span>
-                <span className="text-2xl font-bold" style={{ color: s.value > 0 ? s.fill : undefined }}>
-                  {s.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-8">Nenhuma movimentação de etapa hoje.</p>
-        )}
-      </Card>
 
       {/* 2. Agenda */}
       <Card className="p-6">
@@ -570,6 +513,13 @@ export default function CrmRelatorios() {
           )}
         </div>
       </Card>
+
+        </TabsContent>
+
+        <TabsContent value="acoes-dia" className="mt-4">
+          <AcoesPorDiaTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -577,6 +527,274 @@ export default function CrmRelatorios() {
 function StatBox({ label, value, color = "text-foreground", hover = false }: { label: string; value: string | number; color?: string; hover?: boolean }) {
   return (
     <div className={`bg-secondary/40 rounded-lg p-4 text-center ${hover ? "hover:bg-secondary/70 transition cursor-pointer" : ""}`}>
+      <p className={`text-3xl font-bold ${color}`}>{value}</p>
+      <p className="text-xs text-muted-foreground mt-1">{label}</p>
+    </div>
+  );
+}
+
+// ============================================================================
+// Aba: Ações por Dia
+// ============================================================================
+
+const HOLIDAYS_FIXED: string[] = [
+  "01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25",
+];
+function isWorkingDay(d: Date): boolean {
+  if (d.getDay() === 0) return false;
+  const md = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return !HOLIDAYS_FIXED.includes(md);
+}
+
+type AcoesStage = { id: string; name: string; color: string; position: number };
+
+function AcoesPorDiaTab({
+  pipelineId,
+  pipelines,
+  setPipelineId,
+}: {
+  pipelineId: string;
+  pipelines: { id: string; name: string }[];
+  setPipelineId: (id: string) => void;
+}) {
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [stages, setStages] = useState<AcoesStage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const monthStart = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1), [selectedDate]);
+  const monthEnd = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999), [selectedDate]);
+
+  const [history, setHistory] = useState<{ lead_id: string; stage_id: string; entered_at: string }[]>([]);
+  const [inboundDays, setInboundDays] = useState<{ lead_id: string; created_at: string }[]>([]);
+
+  useEffect(() => {
+    if (!pipelineId) return;
+    supabase.from("crm_stages").select("id, name, color, position").eq("pipeline_id", pipelineId).order("position")
+      .then(({ data }) => setStages((data || []) as AcoesStage[]));
+  }, [pipelineId]);
+
+  useEffect(() => {
+    if (!pipelineId || stages.length === 0) return;
+    setLoading(true);
+    const stageIds = stages.map(s => s.id);
+    const startISO = monthStart.toISOString();
+    const endISO = monthEnd.toISOString();
+
+    (async () => {
+      const leadsRes = await supabase.from("crm_leads").select("id").eq("pipeline_id", pipelineId);
+      const leadIds = (leadsRes.data || []).map((l: any) => l.id as string);
+
+      let histAll: any[] = [];
+      let msgsAll: any[] = [];
+      for (let i = 0; i < stageIds.length; i += 100) {
+        const chunk = stageIds.slice(i, i + 100);
+        const { data } = await supabase
+          .from("crm_lead_stage_history")
+          .select("lead_id, stage_id, entered_at")
+          .in("stage_id", chunk)
+          .gte("entered_at", startISO)
+          .lte("entered_at", endISO);
+        if (data) histAll = histAll.concat(data);
+      }
+      for (let i = 0; i < leadIds.length; i += 500) {
+        const chunk = leadIds.slice(i, i + 500);
+        const { data } = await supabase
+          .from("messages")
+          .select("lead_id, created_at")
+          .eq("direction", "inbound")
+          .in("lead_id", chunk)
+          .gte("created_at", startISO)
+          .lte("created_at", endISO);
+        if (data) msgsAll = msgsAll.concat(data);
+      }
+      setHistory(histAll);
+      setInboundDays(msgsAll);
+      setLoading(false);
+    })();
+  }, [pipelineId, stages, monthStart, monthEnd]);
+
+  const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const selectedKey = dayKey(selectedDate);
+
+  const cardsDoDia = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    history.forEach(h => {
+      if (dayKey(new Date(h.entered_at)) !== selectedKey) return;
+      if (!map.has(h.stage_id)) map.set(h.stage_id, new Set());
+      map.get(h.stage_id)!.add(h.lead_id);
+    });
+    return stages.map(s => ({ ...s, count: map.get(s.id)?.size || 0 }));
+  }, [history, stages, selectedKey]);
+
+  const falaramDia = useMemo(() => {
+    const set = new Set<string>();
+    inboundDays.forEach(m => {
+      if (dayKey(new Date(m.created_at)) === selectedKey) set.add(m.lead_id);
+    });
+    return set.size;
+  }, [inboundDays, selectedKey]);
+
+  const mediasMes = useMemo(() => {
+    const today = new Date(); today.setHours(23, 59, 59, 999);
+    const endRef = monthEnd.getTime() < today.getTime() ? monthEnd : today;
+    const workingDays: string[] = [];
+    const cur = new Date(monthStart);
+    while (cur.getTime() <= endRef.getTime()) {
+      if (isWorkingDay(cur)) workingDays.push(dayKey(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    if (workingDays.length === 0) {
+      return { perStage: stages.map(s => ({ ...s, avg: 0 })), avgFalaram: 0, totalDias: 0 };
+    }
+    const workingSet = new Set(workingDays);
+    const perStageDayLeads = new Map<string, Set<string>>();
+    history.forEach(h => {
+      const k = dayKey(new Date(h.entered_at));
+      if (!workingSet.has(k)) return;
+      const key = `${h.stage_id}|${k}`;
+      if (!perStageDayLeads.has(key)) perStageDayLeads.set(key, new Set());
+      perStageDayLeads.get(key)!.add(h.lead_id);
+    });
+    const perStageTotal = new Map<string, number>();
+    perStageDayLeads.forEach((leads, key) => {
+      const [stageId] = key.split("|");
+      perStageTotal.set(stageId, (perStageTotal.get(stageId) || 0) + leads.size);
+    });
+    const perStage = stages.map(s => ({ ...s, avg: (perStageTotal.get(s.id) || 0) / workingDays.length }));
+
+    const falaramByDay = new Map<string, Set<string>>();
+    inboundDays.forEach(m => {
+      const k = dayKey(new Date(m.created_at));
+      if (!workingSet.has(k)) return;
+      if (!falaramByDay.has(k)) falaramByDay.set(k, new Set());
+      falaramByDay.get(k)!.add(m.lead_id);
+    });
+    let falaramTotal = 0;
+    falaramByDay.forEach(s => { falaramTotal += s.size; });
+    const avgFalaram = falaramTotal / workingDays.length;
+
+    return { perStage, avgFalaram, totalDias: workingDays.length };
+  }, [history, inboundDays, stages, monthStart, monthEnd]);
+
+  return (
+    <div className="space-y-6">
+      <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
+          <Select value={pipelineId} onValueChange={setPipelineId}>
+            <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase">Dia</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("h-9 w-[220px] justify-start text-left font-normal")}>
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {format(selectedDate, "dd 'de' MMMM yyyy", { locale: ptBR })}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarPicker
+                mode="single"
+                selected={selectedDate}
+                onSelect={(d) => d && setSelectedDate(d)}
+                locale={ptBR}
+                disabled={(d) => d > new Date()}
+                initialFocus
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+        {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+        <div className="ml-auto text-xs text-muted-foreground">
+          Média baseada em {mediasMes.totalDias} dia(s) útil(eis) de {format(monthStart, "MMMM/yyyy", { locale: ptBR })}
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Activity className="w-5 h-5 text-orange-500" />
+          <h2 className="text-lg font-semibold">
+            Ações de {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
+          </h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Leads distintos movidos para cada etapa neste dia (independente de quando entraram no CRM).
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+          <StatBoxLite label="Pessoas que falaram" value={falaramDia} color="text-primary" />
+          <StatBoxLite label="Total de movimentações" value={cardsDoDia.reduce((a, b) => a + b.count, 0)} />
+          <StatBoxLite label="Etapas com ação" value={cardsDoDia.filter(s => s.count > 0).length} />
+        </div>
+
+        {cardsDoDia.some(s => s.count > 0) ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            {cardsDoDia.map(s => (
+              <div
+                key={s.id}
+                className="rounded-lg border border-border p-3 flex flex-col gap-1"
+                style={{ borderLeftWidth: 4, borderLeftColor: s.color }}
+              >
+                <span className="text-xs text-muted-foreground truncate" title={s.name}>{s.name}</span>
+                <span className="text-2xl font-bold" style={{ color: s.count > 0 ? s.color : undefined }}>
+                  {s.count}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-8">Nenhuma movimentação neste dia.</p>
+        )}
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <TrendingUp className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">
+            Média Diária — {format(monthStart, "MMMM/yyyy", { locale: ptBR })}
+          </h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Média por dia útil (excluindo domingos e feriados nacionais) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+          <StatBoxLite label="Média de pessoas/dia" value={mediasMes.avgFalaram.toFixed(1)} color="text-primary" />
+          <StatBoxLite
+            label="Média de movimentações/dia"
+            value={mediasMes.perStage.reduce((a, b) => a + b.avg, 0).toFixed(1)}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          {mediasMes.perStage.map(s => (
+            <div
+              key={s.id}
+              className="rounded-lg border border-border p-3 flex flex-col gap-1"
+              style={{ borderLeftWidth: 4, borderLeftColor: s.color }}
+            >
+              <span className="text-xs text-muted-foreground truncate" title={s.name}>{s.name}</span>
+              <span className="text-2xl font-bold" style={{ color: s.avg > 0 ? s.color : undefined }}>
+                {s.avg.toFixed(1)}
+              </span>
+              <span className="text-[10px] text-muted-foreground">por dia útil</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function StatBoxLite({ label, value, color = "text-foreground" }: { label: string; value: string | number; color?: string }) {
+  return (
+    <div className="bg-secondary/40 rounded-lg p-4 text-center">
       <p className={`text-3xl font-bold ${color}`}>{value}</p>
       <p className="text-xs text-muted-foreground mt-1">{label}</p>
     </div>
