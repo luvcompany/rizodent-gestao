@@ -54,6 +54,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
   const [startingBotId, setStartingBotId] = useState<string | null>(null);
   const [recorderActive, setRecorderActive] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Fetch published bots
   useEffect(() => {
