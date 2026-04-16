@@ -1,7 +1,8 @@
 import { forwardRef } from "react";
-import { Check, CheckCheck, Clock } from "lucide-react";
+import { Check, CheckCheck, Clock, AlertCircle } from "lucide-react";
 import ChatMessageContent from "./ChatMessageContent";
 import MessageActions from "./MessageActions";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 type Message = {
   id: string;
