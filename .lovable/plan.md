@@ -1,39 +1,53 @@
 
 
-## Plano: Conversão Diária Real do CRC + Data de Entrada Fixa do Lead
+## Plano: Funil de Ações do Dia (Movimentações de Etapa por Hoje)
 
-### Contexto
-1. A métrica atual "Conversão Diária CRC" no relatório só conta agendamentos cuja `scheduled_date` é o **mesmo dia** do contato. Isso não reflete o poder de conversão real — se o atendente fala com o lead hoje e agenda pra semana que vem, não conta.
-2. Hoje, na lista de Conversas (CrmConversas/CrmConversa) e nos cards do Kanban (CrmKanban), a data exibida ao lado do nome geralmente é `last_message_at` (data da última mensagem), o que muda toda hora. O usuário quer ver **a data de criação do lead** (`created_at`) fixa, para conseguir filtrar leads do dia.
+### Objetivo
+Adicionar um **segundo funil** logo abaixo do funil atual ("Distribuição por Etapa") em `CrmRelatorios.tsx`, mostrando **quantos leads foram movidos para cada etapa hoje** — independente de quando o lead entrou no CRM.
 
-### Mudanças
+### Diferença entre os dois funis
+- **Funil atual (Distribuição)**: foto da coorte do período (onde os leads do período estão agora).
+- **Funil novo (Ações do Dia)**: quantas movimentações ocorreram **hoje** para cada etapa do funil selecionado, contando leads novos E antigos.
 
-**1. Conversão Diária do CRC (em `src/pages/CrmRelatorios.tsx`)**
+### Fonte de dados
+Tabela `crm_lead_stage_history`:
+- `entered_at` entre `startOfDay(today)` e `endOfDay(today)`
+- `stage_id` pertence ao `selectedPipeline`
+- Contagem distinta de `lead_id` por `stage_id`
 
-Reformular a lógica do componente `ConversionMetricsSection` (tabela "Conversão Diária por CRC"):
+Adicionalmente, exibir 1 KPI acima do funil:
+- **Pessoas que falaram comigo hoje**: leads distintos com pelo menos 1 mensagem inbound (`messages.direction='inbound'`) com `created_at = hoje`.
 
-- **Contatos por dia**: continua igual — contar leads únicos com quem cada atendente trocou mensagem outbound naquele dia (já está correto).
-- **Agendados (NOVA lógica)**: para cada (atendente, dia), contar quantos daqueles leads contatados naquele dia tiveram **um agendamento criado em qualquer data futura**, desde que o agendamento tenha sido **registrado (`created_at` do appointment) no mesmo dia do contato**.
-  - Ou seja: cruzar via `lead_id` + `crm_appointments.created_at::date == dia do contato` (independente da `scheduled_date`).
-- **Taxa de conversão**: `agendados / contatos * 100` (já está).
+### Layout (logo após "Distribuição por Etapa")
+```text
+┌──────────────────────────────────────────────────┐
+│ Ações do Dia — [data de hoje]                    │
+│ Movimentações de etapa feitas hoje               │
+├──────────────────────────────────────────────────┤
+│ [KPI] X pessoas falaram comigo hoje              │
+│                                                   │
+│ [Funil visual]                                    │
+│   Agendado:        12                             │
+│   Relacionamento:   8                             │
+│   Follow-up:       10                             │
+│   Desqualificado:  10                             │
+│   ...                                             │
+└──────────────────────────────────────────────────┘
+```
 
-Isso responde exatamente: "de 40 pessoas que falei hoje, quantas consegui agendar (pra qualquer dia)".
+Reutiliza o componente `DashboardFunnel` já usado na página, mantendo cores das etapas (`stage.color`).
 
-Renomear cabeçalho da coluna de "Agendados (mesmo dia)" para apenas "Agendados" e ajustar o subtítulo da seção para deixar claro: *"Leads contatados por dia × leads que foram agendados (para qualquer data) no mesmo dia do contato"*.
+### Implementação técnica
+1. Em `CrmRelatorios.tsx`, adicionar query para `crm_lead_stage_history` filtrada por:
+   - `entered_at >= startOfDay(now)` e `<= endOfDay(now)`
+   - `stage_id IN (stages do pipeline selecionado)`
+2. Agregar `count(distinct lead_id)` por `stage_id`.
+3. Para o KPI de "falaram comigo hoje": query em `messages` com `direction='inbound'`, `created_at` no dia, joinando com `crm_leads.pipeline_id = selectedPipeline`. Contar `distinct lead_id`.
+4. Adicionar bloco JSX entre o funil de distribuição atual e a seção "Agenda por Etapa".
 
-**2. Data de entrada fixa do lead**
+### Arquivo a editar
+- `src/pages/CrmRelatorios.tsx`
 
-Trocar a data exibida ao lado do nome do lead, de `last_message_at` para `created_at` (data de entrada/criação do lead), nos seguintes lugares:
-
-- **`src/pages/CrmConversas.tsx`** — coluna/lista de conversas, badge de data ao lado do nome.
-- **`src/pages/CrmConversa.tsx`** — mesmo elemento na versão alternativa.
-- **`src/pages/CrmKanban.tsx`** — cards do kanban, data exibida no card do lead.
-
-A data continua formatada em `pt-BR`. Para leads do dia, mostrar "Hoje HH:mm"; ontem "Ontem"; demais, `dd/MM`.
-
-### Arquivos a editar
-1. `src/pages/CrmRelatorios.tsx` — nova lógica de agendados por created_at do appointment.
-2. `src/pages/CrmConversas.tsx` — usar `created_at` na data do lead.
-3. `src/pages/CrmConversa.tsx` — idem.
-4. `src/pages/CrmKanban.tsx` — idem nos cards.
+### Observação
+O bloco usa **sempre "hoje"** (ignora o filtro de período do topo), pois é explicitamente um relatório do dia. Indicar isso no subtítulo do bloco.
 
