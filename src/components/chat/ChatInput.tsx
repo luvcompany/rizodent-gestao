@@ -495,6 +495,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 />
               </div>
 
+              <EmojiPickerButton
+                disabled={optimizing || uploading}
+                onEmojiSelect={(emoji) => setNewMessage((prev) => prev + emoji)}
+              />
+
               <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
                 <FileText size={20} />
               </button>
