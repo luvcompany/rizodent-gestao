@@ -410,7 +410,7 @@ Deno.serve(async (req) => {
 
       const { data: leads } = await supabase
         .from("crm_leads")
-        .select("id, phone, last_inbound_at, last_outbound_at, created_at")
+        .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
         .eq("stage_id", auto.stage_id)
         .not("automation_paused", "is", true);
 
@@ -431,10 +431,14 @@ Deno.serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
+        // Fallback: if no stage history exists, use lead.updated_at (last stage change)
+        // or created_at as the cycle marker — never 0, which would make ALL prior sends
+        // appear to belong to the "current cycle".
         const currentStageEnteredAt = currentStageEntry?.entered_at
           ? new Date(currentStageEntry.entered_at).getTime()
-          : 0;
+          : new Date(lead.updated_at || lead.created_at).getTime();
 
+        // Trigger fires when elapsed time is GREATER THAN OR EQUAL to threshold
         const elapsed = nowMs - referenceTime;
         if (elapsed < thresholdMs) continue;
 
