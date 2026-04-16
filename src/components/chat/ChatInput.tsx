@@ -479,6 +479,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   onClose={() => setSlashActive(false)}
                 />
                 <Textarea
+                  ref={textareaRef}
                   value={newMessage}
                   onChange={(e) => {
                     const val = e.target.value;
