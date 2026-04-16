@@ -599,8 +599,16 @@ export default function CrmKanban() {
                                           </TooltipProvider>
                                         )}
                                       </div>
-                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
-                                        {new Date(lead.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2" title="Data de entrada do lead">
+                                        {(() => {
+                                          const d = new Date(lead.created_at);
+                                          const today = new Date();
+                                          const yest = new Date(Date.now() - 86400000);
+                                          if (d.toDateString() === today.toDateString())
+                                            return `Hoje ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+                                          if (d.toDateString() === yest.toDateString()) return "Ontem";
+                                          return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                        })()}
                                       </span>
                                     </div>
                                     <div className="text-xs text-primary mb-0.5 cursor-pointer hover:underline">

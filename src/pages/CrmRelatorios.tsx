@@ -30,7 +30,7 @@ type Lead = {
   ad_id?: string | null;
 };
 type Message = { id: string; lead_id: string; direction: string; created_at: string; status: string; sender_id?: string | null };
-type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string };
+type Appointment = { id: string; lead_id: string; status: string; scheduled_date: string; created_at?: string };
 
 function formatDuration(ms: number): string {
   if (ms <= 0) return "—";
@@ -81,7 +81,7 @@ export default function CrmRelatorios() {
         supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at, exited_at, from_stage_id" as any),
         supabase.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, score, last_message_at, assigned_to, first_inbound_at, source, nome_anuncio, paciente_id, link_anuncio, imagem_origem, descricao_anuncio, ad_account_id, ad_account_name, ad_id" as any),
         supabase.from("messages").select("id, lead_id, direction, created_at, status, sender_id, ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name"),
-        supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date"),
+        supabase.from("crm_appointments").select("id, lead_id, status, scheduled_date, created_at"),
       ]);
       setPipelines((pipelinesRes.data as Pipeline[]) || []);
       setStages((stagesRes.data as Stage[]) || []);
@@ -1503,12 +1503,16 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
   }, [leads, appointments, messages, history, stages]);
 
   // 4. Conversão Diária por CRC
+  // Mede o poder de conversão real: para cada (atendente, dia), quantos leads únicos ele falou
+  // e quantos desses leads tiveram um agendamento *criado* no mesmo dia (independente da data agendada).
   const crcDaily = useMemo(() => {
-    const apptDatesByLead = new Map<string, Set<string>>();
+    const apptCreatedDatesByLead = new Map<string, Set<string>>();
     for (const a of appointments) {
-      const day = format(new Date(a.scheduled_date), "yyyy-MM-dd");
-      if (!apptDatesByLead.has(a.lead_id)) apptDatesByLead.set(a.lead_id, new Set());
-      apptDatesByLead.get(a.lead_id)!.add(day);
+      // Usa created_at do agendamento (data em que foi marcado), não scheduled_date.
+      const createdAt = (a as any).created_at || a.scheduled_date;
+      const day = format(new Date(createdAt), "yyyy-MM-dd");
+      if (!apptCreatedDatesByLead.has(a.lead_id)) apptCreatedDatesByLead.set(a.lead_id, new Set());
+      apptCreatedDatesByLead.get(a.lead_id)!.add(day);
     }
     const contactsByKey = new Map<string, Set<string>>();
     const sentBy = new Map<string, string>();
@@ -1529,7 +1533,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
       const day = dayBy.get(key)!;
       let scheduled = 0;
       for (const lid of leadSet) {
-        const dates = apptDatesByLead.get(lid);
+        const dates = apptCreatedDatesByLead.get(lid);
         if (dates && dates.has(day)) scheduled++;
       }
       return {
@@ -1612,7 +1616,10 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
           <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Conversão Diária por Atendente (CRC)</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-muted-foreground mb-3">Para cada atendente e dia: leads únicos contatados (mensagens outbound) e quantos foram agendados no mesmo dia.</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Para cada atendente e dia: leads únicos contatados (mensagens outbound) × quantos desses leads tiveram um agendamento
+            <strong> criado no mesmo dia</strong> (independente da data agendada). Mede o poder de conversão real do atendimento.
+          </p>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -1620,7 +1627,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
                   <TableHead>Atendente</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Contatos</TableHead>
-                  <TableHead>Agendados (mesmo dia)</TableHead>
+                  <TableHead>Agendados</TableHead>
                   <TableHead>Conversão</TableHead>
                 </TableRow>
               </TableHeader>
