@@ -402,7 +402,7 @@ export default function CrmRelatorios() {
 
   // ═══ PIPELINE SUMMARY / CROSS FUNNEL FLOW (desativados no relatório por funil único) ═══
   const pipelineSummary: Array<{ id: string; name: string; color: string; totalLeads: number; totalStages: number }> = [];
-  const crossFunnelFlow: null = null;
+  const crossFunnelFlow: Array<{ from: Pipeline; to: Pipeline; count: number; leadIds: string[] }> = [];
 
   const periodLabel = useMemo(() => {
     const range = getDateRangeFromFilter(dateFilter);
@@ -420,15 +420,16 @@ export default function CrmRelatorios() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Relatórios CRM</h1>
-          <p className="text-sm text-muted-foreground">Operação completa — {periodLabel}</p>
+          <p className="text-sm text-muted-foreground">
+            Funil: {pipelines.find((p) => p.id === selectedPipelineId)?.name || "—"} · {periodLabel}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
           <Filter size={16} className="text-muted-foreground" />
           <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="Filtrar por funil" /></SelectTrigger>
+            <SelectTrigger className="w-48"><SelectValue placeholder="Selecionar funil" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os Funis</SelectItem>
               {pipelines.map(p => (
                 <SelectItem key={p.id} value={p.id}>
                   <div className="flex items-center gap-2">
