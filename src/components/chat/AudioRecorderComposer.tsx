@@ -367,7 +367,10 @@ export default function AudioRecorderComposer({
     return Math.min(waveformBars.length, Math.round((previewProgress / previewDuration) * waveformBars.length));
   }, [previewDuration, previewProgress, waveformBars.length]);
 
-  const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+  const formatTime = (s: number) => {
+    const safe = Number.isFinite(s) ? Math.max(0, Math.round(s)) : 0;
+    return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, "0")}`;
+  };
 
   // ─── IDLE: just the mic button ───
   if (mode === "idle") {
