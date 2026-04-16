@@ -760,20 +760,20 @@ function AcoesPorDiaTab({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
             <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
-            <span className="text-4xl font-bold text-primary">{falaramDia}</span>
+            <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
             <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound hoje</span>
           </div>
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
             <span className="text-sm text-muted-foreground">Consegui agendar</span>
-            <span className="text-4xl font-bold text-green-600">{agendadosDia}</span>
+            <span className="text-4xl font-bold text-green-600">{agendadosDosQueFalaram.size}</span>
             <span className="text-xs text-muted-foreground">Dos que falaram, foram movidos para etapa Agendado</span>
           </div>
         </div>
 
-        {agendadosDia > 0 && falaramDia > 0 && (
+        {agendadosDosQueFalaram.size > 0 && falaramDia.size > 0 && (
           <div className="rounded-lg bg-secondary/40 p-4 text-center">
             <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendados)</span>
-            <p className="text-3xl font-bold text-primary mt-1">{((agendadosDia / falaramDia) * 100).toFixed(1)}%</p>
+            <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram.size / falaramDia.size) * 100).toFixed(1)}%</p>
           </div>
         )}
       </Card>
@@ -819,6 +819,179 @@ function StatBoxLite({ label, value, color = "text-foreground" }: { label: strin
     </div>
   );
 }
+
+// ============================================================================
+// Aba: Ações por Dia
+// ============================================================================
+
+const HOLIDAYS_FIXED: string[] = [
+  "01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25",
+];
+function isWorkingDay(d: Date): boolean {
+  if (d.getDay() === 0) return false;
+  const md = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return !HOLIDAYS_FIXED.includes(md);
+}
+
+type AcoesStage = { id: string; name: string; color: string; position: number };
+
+function AcoesPorDiaTab({
+  pipelineId,
+  pipelines,
+  setPipelineId,
+}: {
+  pipelineId: string;
+  pipelines: { id: string; name: string }[];
+  setPipelineId: (id: string) => void;
+}) {
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [stages, setStages] = useState<AcoesStage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const monthStart = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1), [selectedDate]);
+  const monthEnd = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999), [selectedDate]);
+
+  const [history, setHistory] = useState<{ lead_id: string; stage_id: string; entered_at: string }[]>([]);
+  const [inboundDays, setInboundDays] = useState<{ lead_id: string; created_at: string }[]>([]);
+
+  useEffect(() => {
+    if (!pipelineId) return;
+    supabase.from("crm_stages").select("id, name, color, position").eq("pipeline_id", pipelineId).order("position")
+      .then(({ data }) => setStages((data || []) as AcoesStage[]));
+  }, [pipelineId]);
+
+  useEffect(() => {
+    if (!pipelineId || stages.length === 0) return;
+    setLoading(true);
+    const stageIds = stages.map(s => s.id);
+    const startISO = monthStart.toISOString();
+    const endISO = monthEnd.toISOString();
+
+    (async () => {
+      const leadsRes = await supabase.from("crm_leads").select("id").eq("pipeline_id", pipelineId);
+      const leadIds = (leadsRes.data || []).map((l: any) => l.id as string);
+
+      let histAll: any[] = [];
+      let msgsAll: any[] = [];
+      for (let i = 0; i < stageIds.length; i += 100) {
+        const chunk = stageIds.slice(i, i + 100);
+        const { data } = await supabase
+          .from("crm_lead_stage_history")
+          .select("lead_id, stage_id, entered_at")
+          .in("stage_id", chunk)
+          .gte("entered_at", startISO)
+          .lte("entered_at", endISO);
+        if (data) histAll = histAll.concat(data);
+      }
+      for (let i = 0; i < leadIds.length; i += 500) {
+        const chunk = leadIds.slice(i, i + 500);
+        const { data } = await supabase
+          .from("messages")
+          .select("lead_id, created_at")
+          .eq("direction", "inbound")
+          .in("lead_id", chunk)
+          .gte("created_at", startISO)
+          .lte("created_at", endISO);
+        if (data) msgsAll = msgsAll.concat(data);
+      }
+      setHistory(histAll);
+      setInboundDays(msgsAll);
+      setLoading(false);
+    })();
+  }, [pipelineId, stages, monthStart, monthEnd]);
+
+  const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const selectedKey = dayKey(selectedDate);
+
+  // Identificar etapa de agendamento
+  const agendStage = useMemo(() => {
+    return stages.find(s => isAgendStage(s.name));
+  }, [stages]);
+
+  const falaramDia = useMemo(() => {
+    const set = new Set<string>();
+    inboundDays.forEach(m => {
+      if (dayKey(new Date(m.created_at)) === selectedKey) set.add(m.lead_id);
+    });
+    return set;
+  }, [inboundDays, selectedKey]);
+
+  const agendadosDia = useMemo(() => {
+    if (!agendStage) return new Set<string>();
+    const set = new Set<string>();
+    history.forEach(h => {
+      if (h.stage_id !== agendStage.id) return;
+      if (dayKey(new Date(h.entered_at)) === selectedKey) set.add(h.lead_id);
+    });
+    return set;
+  }, [history, agendStage, selectedKey]);
+
+  // Interseção: dos que falaram, quantos foram agendados
+  const agendadosDosQueFalaram = useMemo(() => {
+    const intersection = new Set<string>();
+    agendadosDia.forEach(id => {
+      if (falaramDia.has(id)) intersection.add(id);
+    });
+    return intersection;
+  }, [agendadosDia, falaramDia]);
+
+  const mediasMes = useMemo(() => {
+    const today = new Date(); today.setHours(23, 59, 59, 999);
+    const endRef = monthEnd.getTime() < today.getTime() ? monthEnd : today;
+    const workingDays: string[] = [];
+    const cur = new Date(monthStart);
+    while (cur.getTime() <= endRef.getTime()) {
+      if (isWorkingDay(cur)) workingDays.push(dayKey(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    if (workingDays.length === 0) {
+      return { avgFalaram: 0, avgAgendados: 0, totalDias: 0 };
+    }
+    const workingSet = new Set(workingDays);
+
+    // Média de pessoas que falaram por dia
+    const falaramByDay = new Map<string, Set<string>>();
+    inboundDays.forEach(m => {
+      const k = dayKey(new Date(m.created_at));
+      if (!workingSet.has(k)) return;
+      if (!falaramByDay.has(k)) falaramByDay.set(k, new Set());
+      falaramByDay.get(k)!.add(m.lead_id);
+    });
+    let falaramTotal = 0;
+    falaramByDay.forEach(s => { falaramTotal += s.size; });
+    const avgFalaram = falaramTotal / workingDays.length;
+
+    // Média de agendados por dia (interseção com quem falou)
+    let agendadosTotal = 0;
+    if (agendStage) {
+      const agendadosByDay = new Map<string, Set<string>>();
+      const falaramSetByDay = new Map<string, Set<string>>();
+      inboundDays.forEach(m => {
+        const k = dayKey(new Date(m.created_at));
+        if (!workingSet.has(k)) return;
+        if (!falaramSetByDay.has(k)) falaramSetByDay.set(k, new Set());
+        falaramSetByDay.get(k)!.add(m.lead_id);
+      });
+      history.forEach(h => {
+        if (h.stage_id !== agendStage.id) return;
+        const k = dayKey(new Date(h.entered_at));
+        if (!workingSet.has(k)) return;
+        if (!agendadosByDay.has(k)) agendadosByDay.set(k, new Set());
+        agendadosByDay.get(k)!.add(h.lead_id);
+      });
+      agendadosByDay.forEach((leads, day) => {
+        const falaram = falaramSetByDay.get(day);
+        if (falaram) {
+          let count = 0;
+          leads.forEach(id => { if (falaram.has(id)) count++; });
+          agendadosTotal += count;
+        }
+      });
+    }
+    const avgAgendados = agendadosTotal / workingDays.length;
+
+    return { avgFalaram, avgAgendados, totalDias: workingDays.length };
+  }, [history, inboundDays, stages, monthStart, monthEnd, agendStage]);
 
   return (
     <div className="space-y-6">
@@ -868,32 +1041,27 @@ function StatBoxLite({ label, value, color = "text-foreground" }: { label: strin
           </h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Leads distintos movidos para cada etapa neste dia (independente de quando entraram no CRM).
+          Pessoas que falaram hoje e quantas foram agendadas.
         </p>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-          <StatBoxLite label="Pessoas que falaram" value={falaramDia} color="text-primary" />
-          <StatBoxLite label="Total de movimentações" value={cardsDoDia.reduce((a, b) => a + b.count, 0)} />
-          <StatBoxLite label="Etapas com ação" value={cardsDoDia.filter(s => s.count > 0).length} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
+            <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
+            <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
+            <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound hoje</span>
+          </div>
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
+            <span className="text-sm text-muted-foreground">Consegui agendar</span>
+            <span className="text-4xl font-bold text-green-600">{agendadosDosQueFalaram.size}</span>
+            <span className="text-xs text-muted-foreground">Dos que falaram, foram movidos para etapa Agendado</span>
+          </div>
         </div>
 
-        {cardsDoDia.some(s => s.count > 0) ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {cardsDoDia.map(s => (
-              <div
-                key={s.id}
-                className="rounded-lg border border-border p-3 flex flex-col gap-1"
-                style={{ borderLeftWidth: 4, borderLeftColor: s.color }}
-              >
-                <span className="text-xs text-muted-foreground truncate" title={s.name}>{s.name}</span>
-                <span className="text-2xl font-bold" style={{ color: s.count > 0 ? s.color : undefined }}>
-                  {s.count}
-                </span>
-              </div>
-            ))}
+        {agendadosDosQueFalaram.size > 0 && falaramDia.size > 0 && (
+          <div className="rounded-lg bg-secondary/40 p-4 text-center">
+            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendados)</span>
+            <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram.size / falaramDia.size) * 100).toFixed(1)}%</p>
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-8">Nenhuma movimentação neste dia.</p>
         )}
       </Card>
 
@@ -908,29 +1076,23 @@ function StatBoxLite({ label, value, color = "text-foreground" }: { label: strin
           Média por dia útil (excluindo domingos e feriados nacionais) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
         </p>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-          <StatBoxLite label="Média de pessoas/dia" value={mediasMes.avgFalaram.toFixed(1)} color="text-primary" />
-          <StatBoxLite
-            label="Média de movimentações/dia"
-            value={mediasMes.perStage.reduce((a, b) => a + b.avg, 0).toFixed(1)}
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
+            <span className="text-sm text-muted-foreground">Média de pessoas/dia</span>
+            <span className="text-3xl font-bold text-primary">{mediasMes.avgFalaram.toFixed(1)}</span>
+          </div>
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
+            <span className="text-sm text-muted-foreground">Média de agendamentos/dia</span>
+            <span className="text-3xl font-bold text-green-600">{mediasMes.avgAgendados.toFixed(1)}</span>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {mediasMes.perStage.map(s => (
-            <div
-              key={s.id}
-              className="rounded-lg border border-border p-3 flex flex-col gap-1"
-              style={{ borderLeftWidth: 4, borderLeftColor: s.color }}
-            >
-              <span className="text-xs text-muted-foreground truncate" title={s.name}>{s.name}</span>
-              <span className="text-2xl font-bold" style={{ color: s.avg > 0 ? s.color : undefined }}>
-                {s.avg.toFixed(1)}
-              </span>
-              <span className="text-[10px] text-muted-foreground">por dia útil</span>
-            </div>
-          ))}
-        </div>
+        {mediasMes.avgFalaram > 0 && (
+          <div className="rounded-lg bg-secondary/40 p-4 text-center">
+            <span className="text-sm text-muted-foreground">Taxa média de conversão mensal</span>
+            <p className="text-3xl font-bold text-primary mt-1">{((mediasMes.avgAgendados / mediasMes.avgFalaram) * 100).toFixed(1)}%</p>
+          </div>
+        )}
       </Card>
     </div>
   );
