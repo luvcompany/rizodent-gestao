@@ -388,41 +388,6 @@ export default function CrmRelatorios() {
         )}
       </Card>
 
-      {/* 1b. Ações do Dia */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <TrendingUp className="w-5 h-5 text-orange-500" />
-          <h2 className="text-lg font-semibold">
-            Ações do Dia — {new Date().toLocaleDateString("pt-BR")}
-          </h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Movimentações de etapa feitas <strong>hoje</strong> neste funil (ignora o filtro de período acima). Conta leads novos e antigos.
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-          <StatBox label="Pessoas que falaram hoje" value={acoesHoje.falaram} color="text-primary" />
-          <StatBox label="Total de movimentações" value={acoesHoje.totalMov} />
-          <StatBox label="Etapas com ação" value={acoesHoje.funnel.filter(f => f.value > 0).length} />
-        </div>
-        {acoesHoje.funnel.some(d => d.value > 0) ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {acoesHoje.funnel.map(s => (
-              <div
-                key={s.name}
-                className="rounded-lg border border-border p-3 flex flex-col gap-1"
-                style={{ borderLeftWidth: 4, borderLeftColor: s.fill }}
-              >
-                <span className="text-xs text-muted-foreground truncate" title={s.name}>{s.name}</span>
-                <span className="text-2xl font-bold" style={{ color: s.value > 0 ? s.fill : undefined }}>
-                  {s.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-8">Nenhuma movimentação de etapa hoje.</p>
-        )}
-      </Card>
 
       {/* 2. Agenda */}
       <Card className="p-6">
