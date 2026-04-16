@@ -908,9 +908,10 @@ function LeadScoreSection({ leads, stages, pipelines, navigate }: { leads: Lead[
 /* ═══════════════════════════════════════════════════
    Attendant Metrics Section
    ═══════════════════════════════════════════════════ */
-function AttendantMetricsSection({ messages, leads, allLeads, appointments, stages, history, onDrillDown }: {
-  messages: Message[]; leads: Lead[]; allLeads: Lead[];
+function AttendantMetricsSection({ messages, allLeads, appointments, stages, history, periodRange, onDrillDown }: {
+  messages: Message[]; allLeads: Lead[];
   appointments: Appointment[]; stages: Stage[]; history: StageHistory[];
+  periodRange: { start: Date; end: Date } | null;
   onDrillDown?: (params: Record<string, string>) => void;
 }) {
   const [metrics, setMetrics] = useState<any[]>([]);
@@ -932,7 +933,11 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
       for (const l of allLeads) { if (l.assigned_to) assignedCounts.set(l.assigned_to, (assignedCounts.get(l.assigned_to) || 0) + 1); }
       const appointmentCounts = new Map<string, number>();
       const leadAssignMap = new Map(allLeads.map(l => [l.id, l.assigned_to]));
-      for (const apt of appointments) { const a = leadAssignMap.get(apt.lead_id); if (a) appointmentCounts.set(a, (appointmentCounts.get(a) || 0) + 1); }
+      for (const apt of appointments) {
+        if (periodRange && !isDateInRange((apt as any).created_at || apt.scheduled_date, periodRange)) continue;
+        const a = leadAssignMap.get(apt.lead_id);
+        if (a) appointmentCounts.set(a, (appointmentCounts.get(a) || 0) + 1);
+      }
       const firstResponseTimes = new Map<string, number[]>();
       const leadCreatedMap = new Map(allLeads.map(l => [l.id, new Date(l.created_at).getTime()]));
       const msgByLead = new Map<string, Message[]>();
@@ -964,11 +969,14 @@ function AttendantMetricsSection({ messages, leads, allLeads, appointments, stag
       setMetrics(result);
     };
     run();
-  }, [messages, leads, allLeads, appointments, stages, history]);
+  }, [messages, allLeads, appointments, stages, history, periodRange]);
 
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Performance por Atendente</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Performance por Atendente</CardTitle>
+        <p className="text-xs text-muted-foreground">Base: mensagens enviadas no período e agendamentos registrados no período para leads deste funil.</p>
+      </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
           <Table>
@@ -1464,8 +1472,8 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
    Conversion Metrics: Time-to-Schedule, Time-to-Contract,
    City Ranking, CRC Daily Conversion
    ═══════════════════════════════════════════════════ */
-function ConversionMetricsSection({ leads, allLeads, appointments, messages, stages, history, periodRange, navigate }: {
-  leads: Lead[]; allLeads: Lead[]; appointments: Appointment[]; messages: Message[];
+function ConversionMetricsSection({ leads, appointments, messages, stages, history, periodRange }: {
+  leads: Lead[]; appointments: Appointment[]; messages: Message[];
   stages: Stage[]; history: StageHistory[]; periodRange: { start: Date; end: Date } | null; navigate: any;
 }) {
   const [profileMap, setProfileMap] = useState<Map<string, string>>(new Map());
@@ -1533,8 +1541,16 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
     );
     const contractedLeadIds = new Set(history.filter(h => contratadoStageIds.has(h.stage_id)).map(h => h.lead_id));
     leads.filter(l => contratadoStageIds.has(l.stage_id)).forEach(l => contractedLeadIds.add(l.id));
-    const apptLeadIds = new Set(appointments.map(a => a.lead_id));
-    const inboundLeadIds = new Set(messages.filter(m => m.direction === "inbound" && m.status !== "system").map(m => m.lead_id));
+    const apptLeadIds = new Set(
+      appointments
+        .filter((a) => isDateInRange((a as any).created_at || a.scheduled_date, periodRange))
+        .map(a => a.lead_id)
+    );
+    const inboundLeadIds = new Set(
+      messages
+        .filter(m => m.direction === "inbound" && m.status !== "system" && isDateInRange(m.created_at, periodRange))
+        .map(m => m.lead_id)
+    );
     const map = new Map<string, { total: number; contacted: number; scheduled: number; contracted: number }>();
     for (const lead of leads) {
       const city = ((lead as any).cidade || "").trim() || "Sem cidade";
@@ -1550,7 +1566,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
       schedRate: v.total > 0 ? Math.round((v.scheduled / v.total) * 100) : 0,
       contractRate: v.total > 0 ? Math.round((v.contracted / v.total) * 100) : 0,
     })).sort((a, b) => b.total - a.total);
-  }, [leads, appointments, messages, history, stages]);
+  }, [leads, appointments, messages, history, stages, periodRange]);
 
   // 4. Conversão Diária por CRC
   // Mede o poder de conversão real: para cada (atendente, dia), quantos leads únicos ele falou
@@ -1558,6 +1574,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
   const crcDaily = useMemo(() => {
     const apptCreatedDatesByLead = new Map<string, Set<string>>();
     for (const a of appointments) {
+      if (periodRange && !isDateInRange((a as any).created_at || a.scheduled_date, periodRange)) continue;
       // Usa created_at do agendamento (data em que foi marcado), não scheduled_date.
       const createdAt = (a as any).created_at || a.scheduled_date;
       const day = format(new Date(createdAt), "yyyy-MM-dd");
@@ -1594,7 +1611,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
       };
     }).sort((a, b) => b.day.localeCompare(a.day) || b.contacts - a.contacts);
     return rows;
-  }, [messages, appointments, profileMap]);
+  }, [messages, appointments, profileMap, periodRange]);
 
   const crcTotalPages = Math.max(1, Math.ceil(crcDaily.length / crcPageSize));
   const crcPaginated = crcDaily.slice((crcPage - 1) * crcPageSize, crcPage * crcPageSize);
@@ -1610,7 +1627,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
               <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToSchedule.median)}</p><p className="text-xs text-muted-foreground">Mediana</p></div>
               <div><p className="text-2xl font-bold text-foreground">{timeToSchedule.count}</p><p className="text-xs text-muted-foreground">Leads</p></div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Tempo entre criação do lead e o primeiro agendamento.</p>
+              <p className="text-xs text-muted-foreground mt-2">Coorte: leads criados no período. Considera o primeiro agendamento de cada lead.</p>
           </CardContent>
         </Card>
         <Card>
@@ -1621,7 +1638,7 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
               <div><p className="text-2xl font-bold text-foreground">{formatDays(timeToContract.median)}</p><p className="text-xs text-muted-foreground">Mediana</p></div>
               <div><p className="text-2xl font-bold text-foreground">{timeToContract.count}</p><p className="text-xs text-muted-foreground">Leads</p></div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Tempo entre criação do lead e a primeira entrada em etapa de contratado.</p>
+              <p className="text-xs text-muted-foreground mt-2">Coorte: leads criados no período. Considera a primeira entrada em etapa de contratado.</p>
           </CardContent>
         </Card>
       </div>
@@ -1666,10 +1683,10 @@ function ConversionMetricsSection({ leads, allLeads, appointments, messages, sta
           <CardTitle className="flex items-center gap-2 text-base"><UserCheck size={16} /> Conversão Diária por Atendente (CRC)</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-xs text-muted-foreground mb-3">
-            Para cada atendente e dia: leads únicos contatados (mensagens outbound) × quantos desses leads tiveram um agendamento
-            <strong> criado no mesmo dia</strong> (independente da data agendada). Mede o poder de conversão real do atendimento.
-          </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Base: atividade ocorrida no período. Para cada atendente e dia, mostra quantos leads únicos ele falou e quantos desses viraram agendamento
+                <strong> registrado no mesmo dia</strong>, mesmo que a consulta tenha ficado para outra data.
+              </p>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
