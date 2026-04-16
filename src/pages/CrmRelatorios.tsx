@@ -345,6 +345,14 @@ export default function CrmRelatorios() {
         <p className="text-sm text-muted-foreground">Análise de conversão, tempo, cidade e inatividade — por funil.</p>
       </div>
 
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList>
+          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="acoes-dia">Ações por Dia</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-4">
+
       {/* Filtros */}
       <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
