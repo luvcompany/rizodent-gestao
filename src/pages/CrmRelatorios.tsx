@@ -1474,7 +1474,7 @@ function OrigensReportTab({ leads, stages, history, appointments, messages, pipe
    ═══════════════════════════════════════════════════ */
 function ConversionMetricsSection({ leads, appointments, messages, stages, history, periodRange }: {
   leads: Lead[]; appointments: Appointment[]; messages: Message[];
-  stages: Stage[]; history: StageHistory[]; periodRange: { start: Date; end: Date } | null; navigate: any;
+  stages: Stage[]; history: StageHistory[]; periodRange: { start: Date; end: Date } | null;
 }) {
   const [profileMap, setProfileMap] = useState<Map<string, string>>(new Map());
   const [crcPage, setCrcPage] = useState(1);
