@@ -105,6 +105,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [newMessage]);
 
+  useEffect(() => {
     if (externalMessage) {
       setNewMessage(externalMessage);
       onExternalMessageConsumed?.();
