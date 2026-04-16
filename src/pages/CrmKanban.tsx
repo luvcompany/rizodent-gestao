@@ -104,7 +104,7 @@ function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, current
   );
 }
 
-
+export default function CrmKanban() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
