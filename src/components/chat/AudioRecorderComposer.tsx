@@ -428,6 +428,10 @@ export default function AudioRecorderComposer({ disabled = false, onSendAudio, o
 
   useEffect(() => () => resetToIdle(), [resetToIdle]);
 
+  useEffect(() => {
+    onModeChange?.(mode !== "idle");
+  }, [mode, onModeChange]);
+
   const activePreviewBars = useMemo(() => {
     if (!previewDuration) return 0;
     return Math.min(waveformBars.length, Math.round((previewProgress / previewDuration) * waveformBars.length));
