@@ -377,9 +377,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
       });
 
-      if (error || data?.error) {
-        onMessageError?.(tempId);
-        toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+      if (error || data?.error || data?.ok === false) {
+        if (data?.message) {
+          onMessageSuccess?.(tempId, data.message);
+        } else {
+          onMessageError?.(tempId);
+        }
+        toast.error(data?.error || error?.message || "Erro ao enviar áudio");
         return;
       }
 
