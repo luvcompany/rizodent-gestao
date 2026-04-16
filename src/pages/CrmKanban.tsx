@@ -693,9 +693,11 @@ export default function CrmKanban() {
             </div>
             <div>
               <Label>Etapa Inicial *</Label>
-              <NewLeadStageSelect
+              <NewLeadStageSelector
                 pipelineId={newLead.pipeline_id || pipeline?.id || ""}
+                allPipelines={pipelines}
                 currentStages={stages}
+                currentPipelineId={pipeline?.id || ""}
                 value={newLead.stage_id}
                 onChange={v => setNewLead(p => ({ ...p, stage_id: v }))}
               />

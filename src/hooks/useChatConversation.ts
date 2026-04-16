@@ -338,7 +338,7 @@ export function useChatConversation(leadId: string | null | undefined) {
   const handleStageChange = useCallback(async (newStageId: string, currentStageId: string, onSuccess?: (stageId: string, pipelineId?: string) => void, newPipelineId?: string) => {
     if (!leadId) return;
 
-    const updatePayload: Record<string, any> = { stage_id: newStageId, updated_at: new Date().toISOString() };
+    const updatePayload: { stage_id: string; updated_at: string; pipeline_id?: string } = { stage_id: newStageId, updated_at: new Date().toISOString() };
     if (newPipelineId) updatePayload.pipeline_id = newPipelineId;
 
     const { error } = await supabase.from("crm_leads").update(updatePayload).eq("id", leadId);
