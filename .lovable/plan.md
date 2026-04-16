@@ -1,53 +1,38 @@
 
-Vou corrigir isso pela causa real do bug, não com mais remendos.
 
-1. Corrigir o gravador que “nem abre”
-- Reestruturar `ChatInput.tsx` para existir apenas uma instância estável do gravador.
-- Hoje o componente é renderizado em dois lugares diferentes e, ao trocar para `recorderActive`, ele desmonta a instância que acabou de iniciar a captura.
-- Isso mata `MediaRecorder`, `stream`, `AudioContext` e cleanup roda no meio do fluxo.
-- Vou manter a mesma posição visual que você quer, mas sem trocar de instância durante a gravação.
+## Plan: Fix 3 Issues (Recorder Speed, Pipeline Stage Move, Lead Creation Pipeline)
 
-2. Corrigir o corte dos primeiros segundos do áudio
-- Ajustar `AudioRecorderComposer.tsx` para separar:
-  - pedido de permissão
-  - inicialização do stream/encoder
-  - momento em que a UI mostra “gravando”
-- Em vez de “simular warmup”, vou prender o início visível/contagem ao momento real em que a captura já está pronta.
-- Também vou revisar `start`, `requestData`, `stop` e o fluxo do polyfill/nativo para não perder o começo do buffer na primeira gravação.
+### Issue 1: Audio recorder too slow to start
+**Root cause**: The 120ms `setTimeout` delay plus `AudioContext` creation and `getUserMedia` happen sequentially. The `onstart` callback pattern adds perceived delay since UI only updates after the recorder fires its start event.
 
-3. Fazer a waveform aparecer de verdade no estilo esperado
-- Manter a posição atual do input, sem criar bubble novo.
-- Refazer a barra visual de gravação para sempre renderizar uma trilha base + barras ativas, evitando o “quadrado cinza”.
-- Ajustar contraste, altura mínima, largura e distribuição das barras para ficar mais próximo do visual do Kommo, mas dentro do layout atual.
-- Garantir que a waveform continue viva durante gravação, pausa e preview.
+**Fix in `AudioRecorderComposer.tsx`**:
+- Remove the 120ms warmup delay entirely -- modern browsers don't need it
+- Show "recording" UI immediately after `recorder.start()` instead of waiting for the `onstart` event
+- Move `startMeter()` and `startRecordingTimer()` to fire right after `recorder.start()` call, keeping `onstart` only as a safety fallback
 
-4. Manter a prévia antes do envio
-- Preservar o comportamento de ouvir antes de enviar, mas sem quebrar o fluxo do campo.
-- A prévia deve aparecer no mesmo espaço do composer, não como mensagem no histórico.
-- Validar envio/cancelamento sem desmontar o estado do gravador.
+### Issue 2: Moving lead to another pipeline's stage doesn't update `pipeline_id`
+**Root cause**: `PipelineStageSelector` calls `onStageChange(stageId)` but only passes the stage ID. The `handleStageChange` in `useChatConversation.ts` updates only `stage_id` on the lead, never `pipeline_id`. So moving to a stage in a different pipeline leaves the lead in the old pipeline.
 
-5. Revalidar o envio e status no chat
-- Confirmar que `sendRecordedAudio` continua integrando corretamente com `onMessageSent`, `onMessageSuccess` e `onMessageError`.
-- Garantir que o áudio enviado saia do estado otimista e não fique preso.
-- Confirmar comportamento igual em `CrmConversa` e `CrmConversas`, já que ambos usam o mesmo `ChatInput`.
+**Fix**:
+- Update `PipelineStageSelector` to also pass `pipeline_id` when calling `onStageChange`
+- Change `onStageChange` signature to `(stageId: string, pipelineId: string) => void`
+- Update `handleStageChange` in `useChatConversation.ts` to accept and update `pipeline_id` alongside `stage_id`
+- Update consumers in `CrmConversas.tsx` and `CrmConversa.tsx` to propagate `pipeline_id` in local state
 
-Arquivos que vou corrigir
-- `src/components/chat/ChatInput.tsx`
-- `src/components/chat/AudioRecorderComposer.tsx`
-- Se necessário, pequenos ajustes em:
-  - `src/hooks/useChatConversation.ts`
-  - `src/pages/CrmConversa.tsx`
-  - `src/pages/CrmConversas.tsx`
+### Issue 3: Lead creation dialog has no pipeline selector
+**Root cause**: The "Novo Lead" dialog in `CrmKanban.tsx` only shows stages from the currently selected pipeline. There's no way to pick a different pipeline.
 
-O problema exato que encontrei
-- O bug principal está em `ChatInput.tsx`: existem duas renderizações possíveis de `AudioRecorderComposer`.
-- Quando o gravador chama `onModeChange(true)`, o pai troca de layout e desmonta justamente a instância que começou a gravar.
-- Isso explica o comportamento “completamente bugado”: não abrir, cortar início, sumir waveform, falhar preview e parecer aleatório.
-- O corte inicial também é compatível com atraso real do encoder/polyfill na primeira captura, então vou tratar isso no fluxo de inicialização, não só no visual.
+**Fix in `CrmKanban.tsx`**:
+- Add a "Funil" select above the "Etapa Inicial" select in the create lead dialog
+- Default to the currently viewed pipeline
+- Filter stage options by selected pipeline
+- Update `insertNewLead` to use the selected pipeline ID instead of always using `pipeline.id`
 
-Resultado esperado após a implementação
-- Clicar no microfone abre e mantém o gravador sem travar.
-- A waveform aparece no local atual, sem bubble novo.
-- O começo do áudio não é mais cortado.
-- Dá para ouvir antes de enviar.
-- Funciona igual em `CRM Conversa` e `CRM Conversas`.
+### Files to edit
+1. `src/components/chat/AudioRecorderComposer.tsx` -- remove delay, immediate UI feedback
+2. `src/components/chat/PipelineStageSelector.tsx` -- pass pipeline_id with stage change
+3. `src/hooks/useChatConversation.ts` -- update pipeline_id on stage change
+4. `src/pages/CrmConversas.tsx` -- adapt to new onStageChange signature
+5. `src/pages/CrmConversa.tsx` -- adapt to new onStageChange signature
+6. `src/pages/CrmKanban.tsx` -- add pipeline selector to create lead dialog
+
