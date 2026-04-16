@@ -321,13 +321,13 @@ export default function CrmConversas() {
     return () => { supabase.removeChannel(channel); };
   }, [selectedLeadId]);
 
-  const handleStageChange = useCallback(async (stageId: string) => {
+  const handleStageChange = useCallback(async (stageId: string, pipelineId: string) => {
     if (!selectedLeadId || !selectedLead) return;
     const previousStageId = selectedLead.stage_id;
-    await chat.handleStageChange(stageId, previousStageId, (newStageId) => {
-      setSelectedLead((prev) => prev ? { ...prev, stage_id: newStageId } : prev);
-      setLeads((prev) => prev.map((l) => l.id === selectedLeadId ? { ...l, stage_id: newStageId } : l));
-    });
+    await chat.handleStageChange(stageId, previousStageId, (newStageId, newPipelineId) => {
+      setSelectedLead((prev) => prev ? { ...prev, stage_id: newStageId, pipeline_id: newPipelineId || prev.pipeline_id } : prev);
+      setLeads((prev) => prev.map((l) => l.id === selectedLeadId ? { ...l, stage_id: newStageId, pipeline_id: newPipelineId || l.pipeline_id } : l));
+    }, pipelineId);
   }, [selectedLeadId, selectedLead, chat]);
 
   const handleSaveNotes = useCallback(async (updatedNotes: string) => {

@@ -89,7 +89,7 @@ export default function CrmKanban() {
   const [useCustomColor, setUseCustomColor] = useState(false);
 
   const [newLead, setNewLead] = useState({
-    name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: ""
+    name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "", pipeline_id: ""
   });
 
   // Duplicate lead detection state
@@ -213,7 +213,8 @@ export default function CrmKanban() {
   };
 
   const handleCreateLead = async () => {
-    if (!newLead.name || !newLead.stage_id || !pipeline) {
+    const targetPipeline = newLead.pipeline_id ? pipelines.find(p => p.id === newLead.pipeline_id) : pipeline;
+    if (!newLead.name || !newLead.stage_id || !targetPipeline) {
       toast.error("Nome e etapa são obrigatórios");
       return;
     }
@@ -242,13 +243,14 @@ export default function CrmKanban() {
   };
 
   const insertNewLead = async (normalizedPhone: string | null) => {
-    if (!pipeline) return;
+    const targetPipeline = newLead.pipeline_id ? pipelines.find(p => p.id === newLead.pipeline_id) : pipeline;
+    if (!targetPipeline) return;
     const tagsArray = newLead.tags ? newLead.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
     const { data: insertedLead, error } = await supabase.from("crm_leads").insert({
       name: newLead.name,
       phone: normalizedPhone,
       stage_id: newLead.stage_id,
-      pipeline_id: pipeline.id,
+      pipeline_id: targetPipeline.id,
       source: newLead.source || null,
       tags: tagsArray,
       value: newLead.value ? parseFloat(newLead.value) : 0,
@@ -268,7 +270,7 @@ export default function CrmKanban() {
       });
     }
     setNewLeadOpen(false);
-    setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "" });
+    setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "", pipeline_id: "" });
     fetchData();
   };
 
@@ -283,7 +285,7 @@ export default function CrmKanban() {
       toast.success(`Lead "${duplicateInfo.existingLeadName}" transferido para você com todo o histórico!`);
       setDuplicateInfo(null);
       setNewLeadOpen(false);
-      setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "" });
+      setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "", pipeline_id: "" });
       fetchData();
     } catch (err: any) {
       toast.error("Erro ao transferir: " + (err.message || "Erro desconhecido"));
@@ -681,13 +683,22 @@ export default function CrmKanban() {
             <div><Label>Nome *</Label><Input value={newLead.name} onChange={e => setNewLead(p => ({ ...p, name: e.target.value }))} /></div>
             <div><Label>Telefone</Label><Input value={newLead.phone} onChange={e => setNewLead(p => ({ ...p, phone: e.target.value }))} /></div>
             <div>
-              <Label>Etapa Inicial *</Label>
-              <Select value={newLead.stage_id} onValueChange={v => setNewLead(p => ({ ...p, stage_id: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Label>Funil *</Label>
+              <Select value={newLead.pipeline_id || pipeline?.id || ""} onValueChange={v => setNewLead(p => ({ ...p, pipeline_id: v, stage_id: "" }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione o funil" /></SelectTrigger>
                 <SelectContent>
-                  {stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Etapa Inicial *</Label>
+              <NewLeadStageSelect
+                pipelineId={newLead.pipeline_id || pipeline?.id || ""}
+                currentStages={stages}
+                value={newLead.stage_id}
+                onChange={v => setNewLead(p => ({ ...p, stage_id: v }))}
+              />
             </div>
             <div>
               <Label>Origem</Label>

@@ -138,12 +138,12 @@ export default function CrmConversa() {
     }
   }, [lead, id, profiles, chat, user]);
 
-  const handleStageChange = useCallback(async (stageId: string) => {
+  const handleStageChange = useCallback(async (stageId: string, pipelineId: string) => {
     if (!lead) return;
     const prevStageId = lead.stage_id;
-    await chat.handleStageChange(stageId, prevStageId, () => {
-      setLead((prev) => prev ? { ...prev, stage_id: stageId } : prev);
-    });
+    await chat.handleStageChange(stageId, prevStageId, (newStageId, newPipelineId) => {
+      setLead((prev) => prev ? { ...prev, stage_id: newStageId, pipeline_id: newPipelineId || prev.pipeline_id } : prev);
+    }, pipelineId);
   }, [lead, chat]);
 
   const handleSaveNotes = useCallback(async (updatedNotes: string) => {

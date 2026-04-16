@@ -335,10 +335,13 @@ export function useChatConversation(leadId: string | null | undefined) {
   }, []);
 
   // ─── Stage change ───
-  const handleStageChange = useCallback(async (newStageId: string, currentStageId: string, onSuccess?: (stageId: string) => void) => {
+  const handleStageChange = useCallback(async (newStageId: string, currentStageId: string, onSuccess?: (stageId: string, pipelineId?: string) => void, newPipelineId?: string) => {
     if (!leadId) return;
 
-    const { error } = await supabase.from("crm_leads").update({ stage_id: newStageId, updated_at: new Date().toISOString() }).eq("id", leadId);
+    const updatePayload: Record<string, any> = { stage_id: newStageId, updated_at: new Date().toISOString() };
+    if (newPipelineId) updatePayload.pipeline_id = newPipelineId;
+
+    const { error } = await supabase.from("crm_leads").update(updatePayload).eq("id", leadId);
     if (error) { toast.error("Erro ao mover lead"); return; }
 
     // Close previous stage history entry
@@ -383,7 +386,7 @@ export function useChatConversation(leadId: string | null | undefined) {
       triggerTypes: ["on_enter", "on_create_or_enter"],
     });
 
-    onSuccess?.(newStageId);
+    onSuccess?.(newStageId, newPipelineId);
     toast.success("Etapa atualizada");
   }, [leadId, stages, showActivityToast]);
 
