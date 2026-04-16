@@ -465,13 +465,15 @@ export function useChatConversation(leadId: string | null | undefined) {
 
     // Optimistic: show template message instantly
     const tempId = crypto.randomUUID();
-    const bodyText = template.body_text || template.name;
     const optimisticMsg: ChatMessage = {
       id: tempId,
       lead_id: leadId!,
       direction: "outbound",
-      type: "template",
-      content: bodyText,
+      // Backend salva template como type "text" com prefixo "📋 Template:" no content,
+      // então a mensagem otimista precisa espelhar exatamente esse formato para que a
+      // reconciliação via realtime substitua (em vez de mostrar duas bubbles).
+      type: "text",
+      content: `📋 Template: ${template.name}`,
       media_url: null,
       status: "sending",
       created_at: new Date().toISOString(),
