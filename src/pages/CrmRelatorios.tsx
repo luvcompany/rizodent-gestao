@@ -219,6 +219,45 @@ export default function CrmRelatorios() {
     return { count: durations.length, media: mean(durations), mediana: median(durations) };
   }, [cohort, appointments]);
 
+  // 4b. Distribuição: dias entre agendamento criado e data marcada
+  const distribAgendamento = useMemo(() => {
+    const buckets = { mesmoDia: 0, proximoDia: 0, restanteSemana: 0, semanaSeguinte: 0, maisLonge: 0 };
+    const diffs: number[] = [];
+    const detalhe: { dias: number; count: number }[] = [];
+    const detalheMap = new Map<number, number>();
+
+    appointments.forEach(a => {
+      if (!cohortIds.has(a.lead_id)) return;
+      if (!inRange(a.created_at)) return;
+      // Normaliza para meia-noite local para contar dias inteiros
+      const created = new Date(a.created_at);
+      const createdDay = new Date(created.getFullYear(), created.getMonth(), created.getDate());
+      const [y, m, d] = a.scheduled_date.split("-").map(Number);
+      const scheduledDay = new Date(y, (m || 1) - 1, d || 1);
+      const diffDays = Math.round((scheduledDay.getTime() - createdDay.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) return;
+      diffs.push(diffDays);
+      detalheMap.set(diffDays, (detalheMap.get(diffDays) || 0) + 1);
+      if (diffDays === 0) buckets.mesmoDia++;
+      else if (diffDays === 1) buckets.proximoDia++;
+      else if (diffDays >= 2 && diffDays <= 6) buckets.restanteSemana++;
+      else if (diffDays >= 7 && diffDays <= 13) buckets.semanaSeguinte++;
+      else buckets.maisLonge++;
+    });
+
+    Array.from(detalheMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .forEach(([dias, count]) => detalhe.push({ dias, count }));
+
+    return {
+      total: diffs.length,
+      mediaDias: diffs.length ? diffs.reduce((s, x) => s + x, 0) / diffs.length : 0,
+      medianaDias: median(diffs),
+      buckets,
+      detalhe,
+    };
+  }, [appointments, cohortIds, range]);
+
   // 5. Total por cidade
   const porCidade = useMemo(() => {
     const map = new Map<string, { agendamentos: number; comparecimentos: number; contratacoes: number }>();
