@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
@@ -292,60 +292,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     setAttachedFile({ file, type });
   };
 
-  const sendRecordedAudio = async (oggBlob: Blob) => {
-    if (!leadPhone) {
-      throw new Error("Lead sem telefone para envio do áudio");
-    }
-
-    const audioFile = new globalThis.File(
-      [oggBlob],
-      `audio_${Date.now()}.ogg`,
-      { type: "audio/ogg" }
-    );
-
-    const tempId = crypto.randomUUID();
-    const optimisticUrl = URL.createObjectURL(oggBlob);
-
-    // Show message instantly in chat
-    onMessageSent?.({
-      id: tempId,
-      lead_id: leadId,
-      direction: "outbound",
-      type: "audio",
-      content: null,
-      media_url: optimisticUrl,
-      status: "sending",
-      created_at: new Date().toISOString(),
-      whatsapp_message_id: null,
-      reply_to_message_id: null,
-    });
-
-    try {
-      console.log(`[ChatInput] OGG/OPUS audio recorded: size=${audioFile.size}, type=${audioFile.type}`);
-
-      const url = await uploadFile(audioFile, "audio");
-      if (!url) {
-        onMessageError?.(tempId);
-        throw new Error("Falha no upload do áudio");
-      }
-
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
-      });
-
-      if (error || data?.error) {
-        onMessageError?.(tempId);
-        throw new Error(error?.message || JSON.stringify(data?.error) || "Erro ao enviar áudio");
-      }
-
-      onMessageSuccess?.(tempId, data?.message);
-    } catch (error: any) {
-      onMessageError?.(tempId);
-      toast.error(error?.message || "Erro ao enviar áudio");
-      throw error;
-    }
-  };
-
   // 24h window logic
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -365,6 +311,66 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   }, [lastInboundAt, now]);
 
   const isWindowExpired = windowInfo.expired;
+
+  const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
+    if (!leadPhone) {
+      toast.error("Lead sem telefone para envio do áudio");
+      throw new Error("Lead sem telefone");
+    }
+
+    if (windowInfo.expired) {
+      toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
+      throw new Error("Janela expirada");
+    }
+
+    const audioFile = new globalThis.File(
+      [oggBlob],
+      `audio_${Date.now()}.ogg`,
+      { type: oggBlob.type || "audio/ogg" }
+    );
+
+    const tempId = crypto.randomUUID();
+    const optimisticUrl = URL.createObjectURL(oggBlob);
+
+    onMessageSent?.({
+      id: tempId,
+      lead_id: leadId,
+      direction: "outbound",
+      type: "audio",
+      content: null,
+      media_url: optimisticUrl,
+      status: "sending",
+      created_at: new Date().toISOString(),
+      whatsapp_message_id: null,
+      reply_to_message_id: null,
+    });
+
+    try {
+      console.log(`[ChatInput] Sending audio: size=${audioFile.size}, type=${audioFile.type}`);
+
+      const url = await uploadFile(audioFile, "audio");
+      if (!url) {
+        onMessageError?.(tempId);
+        toast.error("Falha no upload do áudio");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
+      });
+
+      if (error || data?.error) {
+        onMessageError?.(tempId);
+        toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+        return;
+      }
+
+      onMessageSuccess?.(tempId, data?.message);
+    } catch (err: any) {
+      onMessageError?.(tempId);
+      toast.error(err?.message || "Erro ao enviar áudio");
+    }
+  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess]);
 
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">

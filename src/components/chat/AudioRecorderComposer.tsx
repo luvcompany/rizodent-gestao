@@ -326,9 +326,9 @@ export default function AudioRecorderComposer({
     try {
       await onSendAudio(draftBlob);
       resetToIdle();
-    } catch (err: any) {
+    } catch {
+      // Error toasts are shown by onSendAudio — just return to preview
       setMode("preview");
-      toast.error(err?.message || "Erro ao enviar áudio");
     }
   }, [draftBlob, mode, onSendAudio, resetToIdle]);
 
