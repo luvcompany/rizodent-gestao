@@ -346,10 +346,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     });
 
     try {
+      console.log(`[ChatInput] Sending audio: size=${audioFile.size}, type=${audioFile.type}`);
+
       const url = await uploadFile(audioFile, "audio");
       if (!url) {
         onMessageError?.(tempId);
-        throw new Error("Falha no upload do áudio");
+        toast.error("Falha no upload do áudio");
+        return;
       }
 
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
@@ -358,14 +361,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       if (error || data?.error) {
         onMessageError?.(tempId);
-        throw new Error(error?.message || JSON.stringify(data?.error));
+        toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+        return;
       }
 
       onMessageSuccess?.(tempId, data?.message);
     } catch (err: any) {
       onMessageError?.(tempId);
       toast.error(err?.message || "Erro ao enviar áudio");
-      throw err;
     }
   }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess]);
 
