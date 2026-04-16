@@ -150,6 +150,21 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               </span>
               {msg.direction === "outbound" && getStatusIcon(msg.status)}
             </div>
+            {msg.direction === "outbound" && (msg.status === "failed" || msg.status === "error") && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1 mt-1 cursor-pointer bg-destructive/15 text-destructive rounded-md px-2 py-0.5 w-fit ml-auto">
+                      <AlertCircle size={12} />
+                      <span className="text-[11px] font-semibold">Erro</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[250px] text-xs">
+                    Falha ao enviar mensagem. Verifique a conexão com o WhatsApp e tente reenviar.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
           {reactions.length > 0 && (
             <div className={`flex gap-0.5 mt-[-8px] ${msg.direction === "outbound" ? "justify-end mr-1" : "justify-start ml-1"}`}>
