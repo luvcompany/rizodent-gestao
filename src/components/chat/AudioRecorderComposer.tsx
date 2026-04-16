@@ -17,6 +17,15 @@ const MIN_LEVEL = 0.06;
 const LIVE_SAMPLE_MS = 60;
 const MAX_WAVEFORM_SAMPLES = 300;
 
+let opusModulePromise: Promise<any> | null = null;
+
+function preloadOpusRecorder() {
+  if (!opusModulePromise) {
+    opusModulePromise = import("opus-media-recorder").then((m) => m.default).catch(() => null);
+  }
+  return opusModulePromise;
+}
+
 const createEmptyBars = () => Array.from({ length: BAR_COUNT }, () => MIN_LEVEL);
 const clampLevel = (v: number) => Math.min(1, Math.max(MIN_LEVEL, v));
 
@@ -37,20 +46,13 @@ const compressLevelsToBars = (levels: number[]) => {
   });
 };
 
-/** Pick the best supported mimeType for this browser */
-function pickMimeType(): string {
-  const candidates = [
-    "audio/ogg;codecs=opus",
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-  ];
-  if (typeof MediaRecorder !== "undefined" && typeof MediaRecorder.isTypeSupported === "function") {
-    for (const mt of candidates) {
-      if (MediaRecorder.isTypeSupported(mt)) return mt;
-    }
-  }
-  return "";
+/** Check if this browser supports native OGG/Opus recording */
+function supportsNativeOgg(): boolean {
+  return (
+    typeof MediaRecorder !== "undefined" &&
+    typeof MediaRecorder.isTypeSupported === "function" &&
+    MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+  );
 }
 
 export default function AudioRecorderComposer({
@@ -264,15 +266,28 @@ export default function AudioRecorderComposer({
         }
       }
 
-      // Create recorder with best available mime type
-      const mimeType = pickMimeType();
-      let recorder: MediaRecorder;
+      // Create recorder — prefer native OGG/Opus, fallback to polyfill
+      let recorder: any;
 
-      if (mimeType) {
-        recorder = new MediaRecorder(stream, { mimeType });
+      if (supportsNativeOgg()) {
+        recorder = new MediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" });
       } else {
-        // Last resort: let browser pick
-        recorder = new MediaRecorder(stream);
+        // Safari and browsers without native OGG: use opus-media-recorder polyfill
+        const OpusMediaRecorder = await preloadOpusRecorder();
+        if (OpusMediaRecorder) {
+          recorder = new OpusMediaRecorder(
+            stream,
+            { mimeType: "audio/ogg;codecs=opus" },
+            {
+              OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+              WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+              encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
+            },
+          );
+        } else {
+          // Last resort: use whatever the browser supports
+          recorder = new MediaRecorder(stream);
+        }
       }
 
       mediaRecorderRef.current = recorder;
