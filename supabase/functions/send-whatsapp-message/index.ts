@@ -569,8 +569,12 @@ Deno.serve(async (req) => {
       finalType = isAudioFile ? "audio" : type;
       const resolvedType = finalType;
 
-      const uploadFilename = resolvedType === "audio" ? filename.replace(/\.\w+$/, ".ogg") : filename;
-      const uploadContentType = resolvedType === "audio" ? "audio/ogg" : contentType;
+      const normalizedAudioContentType = contentType.toLowerCase().includes("codecs=opus")
+        ? contentType.split(";")[0]
+        : contentType;
+      const uploadFilename = filename;
+      const uploadContentType = resolvedType === "audio" ? normalizedAudioContentType : contentType;
+      const isOggAudio = resolvedType === "audio" && ["ogg", "oga", "opus"].includes(ext);
 
       console.log(`[send-whatsapp] Uploading to Meta: filename=${uploadFilename}, contentType=${uploadContentType}, size=${fileBlob.size}, resolvedType=${resolvedType}`);
 
@@ -604,8 +608,9 @@ Deno.serve(async (req) => {
       if (resolvedType === "image") {
         waBody.image = { id: mediaId, caption: message || undefined };
       } else if (resolvedType === "audio") {
-        waBody.audio = audio_voice ? { id: mediaId, voice: true } : { id: mediaId };
+        waBody.audio = audio_voice && isOggAudio ? { id: mediaId, voice: true } : { id: mediaId };
       } else if (resolvedType === "video") {
+
         waBody.video = { id: mediaId, caption: message || undefined };
       } else if (resolvedType === "document") {
         waBody.document = { id: mediaId, caption: message || undefined, filename };
