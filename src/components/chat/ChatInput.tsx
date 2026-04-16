@@ -422,13 +422,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          {recorderActive ? (
-            <AudioRecorderComposer
-              disabled={optimizing || uploading}
-              onSendAudio={sendRecordedAudio}
-              onModeChange={setRecorderActive}
-            />
-          ) : (
+          {/* Hide normal controls when recorder is active, but NEVER unmount the recorder */}
+          {!recorderActive && (
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -527,19 +522,21 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 </PopoverContent>
               </Popover>
 
-              {newMessage.trim() || attachedFile ? (
+              {(newMessage.trim() || attachedFile) && (
                 <Button size="icon" onClick={handleSendMessage} disabled={optimizing || uploading}>
                   <Send size={18} />
                 </Button>
-              ) : (
-                <AudioRecorderComposer
-                  disabled={optimizing || uploading}
-                  onSendAudio={sendRecordedAudio}
-                  onModeChange={setRecorderActive}
-                />
               )}
             </>
           )}
+
+          {/* Single stable recorder instance — never unmounts during recording */}
+          <AudioRecorderComposer
+            disabled={optimizing || uploading}
+            onSendAudio={sendRecordedAudio}
+            onModeChange={setRecorderActive}
+            showMicButton={!newMessage.trim() && !attachedFile}
+          />
         </div>
       )}
 
