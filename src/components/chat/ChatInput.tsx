@@ -194,9 +194,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           }
 
           const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
-          if (error || data?.error) {
-            onMessageError?.(tempId);
-            toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+          if (error || data?.error || data?.ok === false) {
+            if (data?.message) {
+              onMessageSuccess?.(tempId, data.message);
+            } else {
+              onMessageError?.(tempId);
+            }
+            toast.error(data?.error || error?.message || "Erro ao enviar mensagem");
           } else {
             onMessageSuccess?.(tempId, data?.message);
           }
@@ -235,9 +239,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
     try {
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
-      if (error || data?.error) {
-        onMessageError?.(tempId);
-        toast.error(`Erro ao enviar: ${error?.message || JSON.stringify(data?.error)}`);
+      if (error || data?.error || data?.ok === false) {
+        if (data?.message) {
+          onMessageSuccess?.(tempId, data.message);
+        } else {
+          onMessageError?.(tempId);
+        }
+        toast.error(data?.error || error?.message || "Erro ao enviar mensagem");
       } else {
         onMessageSuccess?.(tempId, data?.message);
       }
