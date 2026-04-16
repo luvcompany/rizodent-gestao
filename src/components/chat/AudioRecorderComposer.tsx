@@ -271,10 +271,10 @@ export default function AudioRecorderComposer({
         finalizeDraft();
       };
 
-      // Wait for microphone to fully initialize before starting capture
-      await new Promise(resolve => setTimeout(resolve, 350));
+      // Minimal warm-up for mic hardware
+      await new Promise(resolve => setTimeout(resolve, 120));
 
-      // Start recording — use timeslice of 500ms for regular data chunks
+      // Start recording
       recorder.start(500);
     } catch (err: any) {
       resetToIdle();
