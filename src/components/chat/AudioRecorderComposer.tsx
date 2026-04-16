@@ -17,6 +17,15 @@ const MIN_LEVEL = 0.06;
 const LIVE_SAMPLE_MS = 60;
 const MAX_WAVEFORM_SAMPLES = 300;
 
+let opusModulePromise: Promise<any> | null = null;
+
+function preloadOpusRecorder() {
+  if (!opusModulePromise) {
+    opusModulePromise = import("opus-media-recorder").then((m) => m.default).catch(() => null);
+  }
+  return opusModulePromise;
+}
+
 const createEmptyBars = () => Array.from({ length: BAR_COUNT }, () => MIN_LEVEL);
 const clampLevel = (v: number) => Math.min(1, Math.max(MIN_LEVEL, v));
 
@@ -37,20 +46,13 @@ const compressLevelsToBars = (levels: number[]) => {
   });
 };
 
-/** Pick the best supported mimeType for this browser */
-function pickMimeType(): string {
-  const candidates = [
-    "audio/ogg;codecs=opus",
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-  ];
-  if (typeof MediaRecorder !== "undefined" && typeof MediaRecorder.isTypeSupported === "function") {
-    for (const mt of candidates) {
-      if (MediaRecorder.isTypeSupported(mt)) return mt;
-    }
-  }
-  return "";
+/** Check if this browser supports native OGG/Opus recording */
+function supportsNativeOgg(): boolean {
+  return (
+    typeof MediaRecorder !== "undefined" &&
+    typeof MediaRecorder.isTypeSupported === "function" &&
+    MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+  );
 }
 
 export default function AudioRecorderComposer({
