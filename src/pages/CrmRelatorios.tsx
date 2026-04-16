@@ -654,6 +654,18 @@ export default function CrmRelatorios() {
           {/* Attendant Metrics */}
           <AttendantMetricsSection messages={filteredMessages} leads={filteredLeads} allLeads={allLeadsForPipeline} appointments={filteredAppointments} stages={filteredStages} history={filteredHistory} onDrillDown={drillDown} />
 
+          {/* New Time-to-Conversion + City Ranking + CRC Daily Conversion */}
+          <ConversionMetricsSection
+            leads={filteredLeads}
+            allLeads={allLeadsForPipeline}
+            appointments={filteredAppointments}
+            messages={filteredMessages}
+            stages={filteredStages}
+            history={filteredHistory}
+            periodRange={periodRange}
+            navigate={navigate}
+          />
+
           {/* Cross-Funnel Flow */}
           {crossFunnelFlow && crossFunnelFlow.length > 0 && (
             <Card>
