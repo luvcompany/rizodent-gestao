@@ -422,109 +422,123 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="p-2 text-muted-foreground hover:text-primary transition-colors" disabled={optimizing || uploading}>
-                <Paperclip size={20} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => handleFileSelect("image/*")}>
-                <Image size={16} className="mr-2" /> Imagem
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleFileSelect("video/*")}>
-                <Video size={16} className="mr-2" /> Vídeo
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleFileSelect(".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv")}>
-                <File size={16} className="mr-2" /> Documento
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleFileSelect("image/webp")}>
-                <span className="mr-2 text-base">🎨</span> Figurinha (WebP)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <div className="flex-1 relative">
-            <SlashCommandMenu
-              query={slashQuery}
-              templates={slashTemplates}
-              bots={[]}
-              visible={slashActive}
-              onSelectTemplate={(t) => {
-                setNewMessage(`[Template: ${t.name}]`);
-                setSlashActive(false);
-                toast.info(`Template "${cleanTemplateName(t.name)}" selecionado. Pressione Enter para enviar.`);
-              }}
-              onSelectBot={() => {}}
-              onClose={() => setSlashActive(false)}
-            />
-            <Input
-              value={newMessage}
-              onChange={(e) => {
-                const val = e.target.value;
-                setNewMessage(val);
-                if (val.startsWith("/")) {
-                  setSlashActive(true);
-                  setSlashQuery(val.slice(1));
-                } else {
-                  setSlashActive(false);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (slashActive && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                  e.preventDefault();
-                  return;
-                }
-                handleKeyDown(e);
-              }}
-              placeholder="Digite / para atalhos ou uma mensagem..."
-              className="pr-10 bg-secondary border-border"
+          {recorderActive ? (
+            <AudioRecorderComposer
               disabled={optimizing || uploading}
+              onSendAudio={sendRecordedAudio}
+              onModeChange={setRecorderActive}
             />
-          </div>
-
-          <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
-            <FileText size={20} />
-          </button>
-
-          <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
-            <PopoverTrigger asChild>
-              <button className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
-                <Bot size={20} />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="start" sideOffset={8} className="w-64 p-2">
-              <p className="text-xs font-medium text-muted-foreground px-2 mb-1">Iniciar Bot</p>
-              {bots.length === 0 ? (
-                <p className="text-xs text-muted-foreground px-2 py-3">Nenhum bot publicado</p>
-              ) : (
-                <div className="max-h-48 overflow-y-auto space-y-0.5">
-                  {bots.map((b) => (
-                    <button
-                      key={b.id}
-                      onClick={() => handleStartBot(b.id)}
-                      disabled={startingBotId === b.id}
-                      className="flex w-full items-center rounded-md px-3 py-2 text-sm text-left hover:bg-muted transition-colors disabled:opacity-50"
-                    >
-                      {startingBotId === b.id ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Bot className="mr-2 h-4 w-4 text-muted-foreground" />
-                      )}
-                      {b.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </PopoverContent>
-          </Popover>
-
-          {newMessage.trim() || attachedFile ? (
-            <Button size="icon" onClick={handleSendMessage} disabled={optimizing || uploading}>
-              <Send size={18} />
-            </Button>
           ) : (
-            <AudioRecorderComposer disabled={optimizing || uploading} onSendAudio={sendRecordedAudio} />
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-2 text-muted-foreground hover:text-primary transition-colors" disabled={optimizing || uploading}>
+                    <Paperclip size={20} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => handleFileSelect("image/*")}>
+                    <Image size={16} className="mr-2" /> Imagem
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFileSelect("video/*")}>
+                    <Video size={16} className="mr-2" /> Vídeo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFileSelect(".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv")}>
+                    <File size={16} className="mr-2" /> Documento
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFileSelect("image/webp")}>
+                    <span className="mr-2 text-base">🎨</span> Figurinha (WebP)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="flex-1 relative">
+                <SlashCommandMenu
+                  query={slashQuery}
+                  templates={slashTemplates}
+                  bots={[]}
+                  visible={slashActive}
+                  onSelectTemplate={(t) => {
+                    setNewMessage(`[Template: ${t.name}]`);
+                    setSlashActive(false);
+                    toast.info(`Template "${cleanTemplateName(t.name)}" selecionado. Pressione Enter para enviar.`);
+                  }}
+                  onSelectBot={() => {}}
+                  onClose={() => setSlashActive(false)}
+                />
+                <Input
+                  value={newMessage}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewMessage(val);
+                    if (val.startsWith("/")) {
+                      setSlashActive(true);
+                      setSlashQuery(val.slice(1));
+                    } else {
+                      setSlashActive(false);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (slashActive && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                      e.preventDefault();
+                      return;
+                    }
+                    handleKeyDown(e);
+                  }}
+                  placeholder="Digite / para atalhos ou uma mensagem..."
+                  className="pr-10 bg-secondary border-border"
+                  disabled={optimizing || uploading}
+                />
+              </div>
+
+              <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
+                <FileText size={20} />
+              </button>
+
+              <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <button className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
+                    <Bot size={20} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="start" sideOffset={8} className="w-64 p-2">
+                  <p className="text-xs font-medium text-muted-foreground px-2 mb-1">Iniciar Bot</p>
+                  {bots.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-2 py-3">Nenhum bot publicado</p>
+                  ) : (
+                    <div className="max-h-48 overflow-y-auto space-y-0.5">
+                      {bots.map((b) => (
+                        <button
+                          key={b.id}
+                          onClick={() => handleStartBot(b.id)}
+                          disabled={startingBotId === b.id}
+                          className="flex w-full items-center rounded-md px-3 py-2 text-sm text-left hover:bg-muted transition-colors disabled:opacity-50"
+                        >
+                          {startingBotId === b.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Bot className="mr-2 h-4 w-4 text-muted-foreground" />
+                          )}
+                          {b.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+
+              {newMessage.trim() || attachedFile ? (
+                <Button size="icon" onClick={handleSendMessage} disabled={optimizing || uploading}>
+                  <Send size={18} />
+                </Button>
+              ) : (
+                <AudioRecorderComposer
+                  disabled={optimizing || uploading}
+                  onSendAudio={sendRecordedAudio}
+                  onModeChange={setRecorderActive}
+                />
+              )}
+            </>
           )}
         </div>
       )}
