@@ -111,9 +111,12 @@ export default function CrmRelatorios() {
         const [h, a, m] = await Promise.all([
           supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").in("lead_id", chunk),
           supabase.from("crm_appointments").select("id, lead_id, created_at, scheduled_date, status").in("lead_id", chunk),
-          startISO && endISO
-            ? supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).gte("created_at", startISO).lte("created_at", endISO).order("created_at")
-            : supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).order("created_at"),
+          (() => {
+            // Sempre inclui o dia de hoje para o bloco "Ações do Dia"
+            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+            const lower = startISO && new Date(startISO) < todayStart ? startISO : todayStart.toISOString();
+            return supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).gte("created_at", lower).order("created_at");
+          })(),
         ]);
         if (h.data) histRows = histRows.concat(h.data as StageHistory[]);
         if (a.data) apptRows = apptRows.concat(a.data as Appointment[]);
@@ -275,6 +278,43 @@ export default function CrmRelatorios() {
     return { lead: mean(respLead), crc: mean(respCRC), nLead: respLead.length, nCRC: respCRC.length };
   }, [messages]);
 
+  // Ações do dia: movimentações de etapa hoje + leads que falaram hoje
+  const acoesHoje = useMemo(() => {
+    const now = new Date();
+    const startDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const endDay = startDay + 24 * 60 * 60 * 1000 - 1;
+    const stageIds = new Set(stages.map(s => s.id));
+
+    // Movimentações por stage hoje (lead distinct)
+    const moveByStage = new Map<string, Set<string>>();
+    history.forEach(h => {
+      if (!stageIds.has(h.stage_id)) return;
+      const t = new Date(h.entered_at).getTime();
+      if (t < startDay || t > endDay) return;
+      if (!moveByStage.has(h.stage_id)) moveByStage.set(h.stage_id, new Set());
+      moveByStage.get(h.stage_id)!.add(h.lead_id);
+    });
+
+    const funnel = stages.map((s, i) => ({
+      name: s.name,
+      value: moveByStage.get(s.id)?.size || 0,
+      fill: s.color || FUNNEL_COLORS[i % FUNNEL_COLORS.length],
+    }));
+
+    // Leads do pipeline que mandaram inbound hoje
+    const leadsPipeline = new Set(leads.map(l => l.id));
+    const falaramSet = new Set<string>();
+    messages.forEach(m => {
+      if (m.direction !== "inbound") return;
+      if (!leadsPipeline.has(m.lead_id)) return;
+      const t = new Date(m.created_at).getTime();
+      if (t < startDay || t > endDay) return;
+      falaramSet.add(m.lead_id);
+    });
+
+    return { funnel, falaram: falaramSet.size, totalMov: funnel.reduce((a, b) => a + b.value, 0) };
+  }, [stages, history, leads, messages]);
+
   // 8. Fantasmas
   const fantasmas = useMemo(() => {
     return cohort.filter(l => {
@@ -330,6 +370,29 @@ export default function CrmRelatorios() {
           <DashboardFunnel data={funnelData} />
         ) : (
           <p className="text-sm text-muted-foreground text-center py-8">Sem leads no período.</p>
+        )}
+      </Card>
+
+      {/* 1b. Ações do Dia */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <TrendingUp className="w-5 h-5 text-orange-500" />
+          <h2 className="text-lg font-semibold">
+            Ações do Dia — {new Date().toLocaleDateString("pt-BR")}
+          </h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Movimentações de etapa feitas <strong>hoje</strong> neste funil (ignora o filtro de período acima). Conta leads novos e antigos.
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+          <StatBox label="Pessoas que falaram hoje" value={acoesHoje.falaram} color="text-primary" />
+          <StatBox label="Total de movimentações" value={acoesHoje.totalMov} />
+          <StatBox label="Etapas com ação" value={acoesHoje.funnel.filter(f => f.value > 0).length} />
+        </div>
+        {acoesHoje.funnel.some(d => d.value > 0) ? (
+          <DashboardFunnel data={acoesHoje.funnel} />
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-8">Nenhuma movimentação de etapa hoje.</p>
         )}
       </Card>
 
