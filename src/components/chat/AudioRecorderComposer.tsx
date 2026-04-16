@@ -210,20 +210,6 @@ export default function AudioRecorderComposer({
       });
       streamRef.current = stream;
 
-      // Set up audio analyser
-      const ACtor = window.AudioContext || (window as any).webkitAudioContext;
-      if (ACtor) {
-        const ctx = new ACtor();
-        await ctx.resume();
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 1024;
-        analyser.smoothingTimeConstant = 0.72;
-        source.connect(analyser);
-        audioContextRef.current = ctx;
-        analyserRef.current = analyser;
-      }
-
       // Create recorder
       let recorder: any;
       const nativeOgg =
@@ -254,7 +240,10 @@ export default function AudioRecorderComposer({
       };
       recorder.onerror = () => { toast.error("Erro ao gravar áudio"); resetToIdle(); };
       recorder.onstart = () => {
-        // Safety fallback — UI should already be active
+        if (discardRecordingRef.current) return;
+        startMeter();
+        setMode("recording");
+        startRecordingTimer();
       };
       recorder.onstop = () => {
         clearTimer();
@@ -271,11 +260,25 @@ export default function AudioRecorderComposer({
       // Start recording immediately — no warmup delay
       recorder.start(500);
 
-      // Show UI right away instead of waiting for onstart callback
-      if (!discardRecordingRef.current) {
-        startMeter();
-        setMode("recording");
-        startRecordingTimer();
+      // Set up audio analyser after the recorder starts so capture begins as early as possible
+      const ACtor = window.AudioContext || (window as any).webkitAudioContext;
+      if (ACtor) {
+        try {
+          const ctx = new ACtor();
+          await ctx.resume();
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 1024;
+          analyser.smoothingTimeConstant = 0.72;
+          source.connect(analyser);
+          audioContextRef.current = ctx;
+          analyserRef.current = analyser;
+          if (recorder.state === "recording" && !discardRecordingRef.current) {
+            startMeter();
+          }
+        } catch {
+          analyserRef.current = null;
+        }
       }
     } catch (err: any) {
       resetToIdle();
