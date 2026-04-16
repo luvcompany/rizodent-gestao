@@ -270,7 +270,7 @@ export default function AudioRecorderComposer({
       await new Promise(resolve => setTimeout(resolve, 350));
 
       // Start recording — use timeslice of 250ms for regular data chunks
-      recorder.start(250);
+      recorder.start(500);
 
       if (!discardRecordingRef.current) {
         setMode("recording");
