@@ -55,7 +55,7 @@ function formatDays(ms: number): string {
 export default function CrmRelatorios() {
   const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("all");
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const [stages, setStages] = useState<Stage[]>([]);
   const [history, setHistory] = useState<StageHistory[]>([]);
@@ -152,17 +152,30 @@ export default function CrmRelatorios() {
     fetchAll();
   }, []);
 
+  useEffect(() => {
+    if (pipelines.length === 0) return;
+
+    const hasValidSelection = pipelines.some((pipeline) => pipeline.id === selectedPipelineId);
+    if (hasValidSelection) return;
+
+    const preferredPipeline =
+      pipelines.find((pipeline) => pipeline.name.toLowerCase().includes("principal")) || pipelines[0];
+
+    if (preferredPipeline) {
+      setSelectedPipelineId(preferredPipeline.id);
+    }
+  }, [pipelines, selectedPipelineId]);
+
   const periodRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
 
   const filteredStages = useMemo(() => {
-    if (selectedPipelineId === "all") return stages;
     return stages.filter(s => s.pipeline_id === selectedPipelineId);
   }, [stages, selectedPipelineId]);
 
   const filteredStageIds = useMemo(() => new Set(filteredStages.map(s => s.id)), [filteredStages]);
 
   const filteredLeads = useMemo(() => {
-    let list = selectedPipelineId === "all" ? leads : leads.filter(l => l.pipeline_id === selectedPipelineId);
+    let list = leads.filter(l => l.pipeline_id === selectedPipelineId);
     if (periodRange) {
       list = list.filter(l => {
         const d = new Date(l.created_at);
@@ -173,14 +186,13 @@ export default function CrmRelatorios() {
   }, [leads, selectedPipelineId, periodRange]);
 
   const allLeadsForPipeline = useMemo(() => {
-    if (selectedPipelineId === "all") return leads;
     return leads.filter(l => l.pipeline_id === selectedPipelineId);
   }, [leads, selectedPipelineId]);
 
   const filteredLeadIds = useMemo(() => new Set(filteredLeads.map(l => l.id)), [filteredLeads]);
 
   const filteredHistory = useMemo(() => {
-    let list = selectedPipelineId === "all" ? history : history.filter(h => filteredStageIds.has(h.stage_id));
+    let list = history.filter(h => filteredStageIds.has(h.stage_id));
     if (periodRange) {
       list = list.filter(h => {
         const d = new Date(h.entered_at);
@@ -188,11 +200,11 @@ export default function CrmRelatorios() {
       });
     }
     return list;
-  }, [history, selectedPipelineId, filteredStageIds, periodRange]);
+  }, [history, filteredStageIds, periodRange]);
 
   const filteredMessages = useMemo(() => {
     const allPipelineLeadIds = new Set(allLeadsForPipeline.map(l => l.id));
-    let list = selectedPipelineId === "all" ? messages : messages.filter(m => allPipelineLeadIds.has(m.lead_id));
+    let list = messages.filter(m => allPipelineLeadIds.has(m.lead_id));
     if (periodRange) {
       list = list.filter(m => {
         const d = new Date(m.created_at);
@@ -200,11 +212,11 @@ export default function CrmRelatorios() {
       });
     }
     return list;
-  }, [messages, selectedPipelineId, allLeadsForPipeline, periodRange]);
+  }, [messages, allLeadsForPipeline, periodRange]);
 
   const filteredAppointments = useMemo(() => {
     const allPipelineLeadIds = new Set(allLeadsForPipeline.map(l => l.id));
-    let list = selectedPipelineId === "all" ? appointments : appointments.filter(a => allPipelineLeadIds.has(a.lead_id));
+    let list = appointments.filter(a => allPipelineLeadIds.has(a.lead_id));
     if (periodRange) {
       list = list.filter(a => {
         const d = new Date(a.scheduled_date);
@@ -212,7 +224,7 @@ export default function CrmRelatorios() {
       });
     }
     return list;
-  }, [appointments, selectedPipelineId, allLeadsForPipeline, periodRange]);
+  }, [appointments, allLeadsForPipeline, periodRange]);
 
   const inactiveThresholdMs = useMemo(() => {
     const val = parseInt(inactiveDays) || 3;
@@ -258,14 +270,14 @@ export default function CrmRelatorios() {
 
     const agendStageId = filteredStages.find(s => s.name.toLowerCase().includes("agend"))?.id || "";
     const contratadoStageId = filteredStages.find(s => s.name.toLowerCase().includes("contratad") && !s.name.toLowerCase().includes("não"))?.id || "";
-    const pipelineParam = selectedPipelineId !== "all" ? selectedPipelineId : "";
+    const pipelineParam = selectedPipelineId;
 
     const steps = [
-      { name: "Leads Entraram", value: totalEnteredLead, color: "hsl(var(--primary))", drillParams: { ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
-      { name: "Responderam", value: respondedCount, color: "#3b82f6", drillParams: { ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
-      { name: "Agendaram", value: scheduledCount, color: "#f59e0b", drillParams: { ...(agendStageId ? { stage_id: agendStageId } : {}), ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
-      { name: "Compareceram", value: attendedCount, color: "#10b981", drillParams: { appointment_status: "attended", ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
-      { name: "Contrataram", value: contractedCount, color: "#22c55e", drillParams: { ...(contratadoStageId ? { stage_id: contratadoStageId } : {}), ...(pipelineParam ? { pipeline: pipelineParam } : {}) } },
+      { name: "Leads Entraram", value: totalEnteredLead, color: "hsl(var(--primary))", drillParams: { pipeline: pipelineParam } },
+      { name: "Responderam", value: respondedCount, color: "#3b82f6", drillParams: { pipeline: pipelineParam } },
+      { name: "Agendaram", value: scheduledCount, color: "#f59e0b", drillParams: { ...(agendStageId ? { stage_id: agendStageId } : {}), pipeline: pipelineParam } },
+      { name: "Compareceram", value: attendedCount, color: "#10b981", drillParams: { appointment_status: "attended", pipeline: pipelineParam } },
+      { name: "Contrataram", value: contractedCount, color: "#22c55e", drillParams: { ...(contratadoStageId ? { stage_id: contratadoStageId } : {}), pipeline: pipelineParam } },
     ];
 
     return steps.map((step, i) => ({
@@ -317,7 +329,7 @@ export default function CrmRelatorios() {
     return { avgMs: avg, count: times.length };
   }, [filteredStages, filteredHistory, filteredLeads]);
 
-  // ═══ STAGE TIME (with pipeline prefix fix) ═══
+  // ═══ STAGE TIME ═══
   const stageTimeData = useMemo(() => {
     return filteredStages.map((stage) => {
       const entries = filteredHistory.filter((h) => h.stage_id === stage.id);
@@ -327,18 +339,14 @@ export default function CrmRelatorios() {
       });
       const avg = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
       const leadsInStage = allLeadsForPipeline.filter((l) => l.stage_id === stage.id).length;
-      const pipeline = pipelines.find(p => p.id === stage.pipeline_id);
-      const label = selectedPipelineId === "all" && pipeline
-        ? `${pipeline.name} > ${stage.name}`
-        : stage.name;
       return {
-        name: label, stageId: stage.id, color: stage.color, avgMs: avg,
+        name: stage.name, stageId: stage.id, color: stage.color, avgMs: avg,
         avgFormatted: formatDuration(avg),
         avgHours: Math.round(avg / 3600000 * 10) / 10,
         count: leadsInStage, totalEntries: entries.length,
       };
     });
-  }, [filteredStages, filteredHistory, allLeadsForPipeline, pipelines, selectedPipelineId]);
+  }, [filteredStages, filteredHistory, allLeadsForPipeline]);
 
   // ═══ RESPONSE TIMES ═══
   const responseTimeData = useMemo(() => {
@@ -384,49 +392,17 @@ export default function CrmRelatorios() {
 
   // ═══ STAGE DISTRIBUTION ═══
   const stageDistribution = useMemo(() => {
-    return filteredStages.map(stage => {
-      const pipeline = pipelines.find(p => p.id === stage.pipeline_id);
-      const label = selectedPipelineId === "all" && pipeline
-        ? `${pipeline.name} > ${stage.name}`
-        : stage.name;
-      return {
-        name: label, stageId: stage.id,
-        value: allLeadsForPipeline.filter(l => l.stage_id === stage.id).length,
-        color: stage.color,
-      };
-    }).filter(s => s.value > 0);
-  }, [filteredStages, allLeadsForPipeline, pipelines, selectedPipelineId]);
+    return filteredStages.map(stage => ({
+      name: stage.name,
+      stageId: stage.id,
+      value: allLeadsForPipeline.filter(l => l.stage_id === stage.id).length,
+      color: stage.color,
+    })).filter(s => s.value > 0);
+  }, [filteredStages, allLeadsForPipeline]);
 
-  // ═══ PIPELINE SUMMARY ═══
-  const pipelineSummary = useMemo(() => {
-    if (selectedPipelineId !== "all") return [];
-    return pipelines.map(p => {
-      const pLeads = leads.filter(l => l.pipeline_id === p.id);
-      const pStages = stages.filter(s => s.pipeline_id === p.id);
-      return { id: p.id, name: p.name, color: p.color || "hsl(var(--primary))", totalLeads: pLeads.length, totalStages: pStages.length };
-    });
-  }, [selectedPipelineId, pipelines, leads, stages]);
-
-  // ═══ CROSS FUNNEL FLOW ═══
-  const crossFunnelFlow = useMemo(() => {
-    if (pipelines.length < 2) return null;
-    const flows: { from: Pipeline; to: Pipeline; count: number; leadIds: string[] }[] = [];
-    const stageToPlMap = new Map(stages.map(s => [s.id, s.pipeline_id]));
-    for (const fromPl of pipelines) {
-      for (const toPl of pipelines) {
-        if (fromPl.id === toPl.id) continue;
-        const movedLeadIds = new Set<string>();
-        history.forEach(h => {
-          if (!h.from_stage_id) return;
-          const fromPlId = stageToPlMap.get(h.from_stage_id);
-          const toPlId = stageToPlMap.get(h.stage_id);
-          if (fromPlId === fromPl.id && toPlId === toPl.id) movedLeadIds.add(h.lead_id);
-        });
-        if (movedLeadIds.size > 0) flows.push({ from: fromPl, to: toPl, count: movedLeadIds.size, leadIds: Array.from(movedLeadIds) });
-      }
-    }
-    return flows.length > 0 ? flows : null;
-  }, [pipelines, stages, history]);
+  // ═══ PIPELINE SUMMARY / CROSS FUNNEL FLOW (desativados no relatório por funil único) ═══
+  const pipelineSummary: Array<{ id: string; name: string; color: string; totalLeads: number; totalStages: number }> = [];
+  const crossFunnelFlow: Array<{ from: Pipeline; to: Pipeline; count: number; leadIds: string[] }> = [];
 
   const periodLabel = useMemo(() => {
     const range = getDateRangeFromFilter(dateFilter);
@@ -444,15 +420,16 @@ export default function CrmRelatorios() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Relatórios CRM</h1>
-          <p className="text-sm text-muted-foreground">Operação completa — {periodLabel}</p>
+          <p className="text-sm text-muted-foreground">
+            Funil: {pipelines.find((p) => p.id === selectedPipelineId)?.name || "—"} · {periodLabel}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
           <Filter size={16} className="text-muted-foreground" />
           <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="Filtrar por funil" /></SelectTrigger>
+            <SelectTrigger className="w-48"><SelectValue placeholder="Selecionar funil" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os Funis</SelectItem>
               {pipelines.map(p => (
                 <SelectItem key={p.id} value={p.id}>
                   <div className="flex items-center gap-2">
