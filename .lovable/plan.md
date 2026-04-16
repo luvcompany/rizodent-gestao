@@ -1,38 +1,39 @@
 
 
-## Plan: Fix 3 Issues (Recorder Speed, Pipeline Stage Move, Lead Creation Pipeline)
+## Plano: Conversão Diária Real do CRC + Data de Entrada Fixa do Lead
 
-### Issue 1: Audio recorder too slow to start
-**Root cause**: The 120ms `setTimeout` delay plus `AudioContext` creation and `getUserMedia` happen sequentially. The `onstart` callback pattern adds perceived delay since UI only updates after the recorder fires its start event.
+### Contexto
+1. A métrica atual "Conversão Diária CRC" no relatório só conta agendamentos cuja `scheduled_date` é o **mesmo dia** do contato. Isso não reflete o poder de conversão real — se o atendente fala com o lead hoje e agenda pra semana que vem, não conta.
+2. Hoje, na lista de Conversas (CrmConversas/CrmConversa) e nos cards do Kanban (CrmKanban), a data exibida ao lado do nome geralmente é `last_message_at` (data da última mensagem), o que muda toda hora. O usuário quer ver **a data de criação do lead** (`created_at`) fixa, para conseguir filtrar leads do dia.
 
-**Fix in `AudioRecorderComposer.tsx`**:
-- Remove the 120ms warmup delay entirely -- modern browsers don't need it
-- Show "recording" UI immediately after `recorder.start()` instead of waiting for the `onstart` event
-- Move `startMeter()` and `startRecordingTimer()` to fire right after `recorder.start()` call, keeping `onstart` only as a safety fallback
+### Mudanças
 
-### Issue 2: Moving lead to another pipeline's stage doesn't update `pipeline_id`
-**Root cause**: `PipelineStageSelector` calls `onStageChange(stageId)` but only passes the stage ID. The `handleStageChange` in `useChatConversation.ts` updates only `stage_id` on the lead, never `pipeline_id`. So moving to a stage in a different pipeline leaves the lead in the old pipeline.
+**1. Conversão Diária do CRC (em `src/pages/CrmRelatorios.tsx`)**
 
-**Fix**:
-- Update `PipelineStageSelector` to also pass `pipeline_id` when calling `onStageChange`
-- Change `onStageChange` signature to `(stageId: string, pipelineId: string) => void`
-- Update `handleStageChange` in `useChatConversation.ts` to accept and update `pipeline_id` alongside `stage_id`
-- Update consumers in `CrmConversas.tsx` and `CrmConversa.tsx` to propagate `pipeline_id` in local state
+Reformular a lógica do componente `ConversionMetricsSection` (tabela "Conversão Diária por CRC"):
 
-### Issue 3: Lead creation dialog has no pipeline selector
-**Root cause**: The "Novo Lead" dialog in `CrmKanban.tsx` only shows stages from the currently selected pipeline. There's no way to pick a different pipeline.
+- **Contatos por dia**: continua igual — contar leads únicos com quem cada atendente trocou mensagem outbound naquele dia (já está correto).
+- **Agendados (NOVA lógica)**: para cada (atendente, dia), contar quantos daqueles leads contatados naquele dia tiveram **um agendamento criado em qualquer data futura**, desde que o agendamento tenha sido **registrado (`created_at` do appointment) no mesmo dia do contato**.
+  - Ou seja: cruzar via `lead_id` + `crm_appointments.created_at::date == dia do contato` (independente da `scheduled_date`).
+- **Taxa de conversão**: `agendados / contatos * 100` (já está).
 
-**Fix in `CrmKanban.tsx`**:
-- Add a "Funil" select above the "Etapa Inicial" select in the create lead dialog
-- Default to the currently viewed pipeline
-- Filter stage options by selected pipeline
-- Update `insertNewLead` to use the selected pipeline ID instead of always using `pipeline.id`
+Isso responde exatamente: "de 40 pessoas que falei hoje, quantas consegui agendar (pra qualquer dia)".
 
-### Files to edit
-1. `src/components/chat/AudioRecorderComposer.tsx` -- remove delay, immediate UI feedback
-2. `src/components/chat/PipelineStageSelector.tsx` -- pass pipeline_id with stage change
-3. `src/hooks/useChatConversation.ts` -- update pipeline_id on stage change
-4. `src/pages/CrmConversas.tsx` -- adapt to new onStageChange signature
-5. `src/pages/CrmConversa.tsx` -- adapt to new onStageChange signature
-6. `src/pages/CrmKanban.tsx` -- add pipeline selector to create lead dialog
+Renomear cabeçalho da coluna de "Agendados (mesmo dia)" para apenas "Agendados" e ajustar o subtítulo da seção para deixar claro: *"Leads contatados por dia × leads que foram agendados (para qualquer data) no mesmo dia do contato"*.
+
+**2. Data de entrada fixa do lead**
+
+Trocar a data exibida ao lado do nome do lead, de `last_message_at` para `created_at` (data de entrada/criação do lead), nos seguintes lugares:
+
+- **`src/pages/CrmConversas.tsx`** — coluna/lista de conversas, badge de data ao lado do nome.
+- **`src/pages/CrmConversa.tsx`** — mesmo elemento na versão alternativa.
+- **`src/pages/CrmKanban.tsx`** — cards do kanban, data exibida no card do lead.
+
+A data continua formatada em `pt-BR`. Para leads do dia, mostrar "Hoje HH:mm"; ontem "Ontem"; demais, `dd/MM`.
+
+### Arquivos a editar
+1. `src/pages/CrmRelatorios.tsx` — nova lógica de agendados por created_at do appointment.
+2. `src/pages/CrmConversas.tsx` — usar `created_at` na data do lead.
+3. `src/pages/CrmConversa.tsx` — idem.
+4. `src/pages/CrmKanban.tsx` — idem nos cards.
 
