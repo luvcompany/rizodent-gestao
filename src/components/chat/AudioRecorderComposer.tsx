@@ -6,6 +6,7 @@ import { Loader2, Mic, Pause, Play, Send, Square, X } from "lucide-react";
 type AudioRecorderComposerProps = {
   disabled?: boolean;
   onSendAudio: (audioBlob: Blob) => Promise<void> | void;
+  onModeChange?: (active: boolean) => void;
 };
 
 type RecorderMode = "idle" | "preparing" | "recording" | "preview" | "sending";
@@ -47,7 +48,7 @@ const compressLevelsToBars = (levels: number[]) => {
   });
 };
 
-export default function AudioRecorderComposer({ disabled = false, onSendAudio }: AudioRecorderComposerProps) {
+export default function AudioRecorderComposer({ disabled = false, onSendAudio, onModeChange }: AudioRecorderComposerProps) {
   const [mode, setMode] = useState<RecorderMode>("idle");
   const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -106,9 +107,10 @@ export default function AudioRecorderComposer({ disabled = false, onSendAudio }:
     clearSampler();
     analyserRef.current = null;
 
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => undefined);
-      audioContextRef.current = null;
+    const ctx = audioContextRef.current;
+    audioContextRef.current = null;
+    if (ctx && ctx.state !== "closed") {
+      ctx.close().catch(() => undefined);
     }
   }, [clearSampler]);
 
@@ -425,6 +427,10 @@ export default function AudioRecorderComposer({ disabled = false, onSendAudio }:
   }, [draftUrl]);
 
   useEffect(() => () => resetToIdle(), [resetToIdle]);
+
+  useEffect(() => {
+    onModeChange?.(mode !== "idle");
+  }, [mode, onModeChange]);
 
   const activePreviewBars = useMemo(() => {
     if (!previewDuration) return 0;
