@@ -1252,6 +1252,41 @@ export type Database = {
         }
         Relationships: []
       }
+      dashboard_holidays: {
+        Row: {
+          clinica_id: string | null
+          created_at: string
+          created_by: string | null
+          data: string
+          descricao: string | null
+          id: string
+        }
+        Insert: {
+          clinica_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          data: string
+          descricao?: string | null
+          id?: string
+        }
+        Update: {
+          clinica_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          data?: string
+          descricao?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dashboard_holidays_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funnel_channels: {
         Row: {
           channel_config: Json | null
