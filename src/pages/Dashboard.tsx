@@ -64,10 +64,22 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
+  const allRanges = useMemo(() => getDateRangesFromFilter(dateFilter), [dateFilter]);
   const isAllPeriod = dateFilter.preset === "all";
   const dateFrom = useMemo(() => dateRange ? dateRange.start.toISOString().split("T")[0] : "2020-01-01", [dateRange]);
   const dateTo = useMemo(() => dateRange ? dateRange.end.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
-  // Determine if charts should aggregate by month (when range > 60 days)
+  // Pre-compute interval bounds as YYYY-MM-DD strings for fast date comparison
+  const rangeBounds = useMemo(
+    () => allRanges?.map((r) => ({ from: r.start.toISOString().split("T")[0], to: r.end.toISOString().split("T")[0] })) ?? null,
+    [allRanges]
+  );
+  const isInSelectedRanges = (dateStr: string | undefined | null) => {
+    if (!dateStr) return false;
+    const v = dateStr.length > 10 ? dateStr.split("T")[0] : dateStr;
+    if (!rangeBounds) return v >= dateFrom && v <= dateTo; // "all"
+    return rangeBounds.some((r) => v >= r.from && v <= r.to);
+  };
+  // Determine if charts should aggregate by month (when total span > 60 days)
   const useMonthlyChart = useMemo(() => {
     const d1 = new Date(dateFrom);
     const d2 = new Date(dateTo);
