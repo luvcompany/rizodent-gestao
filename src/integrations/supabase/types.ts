@@ -809,6 +809,45 @@ export type Database = {
           },
         ]
       }
+      crm_lead_pacientes: {
+        Row: {
+          created_at: string
+          id: string
+          is_primary: boolean
+          lead_id: string
+          paciente_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          lead_id: string
+          paciente_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          lead_id?: string
+          paciente_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_lead_pacientes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_lead_pacientes_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "pacientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_lead_stage_history: {
         Row: {
           changed_by: string | null

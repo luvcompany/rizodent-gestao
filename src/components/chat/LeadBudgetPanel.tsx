@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin } from "lucide-react";
+import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin, Star, X } from "lucide-react";
 
 const CIDADES = ["Vitória da Conquista", "Guanambi", "Ipiaú", "Itabuna"];
 const EMPTY_CITY_VALUE = "none";
@@ -29,8 +29,11 @@ type Paciente = {
   cidade: string | null;
 };
 
+type LinkedPaciente = Paciente & { link_id: string; is_primary: boolean };
+
 type OrcamentoComPago = {
   id: string;
+  paciente_id: string;
   valor_orcado: number;
   valor_pago: number;
   status: string;
@@ -45,7 +48,7 @@ type Props = {
 export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const navigate = useNavigate();
   const autoLinkAttemptedRef = useRef<Set<string>>(new Set());
-  const [paciente, setPaciente] = useState<Paciente | null>(null);
+  const [linkedPacientes, setLinkedPacientes] = useState<LinkedPaciente[]>([]);
   const [orcamentos, setOrcamentos] = useState<OrcamentoComPago[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
   const [totalBudgeted, setTotalBudgeted] = useState(0);
@@ -57,27 +60,47 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const [savingCity, setSavingCity] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicates, setDuplicates] = useState<Paciente[]>([]);
+  const [newPersonName, setNewPersonName] = useState("");
 
   useEffect(() => {
     setCidade(lead.cidade || EMPTY_CITY_VALUE);
   }, [lead.id, lead.cidade]);
 
   useEffect(() => {
-    if (lead.paciente_id) {
-      fetchPacienteAndBudgets(lead.paciente_id);
-    } else {
-      setPaciente(null);
+    void fetchAllLinks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id]);
+
+  const fetchAllLinks = async () => {
+    const { data: links } = await supabase
+      .from("crm_lead_pacientes")
+      .select("id, is_primary, paciente_id, pacientes(id, nome, telefone, email, cidade)")
+      .eq("lead_id", lead.id)
+      .order("is_primary", { ascending: false });
+
+    const list: LinkedPaciente[] = (links || [])
+      .filter((l: any) => l.pacientes)
+      .map((l: any) => ({
+        link_id: l.id,
+        is_primary: l.is_primary,
+        ...l.pacientes,
+      }));
+
+    setLinkedPacientes(list);
+
+    if (list.length === 0) {
       setOrcamentos([]);
       setTotalPaid(0);
       setTotalBudgeted(0);
-      // Auto-link by phone signature (last 8 digits) — only once per lead per session
+      // Auto-link by phone signature if no link exists yet
       if (!autoLinkAttemptedRef.current.has(lead.id)) {
         autoLinkAttemptedRef.current.add(lead.id);
         void autoLinkByPhone();
       }
+    } else {
+      void fetchBudgetsForPacientes(list.map((p) => p.id));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lead.paciente_id]);
+  };
 
   const autoLinkByPhone = async () => {
     const phoneClean = (lead.phone || "").replace(/\D/g, "");
@@ -91,38 +114,17 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       .limit(5);
     if (!data || data.length === 0) return;
     if (data.length === 1) {
-      // Single match → auto-link
-      const { error, data: upd } = await supabase
-        .from("crm_leads")
-        .update({ paciente_id: data[0].id })
-        .eq("id", lead.id)
-        .select("id");
-      if (error) {
-        toast.error(`Não foi possível vincular automaticamente: ${error.message}`);
-        return;
-      }
-      if (!upd || upd.length === 0) {
-        toast.error("Sem permissão para vincular este lead.");
-        return;
-      }
-      onLeadUpdated({ paciente_id: data[0].id });
-      // Silent auto-link — no toast to avoid noise on every conversation open
+      await addPacienteLink(data[0].id, true);
     } else {
-      // Multiple → just preload list and open dialog hint
       setSearchResults(data);
     }
   };
 
-  const fetchPacienteAndBudgets = async (pacienteId: string) => {
-    const [pRes, oRes, pagRes] = await Promise.all([
-      supabase.from("pacientes").select("id, nome, telefone, email, cidade").eq("id", pacienteId).single(),
-      supabase.from("orcamentos").select("id, valor_orcado, status, created_at").eq("paciente_id", pacienteId),
-      supabase.from("pagamentos").select("valor, orcamento_id").eq("paciente_id", pacienteId),
+  const fetchBudgetsForPacientes = async (pacienteIds: string[]) => {
+    const [oRes, pagRes] = await Promise.all([
+      supabase.from("orcamentos").select("id, paciente_id, valor_orcado, status, created_at").in("paciente_id", pacienteIds),
+      supabase.from("pagamentos").select("valor, orcamento_id, paciente_id").in("paciente_id", pacienteIds),
     ]);
-
-    if (pRes.data) {
-      setPaciente(pRes.data);
-    }
 
     const payments = pagRes.data || [];
     const paid = payments.reduce((sum, p) => sum + Number(p.valor), 0);
@@ -135,35 +137,69 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       });
       setOrcamentos(withPago);
       setTotalBudgeted(oRes.data.reduce((sum, o) => sum + Number(o.valor_orcado), 0));
+    } else {
+      setOrcamentos([]);
+      setTotalBudgeted(0);
     }
 
-    // Sync lead value with total payments
     if (paid !== (lead.value || 0)) {
       await supabase.from("crm_leads").update({ value: paid }).eq("id", lead.id);
       onLeadUpdated({ value: paid });
     }
   };
 
+  const addPacienteLink = async (pacienteId: string, makePrimary: boolean) => {
+    const isFirst = linkedPacientes.length === 0;
+    const { error } = await supabase
+      .from("crm_lead_pacientes")
+      .insert({ lead_id: lead.id, paciente_id: pacienteId, is_primary: makePrimary || isFirst });
+    if (error) {
+      if (error.code === "23505") {
+        toast.info("Esse paciente já está vinculado a este lead.");
+      } else {
+        toast.error(`Erro ao vincular: ${error.message}`);
+      }
+      return;
+    }
+    if (makePrimary || isFirst) onLeadUpdated({ paciente_id: pacienteId });
+    await fetchAllLinks();
+    setLinkOpen(false);
+    setDuplicateOpen(false);
+    toast.success("Paciente vinculado ao lead");
+  };
+
+  const setAsPrimary = async (linkId: string, pacienteId: string) => {
+    const { error } = await supabase
+      .from("crm_lead_pacientes")
+      .update({ is_primary: true })
+      .eq("id", linkId);
+    if (error) { toast.error("Erro ao definir principal"); return; }
+    onLeadUpdated({ paciente_id: pacienteId });
+    await fetchAllLinks();
+  };
+
+  const removeLink = async (linkId: string) => {
+    if (!confirm("Remover este paciente deste lead?")) return;
+    const { error } = await supabase.from("crm_lead_pacientes").delete().eq("id", linkId);
+    if (error) { toast.error(`Erro ao remover: ${error.message}`); return; }
+    await fetchAllLinks();
+    toast.success("Vínculo removido");
+  };
+
   const handleCidadeChange = async (val: string) => {
     const normalizedCity = val === EMPTY_CITY_VALUE ? null : val;
     const previousCity = cidade;
-
     setCidade(val);
     onLeadUpdated({ cidade: normalizedCity });
     setSavingCity(true);
 
+    const primaryId = linkedPacientes.find((p) => p.is_primary)?.id || lead.paciente_id;
     const [leadRes, pacienteRes] = await Promise.all([
-      supabase
-        .from("crm_leads")
-        .update({ cidade: normalizedCity, updated_at: new Date().toISOString() })
-        .eq("id", lead.id),
-      lead.paciente_id
-        ? supabase.from("pacientes").update({ cidade: normalizedCity }).eq("id", lead.paciente_id)
-        : Promise.resolve({ error: null }),
+      supabase.from("crm_leads").update({ cidade: normalizedCity, updated_at: new Date().toISOString() }).eq("id", lead.id),
+      primaryId ? supabase.from("pacientes").update({ cidade: normalizedCity }).eq("id", primaryId) : Promise.resolve({ error: null }),
     ]);
 
     setSavingCity(false);
-
     if (leadRes.error || pacienteRes.error) {
       const rollbackCity = previousCity === EMPTY_CITY_VALUE ? null : previousCity;
       setCidade(previousCity);
@@ -177,38 +213,17 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     setSearching(true);
     const cleanSearch = searchTerm.replace(/\D/g, "");
     const isPhoneSearch = cleanSearch.length >= 4;
-
     let query = supabase.from("pacientes").select("id, nome, telefone, email, cidade").limit(20);
-
     if (isPhoneSearch) {
-      // Use os últimos 8 dígitos como assinatura — independente de 55, DDD ou 9 extra
       const tail = cleanSearch.slice(-8);
-      // Inserir wildcards entre dígitos para casar telefones com máscara: (77) 98805-816
       const pattern = "%" + tail.split("").join("%") + "%";
       query = query.or(`telefone.ilike.${pattern},nome.ilike.%${searchTerm}%`);
     } else {
       query = query.or(`nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`);
     }
-
     const { data } = await query;
     setSearchResults(data || []);
     setSearching(false);
-  };
-
-  const linkPaciente = async (pacienteId: string) => {
-    const { error, data } = await supabase
-      .from("crm_leads")
-      .update({ paciente_id: pacienteId })
-      .eq("id", lead.id)
-      .select("id");
-    if (error) { toast.error(`Erro ao vincular paciente: ${error.message}`); return; }
-    if (!data || data.length === 0) {
-      toast.error("Sem permissão para atualizar este lead. Contate o administrador.");
-      return;
-    }
-    onLeadUpdated({ paciente_id: pacienteId });
-    setLinkOpen(false);
-    toast.success("Paciente vinculado ao lead");
   };
 
   const stripCountryCode = (phone: string) => {
@@ -217,11 +232,12 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     return clean;
   };
 
-  const createAndLinkPaciente = async (force = false) => {
+  const createAndLinkPaciente = async (force = false, customName?: string) => {
     const normalizedCity = cidade === EMPTY_CITY_VALUE ? null : cidade;
     const phoneClean = stripCountryCode(lead.phone || "").replace(/\D/g, "");
+    const nomeFinal = (customName || newPersonName || lead.name).trim();
+    if (!nomeFinal) { toast.error("Informe o nome da pessoa"); return; }
 
-    // Verificar duplicidade pelos últimos 8 dígitos antes de criar
     if (!force && phoneClean.length >= 8) {
       const tail = phoneClean.slice(-8);
       const pattern = "%" + tail.split("").join("%") + "%";
@@ -238,44 +254,36 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     }
 
     const { data, error } = await supabase.from("pacientes").insert({
-      nome: lead.name,
+      nome: nomeFinal,
       telefone: stripCountryCode(lead.phone || ""),
       cidade: normalizedCity,
     }).select("id").single();
     if (error || !data) { toast.error("Erro ao criar paciente"); return; }
 
-    // Link lead to patient
-    await supabase
-      .from("crm_leads")
-      .update({ paciente_id: data.id, cidade: normalizedCity, updated_at: new Date().toISOString() })
-      .eq("id", lead.id);
-    onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
+    const isFirst = linkedPacientes.length === 0;
+    await supabase.from("crm_lead_pacientes").insert({
+      lead_id: lead.id, paciente_id: data.id, is_primary: isFirst,
+    });
+    if (isFirst) onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
+    await fetchAllLinks();
+
     setLinkOpen(false);
     setDuplicateOpen(false);
+    setNewPersonName("");
     toast.success("Paciente criado e vinculado!");
 
-    // Navigate to atendimento page with new patient data
     navigate("/atendimento", {
       state: {
         pacienteId: data.id,
-        pacienteNome: lead.name,
+        pacienteNome: nomeFinal,
         pacienteTelefone: stripCountryCode(lead.phone || ""),
       },
     });
   };
 
-  const linkExistingFromDuplicate = async (pacienteId: string) => {
-    setDuplicateOpen(false);
-    await linkPaciente(pacienteId);
-  };
-
-  const goToAtendimento = () => {
+  const goToAtendimentoForPaciente = (p: LinkedPaciente) => {
     navigate("/atendimento", {
-      state: {
-        pacienteId: lead.paciente_id,
-        pacienteNome: paciente?.nome,
-        pacienteTelefone: paciente?.telefone,
-      },
+      state: { pacienteId: p.id, pacienteNome: p.nome, pacienteTelefone: p.telefone },
     });
   };
 
@@ -288,7 +296,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         <span className="text-xs font-medium text-muted-foreground uppercase">Orçamento & Valor</span>
       </div>
 
-      {/* City selector - always visible */}
+      {/* City selector */}
       <div className="mb-3">
         <div className="flex items-center gap-1 mb-1">
           <MapPin size={12} className="text-muted-foreground" />
@@ -301,21 +309,64 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value={EMPTY_CITY_VALUE}>Sem localização</option>
-          {CIDADES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
+          {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
         </select>
       </div>
 
-      {lead.paciente_id && paciente ? (
+      {linkedPacientes.length > 0 ? (
         <div className="space-y-2">
-          <div className="p-2 bg-secondary/50 rounded text-sm">
-            <p className="font-medium text-foreground">{paciente.nome}</p>
-            <p className="text-xs text-muted-foreground">{paciente.telefone}</p>
+          {/* List all linked patients */}
+          <div className="space-y-1">
+            {linkedPacientes.map((p) => (
+              <div key={p.link_id} className="p-2 bg-secondary/50 rounded text-sm group">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1">
+                      {p.is_primary && <Star size={12} className="text-primary fill-primary flex-shrink-0" />}
+                      <button
+                        onClick={() => goToAtendimentoForPaciente(p)}
+                        className="font-medium text-foreground truncate hover:text-primary text-left"
+                        title="Abrir no atendimento"
+                      >
+                        {p.nome}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{p.telefone}</p>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {!p.is_primary && (
+                      <button
+                        onClick={() => setAsPrimary(p.link_id, p.id)}
+                        className="text-xs text-muted-foreground hover:text-primary"
+                        title="Definir como principal"
+                      >
+                        <Star size={12} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => removeLink(p.link_id)}
+                      className="text-muted-foreground hover:text-destructive"
+                      title="Remover vínculo"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* Payment totals */}
-          <div className="flex items-center justify-between">
+          {/* Add another person with same phone */}
+          <Button
+            size="sm" variant="ghost"
+            className="w-full text-xs h-7 text-muted-foreground hover:text-primary"
+            onClick={() => { setLinkOpen(true); setSearchTerm(stripCountryCode(lead.phone || "")); setSearchResults([]); setNewPersonName(""); }}
+          >
+            <UserPlus size={12} className="mr-1" /> Adicionar outra pessoa com este telefone
+          </Button>
+
+          {/* Payment totals (combined across all linked patients) */}
+          <div className="flex items-center justify-between pt-2 border-t border-border">
             <div>
               <span className="text-xs text-muted-foreground">Valor Contratado (pago)</span>
               <p className="text-primary font-bold text-lg">{formatCurrency(totalPaid)}</p>
@@ -326,14 +377,11 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
             </div>
           </div>
 
-          {/* Budget list with contracted values */}
           {orcamentos.length > 0 && (
             <div className="space-y-1">
               {orcamentos.map(o => (
                 <div key={o.id} className="flex items-center justify-between text-xs p-1.5 bg-muted/30 rounded">
-                  <span className="text-muted-foreground">
-                    Orç. {formatCurrency(o.valor_orcado)}
-                  </span>
+                  <span className="text-muted-foreground">Orç. {formatCurrency(o.valor_orcado)}</span>
                   <span className={o.valor_pago > 0 ? "text-primary font-medium" : "text-muted-foreground"}>
                     Pago: {formatCurrency(o.valor_pago)}
                   </span>
@@ -342,7 +390,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
             </div>
           )}
 
-          <Button size="sm" variant="outline" className="w-full" onClick={goToAtendimento}>
+          <Button size="sm" variant="outline" className="w-full" onClick={() => goToAtendimentoForPaciente(linkedPacientes[0])}>
             <Plus size={14} className="mr-1" /> Novo Orçamento / Atendimento
             <ExternalLink size={12} className="ml-auto" />
           </Button>
@@ -350,7 +398,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       ) : (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">Nenhum paciente vinculado</p>
-          <Button size="sm" variant="outline" className="w-full" onClick={() => { setLinkOpen(true); setSearchTerm(stripCountryCode(lead.phone || "") || lead.name); setSearchResults([]); }}>
+          <Button size="sm" variant="outline" className="w-full" onClick={() => { setLinkOpen(true); setSearchTerm(stripCountryCode(lead.phone || "") || lead.name); setSearchResults([]); setNewPersonName(""); }}>
             <UserPlus size={14} className="mr-1" /> Vincular Paciente
           </Button>
         </div>
@@ -360,7 +408,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Vincular Paciente</DialogTitle>
-            <DialogDescription>Busque um paciente existente ou crie um novo com os dados do lead.</DialogDescription>
+            <DialogDescription>Busque um existente, ou crie uma nova pessoa (ex: familiar com o mesmo número).</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex gap-2">
@@ -370,23 +418,26 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                 placeholder="Buscar por nome ou telefone..."
                 onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
               />
-              <Button size="sm" onClick={handleSearch} disabled={searching}>
-                <Search size={14} />
-              </Button>
+              <Button size="sm" onClick={handleSearch} disabled={searching}><Search size={14} /></Button>
             </div>
 
             {searchResults.length > 0 && (
               <div className="max-h-48 overflow-y-auto space-y-1">
-                {searchResults.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => linkPaciente(p.id)}
-                    className="w-full text-left p-2 rounded hover:bg-secondary transition-colors text-sm"
-                  >
-                    <span className="font-medium text-foreground">{p.nome}</span>
-                    <span className="text-muted-foreground ml-2">{p.telefone}</span>
-                  </button>
-                ))}
+                {searchResults.map((p) => {
+                  const already = linkedPacientes.some((lp) => lp.id === p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => !already && addPacienteLink(p.id, false)}
+                      disabled={already}
+                      className="w-full text-left p-2 rounded hover:bg-secondary transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="font-medium text-foreground">{p.nome}</span>
+                      <span className="text-muted-foreground ml-2">{p.telefone}</span>
+                      {already && <span className="text-xs text-primary ml-2">(já vinculado)</span>}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
@@ -394,31 +445,36 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
               <p className="text-sm text-muted-foreground text-center">Nenhum paciente encontrado.</p>
             )}
 
-            {/* City selection before creating */}
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Cidade do Lead</label>
-              <select
-                value={cidade}
-                onChange={(e) => setCidade(e.target.value)}
-                className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value={EMPTY_CITY_VALUE}>Sem localização</option>
-                {CIDADES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+            <div className="border-t border-border pt-3 space-y-2">
+              <label className="text-xs font-medium text-foreground">Ou criar nova pessoa</label>
+              <Input
+                value={newPersonName}
+                onChange={(e) => setNewPersonName(e.target.value)}
+                placeholder={`Nome (padrão: ${lead.name})`}
+              />
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Cidade</label>
+                <select
+                  value={cidade}
+                  onChange={(e) => setCidade(e.target.value)}
+                  className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
+                >
+                  <option value={EMPTY_CITY_VALUE}>Sem localização</option>
+                  {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                </select>
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setLinkOpen(false)}>Cancelar</Button>
             <Button onClick={() => createAndLinkPaciente(false)}>
-              <UserPlus size={14} className="mr-1" /> Criar Paciente com Dados do Lead
+              <UserPlus size={14} className="mr-1" /> Criar e Vincular
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Duplicate phone confirmation dialog */}
+      {/* Duplicate phone confirmation */}
       <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -428,17 +484,20 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 max-h-60 overflow-y-auto">
-            {duplicates.map((p) => (
-              <div key={p.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-secondary/50">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
-                  <p className="text-xs text-muted-foreground truncate">{p.telefone}{p.cidade ? ` · ${p.cidade}` : ""}</p>
+            {duplicates.map((p) => {
+              const already = linkedPacientes.some((lp) => lp.id === p.id);
+              return (
+                <div key={p.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-secondary/50">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
+                    <p className="text-xs text-muted-foreground truncate">{p.telefone}{p.cidade ? ` · ${p.cidade}` : ""}</p>
+                  </div>
+                  <Button size="sm" variant="outline" disabled={already} onClick={() => addPacienteLink(p.id, false)}>
+                    {already ? "Já vinculado" : "Vincular"}
+                  </Button>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => linkExistingFromDuplicate(p.id)}>
-                  Vincular
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setDuplicateOpen(false)}>Cancelar</Button>

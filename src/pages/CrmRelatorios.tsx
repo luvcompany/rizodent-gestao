@@ -907,8 +907,8 @@ function AcoesPorDiaTab({
           </div>
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
             <span className="text-sm text-muted-foreground">Consegui agendar</span>
-            <span className="text-4xl font-bold text-green-600">{agendadosDosQueFalaram.size}</span>
-            <span className="text-xs text-muted-foreground">Dos que falaram, foram movidos para etapa Agendado</span>
+            <span className="text-4xl font-bold text-green-600">{agendadosDia.size}</span>
+            <span className="text-xs text-muted-foreground">Total de leads movidos para etapa Agendado neste dia</span>
           </div>
         </div>
 
