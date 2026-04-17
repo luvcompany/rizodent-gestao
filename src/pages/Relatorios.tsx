@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileBarChart, Download, Share2, MessageCircle, Mail, Calendar, TrendingUp, Filter, DollarSign, Users, Stethoscope, Megaphone, Eye, ArrowLeft, CreditCard } from "lucide-react";
+import { FileBarChart, Download, Share2, MessageCircle, Mail, Calendar, TrendingUp, Filter, DollarSign, Users, Stethoscope, Megaphone, Eye, ArrowLeft, CreditCard, Activity, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -314,6 +314,110 @@ const Relatorios = () => {
     };
   }, [pacientes, filteredOrcamentos, filteredPagamentos]);
 
+  // ========== ATIVIDADE RECENTE (Pagamentos + Atualizações) ==========
+  const recentActivity = useMemo(() => {
+    const items: Array<{
+      id: string;
+      tipo: "pagamento" | "orcamento_novo" | "orcamento_atualizado" | "tratamento_novo" | "tratamento_atualizado" | "paciente_novo" | "paciente_atualizado";
+      timestamp: string;
+      titulo: string;
+      descricao: string;
+      pacienteId?: string;
+      pacienteNome?: string;
+      valor?: number;
+    }> = [];
+
+    pagamentos.forEach((p) => {
+      items.push({
+        id: `pg-${p.id}`,
+        tipo: "pagamento",
+        timestamp: p.created_at,
+        titulo: "Pagamento registrado",
+        descricao: `${p.forma_pagamento || "—"} • ${p.tipo === "primeiro" ? "Novo" : "Recorrente"}`,
+        pacienteId: p.paciente_id,
+        pacienteNome: p.pacientes?.nome,
+        valor: Number(p.valor),
+      });
+    });
+
+    orcamentos.forEach((o) => {
+      const pac = pacientes.find((x) => x.id === o.paciente_id);
+      items.push({
+        id: `or-${o.id}-c`,
+        tipo: "orcamento_novo",
+        timestamp: o.created_at,
+        titulo: "Orçamento criado",
+        descricao: `Status: ${o.status}`,
+        pacienteId: o.paciente_id,
+        pacienteNome: pac?.nome,
+        valor: Number(o.valor_orcado || 0),
+      });
+      if (o.updated_at && o.updated_at !== o.created_at) {
+        items.push({
+          id: `or-${o.id}-u`,
+          tipo: "orcamento_atualizado",
+          timestamp: o.updated_at,
+          titulo: "Orçamento atualizado",
+          descricao: `Status: ${o.status}`,
+          pacienteId: o.paciente_id,
+          pacienteNome: pac?.nome,
+          valor: Number(o.valor_orcado || 0),
+        });
+      }
+    });
+
+    tratamentos.forEach((t) => {
+      items.push({
+        id: `tr-${t.id}-c`,
+        tipo: "tratamento_novo",
+        timestamp: t.created_at,
+        titulo: "Tratamento criado",
+        descricao: `${t.procedimento}${t.especialidade ? ` • ${t.especialidade}` : ""}`,
+        pacienteId: t.paciente_id,
+        pacienteNome: t.pacientes?.nome,
+      });
+      if (t.updated_at && t.updated_at !== t.created_at) {
+        items.push({
+          id: `tr-${t.id}-u`,
+          tipo: "tratamento_atualizado",
+          timestamp: t.updated_at,
+          titulo: "Tratamento atualizado",
+          descricao: `${t.procedimento} • Status: ${t.status}`,
+          pacienteId: t.paciente_id,
+          pacienteNome: t.pacientes?.nome,
+        });
+      }
+    });
+
+    pacientes.forEach((p) => {
+      items.push({
+        id: `pc-${p.id}-c`,
+        tipo: "paciente_novo",
+        timestamp: p.created_at,
+        titulo: "Paciente cadastrado",
+        descricao: p.origem || "Origem não informada",
+        pacienteId: p.id,
+        pacienteNome: p.nome,
+      });
+      if (p.updated_at && p.updated_at !== p.created_at) {
+        items.push({
+          id: `pc-${p.id}-u`,
+          tipo: "paciente_atualizado",
+          timestamp: p.updated_at,
+          titulo: "Paciente atualizado",
+          descricao: p.cidade || "—",
+          pacienteId: p.id,
+          pacienteNome: p.nome,
+        });
+      }
+    });
+
+    return items
+      .filter((i) => !!i.timestamp)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 100);
+  }, [pagamentos, orcamentos, tratamentos, pacientes]);
+
   // ========== EXPORT HELPERS ==========
   const exportToExcel = (data: any[], filename: string) => {
     const ws = XLSX.utils.json_to_sheet(data);
@@ -366,6 +470,7 @@ const Relatorios = () => {
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
   const reportTypes = [
+    { key: "atividade", label: "Atividade Recente", desc: "Últimos pagamentos e atualizações com data e horário exatos", icon: Activity },
     { key: "completo", label: "Relatório Completo", desc: "Visão consolidada com todos os dados e métricas", icon: FileBarChart },
     { key: "contratado", label: "Orçado vs Contratado", desc: "Valores orçados versus contratados com lista de pacientes", icon: DollarSign },
     { key: "diario", label: "Relatório Diário", desc: "Faturamento e pagamentos por dia", icon: Calendar },
@@ -1016,6 +1121,98 @@ const Relatorios = () => {
                   </div>
                 </TabsContent>
               </Tabs>
+            </CardContent>
+          </Card>
+        );
+      }
+
+      case "atividade": {
+        const tipoLabel: Record<string, { label: string; className: string }> = {
+          pagamento: { label: "Pagamento", className: "bg-primary/10 text-primary border-primary/30" },
+          orcamento_novo: { label: "Orçamento novo", className: "bg-secondary" },
+          orcamento_atualizado: { label: "Orçamento atualizado", className: "bg-secondary" },
+          tratamento_novo: { label: "Tratamento novo", className: "bg-secondary" },
+          tratamento_atualizado: { label: "Tratamento atualizado", className: "bg-secondary" },
+          paciente_novo: { label: "Paciente novo", className: "bg-secondary" },
+          paciente_atualizado: { label: "Paciente atualizado", className: "bg-secondary" },
+        };
+        return (
+          <Card className="gradient-card border-border shadow-card">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity size={18} className="text-primary" /> Atividade Recente
+              </CardTitle>
+              <ShareButtons
+                title="Atividade Recente"
+                data={recentActivity.map((i) => ({
+                  data_hora: new Date(i.timestamp).toLocaleString("pt-BR"),
+                  tipo: tipoLabel[i.tipo]?.label || i.tipo,
+                  paciente: i.pacienteNome || "—",
+                  detalhe: i.descricao,
+                  valor: i.valor ? formatCurrency(i.valor) : "",
+                }))}
+                getSummary={() =>
+                  recentActivity.slice(0, 10).map((i) =>
+                    `${new Date(i.timestamp).toLocaleString("pt-BR")} • ${tipoLabel[i.tipo]?.label} • ${i.pacienteNome || "—"}${i.valor ? ` • ${formatCurrency(i.valor)}` : ""}`
+                  ).join("\n")
+                }
+              />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1">
+                <Clock size={12} /> Mostrando os 100 eventos mais recentes (todos os períodos)
+              </p>
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data e hora</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Detalhe</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recentActivity.map((i) => {
+                      const dt = new Date(i.timestamp);
+                      const data = dt.toLocaleDateString("pt-BR");
+                      const hora = dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                      return (
+                        <TableRow
+                          key={i.id}
+                          className={i.pacienteId ? "cursor-pointer hover:bg-muted/50" : ""}
+                          onClick={() => i.pacienteId && navigate(`/pacientes/${i.pacienteId}`)}
+                        >
+                          <TableCell className="whitespace-nowrap">
+                            <div className="font-medium">{data}</div>
+                            <div className="text-xs text-muted-foreground">{hora}</div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={tipoLabel[i.tipo]?.className}>
+                              {tipoLabel[i.tipo]?.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium text-primary hover:underline">
+                            {i.pacienteNome || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{i.descricao}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {i.valor ? formatCurrency(i.valor) : "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {recentActivity.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                          Nenhuma atividade recente
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         );
