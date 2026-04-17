@@ -314,6 +314,110 @@ const Relatorios = () => {
     };
   }, [pacientes, filteredOrcamentos, filteredPagamentos]);
 
+  // ========== ATIVIDADE RECENTE (Pagamentos + Atualizações) ==========
+  const recentActivity = useMemo(() => {
+    const items: Array<{
+      id: string;
+      tipo: "pagamento" | "orcamento_novo" | "orcamento_atualizado" | "tratamento_novo" | "tratamento_atualizado" | "paciente_novo" | "paciente_atualizado";
+      timestamp: string;
+      titulo: string;
+      descricao: string;
+      pacienteId?: string;
+      pacienteNome?: string;
+      valor?: number;
+    }> = [];
+
+    pagamentos.forEach((p) => {
+      items.push({
+        id: `pg-${p.id}`,
+        tipo: "pagamento",
+        timestamp: p.created_at,
+        titulo: "Pagamento registrado",
+        descricao: `${p.forma_pagamento || "—"} • ${p.tipo === "primeiro" ? "Novo" : "Recorrente"}`,
+        pacienteId: p.paciente_id,
+        pacienteNome: p.pacientes?.nome,
+        valor: Number(p.valor),
+      });
+    });
+
+    orcamentos.forEach((o) => {
+      const pac = pacientes.find((x) => x.id === o.paciente_id);
+      items.push({
+        id: `or-${o.id}-c`,
+        tipo: "orcamento_novo",
+        timestamp: o.created_at,
+        titulo: "Orçamento criado",
+        descricao: `Status: ${o.status}`,
+        pacienteId: o.paciente_id,
+        pacienteNome: pac?.nome,
+        valor: Number(o.valor_orcado || 0),
+      });
+      if (o.updated_at && o.updated_at !== o.created_at) {
+        items.push({
+          id: `or-${o.id}-u`,
+          tipo: "orcamento_atualizado",
+          timestamp: o.updated_at,
+          titulo: "Orçamento atualizado",
+          descricao: `Status: ${o.status}`,
+          pacienteId: o.paciente_id,
+          pacienteNome: pac?.nome,
+          valor: Number(o.valor_orcado || 0),
+        });
+      }
+    });
+
+    tratamentos.forEach((t) => {
+      items.push({
+        id: `tr-${t.id}-c`,
+        tipo: "tratamento_novo",
+        timestamp: t.created_at,
+        titulo: "Tratamento criado",
+        descricao: `${t.procedimento}${t.especialidade ? ` • ${t.especialidade}` : ""}`,
+        pacienteId: t.paciente_id,
+        pacienteNome: t.pacientes?.nome,
+      });
+      if (t.updated_at && t.updated_at !== t.created_at) {
+        items.push({
+          id: `tr-${t.id}-u`,
+          tipo: "tratamento_atualizado",
+          timestamp: t.updated_at,
+          titulo: "Tratamento atualizado",
+          descricao: `${t.procedimento} • Status: ${t.status}`,
+          pacienteId: t.paciente_id,
+          pacienteNome: t.pacientes?.nome,
+        });
+      }
+    });
+
+    pacientes.forEach((p) => {
+      items.push({
+        id: `pc-${p.id}-c`,
+        tipo: "paciente_novo",
+        timestamp: p.created_at,
+        titulo: "Paciente cadastrado",
+        descricao: p.origem || "Origem não informada",
+        pacienteId: p.id,
+        pacienteNome: p.nome,
+      });
+      if (p.updated_at && p.updated_at !== p.created_at) {
+        items.push({
+          id: `pc-${p.id}-u`,
+          tipo: "paciente_atualizado",
+          timestamp: p.updated_at,
+          titulo: "Paciente atualizado",
+          descricao: p.cidade || "—",
+          pacienteId: p.id,
+          pacienteNome: p.nome,
+        });
+      }
+    });
+
+    return items
+      .filter((i) => !!i.timestamp)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 100);
+  }, [pagamentos, orcamentos, tratamentos, pacientes]);
+
   // ========== EXPORT HELPERS ==========
   const exportToExcel = (data: any[], filename: string) => {
     const ws = XLSX.utils.json_to_sheet(data);
