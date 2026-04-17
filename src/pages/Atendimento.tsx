@@ -133,8 +133,8 @@ const Atendimento = () => {
     setSugestoes([]);
     setValorPago("");
     setValorOrcadoGeral("");
-    setValorContratadoGeral("");
     setProcedimentos([createEmptyProcedimento()]);
+    setPagamentosLista([createEmptyPagamento()]);
     setClinicaId("");
     setModo("selecionar");
 
