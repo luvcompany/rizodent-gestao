@@ -286,12 +286,10 @@ const Dashboard = () => {
     const days: { dia: string; leads: number }[] = [];
     const current = new Date(start);
     while (current <= end) {
-      if (current.getDay() !== 0) {
-        const dateStr = current.toISOString().split("T")[0];
-        if (isInSelectedRanges(dateStr)) {
-          const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-          days.push({ dia: label, leads: leadsMap.get(dateStr) || 0 });
-        }
+      const dateStr = current.toISOString().split("T")[0];
+      if (isWorkingDay(current, dateStr) && isInSelectedRanges(dateStr)) {
+        const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+        days.push({ dia: label, leads: leadsMap.get(dateStr) || 0 });
       }
       current.setDate(current.getDate() + 1);
     }
