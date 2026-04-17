@@ -44,12 +44,34 @@ interface ProcedimentoEntry {
   id: string;
   procedimento: string;
   especialidade: string;
+  valorContratado: string;
 }
 
 const createEmptyProcedimento = (): ProcedimentoEntry => ({
   id: crypto.randomUUID(),
   procedimento: "",
   especialidade: "",
+  valorContratado: "",
+});
+
+type PagamentoModo = "existente" | "novo";
+
+interface PagamentoEntry {
+  id: string;
+  modo: PagamentoModo;
+  tratamentoId: string; // when modo === "existente"
+  procedimento: string; // when modo === "novo"
+  especialidade: string; // when modo === "novo"
+  valor: string;
+}
+
+const createEmptyPagamento = (): PagamentoEntry => ({
+  id: crypto.randomUUID(),
+  modo: "existente",
+  tratamentoId: "",
+  procedimento: "",
+  especialidade: "",
+  valor: "",
 });
 
 const Atendimento = () => {
@@ -62,8 +84,9 @@ const Atendimento = () => {
   const [clinicaId, setClinicaId] = useState("");
   const [cidade, setCidade] = useState("");
   const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
+  const [pagamentosLista, setPagamentosLista] = useState<PagamentoEntry[]>([createEmptyPagamento()]);
+  const [pagamentosPorTratamento, setPagamentosPorTratamento] = useState<Record<string, number>>({});
   const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
-  const [valorContratadoGeral, setValorContratadoGeral] = useState("");
   const [origem, setOrigem] = useState("");
   const [valorPago, setValorPago] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("primeiro");
@@ -110,8 +133,8 @@ const Atendimento = () => {
     setSugestoes([]);
     setValorPago("");
     setValorOrcadoGeral("");
-    setValorContratadoGeral("");
     setProcedimentos([createEmptyProcedimento()]);
+    setPagamentosLista([createEmptyPagamento()]);
     setClinicaId("");
     setModo("selecionar");
 
@@ -179,8 +202,14 @@ const Atendimento = () => {
     const [{ data: orcs }, { data: trats }, { data: pags }] = await Promise.all([
       supabase.from("orcamentos").select("*").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
       supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
-      supabase.from("pagamentos").select("valor, orcamento_id").eq("paciente_id", pacienteId),
+      supabase.from("pagamentos").select("valor, orcamento_id, tratamento_id").eq("paciente_id", pacienteId),
     ]);
+
+    const tratPagMap: Record<string, number> = {};
+    (pags || []).forEach((p: any) => {
+      if (p.tratamento_id) tratPagMap[p.tratamento_id] = (tratPagMap[p.tratamento_id] || 0) + Number(p.valor || 0);
+    });
+    setPagamentosPorTratamento(tratPagMap);
 
     if (trats) {
       setTratamentosExistentes(trats);
@@ -229,6 +258,40 @@ const Atendimento = () => {
       const cl = clinicas.find(c => c.id === tratamentosExistentes[0].clinica_id);
       if (cl) setCidade(cl.cidade);
     }
+    // Pre-fill first payment with first treatment of selected orcamento
+    const orcTrats = orcamentoSelecionado
+      ? tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id)
+      : [];
+    setPagamentosLista([
+      {
+        ...createEmptyPagamento(),
+        tratamentoId: orcTrats[0]?.id || "",
+      },
+    ]);
+  };
+
+  const updatePagamentoEntry = (index: number, field: keyof PagamentoEntry, value: string) => {
+    setPagamentosLista(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      if (field === "procedimento") {
+        const tp = tiposProcedimento.find(t => t.nome === value);
+        if (tp && tp.especialidade && !tp.especialidade_secundaria) {
+          updated[index].especialidade = tp.especialidade;
+        } else {
+          updated[index].especialidade = "";
+        }
+      }
+      return updated;
+    });
+  };
+
+  const addPagamentoEntry = () => {
+    setPagamentosLista(prev => [...prev, createEmptyPagamento()]);
+  };
+
+  const removePagamentoEntry = (index: number) => {
+    setPagamentosLista(prev => prev.length <= 1 ? prev : prev.filter((_, i) => i !== index));
   };
 
   const iniciarNovoTratamento = () => {
@@ -244,7 +307,8 @@ const Atendimento = () => {
     setValorPago(""); setTipoPagamento("primeiro");
     setOrigem(""); setNomeAnuncio(""); setOrigemOutrosDesc(""); setPacienteSelecionadoId(null);
     setDataPagamento(new Date().toISOString().split("T")[0]);
-    setValorOrcadoGeral(""); setValorContratadoGeral("");
+    setValorOrcadoGeral("");
+    setPagamentosLista([createEmptyPagamento()]);
     setModo("selecionar");
     setTotalPagoExistente(0);
     setTotalOrcadoExistente(0);
@@ -282,18 +346,38 @@ const Atendimento = () => {
     e.preventDefault();
 
     if (modo === "novo_pagamento") {
-      if (!valorPago || parseCurrency(valorPago) <= 0) {
-        toast.error("Preencha o valor do pagamento.");
-        return;
-      }
-
       if (!orcamentoSelecionado) {
         toast.error("Selecione um orçamento para registrar o pagamento.");
         return;
       }
 
-      const valorNovoPagamento = parseCurrency(valorPago);
-      const novoTotalContratado = totalPagoExistente + valorNovoPagamento;
+      // Validate each entry
+      for (let i = 0; i < pagamentosLista.length; i++) {
+        const p = pagamentosLista[i];
+        const v = parseCurrency(p.valor);
+        if (v <= 0) {
+          toast.error(`Preencha o valor do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
+          return;
+        }
+        if (p.modo === "existente" && !p.tratamentoId) {
+          toast.error(`Selecione o procedimento do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
+          return;
+        }
+        if (p.modo === "novo") {
+          if (!p.procedimento) {
+            toast.error(`Selecione o novo procedimento do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
+            return;
+          }
+          const espDisp = getEspecialidadesDisponiveis(p.procedimento);
+          if (espDisp.length > 0 && !p.especialidade) {
+            toast.error(`Selecione a especialidade do novo procedimento.`);
+            return;
+          }
+        }
+      }
+
+      const totalNovos = pagamentosLista.reduce((s, p) => s + parseCurrency(p.valor), 0);
+      const novoTotalContratado = totalPagoExistente + totalNovos;
 
       if (novoTotalContratado > totalOrcadoExistente) {
         toast.error(`O valor total contratado (${formatCurrencyDisplay(novoTotalContratado)}) ultrapassaria o valor orçado (${formatCurrencyDisplay(totalOrcadoExistente)}).`);
@@ -303,32 +387,51 @@ const Atendimento = () => {
       setSaving(true);
       try {
         const tipo = tipoPagamento;
-        // Link to first treatment of the selected orcamento
-        const orcTrats = tratamentosExistentes.filter(t => t.orcamento_id === orcamentoSelecionado.id);
-        const tratamentoId = orcTrats[0]?.id || tratamentosExistentes[0]?.id;
-        if (!tratamentoId) throw new Error("Nenhum tratamento encontrado.");
+        const targetClinicaId = clinicaId || tratamentosExistentes[0]?.clinica_id;
 
-        const { error: pagError } = await supabase
-          .from("pagamentos")
-          .insert({
-            tratamento_id: tratamentoId,
-            paciente_id: pacienteSelecionadoId!,
-            clinica_id: clinicaId || tratamentosExistentes[0].clinica_id,
-            valor: valorNovoPagamento,
-            forma_pagamento: "Não informado",
-            tipo,
-            data_pagamento: dataPagamento,
-            created_by: user?.id,
-            orcamento_id: orcamentoSelecionado.id,
-          });
-        if (pagError) throw pagError;
+        for (const p of pagamentosLista) {
+          let tratamentoId = p.tratamentoId;
 
-        // Check if orcamento is now complete
+          if (p.modo === "novo") {
+            const { data: trat, error: tratError } = await supabase
+              .from("tratamentos")
+              .insert({
+                paciente_id: pacienteSelecionadoId!,
+                clinica_id: targetClinicaId,
+                procedimento: p.procedimento,
+                especialidade: p.especialidade || null,
+                created_by: user?.id,
+                orcamento_id: orcamentoSelecionado.id,
+              })
+              .select("id")
+              .single();
+            if (tratError) throw tratError;
+            tratamentoId = trat.id;
+          }
+
+          if (!tratamentoId) throw new Error("Tratamento inválido.");
+
+          const { error: pagError } = await supabase
+            .from("pagamentos")
+            .insert({
+              tratamento_id: tratamentoId,
+              paciente_id: pacienteSelecionadoId!,
+              clinica_id: targetClinicaId,
+              valor: parseCurrency(p.valor),
+              forma_pagamento: "Não informado",
+              tipo,
+              data_pagamento: dataPagamento,
+              created_by: user?.id,
+              orcamento_id: orcamentoSelecionado.id,
+            });
+          if (pagError) throw pagError;
+        }
+
         if (novoTotalContratado >= totalOrcadoExistente) {
           await supabase.from("orcamentos").update({ status: "concluido" }).eq("id", orcamentoSelecionado.id);
         }
 
-        toast.success("Pagamento registrado com sucesso!");
+        toast.success(`${pagamentosLista.length > 1 ? `${pagamentosLista.length} pagamentos registrados` : "Pagamento registrado"} com sucesso!`);
         resetForm();
       } catch (err: any) {
         toast.error("Erro ao salvar: " + err.message);
@@ -363,7 +466,13 @@ const Atendimento = () => {
       let pacienteId = pacienteSelecionadoId;
 
       const totalOrcado = parseCurrency(valorOrcadoGeral);
-      const totalContratado = parseCurrency(valorContratadoGeral);
+      const totalContratado = procedimentos.reduce((s, p) => s + parseCurrency(p.valorContratado), 0);
+
+      if (totalOrcado > 0 && totalContratado > totalOrcado) {
+        toast.error(`O total contratado (${formatCurrencyDisplay(totalContratado)}) ultrapassa o valor orçado (${formatCurrencyDisplay(totalOrcado)}).`);
+        setSaving(false);
+        return;
+      }
 
       if (!pacienteId) {
         const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
@@ -389,10 +498,8 @@ const Atendimento = () => {
       if (orcError) throw orcError;
       const orcamentoId = newOrc.id;
 
-      // Create all treatments
-      let firstTratamentoId: string | null = null;
-      for (let i = 0; i < procedimentos.length; i++) {
-        const proc = procedimentos[i];
+      // Create treatments + per-procedure payments
+      for (const proc of procedimentos) {
         const { data: trat, error: tratError } = await supabase
           .from("tratamentos")
           .insert({
@@ -406,25 +513,24 @@ const Atendimento = () => {
           .select("id")
           .single();
         if (tratError) throw tratError;
-        if (i === 0) firstTratamentoId = trat.id;
-      }
 
-      // Register first payment if valor_contratado > 0
-      if (totalContratado > 0 && firstTratamentoId) {
-        const { error: pagError } = await supabase
-          .from("pagamentos")
-          .insert({
-            tratamento_id: firstTratamentoId,
-            paciente_id: pacienteId,
-            clinica_id: clinicaId,
-            valor: totalContratado,
-            forma_pagamento: "Não informado",
-            tipo: tipoPagamento,
-            data_pagamento: dataPagamento,
-            created_by: user?.id,
-            orcamento_id: orcamentoId,
-          });
-        if (pagError) throw pagError;
+        const valorProc = parseCurrency(proc.valorContratado);
+        if (valorProc > 0) {
+          const { error: pagError } = await supabase
+            .from("pagamentos")
+            .insert({
+              tratamento_id: trat.id,
+              paciente_id: pacienteId,
+              clinica_id: clinicaId,
+              valor: valorProc,
+              forma_pagamento: "Não informado",
+              tipo: tipoPagamento,
+              data_pagamento: dataPagamento,
+              created_by: user?.id,
+              orcamento_id: orcamentoId,
+            });
+          if (pagError) throw pagError;
+        }
       }
 
       toast.success(`${procedimentos.length > 1 ? `${procedimentos.length} procedimentos registrados` : "Atendimento registrado"} com sucesso!`);
@@ -696,6 +802,16 @@ const Atendimento = () => {
                               )}
                             </div>
                           </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Valor Contratado deste procedimento (R$)</Label>
+                            <Input
+                              inputMode="numeric"
+                              placeholder="R$ 0,00"
+                              value={proc.valorContratado}
+                              onChange={(e) => updateProcedimento(index, "valorContratado", formatCurrencyInput(e.target.value))}
+                              className="bg-secondary border-border"
+                            />
+                          </div>
                         </CardContent>
                       </Card>
                     );
@@ -703,60 +819,186 @@ const Atendimento = () => {
                 </div>
 
                 {/* Valores gerais do orçamento */}
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label>Valor Orçado (R$)</Label>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="R$ 0,00"
-                      value={valorOrcadoGeral}
-                      onChange={(e) => setValorOrcadoGeral(formatCurrencyInput(e.target.value))}
-                      className="bg-secondary border-border"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Valor Contratado (R$)</Label>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="R$ 0,00"
-                      value={valorContratadoGeral}
-                      onChange={(e) => setValorContratadoGeral(formatCurrencyInput(e.target.value))}
-                      className="bg-secondary border-border"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Não Contratado (R$)</Label>
-                    <Input readOnly value={formatCurrencyDisplay(Math.max(0, parseCurrency(valorOrcadoGeral) - parseCurrency(valorContratadoGeral)))} className="bg-muted border-border cursor-not-allowed text-sm" />
-                  </div>
-                </div>
+                {(() => {
+                  const totalOrc = parseCurrency(valorOrcadoGeral);
+                  const totalContr = procedimentos.reduce((s, p) => s + parseCurrency(p.valorContratado), 0);
+                  return (
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Valor Orçado total (R$)</Label>
+                        <Input
+                          inputMode="numeric"
+                          placeholder="R$ 0,00"
+                          value={valorOrcadoGeral}
+                          onChange={(e) => setValorOrcadoGeral(formatCurrencyInput(e.target.value))}
+                          className="bg-secondary border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Total Contratado (R$)</Label>
+                        <Input readOnly value={formatCurrencyDisplay(totalContr)} className="bg-muted border-border cursor-not-allowed text-sm" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Não Contratado (R$)</Label>
+                        <Input readOnly value={formatCurrencyDisplay(Math.max(0, totalOrc - totalContr))} className="bg-muted border-border cursor-not-allowed text-sm" />
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
             {/* Payment-only fields */}
             {showPagamentoFields && (
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Data do Pagamento</Label>
-                  <div className="relative">
-                    <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Data do Pagamento</Label>
+                    <div className="relative">
+                      <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipo de Pagamento</Label>
+                    <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
+                      <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
+                        <SelectItem value="recorrente">Recorrente</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Tipo de Pagamento</Label>
-                  <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
-                    <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
-                      <SelectItem value="recorrente">Recorrente</SelectItem>
-                    </SelectContent>
-                  </Select>
+
+                {/* Procedures already in the budget — quick reference */}
+                {orcamentoSelecionado && (() => {
+                  const orcTrats = tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id);
+                  if (orcTrats.length === 0) return null;
+                  return (
+                    <div className="rounded-lg border border-border bg-secondary/30 p-3">
+                      <p className="text-xs font-semibold text-muted-foreground mb-2">Procedimentos do orçamento</p>
+                      <div className="space-y-1">
+                        {orcTrats.map((t: any) => (
+                          <div key={t.id} className="flex items-center justify-between text-sm">
+                            <span>{t.procedimento}{t.especialidade ? ` · ${t.especialidade}` : ""}</span>
+                            <span className="text-xs text-primary font-medium">Pago: {formatCurrencyDisplay(pagamentosPorTratamento[t.id] || 0)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Dynamic payment list */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">Pagamentos</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addPagamentoEntry} className="gap-1 text-xs">
+                      <Plus size={14} /> Adicionar outro pagamento
+                    </Button>
+                  </div>
+
+                  {pagamentosLista.map((entry, index) => {
+                    const orcTrats = orcamentoSelecionado
+                      ? tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id)
+                      : [];
+                    const espDisp = getEspecialidadesDisponiveis(entry.procedimento);
+                    const temMultiplas = espDisp.length > 1;
+
+                    return (
+                      <Card key={entry.id} className="border-border bg-secondary/30">
+                        <CardContent className="pt-4 pb-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              Pagamento {pagamentosLista.length > 1 ? `${index + 1}` : ""}
+                            </span>
+                            {pagamentosLista.length > 1 && (
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removePagamentoEntry(index)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
+                                <Trash2 size={14} />
+                              </Button>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Tipo de procedimento</Label>
+                            <Select value={entry.modo} onValueChange={(v) => updatePagamentoEntry(index, "modo", v as PagamentoModo)}>
+                              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="existente">Procedimento já existente</SelectItem>
+                                <SelectItem value="novo">Novo procedimento</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {entry.modo === "existente" ? (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Procedimento</Label>
+                              <Select value={entry.tratamentoId} onValueChange={(v) => updatePagamentoEntry(index, "tratamentoId", v)}>
+                                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                <SelectContent>
+                                  {orcTrats.map((t: any) => (
+                                    <SelectItem key={t.id} value={t.id}>
+                                      {t.procedimento}{t.especialidade ? ` · ${t.especialidade}` : ""} (Pago: {formatCurrencyDisplay(pagamentosPorTratamento[t.id] || 0)})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : (
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Novo procedimento</Label>
+                                <Select value={entry.procedimento} onValueChange={(v) => updatePagamentoEntry(index, "procedimento", v)}>
+                                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                  <SelectContent>
+                                    {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Especialidade</Label>
+                                {temMultiplas ? (
+                                  <Select value={entry.especialidade} onValueChange={(v) => updatePagamentoEntry(index, "especialidade", v)}>
+                                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>
+                                      {espDisp.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input
+                                    readOnly
+                                    value={entry.especialidade || "Selecione um procedimento"}
+                                    className="bg-muted border-border cursor-not-allowed text-sm"
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Valor a pagar (R$)</Label>
+                            <Input
+                              inputMode="numeric"
+                              placeholder="R$ 0,00"
+                              value={entry.valor}
+                              onChange={(e) => updatePagamentoEntry(index, "valor", formatCurrencyInput(e.target.value))}
+                              className="bg-secondary border-border"
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+
+                  <div className="rounded-lg bg-secondary/30 p-3 text-sm flex items-center justify-between">
+                    <span className="text-muted-foreground">Total deste lançamento</span>
+                    <span className="font-semibold text-primary">
+                      {formatCurrencyDisplay(pagamentosLista.reduce((s, p) => s + parseCurrency(p.valor), 0))}
+                    </span>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Valor do Pagamento (R$)</Label>
-                  <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-                </div>
-              </div>
+              </>
             )}
 
             {/* New treatment: date + origin */}
