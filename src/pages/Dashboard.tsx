@@ -62,6 +62,7 @@ const Dashboard = () => {
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
   const [leadsData, setLeadsData] = useState<any[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
