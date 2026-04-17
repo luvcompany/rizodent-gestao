@@ -1,53 +1,44 @@
 
 
-## Plano: Funil de Ações do Dia (Movimentações de Etapa por Hoje)
+## Problemas e Solução
 
-### Objetivo
-Adicionar um **segundo funil** logo abaixo do funil atual ("Distribuição por Etapa") em `CrmRelatorios.tsx`, mostrando **quantos leads foram movidos para cada etapa hoje** — independente de quando o lead entrou no CRM.
+### 1. Vinculação de paciente não está sendo salva
+**Causa**: A política RLS de UPDATE em `crm_leads` exige que o usuário seja admin/gerente OU o `assigned_to` do lead. Como todos os 287 leads estão atribuídos ao usuário central "rizodent", qualquer atendente CRC tentando vincular falha silenciosamente (o `update()` retorna sem efeito).
 
-### Diferença entre os dois funis
-- **Funil atual (Distribuição)**: foto da coorte do período (onde os leads do período estão agora).
-- **Funil novo (Ações do Dia)**: quantas movimentações ocorreram **hoje** para cada etapa do funil selecionado, contando leads novos E antigos.
+**Fix**: Ampliar a política de UPDATE para permitir que qualquer usuário autenticado atualize leads (mantendo SELECT como está). Adicionar também tratamento de erro mais explícito no `linkPaciente`/`createAndLinkPaciente` mostrando a mensagem real do Supabase quando 0 linhas forem afetadas.
 
-### Fonte de dados
-Tabela `crm_lead_stage_history`:
-- `entered_at` entre `startOfDay(today)` e `endOfDay(today)`
-- `stage_id` pertence ao `selectedPipeline`
-- Contagem distinta de `lead_id` por `stage_id`
+### 2. Auto-vincular leads existentes a pacientes pelo telefone
+**Lógica**: Ao abrir um lead sem `paciente_id`, buscar automaticamente em `pacientes` usando assinatura dos últimos 8 dígitos do telefone (mesma lógica já usada no busca manual). Se houver match único → vincular automaticamente. Se houver múltiplos → apenas exibir lista para o usuário escolher.
 
-Adicionalmente, exibir 1 KPI acima do funil:
-- **Pessoas que falaram comigo hoje**: leads distintos com pelo menos 1 mensagem inbound (`messages.direction='inbound'`) com `created_at = hoje`.
+**Onde**: `LeadBudgetPanel.tsx`, dentro do `useEffect` que dispara quando `lead.paciente_id` é nulo.
 
-### Layout (logo após "Distribuição por Etapa")
+### 3. Faturamento do mês no CRM Kanban / Dashboard CRM = soma de `pagamentos` reais
+**Comportamento atual**: O card "Vendas concluídas (mês)" no Kanban soma `lead.value` dos leads na etapa "Contratado" cujo `updated_at` é do mês atual. Isso é impreciso pois `lead.value` é estático e não reflete pagamentos reais por mês.
+
+**Novo comportamento**:
+- Buscar todos os leads com `paciente_id` não nulo.
+- Buscar `pagamentos` (campos: `paciente_id`, `valor`, `data_pagamento`) cujo `data_pagamento` esteja no mês corrente (ou no range do filtro de data se aplicado).
+- Somar apenas os pagamentos dos pacientes vinculados a leads visíveis (respeitando filtros de usuário).
+- Exibir como "Faturamento do mês" no Kanban, substituindo a lógica baseada em `lead.value`.
+- Ao virar o mês, o valor zera automaticamente porque a query filtra por `data_pagamento` do mês atual.
+
+**Onde**: 
+- `src/pages/CrmKanban.tsx`: refatorar o cálculo de `vendasConcluidas` para fazer fetch de `pagamentos` filtrados pelo mês e somar por `paciente_id` dos leads visíveis.
+- `src/pages/CrmDashboard.tsx`: adicionar um KPI equivalente "Faturamento do mês" no topo, ao lado de "Leads Hoje".
+
+### Arquivos a alterar
+1. **Migração SQL**: ajustar política RLS UPDATE em `crm_leads`.
+2. **`src/components/chat/LeadBudgetPanel.tsx`**: auto-vincular paciente por telefone + tratamento de erro robusto.
+3. **`src/pages/CrmKanban.tsx`**: substituir lógica de "Vendas concluídas" por soma de `pagamentos` do mês via `paciente_id`.
+4. **`src/pages/CrmDashboard.tsx`**: adicionar KPI "Faturamento do mês" usando a mesma lógica.
+
+### Diagrama do novo cálculo
+
 ```text
-┌──────────────────────────────────────────────────┐
-│ Ações do Dia — [data de hoje]                    │
-│ Movimentações de etapa feitas hoje               │
-├──────────────────────────────────────────────────┤
-│ [KPI] X pessoas falaram comigo hoje              │
-│                                                   │
-│ [Funil visual]                                    │
-│   Agendado:        12                             │
-│   Relacionamento:   8                             │
-│   Follow-up:       10                             │
-│   Desqualificado:  10                             │
-│   ...                                             │
-└──────────────────────────────────────────────────┘
+Lead (CRM) ──paciente_id──> Paciente
+                              │
+                              └──> Pagamentos (filtrar data_pagamento no mês)
+                                       │
+                                       └─ SUM(valor) = Faturamento do mês
 ```
-
-Reutiliza o componente `DashboardFunnel` já usado na página, mantendo cores das etapas (`stage.color`).
-
-### Implementação técnica
-1. Em `CrmRelatorios.tsx`, adicionar query para `crm_lead_stage_history` filtrada por:
-   - `entered_at >= startOfDay(now)` e `<= endOfDay(now)`
-   - `stage_id IN (stages do pipeline selecionado)`
-2. Agregar `count(distinct lead_id)` por `stage_id`.
-3. Para o KPI de "falaram comigo hoje": query em `messages` com `direction='inbound'`, `created_at` no dia, joinando com `crm_leads.pipeline_id = selectedPipeline`. Contar `distinct lead_id`.
-4. Adicionar bloco JSX entre o funil de distribuição atual e a seção "Agenda por Etapa".
-
-### Arquivo a editar
-- `src/pages/CrmRelatorios.tsx`
-
-### Observação
-O bloco usa **sempre "hoje"** (ignora o filtro de período do topo), pois é explicitamente um relatório do dia. Indicar isso no subtítulo do bloco.
 
