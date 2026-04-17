@@ -266,13 +266,15 @@ const Dashboard = () => {
     while (current <= end) {
       if (current.getDay() !== 0) {
         const dateStr = current.toISOString().split("T")[0];
-        const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-        days.push({ dia: label, leads: leadsMap.get(dateStr) || 0 });
+        if (isInSelectedRanges(dateStr)) {
+          const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+          days.push({ dia: label, leads: leadsMap.get(dateStr) || 0 });
+        }
       }
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.leads, useMonthlyChart]);
+  }, [dateFrom, dateTo, filtered.leads, useMonthlyChart, rangeBounds]);
 
   // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
   const fatClinicaRaw = clinicas.map((c) => {
