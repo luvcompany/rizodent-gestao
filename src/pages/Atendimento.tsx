@@ -86,6 +86,7 @@ const Atendimento = () => {
   const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
   const [pagamentosLista, setPagamentosLista] = useState<PagamentoEntry[]>([createEmptyPagamento()]);
   const [pagamentosPorTratamento, setPagamentosPorTratamento] = useState<Record<string, number>>({});
+  const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
   const [origem, setOrigem] = useState("");
   const [valorPago, setValorPago] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("primeiro");
