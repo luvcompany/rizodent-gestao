@@ -202,8 +202,14 @@ const Atendimento = () => {
     const [{ data: orcs }, { data: trats }, { data: pags }] = await Promise.all([
       supabase.from("orcamentos").select("*").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
       supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
-      supabase.from("pagamentos").select("valor, orcamento_id").eq("paciente_id", pacienteId),
+      supabase.from("pagamentos").select("valor, orcamento_id, tratamento_id").eq("paciente_id", pacienteId),
     ]);
+
+    const tratPagMap: Record<string, number> = {};
+    (pags || []).forEach((p: any) => {
+      if (p.tratamento_id) tratPagMap[p.tratamento_id] = (tratPagMap[p.tratamento_id] || 0) + Number(p.valor || 0);
+    });
+    setPagamentosPorTratamento(tratPagMap);
 
     if (trats) {
       setTratamentosExistentes(trats);
