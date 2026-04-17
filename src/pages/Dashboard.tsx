@@ -428,7 +428,10 @@ const Dashboard = () => {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Visão geral do desempenho</p>
         </div>
-        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+        <div className="flex items-center gap-2">
+          <HolidaysManager clinicas={clinicas} onChange={fetchHolidays} />
+          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+        </div>
       </div>
 
       {/* Filters */}
