@@ -134,13 +134,20 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     setSearching(true);
     const cleanSearch = searchTerm.replace(/\D/g, "");
     const isPhoneSearch = cleanSearch.length >= 4;
-    const { data } = await supabase
-      .from("pacientes")
-      .select("id, nome, telefone, email, cidade")
-      .or(isPhoneSearch
-        ? `telefone.ilike.%${cleanSearch}%,nome.ilike.%${searchTerm}%`
-        : `nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`)
-      .limit(10);
+
+    let query = supabase.from("pacientes").select("id, nome, telefone, email, cidade").limit(20);
+
+    if (isPhoneSearch) {
+      // Use os últimos 8 dígitos como assinatura — independente de 55, DDD ou 9 extra
+      const tail = cleanSearch.slice(-8);
+      // Inserir wildcards entre dígitos para casar telefones com máscara: (77) 98805-816
+      const pattern = "%" + tail.split("").join("%") + "%";
+      query = query.or(`telefone.ilike.${pattern},nome.ilike.%${searchTerm}%`);
+    } else {
+      query = query.or(`nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`);
+    }
+
+    const { data } = await query;
     setSearchResults(data || []);
     setSearching(false);
   };
