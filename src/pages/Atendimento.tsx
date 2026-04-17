@@ -387,7 +387,13 @@ const Atendimento = () => {
       let pacienteId = pacienteSelecionadoId;
 
       const totalOrcado = parseCurrency(valorOrcadoGeral);
-      const totalContratado = parseCurrency(valorContratadoGeral);
+      const totalContratado = procedimentos.reduce((s, p) => s + parseCurrency(p.valorContratado), 0);
+
+      if (totalOrcado > 0 && totalContratado > totalOrcado) {
+        toast.error(`O total contratado (${formatCurrencyDisplay(totalContratado)}) ultrapassa o valor orçado (${formatCurrencyDisplay(totalOrcado)}).`);
+        setSaving(false);
+        return;
+      }
 
       if (!pacienteId) {
         const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
@@ -413,10 +419,8 @@ const Atendimento = () => {
       if (orcError) throw orcError;
       const orcamentoId = newOrc.id;
 
-      // Create all treatments
-      let firstTratamentoId: string | null = null;
-      for (let i = 0; i < procedimentos.length; i++) {
-        const proc = procedimentos[i];
+      // Create treatments + per-procedure payments
+      for (const proc of procedimentos) {
         const { data: trat, error: tratError } = await supabase
           .from("tratamentos")
           .insert({
@@ -430,25 +434,24 @@ const Atendimento = () => {
           .select("id")
           .single();
         if (tratError) throw tratError;
-        if (i === 0) firstTratamentoId = trat.id;
-      }
 
-      // Register first payment if valor_contratado > 0
-      if (totalContratado > 0 && firstTratamentoId) {
-        const { error: pagError } = await supabase
-          .from("pagamentos")
-          .insert({
-            tratamento_id: firstTratamentoId,
-            paciente_id: pacienteId,
-            clinica_id: clinicaId,
-            valor: totalContratado,
-            forma_pagamento: "Não informado",
-            tipo: tipoPagamento,
-            data_pagamento: dataPagamento,
-            created_by: user?.id,
-            orcamento_id: orcamentoId,
-          });
-        if (pagError) throw pagError;
+        const valorProc = parseCurrency(proc.valorContratado);
+        if (valorProc > 0) {
+          const { error: pagError } = await supabase
+            .from("pagamentos")
+            .insert({
+              tratamento_id: trat.id,
+              paciente_id: pacienteId,
+              clinica_id: clinicaId,
+              valor: valorProc,
+              forma_pagamento: "Não informado",
+              tipo: tipoPagamento,
+              data_pagamento: dataPagamento,
+              created_by: user?.id,
+              orcamento_id: orcamentoId,
+            });
+          if (pagError) throw pagError;
+        }
       }
 
       toast.success(`${procedimentos.length > 1 ? `${procedimentos.length} procedimentos registrados` : "Atendimento registrado"} com sucesso!`);
