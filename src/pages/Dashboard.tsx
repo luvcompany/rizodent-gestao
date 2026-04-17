@@ -88,21 +88,30 @@ const Dashboard = () => {
     return (d2.getTime() - d1.getTime()) / 86400000 > 60;
   }, [dateFrom, dateTo]);
 
+  const fetchHolidays = async () => {
+    const { data: hd } = await (supabase as any)
+      .from("dashboard_holidays")
+      .select("id, data, descricao, clinica_id");
+    setHolidays((hd || []) as Holiday[]);
+  };
+
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }] = await Promise.all([
       supabase.from("clinicas").select("*").eq("ativa", true),
       supabase.from("pagamentos").select("*, clinicas(nome)"),
       supabase.from("tratamentos").select("*, clinicas(nome)"),
       supabase.from("pacientes").select("*"),
-      supabase.from("leads_diarios").select("*, clinicas(nome)")]
+      supabase.from("leads_diarios").select("*, clinicas(nome)"),
+      (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id")]
       );
       setClinicas(cl || []);
       setPagamentos(pg || []);
       setTratamentos(tr || []);
       setPacientes(pc || []);
       setLeadsData(ld || []);
+      setHolidays((hd || []) as Holiday[]);
       setLoading(false);
     };
     fetchAll();
