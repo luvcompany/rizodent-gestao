@@ -850,29 +850,155 @@ const Atendimento = () => {
 
             {/* Payment-only fields */}
             {showPagamentoFields && (
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Data do Pagamento</Label>
-                  <div className="relative">
-                    <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Data do Pagamento</Label>
+                    <div className="relative">
+                      <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipo de Pagamento</Label>
+                    <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
+                      <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
+                        <SelectItem value="recorrente">Recorrente</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Tipo de Pagamento</Label>
-                  <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
-                    <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
-                      <SelectItem value="recorrente">Recorrente</SelectItem>
-                    </SelectContent>
-                  </Select>
+
+                {/* Procedures already in the budget — quick reference */}
+                {orcamentoSelecionado && (() => {
+                  const orcTrats = tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id);
+                  if (orcTrats.length === 0) return null;
+                  return (
+                    <div className="rounded-lg border border-border bg-secondary/30 p-3">
+                      <p className="text-xs font-semibold text-muted-foreground mb-2">Procedimentos do orçamento</p>
+                      <div className="space-y-1">
+                        {orcTrats.map((t: any) => (
+                          <div key={t.id} className="flex items-center justify-between text-sm">
+                            <span>{t.procedimento}{t.especialidade ? ` · ${t.especialidade}` : ""}</span>
+                            <span className="text-xs text-primary font-medium">Pago: {formatCurrencyDisplay(pagamentosPorTratamento[t.id] || 0)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Dynamic payment list */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">Pagamentos</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addPagamentoEntry} className="gap-1 text-xs">
+                      <Plus size={14} /> Adicionar outro pagamento
+                    </Button>
+                  </div>
+
+                  {pagamentosLista.map((entry, index) => {
+                    const orcTrats = orcamentoSelecionado
+                      ? tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id)
+                      : [];
+                    const espDisp = getEspecialidadesDisponiveis(entry.procedimento);
+                    const temMultiplas = espDisp.length > 1;
+
+                    return (
+                      <Card key={entry.id} className="border-border bg-secondary/30">
+                        <CardContent className="pt-4 pb-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              Pagamento {pagamentosLista.length > 1 ? `${index + 1}` : ""}
+                            </span>
+                            {pagamentosLista.length > 1 && (
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removePagamentoEntry(index)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
+                                <Trash2 size={14} />
+                              </Button>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Tipo de procedimento</Label>
+                            <Select value={entry.modo} onValueChange={(v) => updatePagamentoEntry(index, "modo", v as PagamentoModo)}>
+                              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="existente">Procedimento já existente</SelectItem>
+                                <SelectItem value="novo">Novo procedimento</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {entry.modo === "existente" ? (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Procedimento</Label>
+                              <Select value={entry.tratamentoId} onValueChange={(v) => updatePagamentoEntry(index, "tratamentoId", v)}>
+                                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                <SelectContent>
+                                  {orcTrats.map((t: any) => (
+                                    <SelectItem key={t.id} value={t.id}>
+                                      {t.procedimento}{t.especialidade ? ` · ${t.especialidade}` : ""} (Pago: {formatCurrencyDisplay(pagamentosPorTratamento[t.id] || 0)})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : (
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Novo procedimento</Label>
+                                <Select value={entry.procedimento} onValueChange={(v) => updatePagamentoEntry(index, "procedimento", v)}>
+                                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                  <SelectContent>
+                                    {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Especialidade</Label>
+                                {temMultiplas ? (
+                                  <Select value={entry.especialidade} onValueChange={(v) => updatePagamentoEntry(index, "especialidade", v)}>
+                                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                                    <SelectContent>
+                                      {espDisp.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <Input
+                                    readOnly
+                                    value={entry.especialidade || "Selecione um procedimento"}
+                                    className="bg-muted border-border cursor-not-allowed text-sm"
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Valor a pagar (R$)</Label>
+                            <Input
+                              inputMode="numeric"
+                              placeholder="R$ 0,00"
+                              value={entry.valor}
+                              onChange={(e) => updatePagamentoEntry(index, "valor", formatCurrencyInput(e.target.value))}
+                              className="bg-secondary border-border"
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+
+                  <div className="rounded-lg bg-secondary/30 p-3 text-sm flex items-center justify-between">
+                    <span className="text-muted-foreground">Total deste lançamento</span>
+                    <span className="font-semibold text-primary">
+                      {formatCurrencyDisplay(pagamentosLista.reduce((s, p) => s + parseCurrency(p.valor), 0))}
+                    </span>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Valor do Pagamento (R$)</Label>
-                  <Input inputMode="numeric" placeholder="R$ 0,00" value={valorPago} onChange={(e) => setValorPago(formatCurrencyInput(e.target.value))} className="bg-secondary border-border" />
-                </div>
-              </div>
+              </>
             )}
 
             {/* New treatment: date + origin */}
