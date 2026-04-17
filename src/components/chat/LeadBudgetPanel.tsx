@@ -134,13 +134,20 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     setSearching(true);
     const cleanSearch = searchTerm.replace(/\D/g, "");
     const isPhoneSearch = cleanSearch.length >= 4;
-    const { data } = await supabase
-      .from("pacientes")
-      .select("id, nome, telefone, email, cidade")
-      .or(isPhoneSearch
-        ? `telefone.ilike.%${cleanSearch}%,nome.ilike.%${searchTerm}%`
-        : `nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`)
-      .limit(10);
+
+    let query = supabase.from("pacientes").select("id, nome, telefone, email, cidade").limit(20);
+
+    if (isPhoneSearch) {
+      // Use os últimos 8 dígitos como assinatura — independente de 55, DDD ou 9 extra
+      const tail = cleanSearch.slice(-8);
+      // Inserir wildcards entre dígitos para casar telefones com máscara: (77) 98805-816
+      const pattern = "%" + tail.split("").join("%") + "%";
+      query = query.or(`telefone.ilike.${pattern},nome.ilike.%${searchTerm}%`);
+    } else {
+      query = query.or(`nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`);
+    }
+
+    const { data } = await query;
     setSearchResults(data || []);
     setSearching(false);
   };
@@ -161,6 +168,23 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
   const createAndLinkPaciente = async () => {
     const normalizedCity = cidade === EMPTY_CITY_VALUE ? null : cidade;
+    const phoneClean = stripCountryCode(lead.phone || "").replace(/\D/g, "");
+
+    // Verificar duplicidade pelos últimos 8 dígitos antes de criar
+    if (phoneClean.length >= 8) {
+      const tail = phoneClean.slice(-8);
+      const pattern = "%" + tail.split("").join("%") + "%";
+      const { data: existing } = await supabase
+        .from("pacientes")
+        .select("id, nome, telefone, email, cidade")
+        .ilike("telefone", pattern)
+        .limit(5);
+      if (existing && existing.length > 0) {
+        setSearchResults(existing);
+        toast.error(`Paciente já cadastrado: ${existing[0].nome}. Selecione na lista para vincular.`);
+        return;
+      }
+    }
 
     const { data, error } = await supabase.from("pacientes").insert({
       nome: lead.name,
