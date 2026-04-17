@@ -84,8 +84,8 @@ const Atendimento = () => {
   const [clinicaId, setClinicaId] = useState("");
   const [cidade, setCidade] = useState("");
   const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
-  const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
-  const [valorContratadoGeral, setValorContratadoGeral] = useState("");
+  const [pagamentosLista, setPagamentosLista] = useState<PagamentoEntry[]>([createEmptyPagamento()]);
+  const [pagamentosPorTratamento, setPagamentosPorTratamento] = useState<Record<string, number>>({});
   const [origem, setOrigem] = useState("");
   const [valorPago, setValorPago] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("primeiro");
