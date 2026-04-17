@@ -723,6 +723,16 @@ const Atendimento = () => {
                               )}
                             </div>
                           </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Valor Contratado deste procedimento (R$)</Label>
+                            <Input
+                              inputMode="numeric"
+                              placeholder="R$ 0,00"
+                              value={proc.valorContratado}
+                              onChange={(e) => updateProcedimento(index, "valorContratado", formatCurrencyInput(e.target.value))}
+                              className="bg-secondary border-border"
+                            />
+                          </div>
                         </CardContent>
                       </Card>
                     );
@@ -730,32 +740,32 @@ const Atendimento = () => {
                 </div>
 
                 {/* Valores gerais do orçamento */}
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label>Valor Orçado (R$)</Label>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="R$ 0,00"
-                      value={valorOrcadoGeral}
-                      onChange={(e) => setValorOrcadoGeral(formatCurrencyInput(e.target.value))}
-                      className="bg-secondary border-border"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Valor Contratado (R$)</Label>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="R$ 0,00"
-                      value={valorContratadoGeral}
-                      onChange={(e) => setValorContratadoGeral(formatCurrencyInput(e.target.value))}
-                      className="bg-secondary border-border"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Não Contratado (R$)</Label>
-                    <Input readOnly value={formatCurrencyDisplay(Math.max(0, parseCurrency(valorOrcadoGeral) - parseCurrency(valorContratadoGeral)))} className="bg-muted border-border cursor-not-allowed text-sm" />
-                  </div>
-                </div>
+                {(() => {
+                  const totalOrc = parseCurrency(valorOrcadoGeral);
+                  const totalContr = procedimentos.reduce((s, p) => s + parseCurrency(p.valorContratado), 0);
+                  return (
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label>Valor Orçado total (R$)</Label>
+                        <Input
+                          inputMode="numeric"
+                          placeholder="R$ 0,00"
+                          value={valorOrcadoGeral}
+                          onChange={(e) => setValorOrcadoGeral(formatCurrencyInput(e.target.value))}
+                          className="bg-secondary border-border"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Total Contratado (R$)</Label>
+                        <Input readOnly value={formatCurrencyDisplay(totalContr)} className="bg-muted border-border cursor-not-allowed text-sm" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Não Contratado (R$)</Label>
+                        <Input readOnly value={formatCurrencyDisplay(Math.max(0, totalOrc - totalContr))} className="bg-muted border-border cursor-not-allowed text-sm" />
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
