@@ -699,8 +699,22 @@ function AcoesPorDiaTab({
     const endISO = monthEnd.toISOString();
 
     (async () => {
-      const leadsRes = await supabase.from("crm_leads").select("id").eq("pipeline_id", pipelineId);
-      const leadIds = (leadsRes.data || []).map((l: any) => l.id as string);
+      // Buscar TODOS os leads do pipeline (paginação manual para superar limite de 1000)
+      const leadIdsSet = new Set<string>();
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("crm_leads")
+          .select("id")
+          .eq("pipeline_id", pipelineId)
+          .range(from, from + pageSize - 1);
+        if (error || !data || data.length === 0) break;
+        data.forEach((l: any) => leadIdsSet.add(l.id));
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      const leadIds = Array.from(leadIdsSet);
 
       let histAll: any[] = [];
       let msgsAll: any[] = [];
@@ -711,19 +725,29 @@ function AcoesPorDiaTab({
           .select("lead_id, stage_id, entered_at")
           .in("stage_id", chunk)
           .gte("entered_at", startISO)
-          .lte("entered_at", endISO);
+          .lte("entered_at", endISO)
+          .limit(50000);
         if (data) histAll = histAll.concat(data);
       }
-      for (let i = 0; i < leadIds.length; i += 500) {
-        const chunk = leadIds.slice(i, i + 500);
-        const { data } = await supabase
-          .from("messages")
-          .select("lead_id, created_at")
-          .eq("direction", "inbound")
-          .in("lead_id", chunk)
-          .gte("created_at", startISO)
-          .lte("created_at", endISO);
-        if (data) msgsAll = msgsAll.concat(data);
+      // Paginar mensagens inbound (podem passar de 1000 no mês)
+      for (let i = 0; i < leadIds.length; i += 300) {
+        const chunk = leadIds.slice(i, i + 300);
+        let mFrom = 0;
+        while (true) {
+          const { data, error } = await supabase
+            .from("messages")
+            .select("lead_id, created_at")
+            .eq("direction", "inbound")
+            .in("lead_id", chunk)
+            .gte("created_at", startISO)
+            .lte("created_at", endISO)
+            .order("created_at", { ascending: true })
+            .range(mFrom, mFrom + pageSize - 1);
+          if (error || !data || data.length === 0) break;
+          msgsAll = msgsAll.concat(data);
+          if (data.length < pageSize) break;
+          mFrom += pageSize;
+        }
       }
       setHistory(histAll);
       setInboundDays(msgsAll);
