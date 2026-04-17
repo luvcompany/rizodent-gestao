@@ -258,6 +258,40 @@ const Atendimento = () => {
       const cl = clinicas.find(c => c.id === tratamentosExistentes[0].clinica_id);
       if (cl) setCidade(cl.cidade);
     }
+    // Pre-fill first payment with first treatment of selected orcamento
+    const orcTrats = orcamentoSelecionado
+      ? tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id)
+      : [];
+    setPagamentosLista([
+      {
+        ...createEmptyPagamento(),
+        tratamentoId: orcTrats[0]?.id || "",
+      },
+    ]);
+  };
+
+  const updatePagamentoEntry = (index: number, field: keyof PagamentoEntry, value: string) => {
+    setPagamentosLista(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      if (field === "procedimento") {
+        const tp = tiposProcedimento.find(t => t.nome === value);
+        if (tp && tp.especialidade && !tp.especialidade_secundaria) {
+          updated[index].especialidade = tp.especialidade;
+        } else {
+          updated[index].especialidade = "";
+        }
+      }
+      return updated;
+    });
+  };
+
+  const addPagamentoEntry = () => {
+    setPagamentosLista(prev => [...prev, createEmptyPagamento()]);
+  };
+
+  const removePagamentoEntry = (index: number) => {
+    setPagamentosLista(prev => prev.length <= 1 ? prev : prev.filter((_, i) => i !== index));
   };
 
   const iniciarNovoTratamento = () => {
