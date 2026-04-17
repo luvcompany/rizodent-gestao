@@ -1,41 +1,47 @@
 
-The user wants to allow multiple patients to share the same phone number (e.g., family members sharing a WhatsApp). Currently the system blocks duplicates by phone signature when linking from CRM and likely on the Atendimento/Pacientes pages too.
+## Diagnóstico
 
-Let me check current behavior across the 3 surfaces: LeadBudgetPanel (CRM linking), Atendimento (patient creation), Pacientes (patient list).
+A métrica "Consegui agendar" está **subestimada**. Hoje o sistema mostra **1**, mas existem **3 leads** que estão na etapa "Agendado" hoje no Funil Principal (Daiane, Ailton e Isabel). Apenas 1 deles (Daiane) tem registro em `crm_lead_stage_history` — os outros 2 foram movidos para "Agendado" hoje sem que o histórico fosse gravado.
 
-Plan:
+A métrica do relatório lê **somente** a tabela `crm_lead_stage_history`, então tudo que move o lead sem gravar nessa tabela some do gráfico.
 
-## Objetivo
-Permitir cadastrar/vincular múltiplos pacientes com o mesmo telefone, mediante confirmação explícita do usuário ("Cadastrar mesmo assim como pessoa diferente").
+## Causa raiz: pontos do código que mudam `stage_id` sem gravar histórico
 
-## Mudanças
+1. `supabase/functions/whatsapp-webhook/index.ts` — 3 lugares (linhas 89, 714, 766): automações `move_stage`, retorno de follow-up e `cold_lead_return` atualizam `stage_id` sem inserir em `crm_lead_stage_history`.
+2. `supabase/functions/automation-engine/index.ts` — 2 lugares (linhas 168, 252): triggers `no_response` e `before_scheduled` chamam `update stage_id` sem histórico.
+3. `src/pages/CrmCalendario.tsx` — linha 758: ao registrar resultado do agendamento, há um caminho que só atualiza `stage_id` sem gravar histórico.
+4. `supabase/functions/bot-engine/index.ts` — linha 879: insere histórico mas **sem** `from_stage_id` nem `entered_at` explícito (funciona, mas inconsistente).
 
-### 1. `src/components/chat/LeadBudgetPanel.tsx` (vinculação no CRM)
-- Quando `createAndLinkPaciente` detectar pacientes existentes pelo telefone (assinatura 8 dígitos), em vez de bloquear, exibir um diálogo de confirmação listando os pacientes encontrados com:
-  - Botões "Vincular a este paciente" (um por resultado)
-  - Botão "Criar novo paciente com mesmo telefone" (força criação)
-- Auto-link silencioso continua só quando há 1 match (mantém comportamento atual). Se quiser forçar criar outro, usuário usa o diálogo manual.
+## Solução
 
-### 2. `src/pages/Atendimento.tsx` (cadastro de paciente novo)
-- Ao buscar/criar paciente por telefone, se já existir, exibir aviso com lista dos existentes + botão "Cadastrar como pessoa diferente (mesmo telefone)" para prosseguir criando novo registro.
+### A) Corrigir todos os pontos que movem stage para também gravar histórico
+Padronizar um helper `moveLeadToStage(leadId, newStageId)` que:
+1. Lê `stage_id` atual.
+2. Atualiza `crm_leads.stage_id` + `updated_at`.
+3. Fecha entrada aberta em `crm_lead_stage_history` (`exited_at = now()`).
+4. Insere nova linha com `from_stage_id`, `stage_id`, `entered_at = now()`.
 
-### 3. `src/pages/Pacientes.tsx` (lista de pacientes)
-- No fluxo de criação rápida de paciente (se houver), aplicar mesma lógica: detectar duplicidade por telefone, oferecer "Cadastrar mesmo assim".
+Aplicar nos 4 arquivos acima. Para edge functions, helper inline em cada arquivo (já que são isolados).
 
-### 4. Bug fix: `valorContratadoGeral is not defined` em `Atendimento.tsx`
-Variável removida no refactor anterior mas ainda referenciada em algum lugar — corrigir junto.
+### B) Backfill dos leads históricos sem registro
+Migration única que, para cada lead em `crm_leads` sem entrada aberta correspondente em `crm_lead_stage_history`, insere uma linha usando `updated_at` como `entered_at`. Isso recupera os agendamentos perdidos (incluindo Ailton e Isabel de hoje).
 
-## Diagrama de fluxo
-```text
-Telefone digitado
-    │
-    ├─ 0 matches → cria normalmente
-    ├─ 1+ matches → mostra lista
-    │     ├─ [Vincular a este] → usa paciente existente
-    │     └─ [Criar como pessoa diferente] → força INSERT novo
-```
+### C) Trigger de banco como rede de segurança
+Criar trigger `AFTER UPDATE OF stage_id ON crm_leads` que:
+- Fecha histórico aberto da etapa anterior.
+- Insere nova linha com `from_stage_id`, `stage_id`, `entered_at = now()`.
 
-## Arquivos a alterar
-1. `src/components/chat/LeadBudgetPanel.tsx`
-2. `src/pages/Atendimento.tsx` (incluindo fix do `valorContratadoGeral`)
-3. `src/pages/Pacientes.tsx`
+Assim, mesmo se algum código novo esquecer de gravar histórico, o banco grava sozinho. Também simplifica o código aplicativo (poderia até remover as inserções manuais, mas vamos manter por enquanto e adicionar `ON CONFLICT DO NOTHING` na lógica para evitar duplicatas).
+
+## Arquivos afetados
+
+- `supabase/functions/whatsapp-webhook/index.ts` — adicionar histórico em 3 pontos.
+- `supabase/functions/automation-engine/index.ts` — adicionar histórico em 2 pontos.
+- `supabase/functions/bot-engine/index.ts` — completar `from_stage_id` e `entered_at`.
+- `src/pages/CrmCalendario.tsx` — corrigir caminho sem histórico.
+- Nova migration:
+  - Trigger `crm_leads_stage_history_trg` em `crm_leads`.
+  - Backfill para leads existentes sem histórico aberto.
+
+## Resultado esperado
+Após o fix + backfill, o card "Consegui agendar" de hoje passará de **1 para 3** (Daiane, Ailton, Isabel), e daqui em diante toda movimentação de etapa — independente da origem (Kanban, chat, automação, bot, webhook, calendário) — alimentará a métrica corretamente.
