@@ -1,44 +1,50 @@
 
 
-## Problemas e Solução
+## Objetivo
 
-### 1. Vinculação de paciente não está sendo salva
-**Causa**: A política RLS de UPDATE em `crm_leads` exige que o usuário seja admin/gerente OU o `assigned_to` do lead. Como todos os 287 leads estão atribuídos ao usuário central "rizodent", qualquer atendente CRC tentando vincular falha silenciosamente (o `update()` retorna sem efeito).
+Permitir que cada pagamento seja vinculado a um **procedimento específico** dentro do orçamento, mantendo o orçamento como um valor total à parte. Em novos pagamentos, o usuário escolhe se está pagando um procedimento já existente do orçamento ou adicionando um procedimento novo (ainda não cadastrado) e registrando o pagamento dele.
 
-**Fix**: Ampliar a política de UPDATE para permitir que qualquer usuário autenticado atualize leads (mantendo SELECT como está). Adicionar também tratamento de erro mais explícito no `linkPaciente`/`createAndLinkPaciente` mostrando a mensagem real do Supabase quando 0 linhas forem afetadas.
+## Modelo de Dados
 
-### 2. Auto-vincular leads existentes a pacientes pelo telefone
-**Lógica**: Ao abrir um lead sem `paciente_id`, buscar automaticamente em `pacientes` usando assinatura dos últimos 8 dígitos do telefone (mesma lógica já usada no busca manual). Se houver match único → vincular automaticamente. Se houver múltiplos → apenas exibir lista para o usuário escolher.
+A tabela `pagamentos` já tem `tratamento_id` (procedimento) + `orcamento_id`. Não precisa migração — só vamos passar a usá-los corretamente:
+- **Orçamento** = valor total previsto (independente).
+- **Tratamento** = procedimento individual (Implante, Limpeza...) vinculado ao orçamento.
+- **Pagamento** = valor pago para um tratamento específico, vinculado ao orçamento.
 
-**Onde**: `LeadBudgetPanel.tsx`, dentro do `useEffect` que dispara quando `lead.paciente_id` é nulo.
+## Mudanças em `src/pages/Atendimento.tsx`
 
-### 3. Faturamento do mês no CRM Kanban / Dashboard CRM = soma de `pagamentos` reais
-**Comportamento atual**: O card "Vendas concluídas (mês)" no Kanban soma `lead.value` dos leads na etapa "Contratado" cujo `updated_at` é do mês atual. Isso é impreciso pois `lead.value` é estático e não reflete pagamentos reais por mês.
+### A) Modo "Novo Tratamento / Orçamento" (criar do zero)
+Substituir os campos únicos "Valor Orçado" / "Valor Contratado" gerais por:
+- **Valor Orçado total** (1 campo, nível orçamento).
+- Em cada card de procedimento adicionado, um campo extra **"Valor Contratado deste procedimento (R$)"**.
+- Campo somatório calculado: "Total Contratado" = soma dos valores de cada procedimento. "Não Contratado" = Orçado − Total Contratado.
+- Ao salvar: cria 1 orçamento + N tratamentos. Para cada tratamento com valor > 0, cria 1 pagamento vinculado àquele `tratamento_id`.
 
-**Novo comportamento**:
-- Buscar todos os leads com `paciente_id` não nulo.
-- Buscar `pagamentos` (campos: `paciente_id`, `valor`, `data_pagamento`) cujo `data_pagamento` esteja no mês corrente (ou no range do filtro de data se aplicado).
-- Somar apenas os pagamentos dos pacientes vinculados a leads visíveis (respeitando filtros de usuário).
-- Exibir como "Faturamento do mês" no Kanban, substituindo a lógica baseada em `lead.value`.
-- Ao virar o mês, o valor zera automaticamente porque a query filtra por `data_pagamento` do mês atual.
+### B) Modo "Novo Pagamento" (orçamento existente)
+Substituir o input único "Valor do Pagamento" por uma lista dinâmica:
+- Toggle/seletor: **"Procedimento já existente"** ou **"Novo procedimento"**.
+- Se **existente**: dropdown com tratamentos do orçamento selecionado + campo "Valor a pagar".
+- Se **novo**: select de tipo de procedimento + especialidade (igual ao fluxo de novo tratamento) + campo "Valor a pagar". Ao salvar, cria o `tratamento` no orçamento atual antes do pagamento.
+- Botão "+ Adicionar outro pagamento" permite registrar múltiplos lançamentos no mesmo formulário (ex: implante R$2000 + limpeza R$100 no mesmo dia).
+- Validação: soma dos novos pagamentos + já pagos ≤ valor orçado.
+- Ao salvar: cria N pagamentos, cada um com seu `tratamento_id` correto. Marca orçamento como `concluido` se total atingir o orçado.
 
-**Onde**: 
-- `src/pages/CrmKanban.tsx`: refatorar o cálculo de `vendasConcluidas` para fazer fetch de `pagamentos` filtrados pelo mês e somar por `paciente_id` dos leads visíveis.
-- `src/pages/CrmDashboard.tsx`: adicionar um KPI equivalente "Faturamento do mês" no topo, ao lado de "Leads Hoje".
+### C) Resumo do orçamento selecionado
+No card de seleção de orçamento (já existente), exibir por procedimento o quanto já foi pago: `Implante — Pago R$ 2.000` / `Limpeza — Pago R$ 100`, para o usuário entender o estado.
 
-### Arquivos a alterar
-1. **Migração SQL**: ajustar política RLS UPDATE em `crm_leads`.
-2. **`src/components/chat/LeadBudgetPanel.tsx`**: auto-vincular paciente por telefone + tratamento de erro robusto.
-3. **`src/pages/CrmKanban.tsx`**: substituir lógica de "Vendas concluídas" por soma de `pagamentos` do mês via `paciente_id`.
-4. **`src/pages/CrmDashboard.tsx`**: adicionar KPI "Faturamento do mês" usando a mesma lógica.
+## Mudanças em `src/pages/PacienteDetalhe.tsx`
+Pequeno ajuste de exibição: agrupar pagamentos por `tratamento_id` dentro de cada orçamento (já é estruturalmente compatível, só formatar visualmente para deixar claro qual procedimento recebeu qual pagamento).
 
-### Diagrama do novo cálculo
+## Diagrama
 
 ```text
-Lead (CRM) ──paciente_id──> Paciente
-                              │
-                              └──> Pagamentos (filtrar data_pagamento no mês)
-                                       │
-                                       └─ SUM(valor) = Faturamento do mês
+Orçamento (R$ 10.000)
+├── Tratamento: Implante     → Pagamentos: R$ 2.000 (03/04) + R$ 1.000 (15/04)
+├── Tratamento: Limpeza      → Pagamentos: R$ 100   (03/04)
+└── Tratamento: Clareamento  → Pagamentos: (sem pagamentos ainda)
 ```
+
+## Arquivos
+1. `src/pages/Atendimento.tsx` — refatorar formulário de novo tratamento (valor por procedimento) e modo novo pagamento (lista dinâmica com escolha de tratamento existente ou novo).
+2. `src/pages/PacienteDetalhe.tsx` — agrupar exibição de pagamentos por procedimento dentro do orçamento.
 
