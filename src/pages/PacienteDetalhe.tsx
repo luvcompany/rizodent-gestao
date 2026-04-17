@@ -564,74 +564,104 @@ const PacienteDetalhe = () => {
                     {orcPagamentos.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-2">Nenhum pagamento neste orçamento.</p>
                     ) : (
-                      <div className="space-y-2">
-                        {orcPagamentos.map((p) => {
-                          const isEditingPag = editingPagId === p.id;
-                          if (isEditingPag) {
-                            return (
-                              <div key={p.id} className="rounded-lg border-2 border-primary/40 p-3 space-y-3 bg-primary/5">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm font-semibold text-primary">Editando Pagamento</span>
-                                  <Button variant="ghost" size="sm" onClick={() => setEditingPagId(null)} className="h-7 w-7 p-0"><X size={14} /></Button>
-                                </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  <div className="space-y-1"><Label className="text-xs">Valor</Label><Input value={editPagValor} onChange={(e) => setEditPagValor(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm" /></div>
-                                  <div className="space-y-1"><Label className="text-xs">Data</Label><Input type="date" value={editPagData} onChange={(e) => setEditPagData(e.target.value)} className="bg-secondary border-border h-8 text-sm" /></div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Forma</Label>
-                                    <Select value={editPagForma} onValueChange={setEditPagForma}>
-                                      <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
-                                      <SelectContent>{["Dinheiro", "PIX", "Cartão Crédito", "Cartão Débito", "Boleto", "Cheque", "Não informado"].map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">Tipo</Label>
-                                    <Select value={editPagTipo} onValueChange={setEditPagTipo}>
-                                      <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="primeiro">1º Pagamento</SelectItem>
-                                        <SelectItem value="recorrente">Recorrente</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </div>
-                                <div className="flex justify-end">
-                                  <Button size="sm" onClick={handleSavePagamento} disabled={saving} className="h-7 text-xs"><Check size={12} className="mr-1" /> Salvar</Button>
-                                </div>
-                              </div>
-                            );
-                          }
+                      <div className="space-y-3">
+                        {(() => {
+                          // Group payments by tratamento_id
+                          const groups = new Map<string, { tratamento: any; pagamentos: any[]; total: number }>();
+                          orcPagamentos.forEach((p) => {
+                            const tid = p.tratamento_id || "sem_tratamento";
+                            if (!groups.has(tid)) {
+                              const trat = orcTratamentos.find(t => t.id === tid);
+                              groups.set(tid, { tratamento: trat, pagamentos: [], total: 0 });
+                            }
+                            const g = groups.get(tid)!;
+                            g.pagamentos.push(p);
+                            g.total += Number(p.valor || 0);
+                          });
 
-                          return (
-                            <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
-                              <div>
-                                <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                                <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
-                                <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
-                                <span className="text-xs text-muted-foreground ml-2">· {p.forma_pagamento}</span>
+                          return Array.from(groups.entries()).map(([tid, group]) => (
+                            <div key={tid} className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
+                              <div className="flex items-center justify-between border-b border-border pb-2">
+                                <span className="text-sm font-semibold text-foreground">
+                                  {group.tratamento?.procedimento || "Pagamento sem procedimento"}
+                                  {group.tratamento?.especialidade && (
+                                    <span className="text-xs text-muted-foreground ml-2">· {group.tratamento.especialidade}</span>
+                                  )}
+                                </span>
+                                <span className="text-sm font-semibold text-primary">{formatCurrency(group.total)}</span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
-                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditPagamento(p)}><Pencil size={13} /></Button>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive"><Trash2 size={13} /></Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Excluir pagamento?</AlertDialogTitle>
-                                      <AlertDialogDescription>Excluir o pagamento de <strong>{formatCurrency(Number(p.valor))}</strong>?</AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeletePagamento(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                              <div className="space-y-2">
+                                {group.pagamentos.map((p) => {
+                                  const isEditingPag = editingPagId === p.id;
+                                  if (isEditingPag) {
+                                    return (
+                                      <div key={p.id} className="rounded-lg border-2 border-primary/40 p-3 space-y-3 bg-primary/5">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-sm font-semibold text-primary">Editando Pagamento</span>
+                                          <Button variant="ghost" size="sm" onClick={() => setEditingPagId(null)} className="h-7 w-7 p-0"><X size={14} /></Button>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                          <div className="space-y-1"><Label className="text-xs">Valor</Label><Input value={editPagValor} onChange={(e) => setEditPagValor(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm" /></div>
+                                          <div className="space-y-1"><Label className="text-xs">Data</Label><Input type="date" value={editPagData} onChange={(e) => setEditPagData(e.target.value)} className="bg-secondary border-border h-8 text-sm" /></div>
+                                          <div className="space-y-1">
+                                            <Label className="text-xs">Forma</Label>
+                                            <Select value={editPagForma} onValueChange={setEditPagForma}>
+                                              <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
+                                              <SelectContent>{["Dinheiro", "PIX", "Cartão Crédito", "Cartão Débito", "Boleto", "Cheque", "Não informado"].map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
+                                            </Select>
+                                          </div>
+                                          <div className="space-y-1">
+                                            <Label className="text-xs">Tipo</Label>
+                                            <Select value={editPagTipo} onValueChange={setEditPagTipo}>
+                                              <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="primeiro">1º Pagamento</SelectItem>
+                                                <SelectItem value="recorrente">Recorrente</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                        <div className="flex justify-end">
+                                          <Button size="sm" onClick={handleSavePagamento} disabled={saving} className="h-7 text-xs"><Check size={12} className="mr-1" /> Salvar</Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div key={p.id} className="flex items-center justify-between rounded-lg border border-border p-3 text-sm bg-background">
+                                      <div>
+                                        <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                                        <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
+                                        <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
+                                        <span className="text-xs text-muted-foreground ml-2">· {p.forma_pagamento}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
+                                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditPagamento(p)}><Pencil size={13} /></Button>
+                                        <AlertDialog>
+                                          <AlertDialogTrigger asChild>
+                                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive"><Trash2 size={13} /></Button>
+                                          </AlertDialogTrigger>
+                                          <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                              <AlertDialogTitle>Excluir pagamento?</AlertDialogTitle>
+                                              <AlertDialogDescription>Excluir o pagamento de <strong>{formatCurrency(Number(p.valor))}</strong>?</AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                              <AlertDialogAction onClick={() => handleDeletePagamento(p.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Excluir</AlertDialogAction>
+                                            </AlertDialogFooter>
+                                          </AlertDialogContent>
+                                        </AlertDialog>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
-                          );
-                        })}
+                          ));
+                        })()}
                       </div>
                     )}
                   </div>
