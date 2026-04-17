@@ -119,7 +119,7 @@ const Dashboard = () => {
     const filterByDate = (items: any[], dateField: string) =>
     items.filter((i) => {
       const val = i[dateField]?.split("T")[0] || i[dateField];
-      return val >= dateFrom && val <= dateTo;
+      return isInSelectedRanges(val);
     });
 
     let filteredTratamentos = filterByDate(filterByClinica(tratamentos), "created_at");
