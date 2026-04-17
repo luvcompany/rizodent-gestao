@@ -67,8 +67,45 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       setOrcamentos([]);
       setTotalPaid(0);
       setTotalBudgeted(0);
+      // Auto-link by phone signature (last 8 digits)
+      void autoLinkByPhone();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.paciente_id]);
+
+  const autoLinkByPhone = async () => {
+    const phoneClean = (lead.phone || "").replace(/\D/g, "");
+    if (phoneClean.length < 8) return;
+    const tail = phoneClean.slice(-8);
+    const pattern = "%" + tail.split("").join("%") + "%";
+    const { data } = await supabase
+      .from("pacientes")
+      .select("id, nome, telefone, email, cidade")
+      .ilike("telefone", pattern)
+      .limit(5);
+    if (!data || data.length === 0) return;
+    if (data.length === 1) {
+      // Single match → auto-link
+      const { error, data: upd } = await supabase
+        .from("crm_leads")
+        .update({ paciente_id: data[0].id })
+        .eq("id", lead.id)
+        .select("id");
+      if (error) {
+        toast.error(`Não foi possível vincular automaticamente: ${error.message}`);
+        return;
+      }
+      if (!upd || upd.length === 0) {
+        toast.error("Sem permissão para vincular este lead.");
+        return;
+      }
+      onLeadUpdated({ paciente_id: data[0].id });
+      toast.success(`Paciente "${data[0].nome}" vinculado automaticamente`);
+    } else {
+      // Multiple → just preload list and open dialog hint
+      setSearchResults(data);
+    }
+  };
 
   const fetchPacienteAndBudgets = async (pacienteId: string) => {
     const [pRes, oRes, pagRes] = await Promise.all([
