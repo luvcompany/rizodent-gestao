@@ -190,8 +190,16 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   };
 
   const linkPaciente = async (pacienteId: string) => {
-    const { error } = await supabase.from("crm_leads").update({ paciente_id: pacienteId }).eq("id", lead.id);
-    if (error) { toast.error("Erro ao vincular paciente"); return; }
+    const { error, data } = await supabase
+      .from("crm_leads")
+      .update({ paciente_id: pacienteId })
+      .eq("id", lead.id)
+      .select("id");
+    if (error) { toast.error(`Erro ao vincular paciente: ${error.message}`); return; }
+    if (!data || data.length === 0) {
+      toast.error("Sem permissão para atualizar este lead. Contate o administrador.");
+      return;
+    }
     onLeadUpdated({ paciente_id: pacienteId });
     setLinkOpen(false);
     toast.success("Paciente vinculado ao lead");
