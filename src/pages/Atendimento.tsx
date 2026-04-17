@@ -616,7 +616,40 @@ const Atendimento = () => {
                       <span className="text-muted-foreground">{pac.telefone}</span>
                     </button>
                   ))}
+                  <div className="border-t border-border my-1" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSugestoes([]);
+                      setPacienteSelecionadoId("");
+                      setForceCreateNew(true);
+                      toast.info("Preencha o nome e demais dados — será criado um novo paciente com este telefone.");
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-primary hover:bg-accent transition-colors"
+                  >
+                    <UserPlus size={14} />
+                    <span className="font-medium">Cadastrar nova pessoa com este telefone</span>
+                  </button>
                 </div>
+              )}
+              {pacienteSelecionadoId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPacienteSelecionadoId("");
+                    setNome("");
+                    setTratamentosExistentes([]);
+                    setOrcamentosAbertos([]);
+                    setOrcamentoSelecionado(null);
+                    setForceCreateNew(true);
+                    setModo("novo_tratamento");
+                    toast.info("Preencha o nome — será criado um novo paciente com este telefone.");
+                  }}
+                  className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <UserPlus size={12} />
+                  Cadastrar outra pessoa com este mesmo telefone
+                </button>
               )}
             </div>
 
