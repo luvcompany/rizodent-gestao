@@ -411,8 +411,39 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setLinkOpen(false)}>Cancelar</Button>
-            <Button onClick={createAndLinkPaciente}>
+            <Button onClick={() => createAndLinkPaciente(false)}>
               <UserPlus size={14} className="mr-1" /> Criar Paciente com Dados do Lead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate phone confirmation dialog */}
+      <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Telefone já cadastrado</DialogTitle>
+            <DialogDescription>
+              Encontramos {duplicates.length} paciente{duplicates.length > 1 ? "s" : ""} com este telefone. Vincule a um existente ou cadastre como pessoa diferente (mesmo telefone).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {duplicates.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-secondary/50">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
+                  <p className="text-xs text-muted-foreground truncate">{p.telefone}{p.cidade ? ` · ${p.cidade}` : ""}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => linkExistingFromDuplicate(p.id)}>
+                  Vincular
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setDuplicateOpen(false)}>Cancelar</Button>
+            <Button onClick={() => createAndLinkPaciente(true)}>
+              <UserPlus size={14} className="mr-1" /> Cadastrar como pessoa diferente
             </Button>
           </DialogFooter>
         </DialogContent>
