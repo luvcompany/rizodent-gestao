@@ -1090,6 +1090,57 @@ const Atendimento = () => {
           </form>
         </CardContent>
       </Card>
+
+      {/* Duplicate phone confirmation dialog */}
+      <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Telefone já cadastrado</DialogTitle>
+            <DialogDescription>
+              Encontramos {duplicates.length} paciente{duplicates.length > 1 ? "s" : ""} com este telefone. Selecione um existente ou cadastre como pessoa diferente (mesmo telefone).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {duplicates.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-secondary/50">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
+                  <p className="text-xs text-muted-foreground truncate">{p.telefone}{p.cidade ? ` · ${p.cidade}` : ""}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={async () => {
+                    setDuplicateOpen(false);
+                    await preencherPacienteSelecionado(p);
+                    toast.success(`Paciente ${p.nome} selecionado!`);
+                  }}
+                >
+                  Selecionar
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button variant="outline" type="button" onClick={() => setDuplicateOpen(false)}>Cancelar</Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setForceCreateNew(true);
+                setDuplicateOpen(false);
+                // Programmatic submit
+                setTimeout(() => {
+                  const form = document.querySelector("form");
+                  if (form) form.requestSubmit();
+                }, 0);
+              }}
+            >
+              Cadastrar como pessoa diferente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
