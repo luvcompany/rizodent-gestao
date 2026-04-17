@@ -44,12 +44,34 @@ interface ProcedimentoEntry {
   id: string;
   procedimento: string;
   especialidade: string;
+  valorContratado: string;
 }
 
 const createEmptyProcedimento = (): ProcedimentoEntry => ({
   id: crypto.randomUUID(),
   procedimento: "",
   especialidade: "",
+  valorContratado: "",
+});
+
+type PagamentoModo = "existente" | "novo";
+
+interface PagamentoEntry {
+  id: string;
+  modo: PagamentoModo;
+  tratamentoId: string; // when modo === "existente"
+  procedimento: string; // when modo === "novo"
+  especialidade: string; // when modo === "novo"
+  valor: string;
+}
+
+const createEmptyPagamento = (): PagamentoEntry => ({
+  id: crypto.randomUUID(),
+  modo: "existente",
+  tratamentoId: "",
+  procedimento: "",
+  especialidade: "",
+  valor: "",
 });
 
 const Atendimento = () => {
