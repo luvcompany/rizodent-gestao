@@ -478,6 +478,26 @@ const Atendimento = () => {
       }
 
       if (!pacienteId) {
+        // Duplicate phone check (last 8 digits) — unless user already confirmed
+        if (!forceCreateNew) {
+          const phoneClean = telefone.replace(/\D/g, "");
+          if (phoneClean.length >= 8) {
+            const tail = phoneClean.slice(-8);
+            const pattern = "%" + tail.split("").join("%") + "%";
+            const { data: existing } = await supabase
+              .from("pacientes")
+              .select("*")
+              .ilike("telefone", pattern)
+              .limit(5);
+            if (existing && existing.length > 0) {
+              setDuplicates(existing);
+              setDuplicateOpen(true);
+              setSaving(false);
+              return;
+            }
+          }
+        }
+
         const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
         const { data: newPac, error } = await supabase
           .from("pacientes")
@@ -486,6 +506,7 @@ const Atendimento = () => {
           .single();
         if (error) throw error;
         pacienteId = newPac.id;
+        setForceCreateNew(false);
       }
 
       // Always create a new orcamento for new treatments
