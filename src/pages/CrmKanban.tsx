@@ -50,6 +50,7 @@ type Lead = {
   last_message_at: string | null;
   assigned_to: string | null;
   cidade: string | null;
+  paciente_id: string | null;
 };
 
 type Pipeline = {
@@ -153,7 +154,7 @@ export default function CrmKanban() {
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       targetPipelineId
-        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade").eq("pipeline_id", targetPipelineId).order("position")
+        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
@@ -177,7 +178,7 @@ export default function CrmKanban() {
         // Pipeline changed, need a second fetch for stages/leads only
         const [s2, l2] = await Promise.all([
           supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
-          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade").eq("pipeline_id", p.id).order("position"),
+          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id").eq("pipeline_id", p.id).order("position"),
         ]);
         setStages((s2.data as Stage[]) || []);
         setLeads((l2.data as Lead[]) || []);
@@ -415,13 +416,25 @@ export default function CrmKanban() {
   const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
   const newYesterday = myLeads.filter(l => l.created_at.startsWith(yesterday)).length;
 
-  // Vendas concluídas = valor dos leads na etapa "Contratado" criados/atualizados neste mês
-  const contratadoStageIds = stages.filter(s => s.name.toLowerCase().includes("contratado") && !s.name.toLowerCase().includes("não")).map(s => s.id);
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const vendasConcluidas = myLeads
-    .filter(l => contratadoStageIds.includes(l.stage_id) && new Date(l.updated_at).getMonth() === currentMonth && new Date(l.updated_at).getFullYear() === currentYear)
-    .reduce((acc, l) => acc + (l.value || 0), 0);
+  // Faturamento do mês = soma dos pagamentos reais do mês atual dos pacientes vinculados aos leads visíveis
+  const [vendasConcluidas, setVendasConcluidas] = useState(0);
+  useEffect(() => {
+    const pacienteIds = Array.from(new Set(myLeads.map(l => l.paciente_id).filter(Boolean) as string[]));
+    if (pacienteIds.length === 0) { setVendasConcluidas(0); return; }
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+    supabase
+      .from("pagamentos")
+      .select("valor")
+      .in("paciente_id", pacienteIds)
+      .gte("data_pagamento", monthStart)
+      .lte("data_pagamento", monthEnd)
+      .then(({ data }) => {
+        const total = (data || []).reduce((s, p: any) => s + Number(p.valor || 0), 0);
+        setVendasConcluidas(total);
+      });
+  }, [myLeads]);
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
