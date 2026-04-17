@@ -176,7 +176,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       const pattern = "%" + tail.split("").join("%") + "%";
       const { data: existing } = await supabase
         .from("pacientes")
-        .select("id, nome, telefone")
+        .select("id, nome, telefone, email, cidade")
         .ilike("telefone", pattern)
         .limit(5);
       if (existing && existing.length > 0) {
