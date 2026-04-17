@@ -228,13 +228,15 @@ const Dashboard = () => {
     while (current <= end) {
       if (current.getDay() !== 0) {
         const dateStr = current.toISOString().split("T")[0];
-        const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-        days.push({ dia: label, valor: pgMap.get(dateStr) || 0 });
+        if (isInSelectedRanges(dateStr)) {
+          const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+          days.push({ dia: label, valor: pgMap.get(dateStr) || 0 });
+        }
       }
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart]);
+  }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart, rangeBounds]);
 
   // Chart: Leads Novos Diários (todos os dias úteis do período)
   const leadsDiario = useMemo(() => {
