@@ -151,7 +151,7 @@ const Dashboard = () => {
       leads: filterByDate(filterByClinica(leadsData), "data"),
       pacientes: filteredPacientes
     };
-  }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo]);
+  }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo, rangeBounds]);
 
   const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
   const fatNovos = filtered.pagamentos.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
