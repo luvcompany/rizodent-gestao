@@ -217,12 +217,12 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     return clean;
   };
 
-  const createAndLinkPaciente = async () => {
+  const createAndLinkPaciente = async (force = false) => {
     const normalizedCity = cidade === EMPTY_CITY_VALUE ? null : cidade;
     const phoneClean = stripCountryCode(lead.phone || "").replace(/\D/g, "");
 
     // Verificar duplicidade pelos últimos 8 dígitos antes de criar
-    if (phoneClean.length >= 8) {
+    if (!force && phoneClean.length >= 8) {
       const tail = phoneClean.slice(-8);
       const pattern = "%" + tail.split("").join("%") + "%";
       const { data: existing } = await supabase
@@ -231,8 +231,8 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         .ilike("telefone", pattern)
         .limit(5);
       if (existing && existing.length > 0) {
-        setSearchResults(existing);
-        toast.error(`Paciente já cadastrado: ${existing[0].nome}. Selecione na lista para vincular.`);
+        setDuplicates(existing);
+        setDuplicateOpen(true);
         return;
       }
     }
@@ -251,6 +251,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       .eq("id", lead.id);
     onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
     setLinkOpen(false);
+    setDuplicateOpen(false);
     toast.success("Paciente criado e vinculado!");
 
     // Navigate to atendimento page with new patient data
@@ -261,6 +262,11 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         pacienteTelefone: stripCountryCode(lead.phone || ""),
       },
     });
+  };
+
+  const linkExistingFromDuplicate = async (pacienteId: string) => {
+    setDuplicateOpen(false);
+    await linkPaciente(pacienteId);
   };
 
   const goToAtendimento = () => {
