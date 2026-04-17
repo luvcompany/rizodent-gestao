@@ -1126,6 +1126,98 @@ const Relatorios = () => {
         );
       }
 
+      case "atividade": {
+        const tipoLabel: Record<string, { label: string; className: string }> = {
+          pagamento: { label: "Pagamento", className: "bg-primary/10 text-primary border-primary/30" },
+          orcamento_novo: { label: "Orçamento novo", className: "bg-secondary" },
+          orcamento_atualizado: { label: "Orçamento atualizado", className: "bg-secondary" },
+          tratamento_novo: { label: "Tratamento novo", className: "bg-secondary" },
+          tratamento_atualizado: { label: "Tratamento atualizado", className: "bg-secondary" },
+          paciente_novo: { label: "Paciente novo", className: "bg-secondary" },
+          paciente_atualizado: { label: "Paciente atualizado", className: "bg-secondary" },
+        };
+        return (
+          <Card className="gradient-card border-border shadow-card">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity size={18} className="text-primary" /> Atividade Recente
+              </CardTitle>
+              <ShareButtons
+                title="Atividade Recente"
+                data={recentActivity.map((i) => ({
+                  data_hora: new Date(i.timestamp).toLocaleString("pt-BR"),
+                  tipo: tipoLabel[i.tipo]?.label || i.tipo,
+                  paciente: i.pacienteNome || "—",
+                  detalhe: i.descricao,
+                  valor: i.valor ? formatCurrency(i.valor) : "",
+                }))}
+                getSummary={() =>
+                  recentActivity.slice(0, 10).map((i) =>
+                    `${new Date(i.timestamp).toLocaleString("pt-BR")} • ${tipoLabel[i.tipo]?.label} • ${i.pacienteNome || "—"}${i.valor ? ` • ${formatCurrency(i.valor)}` : ""}`
+                  ).join("\n")
+                }
+              />
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1">
+                <Clock size={12} /> Mostrando os 100 eventos mais recentes (todos os períodos)
+              </p>
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data e hora</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Detalhe</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recentActivity.map((i) => {
+                      const dt = new Date(i.timestamp);
+                      const data = dt.toLocaleDateString("pt-BR");
+                      const hora = dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                      return (
+                        <TableRow
+                          key={i.id}
+                          className={i.pacienteId ? "cursor-pointer hover:bg-muted/50" : ""}
+                          onClick={() => i.pacienteId && navigate(`/pacientes/${i.pacienteId}`)}
+                        >
+                          <TableCell className="whitespace-nowrap">
+                            <div className="font-medium">{data}</div>
+                            <div className="text-xs text-muted-foreground">{hora}</div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={tipoLabel[i.tipo]?.className}>
+                              {tipoLabel[i.tipo]?.label}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium text-primary hover:underline">
+                            {i.pacienteNome || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{i.descricao}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {i.valor ? formatCurrency(i.valor) : "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {recentActivity.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                          Nenhuma atividade recente
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      }
+
       default: return null;
     }
   };
