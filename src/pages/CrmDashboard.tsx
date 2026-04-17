@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   CalendarDays, Phone, MessageSquare, Clock, CheckCircle2, AlertTriangle,
-  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw
+  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign
 } from "lucide-react";
 import { format, isToday, isPast, startOfDay, endOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -52,19 +52,26 @@ export default function CrmDashboard() {
   const [loading, setLoading] = useState(true);
   const [upcomingDays, setUpcomingDays] = useState("7");
   const [leadsToday, setLeadsToday] = useState(0);
+  const [faturamentoMes, setFaturamentoMes] = useState(0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     const todayStr = format(new Date(), "yyyy-MM-dd");
+    const now = new Date();
+    const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+    const monthEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
 
-    const [tasksRes, leadsRes, appointmentsRes, leadsCountRes] = await Promise.all([
+    const [tasksRes, leadsRes, appointmentsRes, leadsCountRes, pagamentosRes] = await Promise.all([
       supabase.from("crm_tasks").select("*").order("due_date"),
-      supabase.from("crm_leads").select("id, name"),
+      supabase.from("crm_leads").select("id, name, paciente_id"),
       supabase.from("crm_appointments").select("*").order("scheduled_date"),
       supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
+      supabase.from("pagamentos").select("valor, paciente_id").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
     ]);
 
-    const nameMap = new Map(((leadsRes.data || []) as any[]).map((l) => [l.id, l.name]));
+    const leadsList = (leadsRes.data || []) as any[];
+    const nameMap = new Map(leadsList.map((l) => [l.id, l.name]));
+    const pacienteIds = new Set(leadsList.map(l => l.paciente_id).filter(Boolean));
 
     const rawTasks = (tasksRes.data || []) as Task[];
     rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
@@ -75,6 +82,12 @@ export default function CrmDashboard() {
     setAppointments(rawAppts);
 
     setLeadsToday(leadsCountRes.count || 0);
+
+    const totalFat = (pagamentosRes.data || [])
+      .filter((p: any) => pacienteIds.has(p.paciente_id))
+      .reduce((s: number, p: any) => s + Number(p.valor || 0), 0);
+    setFaturamentoMes(totalFat);
+
     setLoading(false);
   }, []);
 
@@ -160,9 +173,19 @@ export default function CrmDashboard() {
             </div>
           </div>
         </Card>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-destructive/10"><AlertTriangle size={20} className="text-destructive" /></div>
+            <div className="p-2 rounded-lg bg-primary/10"><DollarSign size={20} className="text-primary" /></div>
+            <div>
+              <p className="text-xl font-bold">{faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</p>
+              <p className="text-xs text-muted-foreground">Faturamento do mês</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
             <div>
               <p className="text-2xl font-bold">{overdueTasks.length}</p>
               <p className="text-xs text-muted-foreground">Tarefas atrasadas</p>
