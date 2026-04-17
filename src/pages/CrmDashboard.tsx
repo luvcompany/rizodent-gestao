@@ -182,9 +182,9 @@ export default function CrmDashboard() {
             </div>
           </div>
         </Card>
-        </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-destructive/10"><AlertTriangle size={20} className="text-destructive" /></div>
             <div>
               <p className="text-2xl font-bold">{overdueTasks.length}</p>
               <p className="text-xs text-muted-foreground">Tarefas atrasadas</p>
