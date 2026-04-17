@@ -189,8 +189,11 @@ const Dashboard = () => {
     const firstDate = new Date(dates[0] + "T12:00:00");
     const today = new Date();
     today.setHours(12, 0, 0, 0);
+    // Lançamentos são feitos com 1 dia de atraso, então consideramos até ontem
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
     const lastDayMonth = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
-    const end = today < lastDayMonth ? today : lastDayMonth;
+    const end = yesterday < lastDayMonth ? yesterday : lastDayMonth;
     let count = 0;
     const current = new Date(firstDate);
     while (current <= end) {
