@@ -169,33 +169,46 @@ const Dashboard = () => {
   const fatRecorrentes = filtered.pagamentos.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
   const totalPacientes = new Set(filtered.pagamentos.map((p) => p.paciente_id)).size;
 
-  // Dias úteis com dados (seg-sáb, apenas dias que tiveram pagamentos)
+  // Conjunto de feriados (YYYY-MM-DD) aplicáveis à clínica filtrada
+  const holidaySet = useMemo(() => {
+    const set = new Set<string>();
+    holidays.forEach((h) => {
+      const applies = !h.clinica_id || clinicaFiltro === "todas" || h.clinica_id === clinicaFiltro;
+      if (applies) set.add(h.data);
+    });
+    return set;
+  }, [holidays, clinicaFiltro]);
+
+  const isWorkingDay = (d: Date, dateStr: string) =>
+    d.getDay() !== 0 && !holidaySet.has(dateStr);
+
+  // Dias úteis com dados (seg-sáb, exclui domingos e feriados)
   const diasUteisPassados = useMemo(() => {
     const datesWithData = new Set<string>();
     filtered.pagamentos.forEach((p) => {
       const d = new Date(p.data_pagamento + "T12:00:00");
-      if (d.getDay() !== 0) { // excl domingo
+      if (isWorkingDay(d, p.data_pagamento)) {
         datesWithData.add(p.data_pagamento);
       }
     });
     return Math.max(datesWithData.size, 1);
-  }, [filtered.pagamentos]);
+  }, [filtered.pagamentos, holidaySet]);
 
-  // Total de dias úteis do mês para projeção — conta a partir da primeira data com dados
+  // Total de dias úteis do mês para projeção — exclui domingos e feriados
   const diasUteisMes = useMemo(() => {
     if (!filtered.pagamentos.length) return 26;
-    // Find first payment date in period
-    const dates = filtered.pagamentos.map(p => p.data_pagamento).sort();
+    const dates = filtered.pagamentos.map((p) => p.data_pagamento).sort();
     const firstDate = new Date(dates[0] + "T12:00:00");
     const lastDay = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
     let count = 0;
     const current = new Date(firstDate);
     while (current <= lastDay) {
-      if (current.getDay() !== 0) count++;
+      const ds = current.toISOString().split("T")[0];
+      if (isWorkingDay(current, ds)) count++;
       current.setDate(current.getDate() + 1);
     }
     return Math.max(count, 1);
-  }, [filtered.pagamentos]);
+  }, [filtered.pagamentos, holidaySet]);
 
   // Ticket médio = faturamento / dias com dados
   const ticketMedio = fatTotal / diasUteisPassados;
