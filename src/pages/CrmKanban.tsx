@@ -416,25 +416,42 @@ export default function CrmKanban() {
   const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
   const newYesterday = myLeads.filter(l => l.created_at.startsWith(yesterday)).length;
 
-  // Faturamento do mês = soma dos pagamentos reais do mês atual dos pacientes vinculados aos leads visíveis
+  // Mapa lead_id -> total pago no mês (somando TODOS os pacientes vinculados via crm_lead_pacientes)
+  // Usado tanto no card "Vendas concluídas (mês)" quanto no total exibido em cada etapa.
   const [vendasConcluidas, setVendasConcluidas] = useState(0);
+  const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
   useEffect(() => {
-    const pacienteIds = Array.from(new Set(myLeads.map(l => l.paciente_id).filter(Boolean) as string[]));
-    if (pacienteIds.length === 0) { setVendasConcluidas(0); return; }
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
-    supabase
-      .from("pagamentos")
-      .select("valor")
-      .in("paciente_id", pacienteIds)
-      .gte("data_pagamento", monthStart)
-      .lte("data_pagamento", monthEnd)
-      .then(({ data }) => {
-        const total = (data || []).reduce((s, p: any) => s + Number(p.valor || 0), 0);
-        setVendasConcluidas(total);
+
+    (async () => {
+      const [{ data: pags }, { data: links }] = await Promise.all([
+        supabase.from("pagamentos").select("valor, paciente_id")
+          .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
+        supabase.from("crm_lead_pacientes").select("lead_id, paciente_id"),
+      ]);
+
+      const pacienteToLeads = new Map<string, string[]>();
+      (links || []).forEach((l: any) => {
+        const arr = pacienteToLeads.get(l.paciente_id) || [];
+        arr.push(l.lead_id);
+        pacienteToLeads.set(l.paciente_id, arr);
       });
-  }, [myLeads]);
+
+      const map = new Map<string, number>();
+      let total = 0;
+      (pags || []).forEach((p: any) => {
+        const v = Number(p.valor || 0);
+        total += v;
+        const leadIds = pacienteToLeads.get(p.paciente_id) || [];
+        leadIds.forEach(lid => map.set(lid, (map.get(lid) || 0) + v));
+      });
+
+      setVendasConcluidas(total);
+      setLeadMonthValueMap(map);
+    })();
+  }, [leads]);
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
