@@ -575,7 +575,7 @@ export default function CrmKanban() {
             <div className="flex gap-3 h-full min-w-max">
               {stages.map((stage, idx) => {
                 const stageLeads = getLeadsForStage(stage.id);
-                const stageValue = stageLeads.reduce((a, l) => a + (l.value || 0), 0);
+                const stageValue = stageLeads.reduce((a, l) => a + (leadMonthValueMap.get(l.id) || 0), 0);
                 return (
                   <div key={stage.id} className="flex items-start gap-1">
                     <div className="w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
