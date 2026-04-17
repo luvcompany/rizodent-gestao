@@ -55,6 +55,8 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const [searchResults, setSearchResults] = useState<Paciente[]>([]);
   const [searching, setSearching] = useState(false);
   const [savingCity, setSavingCity] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicates, setDuplicates] = useState<Paciente[]>([]);
 
   useEffect(() => {
     setCidade(lead.cidade || EMPTY_CITY_VALUE);
