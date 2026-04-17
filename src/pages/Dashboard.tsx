@@ -182,16 +182,23 @@ const Dashboard = () => {
   const isWorkingDay = (d: Date, dateStr: string) =>
     d.getDay() !== 0 && !holidaySet.has(dateStr);
 
-  // Dias úteis com dados (seg-sáb, exclui domingos e feriados)
+  // Dias úteis decorridos no mês (seg-sáb, exclui domingos e feriados) — até hoje
   const diasUteisPassados = useMemo(() => {
-    const datesWithData = new Set<string>();
-    filtered.pagamentos.forEach((p) => {
-      const d = new Date(p.data_pagamento + "T12:00:00");
-      if (isWorkingDay(d, p.data_pagamento)) {
-        datesWithData.add(p.data_pagamento);
-      }
-    });
-    return Math.max(datesWithData.size, 1);
+    if (!filtered.pagamentos.length) return 1;
+    const dates = filtered.pagamentos.map((p) => p.data_pagamento).sort();
+    const firstDate = new Date(dates[0] + "T12:00:00");
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const lastDayMonth = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
+    const end = today < lastDayMonth ? today : lastDayMonth;
+    let count = 0;
+    const current = new Date(firstDate);
+    while (current <= end) {
+      const ds = current.toISOString().split("T")[0];
+      if (isWorkingDay(current, ds)) count++;
+      current.setDate(current.getDate() + 1);
+    }
+    return Math.max(count, 1);
   }, [filtered.pagamentos, holidaySet]);
 
   // Total de dias úteis do mês para projeção — exclui domingos e feriados
