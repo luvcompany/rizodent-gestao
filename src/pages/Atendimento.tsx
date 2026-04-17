@@ -346,18 +346,38 @@ const Atendimento = () => {
     e.preventDefault();
 
     if (modo === "novo_pagamento") {
-      if (!valorPago || parseCurrency(valorPago) <= 0) {
-        toast.error("Preencha o valor do pagamento.");
-        return;
-      }
-
       if (!orcamentoSelecionado) {
         toast.error("Selecione um orçamento para registrar o pagamento.");
         return;
       }
 
-      const valorNovoPagamento = parseCurrency(valorPago);
-      const novoTotalContratado = totalPagoExistente + valorNovoPagamento;
+      // Validate each entry
+      for (let i = 0; i < pagamentosLista.length; i++) {
+        const p = pagamentosLista[i];
+        const v = parseCurrency(p.valor);
+        if (v <= 0) {
+          toast.error(`Preencha o valor do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
+          return;
+        }
+        if (p.modo === "existente" && !p.tratamentoId) {
+          toast.error(`Selecione o procedimento do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
+          return;
+        }
+        if (p.modo === "novo") {
+          if (!p.procedimento) {
+            toast.error(`Selecione o novo procedimento do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
+            return;
+          }
+          const espDisp = getEspecialidadesDisponiveis(p.procedimento);
+          if (espDisp.length > 0 && !p.especialidade) {
+            toast.error(`Selecione a especialidade do novo procedimento.`);
+            return;
+          }
+        }
+      }
+
+      const totalNovos = pagamentosLista.reduce((s, p) => s + parseCurrency(p.valor), 0);
+      const novoTotalContratado = totalPagoExistente + totalNovos;
 
       if (novoTotalContratado > totalOrcadoExistente) {
         toast.error(`O valor total contratado (${formatCurrencyDisplay(novoTotalContratado)}) ultrapassaria o valor orçado (${formatCurrencyDisplay(totalOrcadoExistente)}).`);
@@ -367,32 +387,51 @@ const Atendimento = () => {
       setSaving(true);
       try {
         const tipo = tipoPagamento;
-        // Link to first treatment of the selected orcamento
-        const orcTrats = tratamentosExistentes.filter(t => t.orcamento_id === orcamentoSelecionado.id);
-        const tratamentoId = orcTrats[0]?.id || tratamentosExistentes[0]?.id;
-        if (!tratamentoId) throw new Error("Nenhum tratamento encontrado.");
+        const targetClinicaId = clinicaId || tratamentosExistentes[0]?.clinica_id;
 
-        const { error: pagError } = await supabase
-          .from("pagamentos")
-          .insert({
-            tratamento_id: tratamentoId,
-            paciente_id: pacienteSelecionadoId!,
-            clinica_id: clinicaId || tratamentosExistentes[0].clinica_id,
-            valor: valorNovoPagamento,
-            forma_pagamento: "Não informado",
-            tipo,
-            data_pagamento: dataPagamento,
-            created_by: user?.id,
-            orcamento_id: orcamentoSelecionado.id,
-          });
-        if (pagError) throw pagError;
+        for (const p of pagamentosLista) {
+          let tratamentoId = p.tratamentoId;
 
-        // Check if orcamento is now complete
+          if (p.modo === "novo") {
+            const { data: trat, error: tratError } = await supabase
+              .from("tratamentos")
+              .insert({
+                paciente_id: pacienteSelecionadoId!,
+                clinica_id: targetClinicaId,
+                procedimento: p.procedimento,
+                especialidade: p.especialidade || null,
+                created_by: user?.id,
+                orcamento_id: orcamentoSelecionado.id,
+              })
+              .select("id")
+              .single();
+            if (tratError) throw tratError;
+            tratamentoId = trat.id;
+          }
+
+          if (!tratamentoId) throw new Error("Tratamento inválido.");
+
+          const { error: pagError } = await supabase
+            .from("pagamentos")
+            .insert({
+              tratamento_id: tratamentoId,
+              paciente_id: pacienteSelecionadoId!,
+              clinica_id: targetClinicaId,
+              valor: parseCurrency(p.valor),
+              forma_pagamento: "Não informado",
+              tipo,
+              data_pagamento: dataPagamento,
+              created_by: user?.id,
+              orcamento_id: orcamentoSelecionado.id,
+            });
+          if (pagError) throw pagError;
+        }
+
         if (novoTotalContratado >= totalOrcadoExistente) {
           await supabase.from("orcamentos").update({ status: "concluido" }).eq("id", orcamentoSelecionado.id);
         }
 
-        toast.success("Pagamento registrado com sucesso!");
+        toast.success(`${pagamentosLista.length > 1 ? `${pagamentosLista.length} pagamentos registrados` : "Pagamento registrado"} com sucesso!`);
         resetForm();
       } catch (err: any) {
         toast.error("Erro ao salvar: " + err.message);
