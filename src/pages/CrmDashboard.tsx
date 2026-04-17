@@ -163,17 +163,6 @@ export default function CrmDashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10"><ListTodo size={20} className="text-primary" /></div>
-            <div>
-              <p className="text-2xl font-bold">{todayTasks.length}</p>
-              <p className="text-xs text-muted-foreground">Tarefas do dia</p>
-            </div>
-          </div>
-        </Card>
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
         <Card className="p-4">
           <div className="flex items-center gap-3">
@@ -183,6 +172,16 @@ export default function CrmDashboard() {
               <p className="text-xs text-muted-foreground">Faturamento do mês</p>
             </div>
           </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10"><ListTodo size={20} className="text-primary" /></div>
+            <div>
+              <p className="text-2xl font-bold">{todayTasks.length}</p>
+              <p className="text-xs text-muted-foreground">Tarefas do dia</p>
+            </div>
+          </div>
+        </Card>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
