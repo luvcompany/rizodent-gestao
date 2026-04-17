@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Save, Search, UserCheck, CalendarIcon, FileText, Plus, CreditCard, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -103,6 +104,9 @@ const Atendimento = () => {
   const [saving, setSaving] = useState(false);
   const [modo, setModo] = useState<ModoAtendimento>("selecionar");
   const [initialPatientLoaded, setInitialPatientLoaded] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicates, setDuplicates] = useState<Tables<"pacientes">[]>([]);
+  const [forceCreateNew, setForceCreateNew] = useState(false);
 
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
@@ -475,6 +479,26 @@ const Atendimento = () => {
       }
 
       if (!pacienteId) {
+        // Duplicate phone check (last 8 digits) — unless user already confirmed
+        if (!forceCreateNew) {
+          const phoneClean = telefone.replace(/\D/g, "");
+          if (phoneClean.length >= 8) {
+            const tail = phoneClean.slice(-8);
+            const pattern = "%" + tail.split("").join("%") + "%";
+            const { data: existing } = await supabase
+              .from("pacientes")
+              .select("*")
+              .ilike("telefone", pattern)
+              .limit(5);
+            if (existing && existing.length > 0) {
+              setDuplicates(existing);
+              setDuplicateOpen(true);
+              setSaving(false);
+              return;
+            }
+          }
+        }
+
         const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
         const { data: newPac, error } = await supabase
           .from("pacientes")
@@ -483,6 +507,7 @@ const Atendimento = () => {
           .single();
         if (error) throw error;
         pacienteId = newPac.id;
+        setForceCreateNew(false);
       }
 
       // Always create a new orcamento for new treatments
@@ -1065,6 +1090,57 @@ const Atendimento = () => {
           </form>
         </CardContent>
       </Card>
+
+      {/* Duplicate phone confirmation dialog */}
+      <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Telefone já cadastrado</DialogTitle>
+            <DialogDescription>
+              Encontramos {duplicates.length} paciente{duplicates.length > 1 ? "s" : ""} com este telefone. Selecione um existente ou cadastre como pessoa diferente (mesmo telefone).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {duplicates.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-secondary/50">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
+                  <p className="text-xs text-muted-foreground truncate">{p.telefone}{p.cidade ? ` · ${p.cidade}` : ""}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={async () => {
+                    setDuplicateOpen(false);
+                    await preencherPacienteSelecionado(p);
+                    toast.success(`Paciente ${p.nome} selecionado!`);
+                  }}
+                >
+                  Selecionar
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button variant="outline" type="button" onClick={() => setDuplicateOpen(false)}>Cancelar</Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setForceCreateNew(true);
+                setDuplicateOpen(false);
+                // Programmatic submit
+                setTimeout(() => {
+                  const form = document.querySelector("form");
+                  if (form) form.requestSubmit();
+                }, 0);
+              }}
+            >
+              Cadastrar como pessoa diferente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

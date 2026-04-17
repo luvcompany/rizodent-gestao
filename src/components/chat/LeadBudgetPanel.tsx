@@ -55,6 +55,8 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const [searchResults, setSearchResults] = useState<Paciente[]>([]);
   const [searching, setSearching] = useState(false);
   const [savingCity, setSavingCity] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicates, setDuplicates] = useState<Paciente[]>([]);
 
   useEffect(() => {
     setCidade(lead.cidade || EMPTY_CITY_VALUE);
@@ -215,12 +217,12 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     return clean;
   };
 
-  const createAndLinkPaciente = async () => {
+  const createAndLinkPaciente = async (force = false) => {
     const normalizedCity = cidade === EMPTY_CITY_VALUE ? null : cidade;
     const phoneClean = stripCountryCode(lead.phone || "").replace(/\D/g, "");
 
     // Verificar duplicidade pelos últimos 8 dígitos antes de criar
-    if (phoneClean.length >= 8) {
+    if (!force && phoneClean.length >= 8) {
       const tail = phoneClean.slice(-8);
       const pattern = "%" + tail.split("").join("%") + "%";
       const { data: existing } = await supabase
@@ -229,8 +231,8 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         .ilike("telefone", pattern)
         .limit(5);
       if (existing && existing.length > 0) {
-        setSearchResults(existing);
-        toast.error(`Paciente já cadastrado: ${existing[0].nome}. Selecione na lista para vincular.`);
+        setDuplicates(existing);
+        setDuplicateOpen(true);
         return;
       }
     }
@@ -249,6 +251,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       .eq("id", lead.id);
     onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
     setLinkOpen(false);
+    setDuplicateOpen(false);
     toast.success("Paciente criado e vinculado!");
 
     // Navigate to atendimento page with new patient data
@@ -259,6 +262,11 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         pacienteTelefone: stripCountryCode(lead.phone || ""),
       },
     });
+  };
+
+  const linkExistingFromDuplicate = async (pacienteId: string) => {
+    setDuplicateOpen(false);
+    await linkPaciente(pacienteId);
   };
 
   const goToAtendimento = () => {
@@ -403,8 +411,39 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setLinkOpen(false)}>Cancelar</Button>
-            <Button onClick={createAndLinkPaciente}>
+            <Button onClick={() => createAndLinkPaciente(false)}>
               <UserPlus size={14} className="mr-1" /> Criar Paciente com Dados do Lead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate phone confirmation dialog */}
+      <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Telefone já cadastrado</DialogTitle>
+            <DialogDescription>
+              Encontramos {duplicates.length} paciente{duplicates.length > 1 ? "s" : ""} com este telefone. Vincule a um existente ou cadastre como pessoa diferente (mesmo telefone).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {duplicates.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-secondary/50">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
+                  <p className="text-xs text-muted-foreground truncate">{p.telefone}{p.cidade ? ` · ${p.cidade}` : ""}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => linkExistingFromDuplicate(p.id)}>
+                  Vincular
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setDuplicateOpen(false)}>Cancelar</Button>
+            <Button onClick={() => createAndLinkPaciente(true)}>
+              <UserPlus size={14} className="mr-1" /> Cadastrar como pessoa diferente
             </Button>
           </DialogFooter>
         </DialogContent>
