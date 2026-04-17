@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
+import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter, getDateRangesFromFilter } from "@/components/ui/date-range-filter";
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
@@ -64,10 +64,22 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
+  const allRanges = useMemo(() => getDateRangesFromFilter(dateFilter), [dateFilter]);
   const isAllPeriod = dateFilter.preset === "all";
   const dateFrom = useMemo(() => dateRange ? dateRange.start.toISOString().split("T")[0] : "2020-01-01", [dateRange]);
   const dateTo = useMemo(() => dateRange ? dateRange.end.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
-  // Determine if charts should aggregate by month (when range > 60 days)
+  // Pre-compute interval bounds as YYYY-MM-DD strings for fast date comparison
+  const rangeBounds = useMemo(
+    () => allRanges?.map((r) => ({ from: r.start.toISOString().split("T")[0], to: r.end.toISOString().split("T")[0] })) ?? null,
+    [allRanges]
+  );
+  const isInSelectedRanges = (dateStr: string | undefined | null) => {
+    if (!dateStr) return false;
+    const v = dateStr.length > 10 ? dateStr.split("T")[0] : dateStr;
+    if (!rangeBounds) return v >= dateFrom && v <= dateTo; // "all"
+    return rangeBounds.some((r) => v >= r.from && v <= r.to);
+  };
+  // Determine if charts should aggregate by month (when total span > 60 days)
   const useMonthlyChart = useMemo(() => {
     const d1 = new Date(dateFrom);
     const d2 = new Date(dateTo);
@@ -107,7 +119,7 @@ const Dashboard = () => {
     const filterByDate = (items: any[], dateField: string) =>
     items.filter((i) => {
       const val = i[dateField]?.split("T")[0] || i[dateField];
-      return val >= dateFrom && val <= dateTo;
+      return isInSelectedRanges(val);
     });
 
     let filteredTratamentos = filterByDate(filterByClinica(tratamentos), "created_at");
@@ -139,7 +151,7 @@ const Dashboard = () => {
       leads: filterByDate(filterByClinica(leadsData), "data"),
       pacientes: filteredPacientes
     };
-  }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo]);
+  }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, leadsData, dateFrom, dateTo, rangeBounds]);
 
   const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
   const fatNovos = filtered.pagamentos.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
@@ -216,13 +228,15 @@ const Dashboard = () => {
     while (current <= end) {
       if (current.getDay() !== 0) {
         const dateStr = current.toISOString().split("T")[0];
-        const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-        days.push({ dia: label, valor: pgMap.get(dateStr) || 0 });
+        if (isInSelectedRanges(dateStr)) {
+          const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+          days.push({ dia: label, valor: pgMap.get(dateStr) || 0 });
+        }
       }
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart]);
+  }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart, rangeBounds]);
 
   // Chart: Leads Novos Diários (todos os dias úteis do período)
   const leadsDiario = useMemo(() => {
@@ -252,13 +266,15 @@ const Dashboard = () => {
     while (current <= end) {
       if (current.getDay() !== 0) {
         const dateStr = current.toISOString().split("T")[0];
-        const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-        days.push({ dia: label, leads: leadsMap.get(dateStr) || 0 });
+        if (isInSelectedRanges(dateStr)) {
+          const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+          days.push({ dia: label, leads: leadsMap.get(dateStr) || 0 });
+        }
       }
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.leads, useMonthlyChart]);
+  }, [dateFrom, dateTo, filtered.leads, useMonthlyChart, rangeBounds]);
 
   // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
   const fatClinicaRaw = clinicas.map((c) => {
