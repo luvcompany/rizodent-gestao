@@ -267,7 +267,8 @@ const Atendimento = () => {
     setValorPago(""); setTipoPagamento("primeiro");
     setOrigem(""); setNomeAnuncio(""); setOrigemOutrosDesc(""); setPacienteSelecionadoId(null);
     setDataPagamento(new Date().toISOString().split("T")[0]);
-    setValorOrcadoGeral(""); setValorContratadoGeral("");
+    setValorOrcadoGeral("");
+    setPagamentosLista([createEmptyPagamento()]);
     setModo("selecionar");
     setTotalPagoExistente(0);
     setTotalOrcadoExistente(0);
