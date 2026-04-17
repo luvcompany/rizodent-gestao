@@ -168,6 +168,23 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
   const createAndLinkPaciente = async () => {
     const normalizedCity = cidade === EMPTY_CITY_VALUE ? null : cidade;
+    const phoneClean = stripCountryCode(lead.phone || "").replace(/\D/g, "");
+
+    // Verificar duplicidade pelos últimos 8 dígitos antes de criar
+    if (phoneClean.length >= 8) {
+      const tail = phoneClean.slice(-8);
+      const pattern = "%" + tail.split("").join("%") + "%";
+      const { data: existing } = await supabase
+        .from("pacientes")
+        .select("id, nome, telefone")
+        .ilike("telefone", pattern)
+        .limit(5);
+      if (existing && existing.length > 0) {
+        setSearchResults(existing);
+        toast.error(`Paciente já cadastrado: ${existing[0].nome}. Selecione na lista para vincular.`);
+        return;
+      }
+    }
 
     const { data, error } = await supabase.from("pacientes").insert({
       nome: lead.name,
