@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -44,6 +44,7 @@ type Props = {
 
 export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const navigate = useNavigate();
+  const autoLinkAttemptedRef = useRef<Set<string>>(new Set());
   const [paciente, setPaciente] = useState<Paciente | null>(null);
   const [orcamentos, setOrcamentos] = useState<OrcamentoComPago[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
@@ -67,8 +68,11 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       setOrcamentos([]);
       setTotalPaid(0);
       setTotalBudgeted(0);
-      // Auto-link by phone signature (last 8 digits)
-      void autoLinkByPhone();
+      // Auto-link by phone signature (last 8 digits) — only once per lead per session
+      if (!autoLinkAttemptedRef.current.has(lead.id)) {
+        autoLinkAttemptedRef.current.add(lead.id);
+        void autoLinkByPhone();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead.paciente_id]);
@@ -100,7 +104,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         return;
       }
       onLeadUpdated({ paciente_id: data[0].id });
-      toast.success(`Paciente "${data[0].nome}" vinculado automaticamente`);
+      // Silent auto-link — no toast to avoid noise on every conversation open
     } else {
       // Multiple → just preload list and open dialog hint
       setSearchResults(data);
