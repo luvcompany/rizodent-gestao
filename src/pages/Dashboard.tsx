@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import DashboardFunnel from "@/components/DashboardFunnel";
 import { useChartTheme } from "@/hooks/useChartTheme";
+import { HolidaysManager, type Holiday } from "@/components/HolidaysManager";
 
 const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(200, 70%, 50%)", "hsl(280, 60%, 55%)"];
 
