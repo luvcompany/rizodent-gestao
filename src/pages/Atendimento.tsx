@@ -103,6 +103,9 @@ const Atendimento = () => {
   const [saving, setSaving] = useState(false);
   const [modo, setModo] = useState<ModoAtendimento>("selecionar");
   const [initialPatientLoaded, setInitialPatientLoaded] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicates, setDuplicates] = useState<Tables<"pacientes">[]>([]);
+  const [forceCreateNew, setForceCreateNew] = useState(false);
 
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
