@@ -42,6 +42,7 @@ const TRIGGER_DESCRIPTIONS: Record<string, string> = {
   on_create_or_enter: "Dispara tanto na criação quanto na movimentação para esta etapa.",
   no_response: "Dispara quando o lead não responde após um tempo definido.",
   before_scheduled: "Dispara X tempo antes de um agendamento ou tarefa marcada. Ideal para lembretes automáticos.",
+  time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora específica. Cada lead recebe a ação apenas uma vez.",
 };
 
 function TemplateCombobox({
@@ -442,6 +443,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <SelectItem value="on_create_or_enter">Quando movido ou criado nesta etapa</SelectItem>
                 <SelectItem value="no_response">Leads sem resposta há X tempo</SelectItem>
                 <SelectItem value="before_scheduled">Antes de agendamento/tarefa</SelectItem>
+                <SelectItem value="time_window">Janela de data/hora (mensagem recebida)</SelectItem>
               </SelectContent>
             </Select>
             {TRIGGER_DESCRIPTIONS[autoForm.trigger_type] && (

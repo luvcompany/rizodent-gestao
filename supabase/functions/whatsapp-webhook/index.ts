@@ -737,7 +737,7 @@ Deno.serve(async (req) => {
                     .select("*")
                     .eq("stage_id", currentLeadData.stage_id)
                     .eq("is_active", true)
-                    .in("trigger_type", ["keyword_response", "cold_lead_return"]);
+                    .in("trigger_type", ["keyword_response", "cold_lead_return", "time_window"]);
 
                   for (const ra of reactiveAutos || []) {
                     const raCfg = (ra.action_config || {}) as Record<string, any>;
@@ -755,6 +755,29 @@ Deno.serve(async (req) => {
                       const coldStages = (raCfg.cold_stages || []) as string[];
                       if (coldStages.length > 0 && !coldStages.includes(currentLeadData.stage_id)) continue;
                       console.log(`[WEBHOOK] Cold lead return for lead ${lead.id}, automation ${ra.id}`);
+                    }
+
+                    if (ra.trigger_type === "time_window") {
+                      const winStart = raCfg.window_start as string | undefined;
+                      const winEnd = raCfg.window_end as string | undefined;
+                      if (!winStart || !winEnd) continue;
+                      const nowMs = Date.now();
+                      const startMs = new Date(winStart).getTime();
+                      const endMs = new Date(winEnd).getTime();
+                      if (isNaN(startMs) || isNaN(endMs)) continue;
+                      if (nowMs < startMs || nowMs > endMs) {
+                        console.log(`[WEBHOOK] time_window automation ${ra.id} fora da janela (now=${new Date(nowMs).toISOString()}, start=${winStart}, end=${winEnd})`);
+                        continue;
+                      }
+                      // Garantir disparo único por lead/automação via insert único
+                      const { error: dedupErr } = await supabase
+                        .from("crm_automation_executions")
+                        .insert({ automation_id: ra.id, lead_id: lead.id });
+                      if (dedupErr) {
+                        console.log(`[WEBHOOK] time_window automation ${ra.id} já executada para lead ${lead.id}, pulando`);
+                        continue;
+                      }
+                      console.log(`[WEBHOOK] time_window matched for lead ${lead.id}, automation ${ra.id}`);
                     }
 
                     // Execute actions server-side
