@@ -627,7 +627,7 @@ const PacienteDetalhe = () => {
                                         <span className="text-muted-foreground">{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</span>
                                         <span className="text-xs text-muted-foreground ml-2">· {(p.clinicas as any)?.nome}</span>
                                         <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
-                                        <span className="text-xs text-muted-foreground ml-2">· {p.forma_pagamento}</span>
+                                        
                                       </div>
                                       <div className="flex items-center gap-2">
                                         <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
