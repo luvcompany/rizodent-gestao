@@ -3,6 +3,9 @@ import { Play, Pause } from "lucide-react";
 
 const SPEEDS = [1, 1.5, 2] as const;
 
+// Global registry to ensure only one audio plays at a time across the app
+let currentlyPlayingAudio: HTMLAudioElement | null = null;
+
 export default function AudioPlayer({ src }: { src: string }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -15,20 +18,28 @@ export default function AudioPlayer({ src }: { src: string }) {
     if (!audio) return;
     const onTime = () => setProgress(audio.currentTime);
     const onMeta = () => setDuration(audio.duration);
-    const onEnd = () => setPlaying(false);
+    const onEnd = () => {
+      setPlaying(false);
+      if (currentlyPlayingAudio === audio) currentlyPlayingAudio = null;
+    };
     const onPlay = () => {
-      // Re-apply playback rate every time audio starts playing
       audio.playbackRate = SPEEDS[speedIdx];
     };
+    const onPause = () => setPlaying(false);
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onMeta);
     audio.addEventListener("ended", onEnd);
     audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
     return () => {
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("loadedmetadata", onMeta);
       audio.removeEventListener("ended", onEnd);
       audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      if (currentlyPlayingAudio === audio) {
+        currentlyPlayingAudio = null;
+      }
     };
   }, [speedIdx]);
 
@@ -36,8 +47,20 @@ export default function AudioPlayer({ src }: { src: string }) {
     e.stopPropagation();
     const audio = audioRef.current;
     if (!audio) return;
-    if (playing) { audio.pause(); } else { audio.playbackRate = SPEEDS[speedIdx]; audio.play(); }
-    setPlaying(!playing);
+    if (playing) {
+      audio.pause();
+      if (currentlyPlayingAudio === audio) currentlyPlayingAudio = null;
+      setPlaying(false);
+    } else {
+      // Pause any other audio currently playing
+      if (currentlyPlayingAudio && currentlyPlayingAudio !== audio) {
+        currentlyPlayingAudio.pause();
+      }
+      audio.playbackRate = SPEEDS[speedIdx];
+      audio.play();
+      currentlyPlayingAudio = audio;
+      setPlaying(true);
+    }
   }, [playing, speedIdx]);
 
   const cycleSpeed = useCallback((e: React.MouseEvent) => {
