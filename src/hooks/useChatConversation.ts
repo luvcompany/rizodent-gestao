@@ -579,5 +579,6 @@ export function useChatConversation(leadId: string | null | undefined) {
     dismissToast,
     showActivityToast,
     isSystemMessage,
+    deleteSystemMessage,
   };
 }
