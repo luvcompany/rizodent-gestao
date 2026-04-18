@@ -182,6 +182,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               </TooltipProvider>
             )}
           </div>
+          )}
           {reactions.length > 0 && (
             <div className={`flex gap-0.5 mt-[-8px] ${msg.direction === "outbound" ? "justify-end mr-1" : "justify-start ml-1"}`}>
               {reactions.map((r, i) => (
