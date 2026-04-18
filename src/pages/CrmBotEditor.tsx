@@ -22,7 +22,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Save, Undo2, Redo2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowLeft, Save, Undo2, Redo2, Eye, Info } from "lucide-react";
 import { Smartphone } from "lucide-react";
 import { useSnapLines, duplicateNode, type SnapLine } from "@/hooks/useBotEditorHelpers";
 
@@ -50,6 +53,7 @@ function BotEditorInner() {
   const [botName, setBotName] = useState("Novo Bot");
   const [botDescription, setBotDescription] = useState("");
   const [botStatus, setBotStatus] = useState("draft");
+  const [markAsRead, setMarkAsRead] = useState(true);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -102,10 +106,11 @@ function BotEditorInner() {
       setBotName(data.name);
       setBotDescription(data.description || "");
       setBotStatus(data.status);
+      setMarkAsRead((data as any).mark_as_read !== false);
       const flow = data.flow_json as any;
       if (flow?.nodes) setNodes(flow.nodes);
       if (flow?.edges) setEdges(flow.edges);
-      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name, botDescription: data.description || "" });
+      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name, botDescription: data.description || "", markAsRead: (data as any).mark_as_read !== false });
       setLoading(false);
       // Init history
       historyRef.current = [{ nodes: flow?.nodes || [], edges: flow?.edges || [] }];
@@ -122,9 +127,9 @@ function BotEditorInner() {
 
   useEffect(() => {
     if (loading) return;
-    const current = JSON.stringify({ nodes, edges, botName, botDescription });
+    const current = JSON.stringify({ nodes, edges, botName, botDescription, markAsRead });
     setIsDirty(current !== lastSavedRef.current);
-  }, [nodes, edges, botName, botDescription, loading]);
+  }, [nodes, edges, botName, botDescription, markAsRead, loading]);
 
   const handleDeleteEdge = useCallback(
     (edgeId: string) => {
@@ -284,7 +289,8 @@ function BotEditorInner() {
       name: botName,
       description: botDescription,
       flow_json: { nodes, edges },
-    }).eq("id", id);
+      mark_as_read: markAsRead,
+    } as any).eq("id", id);
 
     if (error) { setSaving(false); toast.error("Erro ao salvar"); return; }
 
@@ -304,11 +310,11 @@ function BotEditorInner() {
     }).eq("id", id);
 
     setBotStatus("published");
-    lastSavedRef.current = JSON.stringify({ nodes, edges, botName, botDescription });
+    lastSavedRef.current = JSON.stringify({ nodes, edges, botName, botDescription, markAsRead });
     setIsDirty(false);
     setSaving(false);
     toast.success(`Bot salvo e publicado! Versão ${newVersion}`);
-  }, [id, botName, botDescription, nodes, edges, isDirty]);
+  }, [id, botName, botDescription, nodes, edges, isDirty, markAsRead]);
 
   const handleHighlightNode = useCallback((nodeId: string | null) => {
     setHighlightedNodeId(nodeId);
@@ -352,6 +358,29 @@ function BotEditorInner() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <TooltipProvider delayDuration={200}>
+            <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-border bg-secondary/40">
+              <Switch
+                id="mark-as-read"
+                checked={markAsRead}
+                onCheckedChange={setMarkAsRead}
+                className="scale-75"
+              />
+              <Label htmlFor="mark-as-read" className="text-xs cursor-pointer flex items-center gap-1">
+                <Eye size={12} />
+                Marcar como lida
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info size={12} className="text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    Quando ativado, mensagens enviadas pelo bot marcam a conversa como respondida.
+                    Desative para que o lead continue aparecendo como "aguardando resposta" mesmo após o bot interagir.
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+            </div>
+          </TooltipProvider>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={undo} title="Desfazer (Ctrl+Z)">
             <Undo2 size={16} />
           </Button>

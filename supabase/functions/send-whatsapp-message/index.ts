@@ -202,6 +202,7 @@ Deno.serve(async (req) => {
       sections,
       header,
       footer,
+      skip_mark_as_read = false,
     } = await req.json();
 
     if (!lead_id || !to) {
@@ -722,11 +723,16 @@ Deno.serve(async (req) => {
     }
 
     const now = new Date().toISOString();
-    await supabase.from("crm_leads").update({
+    // When a bot has "Marcar como lida" disabled, we skip updating last_outbound_at
+    // so the conversation continues to appear as "aguardando resposta" in the CRM.
+    const leadUpdate: Record<string, any> = {
       last_message: message || `[${finalType}]`,
       last_message_at: now,
-      last_outbound_at: now,
-    }).eq("id", lead_id);
+    };
+    if (!skip_mark_as_read) {
+      leadUpdate.last_outbound_at = now;
+    }
+    await supabase.from("crm_leads").update(leadUpdate).eq("id", lead_id);
 
     return new Response(JSON.stringify({ success: true, message: msg, whatsapp: waData }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

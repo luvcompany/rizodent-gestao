@@ -12,6 +12,7 @@ export type Bot = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  mark_as_read?: boolean;
 };
 
 export type FlowData = {

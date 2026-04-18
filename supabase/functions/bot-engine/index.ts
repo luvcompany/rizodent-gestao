@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
       // Find active execution waiting for reply
       let query = supabase
         .from("bot_executions")
-        .select("*, bots(flow_json, current_version)")
+        .select("*, bots(flow_json, current_version, mark_as_read)")
         .eq("status", "waiting_reply");
 
       if (executionId) {
@@ -350,12 +350,13 @@ Deno.serve(async (req) => {
         if (!nextEdge && currentNode.type === "send_menu") {
           console.log(`[bot-engine] No edge for reply "${replyText}" at node ${execution.current_node_id}, re-sending menu`);
           if (lead?.phone) {
+            const skipMark = (execution as any).bots?.mark_as_read === false;
             await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
               lead_id: leadId,
               to: lead.phone,
               type: "text",
               message: "Por favor, selecione uma das opções do menu acima. 👆",
-            });
+            }, skipMark);
           }
           // Reset timeout since lead interacted
           const newTimeoutAt = calculateTimeoutAt(currentNode.data);
@@ -412,10 +413,12 @@ async function sendViaWhatsApp(
   supabaseUrl: string,
   serviceKey: string,
   authHeader: string,
-  payload: Record<string, any>
+  payload: Record<string, any>,
+  skipMarkAsRead: boolean = false,
 ) {
   const url = `${supabaseUrl}/functions/v1/send-whatsapp-message`;
   try {
+    const finalPayload = skipMarkAsRead ? { ...payload, skip_mark_as_read: true } : payload;
     const resp = await fetch(url, {
       method: "POST",
       headers: {
@@ -423,7 +426,7 @@ async function sendViaWhatsApp(
         Authorization: authHeader,
         apikey: serviceKey,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(finalPayload),
     });
     const result = await resp.json();
     if (!resp.ok) {
@@ -461,6 +464,19 @@ async function executeFlow(
     await supabase.from("bot_executions").update({ status: "error", completed_at: new Date().toISOString() }).eq("id", executionId);
     return { reason: "lead_not_found" };
   }
+
+  // Resolve bot's "mark as read" preference. When false, outbound messages do
+  // NOT bump last_outbound_at, so the conversation keeps appearing as
+  // "aguardando resposta" in the CRM lists.
+  const { data: execRow } = await supabase
+    .from("bot_executions")
+    .select("bot_id")
+    .eq("id", executionId)
+    .single();
+  const { data: botRow } = execRow?.bot_id
+    ? await supabase.from("bots").select("mark_as_read").eq("id", execRow.bot_id).single()
+    : { data: null } as any;
+  const skipMarkAsRead = botRow ? botRow.mark_as_read === false : false;
 
   while (currentNodeId && stepsExecuted < MAX_STEPS) {
     stepsExecuted++;
@@ -626,7 +642,7 @@ async function executeNode(
   };
 
   const sendAndAssert = async (payload: Record<string, any>, context: string) => {
-    const result = await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, payload);
+    const result = await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, payload, skipMarkAsRead);
     if (result?.error) {
       const details = result?.details ? ` ${JSON.stringify(result.details)}` : "";
       throw new Error(`${context}: ${result.error}${details}`);
