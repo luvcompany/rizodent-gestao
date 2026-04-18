@@ -464,6 +464,19 @@ async function executeFlow(
     return { reason: "lead_not_found" };
   }
 
+  // Resolve bot's "mark as read" preference. When false, outbound messages do
+  // NOT bump last_outbound_at, so the conversation keeps appearing as
+  // "aguardando resposta" in the CRM lists.
+  const { data: execRow } = await supabase
+    .from("bot_executions")
+    .select("bot_id")
+    .eq("id", executionId)
+    .single();
+  const { data: botRow } = execRow?.bot_id
+    ? await supabase.from("bots").select("mark_as_read").eq("id", execRow.bot_id).single()
+    : { data: null } as any;
+  const skipMarkAsRead = botRow ? botRow.mark_as_read === false : false;
+
   while (currentNodeId && stepsExecuted < MAX_STEPS) {
     stepsExecuted++;
     const node = nodes.find((n: any) => n.id === currentNodeId);
