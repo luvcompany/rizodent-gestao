@@ -806,14 +806,45 @@ Deno.serve(async (req) => {
                         console.log(`[WEBHOOK] time_window automation ${ra.id} fora da janela (mode=${mode})`);
                         continue;
                       }
-                      // Dedup única por lead/automação (no modo weekly, executions são limpas pelo automation-engine ao iniciar nova ocorrência)
-                      const { error: dedupErr } = await supabase
+                      // Dedup por ocorrência: para weekly, calcula início da janela atual; para once, usa window_start
+                      let occurrenceStartMs = 0;
+                      if (mode === "weekly") {
+                        const startDay = raCfg.start_day !== undefined && raCfg.start_day !== null && raCfg.start_day !== ""
+                          ? Number(raCfg.start_day) : 6;
+                        const startTime = (raCfg.start_time as string) || "08:00";
+                        const [sh, sm] = startTime.split(":").map(Number);
+                        const brNow = new Date(nowMs - 3 * 3600 * 1000);
+                        const brDay = brNow.getUTCDay();
+                        const brMin = brNow.getUTCHours() * 60 + brNow.getUTCMinutes();
+                        const startWeekMin = startDay * 1440 + sh * 60 + sm;
+                        const nowWeekMin = brDay * 1440 + brMin;
+                        // Diferença em minutos desde o início da ocorrência atual (sempre <= 7*1440)
+                        let diffMin = nowWeekMin - startWeekMin;
+                        if (diffMin < 0) diffMin += 7 * 1440;
+                        occurrenceStartMs = nowMs - diffMin * 60 * 1000;
+                      } else {
+                        const winStart = raCfg.window_start as string | undefined;
+                        if (winStart) {
+                          const parseLocalBR = (s: string): number => {
+                            if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).getTime();
+                            return new Date(s + "-03:00").getTime();
+                          };
+                          occurrenceStartMs = parseLocalBR(winStart);
+                        }
+                      }
+                      const { data: prevExec } = await supabase
                         .from("crm_automation_executions")
-                        .insert({ automation_id: ra.id, lead_id: lead.id });
-                      if (dedupErr) {
-                        console.log(`[WEBHOOK] time_window automation ${ra.id} já executada para lead ${lead.id} nesta ocorrência, pulando`);
+                        .select("id, executed_at")
+                        .eq("automation_id", ra.id)
+                        .eq("lead_id", lead.id)
+                        .gte("executed_at", new Date(occurrenceStartMs).toISOString())
+                        .limit(1)
+                        .maybeSingle();
+                      if (prevExec) {
+                        console.log(`[WEBHOOK] time_window automation ${ra.id} já executada para lead ${lead.id} nesta ocorrência (since ${new Date(occurrenceStartMs).toISOString()}), pulando`);
                         continue;
                       }
+                      await supabase.from("crm_automation_executions").insert({ automation_id: ra.id, lead_id: lead.id });
                       console.log(`[WEBHOOK] time_window matched (mode=${mode}) for lead ${lead.id}, automation ${ra.id}`);
                     }
 
