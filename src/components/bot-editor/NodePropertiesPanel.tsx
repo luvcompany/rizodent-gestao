@@ -870,15 +870,45 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           </div>
         );
 
-      case "move_stage":
+      case "move_stage": {
+        const currentStageId = (node.data.stageId as string) || "";
+        const inferredPipeline = stages.find(s => s.id === currentStageId)?.pipeline_id || "";
+        const selectedPipelineId = (node.data.pipelineId as string) || inferredPipeline || "";
+        const filteredStages = selectedPipelineId
+          ? stages.filter(s => s.pipeline_id === selectedPipelineId)
+          : stages;
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Etapa de destino</Label>
-              <Select value={(node.data.stageId as string) || ""} onValueChange={(v) => update("stageId", v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a etapa..." /></SelectTrigger>
+              <Label className="text-xs">Funil</Label>
+              <Select
+                value={selectedPipelineId}
+                onValueChange={(v) => {
+                  update("pipelineId", v);
+                  // clear stage if it doesn't belong to the new pipeline
+                  if (currentStageId && !stages.some(s => s.id === currentStageId && s.pipeline_id === v)) {
+                    update("stageId", "");
+                  }
+                }}
+              >
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o funil..." /></SelectTrigger>
                 <SelectContent>
-                  {stages.map((s) => (
+                  {pipelines.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Etapa de destino</Label>
+              <Select
+                value={currentStageId}
+                onValueChange={(v) => update("stageId", v)}
+                disabled={!selectedPipelineId}
+              >
+                <SelectTrigger className="mt-1"><SelectValue placeholder={selectedPipelineId ? "Selecione a etapa..." : "Selecione o funil primeiro"} /></SelectTrigger>
+                <SelectContent>
+                  {filteredStages.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       <span className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
@@ -891,6 +921,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             </div>
           </div>
         );
+      }
 
       case "add_tag":
         return renderTagInput(false);
