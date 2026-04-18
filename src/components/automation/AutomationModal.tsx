@@ -502,6 +502,28 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             </div>
           )}
 
+          {autoForm.trigger_type === "time_window" && (
+            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+              <Label className="text-xs">Início da janela</Label>
+              <Input
+                type="datetime-local"
+                className="h-8 text-xs"
+                value={(autoForm.action_config.window_start as string) || ""}
+                onChange={e => updateConfig({ window_start: e.target.value })}
+              />
+              <Label className="text-xs">Fim da janela</Label>
+              <Input
+                type="datetime-local"
+                className="h-8 text-xs"
+                value={(autoForm.action_config.window_end as string) || ""}
+                onChange={e => updateConfig({ window_end: e.target.value })}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Todo lead desta etapa que enviar uma mensagem entre essas duas datas/horas receberá a ação configurada. Cada lead recebe apenas uma vez.
+              </p>
+            </div>
+          )}
+
           {/* AÇÃO - only show for non-sequence triggers (sequences have their own actions) */}
           {!isSequenceTrigger && !isReengagement && (
             <>
