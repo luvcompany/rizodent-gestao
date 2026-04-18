@@ -42,7 +42,11 @@ Deno.serve(async (req) => {
 
       for (const auto of expiredWindows || []) {
         const cfg = (auto.action_config || {}) as Record<string, any>;
-        const windowEnd = cfg.window_end ? new Date(cfg.window_end).getTime() : null;
+        const parseLocalBR = (s: string): number => {
+          if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).getTime();
+          return new Date(s + "-03:00").getTime();
+        };
+        const windowEnd = cfg.window_end ? parseLocalBR(cfg.window_end as string) : null;
         if (!windowEnd || windowEnd > Date.now()) continue;
         const botId = cfg.bot_id;
         if (!botId) continue;
