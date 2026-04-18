@@ -527,6 +527,16 @@ export function useChatConversation(leadId: string | null | undefined) {
   // ─── Helpers ───
   const isSystemMessage = useCallback((msg: ChatMessage) => msg.type === "system" || msg.status === "system", []);
 
+  const deleteSystemMessage = useCallback(async (messageId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    const { error } = await supabase.from("messages").delete().eq("id", messageId);
+    if (error) {
+      toast.error("Erro ao excluir confirmação");
+      return;
+    }
+    toast.success("Confirmação excluída");
+  }, []);
+
   return {
     // State
     messages,
