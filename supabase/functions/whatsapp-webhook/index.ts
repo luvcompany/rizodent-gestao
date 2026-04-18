@@ -763,11 +763,17 @@ Deno.serve(async (req) => {
                       let inWindow = false;
 
                       if (mode === "weekly") {
-                        const startDay = Number(raCfg.start_day);
-                        const endDay = Number(raCfg.end_day);
-                        const startTime = (raCfg.start_time as string) || "00:00";
-                        const endTime = (raCfg.end_time as string) || "23:59";
-                        if (Number.isNaN(startDay) || Number.isNaN(endDay)) continue;
+                        // Defaults: Sat -> Mon, 08:00 -> 08:00 if missing
+                        const startDay = raCfg.start_day !== undefined && raCfg.start_day !== null && raCfg.start_day !== ""
+                          ? Number(raCfg.start_day) : 6;
+                        const endDay = raCfg.end_day !== undefined && raCfg.end_day !== null && raCfg.end_day !== ""
+                          ? Number(raCfg.end_day) : 1;
+                        const startTime = (raCfg.start_time as string) || "08:00";
+                        const endTime = (raCfg.end_time as string) || "08:00";
+                        if (Number.isNaN(startDay) || Number.isNaN(endDay)) {
+                          console.log(`[WEBHOOK] time_window weekly auto ${ra.id}: invalid days (start=${raCfg.start_day}, end=${raCfg.end_day})`);
+                          continue;
+                        }
                         const [sh, sm] = startTime.split(":").map(Number);
                         const [eh, em] = endTime.split(":").map(Number);
                         // "Now" in Brasília (UTC-3)

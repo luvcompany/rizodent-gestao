@@ -518,7 +518,19 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <Label className="text-xs">Tipo de janela</Label>
                 <Select
                   value={mode}
-                  onValueChange={v => updateConfig({ window_mode: v })}
+                  onValueChange={v => {
+                    if (v === "weekly") {
+                      updateConfig({
+                        window_mode: v,
+                        start_day: (autoForm.action_config.start_day as string) ?? "6",
+                        end_day: (autoForm.action_config.end_day as string) ?? "1",
+                        start_time: (autoForm.action_config.start_time as string) ?? "08:00",
+                        end_time: (autoForm.action_config.end_time as string) ?? "08:00",
+                      });
+                    } else {
+                      updateConfig({ window_mode: v });
+                    }
+                  }}
                 >
                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
