@@ -89,10 +89,17 @@ export default function LeadBotPanel({ leadId }: Props) {
 
   const handleStop = async () => {
     if (!activeExecution) return;
+    // Cancel ALL active/waiting executions for this lead to ensure clean slate
     await supabase
       .from("bot_executions")
-      .update({ status: "cancelled", completed_at: new Date().toISOString() })
-      .eq("id", activeExecution.id);
+      .update({
+        status: "cancelled",
+        completed_at: new Date().toISOString(),
+        timeout_at: null,
+        current_node_id: null,
+      })
+      .eq("lead_id", leadId)
+      .in("status", ["active", "waiting_reply"]);
     toast.success("Bot encerrado");
     setActiveExecution(null);
   };
