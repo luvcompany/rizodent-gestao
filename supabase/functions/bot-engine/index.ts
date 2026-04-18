@@ -588,7 +588,8 @@ async function executeNode(
   node: any,
   lead: any,
   variables: Record<string, any>,
-  executionId: string
+  executionId: string,
+  skipMarkAsRead: boolean = false
 ): Promise<{
   stop?: boolean;
   status?: string;
