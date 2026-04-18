@@ -42,6 +42,7 @@ const TRIGGER_DESCRIPTIONS: Record<string, string> = {
   on_create_or_enter: "Dispara tanto na criação quanto na movimentação para esta etapa.",
   no_response: "Dispara quando o lead não responde após um tempo definido.",
   before_scheduled: "Dispara X tempo antes de um agendamento ou tarefa marcada. Ideal para lembretes automáticos.",
+  time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora específica. Cada lead recebe a ação apenas uma vez.",
 };
 
 function TemplateCombobox({
@@ -442,6 +443,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <SelectItem value="on_create_or_enter">Quando movido ou criado nesta etapa</SelectItem>
                 <SelectItem value="no_response">Leads sem resposta há X tempo</SelectItem>
                 <SelectItem value="before_scheduled">Antes de agendamento/tarefa</SelectItem>
+                <SelectItem value="time_window">Janela de data/hora (mensagem recebida)</SelectItem>
               </SelectContent>
             </Select>
             {TRIGGER_DESCRIPTIONS[autoForm.trigger_type] && (
@@ -496,6 +498,28 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
               </div>
               <p className="text-[10px] text-muted-foreground">
                 A ação será disparada automaticamente antes da data/hora marcada. Ex: 1 hora antes do agendamento, 1 dia antes da tarefa.
+              </p>
+            </div>
+          )}
+
+          {autoForm.trigger_type === "time_window" && (
+            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+              <Label className="text-xs">Início da janela</Label>
+              <Input
+                type="datetime-local"
+                className="h-8 text-xs"
+                value={(autoForm.action_config.window_start as string) || ""}
+                onChange={e => updateConfig({ window_start: e.target.value })}
+              />
+              <Label className="text-xs">Fim da janela</Label>
+              <Input
+                type="datetime-local"
+                className="h-8 text-xs"
+                value={(autoForm.action_config.window_end as string) || ""}
+                onChange={e => updateConfig({ window_end: e.target.value })}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Todo lead desta etapa que enviar uma mensagem entre essas duas datas/horas receberá a ação configurada. Cada lead recebe apenas uma vez.
               </p>
             </div>
           )}
