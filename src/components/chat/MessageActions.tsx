@@ -1,6 +1,9 @@
 import { useState } from "react";
-import { SmilePlus, Reply, Forward } from "lucide-react";
+import { SmilePlus, Reply, Forward, Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 type Message = {
   id: string;
@@ -21,6 +24,27 @@ const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", 
 
 export default function MessageActions({ message, onReply, onForward, onReact, direction }: Props) {
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("delete-whatsapp-message", {
+        body: { messageId: message.id },
+      });
+      if (error || (data as any)?.error) {
+        toast.error((data as any)?.error || error?.message || "Falha ao apagar mensagem");
+      } else {
+        toast.success("Mensagem apagada");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao apagar mensagem");
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   return (
     <div
@@ -65,6 +89,33 @@ export default function MessageActions({ message, onReply, onForward, onReact, d
       >
         <Forward size={14} />
       </button>
+
+      {direction === "outbound" && (
+        <button
+          onClick={() => setConfirmDelete(true)}
+          className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+          title="Apagar mensagem"
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar mensagem?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja apagar essa mensagem? Ela será removida do WhatsApp do destinatário (se estiver dentro do prazo permitido pela Meta).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? "Apagando..." : "Apagar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
