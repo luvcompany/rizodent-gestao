@@ -358,6 +358,29 @@ function BotEditorInner() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <TooltipProvider delayDuration={200}>
+            <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-border bg-secondary/40">
+              <Switch
+                id="mark-as-read"
+                checked={markAsRead}
+                onCheckedChange={setMarkAsRead}
+                className="scale-75"
+              />
+              <Label htmlFor="mark-as-read" className="text-xs cursor-pointer flex items-center gap-1">
+                <Eye size={12} />
+                Marcar como lida
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info size={12} className="text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    Quando ativado, mensagens enviadas pelo bot marcam a conversa como respondida.
+                    Desative para que o lead continue aparecendo como "aguardando resposta" mesmo após o bot interagir.
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+            </div>
+          </TooltipProvider>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={undo} title="Desfazer (Ctrl+Z)">
             <Undo2 size={16} />
           </Button>
