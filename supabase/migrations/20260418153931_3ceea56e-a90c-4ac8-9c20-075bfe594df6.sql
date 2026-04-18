@@ -1,0 +1,1 @@
+ALTER TABLE public.bots ADD COLUMN IF NOT EXISTS mark_as_read boolean NOT NULL DEFAULT true;

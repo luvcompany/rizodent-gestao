@@ -207,6 +207,7 @@ export type Database = {
           description: string | null
           flow_json: Json
           id: string
+          mark_as_read: boolean
           name: string
           status: string
           updated_at: string
@@ -218,6 +219,7 @@ export type Database = {
           description?: string | null
           flow_json?: Json
           id?: string
+          mark_as_read?: boolean
           name: string
           status?: string
           updated_at?: string
@@ -229,6 +231,7 @@ export type Database = {
           description?: string | null
           flow_json?: Json
           id?: string
+          mark_as_read?: boolean
           name?: string
           status?: string
           updated_at?: string
