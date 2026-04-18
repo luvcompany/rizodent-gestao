@@ -325,6 +325,42 @@ export type Database = {
           },
         ]
       }
+      crm_automation_executions: {
+        Row: {
+          automation_id: string
+          executed_at: string
+          id: string
+          lead_id: string
+        }
+        Insert: {
+          automation_id: string
+          executed_at?: string
+          id?: string
+          lead_id: string
+        }
+        Update: {
+          automation_id?: string
+          executed_at?: string
+          id?: string
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_automation_executions_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "crm_automations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_automation_executions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_automation_queue: {
         Row: {
           action_config: Json
