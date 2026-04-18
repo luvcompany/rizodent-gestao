@@ -497,7 +497,7 @@ async function executeFlow(
     // Execute node
     let result;
     try {
-      result = await executeNode(supabase, supabaseUrl, serviceKey, authHeader, node, lead, vars, executionId);
+      result = await executeNode(supabase, supabaseUrl, serviceKey, authHeader, node, lead, vars, executionId, skipMarkAsRead);
     } catch (error: any) {
       console.error(`[bot-engine] Node execution failed at ${currentNodeId}:`, error?.message || error);
       // Instead of killing the bot, try to follow the timeout edge to continue the flow
