@@ -33,26 +33,78 @@ Deno.serve(async (req) => {
     // 0a. TIME WINDOW EXPIRED — stop active bots started by expired send_bot windows
     // =========================================================
     try {
-      const nowIso = new Date().toISOString();
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
       const { data: expiredWindows } = await supabase
         .from("crm_automations")
-        .select("id, action_type, action_config")
+        .select("id, action_type, action_config, is_active")
         .eq("trigger_type", "time_window")
         .eq("action_type", "send_bot");
 
+      const parseLocalBR = (s: string): number => {
+        if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).getTime();
+        return new Date(s + "-03:00").getTime();
+      };
+
+      // Helper: weekly window state — returns { isOpen, justClosed }
+      // justClosed = within 5min after the close minute
+      const evalWeekly = (cfg: any) => {
+        const startDay = Number(cfg.start_day);
+        const endDay = Number(cfg.end_day);
+        const [sh, sm] = String(cfg.start_time || "00:00").split(":").map(Number);
+        const [eh, em] = String(cfg.end_time || "23:59").split(":").map(Number);
+        if ([startDay, endDay, sh, sm, eh, em].some(v => Number.isNaN(v))) return null;
+        const brNow = new Date(nowMs - 3 * 3600 * 1000);
+        const brDay = brNow.getUTCDay();
+        const brMin = brNow.getUTCHours() * 60 + brNow.getUTCMinutes();
+        const nowWeekMin = brDay * 1440 + brMin;
+        const startWeekMin = startDay * 1440 + sh * 60 + sm;
+        const endWeekMin = endDay * 1440 + eh * 60 + em;
+        let isOpen: boolean;
+        if (startWeekMin <= endWeekMin) {
+          isOpen = nowWeekMin >= startWeekMin && nowWeekMin <= endWeekMin;
+        } else {
+          isOpen = nowWeekMin >= startWeekMin || nowWeekMin <= endWeekMin;
+        }
+        // justClosed: within last ~6 minutes after end (covers cron drift)
+        let minSinceEnd: number;
+        if (startWeekMin <= endWeekMin) {
+          minSinceEnd = nowWeekMin - endWeekMin;
+        } else {
+          // For wrap-around, simulate: if nowWeekMin past end and before start
+          minSinceEnd = (nowWeekMin >= endWeekMin && nowWeekMin < startWeekMin) ? nowWeekMin - endWeekMin : -1;
+        }
+        const justClosed = !isOpen && minSinceEnd >= 0 && minSinceEnd <= 6;
+        return { isOpen, justClosed };
+      };
+
       for (const auto of expiredWindows || []) {
         const cfg = (auto.action_config || {}) as Record<string, any>;
-        const parseLocalBR = (s: string): number => {
-          if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).getTime();
-          return new Date(s + "-03:00").getTime();
-        };
-        const windowEnd = cfg.window_end ? parseLocalBR(cfg.window_end as string) : null;
-        if (!windowEnd || windowEnd > Date.now()) continue;
+        const mode = (cfg.window_mode as string) || "once";
         const botId = cfg.bot_id;
         if (!botId) continue;
 
-        // Mark as inactive so it won't fire again
-        await supabase.from("crm_automations").update({ is_active: false }).eq("id", auto.id);
+        let shouldCleanup = false;
+        let deactivate = false;
+
+        if (mode === "weekly") {
+          const state = evalWeekly(cfg);
+          if (!state) continue;
+          // On the close minute (and few minutes after), cancel bots + clear executions to allow next occurrence
+          shouldCleanup = state.justClosed;
+        } else {
+          if (!auto.is_active) continue;
+          const windowEnd = cfg.window_end ? parseLocalBR(cfg.window_end as string) : null;
+          if (!windowEnd || windowEnd > nowMs) continue;
+          shouldCleanup = true;
+          deactivate = true;
+        }
+
+        if (!shouldCleanup) continue;
+
+        if (deactivate) {
+          await supabase.from("crm_automations").update({ is_active: false }).eq("id", auto.id);
+        }
 
         // Get all leads that already received this automation
         const { data: execs } = await supabase
@@ -60,20 +112,29 @@ Deno.serve(async (req) => {
           .select("lead_id")
           .eq("automation_id", auto.id);
         const leadIds = (execs || []).map((e: any) => e.lead_id);
-        if (!leadIds.length) continue;
 
-        // Cancel active bot executions for those leads on this bot
-        const { data: cancelled, error: cancelErr } = await supabase
-          .from("bot_executions")
-          .update({ status: "cancelled", completed_at: nowIso })
-          .eq("bot_id", botId)
-          .in("lead_id", leadIds)
-          .in("status", ["active", "waiting_reply"])
-          .select("id");
-        if (cancelErr) {
-          console.error(`[AUTOMATION-ENGINE] time_window stop-bot error (auto ${auto.id}):`, cancelErr.message);
-        } else {
-          console.log(`[AUTOMATION-ENGINE] time_window expired (auto ${auto.id}): cancelled ${cancelled?.length || 0} bot executions`);
+        if (leadIds.length) {
+          const { data: cancelled, error: cancelErr } = await supabase
+            .from("bot_executions")
+            .update({ status: "cancelled", completed_at: nowIso })
+            .eq("bot_id", botId)
+            .in("lead_id", leadIds)
+            .in("status", ["active", "waiting_reply"])
+            .select("id");
+          if (cancelErr) {
+            console.error(`[AUTOMATION-ENGINE] time_window stop-bot error (auto ${auto.id}):`, cancelErr.message);
+          } else {
+            console.log(`[AUTOMATION-ENGINE] time_window closed (auto ${auto.id}, mode=${mode}): cancelled ${cancelled?.length || 0} bot executions`);
+          }
+        }
+
+        // For weekly: clear executions so next occurrence opens fresh for all leads
+        if (mode === "weekly") {
+          await supabase
+            .from("crm_automation_executions")
+            .delete()
+            .eq("automation_id", auto.id);
+          console.log(`[AUTOMATION-ENGINE] time_window weekly auto ${auto.id}: executions reset for next occurrence`);
         }
       }
     } catch (e: any) {

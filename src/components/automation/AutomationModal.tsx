@@ -42,7 +42,7 @@ const TRIGGER_DESCRIPTIONS: Record<string, string> = {
   on_create_or_enter: "Dispara tanto na criação quanto na movimentação para esta etapa.",
   no_response: "Dispara quando o lead não responde após um tempo definido.",
   before_scheduled: "Dispara X tempo antes de um agendamento ou tarefa marcada. Ideal para lembretes automáticos.",
-  time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora específica. Cada lead recebe a ação apenas uma vez.",
+  time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora. Pode ser única (data/hora específica) ou recorrente semanal (mesmos dias/horas toda semana). Cada lead recebe a ação 1x por janela.",
 };
 
 function TemplateCombobox({
@@ -502,27 +502,107 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             </div>
           )}
 
-          {autoForm.trigger_type === "time_window" && (
-            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-              <Label className="text-xs">Início da janela</Label>
-              <Input
-                type="datetime-local"
-                className="h-8 text-xs"
-                value={(autoForm.action_config.window_start as string) || ""}
-                onChange={e => updateConfig({ window_start: e.target.value })}
-              />
-              <Label className="text-xs">Fim da janela</Label>
-              <Input
-                type="datetime-local"
-                className="h-8 text-xs"
-                value={(autoForm.action_config.window_end as string) || ""}
-                onChange={e => updateConfig({ window_end: e.target.value })}
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Todo lead desta etapa que enviar uma mensagem entre essas duas datas/horas receberá a ação configurada. Cada lead recebe apenas uma vez.
-              </p>
-            </div>
-          )}
+          {autoForm.trigger_type === "time_window" && (() => {
+            const mode = (autoForm.action_config.window_mode as string) || "once";
+            const WEEK_DAYS = [
+              { value: "0", label: "Domingo" },
+              { value: "1", label: "Segunda" },
+              { value: "2", label: "Terça" },
+              { value: "3", label: "Quarta" },
+              { value: "4", label: "Quinta" },
+              { value: "5", label: "Sexta" },
+              { value: "6", label: "Sábado" },
+            ];
+            return (
+              <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+                <Label className="text-xs">Tipo de janela</Label>
+                <Select
+                  value={mode}
+                  onValueChange={v => updateConfig({ window_mode: v })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="once">Janela única (data/hora específica)</SelectItem>
+                    <SelectItem value="weekly">Janela recorrente semanal (dia/hora)</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {mode === "once" ? (
+                  <>
+                    <Label className="text-xs">Início da janela</Label>
+                    <Input
+                      type="datetime-local"
+                      className="h-8 text-xs"
+                      value={(autoForm.action_config.window_start as string) || ""}
+                      onChange={e => updateConfig({ window_start: e.target.value })}
+                    />
+                    <Label className="text-xs">Fim da janela</Label>
+                    <Input
+                      type="datetime-local"
+                      className="h-8 text-xs"
+                      value={(autoForm.action_config.window_end as string) || ""}
+                      onChange={e => updateConfig({ window_end: e.target.value })}
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Todo lead desta etapa que enviar uma mensagem entre essas duas datas/horas receberá a ação. Cada lead recebe apenas uma vez.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Dia inicial</Label>
+                        <Select
+                          value={(autoForm.action_config.start_day as string) ?? "6"}
+                          onValueChange={v => updateConfig({ start_day: v })}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {WEEK_DAYS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Hora inicial</Label>
+                        <Input
+                          type="time"
+                          className="h-8 text-xs"
+                          value={(autoForm.action_config.start_time as string) || "08:00"}
+                          onChange={e => updateConfig({ start_time: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Dia final</Label>
+                        <Select
+                          value={(autoForm.action_config.end_day as string) ?? "1"}
+                          onValueChange={v => updateConfig({ end_day: v })}
+                        >
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {WEEK_DAYS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Hora final</Label>
+                        <Input
+                          type="time"
+                          className="h-8 text-xs"
+                          value={(autoForm.action_config.end_time as string) || "08:00"}
+                          onChange={e => updateConfig({ end_time: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      A janela abre e fecha toda semana nos dias/horas escolhidos (fuso de Brasília). Cada lead recebe a ação 1x por ocorrência semanal. Quando a janela fechar, bots ativos serão automaticamente cancelados.
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {/* AÇÃO - only show for non-sequence triggers (sequences have their own actions) */}
           {!isSequenceTrigger && !isReengagement && (

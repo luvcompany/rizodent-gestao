@@ -758,31 +758,57 @@ Deno.serve(async (req) => {
                     }
 
                     if (ra.trigger_type === "time_window") {
-                      const winStart = raCfg.window_start as string | undefined;
-                      const winEnd = raCfg.window_end as string | undefined;
-                      if (!winStart || !winEnd) continue;
+                      const mode = (raCfg.window_mode as string) || "once";
                       const nowMs = Date.now();
-                      // datetime-local sem timezone → interpretar como horário de Brasília (UTC-3)
-                      const parseLocalBR = (s: string): number => {
-                        if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).getTime();
-                        return new Date(s + "-03:00").getTime();
-                      };
-                      const startMs = parseLocalBR(winStart);
-                      const endMs = parseLocalBR(winEnd);
-                      if (isNaN(startMs) || isNaN(endMs)) continue;
-                      if (nowMs < startMs || nowMs > endMs) {
-                        console.log(`[WEBHOOK] time_window automation ${ra.id} fora da janela (now=${new Date(nowMs).toISOString()}, start=${winStart}, end=${winEnd})`);
+                      let inWindow = false;
+
+                      if (mode === "weekly") {
+                        const startDay = Number(raCfg.start_day);
+                        const endDay = Number(raCfg.end_day);
+                        const startTime = (raCfg.start_time as string) || "00:00";
+                        const endTime = (raCfg.end_time as string) || "23:59";
+                        if (Number.isNaN(startDay) || Number.isNaN(endDay)) continue;
+                        const [sh, sm] = startTime.split(":").map(Number);
+                        const [eh, em] = endTime.split(":").map(Number);
+                        // "Now" in Brasília (UTC-3)
+                        const brNow = new Date(nowMs - 3 * 3600 * 1000);
+                        const brDay = brNow.getUTCDay();
+                        const brMin = brNow.getUTCHours() * 60 + brNow.getUTCMinutes();
+                        const nowWeekMin = brDay * 1440 + brMin;
+                        const startWeekMin = startDay * 1440 + sh * 60 + sm;
+                        const endWeekMin = endDay * 1440 + eh * 60 + em;
+                        if (startWeekMin <= endWeekMin) {
+                          inWindow = nowWeekMin >= startWeekMin && nowWeekMin <= endWeekMin;
+                        } else {
+                          inWindow = nowWeekMin >= startWeekMin || nowWeekMin <= endWeekMin;
+                        }
+                      } else {
+                        const winStart = raCfg.window_start as string | undefined;
+                        const winEnd = raCfg.window_end as string | undefined;
+                        if (!winStart || !winEnd) continue;
+                        const parseLocalBR = (s: string): number => {
+                          if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).getTime();
+                          return new Date(s + "-03:00").getTime();
+                        };
+                        const startMs = parseLocalBR(winStart);
+                        const endMs = parseLocalBR(winEnd);
+                        if (isNaN(startMs) || isNaN(endMs)) continue;
+                        inWindow = nowMs >= startMs && nowMs <= endMs;
+                      }
+
+                      if (!inWindow) {
+                        console.log(`[WEBHOOK] time_window automation ${ra.id} fora da janela (mode=${mode})`);
                         continue;
                       }
-                      // Garantir disparo único por lead/automação via insert único
+                      // Dedup única por lead/automação (no modo weekly, executions são limpas pelo automation-engine ao iniciar nova ocorrência)
                       const { error: dedupErr } = await supabase
                         .from("crm_automation_executions")
                         .insert({ automation_id: ra.id, lead_id: lead.id });
                       if (dedupErr) {
-                        console.log(`[WEBHOOK] time_window automation ${ra.id} já executada para lead ${lead.id}, pulando`);
+                        console.log(`[WEBHOOK] time_window automation ${ra.id} já executada para lead ${lead.id} nesta ocorrência, pulando`);
                         continue;
                       }
-                      console.log(`[WEBHOOK] time_window matched for lead ${lead.id}, automation ${ra.id}`);
+                      console.log(`[WEBHOOK] time_window matched (mode=${mode}) for lead ${lead.id}, automation ${ra.id}`);
                     }
 
                     // Execute actions server-side
