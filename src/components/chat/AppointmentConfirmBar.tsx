@@ -278,6 +278,13 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     toast.success("Agendamento excluído");
   };
 
+  const handleDeletePendingTask = async (taskId: string) => {
+    const { error } = await supabase.from("crm_tasks").delete().eq("id", taskId);
+    if (error) { toast.error("Erro ao excluir solicitação"); return; }
+    toast.success("Solicitação excluída");
+    fetchTasks();
+  };
+
   return (
     <div className="p-4 border-b border-border">
       <div className="flex items-center justify-between mb-2">
