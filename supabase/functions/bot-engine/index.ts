@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
       // Find active execution waiting for reply
       let query = supabase
         .from("bot_executions")
-        .select("*, bots(flow_json, current_version)")
+        .select("*, bots(flow_json, current_version, mark_as_read)")
         .eq("status", "waiting_reply");
 
       if (executionId) {
@@ -350,12 +350,13 @@ Deno.serve(async (req) => {
         if (!nextEdge && currentNode.type === "send_menu") {
           console.log(`[bot-engine] No edge for reply "${replyText}" at node ${execution.current_node_id}, re-sending menu`);
           if (lead?.phone) {
+            const skipMark = (execution as any).bots?.mark_as_read === false;
             await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
               lead_id: leadId,
               to: lead.phone,
               type: "text",
               message: "Por favor, selecione uma das opções do menu acima. 👆",
-            });
+            }, skipMark);
           }
           // Reset timeout since lead interacted
           const newTimeoutAt = calculateTimeoutAt(currentNode.data);
