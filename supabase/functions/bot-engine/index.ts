@@ -557,6 +557,16 @@ async function executeFlow(
     } else {
       const edge = edges.find((e: any) => e.source === currentNodeId && (!e.sourceHandle || e.sourceHandle === null));
       nextNodeId = edge?.target || null;
+      // Fallback: if node continued (no stop) but only has a "reply" edge,
+      // treat it as the continuation edge (covers send_text/menu nodes connected
+      // straight to the next action via the green "Resposta" handle).
+      if (!nextNodeId) {
+        const replyEdge = edges.find((e: any) => e.source === currentNodeId && e.sourceHandle === "reply");
+        if (replyEdge) {
+          console.log(`[bot-engine] No default edge from ${currentNodeId}, falling back to reply edge -> ${replyEdge.target}`);
+          nextNodeId = replyEdge.target;
+        }
+      }
     }
 
     if (!nextNodeId) {
