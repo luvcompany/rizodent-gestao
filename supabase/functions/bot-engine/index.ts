@@ -412,10 +412,12 @@ async function sendViaWhatsApp(
   supabaseUrl: string,
   serviceKey: string,
   authHeader: string,
-  payload: Record<string, any>
+  payload: Record<string, any>,
+  skipMarkAsRead: boolean = false,
 ) {
   const url = `${supabaseUrl}/functions/v1/send-whatsapp-message`;
   try {
+    const finalPayload = skipMarkAsRead ? { ...payload, skip_mark_as_read: true } : payload;
     const resp = await fetch(url, {
       method: "POST",
       headers: {
@@ -423,7 +425,7 @@ async function sendViaWhatsApp(
         Authorization: authHeader,
         apikey: serviceKey,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(finalPayload),
     });
     const result = await resp.json();
     if (!resp.ok) {
