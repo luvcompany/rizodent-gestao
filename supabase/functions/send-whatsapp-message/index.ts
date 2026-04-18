@@ -202,6 +202,7 @@ Deno.serve(async (req) => {
       sections,
       header,
       footer,
+      skip_mark_as_read = false,
     } = await req.json();
 
     if (!lead_id || !to) {
