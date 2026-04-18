@@ -603,14 +603,7 @@ const PacienteDetalhe = () => {
                                         <div className="grid gap-3 sm:grid-cols-2">
                                           <div className="space-y-1"><Label className="text-xs">Valor</Label><Input value={editPagValor} onChange={(e) => setEditPagValor(formatCurrencyInput(e.target.value))} className="bg-secondary border-border h-8 text-sm" /></div>
                                           <div className="space-y-1"><Label className="text-xs">Data</Label><Input type="date" value={editPagData} onChange={(e) => setEditPagData(e.target.value)} className="bg-secondary border-border h-8 text-sm" /></div>
-                                          <div className="space-y-1">
-                                            <Label className="text-xs">Forma</Label>
-                                            <Select value={editPagForma} onValueChange={setEditPagForma}>
-                                              <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
-                                              <SelectContent>{["Dinheiro", "PIX", "Cartão Crédito", "Cartão Débito", "Boleto", "Cheque", "Não informado"].map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
-                                            </Select>
-                                          </div>
-                                          <div className="space-y-1">
+                                          <div className="space-y-1 sm:col-span-2">
                                             <Label className="text-xs">Tipo</Label>
                                             <Select value={editPagTipo} onValueChange={setEditPagTipo}>
                                               <SelectTrigger className="bg-secondary border-border h-8 text-sm"><SelectValue /></SelectTrigger>
