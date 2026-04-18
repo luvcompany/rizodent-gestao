@@ -278,6 +278,13 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     toast.success("Agendamento excluído");
   };
 
+  const handleDeletePendingTask = async (taskId: string) => {
+    const { error } = await supabase.from("crm_tasks").delete().eq("id", taskId);
+    if (error) { toast.error("Erro ao excluir solicitação"); return; }
+    toast.success("Solicitação excluída");
+    fetchTasks();
+  };
+
   return (
     <div className="p-4 border-b border-border">
       <div className="flex items-center justify-between mb-2">
@@ -418,11 +425,16 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                 </div>
                 {task.notes && <p className="text-xs text-muted-foreground mb-2">{task.notes}</p>}
                 {!isConfirming ? (
-                  <Button size="sm" className="h-7 text-xs gap-1 w-full bg-green-600 hover:bg-green-700 text-white" onClick={() => {
-                    setConfirmingId(task.id); setDate(taskDate); setTime(format(taskDate, "HH:mm"));
-                  }}>
-                    <CheckCircle2 size={12} /> Confirmar Agendamento
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="flex-1 h-7 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => {
+                      setConfirmingId(task.id); setDate(taskDate); setTime(format(taskDate, "HH:mm"));
+                    }}>
+                      <CheckCircle2 size={12} /> Confirmar Agendamento
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeletePendingTask(task.id)} title="Excluir solicitação">
+                      <Trash2 size={12} />
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-2 mt-2 pt-2 border-t border-orange-500/20">
                     <div>
