@@ -42,7 +42,7 @@ const TRIGGER_DESCRIPTIONS: Record<string, string> = {
   on_create_or_enter: "Dispara tanto na criação quanto na movimentação para esta etapa.",
   no_response: "Dispara quando o lead não responde após um tempo definido.",
   before_scheduled: "Dispara X tempo antes de um agendamento ou tarefa marcada. Ideal para lembretes automáticos.",
-  time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora específica. Cada lead recebe a ação apenas uma vez.",
+  time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora. Pode ser única (data/hora específica) ou recorrente semanal (mesmos dias/horas toda semana). Cada lead recebe a ação 1x por janela.",
 };
 
 function TemplateCombobox({
