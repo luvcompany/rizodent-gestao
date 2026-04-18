@@ -289,6 +289,7 @@ export default function CrmConversa() {
                     content={msg.content || ""}
                     timestamp={msg.created_at}
                     stageColor={destStage?.color}
+                    onDelete={() => chat.deleteSystemMessage(msg.id)}
                   />
                 </div>
               );
