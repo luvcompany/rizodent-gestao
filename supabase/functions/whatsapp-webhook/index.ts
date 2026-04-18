@@ -880,14 +880,20 @@ Deno.serve(async (req) => {
               try {
                 const { data: botExec } = await supabase
                   .from("bot_executions")
-                  .select("id")
+                  .select("id, started_at")
                   .eq("lead_id", lead.id)
                   .eq("status", "waiting_reply")
                   .order("started_at", { ascending: false })
                   .limit(1)
                   .maybeSingle();
 
-                if (botExec) {
+                // Ignore replies that arrived BEFORE this execution started
+                // (prevents stale messages from being treated as bot replies)
+                const inboundMs = msg.timestamp ? Number(msg.timestamp) * 1000 : Date.now();
+                const execStartedMs = botExec?.started_at ? new Date(botExec.started_at).getTime() : 0;
+                if (botExec && inboundMs < execStartedMs) {
+                  console.log(`[WEBHOOK] Ignoring stale inbound (${new Date(inboundMs).toISOString()}) — older than execution start (${botExec.started_at})`);
+                } else if (botExec) {
                   console.log(`[WEBHOOK] Bot execution ${botExec.id} waiting for reply, triggering continue`);
                   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
                   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
