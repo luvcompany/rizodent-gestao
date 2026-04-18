@@ -762,8 +762,13 @@ Deno.serve(async (req) => {
                       const winEnd = raCfg.window_end as string | undefined;
                       if (!winStart || !winEnd) continue;
                       const nowMs = Date.now();
-                      const startMs = new Date(winStart).getTime();
-                      const endMs = new Date(winEnd).getTime();
+                      // datetime-local sem timezone → interpretar como horário de Brasília (UTC-3)
+                      const parseLocalBR = (s: string): number => {
+                        if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).getTime();
+                        return new Date(s + "-03:00").getTime();
+                      };
+                      const startMs = parseLocalBR(winStart);
+                      const endMs = parseLocalBR(winEnd);
                       if (isNaN(startMs) || isNaN(endMs)) continue;
                       if (nowMs < startMs || nowMs > endMs) {
                         console.log(`[WEBHOOK] time_window automation ${ra.id} fora da janela (now=${new Date(nowMs).toISOString()}, start=${winStart}, end=${winEnd})`);
