@@ -30,6 +30,53 @@ Deno.serve(async (req) => {
 
   try {
     // =========================================================
+    // 0a. TIME WINDOW EXPIRED — stop active bots started by expired send_bot windows
+    // =========================================================
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: expiredWindows } = await supabase
+        .from("crm_automations")
+        .select("id, action_type, action_config")
+        .eq("trigger_type", "time_window")
+        .eq("action_type", "send_bot");
+
+      for (const auto of expiredWindows || []) {
+        const cfg = (auto.action_config || {}) as Record<string, any>;
+        const windowEnd = cfg.window_end ? new Date(cfg.window_end).getTime() : null;
+        if (!windowEnd || windowEnd > Date.now()) continue;
+        const botId = cfg.bot_id;
+        if (!botId) continue;
+
+        // Mark as inactive so it won't fire again
+        await supabase.from("crm_automations").update({ is_active: false }).eq("id", auto.id);
+
+        // Get all leads that already received this automation
+        const { data: execs } = await supabase
+          .from("crm_automation_executions")
+          .select("lead_id")
+          .eq("automation_id", auto.id);
+        const leadIds = (execs || []).map((e: any) => e.lead_id);
+        if (!leadIds.length) continue;
+
+        // Cancel active bot executions for those leads on this bot
+        const { data: cancelled, error: cancelErr } = await supabase
+          .from("bot_executions")
+          .update({ status: "cancelled", completed_at: nowIso })
+          .eq("bot_id", botId)
+          .in("lead_id", leadIds)
+          .in("status", ["active", "waiting_reply"])
+          .select("id");
+        if (cancelErr) {
+          console.error(`[AUTOMATION-ENGINE] time_window stop-bot error (auto ${auto.id}):`, cancelErr.message);
+        } else {
+          console.log(`[AUTOMATION-ENGINE] time_window expired (auto ${auto.id}): cancelled ${cancelled?.length || 0} bot executions`);
+        }
+      }
+    } catch (e: any) {
+      console.error("[AUTOMATION-ENGINE] time_window cleanup error:", e.message);
+    }
+
+    // =========================================================
     // 0. BOT TIMEOUT — check waiting_reply executions with expired timeout_at
     // =========================================================
     const { data: expiredExecutions } = await supabase
