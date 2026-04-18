@@ -1494,6 +1494,7 @@ export type Database = {
           ad_source_url: string | null
           content: string | null
           created_at: string
+          deleted_at: string | null
           direction: string
           error_reason: string | null
           id: string
@@ -1516,6 +1517,7 @@ export type Database = {
           ad_source_url?: string | null
           content?: string | null
           created_at?: string
+          deleted_at?: string | null
           direction?: string
           error_reason?: string | null
           id?: string
@@ -1538,6 +1540,7 @@ export type Database = {
           ad_source_url?: string | null
           content?: string | null
           created_at?: string
+          deleted_at?: string | null
           direction?: string
           error_reason?: string | null
           id?: string

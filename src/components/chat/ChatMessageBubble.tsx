@@ -22,6 +22,7 @@ type Message = {
   ad_source_url?: string | null;
   ad_source_id?: string | null;
   error_reason?: string | null;
+  deleted_at?: string | null;
 };
 
 type Props = {
@@ -79,13 +80,27 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
     return (
       <div ref={ref} className="w-full flex transition-all duration-300 rounded-lg">
         <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
-          <MessageActions
-            message={msg}
-            direction={msg.direction}
-            onReply={onReply}
-            onForward={onForward}
-            onReact={onReact}
-          />
+          {!msg.deleted_at && (
+            <MessageActions
+              message={msg}
+              direction={msg.direction}
+              onReply={onReply}
+              onForward={onForward}
+              onReact={onReact}
+            />
+          )}
+          {msg.deleted_at ? (
+            <div className={`rounded-lg px-3 py-2 italic text-muted-foreground text-sm bg-muted/40 border border-dashed border-border ${
+              msg.direction === "outbound" ? "rounded-br-none" : "rounded-bl-none"
+            }`}>
+              🚫 Mensagem removida
+              <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
+                <span className="text-[10px] text-muted-foreground not-italic">
+                  {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+            </div>
+          ) : (
           <div className={`rounded-lg px-3 py-2 ${
             msg.direction === "outbound"
               ? "bg-primary/20 text-foreground rounded-br-none"
@@ -167,6 +182,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               </TooltipProvider>
             )}
           </div>
+          )}
           {reactions.length > 0 && (
             <div className={`flex gap-0.5 mt-[-8px] ${msg.direction === "outbound" ? "justify-end mr-1" : "justify-start ml-1"}`}>
               {reactions.map((r, i) => (
