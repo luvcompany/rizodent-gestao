@@ -61,46 +61,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    const waMsgId = msg.whatsapp_message_id;
-    const token = Deno.env.get("WHATSAPP_TOKEN");
-
-    let metaResult: any = { skipped: true };
-
-    if (waMsgId && token) {
-      const phoneId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
-      // Meta Graph API: DELETE /{phone_number_id}/messages with body
-      const url = `https://graph.facebook.com/v25.0/${phoneId}/messages`;
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          status: "deleted",
-          message_id: waMsgId,
-        }),
-      });
-
-      const txt = await resp.text();
-      let body: any;
-      try { body = JSON.parse(txt); } catch { body = txt; }
-
-      if (!resp.ok) {
-        const errMsg = body?.error?.message || "Falha ao apagar no WhatsApp";
-        const errCode = body?.error?.code;
-        // Common: out of window (>15min/48h depending on type)
-        const friendly = /time|window|expired|deleted/i.test(String(errMsg))
-          ? "Não foi possível apagar: a mensagem está fora do prazo permitido pelo WhatsApp."
-          : errMsg;
-        console.error("[delete-whatsapp-message] Meta API error", { errCode, errMsg, body });
-        return new Response(JSON.stringify({ error: friendly, details: body }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      metaResult = body;
-    }
+    // NOTE: WhatsApp Cloud API does NOT support deleting messages remotely.
+    // The /messages endpoint only accepts status="read". We perform a local
+    // soft-delete so the message is hidden in the CRM UI.
+    const metaResult: any = { skipped: true, reason: "WhatsApp Cloud API não suporta exclusão remota; aplicado soft-delete local." };
 
     // Soft delete in DB
     const { error: updErr } = await supabase
