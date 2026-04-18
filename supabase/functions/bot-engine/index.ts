@@ -641,7 +641,7 @@ async function executeNode(
   };
 
   const sendAndAssert = async (payload: Record<string, any>, context: string) => {
-    const result = await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, payload);
+    const result = await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, payload, skipMarkAsRead);
     if (result?.error) {
       const details = result?.details ? ` ${JSON.stringify(result.details)}` : "";
       throw new Error(`${context}: ${result.error}${details}`);
