@@ -29,31 +29,42 @@ Deno.serve(async (req) => {
   // POST: receive events
   if (req.method === "POST") {
     try {
-      // CRITICAL: read body as raw text BEFORE any JSON.parse to keep HMAC valid
-      const signature = req.headers.get("x-hub-signature-256");
-      const body = await req.text();
-      const secret = Deno.env.get("META_APP_SECRET")!;
+      // Ler o body como texto RAW primeiro - obrigatório para validar assinatura
+      const rawBody = await req.text();
+
+      // Verificar assinatura do Meta
+      const signature = req.headers.get("x-hub-signature-256") ?? "";
+      const secret = Deno.env.get("META_APP_SECRET") ?? "";
+
       const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(secret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"],
+      const keyData = encoder.encode(secret);
+      const msgData = encoder.encode(rawBody);
+
+      const cryptoKey = await crypto.subtle.importKey(
+        "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
       );
-      const signed = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-      const hex = Array.from(new Uint8Array(signed))
+
+      const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
+
+      const computedHex = Array.from(new Uint8Array(signatureBuffer))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      const expected = "sha256=" + hex;
 
-      if (signature !== expected) {
-        console.warn("[ig-webhook] invalid signature");
-        return new Response("Forbidden", { status: 403, headers: corsHeaders });
+      const computedSignature = `sha256=${computedHex}`;
+
+      console.log("[ig-webhook] signature received:", signature);
+      console.log("[ig-webhook] signature computed:", computedSignature);
+
+      if (signature !== computedSignature) {
+        console.warn("[ig-webhook] invalid signature - rejecting");
+        return new Response("Forbidden", { status: 403 });
       }
 
-      const payload = JSON.parse(body);
-      console.log("[ig-webhook] payload received", JSON.stringify(payload).slice(0, 800));
+      // Só aqui fazer o parse do JSON
+      const payload = JSON.parse(rawBody);
+
+      console.log("[ig-webhook] payload received:", JSON.stringify(payload));
+      console.log("[ig-webhook] rawBody preview:", rawBody.substring(0, 50));
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
