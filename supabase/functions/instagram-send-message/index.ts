@@ -11,11 +11,44 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 interface Body {
-  instagram_account_id: string;
-  recipient_id: string;
-  message: string;
+  // Identification: either by IG account id directly, or by lead_id
+  instagram_account_id?: string;
+  lead_id?: string;
+  recipient_id?: string;
+  // Content
+  message?: string;
   message_type: "dm" | "comment";
   comment_id?: string;
+  // Media
+  media_type?: "image" | "video" | "audio";
+  media_url?: string;
+}
+
+function jsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function resolveAccount(input: { instagram_account_id?: string; lead_id?: string }) {
+  // Strategy A: explicit IG account id
+  if (input.instagram_account_id) {
+    const { data } = await supabase
+      .from("instagram_accounts")
+      .select("id, page_access_token, is_active, instagram_account_id, name")
+      .eq("instagram_account_id", input.instagram_account_id)
+      .maybeSingle();
+    return data;
+  }
+  // Strategy B: only one active IG account → use it
+  const { data: accounts } = await supabase
+    .from("instagram_accounts")
+    .select("id, page_access_token, is_active, instagram_account_id, name")
+    .eq("is_active", true)
+    .limit(2);
+  if (accounts && accounts.length === 1) return accounts[0];
+  return null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -23,70 +56,68 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
   let body: Body;
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Invalid JSON body" }, 400);
   }
 
-  const { instagram_account_id, recipient_id, message, message_type, comment_id } = body ?? {};
+  const { lead_id, message, message_type, comment_id, media_type, media_url } = body ?? {};
+  let { instagram_account_id, recipient_id } = body ?? {};
 
-  if (!instagram_account_id || !message || !message_type) {
-    return new Response(
-      JSON.stringify({ error: "instagram_account_id, message and message_type are required" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  if (!message_type) {
+    return jsonResponse({ error: "message_type is required" }, 400);
   }
   if (message_type === "comment" && !comment_id) {
-    return new Response(JSON.stringify({ error: "comment_id is required for message_type=comment" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "comment_id is required for message_type=comment" }, 400);
   }
+
+  // If lead_id is provided, derive recipient_id and account from lead
+  let leadId = lead_id ?? null;
+  if (leadId && !recipient_id) {
+    const { data: lead } = await supabase
+      .from("crm_leads")
+      .select("instagram_user_id")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (lead?.instagram_user_id) {
+      recipient_id = lead.instagram_user_id;
+    }
+  }
+
   if (message_type === "dm" && !recipient_id) {
-    return new Response(JSON.stringify({ error: "recipient_id is required for message_type=dm" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "recipient_id (or lead with instagram_user_id) is required for DM" }, 400);
+  }
+  if (!message && !media_url) {
+    return jsonResponse({ error: "message or media_url is required" }, 400);
   }
 
-  // Look up account
-  const { data: account, error: accErr } = await supabase
-    .from("instagram_accounts")
-    .select("id, page_access_token, is_active, instagram_account_id")
-    .eq("instagram_account_id", instagram_account_id)
-    .maybeSingle();
-
-  if (accErr) {
-    console.error("[instagram-send-message] DB error:", accErr);
-    return new Response(JSON.stringify({ error: "Database error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  const account = await resolveAccount({ instagram_account_id, lead_id: leadId ?? undefined });
   if (!account || !account.is_active || !account.page_access_token) {
-    return new Response(
-      JSON.stringify({ error: "Instagram account not found, inactive, or missing access token" }),
-      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: "Instagram account not found, inactive, or missing access token" }, 404);
   }
-
+  instagram_account_id = account.instagram_account_id;
   const token = account.page_access_token;
+
+  // Build Meta request
   let metaResponse: Response;
-  let metaJson: unknown;
+  let metaJson: any;
 
   try {
     if (message_type === "dm") {
+      const messagePayload: Record<string, unknown> = {};
+      if (media_url && media_type) {
+        messagePayload.attachment = {
+          type: media_type, // image | video | audio
+          payload: { url: media_url, is_reusable: false },
+        };
+      } else {
+        messagePayload.text = message;
+      }
       metaResponse = await fetch("https://graph.facebook.com/v25.0/me/messages", {
         method: "POST",
         headers: {
@@ -95,7 +126,7 @@ Deno.serve(async (req: Request) => {
         },
         body: JSON.stringify({
           recipient: { id: recipient_id },
-          message: { text: message },
+          message: messagePayload,
         }),
       });
     } else {
@@ -109,37 +140,55 @@ Deno.serve(async (req: Request) => {
     metaJson = await metaResponse.json().catch(() => ({}));
   } catch (err) {
     console.error("[instagram-send-message] Meta call failed:", err);
-    return new Response(JSON.stringify({ error: "Failed to reach Meta API", details: String(err) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: "Failed to reach Meta API", details: String(err) }, 500);
   }
 
   if (!metaResponse.ok) {
     console.error("[instagram-send-message] Meta error:", metaJson);
-    return new Response(JSON.stringify({ error: "Meta API error", meta: metaJson }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: metaJson?.error?.message || "Meta API error", meta: metaJson }, 500);
   }
 
-  // Persist outbound message
+  const igMessageId = metaJson?.message_id ?? null;
+
+  // Persist to instagram_messages (legacy)
   await supabase.from("instagram_messages").insert({
     instagram_account_id,
     instagram_account_config_id: account.id,
     sender_id: recipient_id || null,
     sender_name: null,
-    message_text: message,
+    message_text: message ?? null,
     message_type,
     post_id: null,
     comment_id: message_type === "comment" ? comment_id ?? null : null,
     is_outbound: true,
     is_read: true,
-    lead_id: null,
+    lead_id: leadId,
   });
 
-  return new Response(JSON.stringify({ success: true, meta: metaJson }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  // Mirror into unified messages table for chat UI
+  if (leadId) {
+    const msgType = media_type ?? "text";
+    await supabase.from("messages").insert({
+      lead_id: leadId,
+      direction: "outbound",
+      type: msgType,
+      content: message ?? null,
+      media_url: media_url ?? null,
+      channel: "instagram",
+      instagram_message_id: igMessageId,
+      instagram_sender_id: recipient_id ?? null,
+      status: "sent",
+    });
+
+    await supabase
+      .from("crm_leads")
+      .update({
+        last_message: message ?? (media_url ? `[${media_type ?? "mídia"}]` : null),
+        last_message_at: new Date().toISOString(),
+        last_outbound_at: new Date().toISOString(),
+      })
+      .eq("id", leadId);
+  }
+
+  return jsonResponse({ success: true, ok: true, message_id: igMessageId, meta: metaJson });
 });
