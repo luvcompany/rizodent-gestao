@@ -117,10 +117,12 @@ Deno.serve(async (req) => {
 
     console.log(`[oauth-callback] ${upserted.length} contas conectadas (state=${state})`);
 
-    // 5. Redirect
+    // 5. Redirect to frontend
+    const frontendUrl = (Deno.env.get("FRONTEND_URL") ?? "").replace(/\/$/, "");
+    const redirectLocation = `${frontendUrl}/integrations?instagram=connected`;
     return new Response(null, {
       status: 302,
-      headers: { ...corsHeaders, Location: "/integrations?instagram=connected" },
+      headers: { ...corsHeaders, Location: redirectLocation },
     });
   } catch (err) {
     console.error("[oauth-callback] error", err);
