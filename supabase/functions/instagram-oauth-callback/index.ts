@@ -92,33 +92,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 3. Get Pages with Instagram business account info
-    const pagesResponse = await fetch(
-      `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,name,username}&access_token=${longLivedToken}`
-    );
-    const pagesData = await pagesResponse.json();
-
-    console.log("[oauth] Pages API full response:", JSON.stringify(pagesData));
-    console.log("[oauth] Long token preview:", longLivedToken?.substring(0, 30));
-
-    // Check for API error from Meta
-    if (pagesData.error) {
-      console.error("[oauth] Meta API error:", pagesData.error);
-      return new Response(JSON.stringify({ error: "Meta API error", details: pagesData.error }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Check if response is not OK (HTTP error)
-    if (!pagesResponse.ok) {
-      console.error("[oauth] pages HTTP error", pagesData);
-      return new Response(JSON.stringify({ error: "Failed to fetch pages", details: pagesData }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -127,39 +100,93 @@ Deno.serve(async (req) => {
     const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
     const upserted: any[] = [];
 
-    for (const page of pagesData.data ?? []) {
-      const pageId = page.id;
-      const pageName = page.name;
-      const pageToken = page.access_token;
+    // Collected IG accounts: { id, name, username, page_id?, page_token? }
+    type IgCandidate = { id: string; name?: string; username?: string; page_id?: string; page_token?: string };
+    const igCandidates: IgCandidate[] = [];
 
-      // IMPORTANT: use the page-specific access token (data[i].access_token)
-      const igUrl = `${GRAPH}/${pageId}?fields=instagram_business_account{id,name,username,profile_picture_url}&access_token=${pageToken}`;
-      const igResp = await fetch(igUrl);
-      const igData = await igResp.json();
-      const igAccount = igData?.instagram_business_account;
-      console.log(`[oauth] Step 5 - Instagram account for page ${pageId}:`, JSON.stringify(igData));
-
-      if (!igAccount?.id) {
-        console.warn(`[oauth] Warning: No Instagram Business Account found for page ${pageId} (${pageName})`);
-        continue;
+    // OPTION 1: /me/instagram_accounts (direct)
+    try {
+      const r = await fetch(
+        `${GRAPH}/me/instagram_accounts?fields=id,name,username,profile_picture_url&access_token=${longLivedToken}`
+      );
+      const igAccountsData = await r.json();
+      console.log("[oauth] IG accounts direct:", JSON.stringify(igAccountsData));
+      for (const a of igAccountsData?.data ?? []) {
+        if (a?.id) igCandidates.push({ id: a.id, name: a.name, username: a.username });
       }
+    } catch (e) {
+      console.error("[oauth] IG direct fetch failed", e);
+    }
 
-      const igAccountId = igAccount.id;
+    // OPTION 2: businesses -> instagram_business_accounts (fallback)
+    if (igCandidates.length === 0) {
+      try {
+        const r = await fetch(
+          `${GRAPH}/me?fields=businesses{instagram_business_accounts{id,name,username,profile_picture_url}}&access_token=${longLivedToken}`
+        );
+        const businessData = await r.json();
+        console.log("[oauth] IG accounts via business:", JSON.stringify(businessData));
+        for (const b of businessData?.businesses?.data ?? []) {
+          for (const a of b?.instagram_business_accounts?.data ?? []) {
+            if (a?.id) igCandidates.push({ id: a.id, name: a.name, username: a.username });
+          }
+        }
+      } catch (e) {
+        console.error("[oauth] IG via business fetch failed", e);
+      }
+    }
 
-      console.log("[oauth] Step 6 - Saving account:", {
-        instagram_account_id: igAccountId,
-        page_id: pageId,
-        name: pageName,
-      });
+    // OPTION 3: /me/accounts -> page.instagram_business_account (legacy fallback)
+    let pagesData: any = { data: [] };
+    if (igCandidates.length === 0) {
+      try {
+        const pagesResponse = await fetch(
+          `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,name,username}&access_token=${longLivedToken}`
+        );
+        pagesData = await pagesResponse.json();
+        console.log("[oauth] Pages API full response:", JSON.stringify(pagesData));
+
+        if (pagesData.error) {
+          console.error("[oauth] Meta API error:", pagesData.error);
+        }
+
+        for (const page of pagesData.data ?? []) {
+          const igUrl = `${GRAPH}/${page.id}?fields=instagram_business_account{id,name,username,profile_picture_url}&access_token=${page.access_token}`;
+          const igResp = await fetch(igUrl);
+          const igData = await igResp.json();
+          const igAccount = igData?.instagram_business_account;
+          console.log(`[oauth] Page ${page.id} IG:`, JSON.stringify(igData));
+          if (igAccount?.id) {
+            igCandidates.push({
+              id: igAccount.id,
+              name: igAccount.name,
+              username: igAccount.username,
+              page_id: page.id,
+              page_token: page.access_token,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("[oauth] /me/accounts fetch failed", e);
+      }
+    }
+
+    console.log(`[oauth] Total IG candidates: ${igCandidates.length}`);
+
+    for (const cand of igCandidates) {
+      const accountName = cand.username || cand.name || cand.id;
+      const tokenToStore = cand.page_token || longLivedToken;
+
+      console.log("[oauth] Saving IG account:", { instagram_account_id: cand.id, name: accountName, has_page_id: !!cand.page_id });
 
       const { data, error: upsertError } = await supabase
         .from("instagram_accounts")
         .upsert(
           {
-            name: pageName,
-            instagram_account_id: igAccountId,
-            page_id: pageId,
-            page_access_token: pageToken,
+            name: accountName,
+            instagram_account_id: cand.id,
+            page_id: cand.page_id ?? null,
+            page_access_token: tokenToStore,
             long_lived_token_expires_at: expiresAt,
             is_active: true,
           },
@@ -169,27 +196,26 @@ Deno.serve(async (req) => {
         .single();
 
       if (upsertError) {
-        console.error("[oauth] Step 6 ERROR:", upsertError.message, upsertError.details);
+        console.error("[oauth] Upsert ERROR:", upsertError.message, upsertError.details);
       } else {
-        console.log("[oauth] Step 6 SUCCESS - Account saved");
+        console.log("[oauth] Account saved");
         upserted.push(data);
       }
 
-      // Subscribe the Page to webhook fields so Instagram events are delivered
-      try {
-        const subFields = "messages,messaging_postbacks,message_reactions,message_reads,feed,mention";
-        const subResp = await fetch(`${GRAPH}/${pageId}/subscribed_apps`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            subscribed_fields: subFields,
-            access_token: pageToken,
-          }),
-        });
-        const subData = await subResp.json();
-        console.log(`[oauth] subscribed_apps page=${pageId} ok=${subResp.ok}`, subData);
-      } catch (e) {
-        console.error(`[oauth] subscribed_apps failed page=${pageId}`, e);
+      // Subscribe page webhooks if we have a page (only via legacy path)
+      if (cand.page_id && cand.page_token) {
+        try {
+          const subFields = "messages,messaging_postbacks,message_reactions,message_reads,feed,mention";
+          const subResp = await fetch(`${GRAPH}/${cand.page_id}/subscribed_apps`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ subscribed_fields: subFields, access_token: cand.page_token }),
+          });
+          const subData = await subResp.json();
+          console.log(`[oauth] subscribed_apps page=${cand.page_id} ok=${subResp.ok}`, subData);
+        } catch (e) {
+          console.error(`[oauth] subscribed_apps failed page=${cand.page_id}`, e);
+        }
       }
     }
 
@@ -198,17 +224,14 @@ Deno.serve(async (req) => {
     // 5. Redirect to frontend
     const frontendUrl = Deno.env.get("FRONTEND_URL") ?? "";
     let redirectLocation: string;
-    
-    // Check if no pages were found
-    if (!pagesData.data || pagesData.data.length === 0) {
-      console.warn("[oauth] No pages found for this user");
-      redirectLocation = `${frontendUrl}/integrations?error=no_pages_found`;
-    } else if (upserted.length === 0) {
-      // Pages exist but none had Instagram Business Account
-      console.warn("[oauth] Pages found but no Instagram Business Accounts connected");
+
+    if (igCandidates.length === 0) {
+      console.warn("[oauth] No Instagram accounts found via any method");
       redirectLocation = `${frontendUrl}/integrations?error=no_instagram_accounts`;
+    } else if (upserted.length === 0) {
+      console.warn("[oauth] IG candidates found but upsert failed for all");
+      redirectLocation = `${frontendUrl}/integrations?error=save_failed`;
     } else {
-      // Success - accounts were connected
       redirectLocation = `${frontendUrl}${frontendUrl.includes("?") ? "&" : "?"}instagram=connected`;
     }
     
