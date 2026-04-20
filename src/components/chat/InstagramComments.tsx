@@ -197,7 +197,7 @@ export default function InstagramComments() {
         if (!targetComment.comment_id || !targetComment.instagram_account_id) {
           throw new Error("Comentário sem ID válido");
         }
-        const { error } = await supabase.functions.invoke("instagram-send-message", {
+        const { data, error } = await supabase.functions.invoke("instagram-send-message", {
           body: {
             instagram_account_id: targetComment.instagram_account_id,
             comment_id: targetComment.comment_id,
@@ -207,7 +207,7 @@ export default function InstagramComments() {
             thread_sender_id: selected.sender_id ?? targetComment.sender_id ?? null,
           },
         });
-        if (error) throw error;
+        if (error || data?.ok === false) throw Object.assign(error || new Error(data?.error || "Falha ao responder comentário"), { context: data });
         toast.success("Resposta enviada ao comentário");
       } else {
         if (!selected.sender_id || !selected.instagram_account_id) {
@@ -251,7 +251,7 @@ export default function InstagramComments() {
           leadId = created.id;
         }
 
-        const { error } = await supabase.functions.invoke("instagram-send-message", {
+        const { data, error } = await supabase.functions.invoke("instagram-send-message", {
           body: {
             instagram_account_id: selected.instagram_account_id,
             lead_id: leadId,
@@ -260,7 +260,7 @@ export default function InstagramComments() {
             message_type: "dm",
           },
         });
-        if (error) throw error;
+        if (error || data?.ok === false) throw Object.assign(error || new Error(data?.error || "Falha ao enviar DM"), { context: data });
         toast.success("DM enviada — disponível na aba Direct");
       }
       setReplyText("");
