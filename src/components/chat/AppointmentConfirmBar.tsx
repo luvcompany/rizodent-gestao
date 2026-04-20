@@ -241,6 +241,14 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     } as any);
     if (apptError) { toast.error("Erro ao criar agendamento"); setManualSaving(false); return; }
 
+    // Auto-conclude any pending scheduling tasks for this lead
+    if (pendingTasks.length > 0) {
+      await supabase
+        .from("crm_tasks")
+        .update({ status: "done", updated_at: new Date().toISOString() })
+        .in("id", pendingTasks.map(t => t.id));
+    }
+
     const movedStageId = await moveLeadToScheduledStage();
 
     const label = isRescheduleMode ? "Reagendamento" : "Agendamento";
