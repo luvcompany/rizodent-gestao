@@ -296,14 +296,31 @@ Deno.serve(async (req: Request) => {
 
       const entries = Array.isArray(payload?.entry) ? payload.entry : [];
 
+      // Global kill-switch: if integrations row 'instagram_global' is disabled, ignore all events
+      const { data: globalIntegration } = await supabase
+        .from("integrations")
+        .select("status")
+        .eq("key", "instagram_global")
+        .maybeSingle();
+      if (globalIntegration?.status === "disabled") {
+        console.log("[instagram-webhook] Global Instagram integration is disabled. Skipping payload.");
+        return new Response("OK", { status: 200, headers: corsHeaders });
+      }
+
       for (const entry of entries) {
         const accountId: string = String(entry?.id ?? "");
 
         const { data: accountConfig } = await supabase
           .from("instagram_accounts")
-          .select("id, name, page_access_token")
+          .select("id, name, page_access_token, is_active")
           .eq("instagram_account_id", accountId)
           .maybeSingle();
+
+        // Per-account kill-switch
+        if (accountConfig && accountConfig.is_active === false) {
+          console.log(`[instagram-webhook] Account ${accountId} is inactive. Skipping entry.`);
+          continue;
+        }
 
         const accessToken = accountConfig?.page_access_token ?? null;
         const accountName = accountConfig?.name ?? null;
