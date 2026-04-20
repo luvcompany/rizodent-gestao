@@ -122,6 +122,12 @@ async function findOrCreateLead(
     if (profile.profile_pic && existing.instagram_profile_pic_url !== profile.profile_pic) {
       updates.instagram_profile_pic_url = profile.profile_pic;
     }
+    // If lead name is the placeholder "IG xxxxxxxx", upgrade it to real name/username when we get one
+    const placeholder = `IG ${igUserId.slice(0, 8)}`;
+    if (existing.name === placeholder || existing.name?.startsWith("IG ")) {
+      const better = profile.name || profile.username;
+      if (better) updates.name = better;
+    }
     if (Object.keys(updates).length > 0) {
       await supabase.from("crm_leads").update(updates).eq("id", existing.id);
     }
