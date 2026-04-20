@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
-import InstagramIntegrationSection from "@/components/integrations/InstagramIntegrationSection";
+
 
 type WhatsAppConfig = {
   token: string;
@@ -454,9 +454,6 @@ export default function CrmIntegracoes() {
             )}
           </div>
         </div>
-
-        {/* Instagram Section */}
-        <InstagramIntegrationSection />
 
         {/* Other Integrations */}
         <h2 className="font-semibold text-foreground mb-4">Outros Canais</h2>

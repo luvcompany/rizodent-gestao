@@ -1026,34 +1026,10 @@ function WhatsAppConversations() {
   );
 }
 
-import { Tabs as RootTabs, TabsList as RootTabsList, TabsTrigger as RootTabsTrigger, TabsContent as RootTabsContent } from "@/components/ui/tabs";
-import InstagramConversations from "@/components/chat/InstagramConversations";
-import whatsappLogo from "@/assets/whatsapp-logo.png";
-import { Instagram as InstagramIcon } from "lucide-react";
-
 export default function CrmConversas() {
   return (
     <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
-      <RootTabs defaultValue="whatsapp" className="flex flex-col h-full">
-        <div className="flex-shrink-0 bg-card border-b border-border px-4 pt-2">
-          <RootTabsList>
-            <RootTabsTrigger value="whatsapp" className="gap-2">
-              <img src={whatsappLogo} alt="" width={16} height={16} className="rounded-full" />
-              WhatsApp
-            </RootTabsTrigger>
-            <RootTabsTrigger value="instagram" className="gap-2">
-              <InstagramIcon size={16} className="text-[#E4405F]" />
-              Instagram
-            </RootTabsTrigger>
-          </RootTabsList>
-        </div>
-        <RootTabsContent value="whatsapp" className="flex-1 overflow-hidden m-0 mt-0 data-[state=active]:flex flex-col min-h-0">
-          <WhatsAppConversations />
-        </RootTabsContent>
-        <RootTabsContent value="instagram" className="flex-1 overflow-hidden m-0 mt-0 data-[state=active]:flex flex-col min-h-0">
-          <InstagramConversations />
-        </RootTabsContent>
-      </RootTabs>
+      <WhatsAppConversations />
     </div>
   );
 }
