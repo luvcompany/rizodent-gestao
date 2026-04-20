@@ -75,20 +75,28 @@ export default function InstagramConversations() {
   ) || conversations.find((c) => c.sender_id === selectedConversationId);
 
   const handleSend = async () => {
-    if (!composer.trim() || !activeConversation || !activeConversation.instagram_account_id) return;
+    if (!composer.trim() || !activeConversation || !activeConversation.instagram_account_id) {
+      if (!activeConversation?.instagram_account_id) {
+        toast.error("Conta do Instagram não identificada para esta conversa");
+      }
+      return;
+    }
+    const payload = {
+      instagram_account_id: activeConversation.instagram_account_id,
+      recipient_id: activeConversation.sender_id,
+      message: composer.trim(),
+      message_type: (activeConversation.message_type as "dm" | "comment") ?? "dm",
+      comment_id: [...messages].reverse().find((m) => m.comment_id)?.comment_id ?? undefined,
+    };
     setSending(true);
     try {
-      await sendMessage({
-        instagram_account_id: activeConversation.instagram_account_id,
-        recipient_id: activeConversation.sender_id,
-        message: composer.trim(),
-        message_type: (activeConversation.message_type as "dm" | "comment") ?? "dm",
-        comment_id: [...messages].reverse().find((m) => m.comment_id)?.comment_id ?? undefined,
-      });
+      await sendMessage(payload);
       setComposer("");
       toast.success("Mensagem enviada");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao enviar");
+      const msg = e instanceof Error ? e.message : "Erro ao enviar";
+      console.error("Falha ao enviar mensagem Instagram:", e);
+      toast.error(msg);
     } finally {
       setSending(false);
     }
