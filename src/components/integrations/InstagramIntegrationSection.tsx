@@ -65,6 +65,7 @@ export default function InstagramIntegrationSection() {
       url.searchParams.set("scope", SCOPES);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("auth_type", "rerequest");
+      url.searchParams.set("enable_profile_selector", "true");
       url.searchParams.set("state", userId);
       window.location.href = url.toString();
     } catch (e) {
