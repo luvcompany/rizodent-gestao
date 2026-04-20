@@ -17,6 +17,8 @@ Deno.serve(async (req) => {
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
 
+    console.log("[oauth] Step 1 - Code received:", code?.substring(0, 10));
+
     if (!code) {
       return new Response(JSON.stringify({ error: "Missing code parameter" }), {
         status: 400,
@@ -37,8 +39,9 @@ Deno.serve(async (req) => {
 
     const shortResp = await fetch(shortUrl.toString());
     const shortData = await shortResp.json();
+    console.log("[oauth] Step 2 - Short token received:", !!shortData?.access_token);
     if (!shortResp.ok || !shortData.access_token) {
-      console.error("[oauth-callback] short-lived token error", shortData);
+      console.error("[oauth] short-lived token error", shortData);
       return new Response(JSON.stringify({ error: "Failed short-lived token", details: shortData }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -55,8 +58,9 @@ Deno.serve(async (req) => {
 
     const longResp = await fetch(longUrl.toString());
     const longData = await longResp.json();
+    console.log("[oauth] Step 3 - Long token received:", !!longData?.access_token);
     if (!longResp.ok || !longData.access_token) {
-      console.error("[oauth-callback] long-lived token error", longData);
+      console.error("[oauth] long-lived token error", longData);
       return new Response(JSON.stringify({ error: "Failed long-lived token", details: longData }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -67,8 +71,13 @@ Deno.serve(async (req) => {
     // 3. Get Pages
     const pagesResp = await fetch(`${GRAPH}/me/accounts?access_token=${longLivedToken}`);
     const pagesData = await pagesResp.json();
+    console.log(
+      "[oauth] Step 4 - Pages found:",
+      pagesData?.data?.length,
+      JSON.stringify(pagesData?.data?.map((p: any) => ({ id: p.id, name: p.name, has_token: !!p.access_token })) ?? []),
+    );
     if (!pagesResp.ok) {
-      console.error("[oauth-callback] pages error", pagesData);
+      console.error("[oauth] pages error", pagesData);
       return new Response(JSON.stringify({ error: "Failed to fetch pages", details: pagesData }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -88,14 +97,27 @@ Deno.serve(async (req) => {
       const pageName = page.name;
       const pageToken = page.access_token;
 
-      const igResp = await fetch(
-        `${GRAPH}/${pageId}?fields=instagram_business_account&access_token=${pageToken}`,
-      );
+      // IMPORTANT: use the page-specific access token (data[i].access_token)
+      const igUrl = `${GRAPH}/${pageId}?fields=instagram_business_account{id,name,username,profile_picture_url}&access_token=${pageToken}`;
+      const igResp = await fetch(igUrl);
       const igData = await igResp.json();
-      const igAccountId = igData?.instagram_business_account?.id;
-      if (!igAccountId) continue;
+      const igAccount = igData?.instagram_business_account;
+      console.log(`[oauth] Step 5 - Instagram account for page ${pageId}:`, JSON.stringify(igData));
 
-      const { data, error } = await supabase
+      if (!igAccount?.id) {
+        console.warn(`[oauth] Warning: No Instagram Business Account found for page ${pageId} (${pageName})`);
+        continue;
+      }
+
+      const igAccountId = igAccount.id;
+
+      console.log("[oauth] Step 6 - Saving account:", {
+        instagram_account_id: igAccountId,
+        page_id: pageId,
+        name: pageName,
+      });
+
+      const { data, error: upsertError } = await supabase
         .from("instagram_accounts")
         .upsert(
           {
@@ -111,8 +133,12 @@ Deno.serve(async (req) => {
         .select()
         .single();
 
-      if (error) console.error("[oauth-callback] upsert error", error);
-      else upserted.push(data);
+      if (upsertError) {
+        console.error("[oauth] Step 6 ERROR:", upsertError.message, upsertError.details);
+      } else {
+        console.log("[oauth] Step 6 SUCCESS - Account saved");
+        upserted.push(data);
+      }
 
       // Subscribe the Page to webhook fields so Instagram events are delivered
       try {
@@ -126,13 +152,13 @@ Deno.serve(async (req) => {
           }),
         });
         const subData = await subResp.json();
-        console.log(`[oauth-callback] subscribed_apps page=${pageId} ok=${subResp.ok}`, subData);
+        console.log(`[oauth] subscribed_apps page=${pageId} ok=${subResp.ok}`, subData);
       } catch (e) {
-        console.error(`[oauth-callback] subscribed_apps failed page=${pageId}`, e);
+        console.error(`[oauth] subscribed_apps failed page=${pageId}`, e);
       }
     }
 
-    console.log(`[oauth-callback] ${upserted.length} contas conectadas (state=${state})`);
+    console.log(`[oauth] ${upserted.length} contas conectadas (state=${state})`);
 
     // 5. Redirect to frontend
     const frontendUrl = Deno.env.get("FRONTEND_URL") ?? "";
@@ -142,7 +168,7 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, Location: redirectLocation },
     });
   } catch (err) {
-    console.error("[oauth-callback] error", err);
+    console.error("[oauth] error", err);
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
