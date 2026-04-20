@@ -38,6 +38,14 @@ export interface SendMessageParams {
   comment_id?: string;
 }
 
+type InstagramSendResponse = {
+  ok?: boolean;
+  error?: string;
+  error_code?: string;
+  user_message?: string;
+  setup_required?: boolean;
+};
+
 export function useInstagramMessages() {
   const [messages, setMessages] = useState<InstagramMessage[]>([]);
   const [accountsMap, setAccountsMap] = useState<Record<string, string>>({});
@@ -143,6 +151,10 @@ export function useInstagramMessages() {
       body: params,
     });
     if (invokeErr) throw invokeErr;
+    const response = data as InstagramSendResponse | null;
+    if (response?.ok === false) {
+      throw new Error(response.user_message || response.error || "Erro ao enviar mensagem no Instagram");
+    }
     return data;
   }, []);
 
