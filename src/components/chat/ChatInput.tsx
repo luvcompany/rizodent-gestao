@@ -346,12 +346,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const isWindowExpired = windowInfo.expired;
 
   const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
-    if (!leadPhone) {
+    if (!leadPhone && !isInstagram) {
       toast.error("Lead sem telefone para envio do áudio");
       throw new Error("Lead sem telefone");
     }
 
-    if (windowInfo.expired) {
+    if (!isInstagram && windowInfo.expired) {
       toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
       throw new Error("Janela expirada");
     }
@@ -388,9 +388,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
-      });
+      const audioBody = isInstagram
+        ? { lead_id: leadId, message_type: "dm" as const, media_type: "audio" as const, media_url: url }
+        : { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true };
+
+      const { data, error } = await supabase.functions.invoke(sendFnName, { body: audioBody });
 
       if (error || data?.error || data?.ok === false) {
         if (data?.message) {
