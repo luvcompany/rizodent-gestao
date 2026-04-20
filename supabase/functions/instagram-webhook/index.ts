@@ -158,10 +158,12 @@ async function persistMessage(opts: {
     profile = await fetchIgProfile(opts.senderId, opts.accessToken);
   }
 
-  // Find or create lead
-  const leadId = await findOrCreateLead(opts.senderId, profile, opts.accountName);
+  // Find or create lead — ONLY for DMs. Comments stay in instagram_messages only.
+  const leadId = opts.messageType === "dm"
+    ? await findOrCreateLead(opts.senderId, profile, opts.accountName)
+    : null;
 
-  // Insert into instagram_messages (legacy table)
+  // Insert into instagram_messages (legacy table — used for both DMs & comments)
   await supabase.from("instagram_messages").insert({
     instagram_account_id: opts.accountId,
     instagram_account_config_id: opts.accountConfigId,
