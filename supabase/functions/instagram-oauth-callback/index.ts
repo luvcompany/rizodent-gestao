@@ -68,6 +68,30 @@ Deno.serve(async (req) => {
     }
     const longLivedToken = longData.access_token;
 
+    const frontendBase = Deno.env.get("FRONTEND_URL") ?? "";
+
+    // 2.5. Verify token has required permissions
+    const permResponse = await fetch(
+      `${GRAPH}/me/permissions?access_token=${longLivedToken}`
+    );
+    const permData = await permResponse.json();
+    console.log("[oauth] Token permissions:", JSON.stringify(permData));
+
+    const hasPagesShowList = permData.data?.some(
+      (p: any) => p.permission === "pages_show_list" && p.status === "granted"
+    );
+
+    if (!hasPagesShowList) {
+      console.error("[oauth] Missing pages_show_list permission");
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          Location: `${frontendBase}/integrations?error=missing_permissions`,
+        },
+      });
+    }
+
     // 3. Get Pages with Instagram business account info
     const pagesResponse = await fetch(
       `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,name,username}&access_token=${longLivedToken}`
