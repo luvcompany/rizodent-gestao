@@ -718,6 +718,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 </Button>
                 <div className="relative">
                   <Avatar className="h-9 w-9">
+                    {selectedLead.instagram_profile_pic_url && (
+                      <AvatarImage src={selectedLead.instagram_profile_pic_url} alt={selectedLead.name} />
+                    )}
                     <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
                       {selectedLead.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
@@ -729,7 +732,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-foreground text-sm truncate">{selectedLead.name}</div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    {selectedLead.phone && <span>{selectedLead.phone}</span>}
+                    {selectedLead.instagram_username ? (
+                      <span>@{selectedLead.instagram_username}</span>
+                    ) : selectedLead.phone ? (
+                      <span>{selectedLead.phone}</span>
+                    ) : null}
                     {currentStage && (
                       <span className="flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentStage.color }} />
