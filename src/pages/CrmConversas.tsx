@@ -1047,10 +1047,10 @@ export default function CrmConversas() {
             </RootTabsTrigger>
           </RootTabsList>
         </div>
-        <RootTabsContent value="whatsapp" className="flex-1 overflow-hidden m-0">
+        <RootTabsContent value="whatsapp" className="flex-1 overflow-hidden m-0 mt-0 data-[state=active]:flex flex-col min-h-0">
           <WhatsAppConversations />
         </RootTabsContent>
-        <RootTabsContent value="instagram" className="flex-1 overflow-hidden m-0">
+        <RootTabsContent value="instagram" className="flex-1 overflow-hidden m-0 mt-0 data-[state=active]:flex flex-col min-h-0">
           <InstagramConversations />
         </RootTabsContent>
       </RootTabs>
