@@ -176,6 +176,7 @@ async function computeTaskDueDate(supabase: any, data: any): Promise<string> {
       return new Date(Date.now() + hours * 3600000).toISOString();
     }
   }
+}
 
 function getTemplatePlaceholderIndexes(content: string | null | undefined): number[] {
   if (!content) return [];
