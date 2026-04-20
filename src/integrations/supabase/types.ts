@@ -1403,24 +1403,30 @@ export type Database = {
           id: string
           instagram_account_id: string
           is_active: boolean
+          long_lived_token_expires_at: string | null
           name: string
           page_access_token: string | null
+          page_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           instagram_account_id: string
           is_active?: boolean
+          long_lived_token_expires_at?: string | null
           name: string
           page_access_token?: string | null
+          page_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           instagram_account_id?: string
           is_active?: boolean
+          long_lived_token_expires_at?: string | null
           name?: string
           page_access_token?: string | null
+          page_id?: string | null
         }
         Relationships: []
       }
