@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
 
       // Subscribe the Page to webhook fields so Instagram events are delivered
       try {
-        const subFields = "messages,messaging_postbacks,message_reactions,messaging_seen,comments,mention";
+        const subFields = "messages,messaging_postbacks,message_reactions,message_reads,feed,mention";
         const subResp = await fetch(`${GRAPH}/${pageId}/subscribed_apps`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
