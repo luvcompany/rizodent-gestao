@@ -40,25 +40,51 @@ export default function InstagramAccountsSection() {
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [connecting, setConnecting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [globalEnabled, setGlobalEnabled] = useState(true);
+  const [togglingGlobal, setTogglingGlobal] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("instagram_accounts")
-      .select("*")
-      .order("created_at", { ascending: true });
+    const [{ data, error }, { data: globalRow }] = await Promise.all([
+      supabase.from("instagram_accounts").select("*").order("created_at", { ascending: true }),
+      supabase.from("integrations").select("status").eq("key", "instagram_global").maybeSingle(),
+    ]);
     if (error) {
       toast.error("Erro ao carregar contas do Instagram");
     } else {
       setAccounts((data ?? []) as InstagramAccount[]);
     }
+    setGlobalEnabled(globalRow?.status !== "disabled");
     setLoading(false);
+  };
+
+  const handleToggleGlobal = async (enabled: boolean) => {
+    setTogglingGlobal(true);
+    const newStatus = enabled ? "connected" : "disabled";
+    const { data: existing } = await supabase
+      .from("integrations")
+      .select("id")
+      .eq("key", "instagram_global")
+      .maybeSingle();
+    const { error } = existing
+      ? await supabase.from("integrations").update({ status: newStatus }).eq("id", existing.id)
+      : await supabase.from("integrations").insert({ key: "instagram_global", status: newStatus, config: {} });
+    if (error) {
+      toast.error("Erro ao alterar integração do Instagram");
+    } else {
+      setGlobalEnabled(enabled);
+      toast.success(
+        enabled
+          ? "Integração do Instagram ativada"
+          : "Integração do Instagram desativada — DMs e comentários não serão mais recebidos",
+      );
+    }
+    setTogglingGlobal(false);
   };
 
   useEffect(() => {
     load();
 
-    // Show success/error toast from OAuth redirect
     const params = new URLSearchParams(window.location.search);
     const igStatus = params.get("instagram");
     if (igStatus === "connected") {
