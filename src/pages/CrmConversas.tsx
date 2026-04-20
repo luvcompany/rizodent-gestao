@@ -88,7 +88,15 @@ const SidePanelFallback = () => (
     <div className="h-24 rounded-lg bg-secondary/40 animate-pulse" />
   </div>
 );
-function WhatsAppConversations() {
+const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+
+interface ConversationsViewProps {
+  pipelineFilter?: string;          // include only this pipeline
+  excludePipelines?: string[];      // exclude these pipelines
+  channel?: "whatsapp" | "instagram";
+}
+
+function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp" }: ConversationsViewProps = {}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [leads, setLeads] = useState<LeadConversation[]>(() => leadsListCache.leads || []);
