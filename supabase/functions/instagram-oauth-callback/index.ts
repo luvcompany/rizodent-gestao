@@ -11,15 +11,12 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const REDIRECT_URI = Deno.env.get("INSTAGRAM_REDIRECT_URI") ?? "";
+const FRONTEND_URL = (Deno.env.get("FRONTEND_URL") ?? "").replace(/\/+$/, "");
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-function frontendBase(req: Request): string {
-  const origin = req.headers.get("origin") ?? req.headers.get("referer") ?? "";
-  try {
-    if (origin) return new URL(origin).origin;
-  } catch (_) { /* ignore */ }
-  return "";
+function frontendBase(_req: Request): string {
+  return FRONTEND_URL;
 }
 
 Deno.serve(async (req: Request) => {
