@@ -19,6 +19,9 @@ interface Body {
   message?: string;
   message_type: "dm" | "comment";
   comment_id?: string;
+  // Comment-thread grouping (so outbound reply stays in same thread)
+  post_id?: string;
+  thread_sender_id?: string;
   // Media
   media_type?: "image" | "video" | "audio";
   media_url?: string;
@@ -122,7 +125,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Invalid JSON body" }, 400);
   }
 
-  const { lead_id, message, message_type, comment_id, media_type, media_url } = body ?? {};
+  const { lead_id, message, message_type, comment_id, media_type, media_url, post_id, thread_sender_id } = body ?? {};
   let { instagram_account_id, recipient_id } = body ?? {};
 
   if (!message_type) {
@@ -209,14 +212,16 @@ Deno.serve(async (req: Request) => {
   const igMessageId = metaJson?.message_id ?? null;
 
   // Persist to instagram_messages (legacy)
+  // For comment replies: keep post_id + thread_sender_id so the UI groups outbound
+  // reply into the same thread (key = sender_id::post_id).
   await supabase.from("instagram_messages").insert({
     instagram_account_id,
     instagram_account_config_id: account.id,
-    sender_id: recipient_id || null,
+    sender_id: message_type === "comment" ? (thread_sender_id ?? null) : (recipient_id || null),
     sender_name: null,
     message_text: message ?? null,
     message_type,
-    post_id: null,
+    post_id: message_type === "comment" ? (post_id ?? null) : null,
     comment_id: message_type === "comment" ? comment_id ?? null : null,
     is_outbound: true,
     is_read: true,
