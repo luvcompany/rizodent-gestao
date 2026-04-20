@@ -203,6 +203,8 @@ export default function InstagramComments() {
             comment_id: targetComment.comment_id,
             message: replyText.trim(),
             message_type: "comment",
+            post_id: targetComment.post_id ?? selected.post_id ?? null,
+            thread_sender_id: selected.sender_id ?? targetComment.sender_id ?? null,
           },
         });
         if (error) throw error;
