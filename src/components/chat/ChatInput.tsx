@@ -42,9 +42,32 @@ type ChatInputProps = {
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
+  channel?: "whatsapp" | "instagram";
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt, channel = "whatsapp" }: ChatInputProps) {
+  const isInstagram = channel === "instagram";
+  const sendFnName = isInstagram ? "instagram-send-message" : "send-whatsapp-message";
+
+  const buildSendBody = (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null }): any => {
+    if (isInstagram) {
+      const igType = params.type === "text" ? undefined : (params.type === "image" || params.type === "video" || params.type === "audio" ? params.type : undefined);
+      return {
+        lead_id: leadId,
+        message: params.message,
+        message_type: "dm",
+        media_type: igType,
+        media_url: params.media_url,
+      };
+    }
+    const body: any = { lead_id: leadId, to: leadPhone, message: params.message, type: params.type, media_url: params.media_url };
+    if (params.reply) {
+      body.reply_to_message_id = params.reply.id;
+      if (params.reply.whatsapp_message_id) body.reply_to_wamid = params.reply.whatsapp_message_id;
+    }
+    return body;
+  };
+
   const { profile } = useAuth();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
