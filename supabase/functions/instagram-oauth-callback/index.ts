@@ -173,7 +173,21 @@ Deno.serve(async (req) => {
 
     // 5. Redirect to frontend
     const frontendUrl = Deno.env.get("FRONTEND_URL") ?? "";
-    const redirectLocation = `${frontendUrl}${frontendUrl.includes("?") ? "&" : "?"}instagram=connected`;
+    let redirectLocation: string;
+    
+    // Check if no pages were found
+    if (!pagesData.data || pagesData.data.length === 0) {
+      console.warn("[oauth] No pages found for this user");
+      redirectLocation = `${frontendUrl}/integrations?error=no_pages_found`;
+    } else if (upserted.length === 0) {
+      // Pages exist but none had Instagram Business Account
+      console.warn("[oauth] Pages found but no Instagram Business Accounts connected");
+      redirectLocation = `${frontendUrl}/integrations?error=no_instagram_accounts`;
+    } else {
+      // Success - accounts were connected
+      redirectLocation = `${frontendUrl}${frontendUrl.includes("?") ? "&" : "?"}instagram=connected`;
+    }
+    
     return new Response(null, {
       status: 302,
       headers: { ...corsHeaders, Location: redirectLocation },
