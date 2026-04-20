@@ -157,10 +157,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   };
 
   const handleSendMessage = async () => {
-    if ((!newMessage.trim() && !attachedFile) || !leadPhone) return;
+    if ((!newMessage.trim() && !attachedFile) || (!leadPhone && !isInstagram)) return;
 
-    // Block if 24h window expired
-    if (windowInfo.expired) {
+    // Block if 24h window expired (WhatsApp only — IG has its own 24h logic but no template fallback)
+    if (!isInstagram && windowInfo.expired) {
       toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
       return;
     }
