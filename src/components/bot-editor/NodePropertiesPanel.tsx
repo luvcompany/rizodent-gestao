@@ -973,6 +973,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                   <SelectItem value="days">Em X dias</SelectItem>
                   <SelectItem value="days_at_time">Em X dias às X horas</SelectItem>
                   <SelectItem value="next_day_first">Primeiro horário do dia seguinte</SelectItem>
+                  <SelectItem value="next_business_day">Próximo dia útil às X horas</SelectItem>
                   <SelectItem value="specific">Data e horário específicos</SelectItem>
                 </SelectContent>
               </Select>
