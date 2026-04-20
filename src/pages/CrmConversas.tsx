@@ -824,7 +824,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 replyTo={chat.replyTo}
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
-                channel={selectedLead.pipeline_id === "c2d3e4f5-0001-4000-8000-000000000002" ? "instagram" : "whatsapp"}
+                channel={channel === "instagram" || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp"}
               />
 
               {/* Active Bot Badge */}
