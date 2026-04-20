@@ -19,12 +19,13 @@ type IGAccount = {
 };
 
 const SCOPES = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_manage_metadata",
+  "pages_messaging",
   "instagram_basic",
   "instagram_manage_messages",
   "instagram_manage_comments",
-  "pages_manage_engagement",
-  "pages_read_engagement",
-  "pages_show_list",
 ].join(",");
 
 export default function InstagramIntegrationSection() {
@@ -42,7 +43,35 @@ export default function InstagramIntegrationSection() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Mostrar feedback do callback OAuth via querystring
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("instagram");
+    const error = params.get("error");
+    const accounts = params.get("accounts");
+
+    if (status === "connected") {
+      toast.success(`${accounts ?? 0} conta(s) conectada(s) com sucesso`);
+    } else if (error) {
+      const map: Record<string, string> = {
+        no_pages_found: "Nenhuma página encontrada. Verifique se sua conta Facebook administra Páginas vinculadas ao Instagram",
+        missing_permissions: "Permissões insuficientes. Tente conectar novamente",
+        token_exchange_failed: "Erro na autenticação. Tente novamente",
+        long_token_failed: "Erro ao gerar token de longa duração. Tente novamente",
+        pages_fetch_failed: "Erro ao buscar páginas do Facebook",
+        missing_code: "Autorização cancelada ou inválida",
+        fatal_error: "Erro inesperado. Tente novamente",
+      };
+      toast.error(map[error] ?? `Erro: ${error}`);
+    }
+
+    if (status || error) {
+      // Limpa querystring para não repetir o toast
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, "", cleanUrl);
+    }
+  }, []);
 
   const startOAuth = async () => {
     setConnecting(true);
@@ -63,6 +92,7 @@ export default function InstagramIntegrationSection() {
       url.searchParams.set("redirect_uri", data.redirect_uri);
       url.searchParams.set("scope", SCOPES);
       url.searchParams.set("response_type", "code");
+      url.searchParams.set("auth_type", "rerequest");
       url.searchParams.set("state", userId);
       window.location.href = url.toString();
     } catch (e) {
