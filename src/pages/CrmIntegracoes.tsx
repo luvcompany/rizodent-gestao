@@ -156,7 +156,22 @@ export default function CrmIntegracoes() {
   const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null);
   const [editingPipelineName, setEditingPipelineName] = useState("");
 
-  useEffect(() => { loadEntries(); loadPipelines(); }, []);
+  useEffect(() => {
+    loadEntries();
+    loadPipelines();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("instagram") === "connected") {
+      toast.success("Conta do Instagram conectada com sucesso!");
+      params.delete("instagram");
+      const newSearch = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${newSearch ? "?" + newSearch : ""}`);
+    } else if (params.get("instagram") === "error") {
+      toast.error("Falha ao conectar Instagram. Tente novamente.");
+      params.delete("instagram");
+      const newSearch = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${newSearch ? "?" + newSearch : ""}`);
+    }
+  }, []);
 
   const loadEntries = async () => {
     const { data } = await supabase.from("integrations").select("*").like("key", "whatsapp_%");
