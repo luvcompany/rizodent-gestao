@@ -99,6 +99,85 @@ function calculateTimeoutAt(nodeData: any): string | null {
   return new Date(Date.now() + totalMs).toISOString();
 }
 
+// Compute due_date for a task created by the bot. Supports modes: hours, days,
+// days_at_time, next_day_first, next_business_day, specific. All times use
+// Brazil timezone (America/Sao_Paulo / UTC-3, no DST).
+async function computeTaskDueDate(supabase: any, data: any): Promise<string> {
+  const TZ_OFFSET_MIN = -180; // -03:00
+  const mode = (data?.dueMode as string) || "hours";
+
+  // Build a Date representing a given Y-M-D H:M in Brazil time, returned as UTC instant.
+  const brtDate = (y: number, m: number, d: number, hh: number, mm: number) => {
+    // Construct ISO string with explicit -03:00 offset
+    const iso = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}T${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}:00-03:00`;
+    return new Date(iso);
+  };
+
+  // Get current Brazil-time Y/M/D
+  const nowUtc = new Date();
+  const nowBrt = new Date(nowUtc.getTime() + (TZ_OFFSET_MIN - nowUtc.getTimezoneOffset()) * 60000);
+  const curY = nowBrt.getUTCFullYear();
+  const curM = nowBrt.getUTCMonth() + 1;
+  const curD = nowBrt.getUTCDate();
+
+  const parseTime = (t: string | undefined, fallback: string) => {
+    const [hh, mm] = (t || fallback).split(":").map((v) => parseInt(v, 10) || 0);
+    return { hh, mm };
+  };
+
+  switch (mode) {
+    case "days": {
+      const days = Math.max(1, Number(data.dueDays) || 1);
+      return new Date(Date.now() + days * 86400000).toISOString();
+    }
+    case "days_at_time": {
+      const days = Math.max(1, Number(data.dueDays) || 1);
+      const { hh, mm } = parseTime(data.dueTime, "09:00");
+      const target = brtDate(curY, curM, curD + days, hh, mm);
+      return target.toISOString();
+    }
+    case "next_day_first": {
+      const { hh, mm } = parseTime(data.dueTime, "08:00");
+      return brtDate(curY, curM, curD + 1, hh, mm).toISOString();
+    }
+    case "next_business_day": {
+      const { hh, mm } = parseTime(data.dueTime, "09:00");
+      // Load holidays once (date strings)
+      const { data: holidays } = await supabase
+        .from("dashboard_holidays")
+        .select("data");
+      const holidaySet = new Set<string>((holidays || []).map((h: any) => h.data));
+      // Walk forward from tomorrow until we find a weekday that's not a holiday
+      let offset = 1;
+      while (offset < 30) {
+        const candidate = brtDate(curY, curM, curD + offset, hh, mm);
+        const candidateBrt = new Date(candidate.getTime() - 3 * 3600000); // shift to BRT components
+        const dow = candidateBrt.getUTCDay(); // 0=Sun, 6=Sat
+        const ymd = `${candidateBrt.getUTCFullYear()}-${String(candidateBrt.getUTCMonth()+1).padStart(2,"0")}-${String(candidateBrt.getUTCDate()).padStart(2,"0")}`;
+        if (dow !== 0 && dow !== 6 && !holidaySet.has(ymd)) {
+          return candidate.toISOString();
+        }
+        offset++;
+      }
+      // Fallback: 1 day from now
+      return new Date(Date.now() + 86400000).toISOString();
+    }
+    case "specific": {
+      if (data.dueDate) {
+        const { hh, mm } = parseTime(data.dueTime, "09:00");
+        const [y, m, d] = String(data.dueDate).split("-").map((v) => parseInt(v, 10));
+        return brtDate(y, m, d, hh, mm).toISOString();
+      }
+      return new Date(Date.now() + 86400000).toISOString();
+    }
+    case "hours":
+    default: {
+      const hours = Number(data.dueHours) || 24;
+      return new Date(Date.now() + hours * 3600000).toISOString();
+    }
+  }
+}
+
 function getTemplatePlaceholderIndexes(content: string | null | undefined): number[] {
   if (!content) return [];
 
@@ -950,7 +1029,7 @@ async function executeNode(
 
     case "create_task": {
       if (data.title) {
-        const dueDate = new Date(Date.now() + (data.dueHours || 24) * 3600 * 1000).toISOString();
+        const dueDate = await computeTaskDueDate(supabase, data);
         const taskNotes = data.taskNotes ? replaceVars(data.taskNotes) : null;
         await supabase.from("crm_tasks").insert({
           lead_id: lead.id,

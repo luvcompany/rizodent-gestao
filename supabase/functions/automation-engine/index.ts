@@ -396,12 +396,14 @@ Deno.serve(async (req) => {
       const TZ_OFFSET = "-03:00";
       const CRON_GRACE_MS = 90 * 1000;
 
-      // Check appointments
+      // Check appointments — only CONFIRMED ones receive "X horas antes"
+      // Pending appointments (e.g. pre-scheduled by bot, awaiting human confirmation)
+      // must NOT trigger this automation until a CRC confirms them.
       if (scheduledType === "appointment" || scheduledType === "both") {
         const { data: appointments } = await supabase
           .from("crm_appointments")
           .select("id, lead_id, scheduled_date, scheduled_time")
-          .in("status", ["confirmed", "pending"]);
+          .eq("status", "confirmed");
 
         console.log(`[BEFORE_SCHEDULED] Checking ${appointments?.length || 0} appointments, beforeMs=${beforeMs}, now=${new Date(now).toISOString()}`);
 
