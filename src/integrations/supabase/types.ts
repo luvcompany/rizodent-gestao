@@ -954,6 +954,9 @@ export type Database = {
           has_task: boolean
           id: string
           imagem_origem: string | null
+          instagram_profile_pic_url: string | null
+          instagram_user_id: string | null
+          instagram_username: string | null
           last_inbound_at: string | null
           last_message: string | null
           last_message_at: string | null
@@ -990,6 +993,9 @@ export type Database = {
           has_task?: boolean
           id?: string
           imagem_origem?: string | null
+          instagram_profile_pic_url?: string | null
+          instagram_user_id?: string | null
+          instagram_username?: string | null
           last_inbound_at?: string | null
           last_message?: string | null
           last_message_at?: string | null
@@ -1026,6 +1032,9 @@ export type Database = {
           has_task?: boolean
           id?: string
           imagem_origem?: string | null
+          instagram_profile_pic_url?: string | null
+          instagram_user_id?: string | null
+          instagram_username?: string | null
           last_inbound_at?: string | null
           last_message?: string | null
           last_message_at?: string | null
@@ -1446,6 +1455,7 @@ export type Database = {
           sender_id: string | null
           sender_name: string | null
           sender_profile_pic: string | null
+          sender_username: string | null
         }
         Insert: {
           comment_id?: string | null
@@ -1462,6 +1472,7 @@ export type Database = {
           sender_id?: string | null
           sender_name?: string | null
           sender_profile_pic?: string | null
+          sender_username?: string | null
         }
         Update: {
           comment_id?: string | null
@@ -1478,6 +1489,7 @@ export type Database = {
           sender_id?: string | null
           sender_name?: string | null
           sender_profile_pic?: string | null
+          sender_username?: string | null
         }
         Relationships: [
           {
@@ -1587,12 +1599,15 @@ export type Database = {
           ad_image_url: string | null
           ad_source_id: string | null
           ad_source_url: string | null
+          channel: string
           content: string | null
           created_at: string
           deleted_at: string | null
           direction: string
           error_reason: string | null
           id: string
+          instagram_message_id: string | null
+          instagram_sender_id: string | null
           lead_id: string
           media_url: string | null
           reactions: Json | null
@@ -1610,12 +1625,15 @@ export type Database = {
           ad_image_url?: string | null
           ad_source_id?: string | null
           ad_source_url?: string | null
+          channel?: string
           content?: string | null
           created_at?: string
           deleted_at?: string | null
           direction?: string
           error_reason?: string | null
           id?: string
+          instagram_message_id?: string | null
+          instagram_sender_id?: string | null
           lead_id: string
           media_url?: string | null
           reactions?: Json | null
@@ -1633,12 +1651,15 @@ export type Database = {
           ad_image_url?: string | null
           ad_source_id?: string | null
           ad_source_url?: string | null
+          channel?: string
           content?: string | null
           created_at?: string
           deleted_at?: string | null
           direction?: string
           error_reason?: string | null
           id?: string
+          instagram_message_id?: string | null
+          instagram_sender_id?: string | null
           lead_id?: string
           media_url?: string | null
           reactions?: Json | null
