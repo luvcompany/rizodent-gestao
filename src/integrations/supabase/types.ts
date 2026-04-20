@@ -1444,6 +1444,7 @@ export type Database = {
           post_id: string | null
           sender_id: string | null
           sender_name: string | null
+          sender_profile_pic: string | null
         }
         Insert: {
           comment_id?: string | null
@@ -1458,6 +1459,7 @@ export type Database = {
           post_id?: string | null
           sender_id?: string | null
           sender_name?: string | null
+          sender_profile_pic?: string | null
         }
         Update: {
           comment_id?: string | null
@@ -1472,6 +1474,7 @@ export type Database = {
           post_id?: string | null
           sender_id?: string | null
           sender_name?: string | null
+          sender_profile_pic?: string | null
         }
         Relationships: [
           {
