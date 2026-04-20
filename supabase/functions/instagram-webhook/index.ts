@@ -62,35 +62,56 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
     const url = `https://graph.facebook.com/v25.0/${igUserId}?fields=name,username,profile_pic&access_token=${encodeURIComponent(accessToken)}`;
     const r = await fetch(url);
     const j = await r.json().catch(() => ({}));
+    console.log(`[instagram-webhook] profile (full) ${igUserId} status=${r.status}:`, JSON.stringify(j));
     if (r.ok) {
       out = {
         name: j?.name ?? null,
         username: j?.username ?? null,
         profile_pic: j?.profile_pic ?? null,
       };
-      console.log(`[instagram-webhook] profile (full) ${igUserId}:`, JSON.stringify(out));
-    } else {
-      console.warn(`[instagram-webhook] profile (full) ${igUserId} failed:`, JSON.stringify(j));
     }
   } catch (e) {
     console.warn("[instagram-webhook] fetchIgProfile attempt1 error", igUserId, e);
   }
 
-  // Attempt 2: fallback to just username + profile_picture_url (works for most personal accounts)
+  // Attempt 2: fallback to just username + profile_picture_url
   if (!out.username || !out.profile_pic) {
     try {
       const url2 = `https://graph.facebook.com/v25.0/${igUserId}?fields=username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`;
       const r2 = await fetch(url2);
       const j2 = await r2.json().catch(() => ({}));
+      console.log(`[instagram-webhook] profile (fallback) ${igUserId} status=${r2.status}:`, JSON.stringify(j2));
       if (r2.ok) {
         out.username = out.username || j2?.username || null;
         out.profile_pic = out.profile_pic || j2?.profile_picture_url || null;
-        console.log(`[instagram-webhook] profile (fallback) ${igUserId}:`, JSON.stringify(j2));
-      } else {
-        console.warn(`[instagram-webhook] profile (fallback) ${igUserId} failed:`, JSON.stringify(j2));
+        out.name = out.name || j2?.name || null;
       }
     } catch (e) {
       console.warn("[instagram-webhook] fetchIgProfile attempt2 error", igUserId, e);
+    }
+  }
+
+  // Attempt 3: query the conversation participants endpoint — most reliable for DMs
+  // because the IG user is in a messaging context with our page.
+  if (!out.name && !out.username) {
+    try {
+      const convUrl = `https://graph.facebook.com/v25.0/me/conversations?platform=instagram&user_id=${encodeURIComponent(igUserId)}&fields=participants&access_token=${encodeURIComponent(accessToken)}`;
+      const r3 = await fetch(convUrl);
+      const j3 = await r3.json().catch(() => ({}));
+      console.log(`[instagram-webhook] profile (conv) ${igUserId} status=${r3.status}:`, JSON.stringify(j3));
+      if (r3.ok && Array.isArray(j3?.data)) {
+        for (const conv of j3.data) {
+          const parts = conv?.participants?.data ?? [];
+          const me = parts.find((p: any) => p?.id === igUserId);
+          if (me) {
+            out.name = out.name || me?.name || null;
+            out.username = out.username || me?.username || null;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[instagram-webhook] fetchIgProfile attempt3 error", igUserId, e);
     }
   }
 
