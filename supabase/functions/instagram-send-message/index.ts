@@ -19,6 +19,9 @@ interface Body {
   message?: string;
   message_type: "dm" | "comment";
   comment_id?: string;
+  // Comment-thread grouping (so outbound reply stays in same thread)
+  post_id?: string;
+  thread_sender_id?: string;
   // Media
   media_type?: "image" | "video" | "audio";
   media_url?: string;
