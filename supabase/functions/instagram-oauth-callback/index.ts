@@ -91,21 +91,38 @@ Deno.serve(async (req: Request) => {
     }
 
     const pages: Array<{ id: string; name: string; access_token: string }> = pagesJson?.data ?? [];
+    console.log(`[instagram-oauth-callback] me/accounts returned ${pages.length} page(s):`, JSON.stringify(pages.map((p) => ({ id: p.id, name: p.name }))));
+
+    if (pages.length === 0) {
+      console.warn("[instagram-oauth-callback] No Pages returned. User may not have granted page access or has no Pages. Full response:", JSON.stringify(pagesJson));
+    }
+
     let connected = 0;
+    const skipped: Array<{ page: string; reason: string }> = [];
 
     for (const page of pages) {
-      const igRes = await fetch(
-        `https://graph.facebook.com/v25.0/${page.id}?fields=instagram_business_account&access_token=${encodeURIComponent(page.access_token)}`,
-      );
+      const igUrl = `https://graph.facebook.com/v25.0/${page.id}?fields=instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(page.access_token)}`;
+      const igRes = await fetch(igUrl);
       const igJson = await igRes.json();
+      console.log(`[instagram-oauth-callback] Page "${page.name}" (${page.id}) IG response:`, JSON.stringify(igJson));
+
       const igId: string | undefined = igJson?.instagram_business_account?.id;
-      if (!igId) continue;
+      if (!igId) {
+        const reason = igJson?.error?.message || "no instagram_business_account linked to this Page";
+        skipped.push({ page: page.name, reason });
+        console.warn(`[instagram-oauth-callback] Skipping page "${page.name}": ${reason}`);
+        continue;
+      }
+
+      const igName: string = igJson?.instagram_business_account?.username
+        || igJson?.instagram_business_account?.name
+        || page.name;
 
       const { error: upErr } = await supabase
         .from("instagram_accounts")
         .upsert(
           {
-            name: page.name,
+            name: igName,
             instagram_account_id: igId,
             page_id: page.id,
             page_access_token: page.access_token,
@@ -121,7 +138,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    console.log(`[instagram-oauth-callback] connected ${connected} account(s)`);
+    console.log(`[instagram-oauth-callback] connected ${connected} account(s), skipped ${skipped.length}`);
+    if (skipped.length > 0) {
+      console.log(`[instagram-oauth-callback] skipped details:`, JSON.stringify(skipped));
+    }
+
+    if (connected === 0) {
+      return Response.redirect(`${base}/crm/integracoes?instagram=no_accounts&pages=${pages.length}`, 302);
+    }
     return Response.redirect(`${base}/crm/integracoes?instagram=connected&count=${connected}`, 302);
   } catch (err) {
     console.error("[instagram-oauth-callback] unexpected error:", err);
