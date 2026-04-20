@@ -35,8 +35,6 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    console.log("[ig-send] Request received", { body });
-
     const {
       instagram_account_id,
       recipient_id,
@@ -46,7 +44,6 @@ Deno.serve(async (req) => {
     } = body ?? {};
 
     if (!instagram_account_id || !message) {
-      console.error("[ig-send] Missing required fields", { instagram_account_id, has_message: !!message });
       return new Response(
         JSON.stringify({ error: "instagram_account_id and message are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -77,24 +74,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (accountError || !account || !account.page_access_token) {
-      console.error("[ig-send] Account not found for id:", instagram_account_id, { accountError });
-      // Debug: list available accounts to help diagnose mismatch
-      const { data: allAccounts } = await adminClient
-        .from("instagram_accounts")
-        .select("instagram_account_id, name, is_active");
-      console.error("[ig-send] Available accounts in DB:", allAccounts);
       return new Response(JSON.stringify({ error: "Instagram account not found or missing token" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    console.log("[ig-send] Account found:", {
-      instagram_account_id: account.instagram_account_id,
-      name: account.name,
-      has_token: !!account.page_access_token,
-      is_active: account.is_active,
-    });
-
     if (!account.is_active) {
       return new Response(JSON.stringify({ error: "Instagram account is disabled" }), {
         status: 400,
@@ -104,13 +88,11 @@ Deno.serve(async (req) => {
 
     let metaResponse: Response;
     let metaJson: unknown;
-    let metaUrl: string;
 
     if (message_type === "dm") {
-      metaUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${account.instagram_account_id}/messages`;
-      console.log("[ig-send] Calling Meta API", { url: metaUrl, message_type, recipient_id });
+      // Send DM via Instagram Messaging API
       metaResponse = await fetch(
-        `${metaUrl}?access_token=${encodeURIComponent(account.page_access_token)}`,
+        `https://graph.facebook.com/${GRAPH_VERSION}/${account.instagram_account_id}/messages?access_token=${encodeURIComponent(account.page_access_token)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -122,10 +104,9 @@ Deno.serve(async (req) => {
       );
       metaJson = await metaResponse.json();
     } else {
-      metaUrl = `https://graph.facebook.com/${GRAPH_VERSION}/${comment_id}/replies`;
-      console.log("[ig-send] Calling Meta API", { url: metaUrl, message_type, comment_id });
+      // Reply to a comment
       metaResponse = await fetch(
-        `${metaUrl}?access_token=${encodeURIComponent(account.page_access_token)}`,
+        `https://graph.facebook.com/${GRAPH_VERSION}/${comment_id}/replies?access_token=${encodeURIComponent(account.page_access_token)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -136,13 +117,12 @@ Deno.serve(async (req) => {
     }
 
     if (!metaResponse.ok) {
-      console.error("[ig-send] Meta API error:", { status: metaResponse.status, body: metaJson });
+      console.error("[instagram-send-message] Meta API error:", metaJson);
       return new Response(
         JSON.stringify({ error: "Meta API error", details: metaJson }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    console.log("[ig-send] Meta API success:", metaJson);
 
     // Persist outbound message
     await adminClient.from("instagram_messages").insert({
@@ -160,9 +140,8 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[ig-send] Exception:", msg, e);
-    return new Response(JSON.stringify({ error: msg }), {
+    console.error("[instagram-send-message] Error:", e);
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

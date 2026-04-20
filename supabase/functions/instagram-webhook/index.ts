@@ -5,6 +5,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature-256",
 };
 
+async function verifySignature(rawBody: string, signatureHeader: string | null, appSecret: string) {
+  if (!signatureHeader || !signatureHeader.startsWith("sha256=")) return false;
+  const provided = signatureHeader.slice("sha256=".length);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(appSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+  const hex = Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hex === provided;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -29,44 +45,17 @@ Deno.serve(async (req) => {
   // POST: receive events
   if (req.method === "POST") {
     try {
-      // Ler o body como texto RAW primeiro - obrigatório para validar assinatura
       const rawBody = await req.text();
+      const signature = req.headers.get("x-hub-signature-256");
+      const appSecret = Deno.env.get("META_APP_SECRET")!;
 
-      // Verificar assinatura do Meta
-      const signature = req.headers.get("x-hub-signature-256") ?? "";
-      const secret = Deno.env.get("INSTAGRAM_APP_SECRET")
-        ?? Deno.env.get("META_APP_SECRET")
-        ?? "";
-
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(secret);
-      const msgData = encoder.encode(rawBody);
-
-      const cryptoKey = await crypto.subtle.importKey(
-        "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
-      );
-
-      const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
-
-      const computedHex = Array.from(new Uint8Array(signatureBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-
-      const computedSignature = `sha256=${computedHex}`;
-
-      console.log("[ig-webhook] signature received:", signature);
-      console.log("[ig-webhook] signature computed:", computedSignature);
-
-      if (signature !== computedSignature) {
-        console.warn("[ig-webhook] invalid signature - rejecting");
-        return new Response("Forbidden", { status: 403 });
+      const valid = await verifySignature(rawBody, signature, appSecret);
+      if (!valid) {
+        console.warn("[ig-webhook] invalid signature");
+        return new Response("ok", { status: 200, headers: corsHeaders });
       }
 
-      // Só aqui fazer o parse do JSON
       const payload = JSON.parse(rawBody);
-
-      console.log("[ig-webhook] payload received:", JSON.stringify(payload));
-      console.log("[ig-webhook] rawBody preview:", rawBody.substring(0, 50));
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -74,26 +63,6 @@ Deno.serve(async (req) => {
 
       for (const entry of payload.entry ?? []) {
         const accountId = String(entry.id ?? "");
-
-        // Validar se a conta está conectada e ativa no CRM
-        const { data: account, error: accountError } = await supabase
-          .from("instagram_accounts")
-          .select("id, instagram_account_id, name")
-          .eq("instagram_account_id", accountId)
-          .eq("is_active", true)
-          .maybeSingle();
-
-        if (accountError) {
-          console.error("[ig-webhook] account lookup error:", accountError.message);
-          continue;
-        }
-
-        if (!account) {
-          console.warn("[ig-webhook] Account not connected, ignoring message for:", accountId);
-          continue;
-        }
-
-        console.log("[ig-webhook] Account matched:", { id: account.id, name: account.name });
 
         // Messaging events (DMs)
         for (const m of entry.messaging ?? []) {
