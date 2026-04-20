@@ -75,6 +75,26 @@ Deno.serve(async (req) => {
       for (const entry of payload.entry ?? []) {
         const accountId = String(entry.id ?? "");
 
+        // Validar se a conta está conectada e ativa no CRM
+        const { data: account, error: accountError } = await supabase
+          .from("instagram_accounts")
+          .select("id, instagram_account_id, name")
+          .eq("instagram_account_id", accountId)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (accountError) {
+          console.error("[ig-webhook] account lookup error:", accountError.message);
+          continue;
+        }
+
+        if (!account) {
+          console.warn("[ig-webhook] Account not connected, ignoring message for:", accountId);
+          continue;
+        }
+
+        console.log("[ig-webhook] Account matched:", { id: account.id, name: account.name });
+
         // Messaging events (DMs)
         for (const m of entry.messaging ?? []) {
           if (!m.message || m.message.is_echo) continue;
