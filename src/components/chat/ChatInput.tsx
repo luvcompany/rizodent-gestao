@@ -593,8 +593,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       )}
 
-      {/* 24h window countdown */}
-      {!isWindowExpired && lastInboundAt && (
+      {/* 24h window countdown (WhatsApp only) */}
+      {!isInstagram && !isWindowExpired && lastInboundAt && (
         <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
           <Clock size={12} />
           <span>A sessão de mensagens termina em: <span className="font-medium text-foreground">{windowInfo.remaining}</span></span>
