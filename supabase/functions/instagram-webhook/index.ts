@@ -5,22 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature-256",
 };
 
-async function verifySignature(rawBody: string, signatureHeader: string | null, appSecret: string) {
-  if (!signatureHeader || !signatureHeader.startsWith("sha256=")) return false;
-  const provided = signatureHeader.slice("sha256=".length);
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(appSecret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
-  const hex = Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return hex === provided;
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -46,22 +30,29 @@ Deno.serve(async (req) => {
   if (req.method === "POST") {
     try {
       // CRITICAL: read body as raw text BEFORE any JSON.parse to keep HMAC valid
-      const rawBody = await req.text();
       const signature = req.headers.get("x-hub-signature-256");
-      const appSecret = Deno.env.get("META_APP_SECRET")!;
-      const skipCheck = (Deno.env.get("INSTAGRAM_SKIP_SIGNATURE_CHECK") ?? "").toLowerCase() === "true";
+      const body = await req.text();
+      const secret = Deno.env.get("META_APP_SECRET")!;
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+      );
+      const signed = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
+      const hex = Array.from(new Uint8Array(signed))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const expected = "sha256=" + hex;
 
-      if (!skipCheck) {
-        const valid = await verifySignature(rawBody, signature, appSecret);
-        if (!valid) {
-          console.warn("[ig-webhook] invalid signature");
-          return new Response("Forbidden", { status: 403, headers: corsHeaders });
-        }
-      } else {
-        console.log("[ig-webhook] signature check skipped (INSTAGRAM_SKIP_SIGNATURE_CHECK=true)");
+      if (signature !== expected) {
+        console.warn("[ig-webhook] invalid signature");
+        return new Response("Forbidden", { status: 403, headers: corsHeaders });
       }
 
-      const payload = JSON.parse(rawBody);
+      const payload = JSON.parse(body);
       console.log("[ig-webhook] payload received", JSON.stringify(payload).slice(0, 800));
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL")!,
