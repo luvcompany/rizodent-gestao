@@ -950,7 +950,7 @@ async function executeNode(
 
     case "create_task": {
       if (data.title) {
-        const dueDate = new Date(Date.now() + (data.dueHours || 24) * 3600 * 1000).toISOString();
+        const dueDate = await computeTaskDueDate(supabase, data);
         const taskNotes = data.taskNotes ? replaceVars(data.taskNotes) : null;
         await supabase.from("crm_tasks").insert({
           lead_id: lead.id,
