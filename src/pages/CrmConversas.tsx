@@ -880,13 +880,20 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center gap-3 mb-3">
                     <Avatar className="h-12 w-12">
+                      {selectedLead.instagram_profile_pic_url && (
+                        <AvatarImage src={selectedLead.instagram_profile_pic_url} alt={selectedLead.name} />
+                      )}
                       <AvatarFallback className="bg-primary/20 text-primary text-lg font-bold">
                         {selectedLead.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <h2 className="font-bold text-foreground text-sm">{selectedLead.name}</h2>
-                      <p className="text-xs text-muted-foreground">{selectedLead.phone || "Sem telefone"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedLead.instagram_username
+                          ? `@${selectedLead.instagram_username}`
+                          : selectedLead.phone || "Sem telefone"}
+                      </p>
                     </div>
                   </div>
 
