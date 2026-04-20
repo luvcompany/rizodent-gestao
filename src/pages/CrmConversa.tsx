@@ -33,6 +33,7 @@ type Lead = {
   id: string;
   name: string;
   phone: string | null;
+  instagram_user_id?: string | null;
   stage_id: string;
   pipeline_id: string;
   tags: string[] | null;
@@ -99,7 +100,7 @@ export default function CrmConversa() {
     Promise.all([
       supabase
         .from("crm_leads")
-        .select("id, name, phone, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
+        .select("id, name, phone, instagram_user_id, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
         .eq("id", id)
         .single(),
       profilesPromise,
@@ -348,6 +349,7 @@ export default function CrmConversa() {
             onMessageError={chat.handleMessageError}
             onMessageSuccess={chat.handleMessageSuccess}
             lastInboundAt={chat.lastInboundAt}
+            channel={lead.instagram_user_id ? "instagram" : "whatsapp"}
           />
         )}
 

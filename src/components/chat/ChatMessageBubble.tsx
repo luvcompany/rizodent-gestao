@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 type Message = {
   id: string;
   lead_id: string;
+  channel?: string;
   direction: string;
   type: string;
   content: string | null;
@@ -64,6 +65,14 @@ function getQuotedLabel(msg: Message) {
   if (msg.type === "audio") return "🎤 Áudio";
   if (msg.type === "document") return "📄 Documento";
   return msg.content || `[${msg.type}]`;
+}
+
+function getDefaultErrorMessage(msg: Message) {
+  if (msg.channel === "instagram") {
+    return "Falha ao enviar mensagem. Verifique a conexão com o Instagram e tente reenviar.";
+  }
+
+  return "Falha ao enviar mensagem. Verifique a conexão com o WhatsApp e tente reenviar.";
 }
 
 const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
@@ -176,7 +185,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[280px] text-xs">
-                    {msg.error_reason || "Falha ao enviar mensagem. Verifique a conexão com o WhatsApp e tente reenviar."}
+                    {msg.error_reason || getDefaultErrorMessage(msg)}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
