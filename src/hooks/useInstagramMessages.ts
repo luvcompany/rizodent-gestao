@@ -6,7 +6,6 @@ export type InstagramMessage = {
   instagram_account_id: string | null;
   sender_id: string | null;
   sender_name: string | null;
-  sender_profile_pic: string | null;
   message_text: string | null;
   message_type: string | null;
   post_id: string | null;
@@ -21,7 +20,6 @@ export type InstagramMessage = {
 export type InstagramConversation = {
   sender_id: string;
   sender_name: string | null;
-  sender_profile_pic: string | null;
   last_message: string | null;
   last_message_time: string;
   unread_count: number;
@@ -69,13 +67,10 @@ export function useInstagramMessages() {
 
   // Realtime
   useEffect(() => {
-    const channel = supabase
-      .channel("instagram-messages-realtime")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "instagram_messages" },
-        (payload) => {
-          console.log("[realtime] Nova mensagem Instagram:", payload.new);
+    const ch = supabase
+      .channel("instagram-messages-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "instagram_messages" }, (payload) => {
+        if (payload.eventType === "INSERT") {
           const newMsg = payload.new as InstagramMessage;
           setAllMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
@@ -84,28 +79,16 @@ export function useInstagramMessages() {
               account_name: newMsg.instagram_account_id ? accountsMap[newMsg.instagram_account_id] ?? null : null,
             }];
           });
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "instagram_messages" },
-        (payload) => {
+        } else if (payload.eventType === "UPDATE") {
           const upd = payload.new as InstagramMessage;
           setAllMessages((prev) => prev.map((m) => (m.id === upd.id ? { ...m, ...upd } : m)));
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "instagram_messages" },
-        (payload) => {
+        } else if (payload.eventType === "DELETE") {
           const oldId = (payload.old as { id: string }).id;
           setAllMessages((prev) => prev.filter((m) => m.id !== oldId));
-        },
-      )
-      .subscribe((status) => {
-        console.log("[realtime] instagram-messages channel status:", status);
-      });
-    return () => { supabase.removeChannel(channel); };
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, [accountsMap]);
 
   const conversations: InstagramConversation[] = useMemo(() => {
@@ -121,12 +104,9 @@ export function useInstagramMessages() {
       const sorted = msgs.slice().sort((a, b) => a.created_at.localeCompare(b.created_at));
       const last = sorted[sorted.length - 1];
       const inboundUnread = msgs.filter((m) => !m.is_outbound && !m.is_read).length;
-      // Pega a foto/nome mais recente disponível em mensagens inbound
-      const inboundWithPic = [...sorted].reverse().find((m) => !m.is_outbound && (m.sender_profile_pic || m.sender_name));
       result.push({
         sender_id,
-        sender_name: inboundWithPic?.sender_name ?? last.sender_name,
-        sender_profile_pic: inboundWithPic?.sender_profile_pic ?? null,
+        sender_name: last.sender_name,
         last_message: last.message_text,
         last_message_time: last.created_at,
         unread_count: inboundUnread,
@@ -153,18 +133,10 @@ export function useInstagramMessages() {
       message_type?: "dm" | "comment";
       comment_id?: string;
     }) => {
-      console.log("Enviando mensagem Instagram:", params);
       const { data, error: invokeError } = await supabase.functions.invoke("instagram-send-message", {
         body: params,
       });
-      if (invokeError) {
-        console.error("[ig-send] invoke error:", invokeError);
-        throw invokeError;
-      }
-      if (data && (data as { error?: string }).error) {
-        console.error("[ig-send] response error:", data);
-        throw new Error((data as { error: string }).error);
-      }
+      if (invokeError) throw invokeError;
       return data;
     },
     [],
