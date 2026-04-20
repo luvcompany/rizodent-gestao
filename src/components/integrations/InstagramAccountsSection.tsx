@@ -93,9 +93,19 @@ export default function InstagramAccountsSection() {
       oauthUrl.searchParams.set("redirect_uri", redirectUri);
       oauthUrl.searchParams.set(
         "scope",
-        "instagram_basic,instagram_manage_messages,instagram_manage_comments,pages_manage_engagement,pages_read_engagement,pages_show_list",
+        [
+          "business_management",
+          "instagram_basic",
+          "instagram_manage_comments",
+          "instagram_manage_messages",
+          "pages_manage_engagement",
+          "pages_manage_metadata",
+          "pages_read_engagement",
+          "pages_show_list",
+        ].join(","),
       );
       oauthUrl.searchParams.set("response_type", "code");
+      oauthUrl.searchParams.set("auth_type", "rerequest");
       oauthUrl.searchParams.set("state", state);
 
       // Open in popup
