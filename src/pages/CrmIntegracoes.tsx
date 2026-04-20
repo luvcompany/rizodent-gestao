@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
+import InstagramAccountsSection from "@/components/integrations/InstagramAccountsSection";
 
 
 type WhatsAppConfig = {
@@ -455,8 +456,11 @@ export default function CrmIntegracoes() {
           </div>
         </div>
 
+        {/* Instagram Section */}
+        <InstagramAccountsSection />
+
         {/* Other Integrations */}
-        <h2 className="font-semibold text-foreground mb-4">Outros Canais</h2>
+        <h2 className="font-semibold text-foreground mt-6 mb-4">Outros Canais</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl">
           {otherIntegrations.map(intg => {
             const Icon = intg.icon;
