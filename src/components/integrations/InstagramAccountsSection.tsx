@@ -211,6 +211,28 @@ export default function InstagramAccountsSection() {
         )}
       </div>
 
+      {hasAccounts && (
+        <Card className="mb-4 border-l-4" style={{ borderLeftColor: globalEnabled ? IG_PURPLE : "hsl(var(--muted-foreground))" }}>
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="font-medium text-foreground text-sm">
+                Receber DMs e comentários do Instagram
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                {globalEnabled
+                  ? "Ativo. O CRM está recebendo todas as mensagens e comentários do Instagram."
+                  : "Desativado. Nenhum DM ou comentário do Instagram entrará no CRM (as contas continuam conectadas)."}
+              </p>
+            </div>
+            <Switch
+              checked={globalEnabled}
+              disabled={togglingGlobal}
+              onCheckedChange={handleToggleGlobal}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {!hasAccounts && !loading && (
         <Card>
           <CardContent className="p-6 flex flex-col items-center text-center gap-4">
