@@ -31,7 +31,7 @@ function jsonResponse(payload: unknown, status = 200) {
   });
 }
 
-async function resolveAccount(input: { instagram_account_id?: string; lead_id?: string }) {
+async function resolveAccount(input: { instagram_account_id?: string; lead_id?: string; comment_id?: string }) {
   // Strategy A: explicit IG account id
   if (input.instagram_account_id) {
     const { data } = await supabase
@@ -39,9 +39,65 @@ async function resolveAccount(input: { instagram_account_id?: string; lead_id?: 
       .select("id, page_access_token, is_active, instagram_account_id, name")
       .eq("instagram_account_id", input.instagram_account_id)
       .maybeSingle();
-    return data;
+    if (data) return data;
   }
-  // Strategy B: only one active IG account → use it
+
+  // Strategy B: derive from lead's most recent instagram_messages
+  if (input.lead_id) {
+    const { data: msg } = await supabase
+      .from("instagram_messages")
+      .select("instagram_account_id, instagram_account_config_id")
+      .eq("lead_id", input.lead_id)
+      .not("instagram_account_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (msg?.instagram_account_config_id) {
+      const { data } = await supabase
+        .from("instagram_accounts")
+        .select("id, page_access_token, is_active, instagram_account_id, name")
+        .eq("id", msg.instagram_account_config_id)
+        .maybeSingle();
+      if (data) return data;
+    }
+    if (msg?.instagram_account_id) {
+      const { data } = await supabase
+        .from("instagram_accounts")
+        .select("id, page_access_token, is_active, instagram_account_id, name")
+        .eq("instagram_account_id", msg.instagram_account_id)
+        .maybeSingle();
+      if (data) return data;
+    }
+  }
+
+  // Strategy C: derive from comment_id's stored row
+  if (input.comment_id) {
+    const { data: c } = await supabase
+      .from("instagram_messages")
+      .select("instagram_account_id, instagram_account_config_id")
+      .eq("comment_id", input.comment_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (c?.instagram_account_config_id) {
+      const { data } = await supabase
+        .from("instagram_accounts")
+        .select("id, page_access_token, is_active, instagram_account_id, name")
+        .eq("id", c.instagram_account_config_id)
+        .maybeSingle();
+      if (data) return data;
+    }
+    if (c?.instagram_account_id) {
+      const { data } = await supabase
+        .from("instagram_accounts")
+        .select("id, page_access_token, is_active, instagram_account_id, name")
+        .eq("instagram_account_id", c.instagram_account_id)
+        .maybeSingle();
+      if (data) return data;
+    }
+  }
+
+  // Strategy D: only one active IG account → use it
   const { data: accounts } = await supabase
     .from("instagram_accounts")
     .select("id, page_access_token, is_active, instagram_account_id, name")
@@ -96,7 +152,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "message or media_url is required" }, 400);
   }
 
-  const account = await resolveAccount({ instagram_account_id, lead_id: leadId ?? undefined });
+  const account = await resolveAccount({ instagram_account_id, lead_id: leadId ?? undefined, comment_id });
   if (!account || !account.is_active || !account.page_access_token) {
     return jsonResponse({ error: "Instagram account not found, inactive, or missing access token" }, 404);
   }
