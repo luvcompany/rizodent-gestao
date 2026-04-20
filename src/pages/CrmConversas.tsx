@@ -511,7 +511,7 @@ function WhatsAppConversations() {
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
+    <div className="flex h-full w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
       <ResizablePanelGroup direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
         {/* LEFT PANEL - Leads list */}
         {leftPanelVisible && (
@@ -1047,10 +1047,10 @@ export default function CrmConversas() {
             </RootTabsTrigger>
           </RootTabsList>
         </div>
-        <RootTabsContent value="whatsapp" className="flex-1 overflow-hidden m-0">
+        <RootTabsContent value="whatsapp" className="flex-1 overflow-hidden m-0 mt-0 data-[state=active]:flex flex-col min-h-0">
           <WhatsAppConversations />
         </RootTabsContent>
-        <RootTabsContent value="instagram" className="flex-1 overflow-hidden m-0">
+        <RootTabsContent value="instagram" className="flex-1 overflow-hidden m-0 mt-0 data-[state=active]:flex flex-col min-h-0">
           <InstagramConversations />
         </RootTabsContent>
       </RootTabs>
