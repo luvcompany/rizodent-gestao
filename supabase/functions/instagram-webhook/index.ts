@@ -34,7 +34,9 @@ Deno.serve(async (req) => {
 
       // Verificar assinatura do Meta
       const signature = req.headers.get("x-hub-signature-256") ?? "";
-      const secret = Deno.env.get("META_APP_SECRET") ?? "";
+      const secret = Deno.env.get("INSTAGRAM_APP_SECRET")
+        ?? Deno.env.get("META_APP_SECRET")
+        ?? "";
 
       const encoder = new TextEncoder();
       const keyData = encoder.encode(secret);
