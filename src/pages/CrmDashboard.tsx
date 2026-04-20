@@ -281,28 +281,54 @@ export default function CrmDashboard() {
               </>
             )}
 
-            {pendingConfirmations.length > 0 && (
-              <>
-                <div className="text-xs font-semibold text-orange-600 uppercase mt-4 mb-1">Confirmações pendentes ({pendingConfirmations.length})</div>
-                {pendingConfirmations.slice(0, 5).map(t => (
-                  <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
-                    <Bell size={16} className="text-orange-600 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span>{format(new Date(t.due_date), "dd/MM HH:mm")}</span>
-                        <span>·</span>
-                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline">{t.lead_name}</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
           </div>
         </Card>
 
-        {/* Column 2: Today's Appointments */}
+        {/* Column 2: Pending Appointment Confirmations */}
+        <Card className="flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              <Bell size={14} className="text-orange-600" />
+              Confirmações de Agendamento
+            </h2>
+            <Badge variant="outline" className="border-orange-500 text-orange-600">{pendingConfirmations.length}</Badge>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {pendingConfirmations.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">Nenhuma confirmação pendente</p>
+            )}
+            {pendingConfirmations
+              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+              .map(t => {
+                const overdue = isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date));
+                return (
+                  <div key={t.id} className={cn(
+                    "flex items-center gap-3 p-3 rounded-lg border group",
+                    overdue ? "bg-destructive/5 border-destructive/20" : "bg-orange-500/5 border-orange-500/20"
+                  )}>
+                    <div className={cn("p-2 rounded-lg shrink-0", overdue ? "bg-destructive/10" : "bg-orange-500/10")}>
+                      <Bell size={16} className={overdue ? "text-destructive" : "text-orange-600"} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{t.title}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <span className={cn("font-medium", overdue && "text-destructive")}>
+                          {format(new Date(t.due_date), "dd/MM HH:mm")}
+                        </span>
+                        <span>·</span>
+                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline truncate">{t.lead_name}</button>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs shrink-0" onClick={() => navigate(`/crm/conversa/${t.lead_id}`)}>
+                      Ver
+                    </Button>
+                  </div>
+                );
+              })}
+          </div>
+        </Card>
+
+        {/* Column 3: Today's Appointments */}
         <Card className="flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
