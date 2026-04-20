@@ -118,8 +118,8 @@ Deno.serve(async (req) => {
     console.log(`[oauth-callback] ${upserted.length} contas conectadas (state=${state})`);
 
     // 5. Redirect to frontend
-    const frontendUrl = (Deno.env.get("FRONTEND_URL") ?? "").replace(/\/$/, "");
-    const redirectLocation = `${frontendUrl}/integrations?instagram=connected`;
+    const frontendUrl = Deno.env.get("FRONTEND_URL") ?? "";
+    const redirectLocation = `${frontendUrl}${frontendUrl.includes("?") ? "&" : "?"}instagram=connected`;
     return new Response(null, {
       status: 302,
       headers: { ...corsHeaders, Location: redirectLocation },
