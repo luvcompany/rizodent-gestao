@@ -529,11 +529,23 @@ Deno.serve(async (req) => {
         .not("automation_paused", "is", true);
 
       for (const lead of leads || []) {
-        // "Sem resposta" = lead hasn't sent any inbound message in X time
-        // Reference: last_inbound_at (last time lead messaged us), or created_at if they never messaged
-        const referenceTime = lead.last_inbound_at
-          ? new Date(lead.last_inbound_at).getTime()
-          : new Date(lead.created_at).getTime();
+        // "Sem resposta" = NÓS não respondemos ao lead há X tempo.
+        // Só dispara se a última mensagem foi do lead (last_inbound_at > last_outbound_at).
+        // Se nós respondemos por último, não há "resposta pendente" — pular.
+        const lastInboundMs = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
+        const lastOutboundMs = lead.last_outbound_at ? new Date(lead.last_outbound_at).getTime() : 0;
+
+        // Se nunca houve mensagem do lead, usar created_at como referência (lead novo sem contato)
+        if (!lastInboundMs) {
+          // Lead nunca respondeu — considera tempo desde criação (mantém comportamento p/ leads novos)
+          // mas se nós já enviamos algo após a criação, também não conta como "sem resposta nossa pendente"
+          if (lastOutboundMs > new Date(lead.created_at).getTime()) continue;
+        } else if (lastOutboundMs >= lastInboundMs) {
+          // Nós já respondemos por último — bola está com o lead, não conosco
+          continue;
+        }
+
+        const referenceTime = lastInboundMs || new Date(lead.created_at).getTime();
 
         const { data: currentStageEntry } = await supabase
           .from("crm_lead_stage_history")
