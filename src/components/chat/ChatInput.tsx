@@ -250,14 +250,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     onMessageSent?.(optimisticMsg);
 
     // Send in background
-    const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type };
-    if (currentReplyTo) {
-      body.reply_to_message_id = currentReplyTo.id;
-      if (currentReplyTo.whatsapp_message_id) body.reply_to_wamid = currentReplyTo.whatsapp_message_id;
-    }
+    const body = buildSendBody({ type, message: message || undefined, reply: currentReplyTo });
 
     try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
+      const { data, error } = await supabase.functions.invoke(sendFnName, { body });
       if (error || data?.error || data?.ok === false) {
         if (data?.message) {
           onMessageSuccess?.(tempId, data.message);
