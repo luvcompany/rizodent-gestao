@@ -68,16 +68,27 @@ Deno.serve(async (req) => {
     }
     const longLivedToken = longData.access_token;
 
-    // 3. Get Pages
-    const pagesResp = await fetch(`${GRAPH}/me/accounts?access_token=${longLivedToken}`);
-    const pagesData = await pagesResp.json();
-    console.log(
-      "[oauth] Step 4 - Pages found:",
-      pagesData?.data?.length,
-      JSON.stringify(pagesData?.data?.map((p: any) => ({ id: p.id, name: p.name, has_token: !!p.access_token })) ?? []),
+    // 3. Get Pages with Instagram business account info
+    const pagesResponse = await fetch(
+      `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,name,username}&access_token=${longLivedToken}`
     );
-    if (!pagesResp.ok) {
-      console.error("[oauth] pages error", pagesData);
+    const pagesData = await pagesResponse.json();
+
+    console.log("[oauth] Pages API full response:", JSON.stringify(pagesData));
+    console.log("[oauth] Long token preview:", longLivedToken?.substring(0, 30));
+
+    // Check for API error from Meta
+    if (pagesData.error) {
+      console.error("[oauth] Meta API error:", pagesData.error);
+      return new Response(JSON.stringify({ error: "Meta API error", details: pagesData.error }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check if response is not OK (HTTP error)
+    if (!pagesResponse.ok) {
+      console.error("[oauth] pages HTTP error", pagesData);
       return new Response(JSON.stringify({ error: "Failed to fetch pages", details: pagesData }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -162,7 +173,21 @@ Deno.serve(async (req) => {
 
     // 5. Redirect to frontend
     const frontendUrl = Deno.env.get("FRONTEND_URL") ?? "";
-    const redirectLocation = `${frontendUrl}${frontendUrl.includes("?") ? "&" : "?"}instagram=connected`;
+    let redirectLocation: string;
+    
+    // Check if no pages were found
+    if (!pagesData.data || pagesData.data.length === 0) {
+      console.warn("[oauth] No pages found for this user");
+      redirectLocation = `${frontendUrl}/integrations?error=no_pages_found`;
+    } else if (upserted.length === 0) {
+      // Pages exist but none had Instagram Business Account
+      console.warn("[oauth] Pages found but no Instagram Business Accounts connected");
+      redirectLocation = `${frontendUrl}/integrations?error=no_instagram_accounts`;
+    } else {
+      // Success - accounts were connected
+      redirectLocation = `${frontendUrl}${frontendUrl.includes("?") ? "&" : "?"}instagram=connected`;
+    }
+    
     return new Response(null, {
       status: 302,
       headers: { ...corsHeaders, Location: redirectLocation },
