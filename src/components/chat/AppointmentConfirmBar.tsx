@@ -125,10 +125,22 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
 
     const currentStageId = leadData.stage_id;
     const currentStage = allStages?.find((stage) => stage.id === currentStageId);
-    const scheduledStage = allStages?.find((stage) => {
-      const name = stage.name.toLowerCase();
-      return name.includes("agendado") || name.includes("agendamento");
+
+    // Prefer exact "Agendado" stage, excluding "Pré-agendado", "Reagendado", etc.
+    const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const isPreOrRe = (n: string) => n.includes("pre") || n.includes("pré") || n.startsWith("reagend") || n.includes("nao compareceu") || n.includes("não compareceu");
+
+    let scheduledStage = allStages?.find((stage) => {
+      const n = normalize(stage.name);
+      return (n === "agendado" || n === "agendados" || n === "agendamento" || n === "agendamentos");
     });
+    // Fallback: any stage containing "agendad"/"agendamento" but NOT pre/re/no-show
+    if (!scheduledStage) {
+      scheduledStage = allStages?.find((stage) => {
+        const n = normalize(stage.name);
+        return (n.includes("agendad") || n.includes("agendamento")) && !isPreOrRe(n);
+      });
+    }
 
     if (!scheduledStage || scheduledStage.id === currentStageId) {
       return leadData.stage_id;
