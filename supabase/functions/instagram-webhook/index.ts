@@ -9,7 +9,10 @@ const corsHeaders = {
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VERIFY_TOKEN = Deno.env.get("INSTAGRAM_VERIFY_TOKEN") ?? "";
-const APP_SECRET = Deno.env.get("INSTAGRAM_APP_SECRET") ?? "";
+const APP_SECRET =
+  Deno.env.get("INSTAGRAM_APP_SECRET") ??
+  Deno.env.get("META_APP_SECRET") ??
+  "";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
