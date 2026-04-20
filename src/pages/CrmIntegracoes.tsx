@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
+import InstagramIntegrationSection from "@/components/integrations/InstagramIntegrationSection";
 
 type WhatsAppConfig = {
   token: string;
@@ -72,7 +73,6 @@ const DEFAULT_STAGES = [
 ];
 
 const otherIntegrations = [
-  { key: "instagram", name: "Instagram Direct", desc: "Em breve", icon: Instagram, enabled: false },
   { key: "facebook", name: "Facebook Messenger", desc: "Em breve", icon: Facebook, enabled: false },
   { key: "email", name: "E-mail (SMTP)", desc: "Em breve", icon: Mail, enabled: false },
   { key: "mercadolivre", name: "Mercado Livre", desc: "Em breve", icon: ShoppingBag, enabled: false },
@@ -439,6 +439,9 @@ export default function CrmIntegracoes() {
             )}
           </div>
         </div>
+
+        {/* Instagram Section */}
+        <InstagramIntegrationSection />
 
         {/* Other Integrations */}
         <h2 className="font-semibold text-foreground mb-4">Outros Canais</h2>
