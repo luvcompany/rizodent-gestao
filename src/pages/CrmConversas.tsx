@@ -511,7 +511,7 @@ function WhatsAppConversations() {
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
+    <div className="flex h-full w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
       <ResizablePanelGroup direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
         {/* LEFT PANEL - Leads list */}
         {leftPanelVisible && (
