@@ -210,13 +210,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           const url = await uploadFile(fileToUpload!, type);
           if (!url) { onMessageError?.(tempId); return; }
 
-          const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url: url };
-          if (currentReplyTo) {
-            body.reply_to_message_id = currentReplyTo.id;
-            if (currentReplyTo.whatsapp_message_id) body.reply_to_wamid = currentReplyTo.whatsapp_message_id;
-          }
+          const body = buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo });
 
-          const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
+          const { data, error } = await supabase.functions.invoke(sendFnName, { body });
           if (error || data?.error || data?.ok === false) {
             if (data?.message) {
               onMessageSuccess?.(tempId, data.message);
