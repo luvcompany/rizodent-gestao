@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const GRAPH = "https://graph.facebook.com/v25.0";
-const SUB_FIELDS = "messages,messaging_postbacks,message_reactions,messaging_seen,comments,mention";
+const SUB_FIELDS = "messages,messaging_postbacks,message_reactions,message_reads,feed,mention";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
