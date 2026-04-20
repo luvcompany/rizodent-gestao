@@ -402,6 +402,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // Apply filters
   const filtered = useMemo(() => {
     return leads.filter((l) => {
+      // Tab-level pipeline scoping (WhatsApp vs Instagram)
+      if (pipelineFilter && l.pipeline_id !== pipelineFilter) return false;
+      if (excludePipelines && excludePipelines.includes(l.pipeline_id)) return false;
       // Filter by assigned user - skip when drill-down filter is active
       const hasUrlFilters = urlGhost || urlAppointmentStatus || urlInactiveDays || searchParams.get("assigned_to") || searchParams.get("stage_id") || searchParams.get("pipeline");
       if (!hasUrlFilters && user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
