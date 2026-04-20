@@ -42,9 +42,32 @@ type ChatInputProps = {
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
+  channel?: "whatsapp" | "instagram";
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt, channel = "whatsapp" }: ChatInputProps) {
+  const isInstagram = channel === "instagram";
+  const sendFnName = isInstagram ? "instagram-send-message" : "send-whatsapp-message";
+
+  const buildSendBody = (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null }): any => {
+    if (isInstagram) {
+      const igType = params.type === "text" ? undefined : (params.type === "image" || params.type === "video" || params.type === "audio" ? params.type : undefined);
+      return {
+        lead_id: leadId,
+        message: params.message,
+        message_type: "dm",
+        media_type: igType,
+        media_url: params.media_url,
+      };
+    }
+    const body: any = { lead_id: leadId, to: leadPhone, message: params.message, type: params.type, media_url: params.media_url };
+    if (params.reply) {
+      body.reply_to_message_id = params.reply.id;
+      if (params.reply.whatsapp_message_id) body.reply_to_wamid = params.reply.whatsapp_message_id;
+    }
+    return body;
+  };
+
   const { profile } = useAuth();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
@@ -134,10 +157,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   };
 
   const handleSendMessage = async () => {
-    if ((!newMessage.trim() && !attachedFile) || !leadPhone) return;
+    if ((!newMessage.trim() && !attachedFile) || (!leadPhone && !isInstagram)) return;
 
-    // Block if 24h window expired
-    if (windowInfo.expired) {
+    // Block if 24h window expired (WhatsApp only — IG has its own 24h logic but no template fallback)
+    if (!isInstagram && windowInfo.expired) {
       toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
       return;
     }
@@ -187,13 +210,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           const url = await uploadFile(fileToUpload!, type);
           if (!url) { onMessageError?.(tempId); return; }
 
-          const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type, media_url: url };
-          if (currentReplyTo) {
-            body.reply_to_message_id = currentReplyTo.id;
-            if (currentReplyTo.whatsapp_message_id) body.reply_to_wamid = currentReplyTo.whatsapp_message_id;
-          }
+          const body = buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo });
 
-          const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
+          const { data, error } = await supabase.functions.invoke(sendFnName, { body });
           if (error || data?.error || data?.ok === false) {
             if (data?.message) {
               onMessageSuccess?.(tempId, data.message);
@@ -231,14 +250,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     onMessageSent?.(optimisticMsg);
 
     // Send in background
-    const body: any = { lead_id: leadId, to: leadPhone, message: message || undefined, type };
-    if (currentReplyTo) {
-      body.reply_to_message_id = currentReplyTo.id;
-      if (currentReplyTo.whatsapp_message_id) body.reply_to_wamid = currentReplyTo.whatsapp_message_id;
-    }
+    const body = buildSendBody({ type, message: message || undefined, reply: currentReplyTo });
 
     try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", { body });
+      const { data, error } = await supabase.functions.invoke(sendFnName, { body });
       if (error || data?.error || data?.ok === false) {
         if (data?.message) {
           onMessageSuccess?.(tempId, data.message);
@@ -331,12 +346,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const isWindowExpired = windowInfo.expired;
 
   const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
-    if (!leadPhone) {
+    if (!leadPhone && !isInstagram) {
       toast.error("Lead sem telefone para envio do áudio");
       throw new Error("Lead sem telefone");
     }
 
-    if (windowInfo.expired) {
+    if (!isInstagram && windowInfo.expired) {
       toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
       throw new Error("Janela expirada");
     }
@@ -373,9 +388,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true },
-      });
+      const audioBody = isInstagram
+        ? { lead_id: leadId, message_type: "dm" as const, media_type: "audio" as const, media_url: url }
+        : { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true };
+
+      const { data, error } = await supabase.functions.invoke(sendFnName, { body: audioBody });
 
       if (error || data?.error || data?.ok === false) {
         if (data?.message) {
@@ -392,7 +409,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       onMessageError?.(tempId);
       toast.error(err?.message || "Erro ao enviar áudio");
     }
-  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess]);
+  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName]);
 
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
@@ -426,7 +443,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       )}
 
       {/* Expired window state */}
-      {isWindowExpired ? (
+      {isWindowExpired && !isInstagram ? (
         <div className="space-y-2">
           <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2.5 text-sm text-destructive">
             <AlertTriangle size={16} className="flex-shrink-0" />
@@ -576,8 +593,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       )}
 
-      {/* 24h window countdown */}
-      {!isWindowExpired && lastInboundAt && (
+      {/* 24h window countdown (WhatsApp only) */}
+      {!isInstagram && !isWindowExpired && lastInboundAt && (
         <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
           <Clock size={12} />
           <span>A sessão de mensagens termina em: <span className="font-medium text-foreground">{windowInfo.remaining}</span></span>
