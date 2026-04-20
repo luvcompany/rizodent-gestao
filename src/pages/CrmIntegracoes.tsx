@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
+import InstagramIntegrationSection from "@/components/integrations/InstagramIntegrationSection";
 
 type WhatsAppConfig = {
   token: string;
@@ -72,7 +73,6 @@ const DEFAULT_STAGES = [
 ];
 
 const otherIntegrations = [
-  { key: "instagram", name: "Instagram Direct", desc: "Em breve", icon: Instagram, enabled: false },
   { key: "facebook", name: "Facebook Messenger", desc: "Em breve", icon: Facebook, enabled: false },
   { key: "email", name: "E-mail (SMTP)", desc: "Em breve", icon: Mail, enabled: false },
   { key: "mercadolivre", name: "Mercado Livre", desc: "Em breve", icon: ShoppingBag, enabled: false },
@@ -156,7 +156,22 @@ export default function CrmIntegracoes() {
   const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null);
   const [editingPipelineName, setEditingPipelineName] = useState("");
 
-  useEffect(() => { loadEntries(); loadPipelines(); }, []);
+  useEffect(() => {
+    loadEntries();
+    loadPipelines();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("instagram") === "connected") {
+      toast.success("Conta do Instagram conectada com sucesso!");
+      params.delete("instagram");
+      const newSearch = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${newSearch ? "?" + newSearch : ""}`);
+    } else if (params.get("instagram") === "error") {
+      toast.error("Falha ao conectar Instagram. Tente novamente.");
+      params.delete("instagram");
+      const newSearch = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${newSearch ? "?" + newSearch : ""}`);
+    }
+  }, []);
 
   const loadEntries = async () => {
     const { data } = await supabase.from("integrations").select("*").like("key", "whatsapp_%");
@@ -439,6 +454,9 @@ export default function CrmIntegracoes() {
             )}
           </div>
         </div>
+
+        {/* Instagram Section */}
+        <InstagramIntegrationSection />
 
         {/* Other Integrations */}
         <h2 className="font-semibold text-foreground mb-4">Outros Canais</h2>
