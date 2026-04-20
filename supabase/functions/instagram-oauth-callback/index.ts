@@ -12,123 +12,128 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // FRONTEND_URL já vem no formato: https://rizodent-gestao.lovable.app/crm/integracoes
+  const baseUrl = Deno.env.get("FRONTEND_URL") ?? "";
+  const buildRedirect = (params: Record<string, string>) => {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const qs = new URLSearchParams(params).toString();
+    return `${baseUrl}${sep}${qs}`;
+  };
+
   try {
+    // STEP 1 - Receber o code
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
+    console.log("[oauth] Step 1 - Code received:", code?.substring(0, 10), "state:", state);
 
     if (!code) {
-      return new Response(JSON.stringify({ error: "Missing code parameter" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("[oauth] Step 1 - Missing code");
+      return Response.redirect(buildRedirect({ error: "missing_code" }), 302);
     }
 
     const META_APP_ID = Deno.env.get("META_APP_ID")!;
     const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!;
     const INSTAGRAM_REDIRECT_URI = Deno.env.get("INSTAGRAM_REDIRECT_URI")!;
 
-    // 1. Exchange code -> short-lived token
-    const shortUrl = new URL(`${GRAPH}/oauth/access_token`);
-    shortUrl.searchParams.set("client_id", META_APP_ID);
-    shortUrl.searchParams.set("client_secret", META_APP_SECRET);
-    shortUrl.searchParams.set("redirect_uri", INSTAGRAM_REDIRECT_URI);
-    shortUrl.searchParams.set("code", code);
+    // STEP 2 - Trocar code por token curto
+    const tokenUrl = new URL(`${GRAPH}/oauth/access_token`);
+    tokenUrl.searchParams.set("client_id", META_APP_ID);
+    tokenUrl.searchParams.set("client_secret", META_APP_SECRET);
+    tokenUrl.searchParams.set("redirect_uri", INSTAGRAM_REDIRECT_URI);
+    tokenUrl.searchParams.set("code", code);
 
-    const shortResp = await fetch(shortUrl.toString());
-    const shortData = await shortResp.json();
-    if (!shortResp.ok || !shortData.access_token) {
-      console.error("[oauth-callback] short-lived token error", shortData);
-      return new Response(JSON.stringify({ error: "Failed short-lived token", details: shortData }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const shortTokenRes = await fetch(tokenUrl.toString());
+    const shortTokenData = await shortTokenRes.json();
+    console.log("[oauth] Step 2 - Short token response:", JSON.stringify(shortTokenData));
+
+    if (shortTokenData.error) {
+      console.error("[oauth] Step 2 error:", JSON.stringify(shortTokenData.error));
+      return Response.redirect(buildRedirect({ error: "token_exchange_failed" }), 302);
     }
-    const shortLivedToken = shortData.access_token;
+    const shortToken = shortTokenData.access_token;
 
-    // 2. Exchange short -> long-lived token (60 days)
-    const longUrl = new URL(`${GRAPH}/oauth/access_token`);
-    longUrl.searchParams.set("grant_type", "fb_exchange_token");
-    longUrl.searchParams.set("client_id", META_APP_ID);
-    longUrl.searchParams.set("client_secret", META_APP_SECRET);
-    longUrl.searchParams.set("fb_exchange_token", shortLivedToken);
+    // STEP 3 - Trocar por token longo
+    const longTokenUrl = new URL(`${GRAPH}/oauth/access_token`);
+    longTokenUrl.searchParams.set("grant_type", "fb_exchange_token");
+    longTokenUrl.searchParams.set("client_id", META_APP_ID);
+    longTokenUrl.searchParams.set("client_secret", META_APP_SECRET);
+    longTokenUrl.searchParams.set("fb_exchange_token", shortToken);
 
-    const longResp = await fetch(longUrl.toString());
-    const longData = await longResp.json();
-    if (!longResp.ok || !longData.access_token) {
-      console.error("[oauth-callback] long-lived token error", longData);
-      return new Response(JSON.stringify({ error: "Failed long-lived token", details: longData }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const longTokenRes = await fetch(longTokenUrl.toString());
+    const longTokenData = await longTokenRes.json();
+    console.log("[oauth] Step 3 - Long token response:", JSON.stringify(longTokenData));
+
+    if (longTokenData.error) {
+      console.error("[oauth] Step 3 error:", JSON.stringify(longTokenData.error));
+      return Response.redirect(buildRedirect({ error: "long_token_failed" }), 302);
     }
-    const longLivedToken = longData.access_token;
+    const longToken = longTokenData.access_token;
 
-    // 3. Get Pages
-    const pagesResp = await fetch(`${GRAPH}/me/accounts?access_token=${longLivedToken}`);
-    const pagesData = await pagesResp.json();
-    if (!pagesResp.ok) {
-      console.error("[oauth-callback] pages error", pagesData);
-      return new Response(JSON.stringify({ error: "Failed to fetch pages", details: pagesData }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // STEP 4 - Buscar páginas do Facebook com token longo
+    const pagesUrl = `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,name,username,profile_picture_url}&access_token=${longToken}`;
+    const pagesRes = await fetch(pagesUrl);
+    const pagesData = await pagesRes.json();
+    console.log("[oauth] Step 4 - Pages response status:", pagesRes.status);
+    console.log("[oauth] Step 4 - Pages full response:", JSON.stringify(pagesData));
+
+    if (pagesData.error) {
+      console.error("[oauth] Step 4 error:", JSON.stringify(pagesData.error));
+      return Response.redirect(buildRedirect({ error: "pages_fetch_failed" }), 302);
     }
 
+    if (!pagesData.data || pagesData.data.length === 0) {
+      console.warn("[oauth] Step 4 - No pages found");
+      return Response.redirect(buildRedirect({ error: "no_pages_found" }), 302);
+    }
+
+    // STEP 5 - Salvar contas Instagram vinculadas
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
-    const upserted: any[] = [];
+    let savedCount = 0;
+    for (const page of pagesData.data) {
+      console.log("[oauth] Step 5 - Processing page:", page.id, page.name);
+      console.log("[oauth] Step 5 - Has instagram:", !!page.instagram_business_account);
 
-    for (const page of pagesData.data ?? []) {
-      const pageId = page.id;
-      const pageName = page.name;
-      const pageToken = page.access_token;
+      if (!page.instagram_business_account) {
+        console.log("[oauth] Step 5 - Skipping page without instagram:", page.name);
+        continue;
+      }
 
-      const igResp = await fetch(
-        `${GRAPH}/${pageId}?fields=instagram_business_account&access_token=${pageToken}`,
-      );
-      const igData = await igResp.json();
-      const igAccountId = igData?.instagram_business_account?.id;
-      if (!igAccountId) continue;
+      const igAccount = page.instagram_business_account;
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("instagram_accounts")
         .upsert(
           {
-            name: pageName,
-            instagram_account_id: igAccountId,
-            page_id: pageId,
-            page_access_token: pageToken,
-            long_lived_token_expires_at: expiresAt,
+            instagram_account_id: igAccount.id,
+            name: igAccount.username || igAccount.name || page.name,
+            page_id: page.id,
+            page_access_token: page.access_token,
+            long_lived_token_expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
             is_active: true,
           },
           { onConflict: "instagram_account_id" },
-        )
-        .select()
-        .single();
+        );
 
-      if (error) console.error("[oauth-callback] upsert error", error);
-      else upserted.push(data);
+      if (error) {
+        console.error("[oauth] Step 5 - Save error for", igAccount.id, ":", error.message);
+      } else {
+        console.log("[oauth] Step 5 - Saved account:", igAccount.id, igAccount.username);
+        savedCount++;
+      }
     }
 
-    console.log(`[oauth-callback] ${upserted.length} contas conectadas (state=${state})`);
-
-    // 5. Redirect to frontend
-    const frontendUrl = Deno.env.get("FRONTEND_URL") ?? "";
-    const redirectLocation = `${frontendUrl}${frontendUrl.includes("?") ? "&" : "?"}instagram=connected`;
-    return new Response(null, {
-      status: 302,
-      headers: { ...corsHeaders, Location: redirectLocation },
-    });
+    console.log("[oauth] Done -", savedCount, "accounts saved");
+    return Response.redirect(
+      buildRedirect({ instagram: "connected", accounts: String(savedCount) }),
+      302,
+    );
   } catch (err) {
-    console.error("[oauth-callback] error", err);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("[oauth] Fatal error:", err);
+    return Response.redirect(buildRedirect({ error: "fatal_error" }), 302);
   }
 });

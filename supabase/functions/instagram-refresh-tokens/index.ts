@@ -30,6 +30,8 @@ Deno.serve(async (req) => {
 
     if (error) throw error;
 
+    console.log(`[refresh] Checking ${accounts?.length ?? 0} accounts near expiration`);
+
     let renewed = 0;
     const failures: any[] = [];
 
@@ -42,8 +44,9 @@ Deno.serve(async (req) => {
 
       const resp = await fetch(refreshUrl.toString());
       const data = await resp.json();
+
       if (!resp.ok || !data.access_token) {
-        console.error("[refresh-tokens] failed for", acc.id, data);
+        console.error("[refresh] failed for", acc.id, JSON.stringify(data));
         failures.push({ id: acc.id, error: data });
         continue;
       }
@@ -58,20 +61,21 @@ Deno.serve(async (req) => {
         .eq("id", acc.id);
 
       if (updErr) {
-        console.error("[refresh-tokens] update error", updErr);
+        console.error("[refresh] update error", updErr);
         failures.push({ id: acc.id, error: updErr });
       } else {
+        console.log("[refresh] renewed", acc.id, acc.name);
         renewed++;
       }
     }
 
-    console.log(`[refresh-tokens] renewed=${renewed} failures=${failures.length}`);
+    console.log(`[refresh] Done renewed=${renewed} failures=${failures.length}`);
     return new Response(
       JSON.stringify({ checked: accounts?.length ?? 0, renewed, failures }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
-    console.error("[refresh-tokens] error", err);
+    console.error("[refresh] error", err);
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
