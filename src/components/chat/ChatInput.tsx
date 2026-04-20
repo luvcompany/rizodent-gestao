@@ -443,7 +443,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       )}
 
       {/* Expired window state */}
-      {isWindowExpired ? (
+      {isWindowExpired && !isInstagram ? (
         <div className="space-y-2">
           <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2.5 text-sm text-destructive">
             <AlertTriangle size={16} className="flex-shrink-0" />
