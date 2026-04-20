@@ -212,14 +212,16 @@ Deno.serve(async (req: Request) => {
   const igMessageId = metaJson?.message_id ?? null;
 
   // Persist to instagram_messages (legacy)
+  // For comment replies: keep post_id + thread_sender_id so the UI groups outbound
+  // reply into the same thread (key = sender_id::post_id).
   await supabase.from("instagram_messages").insert({
     instagram_account_id,
     instagram_account_config_id: account.id,
-    sender_id: recipient_id || null,
+    sender_id: message_type === "comment" ? (thread_sender_id ?? null) : (recipient_id || null),
     sender_name: null,
     message_text: message ?? null,
     message_type,
-    post_id: null,
+    post_id: message_type === "comment" ? (post_id ?? null) : null,
     comment_id: message_type === "comment" ? comment_id ?? null : null,
     is_outbound: true,
     is_read: true,
