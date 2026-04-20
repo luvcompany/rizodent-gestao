@@ -83,7 +83,7 @@ export default function InstagramConversations() {
         recipient_id: activeConversation.sender_id,
         message: composer.trim(),
         message_type: (activeConversation.message_type as "dm" | "comment") ?? "dm",
-        comment_id: messages.findLast?.((m) => m.comment_id)?.comment_id ?? undefined,
+        comment_id: [...messages].reverse().find((m) => m.comment_id)?.comment_id ?? undefined,
       });
       setComposer("");
       toast.success("Mensagem enviada");
