@@ -1039,7 +1039,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 }
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import InstagramConversations from "@/components/chat/InstagramConversations";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 
 export default function CrmConversas() {
@@ -1059,10 +1058,10 @@ export default function CrmConversas() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="whatsapp" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <WhatsAppConversations />
+          <WhatsAppConversations excludePipelines={["c2d3e4f5-0001-4000-8000-000000000002"]} channel="whatsapp" />
         </TabsContent>
         <TabsContent value="instagram" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <InstagramConversations />
+          <WhatsAppConversations pipelineFilter="c2d3e4f5-0001-4000-8000-000000000002" channel="instagram" />
         </TabsContent>
       </Tabs>
     </div>
