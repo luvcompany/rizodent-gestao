@@ -50,23 +50,52 @@ const profileCache = new Map<string, { name: string | null; username: string | n
 
 async function fetchIgProfile(igUserId: string, accessToken: string) {
   if (profileCache.has(igUserId)) return profileCache.get(igUserId)!;
+
+  let out: { name: string | null; username: string | null; profile_pic: string | null } = {
+    name: null,
+    username: null,
+    profile_pic: null,
+  };
+
+  // Attempt 1: full set (works for IG Business / Creator users that messaged a connected page)
   try {
     const url = `https://graph.facebook.com/v25.0/${igUserId}?fields=name,username,profile_pic&access_token=${encodeURIComponent(accessToken)}`;
     const r = await fetch(url);
     const j = await r.json().catch(() => ({}));
-    const out = {
-      name: j?.name ?? null,
-      username: j?.username ?? null,
-      profile_pic: j?.profile_pic ?? null,
-    };
-    profileCache.set(igUserId, out);
-    return out;
+    if (r.ok) {
+      out = {
+        name: j?.name ?? null,
+        username: j?.username ?? null,
+        profile_pic: j?.profile_pic ?? null,
+      };
+      console.log(`[instagram-webhook] profile (full) ${igUserId}:`, JSON.stringify(out));
+    } else {
+      console.warn(`[instagram-webhook] profile (full) ${igUserId} failed:`, JSON.stringify(j));
+    }
   } catch (e) {
-    console.warn("[instagram-webhook] fetchIgProfile failed", igUserId, e);
-    const out = { name: null, username: null, profile_pic: null };
-    profileCache.set(igUserId, out);
-    return out;
+    console.warn("[instagram-webhook] fetchIgProfile attempt1 error", igUserId, e);
   }
+
+  // Attempt 2: fallback to just username + profile_picture_url (works for most personal accounts)
+  if (!out.username || !out.profile_pic) {
+    try {
+      const url2 = `https://graph.facebook.com/v25.0/${igUserId}?fields=username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`;
+      const r2 = await fetch(url2);
+      const j2 = await r2.json().catch(() => ({}));
+      if (r2.ok) {
+        out.username = out.username || j2?.username || null;
+        out.profile_pic = out.profile_pic || j2?.profile_picture_url || null;
+        console.log(`[instagram-webhook] profile (fallback) ${igUserId}:`, JSON.stringify(j2));
+      } else {
+        console.warn(`[instagram-webhook] profile (fallback) ${igUserId} failed:`, JSON.stringify(j2));
+      }
+    } catch (e) {
+      console.warn("[instagram-webhook] fetchIgProfile attempt2 error", igUserId, e);
+    }
+  }
+
+  profileCache.set(igUserId, out);
+  return out;
 }
 
 // Find or create lead in Instagram pipeline based on IG user ID
