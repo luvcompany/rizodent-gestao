@@ -1401,32 +1401,26 @@ export type Database = {
         Row: {
           created_at: string
           id: string
-          instagram_account_id: string | null
+          instagram_account_id: string
           is_active: boolean
-          long_lived_token_expires_at: string | null
-          name: string | null
+          name: string
           page_access_token: string | null
-          page_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
-          instagram_account_id?: string | null
+          instagram_account_id: string
           is_active?: boolean
-          long_lived_token_expires_at?: string | null
-          name?: string | null
+          name: string
           page_access_token?: string | null
-          page_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
-          instagram_account_id?: string | null
+          instagram_account_id?: string
           is_active?: boolean
-          long_lived_token_expires_at?: string | null
-          name?: string | null
+          name?: string
           page_access_token?: string | null
-          page_id?: string | null
         }
         Relationships: []
       }
@@ -1435,6 +1429,7 @@ export type Database = {
           comment_id: string | null
           created_at: string
           id: string
+          instagram_account_config_id: string | null
           instagram_account_id: string | null
           is_outbound: boolean
           is_read: boolean
@@ -1450,6 +1445,7 @@ export type Database = {
           comment_id?: string | null
           created_at?: string
           id?: string
+          instagram_account_config_id?: string | null
           instagram_account_id?: string | null
           is_outbound?: boolean
           is_read?: boolean
@@ -1465,6 +1461,7 @@ export type Database = {
           comment_id?: string | null
           created_at?: string
           id?: string
+          instagram_account_config_id?: string | null
           instagram_account_id?: string | null
           is_outbound?: boolean
           is_read?: boolean
@@ -1478,10 +1475,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "instagram_messages_lead_id_fkey"
-            columns: ["lead_id"]
+            foreignKeyName: "instagram_messages_instagram_account_config_id_fkey"
+            columns: ["instagram_account_config_id"]
             isOneToOne: false
-            referencedRelation: "crm_leads"
+            referencedRelation: "instagram_accounts"
             referencedColumns: ["id"]
           },
         ]
