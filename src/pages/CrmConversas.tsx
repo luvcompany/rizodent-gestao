@@ -60,6 +60,8 @@ type LeadConversation = {
   paciente_id?: string | null;
   cidade?: string | null;
   servico_interesse?: string | null;
+  instagram_username?: string | null;
+  instagram_profile_pic_url?: string | null;
 };
 
 // Global cache for leads list — survives component remounts
