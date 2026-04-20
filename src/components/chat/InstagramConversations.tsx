@@ -173,12 +173,12 @@ export default function InstagramConversations() {
                       selected ? "bg-accent" : ""
                     }`}
                   >
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-white"
-                      style={{ backgroundColor: IG_PURPLE }}
-                    >
-                      <Instagram size={18} />
-                    </div>
+                    <Avatar className="w-10 h-10 flex-shrink-0">
+                      {c.sender_profile_pic && <AvatarImage src={c.sender_profile_pic} alt={c.sender_name ?? ""} />}
+                      <AvatarFallback className="text-white" style={{ backgroundColor: IG_PURPLE }}>
+                        <Instagram size={18} />
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-sm text-foreground truncate">
