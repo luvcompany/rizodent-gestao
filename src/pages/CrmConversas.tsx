@@ -214,7 +214,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       (async () => {
         const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
           supabase.from("crm_leads")
-            .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse")
+          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url")
             .order("last_message_at", { ascending: false, nullsFirst: false })
             .limit(500),
           supabase.from("profiles").select("id, nome"),
