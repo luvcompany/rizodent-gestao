@@ -152,7 +152,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "message or media_url is required" }, 400);
   }
 
-  const account = await resolveAccount({ instagram_account_id, lead_id: leadId ?? undefined });
+  const account = await resolveAccount({ instagram_account_id, lead_id: leadId ?? undefined, comment_id });
   if (!account || !account.is_active || !account.page_access_token) {
     return jsonResponse({ error: "Instagram account not found, inactive, or missing access token" }, 404);
   }
