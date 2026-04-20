@@ -631,6 +631,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         >
                           <div className="relative flex-shrink-0 mt-0.5">
                             <Avatar className="h-9 w-9">
+                              {lead.instagram_profile_pic_url && (
+                                <AvatarImage src={lead.instagram_profile_pic_url} alt={lead.name} />
+                              )}
                               <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
                             </Avatar>
                             <div className="absolute -bottom-0.5 -left-0.5">
