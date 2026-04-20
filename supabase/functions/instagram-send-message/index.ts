@@ -34,6 +34,24 @@ function jsonResponse(payload: unknown, status = 200) {
   });
 }
 
+function getMetaPermissionError(metaJson: any) {
+  const metaError = metaJson?.error;
+  if (!metaError) return null;
+
+  const isPermissionDenied = metaError.code === 200 && metaError.error_subcode === 2534048;
+  if (!isPermissionDenied) return null;
+
+  return {
+    ok: false,
+    error_code: "instagram_permission_denied",
+    error: metaError.message || "Instagram messaging permission denied",
+    user_message:
+      "A integração do Instagram ainda não tem permissão avançada para enviar mensagens. Libere a permissão instagram_manage_messages no app da Meta ou adicione este perfil como função no app.",
+    setup_required: true,
+    meta: metaJson,
+  };
+}
+
 async function resolveAccount(input: { instagram_account_id?: string; lead_id?: string; comment_id?: string }) {
   // Strategy A: explicit IG account id
   if (input.instagram_account_id) {
@@ -206,6 +224,10 @@ Deno.serve(async (req: Request) => {
 
   if (!metaResponse.ok) {
     console.error("[instagram-send-message] Meta error:", metaJson);
+    const permissionError = getMetaPermissionError(metaJson);
+    if (permissionError) {
+      return jsonResponse(permissionError, 200);
+    }
     return jsonResponse({ error: metaJson?.error?.message || "Meta API error", meta: metaJson }, 500);
   }
 
