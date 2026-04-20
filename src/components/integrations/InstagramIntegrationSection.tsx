@@ -65,6 +65,7 @@ export default function InstagramIntegrationSection() {
       url.searchParams.set("redirect_uri", data.redirect_uri);
       url.searchParams.set("scope", SCOPES);
       url.searchParams.set("response_type", "code");
+      url.searchParams.set("auth_type", "rerequest");
       url.searchParams.set("state", userId);
       window.location.href = url.toString();
     } catch (e) {
