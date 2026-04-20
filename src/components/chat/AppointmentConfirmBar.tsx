@@ -211,6 +211,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
 
     toast.success("Agendamento confirmado!");
     setConfirmingId(null); setDate(undefined); setTime("09:00"); setSaving(false);
+    await Promise.all([fetchAppointments(), fetchTasks(), checkRescheduleMode()]);
   };
 
   const handleManualSchedule = async () => {
@@ -248,6 +249,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
 
     toast.success(`${label} confirmado!`);
     setManualOpen(false); setManualDate(undefined); setManualTime("09:00"); setManualNotes(""); setManualSaving(false);
+    await Promise.all([fetchAppointments(), checkRescheduleMode()]);
   };
 
   const handleEditAppointment = async (appt: Appointment) => {
@@ -267,6 +269,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
 
     toast.success("Agendamento atualizado!");
     setEditingId(null); setEditSaving(false);
+    await fetchAppointments();
   };
 
   const handleDeleteAppointment = async (appt: Appointment) => {
@@ -276,6 +279,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       content: `❌ Agendamento cancelado`, status: "system",
     });
     toast.success("Agendamento excluído");
+    await fetchAppointments();
   };
 
   const handleDeletePendingTask = async (taskId: string) => {
