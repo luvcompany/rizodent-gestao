@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -75,20 +75,28 @@ export default function InstagramConversations() {
   ) || conversations.find((c) => c.sender_id === selectedConversationId);
 
   const handleSend = async () => {
-    if (!composer.trim() || !activeConversation || !activeConversation.instagram_account_id) return;
+    if (!composer.trim() || !activeConversation || !activeConversation.instagram_account_id) {
+      if (!activeConversation?.instagram_account_id) {
+        toast.error("Conta do Instagram não identificada para esta conversa");
+      }
+      return;
+    }
+    const payload = {
+      instagram_account_id: activeConversation.instagram_account_id,
+      recipient_id: activeConversation.sender_id,
+      message: composer.trim(),
+      message_type: (activeConversation.message_type as "dm" | "comment") ?? "dm",
+      comment_id: [...messages].reverse().find((m) => m.comment_id)?.comment_id ?? undefined,
+    };
     setSending(true);
     try {
-      await sendMessage({
-        instagram_account_id: activeConversation.instagram_account_id,
-        recipient_id: activeConversation.sender_id,
-        message: composer.trim(),
-        message_type: (activeConversation.message_type as "dm" | "comment") ?? "dm",
-        comment_id: [...messages].reverse().find((m) => m.comment_id)?.comment_id ?? undefined,
-      });
+      await sendMessage(payload);
       setComposer("");
       toast.success("Mensagem enviada");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao enviar");
+      const msg = e instanceof Error ? e.message : "Erro ao enviar";
+      console.error("Falha ao enviar mensagem Instagram:", e);
+      toast.error(msg);
     } finally {
       setSending(false);
     }
@@ -165,12 +173,12 @@ export default function InstagramConversations() {
                       selected ? "bg-accent" : ""
                     }`}
                   >
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-white"
-                      style={{ backgroundColor: IG_PURPLE }}
-                    >
-                      <Instagram size={18} />
-                    </div>
+                    <Avatar className="w-10 h-10 flex-shrink-0">
+                      {c.sender_profile_pic && <AvatarImage src={c.sender_profile_pic} alt={c.sender_name ?? ""} />}
+                      <AvatarFallback className="text-white" style={{ backgroundColor: IG_PURPLE }}>
+                        <Instagram size={18} />
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-sm text-foreground truncate">
@@ -219,12 +227,14 @@ export default function InstagramConversations() {
             ) : (
               <>
                 <div className="flex items-center gap-3 p-4 border-b border-border bg-card">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white"
-                    style={{ backgroundColor: IG_PURPLE }}
-                  >
-                    <Instagram size={18} />
-                  </div>
+                  <Avatar className="w-10 h-10">
+                    {activeConversation.sender_profile_pic && (
+                      <AvatarImage src={activeConversation.sender_profile_pic} alt={activeConversation.sender_name ?? ""} />
+                    )}
+                    <AvatarFallback className="text-white" style={{ backgroundColor: IG_PURPLE }}>
+                      <Instagram size={18} />
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-foreground truncate">
                       {activeConversation.sender_name || activeConversation.sender_id}
