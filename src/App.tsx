@@ -35,6 +35,7 @@ import CrmExtras from "./pages/CrmExtras";
 import CrmConfiguracoes from "./pages/CrmConfiguracoes";
 import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
 import CrmCampanhas from "./pages/CrmCampanhas";
+import InstagramAuthCallback from "./pages/InstagramAuthCallback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Login />} />
+            <Route path="/auth/instagram-callback" element={<InstagramAuthCallback />} />
             <Route
               element={
                 <ProtectedRoute>
