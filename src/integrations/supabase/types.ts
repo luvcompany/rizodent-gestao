@@ -1397,6 +1397,92 @@ export type Database = {
           },
         ]
       }
+      instagram_accounts: {
+        Row: {
+          created_at: string
+          id: string
+          instagram_account_id: string | null
+          is_active: boolean
+          long_lived_token_expires_at: string | null
+          name: string | null
+          page_access_token: string | null
+          page_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instagram_account_id?: string | null
+          is_active?: boolean
+          long_lived_token_expires_at?: string | null
+          name?: string | null
+          page_access_token?: string | null
+          page_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instagram_account_id?: string | null
+          is_active?: boolean
+          long_lived_token_expires_at?: string | null
+          name?: string | null
+          page_access_token?: string | null
+          page_id?: string | null
+        }
+        Relationships: []
+      }
+      instagram_messages: {
+        Row: {
+          comment_id: string | null
+          created_at: string
+          id: string
+          instagram_account_id: string | null
+          is_outbound: boolean
+          is_read: boolean
+          lead_id: string | null
+          message_text: string | null
+          message_type: string | null
+          post_id: string | null
+          sender_id: string | null
+          sender_name: string | null
+        }
+        Insert: {
+          comment_id?: string | null
+          created_at?: string
+          id?: string
+          instagram_account_id?: string | null
+          is_outbound?: boolean
+          is_read?: boolean
+          lead_id?: string | null
+          message_text?: string | null
+          message_type?: string | null
+          post_id?: string | null
+          sender_id?: string | null
+          sender_name?: string | null
+        }
+        Update: {
+          comment_id?: string | null
+          created_at?: string
+          id?: string
+          instagram_account_id?: string | null
+          is_outbound?: boolean
+          is_read?: boolean
+          lead_id?: string | null
+          message_text?: string | null
+          message_type?: string | null
+          post_id?: string | null
+          sender_id?: string | null
+          sender_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integrations: {
         Row: {
           config: Json | null
