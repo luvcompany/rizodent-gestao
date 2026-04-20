@@ -90,7 +90,34 @@ export default function InstagramIntegrationSection() {
       url.searchParams.set("response_type", "code");
       url.searchParams.set("auth_type", "rerequest");
       url.searchParams.set("state", userId);
-      window.location.href = url.toString();
+      const oauthUrl = url.toString();
+
+      // Abrir popup centralizado
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      const popup = window.open(
+        oauthUrl,
+        "facebook-oauth",
+        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes`
+      );
+
+      if (!popup) {
+        toast.error("Popup bloqueado. Permitir popups para conectar com Facebook.");
+        setConnecting(false);
+        return;
+      }
+
+      // Verificar quando o popup fechar
+      const checkPopup = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkPopup);
+          // Recarregar as contas conectadas
+          load();
+          setConnecting(false);
+        }
+      }, 500);
     } catch (e) {
       toast.error("Erro ao iniciar conexão com o Facebook");
       setConnecting(false);
