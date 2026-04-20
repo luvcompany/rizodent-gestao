@@ -8,16 +8,17 @@ interface ChannelBadgeIconProps {
 }
 
 export default function ChannelBadgeIcon({ source, size = 16, className = "" }: ChannelBadgeIconProps) {
-  // Always show WhatsApp as the channel icon since WhatsApp is the active integration.
-  // The source field indicates ad origin (facebook_ad, instagram_ad), not the messaging channel.
-  const logo = whatsappLogo;
+  const s = (source || "").toLowerCase();
+  const isInstagram = s.includes("instagram") && !s.includes("instagram_ad");
+  const logo = isInstagram ? instagramLogo : whatsappLogo;
+  const alt = isInstagram ? "Instagram" : "WhatsApp";
 
   if (!logo) return null;
 
   return (
     <img
       src={logo}
-      alt="WhatsApp"
+      alt={alt}
       width={size}
       height={size}
       loading="lazy"

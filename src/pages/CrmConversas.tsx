@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
@@ -60,6 +60,8 @@ type LeadConversation = {
   paciente_id?: string | null;
   cidade?: string | null;
   servico_interesse?: string | null;
+  instagram_username?: string | null;
+  instagram_profile_pic_url?: string | null;
 };
 
 // Global cache for leads list — survives component remounts
@@ -88,7 +90,15 @@ const SidePanelFallback = () => (
     <div className="h-24 rounded-lg bg-secondary/40 animate-pulse" />
   </div>
 );
-function WhatsAppConversations() {
+const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+
+interface ConversationsViewProps {
+  pipelineFilter?: string;          // include only this pipeline
+  excludePipelines?: string[];      // exclude these pipelines
+  channel?: "whatsapp" | "instagram";
+}
+
+function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp" }: ConversationsViewProps = {}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [leads, setLeads] = useState<LeadConversation[]>(() => leadsListCache.leads || []);
@@ -204,7 +214,7 @@ function WhatsAppConversations() {
       (async () => {
         const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
           supabase.from("crm_leads")
-            .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse")
+          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url")
             .order("last_message_at", { ascending: false, nullsFirst: false })
             .limit(500),
           supabase.from("profiles").select("id, nome"),
@@ -227,7 +237,7 @@ function WhatsAppConversations() {
     const fetchLeads = async () => {
       const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
         supabase.from("crm_leads")
-          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse")
+          .select("id, name, phone, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url")
           .order("last_message_at", { ascending: false, nullsFirst: false })
           .limit(500),
         supabase.from("profiles").select("id, nome"),
@@ -394,6 +404,9 @@ function WhatsAppConversations() {
   // Apply filters
   const filtered = useMemo(() => {
     return leads.filter((l) => {
+      // Tab-level pipeline scoping (WhatsApp vs Instagram)
+      if (pipelineFilter && l.pipeline_id !== pipelineFilter) return false;
+      if (excludePipelines && excludePipelines.includes(l.pipeline_id)) return false;
       // Filter by assigned user - skip when drill-down filter is active
       const hasUrlFilters = urlGhost || urlAppointmentStatus || urlInactiveDays || searchParams.get("assigned_to") || searchParams.get("stage_id") || searchParams.get("pipeline");
       if (!hasUrlFilters && user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
@@ -482,7 +495,7 @@ function WhatsAppConversations() {
       }
       return true;
     });
-  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines]);
 
   // Sorting
   const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
@@ -618,6 +631,9 @@ function WhatsAppConversations() {
                         >
                           <div className="relative flex-shrink-0 mt-0.5">
                             <Avatar className="h-9 w-9">
+                              {lead.instagram_profile_pic_url && (
+                                <AvatarImage src={lead.instagram_profile_pic_url} alt={lead.name} />
+                              )}
                               <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
                             </Avatar>
                             <div className="absolute -bottom-0.5 -left-0.5">
@@ -702,6 +718,9 @@ function WhatsAppConversations() {
                 </Button>
                 <div className="relative">
                   <Avatar className="h-9 w-9">
+                    {selectedLead.instagram_profile_pic_url && (
+                      <AvatarImage src={selectedLead.instagram_profile_pic_url} alt={selectedLead.name} />
+                    )}
                     <AvatarFallback className="bg-primary/20 text-primary font-semibold text-sm">
                       {selectedLead.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
@@ -713,7 +732,11 @@ function WhatsAppConversations() {
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-foreground text-sm truncate">{selectedLead.name}</div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    {selectedLead.phone && <span>{selectedLead.phone}</span>}
+                    {selectedLead.instagram_username ? (
+                      <span>@{selectedLead.instagram_username}</span>
+                    ) : selectedLead.phone ? (
+                      <span>{selectedLead.phone}</span>
+                    ) : null}
                     {currentStage && (
                       <span className="flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentStage.color }} />
@@ -813,7 +836,7 @@ function WhatsAppConversations() {
                 replyTo={chat.replyTo}
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
-                channel={selectedLead.pipeline_id === "c2d3e4f5-0001-4000-8000-000000000002" ? "instagram" : "whatsapp"}
+                channel={channel === "instagram" || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp"}
               />
 
               {/* Active Bot Badge */}
@@ -857,13 +880,20 @@ function WhatsAppConversations() {
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center gap-3 mb-3">
                     <Avatar className="h-12 w-12">
+                      {selectedLead.instagram_profile_pic_url && (
+                        <AvatarImage src={selectedLead.instagram_profile_pic_url} alt={selectedLead.name} />
+                      )}
                       <AvatarFallback className="bg-primary/20 text-primary text-lg font-bold">
                         {selectedLead.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <h2 className="font-bold text-foreground text-sm">{selectedLead.name}</h2>
-                      <p className="text-xs text-muted-foreground">{selectedLead.phone || "Sem telefone"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedLead.instagram_username
+                          ? `@${selectedLead.instagram_username}`
+                          : selectedLead.phone || "Sem telefone"}
+                      </p>
                     </div>
                   </div>
 
@@ -1028,7 +1058,6 @@ function WhatsAppConversations() {
 }
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import InstagramConversations from "@/components/chat/InstagramConversations";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 
 export default function CrmConversas() {
@@ -1048,10 +1077,10 @@ export default function CrmConversas() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="whatsapp" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <WhatsAppConversations />
+          <WhatsAppConversations excludePipelines={["c2d3e4f5-0001-4000-8000-000000000002"]} channel="whatsapp" />
         </TabsContent>
         <TabsContent value="instagram" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <InstagramConversations />
+          <WhatsAppConversations pipelineFilter="c2d3e4f5-0001-4000-8000-000000000002" channel="instagram" />
         </TabsContent>
       </Tabs>
     </div>
