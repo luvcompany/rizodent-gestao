@@ -113,6 +113,23 @@ Deno.serve(async (req) => {
 
       if (error) console.error("[oauth-callback] upsert error", error);
       else upserted.push(data);
+
+      // Subscribe the Page to webhook fields so Instagram events are delivered
+      try {
+        const subFields = "messages,messaging_postbacks,message_reactions,messaging_seen,comments,mention";
+        const subResp = await fetch(`${GRAPH}/${pageId}/subscribed_apps`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            subscribed_fields: subFields,
+            access_token: pageToken,
+          }),
+        });
+        const subData = await subResp.json();
+        console.log(`[oauth-callback] subscribed_apps page=${pageId} ok=${subResp.ok}`, subData);
+      } catch (e) {
+        console.error(`[oauth-callback] subscribed_apps failed page=${pageId}`, e);
+      }
     }
 
     console.log(`[oauth-callback] ${upserted.length} contas conectadas (state=${state})`);
