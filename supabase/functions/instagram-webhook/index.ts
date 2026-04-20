@@ -5,6 +5,40 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature-256",
 };
 
+const GRAPH_VERSION = "v25.0";
+
+async function enrichSender(
+  supabase: ReturnType<typeof createClient>,
+  messageId: string,
+  instagramAccountId: string,
+  senderId: string,
+) {
+  try {
+    const { data: account } = await supabase
+      .from("instagram_accounts")
+      .select("page_access_token")
+      .eq("instagram_account_id", instagramAccountId)
+      .maybeSingle();
+    const token = (account as { page_access_token?: string } | null)?.page_access_token;
+    if (!token || !senderId) return;
+    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${senderId}?fields=name,profile_pic&access_token=${encodeURIComponent(token)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) {
+      console.warn("[ig-webhook] enrichSender API error:", data);
+      return;
+    }
+    await supabase
+      .from("instagram_messages")
+      .update({
+        sender_name: data.name ?? null,
+        sender_profile_pic: data.profile_pic ?? null,
+      })
+      .eq("id", messageId);
+  } catch (e) {
+    console.warn("[ig-webhook] enrichSender exception:", e);
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -26,32 +60,22 @@ Deno.serve(async (req) => {
     return new Response("Forbidden", { status: 403, headers: corsHeaders });
   }
 
-  // POST: receive events
   if (req.method === "POST") {
     try {
-      // Ler o body como texto RAW primeiro - obrigatório para validar assinatura
       const rawBody = await req.text();
-
-      // Verificar assinatura do Meta
       const signature = req.headers.get("x-hub-signature-256") ?? "";
       const secret = Deno.env.get("INSTAGRAM_APP_SECRET")
         ?? Deno.env.get("META_APP_SECRET")
         ?? "";
 
       const encoder = new TextEncoder();
-      const keyData = encoder.encode(secret);
-      const msgData = encoder.encode(rawBody);
-
       const cryptoKey = await crypto.subtle.importKey(
-        "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+        "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
       );
-
-      const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
-
+      const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(rawBody));
       const computedHex = Array.from(new Uint8Array(signatureBuffer))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-
       const computedSignature = `sha256=${computedHex}`;
 
       console.log("[ig-webhook] signature received:", signature);
@@ -62,11 +86,10 @@ Deno.serve(async (req) => {
         return new Response("Forbidden", { status: 403 });
       }
 
-      // Só aqui fazer o parse do JSON
       const payload = JSON.parse(rawBody);
-
       console.log("[ig-webhook] payload received:", JSON.stringify(payload));
       console.log("[ig-webhook] rawBody preview:", rawBody.substring(0, 50));
+
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -75,54 +98,76 @@ Deno.serve(async (req) => {
       for (const entry of payload.entry ?? []) {
         const accountId = String(entry.id ?? "");
 
-        // Messaging events (DMs)
         for (const m of entry.messaging ?? []) {
           if (!m.message || m.message.is_echo) continue;
-          await supabase.from("instagram_messages").insert({
-            instagram_account_id: accountId,
-            sender_id: String(m.sender?.id ?? ""),
-            sender_name: m.sender?.name ?? null,
-            message_text: m.message?.text ?? null,
-            message_type: "dm",
-            post_id: null,
-            comment_id: null,
-            is_read: false,
-            is_outbound: false,
-            lead_id: null,
-          });
-        }
-
-        // Changes (comments / messages field)
-        for (const change of entry.changes ?? []) {
-          const field = change.field;
-          const v = change.value ?? {};
-
-          if (field === "messages") {
-            await supabase.from("instagram_messages").insert({
+          const senderId = String(m.sender?.id ?? "");
+          const { data: inserted } = await supabase
+            .from("instagram_messages")
+            .insert({
               instagram_account_id: accountId,
-              sender_id: String(v.sender?.id ?? v.from?.id ?? ""),
-              sender_name: v.sender?.name ?? v.from?.username ?? null,
-              message_text: v.message?.text ?? v.text ?? null,
+              sender_id: senderId,
+              sender_name: m.sender?.name ?? null,
+              message_text: m.message?.text ?? null,
               message_type: "dm",
               post_id: null,
               comment_id: null,
               is_read: false,
               is_outbound: false,
               lead_id: null,
-            });
+            })
+            .select("id")
+            .maybeSingle();
+          if (inserted?.id && senderId) {
+            await enrichSender(supabase, inserted.id, accountId, senderId);
+          }
+        }
+
+        for (const change of entry.changes ?? []) {
+          const field = change.field;
+          const v = change.value ?? {};
+
+          if (field === "messages") {
+            const senderId = String(v.sender?.id ?? v.from?.id ?? "");
+            const { data: inserted } = await supabase
+              .from("instagram_messages")
+              .insert({
+                instagram_account_id: accountId,
+                sender_id: senderId,
+                sender_name: v.sender?.name ?? v.from?.username ?? null,
+                message_text: v.message?.text ?? v.text ?? null,
+                message_type: "dm",
+                post_id: null,
+                comment_id: null,
+                is_read: false,
+                is_outbound: false,
+                lead_id: null,
+              })
+              .select("id")
+              .maybeSingle();
+            if (inserted?.id && senderId) {
+              await enrichSender(supabase, inserted.id, accountId, senderId);
+            }
           } else if (field === "comments") {
-            await supabase.from("instagram_messages").insert({
-              instagram_account_id: accountId,
-              sender_id: String(v.from?.id ?? ""),
-              sender_name: v.from?.username ?? v.from?.name ?? null,
-              message_text: v.text ?? null,
-              message_type: "comment",
-              post_id: v.media?.id ?? v.post_id ?? null,
-              comment_id: v.id ?? null,
-              is_read: false,
-              is_outbound: false,
-              lead_id: null,
-            });
+            const senderId = String(v.from?.id ?? "");
+            const { data: inserted } = await supabase
+              .from("instagram_messages")
+              .insert({
+                instagram_account_id: accountId,
+                sender_id: senderId,
+                sender_name: v.from?.username ?? v.from?.name ?? null,
+                message_text: v.text ?? null,
+                message_type: "comment",
+                post_id: v.media?.id ?? v.post_id ?? null,
+                comment_id: v.id ?? null,
+                is_read: false,
+                is_outbound: false,
+                lead_id: null,
+              })
+              .select("id")
+              .maybeSingle();
+            if (inserted?.id && senderId) {
+              await enrichSender(supabase, inserted.id, accountId, senderId);
+            }
           }
         }
       }
