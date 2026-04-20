@@ -1059,6 +1059,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
+import InstagramComments from "@/components/chat/InstagramComments";
 
 export default function CrmConversas() {
   return (
@@ -1080,7 +1081,22 @@ export default function CrmConversas() {
           <WhatsAppConversations excludePipelines={["c2d3e4f5-0001-4000-8000-000000000002"]} channel="whatsapp" />
         </TabsContent>
         <TabsContent value="instagram" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <WhatsAppConversations pipelineFilter="c2d3e4f5-0001-4000-8000-000000000002" channel="instagram" />
+          <Tabs defaultValue="direct" className="flex flex-col flex-1 overflow-hidden">
+            <TabsList className="flex-shrink-0 mx-3 mt-2 self-start h-8">
+              <TabsTrigger value="direct" className="gap-1 text-xs h-7">
+                <MessageSquare size={13} /> Direct
+              </TabsTrigger>
+              <TabsTrigger value="comments" className="gap-1 text-xs h-7">
+                <Star size={13} /> Comentários
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="direct" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
+              <WhatsAppConversations pipelineFilter="c2d3e4f5-0001-4000-8000-000000000002" channel="instagram" />
+            </TabsContent>
+            <TabsContent value="comments" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
+              <InstagramComments />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>
