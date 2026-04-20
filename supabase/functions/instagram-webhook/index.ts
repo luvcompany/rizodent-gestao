@@ -45,17 +45,24 @@ Deno.serve(async (req) => {
   // POST: receive events
   if (req.method === "POST") {
     try {
+      // CRITICAL: read body as raw text BEFORE any JSON.parse to keep HMAC valid
       const rawBody = await req.text();
       const signature = req.headers.get("x-hub-signature-256");
       const appSecret = Deno.env.get("META_APP_SECRET")!;
+      const skipCheck = (Deno.env.get("INSTAGRAM_SKIP_SIGNATURE_CHECK") ?? "").toLowerCase() === "true";
 
-      const valid = await verifySignature(rawBody, signature, appSecret);
-      if (!valid) {
-        console.warn("[ig-webhook] invalid signature");
-        return new Response("ok", { status: 200, headers: corsHeaders });
+      if (!skipCheck) {
+        const valid = await verifySignature(rawBody, signature, appSecret);
+        if (!valid) {
+          console.warn("[ig-webhook] invalid signature");
+          return new Response("Forbidden", { status: 403, headers: corsHeaders });
+        }
+      } else {
+        console.log("[ig-webhook] signature check skipped (INSTAGRAM_SKIP_SIGNATURE_CHECK=true)");
       }
 
       const payload = JSON.parse(rawBody);
+      console.log("[ig-webhook] payload received", JSON.stringify(payload).slice(0, 800));
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
