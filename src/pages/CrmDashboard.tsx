@@ -228,8 +228,8 @@ export default function CrmDashboard() {
         </Card>
       </div>
 
-      {/* 3 Columns: Tarefas | Agendamentos do dia | Próximos agendamentos */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+      {/* 4 Columns: Tarefas | Confirmações | Agendamentos do dia | Próximos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0">
         {/* Column 1: Tasks */}
         <Card className="flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
