@@ -125,7 +125,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Invalid JSON body" }, 400);
   }
 
-  const { lead_id, message, message_type, comment_id, media_type, media_url } = body ?? {};
+  const { lead_id, message, message_type, comment_id, media_type, media_url, post_id, thread_sender_id } = body ?? {};
   let { instagram_account_id, recipient_id } = body ?? {};
 
   if (!message_type) {
