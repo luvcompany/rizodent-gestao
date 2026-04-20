@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
-import InstagramIntegrationSection from "@/components/integrations/InstagramIntegrationSection";
+
 
 type WhatsAppConfig = {
   token: string;
