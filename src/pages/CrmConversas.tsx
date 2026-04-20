@@ -406,7 +406,39 @@ export default function CrmConversas() {
           l.name.toLowerCase().includes(normalizedSearch) ||
           phoneRaw.toLowerCase().includes(normalizedSearch) ||
           (l.last_message || "").toLowerCase().includes(normalizedSearch);
-        const matchesPhone = searchDigits.length >= 3 && phoneDigits.includes(searchDigits);
+
+        // Build phone variants to handle BR mobile 9th-digit differences and country code
+        const phoneVariants = new Set<string>();
+        if (phoneDigits) {
+          phoneVariants.add(phoneDigits);
+          // strip leading 55
+          const noCountry = phoneDigits.startsWith("55") ? phoneDigits.slice(2) : phoneDigits;
+          phoneVariants.add(noCountry);
+          // add 9 after DDD if 10 digits (DDD + 8) -> 11 digits
+          if (noCountry.length === 10) phoneVariants.add(noCountry.slice(0, 2) + "9" + noCountry.slice(2));
+          // remove 9 after DDD if 11 digits
+          if (noCountry.length === 11 && noCountry[2] === "9") phoneVariants.add(noCountry.slice(0, 2) + noCountry.slice(3));
+        }
+
+        // Build search variants similarly
+        const searchVariants = new Set<string>();
+        if (searchDigits.length >= 3) {
+          searchVariants.add(searchDigits);
+          const sNoCountry = searchDigits.startsWith("55") && searchDigits.length >= 12 ? searchDigits.slice(2) : searchDigits;
+          searchVariants.add(sNoCountry);
+          if (sNoCountry.length === 11 && sNoCountry[2] === "9") searchVariants.add(sNoCountry.slice(0, 2) + sNoCountry.slice(3));
+          if (sNoCountry.length === 10) searchVariants.add(sNoCountry.slice(0, 2) + "9" + sNoCountry.slice(2));
+        }
+
+        let matchesPhone = false;
+        if (searchVariants.size > 0 && phoneVariants.size > 0) {
+          for (const sv of searchVariants) {
+            for (const pv of phoneVariants) {
+              if (pv.includes(sv)) { matchesPhone = true; break; }
+            }
+            if (matchesPhone) break;
+          }
+        }
         if (!matchesText && !matchesPhone) return false;
       }
       if (filters.dateFilter.preset !== "all") {
