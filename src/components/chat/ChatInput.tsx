@@ -409,7 +409,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       onMessageError?.(tempId);
       toast.error(err?.message || "Erro ao enviar áudio");
     }
-  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess]);
+  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName]);
 
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
