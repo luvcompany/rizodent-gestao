@@ -268,7 +268,7 @@ export default function InstagramComments() {
       setTimeout(loadAll, 800);
     } catch (e: any) {
       console.error("[InstagramComments] reply error", e);
-      toast.error(e?.message ?? "Falha ao enviar resposta");
+      toast.error(e?.context?.user_message ?? e?.message ?? "Falha ao enviar resposta");
     } finally {
       setSending(false);
     }

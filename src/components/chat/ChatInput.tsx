@@ -22,6 +22,12 @@ import SlashCommandMenu from "./SlashCommandMenu";
 import AudioRecorderComposer from "./AudioRecorderComposer";
 import EmojiPickerButton from "./EmojiPickerButton";
 
+const getInvokeErrorMessage = (data: any, error: any) => {
+  if (data?.user_message) return data.user_message;
+  if (data?.error) return data.error;
+  return error?.message || "Erro ao enviar mensagem";
+};
+
 type ReplyMessage = {
   id: string;
   whatsapp_message_id?: string | null;
@@ -219,7 +225,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             } else {
               onMessageError?.(tempId);
             }
-            toast.error(data?.error || error?.message || "Erro ao enviar mensagem");
+            toast.error(getInvokeErrorMessage(data, error));
           } else {
             onMessageSuccess?.(tempId, data?.message);
           }
@@ -260,7 +266,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         } else {
           onMessageError?.(tempId);
         }
-        toast.error(data?.error || error?.message || "Erro ao enviar mensagem");
+        toast.error(getInvokeErrorMessage(data, error));
       } else {
         onMessageSuccess?.(tempId, data?.message);
       }
