@@ -227,12 +227,14 @@ export default function InstagramConversations() {
             ) : (
               <>
                 <div className="flex items-center gap-3 p-4 border-b border-border bg-card">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white"
-                    style={{ backgroundColor: IG_PURPLE }}
-                  >
-                    <Instagram size={18} />
-                  </div>
+                  <Avatar className="w-10 h-10">
+                    {activeConversation.sender_profile_pic && (
+                      <AvatarImage src={activeConversation.sender_profile_pic} alt={activeConversation.sender_name ?? ""} />
+                    )}
+                    <AvatarFallback className="text-white" style={{ backgroundColor: IG_PURPLE }}>
+                      <Instagram size={18} />
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-foreground truncate">
                       {activeConversation.sender_name || activeConversation.sender_id}
