@@ -407,17 +407,27 @@ export default function CrmConversas() {
           phoneRaw.toLowerCase().includes(normalizedSearch) ||
           (l.last_message || "").toLowerCase().includes(normalizedSearch);
 
-        // Build phone variants to handle BR mobile 9th-digit differences and country code
+        // Build phone variants to handle BR mobile 9th-digit differences, country code, and local numbers without DDD
         const phoneVariants = new Set<string>();
         if (phoneDigits) {
           phoneVariants.add(phoneDigits);
-          // strip leading 55
           const noCountry = phoneDigits.startsWith("55") ? phoneDigits.slice(2) : phoneDigits;
           phoneVariants.add(noCountry);
-          // add 9 after DDD if 10 digits (DDD + 8) -> 11 digits
-          if (noCountry.length === 10) phoneVariants.add(noCountry.slice(0, 2) + "9" + noCountry.slice(2));
-          // remove 9 after DDD if 11 digits
-          if (noCountry.length === 11 && noCountry[2] === "9") phoneVariants.add(noCountry.slice(0, 2) + noCountry.slice(3));
+
+          // Local number without DDD
+          if (noCountry.length >= 10) phoneVariants.add(noCountry.slice(2));
+
+          // Add/remove 9 after DDD
+          if (noCountry.length === 10) {
+            const withNinth = noCountry.slice(0, 2) + "9" + noCountry.slice(2);
+            phoneVariants.add(withNinth);
+            phoneVariants.add(withNinth.slice(2));
+          }
+          if (noCountry.length === 11 && noCountry[2] === "9") {
+            const withoutNinth = noCountry.slice(0, 2) + noCountry.slice(3);
+            phoneVariants.add(withoutNinth);
+            phoneVariants.add(withoutNinth.slice(2));
+          }
         }
 
         // Build search variants similarly
