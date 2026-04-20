@@ -52,16 +52,12 @@ export default function InstagramIntegrationSection() {
     const accounts = params.get("accounts");
 
     if (status === "connected") {
-      toast.success(`${accounts ?? 0} conta(s) conectada(s) com sucesso`);
+      toast.success(`${accounts ?? 0} conta(s) do Instagram conectada(s) com sucesso!`);
     } else if (error) {
       const map: Record<string, string> = {
-        no_pages_found: "Nenhuma página encontrada. Verifique se sua conta Facebook administra Páginas vinculadas ao Instagram",
-        missing_permissions: "Permissões insuficientes. Tente conectar novamente",
-        token_exchange_failed: "Erro na autenticação. Tente novamente",
-        long_token_failed: "Erro ao gerar token de longa duração. Tente novamente",
-        pages_fetch_failed: "Erro ao buscar páginas do Facebook",
-        missing_code: "Autorização cancelada ou inválida",
-        fatal_error: "Erro inesperado. Tente novamente",
+        no_pages_found: "Nenhuma página encontrada. Verifique se sua conta Facebook administra Páginas vinculadas ao Instagram.",
+        missing_permissions: "Permissões insuficientes. Tente conectar novamente.",
+        token_exchange_failed: "Erro na autenticação. Tente novamente.",
       };
       toast.error(map[error] ?? `Erro: ${error}`);
     }

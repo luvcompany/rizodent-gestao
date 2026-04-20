@@ -6,30 +6,30 @@ const corsHeaders = {
 };
 
 const GRAPH = "https://graph.facebook.com/v25.0";
+const CRM_BASE = "https://rizodent-gestao.lovable.app";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // FRONTEND_URL já vem no formato: https://rizodent-gestao.lovable.app/crm/integracoes
-  const baseUrl = Deno.env.get("FRONTEND_URL") ?? "";
   const buildRedirect = (params: Record<string, string>) => {
-    const sep = baseUrl.includes("?") ? "&" : "?";
     const qs = new URLSearchParams(params).toString();
-    return `${baseUrl}${sep}${qs}`;
+    return `${CRM_BASE}/auth/instagram-callback?${qs}`;
   };
+
+  let state = "";
 
   try {
     // STEP 1 - Receber o code
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
+    state = url.searchParams.get("state") ?? "";
     console.log("[oauth] Step 1 - Code received:", code?.substring(0, 10), "state:", state);
 
     if (!code) {
       console.error("[oauth] Step 1 - Missing code");
-      return Response.redirect(buildRedirect({ error: "missing_code" }), 302);
+      return Response.redirect(buildRedirect({ error: "missing_permissions", state }), 302);
     }
 
     const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     if (shortTokenData.error) {
       console.error("[oauth] Step 2 error:", JSON.stringify(shortTokenData.error));
-      return Response.redirect(buildRedirect({ error: "token_exchange_failed" }), 302);
+      return Response.redirect(buildRedirect({ error: "token_exchange_failed", state }), 302);
     }
     const shortToken = shortTokenData.access_token;
 
@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
 
     if (longTokenData.error) {
       console.error("[oauth] Step 3 error:", JSON.stringify(longTokenData.error));
-      return Response.redirect(buildRedirect({ error: "long_token_failed" }), 302);
+      return Response.redirect(buildRedirect({ error: "token_exchange_failed", state }), 302);
     }
     const longToken = longTokenData.access_token;
 
@@ -79,12 +79,12 @@ Deno.serve(async (req) => {
 
     if (pagesData.error) {
       console.error("[oauth] Step 4 error:", JSON.stringify(pagesData.error));
-      return Response.redirect(buildRedirect({ error: "pages_fetch_failed" }), 302);
+      return Response.redirect(buildRedirect({ error: "no_pages_found", state }), 302);
     }
 
     if (!pagesData.data || pagesData.data.length === 0) {
       console.warn("[oauth] Step 4 - No pages found");
-      return Response.redirect(buildRedirect({ error: "no_pages_found" }), 302);
+      return Response.redirect(buildRedirect({ error: "no_pages_found", state }), 302);
     }
 
     // STEP 5 - Salvar contas Instagram vinculadas
@@ -129,11 +129,11 @@ Deno.serve(async (req) => {
 
     console.log("[oauth] Done -", savedCount, "accounts saved");
     return Response.redirect(
-      buildRedirect({ instagram: "connected", accounts: String(savedCount) }),
+      buildRedirect({ instagram: "connected", accounts: String(savedCount), state }),
       302,
     );
   } catch (err) {
     console.error("[oauth] Fatal error:", err);
-    return Response.redirect(buildRedirect({ error: "fatal_error" }), 302);
+    return Response.redirect(buildRedirect({ error: "token_exchange_failed", state }), 302);
   }
 });
