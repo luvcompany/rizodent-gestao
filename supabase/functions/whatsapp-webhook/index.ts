@@ -654,6 +654,18 @@ Deno.serve(async (req) => {
                 if (adSourceId) updates.ad_id = adSourceId;
                 if (adAccountId) updates.ad_account_id = adAccountId;
                 if (adAccountName) updates.ad_account_name = adAccountName;
+                // Preencher cidade automaticamente apenas se o lead ainda não tiver cidade definida (preserva alteração manual)
+                const inferredCidade = inferCidadeFromAdAccount(adAccountName);
+                if (inferredCidade) {
+                  const { data: leadCidadeRow } = await supabase
+                    .from("crm_leads")
+                    .select("cidade")
+                    .eq("id", lead.id)
+                    .maybeSingle();
+                  if (!leadCidadeRow?.cidade) {
+                    updates.cidade = inferredCidade;
+                  }
+                }
                 if (!lead.source || lead.source === "whatsapp") updates.source = "facebook_ad";
               }
               if (Object.keys(updates).length > 0) {
