@@ -397,13 +397,38 @@ Deno.serve(async (req) => {
 
             // Enrich ad data from Meta Graph API if we have an ad ID but missing image/link
             if (referral && adSourceId) {
-              const metaToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
+              // Coleta todos os tokens disponíveis (integração atual + outras integrações + env)
+              // Necessário porque nem todo token tem permissão `ads_read` para buscar dados da conta de anúncios.
+              const tokens: string[] = [];
+              const primary = (matchedIntegration?.config as any)?.access_token;
+              if (primary) tokens.push(primary);
               try {
-                console.log(`[AD-ENRICHMENT] Fetching ad creative for ad_id: ${adSourceId}`);
-                const adRes = await fetch(
-                  `https://graph.facebook.com/v25.0/${adSourceId}?fields=id,name,permalink_url,account_id,creative{thumbnail_url,image_url,object_story_spec}&access_token=${metaToken}`
-                );
-                if (adRes.ok) {
+                const { data: integs } = await supabase
+                  .from("integrations")
+                  .select("config")
+                  .eq("key", "whatsapp")
+                  .eq("status", "connected");
+                if (integs) {
+                  for (const it of integs) {
+                    const t = (it.config as any)?.access_token;
+                    if (t && !tokens.includes(t)) tokens.push(t);
+                  }
+                }
+              } catch (_) { /* skip */ }
+              const envTok = Deno.env.get("WHATSAPP_TOKEN") || "";
+              if (envTok && !tokens.includes(envTok)) tokens.push(envTok);
+
+              for (const metaToken of tokens) {
+                try {
+                  console.log(`[AD-ENRICHMENT] Fetching ad ${adSourceId} with token ...${metaToken.slice(-6)}`);
+                  const adRes = await fetch(
+                    `https://graph.facebook.com/v25.0/${adSourceId}?fields=id,name,permalink_url,account_id,creative{thumbnail_url,image_url,object_story_spec}&access_token=${metaToken}`
+                  );
+                  if (!adRes.ok) {
+                    const errText = await adRes.text();
+                    console.log(`[AD-ENRICHMENT] Failed ${adSourceId} with ...${metaToken.slice(-6)}: ${adRes.status} - ${errText.slice(0, 150)}`);
+                    continue;
+                  }
                   const adData = await adRes.json();
                   console.log(`[AD-ENRICHMENT] Ad data received:`, JSON.stringify(adData));
 
@@ -418,7 +443,7 @@ Deno.serve(async (req) => {
                         || creative.object_story_spec?.link_data?.picture
                         || creative.object_story_spec?.link_data?.image_url
                         || creative.object_story_spec?.video_data?.image_url
-                        || creative.object_story_spec?.video_data?.call_to_action?.value?.link // video thumbnail
+                        || creative.object_story_spec?.video_data?.call_to_action?.value?.link
                         || null;
                     }
                     if (!adSourceUrl) {
@@ -434,10 +459,8 @@ Deno.serve(async (req) => {
                       adHeadline = creative.object_story_spec?.link_data?.name || null;
                     }
                   }
-                  // Extract account_id from ad data
                   if (adData.account_id) {
                     adAccountId = adData.account_id;
-                    // Fetch account name
                     try {
                       const acctRes = await fetch(
                         `https://graph.facebook.com/v25.0/act_${adData.account_id}?fields=name&access_token=${metaToken}`
@@ -452,33 +475,32 @@ Deno.serve(async (req) => {
                     } catch (_) { /* skip */ }
                   }
 
-                  console.log(`[AD-ENRICHMENT] After creative: image=${adImageUrl}, link=${adSourceUrl}`);
-                } else {
-                  const errText = await adRes.text();
-                  console.log(`[AD-ENRICHMENT] Failed to fetch ad ${adSourceId}: ${adRes.status} - ${errText}`);
+                  console.log(`[AD-ENRICHMENT] After creative: image=${adImageUrl}, link=${adSourceUrl}, account=${adAccountName}`);
+                  break; // sucesso, sai do loop de tokens
+                } catch (adErr: any) {
+                  console.log(`[AD-ENRICHMENT] Error: ${adErr.message}`);
                 }
-              } catch (adErr: any) {
-                console.log(`[AD-ENRICHMENT] Error enriching ad data: ${adErr.message}`);
               }
 
+              const fallbackToken = tokens[0] || "";
+
               // Fallback: fetch adcreatives directly for video/carousel ads that don't return image above
-              if (!adImageUrl) {
+              if (!adImageUrl && fallbackToken) {
                 try {
                   console.log(`[AD-ENRICHMENT] Trying adcreatives endpoint for ad_id: ${adSourceId}`);
                   const crRes = await fetch(
-                    `https://graph.facebook.com/v25.0/${adSourceId}/adcreatives?fields=thumbnail_url,image_url,object_story_id,effective_object_story_id&access_token=${metaToken}`
+                    `https://graph.facebook.com/v25.0/${adSourceId}/adcreatives?fields=thumbnail_url,image_url,object_story_id,effective_object_story_id&access_token=${fallbackToken}`
                   );
                   if (crRes.ok) {
                     const crData = await crRes.json();
                     const cr = crData.data?.[0];
                     if (cr) {
                       adImageUrl = cr.image_url || cr.thumbnail_url || null;
-                      // If we have an object_story_id, try to get the post image
                       const storyId = cr.effective_object_story_id || cr.object_story_id;
                       if (!adImageUrl && storyId) {
                         try {
                           const postRes = await fetch(
-                            `https://graph.facebook.com/v25.0/${storyId}?fields=full_picture,picture&access_token=${metaToken}`
+                            `https://graph.facebook.com/v25.0/${storyId}?fields=full_picture,picture&access_token=${fallbackToken}`
                           );
                           if (postRes.ok) {
                             const postData = await postRes.json();
@@ -495,11 +517,11 @@ Deno.serve(async (req) => {
               }
 
               // Final fallback: if source_url is an Instagram post, try oEmbed
-              if (!adImageUrl && adSourceUrl) {
+              if (!adImageUrl && adSourceUrl && fallbackToken) {
                 try {
                   const igMatch = adSourceUrl.match(/instagram\.com\/p\/([^/?]+)/);
                   if (igMatch) {
-                    const oembedRes = await fetch(`https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(adSourceUrl)}&access_token=${metaToken}`);
+                    const oembedRes = await fetch(`https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(adSourceUrl)}&access_token=${fallbackToken}`);
                     if (oembedRes.ok) {
                       const oembedData = await oembedRes.json();
                       adImageUrl = oembedData.thumbnail_url || null;
