@@ -11,9 +11,11 @@ type Lead = {
   id: string; name: string; pipeline_id: string; cidade: string | null;
   source: string | null; nome_anuncio: string | null;
   created_at: string; first_inbound_at: string | null;
+  paciente_id: string | null;
 };
 type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string };
 type Msg = { lead_id: string; direction: string; created_at: string };
+type Pagamento = { paciente_id: string; tipo: string; data_pagamento: string };
 
 const CITIES = ["Vitória da Conquista", "Guanambi", "Itabuna", "Ipiaú"];
 const ORIGENS = ["Anúncio", "WhatsApp Direto", "Indicação", "Orgânico", "Outros"];
@@ -44,6 +46,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
   const [leads, setLeads] = useState<Lead[]>([]);
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
 
   useEffect(() => {
     if (!pipelineId) return;
@@ -53,23 +56,28 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     (async () => {
       const { data: ls } = await supabase
         .from("crm_leads")
-        .select("id,name,pipeline_id,cidade,source,nome_anuncio,created_at,first_inbound_at")
+        .select("id,name,pipeline_id,cidade,source,nome_anuncio,created_at,first_inbound_at,paciente_id")
         .eq("pipeline_id", pipelineId)
         .gte("created_at", range.start.toISOString())
         .lte("created_at", range.end.toISOString())
         .limit(5000);
       const leadIds = (ls || []).map(l => l.id);
-      const [{ data: aps }, { data: ms }] = await Promise.all([
+      const pacIds = (ls || []).map(l => (l as any).paciente_id).filter(Boolean) as string[];
+      const [{ data: aps }, { data: ms }, { data: pgs }] = await Promise.all([
         leadIds.length
           ? supabase.from("crm_appointments").select("id,lead_id,scheduled_date,status").in("lead_id", leadIds).limit(5000)
           : Promise.resolve({ data: [] as Appointment[] }),
         leadIds.length
           ? supabase.from("messages").select("lead_id,direction,created_at").in("lead_id", leadIds).limit(20000)
           : Promise.resolve({ data: [] as Msg[] }),
+        pacIds.length
+          ? supabase.from("pagamentos").select("paciente_id,tipo,data_pagamento").in("paciente_id", pacIds).limit(5000)
+          : Promise.resolve({ data: [] as Pagamento[] }),
       ]);
       setLeads((ls as Lead[]) || []);
       setAppts((aps as Appointment[]) || []);
       setMsgs((ms as Msg[]) || []);
+      setPagamentos((pgs as Pagamento[]) || []);
       setLoading(false);
     })();
   }, [pipelineId, period]);
@@ -86,25 +94,31 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return m;
   }, [leads]);
 
-  // Response rates
+  // Response rates: primeiro outbound APÓS o primeiro inbound (não o primeiro outbound absoluto,
+  // que costuma ser o template inicial enviado antes do lead responder).
   const responseStats = useMemo(() => {
-    const firstOutboundByLead = new Map<string, Date>();
     const firstInboundByLead = new Map<string, Date>();
+    const outboundsByLead = new Map<string, Date[]>();
     msgs.forEach(m => {
       const t = new Date(m.created_at);
-      if (m.direction === "outbound" && (!firstOutboundByLead.get(m.lead_id) || t < firstOutboundByLead.get(m.lead_id)!)) {
-        firstOutboundByLead.set(m.lead_id, t);
-      }
-      if (m.direction === "inbound" && (!firstInboundByLead.get(m.lead_id) || t < firstInboundByLead.get(m.lead_id)!)) {
-        firstInboundByLead.set(m.lead_id, t);
+      if (m.direction === "inbound") {
+        const cur = firstInboundByLead.get(m.lead_id);
+        if (!cur || t < cur) firstInboundByLead.set(m.lead_id, t);
+      } else if (m.direction === "outbound") {
+        if (!outboundsByLead.has(m.lead_id)) outboundsByLead.set(m.lead_id, []);
+        outboundsByLead.get(m.lead_id)!.push(t);
       }
     });
     let in1h = 0, sameDay = 0, in24h = 0, notAnswered = 0, totalAnswered = 0;
     leads.forEach(l => {
       const ib = firstInboundByLead.get(l.id) || (l.first_inbound_at ? new Date(l.first_inbound_at) : null);
-      const ob = firstOutboundByLead.get(l.id);
       if (!ib) { notAnswered++; return; }
-      const after = ob && ob > ib ? ob : null;
+      const obs = outboundsByLead.get(l.id) || [];
+      // primeiro outbound APÓS o primeiro inbound
+      let after: Date | null = null;
+      for (const t of obs) {
+        if (t > ib && (!after || t < after)) after = t;
+      }
       if (!after) { notAnswered++; return; }
       totalAnswered++;
       const diff = after.getTime() - ib.getTime();
@@ -115,61 +129,75 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return { total: leads.length, totalAnswered, in1h, sameDay, in24h, notAnswered };
   }, [leads, msgs]);
 
+  // Pacientes "contratados" reais: têm pagamento (tipo='primeiro' ou qualquer pagamento se não houver tipo).
+  // Cruzamos via paciente_id no lead.
+  const contractedLeadIds = useMemo(() => {
+    const pagantes = new Set<string>();
+    pagamentos.forEach(p => {
+      if (!p.paciente_id) return;
+      // Considera "primeiro" pagamento como conversão (novo contrato).
+      // Se não houver tipo definido, considera qualquer pagamento.
+      if (!p.tipo || p.tipo === "primeiro") pagantes.add(p.paciente_id);
+    });
+    const ids = new Set<string>();
+    leads.forEach(l => {
+      if (l.paciente_id && pagantes.has(l.paciente_id)) ids.add(l.id);
+    });
+    return ids;
+  }, [leads, pagamentos]);
+
   // Funnel
   const funnel = useMemo(() => {
     const totalLeads = leads.length;
     const answered = responseStats.totalAnswered;
     const leadIdsWithAppt = new Set(appts.map(a => a.lead_id));
     const scheduled = leadIdsWithAppt.size;
-    const apptOutcome = appts.filter(a => a.status === "contracted" || a.status === "not_contracted" || a.status === "no_show");
-    const showed = appts.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
+    // Compareceu = appointment com status contracted/not_contracted (desfecho registrado)
+    // OU lead que virou paciente pagante (cruzamento retroativo)
+    const showedLeadIds = new Set<string>();
+    appts.forEach(a => {
+      if (a.status === "contracted" || a.status === "not_contracted") showedLeadIds.add(a.lead_id);
+    });
+    contractedLeadIds.forEach(id => { if (leadIdsWithAppt.has(id)) showedLeadIds.add(id); });
     const noShow = appts.filter(a => a.status === "no_show").length;
-    const contracted = appts.filter(a => a.status === "contracted").length;
+    const showed = showedLeadIds.size;
+    const contracted = contractedLeadIds.size;
+    const apptOutcomeCount = showed + noShow;
     return {
       totalLeads, answered, scheduled, showed, noShow, contracted,
       attendanceRate: pct(showed, showed + noShow),
       leadToAnswered: pct(answered, totalLeads),
       answeredToScheduled: pct(scheduled, answered),
-      scheduledToShowed: pct(showed, apptOutcome.length),
+      scheduledToShowed: pct(showed, apptOutcomeCount),
       showedToContracted: pct(contracted, showed),
       leadToContracted: pct(contracted, totalLeads),
     };
-  }, [leads, appts, responseStats]);
+  }, [leads, appts, responseStats, contractedLeadIds]);
 
   // Ranking by origem
   const ranking = useMemo(() => {
     const byOrigem: Record<string, { leads: number; contracted: number }> = {};
-    const apptsByLead = new Map<string, Appointment[]>();
-    appts.forEach(a => {
-      if (!apptsByLead.has(a.lead_id)) apptsByLead.set(a.lead_id, []);
-      apptsByLead.get(a.lead_id)!.push(a);
-    });
     leads.forEach(l => {
       const o = classifyOrigem(l.source);
       if (!byOrigem[o]) byOrigem[o] = { leads: 0, contracted: 0 };
       byOrigem[o].leads++;
-      if ((apptsByLead.get(l.id) || []).some(a => a.status === "contracted")) byOrigem[o].contracted++;
+      if (contractedLeadIds.has(l.id)) byOrigem[o].contracted++;
     });
     const list = Object.entries(byOrigem)
       .filter(([, v]) => v.leads >= 5)
       .map(([k, v]) => ({ origem: k, leads: v.leads, contracted: v.contracted, rate: v.leads ? v.contracted / v.leads : 0 }))
       .sort((a, b) => b.rate - a.rate);
     return list;
-  }, [leads, appts]);
+  }, [leads, contractedLeadIds]);
 
   // City performance
   const cityPerf = useMemo(() => {
-    const apptsByLead = new Map<string, Appointment[]>();
-    appts.forEach(a => {
-      if (!apptsByLead.has(a.lead_id)) apptsByLead.set(a.lead_id, []);
-      apptsByLead.get(a.lead_id)!.push(a);
-    });
     return CITIES.map(c => {
       const cl = leads.filter(l => l.cidade === c);
-      const contracted = cl.filter(l => (apptsByLead.get(l.id) || []).some(a => a.status === "contracted")).length;
+      const contracted = cl.filter(l => contractedLeadIds.has(l.id)).length;
       return { city: c, leads: cl.length, contracted, rate: cl.length ? contracted / cl.length : 0 };
     }).sort((a, b) => b.rate - a.rate);
-  }, [leads, appts]);
+  }, [leads, contractedLeadIds]);
 
   return (
     <div className="space-y-6">
