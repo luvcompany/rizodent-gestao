@@ -622,6 +622,52 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
+      {/* KPIs do CRM (puxados automaticamente) — abaixo do gráfico de Leads Novos por Dia */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Users size={16} className="text-primary" />
+            CRM — Leads & Agendamentos {cidadeFiltro && <span className="text-xs text-muted-foreground font-normal">({cidadeFiltro})</span>}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">Dados puxados diretamente do CRM no período selecionado</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-blue-500">{crmAdLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Origem anúncio</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-foreground">{crmAgendados}</p>
+              <p className="text-xs text-muted-foreground mt-1">Agendados</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-green-600">{crmCompareceram}</p>
+              <p className="text-xs text-muted-foreground mt-1">Compareceram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-red-500">{crmFaltaram}</p>
+              <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-emerald-600">{pacientesPagantesPeriodo}</p>
+              <p className="text-xs text-muted-foreground mt-1">Novos contratados</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
+              <p className="text-2xl font-bold text-primary">{taxaConversao.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Conversão Lead → Contrato</p>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-3 italic">
+            ✓ Conversão = novos pagantes (1º pagamento) vinculados a leads do CRM ÷ leads do CRM no período. Recorrentes não entram nesta conta. Taxa de presença: {taxaPresenca.toFixed(0)}%.
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Funnel - Atendimentos do Dia */}
       <Card className="gradient-card border-border shadow-card">
         <CardHeader>
