@@ -64,6 +64,8 @@ const Dashboard = () => {
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [crmLeads, setCrmLeads] = useState<any[]>([]);
   const [crmAppointments, setCrmAppointments] = useState<any[]>([]);
+  const [crmStages, setCrmStages] = useState<any[]>([]);
+  const [crmStageHistory, setCrmStageHistory] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
@@ -100,15 +102,17 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }] = await Promise.all([
       supabase.from("clinicas").select("*").eq("ativa", true),
       supabase.from("pagamentos").select("*, clinicas(nome)"),
       supabase.from("tratamentos").select("*, clinicas(nome)"),
       supabase.from("pacientes").select("*"),
       supabase.from("leads_diarios").select("*, clinicas(nome)"),
       (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id, paciente_id").limit(10000),
-      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000)]
+      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id, paciente_id, pipeline_id").limit(10000),
+      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000),
+      supabase.from("crm_stages").select("id, name, pipeline_id"),
+      supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000)]
       );
       setClinicas(cl || []);
       setPagamentos(pg || []);
@@ -118,6 +122,8 @@ const Dashboard = () => {
       setHolidays((hd || []) as Holiday[]);
       setCrmLeads(cLeads || []);
       setCrmAppointments(cAppts || []);
+      setCrmStages(cStages || []);
+      setCrmStageHistory(cHist || []);
       setLoading(false);
     };
     fetchAll();
@@ -238,18 +244,41 @@ const Dashboard = () => {
     const matchCidade = (cid: string | null | undefined) =>
       !cidadeFiltro || (cid || "").toLowerCase().includes(cidadeFiltro.toLowerCase());
     const leads = crmLeads.filter(l => inDate(l.created_at) && matchCidade(l.cidade));
-    const appts = crmAppointments.filter(a => {
-      if (!isInSelectedRanges(a.scheduled_date)) return false;
-      return matchCidade(a.crm_leads?.cidade);
+
+    // Mapa lead -> cidade (para filtrar history por cidade)
+    const leadCidade = new Map<string, string | null>();
+    crmLeads.forEach((l: any) => leadCidade.set(l.id, l.cidade || null));
+
+    // Identificar IDs de etapas "Agendado" (excluindo Pré-Agendado e Reagendado)
+    const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const agendStageIds = new Set(
+      (crmStages || []).filter((s: any) => {
+        const n = norm(s.name);
+        return /agend/.test(n) && !/pre|pré/.test(n) && !/reagend/.test(n);
+      }).map((s: any) => s.id)
+    );
+
+    // Leads movidos para etapa Agendado dentro do período (DISTINCT lead_id por dia agrupado)
+    const agendadosLeadIds = new Set<string>();
+    (crmStageHistory || []).forEach((h: any) => {
+      if (!agendStageIds.has(h.stage_id)) return;
+      const d = (h.entered_at || "").split("T")[0];
+      if (!isInSelectedRanges(d)) return;
+      if (!matchCidade(leadCidade.get(h.lead_id))) return;
+      agendadosLeadIds.add(h.lead_id);
     });
-    return { leads, appts };
-  }, [crmLeads, crmAppointments, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
+
+    // Appointments dos leads agendados no período (para status compareceram/faltaram/contratados)
+    const apptsDosAgendados = (crmAppointments || []).filter((a: any) => agendadosLeadIds.has(a.lead_id));
+
+    return { leads, agendadosLeadIds, apptsDosAgendados };
+  }, [crmLeads, crmAppointments, crmStages, crmStageHistory, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
   const crmLeadsCount = crmFiltered.leads.length;
   const crmAdLeadsCount = crmFiltered.leads.filter(l => l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "")).length;
-  const crmAgendados = crmFiltered.appts.length;
-  const crmCompareceram = crmFiltered.appts.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
-  const crmFaltaram = crmFiltered.appts.filter(a => a.status === "no_show").length;
-  const crmContratadosByAppt = crmFiltered.appts.filter(a => a.status === "contracted").length;
+  const crmAgendados = crmFiltered.agendadosLeadIds.size;
+  const crmCompareceram = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
+  const crmFaltaram = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "no_show").length;
+  const crmContratadosByAppt = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "contracted").length;
   const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
 
   // Conversão real: SOMENTE novos leads (não recorrentes) que viraram pagantes
