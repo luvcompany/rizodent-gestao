@@ -7,6 +7,18 @@ const corsHeaders = {
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
+// Mapeia o nome da conta de anúncio (Meta Ad Account) para a cidade do lead.
+// Permite preencher automaticamente o campo cidade quando um lead vem de anúncio.
+function inferCidadeFromAdAccount(accountName: string | null | undefined): string | null {
+  if (!accountName) return null;
+  const n = accountName.toLowerCase();
+  if (n.includes("vca") || n.includes("vitoria") || n.includes("vitória") || n.includes("conquista")) return "Vitória da Conquista";
+  if (n.includes("guanambi")) return "Guanambi";
+  if (n.includes("itabuna")) return "Itabuna";
+  if (n.includes("ipiau") || n.includes("ipiaú")) return "Ipiaú";
+  return null;
+}
+
 // Centralized server-side action executor — always awaits to prevent runtime shutdown
 async function executeWebhookAction(
   supabase: any,
@@ -599,6 +611,8 @@ Deno.serve(async (req) => {
                     if (adSourceId) insertData.ad_id = adSourceId;
                     if (adAccountId) insertData.ad_account_id = adAccountId;
                     if (adAccountName) insertData.ad_account_name = adAccountName;
+                    const inferredCidade = inferCidadeFromAdAccount(adAccountName);
+                    if (inferredCidade) insertData.cidade = inferredCidade;
                   }
 
                   // Round-robin / least-load assignment
@@ -640,6 +654,18 @@ Deno.serve(async (req) => {
                 if (adSourceId) updates.ad_id = adSourceId;
                 if (adAccountId) updates.ad_account_id = adAccountId;
                 if (adAccountName) updates.ad_account_name = adAccountName;
+                // Preencher cidade automaticamente apenas se o lead ainda não tiver cidade definida (preserva alteração manual)
+                const inferredCidade = inferCidadeFromAdAccount(adAccountName);
+                if (inferredCidade) {
+                  const { data: leadCidadeRow } = await supabase
+                    .from("crm_leads")
+                    .select("cidade")
+                    .eq("id", lead.id)
+                    .maybeSingle();
+                  if (!leadCidadeRow?.cidade) {
+                    updates.cidade = inferredCidade;
+                  }
+                }
                 if (!lead.source || lead.source === "whatsapp") updates.source = "facebook_ad";
               }
               if (Object.keys(updates).length > 0) {
