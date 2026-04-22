@@ -67,13 +67,16 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
     onChange("");
   };
 
-  // Active recording / preview takes the full row
+  // Active recording / preview takes the full row, with autoStart so user doesn't need a second click
   if (recorderActive) {
     return (
       <div className="flex w-full">
         <AudioRecorderComposer
+          autoStart
           onSendAudio={handleSendAudio}
-          onModeChange={setRecorderActive}
+          onModeChange={(active) => {
+            if (!active) setRecorderActive(false);
+          }}
           showMicButton={false}
         />
       </div>
@@ -97,10 +100,6 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
           <Button type="button" variant="ghost" size="sm" onClick={deleteAudio} className="text-destructive">
             Excluir áudio
           </Button>
-        </div>
-        {/* Hidden composer that activates when user clicks "Gravar novamente" via state */}
-        <div className="hidden">
-          <AudioRecorderComposer onSendAudio={handleSendAudio} onModeChange={setRecorderActive} />
         </div>
       </div>
     );
