@@ -8,6 +8,7 @@ type AudioRecorderComposerProps = {
   onSendAudio: (audioBlob: Blob) => Promise<void> | void;
   onModeChange?: (active: boolean) => void;
   showMicButton?: boolean;
+  autoStart?: boolean;
 };
 
 type RecorderMode = "idle" | "preparing" | "recording" | "preview" | "sending";
@@ -52,6 +53,7 @@ export default function AudioRecorderComposer({
   onSendAudio,
   onModeChange,
   showMicButton = true,
+  autoStart = false,
 }: AudioRecorderComposerProps) {
   const [mode, setMode] = useState<RecorderMode>("idle");
   const [recordingPaused, setRecordingPaused] = useState(false);
@@ -365,6 +367,14 @@ export default function AudioRecorderComposer({
 
   // Notify parent
   useEffect(() => { onModeChange?.(mode !== "idle"); }, [mode, onModeChange]);
+
+  // Auto-start recording when requested by parent
+  useEffect(() => {
+    if (autoStart && mode === "idle" && !disabled) {
+      startRecording();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
 
   const activePreviewBars = useMemo(() => {
     if (!previewDuration) return 0;
