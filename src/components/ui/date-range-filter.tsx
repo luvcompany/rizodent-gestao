@@ -53,7 +53,7 @@ export function getDateRangesFromFilter(value: DateRangeFilterValue): { start: D
     case "last_month": return [{ start: startOfMonth(subMonths(now, 1)), end: endOfMonth(subMonths(now, 1)) }];
     case "custom":
       if (value.customFrom && value.customTo) return [{ start: startOfDay(value.customFrom), end: endOfDay(value.customTo) }];
-      if (value.customFrom) return [{ start: startOfDay(value.customFrom), end: now }];
+      if (value.customFrom) return [{ start: startOfDay(value.customFrom), end: endOfDay(value.customFrom) }];
       return null;
     case "multi": {
       const ranges = (value.customRanges || []).filter((r) => r.from && r.to);
