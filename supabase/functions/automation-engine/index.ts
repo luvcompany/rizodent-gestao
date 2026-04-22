@@ -1,4 +1,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { evaluateConditions } from "../_shared/automationConditions.ts";
+
+// Returns true if lead passes the optional conditions in config.conditions
+async function passesConditions(supabase: any, leadId: string, config: Record<string, any>): Promise<boolean> {
+  const conditions = config?.conditions;
+  if (!conditions || !Array.isArray(conditions.rules) || conditions.rules.length === 0) return true;
+  const { data: lead } = await supabase
+    .from("crm_leads")
+    .select("tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return true;
+  return evaluateConditions(conditions, lead);
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
