@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_id_mapping: {
+        Row: {
+          ad_account_id: string | null
+          ad_account_name: string | null
+          ad_body: string | null
+          ad_headline: string | null
+          ad_id: string
+          ad_name: string | null
+          cidade: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          ad_account_name?: string | null
+          ad_body?: string | null
+          ad_headline?: string | null
+          ad_id: string
+          ad_name?: string | null
+          cidade?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          ad_account_name?: string | null
+          ad_body?: string | null
+          ad_headline?: string | null
+          ad_id?: string
+          ad_name?: string | null
+          cidade?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bot_execution_logs: {
         Row: {
           action: string
