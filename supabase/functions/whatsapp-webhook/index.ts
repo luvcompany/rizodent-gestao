@@ -611,6 +611,8 @@ Deno.serve(async (req) => {
                     if (adSourceId) insertData.ad_id = adSourceId;
                     if (adAccountId) insertData.ad_account_id = adAccountId;
                     if (adAccountName) insertData.ad_account_name = adAccountName;
+                    const inferredCidade = inferCidadeFromAdAccount(adAccountName);
+                    if (inferredCidade) insertData.cidade = inferredCidade;
                   }
 
                   // Round-robin / least-load assignment
