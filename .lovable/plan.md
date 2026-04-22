@@ -1,24 +1,126 @@
 
 
-## Resposta direta (sem mudanças de código)
+# Unificação CRM + Dashboard + Relatórios completos
 
-O usuário está perguntando **por que o valor estava errado antes** e **o que foi corrigido**. Isso é uma pergunta de explicação, não uma tarefa de implementação. Não preciso de plano nem de mudanças.
+Vou entregar três blocos integrados: (1) **botão automático de "Compareceu / Não compareceu / Contratou / Não contratou"** dentro da conversa, (2) **Dashboard principal puxando dados do CRM** (lançamentos automáticos), e (3) **Relatórios completos** com tudo que você pediu por unidade, canal e funil.
 
-### Por que estava errado antes
+---
 
-Tanto o **Dashboard do CRM** quanto o **Kanban** somavam o faturamento usando `crm_leads.value` ou filtravam pagamentos pelo `paciente_id` "primário" do lead. Isso causava 3 tipos de perda:
+## 1. Botão de resultado do agendamento na conversa (CRC + CRM Conversas)
 
-1. **Pacientes secundários ignorados** — quando 2 pessoas (ex: LAIANA e NAIRANE) compartilham o mesmo número de WhatsApp, elas ficam vinculadas ao mesmo lead via `crm_lead_pacientes`, mas só uma é marcada como `is_primary`. A consulta antiga só pegava os pagamentos da primária e descartava os da secundária.
-2. **Pacientes sem lead no CRM** — pacientes antigos cadastrados direto no Painel de Pacientes (sem passar pelo CRM) não tinham `crm_leads` associado, então seus pagamentos não entravam na conta.
-3. **`crm_leads.value` desatualizado** — esse campo guardava o valor histórico do lead, não a soma real dos pagamentos do mês.
+No painel lateral do lead (componente `AppointmentConfirmBar`), quando passar **1 dia após `scheduled_date`** e o agendamento ainda estiver com `status = confirmed`, aparece um card laranja destacado:
 
-### O que foi corrigido
+```
+┌────────────────────────────────────────┐
+│ ⚠ Agendamento de 18/04 — qual o resultado? │
+│  [ Compareceu ]   [ Não compareceu ]   │
+└────────────────────────────────────────┘
+```
 
-1. **Dashboard CRM (`CrmDashboard.tsx`)** — passou a somar **diretamente** todos os registros da tabela `pagamentos` no período, sem filtrar por `paciente_id` do lead. Fonte da verdade = tabela de pagamentos.
-2. **Kanban (`CrmKanban.tsx`)** — criei o `leadMonthValueMap`, que cruza `pagamentos` do mês com a tabela `crm_lead_pacientes` para somar **todos os pacientes vinculados** (primário + secundários) de cada lead.
-3. **Backfill de leads retroativos** (migration anterior) — criei `crm_leads` na etapa "Contratado" para os 81 pacientes do mês que tinham pagamento mas não estavam no CRM, herdando cidade/origem do cadastro do paciente.
-4. **Junction `crm_lead_pacientes`** — passou a ser a fonte oficial de "quem está vinculado a este lead", permitindo múltiplos pacientes por número.
+- **Não compareceu** → `status = no_show`, lead movido automaticamente para etapa **"Não compareceu"** do funil atual.
+- **Compareceu** → abre segundo passo no mesmo card:
+  ```
+  Compareceu! Resultado da avaliação:
+  [ Contratou ]   [ Não contratou ]
+  ```
+  - **Contratou** → `status = contracted`, move para **"Contratado"** do funil atual.
+  - **Não contratou** → `status = not_contracted`, **move o lead para o funil de "Não Contratados"** (etapa "Novo lead" / "Conversando" do pipeline de recuperação).
 
-### Resultado
-Agora os 3 lugares (Dashboard principal do sistema, Dashboard CRM, Kanban Contratado) batem no mesmo número, porque todos partem da mesma fonte: soma real de `pagamentos` do período, considerando todos os pacientes ligados a cada lead.
+Tudo com `crm_lead_stage_history` atualizada, mensagem de sistema no chat e disparo de automações de etapa (já existente).
+
+O mesmo card aparece também no **CrmDashboard** numa nova coluna "Aguardando resultado" (lista de agendamentos vencidos sem desfecho), com os dois botões inline.
+
+---
+
+## 2. Dashboard principal (geral) puxando do CRM
+
+Hoje o Dashboard principal lê de `leads_diarios` (lançamento manual). Vou trocar a fonte para o CRM, sem perder o histórico:
+
+| KPI / Gráfico | Nova fonte | Observação |
+|---|---|---|
+| Leads novos por dia | `crm_leads.created_at` | agrupado por `cidade` |
+| Leads por unidade | `crm_leads.cidade` | VCA / Guanambi / Ipiaú / Itabuna |
+| Agendamentos por dia | `crm_appointments.scheduled_date` | filtro por cidade do lead |
+| Comparecimentos | `crm_appointments.status IN (contracted, not_contracted)` | |
+| Faltas | `crm_appointments.status = no_show` | |
+| Contratações | `crm_appointments.status = contracted` | |
+| Faturamento | continua em `pagamentos` | inalterado |
+
+A página antiga **"Cadastro de Leads"** (lançamento manual) fica como fallback opcional — passamos a marcar a fonte como "CRM (auto)" quando o dia tem leads no `crm_leads` e oculta a necessidade de lançar manualmente.
+
+---
+
+## 3. Relatórios — tudo o que você pediu
+
+Adiciono na página `CrmRelatorios` uma nova aba **"Origem & Conversão"** com:
+
+### 3.1 Leads que chegaram — segmentado
+Tabela cruzada **Cidade × Origem** (Anúncio / Orgânico / Indicação / Outros), com filtro por canal específico (FB / IG / WhatsApp / Webhook).
+
+```
+                  Vit. Conquista   Guanambi   Itabuna   Ipiaú   Total
+Anúncio Meta            142          68         44       31      285
+WhatsApp Direto          22          11          7        4       44
+Indicação                15           5          3        2       25
+─────────────────────────────────────────────────────────────────────
+Total                   179          84         54       37      354
+```
+
+### 3.2 Leads atendidos (respondidos)
+Calculado via `messages`: lead atendido = tem ao menos uma mensagem `outbound` enviada por um CRC após o primeiro `inbound`.
+- KPIs: **Respondidos no mesmo dia / em até 1h / em até 24h / não respondidos**
+- Por cidade e por canal.
+
+### 3.3 Agendamentos & Comparecimento
+- Quantidade agendada (cohort do período).
+- **Taxa de comparecimento** = `(contracted + not_contracted) / (contracted + not_contracted + no_show)`.
+- Quebra por cidade e por anúncio de origem.
+
+### 3.4 Funil de conversão — taxas por etapa
+Card visual do funil com 6 taxas calculadas:
+
+```
+Lead         → Atendido        : 78%
+Atendido     → Agendado        : 41%
+Agendado     → Compareceu      : 65%
+Compareceu   → Avaliação feita : 92%
+Avaliação    → Fechamento      : 38%
+─────────────────────────────────────
+Lead         → Fechamento      :  7,4%   (conversão geral)
+```
+
+Definição de "Avaliação feita" = agendamento com status `contracted` ou `not_contracted` (apareceu na clínica).
+
+### 3.5 Ranking automático
+- 🏆 **Melhor canal/campanha** (maior conversão Lead→Fechamento, mín. 10 leads).
+- 🔻 **Pior canal/campanha** (menor conversão).
+- ⚠ **Principal ponto de perda no funil** — calculado pegando a maior queda percentual entre etapas consecutivas.
+- 🏥 **Unidade que melhor converte / pior converte** (mesma métrica por cidade).
+
+---
+
+## Detalhes técnicos
+
+**Backend (sem migrations novas necessárias — colunas já existem):**
+- `crm_appointments.status` já aceita `confirmed | no_show | contracted | not_contracted | cancelled`.
+- A movimentação automática usa o helper `moveLeadToScheduledStage` existente, generalizado para aceitar nome de etapa alvo (`"Não compareceu"`, `"Contratado"`, `"Não contratado"`).
+- Para mover ao funil **"Não Contratados"** (pipeline diferente): localizo pipeline pelo nome `Não Contratados` / `Recuperação`, pego primeira etapa, atualizo `pipeline_id` + `stage_id` do lead e gravo histórico.
+
+**Frontend:**
+- `src/components/chat/AppointmentConfirmBar.tsx` — adiciona seção "Aguardando resultado" quando `scheduled_date < hoje` e `status = confirmed`.
+- `src/pages/Dashboard.tsx` — adiciona busca paralela em `crm_leads`, `crm_appointments`, mescla com fonte legada de `leads_diarios` (CRM tem prioridade).
+- `src/pages/CrmRelatorios.tsx` — nova aba `<TabsTrigger value="origem-conversao">` com 5 cards descritos acima.
+- `src/pages/CrmDashboard.tsx` — nova coluna "Aguardando resultado" com botões inline.
+- Reutiliza `DateRangeFilter` e respeita filtro por cidade já existente.
+
+**Edge functions:** nenhuma criada — toda a lógica é client-side com RLS.
+
+---
+
+## Resumo do impacto
+
+✅ Você nunca mais lança leads/agendamentos manualmente — tudo flui do CRM.  
+✅ O botão de comparecimento aparece sozinho no dia seguinte ao agendamento, em qualquer tela do CRM.  
+✅ Relatórios respondem todas as perguntas: por unidade, por canal, taxas de cada etapa, melhor/pior canal e ponto de perda.  
+✅ Dashboard principal e dashboard CRM passam a mostrar os mesmos números, sem retrabalho.
 
