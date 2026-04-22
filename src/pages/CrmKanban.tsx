@@ -393,9 +393,9 @@ export default function CrmKanban() {
   const getLeadsForStage = (stageId: string) => {
     const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
     return filtered.sort((a, b) => {
-      const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-      const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-      return bTime - aTime; // most recent first
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bTime - aTime; // leads mais recentes primeiro
     });
   };
 
