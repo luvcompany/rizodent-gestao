@@ -548,6 +548,7 @@ Deno.serve(async (req) => {
         .not("automation_paused", "is", true);
 
       for (const lead of leads || []) {
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
         // "Sem resposta" = o LEAD não respondeu à NOSSA última mensagem há X tempo.
         // Só dispara quando a última mensagem foi NOSSA (outbound) e o lead ainda não respondeu.
         // Se o lead respondeu por último, a bola está conosco — não dispara.
@@ -642,6 +643,11 @@ Deno.serve(async (req) => {
     for (const item of pendingQueue || []) {
       const autoConfig = ((item as any).crm_automations?.action_config || {}) as Record<string, any>;
       const triggerType = (item as any).crm_automations?.trigger_type;
+      // Honor optional conditions on queued items
+      if (!(await passesConditions(supabase, item.lead_id, autoConfig))) {
+        await supabase.from("crm_automation_queue").update({ status: "skipped", updated_at: new Date().toISOString() }).eq("id", item.id);
+        continue;
+      }
 
       if (triggerType === "time_window" || autoConfig.time_window) {
         const tw = autoConfig.time_window || autoConfig;
