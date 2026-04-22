@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, CalendarCheck, CheckCircle2, Plus, Pencil, Trash2, X } from "lucide-react";
-import { format, isPast } from "date-fns";
+import { CalendarIcon, CalendarCheck, CheckCircle2, Plus, Pencil, Trash2, X, AlertCircle, Handshake, XCircle } from "lucide-react";
+import { format, isPast, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { executeStageAutomations } from "@/lib/automationUtils";
+import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 
 type Task = {
   id: string;
@@ -73,6 +74,40 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       .order("scheduled_date", { ascending: true });
     setAppointments((data as Appointment[]) || []);
   }, [leadId]);
+
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  // Agendamentos que já passaram (data anterior a hoje) e ainda estão como "confirmed" → precisam de desfecho
+  const awaitingOutcome = appointments.filter(
+    (a) => a.scheduled_date < todayStr && a.status === "confirmed",
+  );
+  const upcomingAppointments = appointments.filter((a) => !awaitingOutcome.includes(a));
+
+  const [outcomeStep, setOutcomeStep] = useState<Record<string, "init" | "compareceu">>({});
+  const [outcomeSaving, setOutcomeSaving] = useState<string | null>(null);
+
+  const handleOutcome = async (apptId: string, outcome: "no_show" | "contracted" | "not_contracted") => {
+    setOutcomeSaving(apptId);
+    try {
+      await applyAppointmentOutcome({ leadId, appointmentId: apptId, outcome });
+      toast.success(
+        outcome === "no_show"
+          ? "Lead movido para Não compareceu"
+          : outcome === "contracted"
+          ? "Lead movido para Contratado"
+          : "Lead movido para funil de Não Contratados",
+      );
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+      setOutcomeStep((prev) => {
+        const { [apptId]: _, ...rest } = prev;
+        return rest;
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao registrar desfecho");
+    } finally {
+      setOutcomeSaving(null);
+    }
+  };
 
   const checkRescheduleMode = useCallback(async () => {
     const { data: leadData } = await supabase.from("crm_leads").select("stage_id").eq("id", leadId).single();
@@ -321,8 +356,82 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
         )}
       </div>
 
+      {/* Awaiting outcome — past appointments still confirmed */}
+      {awaitingOutcome.map((appt) => {
+        const apptDate = new Date(appt.scheduled_date + "T12:00:00");
+        const daysAgo = differenceInCalendarDays(new Date(), apptDate);
+        const step = outcomeStep[appt.id] || "init";
+        const saving = outcomeSaving === appt.id;
+        return (
+          <div key={appt.id} className="mb-2 p-3 rounded-lg border-2 border-orange-500/50 bg-orange-500/10 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={16} className="text-orange-600 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground">Qual o resultado?</p>
+                <p className="text-xs text-muted-foreground">
+                  Agendamento de {format(apptDate, "dd/MM/yyyy")} às {appt.scheduled_time?.slice(0, 5)}
+                  {daysAgo > 0 && ` · há ${daysAgo} dia${daysAgo > 1 ? "s" : ""}`}
+                </p>
+              </div>
+            </div>
+            {step === "init" ? (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
+                  disabled={saving}
+                  onClick={() => setOutcomeStep((prev) => ({ ...prev, [appt.id]: "compareceu" }))}
+                >
+                  <CheckCircle2 size={12} /> Compareceu
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                  disabled={saving}
+                  onClick={() => handleOutcome(appt.id, "no_show")}
+                >
+                  <XCircle size={12} /> Não compareceu
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2 pt-1 border-t border-orange-500/20">
+                <p className="text-xs text-muted-foreground">Resultado da avaliação:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                    disabled={saving}
+                    onClick={() => handleOutcome(appt.id, "contracted")}
+                  >
+                    <Handshake size={12} /> Contratou
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={saving}
+                    onClick={() => handleOutcome(appt.id, "not_contracted")}
+                  >
+                    Não contratou
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-[11px] w-full"
+                  onClick={() => setOutcomeStep((prev) => ({ ...prev, [appt.id]: "init" }))}
+                >
+                  ← Voltar
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
       {/* Existing confirmed appointments */}
-      {appointments.map(appt => {
+      {upcomingAppointments.map(appt => {
         const isEditing = editingId === appt.id;
         const apptDate = new Date(appt.scheduled_date + "T12:00:00");
 

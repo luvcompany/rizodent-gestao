@@ -62,6 +62,8 @@ const Dashboard = () => {
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
   const [leadsData, setLeadsData] = useState<any[]>([]);
+  const [crmLeads, setCrmLeads] = useState<any[]>([]);
+  const [crmAppointments, setCrmAppointments] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
@@ -98,13 +100,15 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }] = await Promise.all([
       supabase.from("clinicas").select("*").eq("ativa", true),
       supabase.from("pagamentos").select("*, clinicas(nome)"),
       supabase.from("tratamentos").select("*, clinicas(nome)"),
       supabase.from("pacientes").select("*"),
       supabase.from("leads_diarios").select("*, clinicas(nome)"),
-      (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id")]
+      (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
+      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id").limit(10000),
+      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000)]
       );
       setClinicas(cl || []);
       setPagamentos(pg || []);
@@ -112,6 +116,8 @@ const Dashboard = () => {
       setPacientes(pc || []);
       setLeadsData(ld || []);
       setHolidays((hd || []) as Holiday[]);
+      setCrmLeads(cLeads || []);
+      setCrmAppointments(cAppts || []);
       setLoading(false);
     };
     fetchAll();
@@ -223,6 +229,28 @@ const Dashboard = () => {
   // Ticket médio = faturamento / dias com dados
   const ticketMedio = fatTotal / diasUteisPassados;
   const projecaoMensal = ticketMedio * diasUteisMes;
+
+  // ===== KPIs CRM (filtrados por período + cidade da clínica) =====
+  const clinicaSelecionada = clinicas.find(c => c.id === clinicaFiltro);
+  const cidadeFiltro = clinicaSelecionada?.cidade || null;
+  const crmFiltered = useMemo(() => {
+    const inDate = (s: string) => isInSelectedRanges(s?.split("T")[0]);
+    const matchCidade = (cid: string | null | undefined) =>
+      !cidadeFiltro || (cid || "").toLowerCase().includes(cidadeFiltro.toLowerCase());
+    const leads = crmLeads.filter(l => inDate(l.created_at) && matchCidade(l.cidade));
+    const appts = crmAppointments.filter(a => {
+      if (!isInSelectedRanges(a.scheduled_date)) return false;
+      return matchCidade(a.crm_leads?.cidade);
+    });
+    return { leads, appts };
+  }, [crmLeads, crmAppointments, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
+  const crmLeadsCount = crmFiltered.leads.length;
+  const crmAdLeadsCount = crmFiltered.leads.filter(l => l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "")).length;
+  const crmAgendados = crmFiltered.appts.length;
+  const crmCompareceram = crmFiltered.appts.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
+  const crmFaltaram = crmFiltered.appts.filter(a => a.status === "no_show").length;
+  const crmContratados = crmFiltered.appts.filter(a => a.status === "contracted").length;
+  const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
 
   const kpis = [
   { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
@@ -475,6 +503,48 @@ const Dashboard = () => {
               </Select>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* KPIs do CRM (puxados automaticamente) */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Users size={16} className="text-primary" />
+            CRM — Leads & Agendamentos {cidadeFiltro && <span className="text-xs text-muted-foreground font-normal">({cidadeFiltro})</span>}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">Dados puxados diretamente do CRM no período selecionado</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-blue-500">{crmAdLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Origem anúncio</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-foreground">{crmAgendados}</p>
+              <p className="text-xs text-muted-foreground mt-1">Agendados</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-green-600">{crmCompareceram}</p>
+              <p className="text-xs text-muted-foreground mt-1">Compareceram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-red-500">{crmFaltaram}</p>
+              <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-primary">{taxaPresenca.toFixed(0)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Taxa de presença</p>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-3 italic">
+            ✓ {crmContratados} contratado(s) · não é mais necessário lançar leads/agendamentos manualmente — tudo flui do CRM.
+          </p>
         </CardContent>
       </Card>
 

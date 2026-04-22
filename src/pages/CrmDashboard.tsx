@@ -8,12 +8,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   CalendarDays, Phone, MessageSquare, Clock, CheckCircle2, AlertTriangle,
-  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign
+  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign,
+  AlertCircle, XCircle, Handshake
 } from "lucide-react";
 import { format, isToday, isPast, startOfDay, endOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 
 type Task = {
   id: string;
@@ -126,6 +129,34 @@ export default function CrmDashboard() {
       });
   }, [appointments, upcomingDays]);
 
+  // Agendamentos vencidos sem desfecho
+  const awaitingOutcome = useMemo(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    return appointments
+      .filter(a => a.scheduled_date < todayStr && a.status === "confirmed")
+      .sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date));
+  }, [appointments]);
+
+  const [outcomeStep, setOutcomeStep] = useState<Record<string, "init" | "compareceu">>({});
+  const [outcomeSaving, setOutcomeSaving] = useState<string | null>(null);
+  const handleOutcome = async (appt: Appointment, outcome: "no_show" | "contracted" | "not_contracted") => {
+    setOutcomeSaving(appt.id);
+    try {
+      await applyAppointmentOutcome({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
+      toast.success(
+        outcome === "no_show" ? "Marcado como não compareceu"
+        : outcome === "contracted" ? "Marcado como contratado"
+        : "Movido para Não Contratados",
+      );
+      setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, status: outcome } : a));
+      setOutcomeStep(prev => { const { [appt.id]: _, ...r } = prev; return r; });
+    } catch (e) {
+      toast.error("Erro ao registrar desfecho");
+    } finally {
+      setOutcomeSaving(null);
+    }
+  };
+
   const groupedUpcoming = useMemo(() => {
     const groups = new Map<string, Appointment[]>();
     upcomingAppointments.forEach(a => {
@@ -228,8 +259,73 @@ export default function CrmDashboard() {
         </Card>
       </div>
 
-      {/* 4 Columns: Tarefas | Confirmações | Agendamentos do dia | Próximos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 min-h-0">
+      {/* 5 Columns: Aguardando | Tarefas | Confirmações | Agendamentos do dia | Próximos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-5 gap-4 flex-1 min-h-0">
+        {/* Column 0: Awaiting outcome */}
+        <Card className="flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              <AlertCircle size={14} className="text-orange-600" />
+              Aguardando resultado
+            </h2>
+            <Badge variant="outline" className="border-orange-500 text-orange-600">{awaitingOutcome.length}</Badge>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {awaitingOutcome.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento aguardando desfecho</p>
+            )}
+            {awaitingOutcome.map(appt => {
+              const apptDate = new Date(appt.scheduled_date + "T12:00:00");
+              const step = outcomeStep[appt.id] || "init";
+              const saving = outcomeSaving === appt.id;
+              return (
+                <div key={appt.id} className="rounded-lg border-2 border-orange-500/40 bg-orange-500/5 p-3 space-y-2">
+                  <button
+                    onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}
+                    className="text-sm font-medium truncate text-foreground hover:text-primary text-left block w-full"
+                  >
+                    {appt.lead_name}
+                  </button>
+                  <p className="text-[11px] text-muted-foreground -mt-1">
+                    {format(apptDate, "dd/MM/yyyy")} às {appt.scheduled_time?.slice(0, 5)}
+                  </p>
+                  {step === "init" ? (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button size="sm" disabled={saving} className="h-7 text-[11px] gap-1 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => setOutcomeStep(p => ({ ...p, [appt.id]: "compareceu" }))}>
+                        <CheckCircle2 size={11} /> Compareceu
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={saving}
+                        className="h-7 text-[11px] gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                        onClick={() => handleOutcome(appt, "no_show")}>
+                        <XCircle size={11} /> Não veio
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground">Resultado da avaliação:</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Button size="sm" disabled={saving} className="h-7 text-[11px] gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                          onClick={() => handleOutcome(appt, "contracted")}>
+                          <Handshake size={11} /> Contratou
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={saving} className="h-7 text-[11px]"
+                          onClick={() => handleOutcome(appt, "not_contracted")}>
+                          Não contratou
+                        </Button>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-5 w-full text-[10px]"
+                        onClick={() => setOutcomeStep(p => ({ ...p, [appt.id]: "init" }))}>
+                        ← Voltar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
         {/* Column 1: Tasks */}
         <Card className="flex flex-col overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
