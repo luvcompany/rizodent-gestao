@@ -22,6 +22,7 @@ type Message = {
   ad_image_url?: string | null;
   ad_source_url?: string | null;
   ad_source_id?: string | null;
+  ad_account_name?: string | null;
   error_reason?: string | null;
   deleted_at?: string | null;
 };
