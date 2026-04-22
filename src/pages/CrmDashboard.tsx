@@ -8,12 +8,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   CalendarDays, Phone, MessageSquare, Clock, CheckCircle2, AlertTriangle,
-  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign
+  Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign,
+  AlertCircle, XCircle, Handshake
 } from "lucide-react";
 import { format, isToday, isPast, startOfDay, endOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 
 type Task = {
   id: string;
@@ -125,6 +128,34 @@ export default function CrmDashboard() {
         return cmp !== 0 ? cmp : a.scheduled_time.localeCompare(b.scheduled_time);
       });
   }, [appointments, upcomingDays]);
+
+  // Agendamentos vencidos sem desfecho
+  const awaitingOutcome = useMemo(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    return appointments
+      .filter(a => a.scheduled_date < todayStr && a.status === "confirmed")
+      .sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date));
+  }, [appointments]);
+
+  const [outcomeStep, setOutcomeStep] = useState<Record<string, "init" | "compareceu">>({});
+  const [outcomeSaving, setOutcomeSaving] = useState<string | null>(null);
+  const handleOutcome = async (appt: Appointment, outcome: "no_show" | "contracted" | "not_contracted") => {
+    setOutcomeSaving(appt.id);
+    try {
+      await applyAppointmentOutcome({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
+      toast.success(
+        outcome === "no_show" ? "Marcado como não compareceu"
+        : outcome === "contracted" ? "Marcado como contratado"
+        : "Movido para Não Contratados",
+      );
+      setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, status: outcome } : a));
+      setOutcomeStep(prev => { const { [appt.id]: _, ...r } = prev; return r; });
+    } catch (e) {
+      toast.error("Erro ao registrar desfecho");
+    } finally {
+      setOutcomeSaving(null);
+    }
+  };
 
   const groupedUpcoming = useMemo(() => {
     const groups = new Map<string, Appointment[]>();
