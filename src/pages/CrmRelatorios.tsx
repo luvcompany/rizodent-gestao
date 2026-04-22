@@ -758,9 +758,17 @@ function AcoesPorDiaTab({
   const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const selectedKey = dayKey(selectedDate);
 
-  // Identificar etapa de agendamento
+  // Identificar etapa de agendamento exata (excluindo "Pré-Agendado" e "Reagendado")
   const agendStage = useMemo(() => {
-    return stages.find(s => isAgendStage(s.name));
+    return stages.find(s => {
+      const n = lower(s.name);
+      return isAgendStage(s.name) && !/pr[eé]/.test(n) && !isReagendStage(s.name);
+    });
+  }, [stages]);
+
+  // Identificar etapa de reagendamento
+  const reagendStage = useMemo(() => {
+    return stages.find(s => isReagendStage(s.name));
   }, [stages]);
 
   const falaramDia = useMemo(() => {
@@ -780,6 +788,16 @@ function AcoesPorDiaTab({
     });
     return set;
   }, [history, agendStage, selectedKey]);
+
+  const reagendadosDia = useMemo(() => {
+    if (!reagendStage) return new Set<string>();
+    const set = new Set<string>();
+    history.forEach(h => {
+      if (h.stage_id !== reagendStage.id) return;
+      if (dayKey(new Date(h.entered_at)) === selectedKey) set.add(h.lead_id);
+    });
+    return set;
+  }, [history, reagendStage, selectedKey]);
 
   // Interseção: dos que falaram, quantos foram agendados
   const agendadosDosQueFalaram = useMemo(() => {
