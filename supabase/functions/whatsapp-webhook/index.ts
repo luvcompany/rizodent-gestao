@@ -624,7 +624,9 @@ Deno.serve(async (req) => {
                     if (adSourceId) insertData.ad_id = adSourceId;
                     if (adAccountId) insertData.ad_account_id = adAccountId;
                     if (adAccountName) insertData.ad_account_name = adAccountName;
-                    const inferredCidade = inferCidadeFromAdAccount(adAccountName);
+                    // Tenta inferir cidade pelo nome da conta; se a conta não veio (Graph API falhou),
+                    // usa título/descrição/conteúdo da primeira mensagem como pista (ex: "[Guanambi]").
+                    const inferredCidade = inferCidadeFromAdAccount(adAccountName, adHeadline, adBody, content);
                     if (inferredCidade) insertData.cidade = inferredCidade;
                   }
 
@@ -644,9 +646,15 @@ Deno.serve(async (req) => {
                   lead = newLead;
                   console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, assigned: ${assignedTo || 'none'}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
 
-                  // Execute on_enter automations immediately for the new lead's first stage
+                  // Execute on_create + on_enter + on_create_or_enter automations for the new lead's first stage
                   if (newLead?.id) {
-                    await executeOnEnterAutomations(supabase, newLead.id, stage.id, from);
+                    await executeStageAutomationsForTriggers(
+                      supabase,
+                      newLead.id,
+                      stage.id,
+                      from,
+                      ["on_create", "on_enter", "on_create_or_enter"]
+                    );
                   }
                 }
               }
