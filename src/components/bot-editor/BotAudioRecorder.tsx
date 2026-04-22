@@ -97,28 +97,21 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
         </>
       )}
 
-      {recorderActive ? (
-        <div className="flex w-full min-w-0">
-          <AudioRecorderComposer
-            onSendAudio={handleSendAudio}
-            onModeChange={setRecorderActive}
-            showMicButton={false}
-          />
-        </div>
-      ) : (
-        <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-border bg-secondary/30 px-2 py-1.5">
-          <span className="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0 truncate">
+      <div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-border bg-secondary/30 px-2 py-1.5">
+        {!recorderActive && (
+          <span className="text-xs text-muted-foreground flex min-w-0 items-center gap-1.5 truncate">
             <Mic size={14} className="shrink-0" />
             {savedPreviewUrl ? "Gravar novamente" : "Gravar áudio"}
           </span>
-          <div className="ml-auto shrink-0">
-            <AudioRecorderComposer
-              onSendAudio={handleSendAudio}
-              onModeChange={setRecorderActive}
-            />
-          </div>
+        )}
+        <div className="ml-auto flex min-w-0 flex-1 justify-end overflow-hidden">
+          <AudioRecorderComposer
+            onSendAudio={handleSendAudio}
+            onModeChange={setRecorderActive}
+            showMicButton={!recorderActive}
+          />
         </div>
-      )}
+      </div>
     </div>
   );
 }
