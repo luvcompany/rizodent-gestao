@@ -9,7 +9,7 @@ import { Loader2, TrendingUp, TrendingDown, Award, AlertTriangle } from "lucide-
 type Pipeline = { id: string; name: string };
 type Lead = {
   id: string; name: string; pipeline_id: string; cidade: string | null;
-  origem: string | null; ad_name: string | null;
+  source: string | null; nome_anuncio: string | null;
   created_at: string; first_inbound_at: string | null;
 };
 type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string };
@@ -39,7 +39,7 @@ interface Props {
 }
 
 export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineId }: Props) {
-  const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "30d" });
+  const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [appts, setAppts] = useState<Appointment[]>([]);
@@ -53,7 +53,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     (async () => {
       const { data: ls } = await supabase
         .from("crm_leads")
-        .select("id,name,pipeline_id,cidade,origem,ad_name,created_at,first_inbound_at")
+        .select("id,name,pipeline_id,cidade,source,nome_anuncio,created_at,first_inbound_at")
         .eq("pipeline_id", pipelineId)
         .gte("created_at", range.start.toISOString())
         .lte("created_at", range.end.toISOString())
