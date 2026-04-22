@@ -249,8 +249,14 @@ const Dashboard = () => {
   const crmAgendados = crmFiltered.appts.length;
   const crmCompareceram = crmFiltered.appts.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
   const crmFaltaram = crmFiltered.appts.filter(a => a.status === "no_show").length;
-  const crmContratados = crmFiltered.appts.filter(a => a.status === "contracted").length;
+  const crmContratadosByAppt = crmFiltered.appts.filter(a => a.status === "contracted").length;
   const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
+
+  // Conversão real: pacientes pagantes no período / leads do CRM no período
+  // Usa pagamentos como fonte de verdade pois o desfecho do agendamento ainda pode não ter sido marcado.
+  const pacientesPagantesPeriodo = totalPacientes; // já é DISTINCT paciente_id de filtered.pagamentos
+  const crmContratados = Math.max(crmContratadosByAppt, pacientesPagantesPeriodo);
+  const taxaConversao = crmLeadsCount > 0 ? (pacientesPagantesPeriodo / crmLeadsCount) * 100 : 0;
 
   const kpis = [
   { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
@@ -438,11 +444,20 @@ const Dashboard = () => {
     { name: "Faltaram", value: reagFaltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.remarcados },
   ];
 
+  // Conversão Total: usa CRM (agendados/compareceram/faltaram) + pagamentos como verdade para "Contrataram"
+  const convTotalLeads = crmLeadsCount;
+  const convTotalAgendados = crmAgendados;
+  const convTotalCompareceram = Math.max(crmCompareceram, pacientesPagantesPeriodo);
+  const convTotalContrataram = pacientesPagantesPeriodo;
+  const convTotalNaoContrat = Math.max(convTotalCompareceram - convTotalContrataram, 0);
+  const convTotalFaltas = crmFaltaram;
   const funnelDataConversao = [
-    { name: "Total Compareceram", value: totalCompareceram, fill: FUNNEL_COLORS[1], refValue: totalCompareceram },
-    { name: "Total Contrataram", value: totalContrataram, fill: FUNNEL_COLORS[5], refValue: totalCompareceram },
-    { name: "Total Não Contrat.", value: Math.max(totalNaoContrataram, 0), fill: FUNNEL_COLORS[6], refValue: totalCompareceram },
-    { name: "Faltas Líquidas", value: faltasLiquidas, fill: FUNNEL_COLORS[2], refValue: funnelTotals.agendaram + funnelTotals.remarcados },
+    { name: "Leads", value: convTotalLeads, fill: FUNNEL_COLORS[0], refValue: convTotalLeads },
+    { name: "Agendados", value: convTotalAgendados, fill: FUNNEL_COLORS[1], refValue: convTotalLeads },
+    { name: "Compareceram", value: convTotalCompareceram, fill: FUNNEL_COLORS[4], refValue: convTotalAgendados || convTotalLeads },
+    { name: "Contrataram", value: convTotalContrataram, fill: FUNNEL_COLORS[5], refValue: convTotalCompareceram || convTotalLeads },
+    { name: "Não Contrataram", value: convTotalNaoContrat, fill: FUNNEL_COLORS[6], refValue: convTotalCompareceram },
+    { name: "Faltaram", value: convTotalFaltas, fill: FUNNEL_COLORS[2], refValue: convTotalAgendados },
   ];
 
   const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelView === "conversao" ? funnelDataConversao : funnelDataReagendados;
@@ -516,7 +531,7 @@ const Dashboard = () => {
           <p className="text-xs text-muted-foreground">Dados puxados diretamente do CRM no período selecionado</p>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             <div className="bg-secondary/40 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
               <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
@@ -538,12 +553,16 @@ const Dashboard = () => {
               <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{taxaPresenca.toFixed(0)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Taxa de presença</p>
+              <p className="text-2xl font-bold text-emerald-600">{pacientesPagantesPeriodo}</p>
+              <p className="text-xs text-muted-foreground mt-1">Contratados (pagantes)</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
+              <p className="text-2xl font-bold text-primary">{taxaConversao.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Conversão Lead → Contrato</p>
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3 italic">
-            ✓ {crmContratados} contratado(s) · não é mais necessário lançar leads/agendamentos manualmente — tudo flui do CRM.
+            ✓ Taxa de presença: {taxaPresenca.toFixed(0)}% · Conversão calculada por pacientes pagantes / leads no período. Marque o desfecho dos agendamentos no CRM para refinar as métricas.
           </p>
         </CardContent>
       </Card>
@@ -656,7 +675,7 @@ const Dashboard = () => {
                ? "Agendados → Compareceram → Contrataram → Não Contrataram → Faltaram"
                : funnelView === "reagendados"
                ? "Reagendados → Compareceram → Contrataram → Não Contrataram → Faltaram"
-               : "Total Compareceram → Contrataram → Não Contrataram → Faltas Líquidas"}
+               : "Leads → Agendados → Compareceram → Contrataram (CRM + pagamentos)"}
            </p>
         </CardHeader>
         <CardContent>
