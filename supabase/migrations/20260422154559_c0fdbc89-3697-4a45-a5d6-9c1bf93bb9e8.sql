@@ -1,0 +1,1 @@
+UPDATE public.crm_automations SET is_active = false WHERE id = '4d54d77b-ca40-46f0-a259-ca8e4f59429e';
