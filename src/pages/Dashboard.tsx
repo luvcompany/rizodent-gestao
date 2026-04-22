@@ -107,7 +107,7 @@ const Dashboard = () => {
       supabase.from("pacientes").select("*"),
       supabase.from("leads_diarios").select("*, clinicas(nome)"),
       (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id").limit(10000),
+      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id, paciente_id").limit(10000),
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000)]
       );
       setClinicas(cl || []);
@@ -252,9 +252,38 @@ const Dashboard = () => {
   const crmContratadosByAppt = crmFiltered.appts.filter(a => a.status === "contracted").length;
   const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
 
-  // Conversão real: pacientes pagantes no período / leads do CRM no período
-  // Usa pagamentos como fonte de verdade pois o desfecho do agendamento ainda pode não ter sido marcado.
-  const pacientesPagantesPeriodo = totalPacientes; // já é DISTINCT paciente_id de filtered.pagamentos
+  // Conversão real: SOMENTE novos leads (não recorrentes) que viraram pagantes
+  // E cujo paciente esteja vinculado a um lead do CRM criado a partir do início do CRM.
+  // Data mínima do CRM = primeiro lead criado no banco.
+  const crmStartDate = useMemo(() => {
+    if (!crmLeads.length) return null;
+    return crmLeads.reduce((min, l) => {
+      const d = (l.created_at || "").split("T")[0];
+      return !min || d < min ? d : min;
+    }, "" as string) || null;
+  }, [crmLeads]);
+
+  // Set de pacientes ligados a algum lead do CRM (pacientes "novos" do CRM)
+  const crmPacienteIds = useMemo(() => {
+    const set = new Set<string>();
+    crmLeads.forEach(l => { if ((l as any).paciente_id) set.add((l as any).paciente_id); });
+    return set;
+  }, [crmLeads]);
+
+  // Novos pagantes no período: tipo=primeiro, após início do CRM, vinculado a lead do CRM
+  const novosPagantesPeriodo = useMemo(() => {
+    const ids = new Set<string>();
+    filtered.pagamentos.forEach(p => {
+      if (p.tipo !== "primeiro") return;
+      const dp = (p.data_pagamento || "").split("T")[0];
+      if (crmStartDate && dp < crmStartDate) return;
+      if (crmPacienteIds.size > 0 && !crmPacienteIds.has(p.paciente_id)) return;
+      ids.add(p.paciente_id);
+    });
+    return ids.size;
+  }, [filtered.pagamentos, crmStartDate, crmPacienteIds]);
+
+  const pacientesPagantesPeriodo = novosPagantesPeriodo;
   const crmContratados = Math.max(crmContratadosByAppt, pacientesPagantesPeriodo);
   const taxaConversao = crmLeadsCount > 0 ? (pacientesPagantesPeriodo / crmLeadsCount) * 100 : 0;
 
@@ -521,51 +550,7 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* KPIs do CRM (puxados automaticamente) */}
-      <Card className="gradient-card border-border shadow-card">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Users size={16} className="text-primary" />
-            CRM — Leads & Agendamentos {cidadeFiltro && <span className="text-xs text-muted-foreground font-normal">({cidadeFiltro})</span>}
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">Dados puxados diretamente do CRM no período selecionado</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
-              <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-blue-500">{crmAdLeadsCount}</p>
-              <p className="text-xs text-muted-foreground mt-1">Origem anúncio</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-foreground">{crmAgendados}</p>
-              <p className="text-xs text-muted-foreground mt-1">Agendados</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-green-600">{crmCompareceram}</p>
-              <p className="text-xs text-muted-foreground mt-1">Compareceram</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-red-500">{crmFaltaram}</p>
-              <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-emerald-600">{pacientesPagantesPeriodo}</p>
-              <p className="text-xs text-muted-foreground mt-1">Contratados (pagantes)</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
-              <p className="text-2xl font-bold text-primary">{taxaConversao.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Conversão Lead → Contrato</p>
-            </div>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-3 italic">
-            ✓ Taxa de presença: {taxaPresenca.toFixed(0)}% · Conversão calculada por pacientes pagantes / leads no período. Marque o desfecho dos agendamentos no CRM para refinar as métricas.
-          </p>
-        </CardContent>
-      </Card>
+
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -634,6 +619,52 @@ const Dashboard = () => {
               <Bar dataKey="leads" fill="hsl(200,70%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} label={renderBarLabel} />
             </BarChart>
           </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* KPIs do CRM (puxados automaticamente) — abaixo do gráfico de Leads Novos por Dia */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Users size={16} className="text-primary" />
+            CRM — Leads & Agendamentos {cidadeFiltro && <span className="text-xs text-muted-foreground font-normal">({cidadeFiltro})</span>}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">Dados puxados diretamente do CRM no período selecionado</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-blue-500">{crmAdLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Origem anúncio</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-foreground">{crmAgendados}</p>
+              <p className="text-xs text-muted-foreground mt-1">Agendados</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-green-600">{crmCompareceram}</p>
+              <p className="text-xs text-muted-foreground mt-1">Compareceram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-red-500">{crmFaltaram}</p>
+              <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-emerald-600">{pacientesPagantesPeriodo}</p>
+              <p className="text-xs text-muted-foreground mt-1">Novos contratados</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
+              <p className="text-2xl font-bold text-primary">{taxaConversao.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Conversão Lead → Contrato</p>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-3 italic">
+            ✓ Conversão = novos pagantes (1º pagamento) vinculados a leads do CRM ÷ leads do CRM no período. Recorrentes não entram nesta conta. Taxa de presença: {taxaPresenca.toFixed(0)}%.
+          </p>
         </CardContent>
       </Card>
 
