@@ -244,18 +244,41 @@ const Dashboard = () => {
     const matchCidade = (cid: string | null | undefined) =>
       !cidadeFiltro || (cid || "").toLowerCase().includes(cidadeFiltro.toLowerCase());
     const leads = crmLeads.filter(l => inDate(l.created_at) && matchCidade(l.cidade));
-    const appts = crmAppointments.filter(a => {
-      if (!isInSelectedRanges(a.scheduled_date)) return false;
-      return matchCidade(a.crm_leads?.cidade);
+
+    // Mapa lead -> cidade (para filtrar history por cidade)
+    const leadCidade = new Map<string, string | null>();
+    crmLeads.forEach((l: any) => leadCidade.set(l.id, l.cidade || null));
+
+    // Identificar IDs de etapas "Agendado" (excluindo Pré-Agendado e Reagendado)
+    const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const agendStageIds = new Set(
+      (crmStages || []).filter((s: any) => {
+        const n = norm(s.name);
+        return /agend/.test(n) && !/pre|pré/.test(n) && !/reagend/.test(n);
+      }).map((s: any) => s.id)
+    );
+
+    // Leads movidos para etapa Agendado dentro do período (DISTINCT lead_id por dia agrupado)
+    const agendadosLeadIds = new Set<string>();
+    (crmStageHistory || []).forEach((h: any) => {
+      if (!agendStageIds.has(h.stage_id)) return;
+      const d = (h.entered_at || "").split("T")[0];
+      if (!isInSelectedRanges(d)) return;
+      if (!matchCidade(leadCidade.get(h.lead_id))) return;
+      agendadosLeadIds.add(h.lead_id);
     });
-    return { leads, appts };
-  }, [crmLeads, crmAppointments, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
+
+    // Appointments dos leads agendados no período (para status compareceram/faltaram/contratados)
+    const apptsDosAgendados = (crmAppointments || []).filter((a: any) => agendadosLeadIds.has(a.lead_id));
+
+    return { leads, agendadosLeadIds, apptsDosAgendados };
+  }, [crmLeads, crmAppointments, crmStages, crmStageHistory, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
   const crmLeadsCount = crmFiltered.leads.length;
   const crmAdLeadsCount = crmFiltered.leads.filter(l => l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "")).length;
-  const crmAgendados = crmFiltered.appts.length;
-  const crmCompareceram = crmFiltered.appts.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
-  const crmFaltaram = crmFiltered.appts.filter(a => a.status === "no_show").length;
-  const crmContratadosByAppt = crmFiltered.appts.filter(a => a.status === "contracted").length;
+  const crmAgendados = crmFiltered.agendadosLeadIds.size;
+  const crmCompareceram = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
+  const crmFaltaram = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "no_show").length;
+  const crmContratadosByAppt = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "contracted").length;
   const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
 
   // Conversão real: SOMENTE novos leads (não recorrentes) que viraram pagantes
