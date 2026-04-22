@@ -230,6 +230,28 @@ const Dashboard = () => {
   const ticketMedio = fatTotal / diasUteisPassados;
   const projecaoMensal = ticketMedio * diasUteisMes;
 
+  // ===== KPIs CRM (filtrados por período + cidade da clínica) =====
+  const clinicaSelecionada = clinicas.find(c => c.id === clinicaFiltro);
+  const cidadeFiltro = clinicaSelecionada?.cidade || null;
+  const crmFiltered = useMemo(() => {
+    const inDate = (s: string) => isInSelectedRanges(s?.split("T")[0]);
+    const matchCidade = (cid: string | null | undefined) =>
+      !cidadeFiltro || (cid || "").toLowerCase().includes(cidadeFiltro.toLowerCase());
+    const leads = crmLeads.filter(l => inDate(l.created_at) && matchCidade(l.cidade));
+    const appts = crmAppointments.filter(a => {
+      if (!isInSelectedRanges(a.scheduled_date)) return false;
+      return matchCidade(a.crm_leads?.cidade);
+    });
+    return { leads, appts };
+  }, [crmLeads, crmAppointments, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
+  const crmLeadsCount = crmFiltered.leads.length;
+  const crmAdLeadsCount = crmFiltered.leads.filter(l => l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "")).length;
+  const crmAgendados = crmFiltered.appts.length;
+  const crmCompareceram = crmFiltered.appts.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
+  const crmFaltaram = crmFiltered.appts.filter(a => a.status === "no_show").length;
+  const crmContratados = crmFiltered.appts.filter(a => a.status === "contracted").length;
+  const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
+
   const kpis = [
   { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
   { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
