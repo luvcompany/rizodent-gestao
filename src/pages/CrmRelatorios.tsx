@@ -737,25 +737,22 @@ function AcoesPorDiaTab({
           hFrom += pageSize;
         }
       }
-      // Paginar mensagens inbound (podem passar de 1000 no mês)
-      for (let i = 0; i < leadIds.length; i += 300) {
-        const chunk = leadIds.slice(i, i + 300);
-        let mFrom = 0;
-        while (true) {
-          const { data, error } = await supabase
-            .from("messages")
-            .select("lead_id, created_at")
-            .eq("direction", "inbound")
-            .in("lead_id", chunk)
-            .gte("created_at", startISO)
-            .lte("created_at", endISO)
-            .order("created_at", { ascending: true })
-            .range(mFrom, mFrom + pageSize - 1);
-          if (error || !data || data.length === 0) break;
-          msgsAll = msgsAll.concat(data);
-          if (data.length < pageSize) break;
-          mFrom += pageSize;
-        }
+      // Paginar mensagens inbound do pipeline (filtra via inner join, sem depender de chunks de IDs)
+      let mFrom = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("lead_id, created_at, crm_leads!inner(pipeline_id)")
+          .eq("direction", "inbound")
+          .eq("crm_leads.pipeline_id", pipelineId)
+          .gte("created_at", startISO)
+          .lte("created_at", endISO)
+          .order("created_at", { ascending: true })
+          .range(mFrom, mFrom + pageSize - 1);
+        if (error || !data || data.length === 0) break;
+        msgsAll = msgsAll.concat(data);
+        if (data.length < pageSize) break;
+        mFrom += pageSize;
       }
       setHistory(histAll);
       setInboundDays(msgsAll);
