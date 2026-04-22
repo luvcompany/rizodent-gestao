@@ -818,7 +818,7 @@ function AcoesPorDiaTab({
       cur.setDate(cur.getDate() + 1);
     }
     if (workingDays.length === 0) {
-      return { avgFalaram: 0, avgAgendados: 0, totalDias: 0 };
+      return { avgFalaram: 0, avgAgendados: 0, avgReagendados: 0, totalDias: 0 };
     }
     const workingSet = new Set(workingDays);
 
@@ -834,37 +834,27 @@ function AcoesPorDiaTab({
     falaramByDay.forEach(s => { falaramTotal += s.size; });
     const avgFalaram = falaramTotal / workingDays.length;
 
-    // Média de agendados por dia (interseção com quem falou)
-    let agendadosTotal = 0;
-    if (agendStage) {
-      const agendadosByDay = new Map<string, Set<string>>();
-      const falaramSetByDay = new Map<string, Set<string>>();
-      inboundDays.forEach(m => {
-        const k = dayKey(new Date(m.created_at));
-        if (!workingSet.has(k)) return;
-        if (!falaramSetByDay.has(k)) falaramSetByDay.set(k, new Set());
-        falaramSetByDay.get(k)!.add(m.lead_id);
-      });
+    // Helper: total por dia útil (sem interseção - conta todos os movimentos para a etapa)
+    const totalForStage = (stageId: string | undefined) => {
+      if (!stageId) return 0;
+      const byDay = new Map<string, Set<string>>();
       history.forEach(h => {
-        if (h.stage_id !== agendStage.id) return;
+        if (h.stage_id !== stageId) return;
         const k = dayKey(new Date(h.entered_at));
         if (!workingSet.has(k)) return;
-        if (!agendadosByDay.has(k)) agendadosByDay.set(k, new Set());
-        agendadosByDay.get(k)!.add(h.lead_id);
+        if (!byDay.has(k)) byDay.set(k, new Set());
+        byDay.get(k)!.add(h.lead_id);
       });
-      agendadosByDay.forEach((leads, day) => {
-        const falaram = falaramSetByDay.get(day);
-        if (falaram) {
-          let count = 0;
-          leads.forEach(id => { if (falaram.has(id)) count++; });
-          agendadosTotal += count;
-        }
-      });
-    }
-    const avgAgendados = agendadosTotal / workingDays.length;
+      let total = 0;
+      byDay.forEach(s => { total += s.size; });
+      return total;
+    };
 
-    return { avgFalaram, avgAgendados, totalDias: workingDays.length };
-  }, [history, inboundDays, stages, monthStart, monthEnd, agendStage]);
+    const avgAgendados = totalForStage(agendStage?.id) / workingDays.length;
+    const avgReagendados = totalForStage(reagendStage?.id) / workingDays.length;
+
+    return { avgFalaram, avgAgendados, avgReagendados, totalDias: workingDays.length };
+  }, [history, inboundDays, stages, monthStart, monthEnd, agendStage, reagendStage]);
 
   return (
     <div className="space-y-6">
