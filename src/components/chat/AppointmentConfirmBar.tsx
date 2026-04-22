@@ -75,11 +75,16 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     setAppointments((data as Appointment[]) || []);
   }, [leadId]);
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
-  // Agendamentos que já passaram (data anterior a hoje) e ainda estão como "confirmed" → precisam de desfecho
-  const awaitingOutcome = appointments.filter(
-    (a) => a.scheduled_date < todayStr && a.status === "confirmed",
-  );
+  // Agendamentos que já passaram do horário marcado em pelo menos 1 hora
+  // e ainda estão como "confirmed" → precisam de desfecho
+  const nowMs = Date.now();
+  const awaitingOutcome = appointments.filter((a) => {
+    if (a.status !== "confirmed") return false;
+    const time = (a.scheduled_time || "00:00:00").slice(0, 5);
+    const apptMs = new Date(`${a.scheduled_date}T${time}:00`).getTime();
+    if (Number.isNaN(apptMs)) return false;
+    return nowMs - apptMs >= 60 * 60 * 1000; // 1h após o horário agendado
+  });
   const upcomingAppointments = appointments.filter((a) => !awaitingOutcome.includes(a));
 
   const [outcomeStep, setOutcomeStep] = useState<Record<string, "init" | "compareceu">>({});
