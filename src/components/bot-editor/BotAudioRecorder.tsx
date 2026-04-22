@@ -67,7 +67,7 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
     onChange("");
   };
 
-  // While recording/preview, show the composer in full width
+  // Active recording / preview takes the full row
   if (recorderActive) {
     return (
       <div className="flex w-full">
@@ -85,54 +85,36 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
       <div className="space-y-3">
         <AudioPlayer src={savedPreviewUrl} />
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex">
-            <AudioRecorderComposer
-              onSendAudio={handleSendAudio}
-              onModeChange={setRecorderActive}
-            />
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setRecorderActive(true)}
+            className="gap-1.5"
+          >
+            <Mic size={14} /> Gravar novamente
+          </Button>
           <Button type="button" variant="ghost" size="sm" onClick={deleteAudio} className="text-destructive">
             Excluir áudio
           </Button>
+        </div>
+        {/* Hidden composer that activates when user clicks "Gravar novamente" via state */}
+        <div className="hidden">
+          <AudioRecorderComposer onSendAudio={handleSendAudio} onModeChange={setRecorderActive} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex w-full items-center">
-      <AudioRecorderComposerTrigger
-        onActivate={() => setRecorderActive(true)}
-        onSendAudio={handleSendAudio}
-        onModeChange={setRecorderActive}
-      />
-    </div>
-  );
-}
-
-function AudioRecorderComposerTrigger({
-  onSendAudio,
-  onModeChange,
-}: {
-  onActivate: () => void;
-  onSendAudio: (blob: Blob) => Promise<void>;
-  onModeChange: (active: boolean) => void;
-}) {
-  return (
     <Button
       type="button"
       variant="outline"
       size="sm"
+      onClick={() => setRecorderActive(true)}
       className="w-full gap-1.5"
-      asChild
     >
-      <span className="inline-flex items-center justify-center">
-        <Mic size={14} />
-        <span className="ml-1.5">Gravar áudio</span>
-        <span className="ml-2 inline-flex">
-          <AudioRecorderComposer onSendAudio={onSendAudio} onModeChange={onModeChange} />
-        </span>
-      </span>
+      <Mic size={14} /> Gravar áudio
     </Button>
   );
 }
