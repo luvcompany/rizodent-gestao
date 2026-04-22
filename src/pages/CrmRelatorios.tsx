@@ -720,14 +720,22 @@ function AcoesPorDiaTab({
       let msgsAll: any[] = [];
       for (let i = 0; i < stageIds.length; i += 100) {
         const chunk = stageIds.slice(i, i + 100);
-        const { data } = await supabase
-          .from("crm_lead_stage_history")
-          .select("lead_id, stage_id, entered_at")
-          .in("stage_id", chunk)
-          .gte("entered_at", startISO)
-          .lte("entered_at", endISO)
-          .limit(50000);
-        if (data) histAll = histAll.concat(data);
+        let hFrom = 0;
+        while (true) {
+          const { data, error } = await supabase
+            .from("crm_lead_stage_history")
+            .select("lead_id, stage_id, entered_at")
+            .in("stage_id", chunk)
+            .gte("entered_at", startISO)
+            .lte("entered_at", endISO)
+            .order("entered_at", { ascending: true })
+            .range(hFrom, hFrom + pageSize - 1);
+
+          if (error || !data || data.length === 0) break;
+          histAll = histAll.concat(data);
+          if (data.length < pageSize) break;
+          hFrom += pageSize;
+        }
       }
       // Paginar mensagens inbound (podem passar de 1000 no mês)
       for (let i = 0; i < leadIds.length; i += 300) {
