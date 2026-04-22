@@ -107,7 +107,7 @@ const Dashboard = () => {
       supabase.from("pacientes").select("*"),
       supabase.from("leads_diarios").select("*, clinicas(nome)"),
       (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id").limit(10000),
+      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id, paciente_id").limit(10000),
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000)]
       );
       setClinicas(cl || []);
