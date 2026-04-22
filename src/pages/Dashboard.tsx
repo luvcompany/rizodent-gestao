@@ -444,11 +444,20 @@ const Dashboard = () => {
     { name: "Faltaram", value: reagFaltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.remarcados },
   ];
 
+  // Conversão Total: usa CRM (agendados/compareceram/faltaram) + pagamentos como verdade para "Contrataram"
+  const convTotalLeads = crmLeadsCount;
+  const convTotalAgendados = crmAgendados;
+  const convTotalCompareceram = Math.max(crmCompareceram, pacientesPagantesPeriodo);
+  const convTotalContrataram = pacientesPagantesPeriodo;
+  const convTotalNaoContrat = Math.max(convTotalCompareceram - convTotalContrataram, 0);
+  const convTotalFaltas = crmFaltaram;
   const funnelDataConversao = [
-    { name: "Total Compareceram", value: totalCompareceram, fill: FUNNEL_COLORS[1], refValue: totalCompareceram },
-    { name: "Total Contrataram", value: totalContrataram, fill: FUNNEL_COLORS[5], refValue: totalCompareceram },
-    { name: "Total Não Contrat.", value: Math.max(totalNaoContrataram, 0), fill: FUNNEL_COLORS[6], refValue: totalCompareceram },
-    { name: "Faltas Líquidas", value: faltasLiquidas, fill: FUNNEL_COLORS[2], refValue: funnelTotals.agendaram + funnelTotals.remarcados },
+    { name: "Leads", value: convTotalLeads, fill: FUNNEL_COLORS[0], refValue: convTotalLeads },
+    { name: "Agendados", value: convTotalAgendados, fill: FUNNEL_COLORS[1], refValue: convTotalLeads },
+    { name: "Compareceram", value: convTotalCompareceram, fill: FUNNEL_COLORS[4], refValue: convTotalAgendados || convTotalLeads },
+    { name: "Contrataram", value: convTotalContrataram, fill: FUNNEL_COLORS[5], refValue: convTotalCompareceram || convTotalLeads },
+    { name: "Não Contrataram", value: convTotalNaoContrat, fill: FUNNEL_COLORS[6], refValue: convTotalCompareceram },
+    { name: "Faltaram", value: convTotalFaltas, fill: FUNNEL_COLORS[2], refValue: convTotalAgendados },
   ];
 
   const funnelData = funnelView === "agendamentos" ? funnelDataAgendamentos : funnelView === "conversao" ? funnelDataConversao : funnelDataReagendados;
@@ -666,7 +675,7 @@ const Dashboard = () => {
                ? "Agendados → Compareceram → Contrataram → Não Contrataram → Faltaram"
                : funnelView === "reagendados"
                ? "Reagendados → Compareceram → Contrataram → Não Contrataram → Faltaram"
-               : "Total Compareceram → Contrataram → Não Contrataram → Faltas Líquidas"}
+               : "Leads → Agendados → Compareceram → Contrataram (CRM + pagamentos)"}
            </p>
         </CardHeader>
         <CardContent>
