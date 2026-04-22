@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import AudioPlayer from "@/components/chat/AudioPlayer";
 import AudioRecorderComposer from "@/components/chat/AudioRecorderComposer";
 import { supabase } from "@/integrations/supabase/client";
-import { getSignedMediaUrl, getUploadedFileUrl } from "@/lib/mediaUtils";
+import { getSignedMediaUrl } from "@/lib/mediaUtils";
 import { toast } from "sonner";
 import { Mic, Trash2 } from "lucide-react";
 
