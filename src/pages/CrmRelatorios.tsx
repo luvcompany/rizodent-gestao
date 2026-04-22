@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
 import DashboardFunnel from "@/components/DashboardFunnel";
+import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
 import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity } from "lucide-react";
 
 // ---------- Tipos ----------
