@@ -22,6 +22,7 @@ type Message = {
   ad_image_url?: string | null;
   ad_source_url?: string | null;
   ad_source_id?: string | null;
+  ad_account_name?: string | null;
   error_reason?: string | null;
   deleted_at?: string | null;
 };
@@ -158,6 +159,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                   )}
                   <div className="px-3 py-2 space-y-0.5">
                     {msg.ad_headline && <p className="text-xs font-bold text-foreground leading-tight">{msg.ad_headline}</p>}
+                    {msg.ad_account_name && <p className="text-[10px] text-primary/70 font-medium">Conta: {msg.ad_account_name}</p>}
                     {msg.ad_body && <p className="text-[11px] text-muted-foreground line-clamp-2">{msg.ad_body}</p>}
                     {msg.ad_source_url && (
                       <a href={msg.ad_source_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-500 hover:underline truncate block">
