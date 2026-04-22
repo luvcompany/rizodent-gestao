@@ -12,6 +12,8 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandG
 import { cleanTemplateName } from "@/lib/templateUtils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ConditionsBuilder from "@/components/automation/ConditionsBuilder";
+import type { ConditionsConfig } from "@/lib/automationConditions";
 
 type Stage = { id: string; name: string; color: string };
 type Template = { id: string; name: string; status: string };
@@ -651,6 +653,12 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
               )}
             </>
           )}
+
+          {/* CONDIÇÕES OPCIONAIS */}
+          <ConditionsBuilder
+            value={autoForm.action_config.conditions as ConditionsConfig | undefined}
+            onChange={(v) => updateConfig({ conditions: v })}
+          />
 
           {/* Checkbox: send to all existing */}
           <div className="flex items-center gap-3">
