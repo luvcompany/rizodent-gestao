@@ -40,21 +40,34 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
     async (audioBlob: Blob) => {
       try {
         const audioFile = new File([audioBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
-        const path = `audio/${Date.now()}_${crypto.randomUUID()}.ogg`;
+        const path = `audio/${Date.now()}_${Math.random().toString(36).slice(2)}.ogg`;
 
-        const { data, error } = await supabase.storage
+        console.log(`[BotAudioRecorder] Uploading: size=${audioFile.size}, type=${audioFile.type}, path=${path}`);
+
+        const { error: uploadError } = await supabase.storage
           .from("chat-media")
           .upload(path, audioFile, { contentType: audioFile.type });
 
-        if (error || !data) {
-          throw new Error(error?.message || "Falha ao salvar áudio");
+        if (uploadError) {
+          throw new Error(uploadError.message || "Falha ao salvar áudio");
         }
 
-        const signedUrl = await getUploadedFileUrl(data.path);
+        const { data: signedData, error: signError } = await supabase.storage
+          .from("chat-media")
+          .createSignedUrl(path, 3600);
+
+        if (signError || !signedData?.signedUrl) {
+          throw new Error(signError?.message || "Falha ao gerar URL do áudio");
+        }
+
+        const signedUrl = signedData.signedUrl;
+        console.log(`[BotAudioRecorder] Audio saved successfully. Calling onChange.`);
+
         setSavedPreviewUrl(signedUrl);
         onChange(signedUrl);
-        toast.success("Áudio salvo no bloco");
+        toast.success("Áudio salvo. Lembre-se de publicar o bot.");
       } catch (err: any) {
+        console.error("[BotAudioRecorder] Error:", err);
         toast.error(err?.message || "Erro ao salvar áudio");
         throw err;
       }
