@@ -338,6 +338,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (!lead) continue;
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
 
         const { data: existing } = await supabase
           .from("crm_automation_queue")
@@ -431,6 +432,7 @@ Deno.serve(async (req) => {
             .eq("stage_id", auto.stage_id)
             .maybeSingle();
           if (!lead) continue;
+          if (!(await passesConditions(supabase, lead.id, config))) continue;
 
           const timeStr = appt.scheduled_time || "00:00:00";
           const scheduledAt = new Date(`${appt.scheduled_date}T${timeStr}${TZ_OFFSET}`).getTime();
@@ -483,6 +485,7 @@ Deno.serve(async (req) => {
             .eq("stage_id", auto.stage_id)
             .maybeSingle();
           if (!lead) continue;
+          if (!(await passesConditions(supabase, lead.id, config))) continue;
 
           const scheduledAt = new Date(task.due_date).getTime();
           const fireAt = scheduledAt - beforeMs;
