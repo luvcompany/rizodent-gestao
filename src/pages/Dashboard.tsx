@@ -252,9 +252,38 @@ const Dashboard = () => {
   const crmContratadosByAppt = crmFiltered.appts.filter(a => a.status === "contracted").length;
   const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
 
-  // Conversão real: pacientes pagantes no período / leads do CRM no período
-  // Usa pagamentos como fonte de verdade pois o desfecho do agendamento ainda pode não ter sido marcado.
-  const pacientesPagantesPeriodo = totalPacientes; // já é DISTINCT paciente_id de filtered.pagamentos
+  // Conversão real: SOMENTE novos leads (não recorrentes) que viraram pagantes
+  // E cujo paciente esteja vinculado a um lead do CRM criado a partir do início do CRM.
+  // Data mínima do CRM = primeiro lead criado no banco.
+  const crmStartDate = useMemo(() => {
+    if (!crmLeads.length) return null;
+    return crmLeads.reduce((min, l) => {
+      const d = (l.created_at || "").split("T")[0];
+      return !min || d < min ? d : min;
+    }, "" as string) || null;
+  }, [crmLeads]);
+
+  // Set de pacientes ligados a algum lead do CRM (pacientes "novos" do CRM)
+  const crmPacienteIds = useMemo(() => {
+    const set = new Set<string>();
+    crmLeads.forEach(l => { if ((l as any).paciente_id) set.add((l as any).paciente_id); });
+    return set;
+  }, [crmLeads]);
+
+  // Novos pagantes no período: tipo=primeiro, após início do CRM, vinculado a lead do CRM
+  const novosPagantesPeriodo = useMemo(() => {
+    const ids = new Set<string>();
+    filtered.pagamentos.forEach(p => {
+      if (p.tipo !== "primeiro") return;
+      const dp = (p.data_pagamento || "").split("T")[0];
+      if (crmStartDate && dp < crmStartDate) return;
+      if (crmPacienteIds.size > 0 && !crmPacienteIds.has(p.paciente_id)) return;
+      ids.add(p.paciente_id);
+    });
+    return ids.size;
+  }, [filtered.pagamentos, crmStartDate, crmPacienteIds]);
+
+  const pacientesPagantesPeriodo = novosPagantesPeriodo;
   const crmContratados = Math.max(crmContratadosByAppt, pacientesPagantesPeriodo);
   const taxaConversao = crmLeadsCount > 0 ? (pacientesPagantesPeriodo / crmLeadsCount) * 100 : 0;
 
