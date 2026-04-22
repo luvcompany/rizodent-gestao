@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, CalendarCheck, CheckCircle2, Plus, Pencil, Trash2, X } from "lucide-react";
-import { format, isPast } from "date-fns";
+import { CalendarIcon, CalendarCheck, CheckCircle2, Plus, Pencil, Trash2, X, AlertCircle, Handshake, XCircle } from "lucide-react";
+import { format, isPast, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { executeStageAutomations } from "@/lib/automationUtils";
+import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 
 type Task = {
   id: string;
@@ -73,6 +74,40 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       .order("scheduled_date", { ascending: true });
     setAppointments((data as Appointment[]) || []);
   }, [leadId]);
+
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  // Agendamentos que já passaram (data anterior a hoje) e ainda estão como "confirmed" → precisam de desfecho
+  const awaitingOutcome = appointments.filter(
+    (a) => a.scheduled_date < todayStr && a.status === "confirmed",
+  );
+  const upcomingAppointments = appointments.filter((a) => !awaitingOutcome.includes(a));
+
+  const [outcomeStep, setOutcomeStep] = useState<Record<string, "init" | "compareceu">>({});
+  const [outcomeSaving, setOutcomeSaving] = useState<string | null>(null);
+
+  const handleOutcome = async (apptId: string, outcome: "no_show" | "contracted" | "not_contracted") => {
+    setOutcomeSaving(apptId);
+    try {
+      await applyAppointmentOutcome({ leadId, appointmentId: apptId, outcome });
+      toast.success(
+        outcome === "no_show"
+          ? "Lead movido para Não compareceu"
+          : outcome === "contracted"
+          ? "Lead movido para Contratado"
+          : "Lead movido para funil de Não Contratados",
+      );
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+      setOutcomeStep((prev) => {
+        const { [apptId]: _, ...rest } = prev;
+        return rest;
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao registrar desfecho");
+    } finally {
+      setOutcomeSaving(null);
+    }
+  };
 
   const checkRescheduleMode = useCallback(async () => {
     const { data: leadData } = await supabase.from("crm_leads").select("stage_id").eq("id", leadId).single();
