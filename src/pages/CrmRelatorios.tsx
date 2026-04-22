@@ -758,9 +758,17 @@ function AcoesPorDiaTab({
   const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const selectedKey = dayKey(selectedDate);
 
-  // Identificar etapa de agendamento
+  // Identificar etapa de agendamento exata (excluindo "Pré-Agendado" e "Reagendado")
   const agendStage = useMemo(() => {
-    return stages.find(s => isAgendStage(s.name));
+    return stages.find(s => {
+      const n = lower(s.name);
+      return isAgendStage(s.name) && !/pr[eé]/.test(n) && !isReagendStage(s.name);
+    });
+  }, [stages]);
+
+  // Identificar etapa de reagendamento
+  const reagendStage = useMemo(() => {
+    return stages.find(s => isReagendStage(s.name));
   }, [stages]);
 
   const falaramDia = useMemo(() => {
@@ -781,6 +789,16 @@ function AcoesPorDiaTab({
     return set;
   }, [history, agendStage, selectedKey]);
 
+  const reagendadosDia = useMemo(() => {
+    if (!reagendStage) return new Set<string>();
+    const set = new Set<string>();
+    history.forEach(h => {
+      if (h.stage_id !== reagendStage.id) return;
+      if (dayKey(new Date(h.entered_at)) === selectedKey) set.add(h.lead_id);
+    });
+    return set;
+  }, [history, reagendStage, selectedKey]);
+
   // Interseção: dos que falaram, quantos foram agendados
   const agendadosDosQueFalaram = useMemo(() => {
     const intersection = new Set<string>();
@@ -800,7 +818,7 @@ function AcoesPorDiaTab({
       cur.setDate(cur.getDate() + 1);
     }
     if (workingDays.length === 0) {
-      return { avgFalaram: 0, avgAgendados: 0, totalDias: 0 };
+      return { avgFalaram: 0, avgAgendados: 0, avgReagendados: 0, totalDias: 0 };
     }
     const workingSet = new Set(workingDays);
 
@@ -816,37 +834,27 @@ function AcoesPorDiaTab({
     falaramByDay.forEach(s => { falaramTotal += s.size; });
     const avgFalaram = falaramTotal / workingDays.length;
 
-    // Média de agendados por dia (interseção com quem falou)
-    let agendadosTotal = 0;
-    if (agendStage) {
-      const agendadosByDay = new Map<string, Set<string>>();
-      const falaramSetByDay = new Map<string, Set<string>>();
-      inboundDays.forEach(m => {
-        const k = dayKey(new Date(m.created_at));
-        if (!workingSet.has(k)) return;
-        if (!falaramSetByDay.has(k)) falaramSetByDay.set(k, new Set());
-        falaramSetByDay.get(k)!.add(m.lead_id);
-      });
+    // Helper: total por dia útil (sem interseção - conta todos os movimentos para a etapa)
+    const totalForStage = (stageId: string | undefined) => {
+      if (!stageId) return 0;
+      const byDay = new Map<string, Set<string>>();
       history.forEach(h => {
-        if (h.stage_id !== agendStage.id) return;
+        if (h.stage_id !== stageId) return;
         const k = dayKey(new Date(h.entered_at));
         if (!workingSet.has(k)) return;
-        if (!agendadosByDay.has(k)) agendadosByDay.set(k, new Set());
-        agendadosByDay.get(k)!.add(h.lead_id);
+        if (!byDay.has(k)) byDay.set(k, new Set());
+        byDay.get(k)!.add(h.lead_id);
       });
-      agendadosByDay.forEach((leads, day) => {
-        const falaram = falaramSetByDay.get(day);
-        if (falaram) {
-          let count = 0;
-          leads.forEach(id => { if (falaram.has(id)) count++; });
-          agendadosTotal += count;
-        }
-      });
-    }
-    const avgAgendados = agendadosTotal / workingDays.length;
+      let total = 0;
+      byDay.forEach(s => { total += s.size; });
+      return total;
+    };
 
-    return { avgFalaram, avgAgendados, totalDias: workingDays.length };
-  }, [history, inboundDays, stages, monthStart, monthEnd, agendStage]);
+    const avgAgendados = totalForStage(agendStage?.id) / workingDays.length;
+    const avgReagendados = totalForStage(reagendStage?.id) / workingDays.length;
+
+    return { avgFalaram, avgAgendados, avgReagendados, totalDias: workingDays.length };
+  }, [history, inboundDays, stages, monthStart, monthEnd, agendStage, reagendStage]);
 
   return (
     <div className="space-y-6">
@@ -896,10 +904,10 @@ function AcoesPorDiaTab({
           </h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Pessoas que falaram hoje e quantas foram agendadas.
+          Pessoas que falaram hoje, quantas foram agendadas e quantas reagendadas.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
             <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
             <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
@@ -908,7 +916,12 @@ function AcoesPorDiaTab({
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
             <span className="text-sm text-muted-foreground">Consegui agendar</span>
             <span className="text-4xl font-bold text-green-600">{agendadosDia.size}</span>
-            <span className="text-xs text-muted-foreground">Total de leads movidos para etapa Agendado neste dia</span>
+            <span className="text-xs text-muted-foreground">Leads movidos para etapa Agendado neste dia</span>
+          </div>
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
+            <span className="text-sm text-muted-foreground">Reagendados</span>
+            <span className="text-4xl font-bold text-amber-600">{reagendadosDia.size}</span>
+            <span className="text-xs text-muted-foreground">Leads movidos para etapa Reagendado neste dia</span>
           </div>
         </div>
 
@@ -931,7 +944,7 @@ function AcoesPorDiaTab({
           Média por dia útil (excluindo domingos e feriados nacionais) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
             <span className="text-sm text-muted-foreground">Média de pessoas/dia</span>
             <span className="text-3xl font-bold text-primary">{mediasMes.avgFalaram.toFixed(1)}</span>
@@ -939,6 +952,10 @@ function AcoesPorDiaTab({
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
             <span className="text-sm text-muted-foreground">Média de agendamentos/dia</span>
             <span className="text-3xl font-bold text-green-600">{mediasMes.avgAgendados.toFixed(1)}</span>
+          </div>
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
+            <span className="text-sm text-muted-foreground">Média de reagendamentos/dia</span>
+            <span className="text-3xl font-bold text-amber-600">{mediasMes.avgReagendados.toFixed(1)}</span>
           </div>
         </div>
 
