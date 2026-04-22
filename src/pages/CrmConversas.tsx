@@ -261,6 +261,47 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     fetchLeads();
   }, []);
 
+  // Server-side search: when user types, fetch matching leads beyond the initial 500-row cache
+  // so older conversations (sorted lower by last_message_at) are still findable.
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 2) return;
+    const handle = setTimeout(async () => {
+      const digits = term.replace(/\D/g, "");
+      const SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
+
+      // Build OR filter: match by name (case-insensitive) and phone variants (handles BR 9th digit + country code)
+      const orParts: string[] = [];
+      if (term.length >= 2) orParts.push(`name.ilike.%${term}%`);
+      if (digits.length >= 3) {
+        const variants = new Set<string>();
+        variants.add(digits);
+        const noCountry = digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
+        variants.add(noCountry);
+        if (noCountry.length === 11 && noCountry[2] === "9") variants.add(noCountry.slice(0, 2) + noCountry.slice(3));
+        if (noCountry.length === 10) variants.add(noCountry.slice(0, 2) + "9" + noCountry.slice(2));
+        if (noCountry.length >= 8) variants.add(noCountry.slice(-8));
+        variants.forEach((v) => orParts.push(`phone.ilike.%${v}%`));
+      }
+      if (!orParts.length) return;
+
+      const { data, error } = await supabase
+        .from("crm_leads")
+        .select(SELECT_COLS)
+        .or(orParts.join(","))
+        .limit(50);
+      if (error || !data?.length) return;
+
+      setLeads((prev) => {
+        const existingIds = new Set(prev.map((l) => l.id));
+        const additions = (data as any as LeadConversation[]).filter((l) => !existingIds.has(l.id));
+        if (!additions.length) return prev;
+        return [...prev, ...additions];
+      });
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [search]);
+
   // Load special URL filter data (ghost leads, appointment leads)
   useEffect(() => {
     if (!urlGhost && !urlAppointmentStatus && !urlInactiveDays) return;
