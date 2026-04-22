@@ -80,7 +80,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     [...CITIES, "Outras"].forEach(c => { m[c] = {}; ORIGENS.forEach(o => m[c][o] = 0); });
     leads.forEach(l => {
       const city = CITIES.includes(l.cidade || "") ? (l.cidade as string) : "Outras";
-      const origem = classifyOrigem(l.origem);
+      const origem = classifyOrigem(l.source);
       m[city][origem]++;
     });
     return m;
@@ -145,7 +145,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       apptsByLead.get(a.lead_id)!.push(a);
     });
     leads.forEach(l => {
-      const o = classifyOrigem(l.origem);
+      const o = classifyOrigem(l.source);
       if (!byOrigem[o]) byOrigem[o] = { leads: 0, contracted: 0 };
       byOrigem[o].leads++;
       if ((apptsByLead.get(l.id) || []).some(a => a.status === "contracted")) byOrigem[o].contracted++;
