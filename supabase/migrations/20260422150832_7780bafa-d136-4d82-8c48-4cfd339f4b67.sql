@@ -1,0 +1,1 @@
+UPDATE crm_leads SET cidade = 'Guanambi' WHERE id = '89d09bf9-58cb-4022-8699-b72b7c8924e6' AND (cidade IS NULL OR cidade = '');
