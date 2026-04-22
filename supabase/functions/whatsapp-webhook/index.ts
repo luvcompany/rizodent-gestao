@@ -420,6 +420,30 @@ Deno.serve(async (req) => {
             let adAccountId: string | null = null;
             let adAccountName: string | null = null;
 
+            // 🔑 CACHE: tenta buscar metadados do anúncio no cache local antes de chamar a Graph API
+            // Isso garante que mesmo se a Graph API falhar (token expirado, rate limit, permissão),
+            // ainda teremos o ad_account_name e a cidade corretos do primeiro sucesso.
+            if (referral && adSourceId) {
+              try {
+                const { data: cached } = await supabase
+                  .from("ad_id_mapping")
+                  .select("ad_account_id, ad_account_name, ad_name, ad_headline, ad_body")
+                  .eq("ad_id", adSourceId)
+                  .maybeSingle();
+                if (cached) {
+                  if (!adAccountId && cached.ad_account_id) adAccountId = cached.ad_account_id;
+                  if (!adAccountName && cached.ad_account_name) adAccountName = cached.ad_account_name;
+                  if (!adHeadline && cached.ad_headline) adHeadline = cached.ad_headline;
+                  if (!adBody && cached.ad_body) adBody = cached.ad_body;
+                  console.log(`[AD-CACHE] HIT ad_id=${adSourceId} => account=${adAccountName}`);
+                } else {
+                  console.log(`[AD-CACHE] MISS ad_id=${adSourceId} - vai consultar Graph API`);
+                }
+              } catch (cErr: any) {
+                console.log(`[AD-CACHE] erro lookup: ${cErr.message}`);
+              }
+            }
+
             // Enrich ad data from Meta Graph API if we have an ad ID but missing image/link
             if (referral && adSourceId) {
               // Coleta todos os tokens disponíveis (integração atual + outras integrações + env)
