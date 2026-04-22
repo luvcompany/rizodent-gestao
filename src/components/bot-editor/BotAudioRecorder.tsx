@@ -5,7 +5,7 @@ import AudioRecorderComposer from "@/components/chat/AudioRecorderComposer";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, getUploadedFileUrl } from "@/lib/mediaUtils";
 import { toast } from "sonner";
-import { Mic } from "lucide-react";
+import { Mic, Trash2 } from "lucide-react";
 
 type BotAudioRecorderProps = {
   value?: string | null;
@@ -67,53 +67,35 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
     onChange("");
   };
 
-  // Active recording / preview takes the full row, with autoStart so user doesn't need a second click
-  if (recorderActive) {
-    return (
-      <div className="flex w-full">
-        <AudioRecorderComposer
-          autoStart
-          onSendAudio={handleSendAudio}
-          onModeChange={(active) => {
-            if (!active) setRecorderActive(false);
-          }}
-          showMicButton={false}
-        />
-      </div>
-    );
-  }
-
-  if (savedPreviewUrl) {
-    return (
-      <div className="space-y-3">
-        <AudioPlayer src={savedPreviewUrl} />
-        <div className="flex flex-wrap items-center gap-2">
+  return (
+    <div className="space-y-3">
+      {savedPreviewUrl && !recorderActive && (
+        <>
+          <AudioPlayer src={savedPreviewUrl} />
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
-            onClick={() => setRecorderActive(true)}
-            className="gap-1.5"
+            onClick={deleteAudio}
+            className="text-destructive gap-1.5"
           >
-            <Mic size={14} /> Gravar novamente
+            <Trash2 size={14} /> Excluir áudio
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={deleteAudio} className="text-destructive">
-            Excluir áudio
-          </Button>
+        </>
+      )}
+
+      <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-secondary/30 px-2 py-1.5">
+        <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Mic size={14} />
+          {savedPreviewUrl ? "Gravar novamente:" : "Gravar áudio:"}
+        </span>
+        <div className="flex flex-1 items-center justify-end">
+          <AudioRecorderComposer
+            onSendAudio={handleSendAudio}
+            onModeChange={setRecorderActive}
+          />
         </div>
       </div>
-    );
-  }
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={() => setRecorderActive(true)}
-      className="w-full gap-1.5"
-    >
-      <Mic size={14} /> Gravar áudio
-    </Button>
+    </div>
   );
 }
