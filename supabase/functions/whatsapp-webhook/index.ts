@@ -676,7 +676,7 @@ Deno.serve(async (req) => {
                 if (adAccountId) updates.ad_account_id = adAccountId;
                 if (adAccountName) updates.ad_account_name = adAccountName;
                 // Preencher cidade automaticamente apenas se o lead ainda não tiver cidade definida (preserva alteração manual)
-                const inferredCidade = inferCidadeFromAdAccount(adAccountName);
+                const inferredCidade = inferCidadeFromAdAccount(adAccountName, adHeadline, adBody, content);
                 if (inferredCidade) {
                   const { data: leadCidadeRow } = await supabase
                     .from("crm_leads")
