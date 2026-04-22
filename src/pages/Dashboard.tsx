@@ -506,6 +506,48 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
+      {/* KPIs do CRM (puxados automaticamente) */}
+      <Card className="gradient-card border-border shadow-card">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Users size={16} className="text-primary" />
+            CRM — Leads & Agendamentos {cidadeFiltro && <span className="text-xs text-muted-foreground font-normal">({cidadeFiltro})</span>}
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">Dados puxados diretamente do CRM no período selecionado</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-blue-500">{crmAdLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Origem anúncio</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-foreground">{crmAgendados}</p>
+              <p className="text-xs text-muted-foreground mt-1">Agendados</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-green-600">{crmCompareceram}</p>
+              <p className="text-xs text-muted-foreground mt-1">Compareceram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-red-500">{crmFaltaram}</p>
+              <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center">
+              <p className="text-2xl font-bold text-primary">{taxaPresenca.toFixed(0)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Taxa de presença</p>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-3 italic">
+            ✓ {crmContratados} contratado(s) · não é mais necessário lançar leads/agendamentos manualmente — tudo flui do CRM.
+          </p>
+        </CardContent>
+      </Card>
+
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {kpis.map((kpi: any) =>
