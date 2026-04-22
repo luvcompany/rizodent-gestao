@@ -522,7 +522,7 @@ const Dashboard = () => {
           <p className="text-xs text-muted-foreground">Dados puxados diretamente do CRM no período selecionado</p>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
             <div className="bg-secondary/40 rounded-lg p-3 text-center">
               <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
               <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
@@ -544,12 +544,16 @@ const Dashboard = () => {
               <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{taxaPresenca.toFixed(0)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Taxa de presença</p>
+              <p className="text-2xl font-bold text-emerald-600">{pacientesPagantesPeriodo}</p>
+              <p className="text-xs text-muted-foreground mt-1">Contratados (pagantes)</p>
+            </div>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
+              <p className="text-2xl font-bold text-primary">{taxaConversao.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Conversão Lead → Contrato</p>
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3 italic">
-            ✓ {crmContratados} contratado(s) · não é mais necessário lançar leads/agendamentos manualmente — tudo flui do CRM.
+            ✓ Taxa de presença: {taxaPresenca.toFixed(0)}% · Conversão calculada por pacientes pagantes / leads no período. Marque o desfecho dos agendamentos no CRM para refinar as métricas.
           </p>
         </CardContent>
       </Card>
