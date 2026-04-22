@@ -62,6 +62,8 @@ const Dashboard = () => {
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
   const [leadsData, setLeadsData] = useState<any[]>([]);
+  const [crmLeads, setCrmLeads] = useState<any[]>([]);
+  const [crmAppointments, setCrmAppointments] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
@@ -98,13 +100,15 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }] = await Promise.all([
       supabase.from("clinicas").select("*").eq("ativa", true),
       supabase.from("pagamentos").select("*, clinicas(nome)"),
       supabase.from("tratamentos").select("*, clinicas(nome)"),
       supabase.from("pacientes").select("*"),
       supabase.from("leads_diarios").select("*, clinicas(nome)"),
-      (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id")]
+      (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
+      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id").limit(10000),
+      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000)]
       );
       setClinicas(cl || []);
       setPagamentos(pg || []);
@@ -112,6 +116,8 @@ const Dashboard = () => {
       setPacientes(pc || []);
       setLeadsData(ld || []);
       setHolidays((hd || []) as Holiday[]);
+      setCrmLeads(cLeads || []);
+      setCrmAppointments(cAppts || []);
       setLoading(false);
     };
     fetchAll();
