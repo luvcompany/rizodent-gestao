@@ -350,9 +350,14 @@ export default function CrmRelatorios() {
       <Tabs defaultValue="overview" className="w-full">
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="origem-conversao">Origem & Conversão</TabsTrigger>
           <TabsTrigger value="acoes-dia">Ações por Dia</TabsTrigger>
           <TabsTrigger value="antecedencia">Antecedência de Agendamento</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="origem-conversao" className="mt-4">
+          <OrigemConversaoTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
+        </TabsContent>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
 
