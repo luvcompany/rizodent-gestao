@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { evaluateConditions } from "../_shared/automationConditions.ts";
 
 // Returns true if lead passes the optional conditions in config.conditions
