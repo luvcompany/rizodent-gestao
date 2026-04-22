@@ -249,8 +249,14 @@ const Dashboard = () => {
   const crmAgendados = crmFiltered.appts.length;
   const crmCompareceram = crmFiltered.appts.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
   const crmFaltaram = crmFiltered.appts.filter(a => a.status === "no_show").length;
-  const crmContratados = crmFiltered.appts.filter(a => a.status === "contracted").length;
+  const crmContratadosByAppt = crmFiltered.appts.filter(a => a.status === "contracted").length;
   const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
+
+  // Conversão real: pacientes pagantes no período / leads do CRM no período
+  // Usa pagamentos como fonte de verdade pois o desfecho do agendamento ainda pode não ter sido marcado.
+  const pacientesPagantesPeriodo = totalPacientes; // já é DISTINCT paciente_id de filtered.pagamentos
+  const crmContratados = Math.max(crmContratadosByAppt, pacientesPagantesPeriodo);
+  const taxaConversao = crmLeadsCount > 0 ? (pacientesPagantesPeriodo / crmLeadsCount) * 100 : 0;
 
   const kpis = [
   { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
