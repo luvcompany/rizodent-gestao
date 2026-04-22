@@ -581,6 +581,26 @@ Deno.serve(async (req) => {
               }
             }
 
+            // 🔑 CACHE: persiste/atualiza metadados do anúncio para garantir que próximas requisições
+            // não dependam mais da Graph API (evita falhas por token expirado, rate limit, etc.)
+            if (referral && adSourceId && (adAccountName || adAccountId || adHeadline)) {
+              try {
+                const inferredCidadeForCache = inferCidadeFromAdAccount(adAccountName, adHeadline, adBody, content);
+                await supabase.from("ad_id_mapping").upsert({
+                  ad_id: adSourceId,
+                  ad_account_id: adAccountId,
+                  ad_account_name: adAccountName,
+                  ad_headline: adHeadline,
+                  ad_body: adBody,
+                  cidade: inferredCidadeForCache,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: "ad_id" });
+                console.log(`[AD-CACHE] UPSERT ad_id=${adSourceId} account=${adAccountName} cidade=${inferredCidadeForCache}`);
+              } catch (upErr: any) {
+                console.log(`[AD-CACHE] erro upsert: ${upErr.message}`);
+              }
+            }
+
             // Download and store media if present
             let mediaUrl: string | null = null;
             const whatsappToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
