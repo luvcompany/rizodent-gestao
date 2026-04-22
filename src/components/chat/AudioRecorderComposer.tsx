@@ -368,6 +368,14 @@ export default function AudioRecorderComposer({
   // Notify parent
   useEffect(() => { onModeChange?.(mode !== "idle"); }, [mode, onModeChange]);
 
+  // Auto-start recording when requested by parent
+  useEffect(() => {
+    if (autoStart && mode === "idle" && !disabled) {
+      startRecording();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
+
   const activePreviewBars = useMemo(() => {
     if (!previewDuration) return 0;
     return Math.min(waveformBars.length, Math.round((previewProgress / previewDuration) * waveformBars.length));
