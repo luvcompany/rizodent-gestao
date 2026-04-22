@@ -550,7 +550,7 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* (Bloco CRM movido para abaixo do gráfico Leads Novos por Dia) */}
+
 
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
