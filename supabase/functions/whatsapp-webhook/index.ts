@@ -135,8 +135,27 @@ async function executeStageAutomationsForTriggers(
       .eq("is_active", true)
       .in("trigger_type", triggerTypes);
 
+    // Lazy-fetch lead data for condition evaluation
+    let leadRow: any = null;
+    const needsLead = (automations || []).some((a: any) => (a.action_config as any)?.conditions?.rules?.length);
+    if (needsLead) {
+      const { data: lead } = await supabase
+        .from("crm_leads")
+        .select("tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+        .eq("id", leadId)
+        .maybeSingle();
+      leadRow = lead;
+    }
+
+    const { evaluateConditions } = await import("../_shared/automationConditions.ts");
+
     for (const auto of automations || []) {
       const config = (auto.action_config || {}) as Record<string, any>;
+      const conditions = config.conditions;
+      if (conditions?.rules?.length && leadRow && !evaluateConditions(conditions, leadRow)) {
+        console.log(`[WEBHOOK] Skipping ${auto.id} (${auto.trigger_type}): conditions not met`);
+        continue;
+      }
       console.log(`[WEBHOOK] ${auto.trigger_type} automation ${auto.id} (${auto.action_type}) for lead ${leadId}`);
       await executeWebhookAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, leadId, phone);
     }
@@ -852,8 +871,27 @@ Deno.serve(async (req) => {
                     .eq("is_active", true)
                     .in("trigger_type", ["keyword_response", "cold_lead_return", "time_window"]);
 
+                  // Pre-load lead data once if any reactive auto has conditions
+                  let reactiveLeadRow: any = null;
+                  const needsReactiveLead = (reactiveAutos || []).some((a: any) => (a.action_config as any)?.conditions?.rules?.length);
+                  if (needsReactiveLead) {
+                    const { data: rl } = await supabase
+                      .from("crm_leads")
+                      .select("tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+                      .eq("id", lead.id)
+                      .maybeSingle();
+                    reactiveLeadRow = rl;
+                  }
+                  const { evaluateConditions: evalReactiveConditions } = await import("../_shared/automationConditions.ts");
+
                   for (const ra of reactiveAutos || []) {
                     const raCfg = (ra.action_config || {}) as Record<string, any>;
+
+                    // Check optional conditions filter
+                    if (raCfg.conditions?.rules?.length && reactiveLeadRow && !evalReactiveConditions(raCfg.conditions, reactiveLeadRow)) {
+                      console.log(`[WEBHOOK] Reactive auto ${ra.id} skipped by conditions`);
+                      continue;
+                    }
 
                     if (ra.trigger_type === "keyword_response") {
                       const keywords = (raCfg.keywords || []) as string[];

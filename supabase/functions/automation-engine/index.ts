@@ -1,4 +1,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { evaluateConditions } from "../_shared/automationConditions.ts";
+
+// Returns true if lead passes the optional conditions in config.conditions
+async function passesConditions(supabase: any, leadId: string, config: Record<string, any>): Promise<boolean> {
+  const conditions = config?.conditions;
+  if (!conditions || !Array.isArray(conditions.rules) || conditions.rules.length === 0) return true;
+  const { data: lead } = await supabase
+    .from("crm_leads")
+    .select("tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return true;
+  return evaluateConditions(conditions, lead);
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -197,6 +211,7 @@ Deno.serve(async (req) => {
         .not("automation_paused", "is", true);
 
       for (const lead of leads || []) {
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
         if (!lead.last_outbound_at) continue;
         const lastOut = new Date(lead.last_outbound_at).getTime();
         const lastIn = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
@@ -264,6 +279,7 @@ Deno.serve(async (req) => {
         .lt("updated_at", cutoff);
 
       for (const lead of leads || []) {
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
         const { data: existing } = await supabase
           .from("crm_automation_queue")
           .select("id")
@@ -322,6 +338,7 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (!lead) continue;
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
 
         const { data: existing } = await supabase
           .from("crm_automation_queue")
@@ -415,6 +432,7 @@ Deno.serve(async (req) => {
             .eq("stage_id", auto.stage_id)
             .maybeSingle();
           if (!lead) continue;
+          if (!(await passesConditions(supabase, lead.id, config))) continue;
 
           const timeStr = appt.scheduled_time || "00:00:00";
           const scheduledAt = new Date(`${appt.scheduled_date}T${timeStr}${TZ_OFFSET}`).getTime();
@@ -467,6 +485,7 @@ Deno.serve(async (req) => {
             .eq("stage_id", auto.stage_id)
             .maybeSingle();
           if (!lead) continue;
+          if (!(await passesConditions(supabase, lead.id, config))) continue;
 
           const scheduledAt = new Date(task.due_date).getTime();
           const fireAt = scheduledAt - beforeMs;
@@ -529,6 +548,7 @@ Deno.serve(async (req) => {
         .not("automation_paused", "is", true);
 
       for (const lead of leads || []) {
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
         // "Sem resposta" = o LEAD não respondeu à NOSSA última mensagem há X tempo.
         // Só dispara quando a última mensagem foi NOSSA (outbound) e o lead ainda não respondeu.
         // Se o lead respondeu por último, a bola está conosco — não dispara.
@@ -623,6 +643,11 @@ Deno.serve(async (req) => {
     for (const item of pendingQueue || []) {
       const autoConfig = ((item as any).crm_automations?.action_config || {}) as Record<string, any>;
       const triggerType = (item as any).crm_automations?.trigger_type;
+      // Honor optional conditions on queued items
+      if (!(await passesConditions(supabase, item.lead_id, autoConfig))) {
+        await supabase.from("crm_automation_queue").update({ status: "skipped", updated_at: new Date().toISOString() }).eq("id", item.id);
+        continue;
+      }
 
       if (triggerType === "time_window" || autoConfig.time_window) {
         const tw = autoConfig.time_window || autoConfig;

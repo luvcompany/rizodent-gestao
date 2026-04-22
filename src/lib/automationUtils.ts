@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { evaluateConditions, type ConditionsConfig } from "@/lib/automationConditions";
 
 interface AutomationContext {
   leadId: string;
@@ -20,16 +21,29 @@ export async function executeStageAutomations({ leadId, stageId, leadPhone, trig
 
     if (!stageAutomations.length) return;
 
-    // Fetch phone if not provided
+    // Fetch lead once for both phone and condition evaluation
     let phone = leadPhone;
-    if (phone === undefined) {
-      const { data: leadData } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
-      phone = leadData?.phone || null;
+    let leadRow: Record<string, any> | null = null;
+    if (phone === undefined || stageAutomations.some(a => (a.action_config as any)?.conditions)) {
+      const { data: leadData } = await supabase
+        .from("crm_leads")
+        .select("phone, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+        .eq("id", leadId)
+        .single();
+      leadRow = leadData || null;
+      if (phone === undefined) phone = leadData?.phone || null;
     }
 
     for (const auto of stageAutomations) {
       const config = (auto.action_config || {}) as Record<string, unknown>;
       try {
+        // Evaluate optional conditions
+        const conditions = config.conditions as ConditionsConfig | undefined;
+        if (conditions?.rules?.length && leadRow && !evaluateConditions(conditions, leadRow)) {
+          console.log("[Automation] Skipped by conditions:", auto.id);
+          continue;
+        }
+
         // Check keyword_response filter
         if (auto.trigger_type === "keyword_response" && messageContent) {
           const keywords = (config.keywords as string[]) || [];
