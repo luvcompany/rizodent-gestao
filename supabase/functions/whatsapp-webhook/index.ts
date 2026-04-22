@@ -481,26 +481,26 @@ Deno.serve(async (req) => {
                   console.log(`[AD-ENRICHMENT] Error: ${adErr.message}`);
                 }
               }
-            }
+
+              const fallbackToken = tokens[0] || "";
 
               // Fallback: fetch adcreatives directly for video/carousel ads that don't return image above
-              if (!adImageUrl) {
+              if (!adImageUrl && fallbackToken) {
                 try {
                   console.log(`[AD-ENRICHMENT] Trying adcreatives endpoint for ad_id: ${adSourceId}`);
                   const crRes = await fetch(
-                    `https://graph.facebook.com/v25.0/${adSourceId}/adcreatives?fields=thumbnail_url,image_url,object_story_id,effective_object_story_id&access_token=${metaToken}`
+                    `https://graph.facebook.com/v25.0/${adSourceId}/adcreatives?fields=thumbnail_url,image_url,object_story_id,effective_object_story_id&access_token=${fallbackToken}`
                   );
                   if (crRes.ok) {
                     const crData = await crRes.json();
                     const cr = crData.data?.[0];
                     if (cr) {
                       adImageUrl = cr.image_url || cr.thumbnail_url || null;
-                      // If we have an object_story_id, try to get the post image
                       const storyId = cr.effective_object_story_id || cr.object_story_id;
                       if (!adImageUrl && storyId) {
                         try {
                           const postRes = await fetch(
-                            `https://graph.facebook.com/v25.0/${storyId}?fields=full_picture,picture&access_token=${metaToken}`
+                            `https://graph.facebook.com/v25.0/${storyId}?fields=full_picture,picture&access_token=${fallbackToken}`
                           );
                           if (postRes.ok) {
                             const postData = await postRes.json();
@@ -517,11 +517,11 @@ Deno.serve(async (req) => {
               }
 
               // Final fallback: if source_url is an Instagram post, try oEmbed
-              if (!adImageUrl && adSourceUrl) {
+              if (!adImageUrl && adSourceUrl && fallbackToken) {
                 try {
                   const igMatch = adSourceUrl.match(/instagram\.com\/p\/([^/?]+)/);
                   if (igMatch) {
-                    const oembedRes = await fetch(`https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(adSourceUrl)}&access_token=${metaToken}`);
+                    const oembedRes = await fetch(`https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(adSourceUrl)}&access_token=${fallbackToken}`);
                     if (oembedRes.ok) {
                       const oembedData = await oembedRes.json();
                       adImageUrl = oembedData.thumbnail_url || null;
