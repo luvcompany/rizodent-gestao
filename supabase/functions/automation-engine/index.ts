@@ -211,6 +211,7 @@ Deno.serve(async (req) => {
         .not("automation_paused", "is", true);
 
       for (const lead of leads || []) {
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
         if (!lead.last_outbound_at) continue;
         const lastOut = new Date(lead.last_outbound_at).getTime();
         const lastIn = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
@@ -278,6 +279,7 @@ Deno.serve(async (req) => {
         .lt("updated_at", cutoff);
 
       for (const lead of leads || []) {
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
         const { data: existing } = await supabase
           .from("crm_automation_queue")
           .select("id")
