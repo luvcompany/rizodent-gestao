@@ -7,15 +7,17 @@ const corsHeaders = {
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
-// Mapeia o nome da conta de anúncio (Meta Ad Account) para a cidade do lead.
-// Permite preencher automaticamente o campo cidade quando um lead vem de anúncio.
-function inferCidadeFromAdAccount(accountName: string | null | undefined): string | null {
-  if (!accountName) return null;
-  const n = accountName.toLowerCase();
-  if (n.includes("vca") || n.includes("vitoria") || n.includes("vitória") || n.includes("conquista")) return "Vitória da Conquista";
-  if (n.includes("guanambi")) return "Guanambi";
-  if (n.includes("itabuna")) return "Itabuna";
-  if (n.includes("ipiau") || n.includes("ipiaú")) return "Ipiaú";
+// Mapeia o nome da conta de anúncio (Meta Ad Account) ou pistas no texto do anúncio
+// (título, descrição, mensagem inicial) para a cidade do lead. Permite preencher
+// automaticamente o campo cidade quando um lead vem de anúncio, mesmo se a chamada
+// à Graph API falhar e a conta não estiver disponível.
+function inferCidadeFromAdAccount(...sources: Array<string | null | undefined>): string | null {
+  const combined = sources.filter(Boolean).join(" ").toLowerCase();
+  if (!combined) return null;
+  if (combined.includes("vca") || combined.includes("vitoria") || combined.includes("vitória") || combined.includes("conquista")) return "Vitória da Conquista";
+  if (combined.includes("guanambi")) return "Guanambi";
+  if (combined.includes("itabuna")) return "Itabuna";
+  if (combined.includes("ipiau") || combined.includes("ipiaú")) return "Ipiaú";
   return null;
 }
 
@@ -114,8 +116,14 @@ async function executeWebhookAction(
   }
 }
 
-// Execute on_enter stage automations server-side
-async function executeOnEnterAutomations(supabase: any, leadId: string, stageId: string, phone: string | null) {
+// Execute stage automations server-side for given trigger types
+async function executeStageAutomationsForTriggers(
+  supabase: any,
+  leadId: string,
+  stageId: string,
+  phone: string | null,
+  triggerTypes: string[]
+) {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -125,16 +133,21 @@ async function executeOnEnterAutomations(supabase: any, leadId: string, stageId:
       .select("*")
       .eq("stage_id", stageId)
       .eq("is_active", true)
-      .eq("trigger_type", "on_enter");
+      .in("trigger_type", triggerTypes);
 
     for (const auto of automations || []) {
       const config = (auto.action_config || {}) as Record<string, any>;
-      console.log(`[WEBHOOK] on_enter automation ${auto.id} (${auto.action_type}) for lead ${leadId}`);
+      console.log(`[WEBHOOK] ${auto.trigger_type} automation ${auto.id} (${auto.action_type}) for lead ${leadId}`);
       await executeWebhookAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, leadId, phone);
     }
   } catch (e: any) {
-    console.error("[WEBHOOK] on_enter automations error:", e.message);
+    console.error("[WEBHOOK] stage automations error:", e.message);
   }
+}
+
+// Backwards-compat wrapper
+async function executeOnEnterAutomations(supabase: any, leadId: string, stageId: string, phone: string | null) {
+  return executeStageAutomationsForTriggers(supabase, leadId, stageId, phone, ["on_enter"]);
 }
 
 // Default assignment: all leads go to Rizodent user
