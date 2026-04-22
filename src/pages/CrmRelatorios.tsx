@@ -904,10 +904,10 @@ function AcoesPorDiaTab({
           </h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Pessoas que falaram hoje e quantas foram agendadas.
+          Pessoas que falaram hoje, quantas foram agendadas e quantas reagendadas.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
             <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
             <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
@@ -916,7 +916,12 @@ function AcoesPorDiaTab({
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
             <span className="text-sm text-muted-foreground">Consegui agendar</span>
             <span className="text-4xl font-bold text-green-600">{agendadosDia.size}</span>
-            <span className="text-xs text-muted-foreground">Total de leads movidos para etapa Agendado neste dia</span>
+            <span className="text-xs text-muted-foreground">Leads movidos para etapa Agendado neste dia</span>
+          </div>
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
+            <span className="text-sm text-muted-foreground">Reagendados</span>
+            <span className="text-4xl font-bold text-amber-600">{reagendadosDia.size}</span>
+            <span className="text-xs text-muted-foreground">Leads movidos para etapa Reagendado neste dia</span>
           </div>
         </div>
 
