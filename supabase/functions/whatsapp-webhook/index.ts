@@ -7,6 +7,18 @@ const corsHeaders = {
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
+// Mapeia o nome da conta de anúncio (Meta Ad Account) para a cidade do lead.
+// Permite preencher automaticamente o campo cidade quando um lead vem de anúncio.
+function inferCidadeFromAdAccount(accountName: string | null | undefined): string | null {
+  if (!accountName) return null;
+  const n = accountName.toLowerCase();
+  if (n.includes("vca") || n.includes("vitoria") || n.includes("vitória") || n.includes("conquista")) return "Vitória da Conquista";
+  if (n.includes("guanambi")) return "Guanambi";
+  if (n.includes("itabuna")) return "Itabuna";
+  if (n.includes("ipiau") || n.includes("ipiaú")) return "Ipiaú";
+  return null;
+}
+
 // Centralized server-side action executor — always awaits to prevent runtime shutdown
 async function executeWebhookAction(
   supabase: any,
