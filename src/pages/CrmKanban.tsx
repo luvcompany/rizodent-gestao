@@ -120,6 +120,7 @@ export default function CrmKanban() {
   const [kanbanFilters, setKanbanFilters] = useState<ConversationFilterValues>(emptyFilters);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
+  const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
@@ -386,9 +387,14 @@ export default function CrmKanban() {
         } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
       }
       if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
+      if (kanbanFilters.hasPagamento) {
+        const hasPag = leadsWithPagamento.has(l.id);
+        if (kanbanFilters.hasPagamento === "yes" && !hasPag) return false;
+        if (kanbanFilters.hasPagamento === "no" && hasPag) return false;
+      }
       return true;
     });
-  }, [searchTerm, kanbanFilters, user?.id]);
+  }, [searchTerm, kanbanFilters, user?.id, leadsWithPagamento]);
 
   const getLeadsForStage = (stageId: string) => {
     const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
@@ -426,10 +432,11 @@ export default function CrmKanban() {
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
 
     (async () => {
-      const [{ data: pags }, { data: links }] = await Promise.all([
+      const [{ data: pags }, { data: links }, { data: allPags }] = await Promise.all([
         supabase.from("pagamentos").select("valor, paciente_id")
           .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
         supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
+        supabase.from("pagamentos").select("paciente_id"),
       ]);
 
       // Selecionar UM único lead por paciente para evitar contagem duplicada
@@ -450,8 +457,23 @@ export default function CrmKanban() {
         if (leadId) map.set(leadId, (map.get(leadId) || 0) + v);
       });
 
+      // Set de leads com QUALQUER pagamento vinculado (todos os tempos),
+      // considerando todos os leads ligados ao paciente que pagou.
+      const pacienteToAllLeads = new Map<string, string[]>();
+      (links || []).forEach((l: any) => {
+        const arr = pacienteToAllLeads.get(l.paciente_id) || [];
+        arr.push(l.lead_id);
+        pacienteToAllLeads.set(l.paciente_id, arr);
+      });
+      const paidLeadIds = new Set<string>();
+      (allPags || []).forEach((p: any) => {
+        const ids = pacienteToAllLeads.get(p.paciente_id) || [];
+        ids.forEach((id) => paidLeadIds.add(id));
+      });
+
       setVendasConcluidas(total);
       setLeadMonthValueMap(map);
+      setLeadsWithPagamento(paidLeadIds);
     })();
   }, [leads]);
 

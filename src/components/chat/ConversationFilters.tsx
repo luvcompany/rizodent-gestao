@@ -20,6 +20,7 @@ export type ConversationFilterValues = {
   source: string;
   assignedTo: string;
   cidade: string;
+  hasPagamento: string; // "" | "yes" | "no"
 };
 
 const emptyFilters: ConversationFilterValues = {
@@ -31,6 +32,7 @@ const emptyFilters: ConversationFilterValues = {
   source: "",
   assignedTo: "",
   cidade: "",
+  hasPagamento: "",
 };
 
 const CIDADES = [
@@ -50,6 +52,7 @@ function countActive(f: ConversationFilterValues): number {
   if (f.source) c++;
   if (f.assignedTo) c++;
   if (f.cidade) c++;
+  if (f.hasPagamento) c++;
   return c;
 }
 
@@ -183,6 +186,18 @@ export default function ConversationFilters({
                   {CIDADES.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Pagamentos vinculados */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Pagamentos vinculados</label>
+              <Select value={draft.hasPagamento} onValueChange={(v) => setDraft({ ...draft, hasPagamento: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yes">Com pagamento</SelectItem>
+                  <SelectItem value="no">Sem pagamento</SelectItem>
                 </SelectContent>
               </Select>
             </div>
