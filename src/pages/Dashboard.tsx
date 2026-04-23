@@ -66,6 +66,7 @@ const Dashboard = () => {
   const [crmAppointments, setCrmAppointments] = useState<any[]>([]);
   const [crmStages, setCrmStages] = useState<any[]>([]);
   const [crmStageHistory, setCrmStageHistory] = useState<any[]>([]);
+  const [adIdMapping, setAdIdMapping] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
@@ -102,17 +103,18 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
       supabase.from("clinicas").select("*").eq("ativa", true),
       supabase.from("pagamentos").select("*, clinicas(nome)"),
       supabase.from("tratamentos").select("*, clinicas(nome)"),
       supabase.from("pacientes").select("*"),
       supabase.from("leads_diarios").select("*, clinicas(nome)"),
       (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, paciente_id, pipeline_id").limit(10000),
+      supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id").limit(10000),
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000),
       supabase.from("crm_stages").select("id, name, pipeline_id"),
-      supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000)]
+      supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
+      (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
       );
       setClinicas(cl || []);
       setPagamentos(pg || []);
@@ -124,6 +126,7 @@ const Dashboard = () => {
       setCrmAppointments(cAppts || []);
       setCrmStages(cStages || []);
       setCrmStageHistory(cHist || []);
+      setAdIdMapping(adMap || []);
       setLoading(false);
     };
     fetchAll();
@@ -369,16 +372,39 @@ const Dashboard = () => {
     const isAdLead = (l: any) =>
       !!l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "");
 
+    // Mapa ad_id -> { ad_account_name, cidade } para fallback quando o lead
+    // não tem ad_account_name preenchido (enriquecimento ainda não rodou).
+    const adIdLookup = new Map<string, { account: string | null; cidade: string | null }>();
+    adIdMapping.forEach((m: any) => {
+      if (!m.ad_id) return;
+      adIdLookup.set(String(m.ad_id), {
+        account: m.ad_account_name || null,
+        cidade: m.cidade || null,
+      });
+    });
+
     // Deriva a cidade do lead a partir da conta de anúncio (fonte da verdade do
     // gerenciador). Ex.: "CA 01 - RIZODENT (GUANAMBI)" -> "Guanambi".
-    // Faz fallback para o campo l.cidade quando não há ad_account_name.
-    const cidadeFromAdAccount = (l: any): string | null => {
-      const acc = (l.ad_account_name || "").toUpperCase();
+    // Ordem: ad_account_name do lead -> ad_id_mapping -> cidade do lead.
+    const inferCidadeFromAccount = (accountName: string | null | undefined): string | null => {
+      const acc = (accountName || "").toUpperCase();
+      if (!acc) return null;
       if (acc.includes("GUANAMBI")) return "Guanambi";
       if (acc.includes("ITABUNA")) return "Itabuna";
       if (acc.includes("IPIA")) return "Ipiaú";
       if (acc.includes("VCA") || acc.includes("VITÓRIA") || acc.includes("VITORIA") || acc.includes("CONQUISTA"))
         return "Vitória da Conquista";
+      return null;
+    };
+    const cidadeFromAdAccount = (l: any): string | null => {
+      const fromLead = inferCidadeFromAccount(l.ad_account_name);
+      if (fromLead) return fromLead;
+      const mapped = l.ad_id ? adIdLookup.get(String(l.ad_id)) : null;
+      if (mapped) {
+        const fromMap = inferCidadeFromAccount(mapped.account);
+        if (fromMap) return fromMap;
+        if (mapped.cidade) return mapped.cidade;
+      }
       return l.cidade || null;
     };
     const matchCidade = (cid: string | null | undefined) =>
@@ -441,7 +467,7 @@ const Dashboard = () => {
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.leads, crmLeads, cidadeFiltro, useMonthlyChart, rangeBounds, holidaySet]);
+  }, [dateFrom, dateTo, filtered.leads, crmLeads, adIdMapping, cidadeFiltro, useMonthlyChart, rangeBounds, holidaySet]);
 
   // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
   const fatClinicaRaw = clinicas.map((c) => {
