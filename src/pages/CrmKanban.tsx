@@ -386,9 +386,14 @@ export default function CrmKanban() {
         } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
       }
       if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
+      if (kanbanFilters.hasPagamento) {
+        const hasPag = leadsWithPagamento.has(l.id);
+        if (kanbanFilters.hasPagamento === "yes" && !hasPag) return false;
+        if (kanbanFilters.hasPagamento === "no" && hasPag) return false;
+      }
       return true;
     });
-  }, [searchTerm, kanbanFilters, user?.id]);
+  }, [searchTerm, kanbanFilters, user?.id, leadsWithPagamento]);
 
   const getLeadsForStage = (stageId: string) => {
     const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
