@@ -372,16 +372,39 @@ const Dashboard = () => {
     const isAdLead = (l: any) =>
       !!l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "");
 
+    // Mapa ad_id -> { ad_account_name, cidade } para fallback quando o lead
+    // não tem ad_account_name preenchido (enriquecimento ainda não rodou).
+    const adIdLookup = new Map<string, { account: string | null; cidade: string | null }>();
+    adIdMapping.forEach((m: any) => {
+      if (!m.ad_id) return;
+      adIdLookup.set(String(m.ad_id), {
+        account: m.ad_account_name || null,
+        cidade: m.cidade || null,
+      });
+    });
+
     // Deriva a cidade do lead a partir da conta de anúncio (fonte da verdade do
     // gerenciador). Ex.: "CA 01 - RIZODENT (GUANAMBI)" -> "Guanambi".
-    // Faz fallback para o campo l.cidade quando não há ad_account_name.
-    const cidadeFromAdAccount = (l: any): string | null => {
-      const acc = (l.ad_account_name || "").toUpperCase();
+    // Ordem: ad_account_name do lead -> ad_id_mapping -> cidade do lead.
+    const inferCidadeFromAccount = (accountName: string | null | undefined): string | null => {
+      const acc = (accountName || "").toUpperCase();
+      if (!acc) return null;
       if (acc.includes("GUANAMBI")) return "Guanambi";
       if (acc.includes("ITABUNA")) return "Itabuna";
       if (acc.includes("IPIA")) return "Ipiaú";
       if (acc.includes("VCA") || acc.includes("VITÓRIA") || acc.includes("VITORIA") || acc.includes("CONQUISTA"))
         return "Vitória da Conquista";
+      return null;
+    };
+    const cidadeFromAdAccount = (l: any): string | null => {
+      const fromLead = inferCidadeFromAccount(l.ad_account_name);
+      if (fromLead) return fromLead;
+      const mapped = l.ad_id ? adIdLookup.get(String(l.ad_id)) : null;
+      if (mapped) {
+        const fromMap = inferCidadeFromAccount(mapped.account);
+        if (fromMap) return fromMap;
+        if (mapped.cidade) return mapped.cidade;
+      }
       return l.cidade || null;
     };
     const matchCidade = (cid: string | null | undefined) =>
