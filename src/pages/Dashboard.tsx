@@ -368,13 +368,28 @@ const Dashboard = () => {
   const leadsDiario = useMemo(() => {
     const isAdLead = (l: any) =>
       !!l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "");
+
+    // Deriva a cidade do lead a partir da conta de anúncio (fonte da verdade do
+    // gerenciador). Ex.: "CA 01 - RIZODENT (GUANAMBI)" -> "Guanambi".
+    // Faz fallback para o campo l.cidade quando não há ad_account_name.
+    const cidadeFromAdAccount = (l: any): string | null => {
+      const acc = (l.ad_account_name || "").toUpperCase();
+      if (acc.includes("GUANAMBI")) return "Guanambi";
+      if (acc.includes("ITABUNA")) return "Itabuna";
+      if (acc.includes("IPIA")) return "Ipiaú";
+      if (acc.includes("VCA") || acc.includes("VITÓRIA") || acc.includes("VITORIA") || acc.includes("CONQUISTA"))
+        return "Vitória da Conquista";
+      return l.cidade || null;
+    };
     const matchCidade = (cid: string | null | undefined) =>
       !cidadeFiltro || (cid || "").toLowerCase().includes(cidadeFiltro.toLowerCase());
 
     // Mapa de leads do CRM (anúncio) por data
     const crmAdMap = new Map<string, number>();
     crmLeads.forEach((l: any) => {
-      if (!isAdLead(l) || !matchCidade(l.cidade)) return;
+      if (!isAdLead(l)) return;
+      const cid = cidadeFromAdAccount(l);
+      if (!matchCidade(cid)) return;
       // Conta o lead na data em que enviou a PRIMEIRA mensagem (first_inbound_at).
       // Se ainda não tiver primeira mensagem, usa created_at como fallback.
       const ref = l.first_inbound_at || l.created_at;
