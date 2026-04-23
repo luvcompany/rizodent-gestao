@@ -476,6 +476,11 @@ const Dashboard = () => {
     return days;
   }, [dateFrom, dateTo, filtered.leads, crmLeads, adIdMapping, cidadeFiltro, useMonthlyChart, rangeBounds, holidaySet]);
 
+  const totalLeadsNoPeriodo = useMemo(
+    () => leadsDiario.reduce((sum, item) => sum + (item.leads || 0), 0),
+    [leadsDiario]
+  );
+
   // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
   const fatClinicaRaw = clinicas.map((c) => {
     let name = c.nome.replace("Clínica ", "").replace("Rizodent ", "");
@@ -705,7 +710,7 @@ const Dashboard = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{funnelTotals.leads}</div>
+          <div className="text-2xl font-bold">{totalLeadsNoPeriodo}</div>
           <p className="text-xs text-muted-foreground mt-0.5">Total de novos leads que entraram</p>
         </CardContent>
       </Card>
