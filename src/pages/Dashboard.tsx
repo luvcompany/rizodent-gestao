@@ -362,13 +362,24 @@ const Dashboard = () => {
     return days;
   }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart, rangeBounds, holidaySet]);
 
-  // Chart: Leads Novos Diários (todos os dias úteis do período)
+  // Chart: Leads Novos Diários — puxado AUTOMATICAMENTE do CRM
+  // Considera apenas leads com origem "anúncio" (ad_id presente OU source contendo anúncio/ads/meta/facebook/instagram)
+  // Filtra pela cidade da clínica selecionada (quando aplicável)
   const leadsDiario = useMemo(() => {
+    const isAdLead = (l: any) =>
+      !!l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "");
+    const matchCidade = (cid: string | null | undefined) =>
+      !cidadeFiltro || (cid || "").toLowerCase().includes(cidadeFiltro.toLowerCase());
+
+    const adLeads = crmLeads.filter((l) => isAdLead(l) && matchCidade(l.cidade));
+
     if (useMonthlyChart) {
       const monthMap = new Map<string, number>();
-      filtered.leads.forEach((l) => {
-        const key = l.data.substring(0, 7);
-        monthMap.set(key, (monthMap.get(key) || 0) + l.leads_novos);
+      adLeads.forEach((l) => {
+        const d = (l.created_at || "").split("T")[0];
+        if (!d || !isInSelectedRanges(d)) return;
+        const key = d.substring(0, 7);
+        monthMap.set(key, (monthMap.get(key) || 0) + 1);
       });
       const sorted = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
       return sorted.map(([key, leads]) => {
@@ -382,8 +393,10 @@ const Dashboard = () => {
     const endRaw = new Date(dateTo + "T12:00:00");
     const end = endRaw > today ? today : endRaw;
     const leadsMap = new Map<string, number>();
-    filtered.leads.forEach((l) => {
-      leadsMap.set(l.data, (leadsMap.get(l.data) || 0) + l.leads_novos);
+    adLeads.forEach((l) => {
+      const d = (l.created_at || "").split("T")[0];
+      if (!d) return;
+      leadsMap.set(d, (leadsMap.get(d) || 0) + 1);
     });
     const days: { dia: string; leads: number }[] = [];
     const current = new Date(start);
@@ -396,7 +409,7 @@ const Dashboard = () => {
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.leads, useMonthlyChart, rangeBounds, holidaySet]);
+  }, [dateFrom, dateTo, crmLeads, cidadeFiltro, useMonthlyChart, rangeBounds, holidaySet]);
 
   // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
   const fatClinicaRaw = clinicas.map((c) => {
