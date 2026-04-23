@@ -564,6 +564,16 @@ export default function CrmCalendario() {
               }).length} agendamentos
             </span>
           </div>
+          {/* Legenda de cores */}
+          <div className="flex items-center gap-3 mb-2 flex-shrink-0 flex-wrap text-[11px]">
+            <span className="text-muted-foreground font-medium">Legenda:</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500/40 border border-blue-500/60" /> Confirmado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500/40 border border-emerald-500/60" /> Contratado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500/40 border border-red-500/60" /> Não compareceu</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500/40 border border-amber-500/60" /> Não contratou</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-500/40 border border-purple-500/60" /> Reagendado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-muted border border-border" /> Cancelado</span>
+          </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
           <div className="flex-1 overflow-auto rounded-lg border border-border">
             <div className="grid min-w-[700px]" style={{ gridTemplateColumns: `140px repeat(${apptWeekDays.length}, 1fr)` }}>
@@ -596,30 +606,46 @@ export default function CrmCalendario() {
                     return (
                       <div key={`${city}-${dayKey}`} className={cn("bg-card border-b border-border p-1.5 min-h-[80px]", isToday(day) && "bg-primary/5")}>
                         <div className="space-y-1">
-                          {cellAppts.map(appt => (
-                            <div
-                              key={appt.id}
-                              className={cn(
-                                "text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm",
-                                (appt as any).is_rescheduled ? "bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30" :
-                                appt.status === "confirmed" ? "bg-green-500/15 text-green-700" :
-                                appt.status === "cancelled" ? "bg-destructive/10 text-destructive" :
-                                "bg-primary/10 text-foreground"
-                              )}
-                              onClick={() => {
-                                setSelectedAppointment(appt);
-                                setApptResultStatus(appt.status);
-                                setApptMoveStageId("");
-                                setApptMovePipelineId("");
-                              }}
-                            >
-                              <div className="font-medium truncate">
-                                {(appt as any).is_rescheduled && <span className="text-purple-500 mr-0.5">↻</span>}
-                                {appt.lead_name}
+                          {cellAppts.map(appt => {
+                            const statusStyle =
+                              appt.status === "contracted"
+                                ? "bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/50"
+                                : appt.status === "no_show"
+                                ? "bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/50"
+                                : appt.status === "not_contracted"
+                                ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/50"
+                                : appt.status === "cancelled"
+                                ? "bg-muted text-muted-foreground border border-border line-through"
+                                : (appt as any).is_rescheduled
+                                ? "bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30"
+                                : appt.status === "confirmed"
+                                ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
+                                : "bg-primary/10 text-foreground border border-border";
+                            const statusIcon =
+                              appt.status === "contracted" ? "🤝" :
+                              appt.status === "no_show" ? "🚫" :
+                              appt.status === "not_contracted" ? "❌" :
+                              appt.status === "cancelled" ? "🗑️" : null;
+                            return (
+                              <div
+                                key={appt.id}
+                                className={cn("text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm", statusStyle)}
+                                onClick={() => {
+                                  setSelectedAppointment(appt);
+                                  setApptResultStatus(appt.status);
+                                  setApptMoveStageId("");
+                                  setApptMovePipelineId("");
+                                }}
+                              >
+                                <div className="font-medium truncate">
+                                  {statusIcon && <span className="mr-0.5">{statusIcon}</span>}
+                                  {!statusIcon && (appt as any).is_rescheduled && <span className="text-purple-500 mr-0.5">↻</span>}
+                                  {appt.lead_name}
+                                </div>
+                                <div className="opacity-70">{appt.scheduled_time?.slice(0, 5)}</div>
                               </div>
-                              <div className="text-muted-foreground">{appt.scheduled_time?.slice(0, 5)}</div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     );
