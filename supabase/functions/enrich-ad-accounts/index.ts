@@ -147,15 +147,29 @@ Deno.serve(async (req) => {
             } catch (_) { /* skip */ }
           }
 
-          console.log(`[ENRICH] Ad ${adId} => account ${accountId} (${accountName}), updating ${leadIds.length} leads`);
+          // Inferir cidade a partir do nome da conta
+          const inferCidade = (acc: string | null): string | null => {
+            const a = (acc || "").toUpperCase();
+            if (!a) return null;
+            if (a.includes("GUANAMBI")) return "Guanambi";
+            if (a.includes("ITABUNA")) return "Itabuna";
+            if (a.includes("IPIA")) return "Ipiaú";
+            if (a.includes("VCA") || a.includes("VITÓRIA") || a.includes("VITORIA") || a.includes("CONQUISTA"))
+              return "Vitória da Conquista";
+            return null;
+          };
+          const cidadeInferida = inferCidade(accountName);
 
-          // Update leads
+          console.log(`[ENRICH] Ad ${adId} => account ${accountId} (${accountName}) cidade=${cidadeInferida}, updating ${leadIds.length} leads`);
+
+          // Update leads (preenche cidade só se ainda estiver vazia)
+          const leadUpdate: any = {
+            ad_account_id: accountId,
+            ad_account_name: accountName,
+          };
           const { error: updateErr } = await supabase
             .from("crm_leads")
-            .update({
-              ad_account_id: accountId,
-              ad_account_name: accountName,
-            })
+            .update(leadUpdate)
             .in("id", leadIds);
 
           if (updateErr) {
@@ -164,6 +178,26 @@ Deno.serve(async (req) => {
           } else {
             enrichedCount += leadIds.length;
           }
+
+          // Preencher cidade nos leads que estão sem cidade
+          if (cidadeInferida) {
+            await supabase
+              .from("crm_leads")
+              .update({ cidade: cidadeInferida })
+              .in("id", leadIds)
+              .is("cidade", null);
+          }
+
+          // Atualizar ad_id_mapping (cache global de anúncios)
+          await supabase
+            .from("ad_id_mapping")
+            .upsert({
+              ad_id: adId,
+              ad_account_id: accountId,
+              ad_account_name: accountName,
+              ...(cidadeInferida ? { cidade: cidadeInferida } : {}),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "ad_id" });
 
           // Also update messages with same ad_source_id
           await supabase
