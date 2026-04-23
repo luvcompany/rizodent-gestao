@@ -190,6 +190,18 @@ export default function ConversationFilters({
               </Select>
             </div>
 
+            {/* Pagamentos vinculados */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Pagamentos vinculados</label>
+              <Select value={draft.hasPagamento} onValueChange={(v) => setDraft({ ...draft, hasPagamento: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yes">Com pagamento</SelectItem>
+                  <SelectItem value="no">Sem pagamento</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Tags - autocomplete */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Tags</label>
