@@ -649,7 +649,7 @@ const Dashboard = () => {
       <Card className="gradient-card border-border shadow-card">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold">Leads Novos por Dia</CardTitle>
-          <p className="text-xs text-muted-foreground">Quantidade de leads novos por dia útil no período</p>
+          <p className="text-xs text-muted-foreground">Leads de anúncio recebidos automaticamente do CRM, por dia útil</p>
         </CardHeader>
         <CardContent className="pt-0">
           <ResponsiveContainer width="100%" height={260}>
