@@ -205,6 +205,7 @@ export default function CrmAutomacoes() {
       trigger_type: autoForm.trigger_type,
       action_type: autoForm.action_type,
       action_config: autoForm.action_config as unknown as import("@/integrations/supabase/types").Json,
+      is_active: true,
     };
     if (autoForm.editId) {
       const { data } = await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId).select().single();
