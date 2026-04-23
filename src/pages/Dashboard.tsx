@@ -773,8 +773,8 @@ const Dashboard = () => {
               <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
               <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
             </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-blue-500">{crmAdLeadsCount}</p>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center" title="Mesma regra do gráfico: dias úteis e leads com cidade identificada">
+              <p className="text-2xl font-bold text-blue-500">{totalLeadsNoPeriodo}</p>
               <p className="text-xs text-muted-foreground mt-1">Origem anúncio</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-3 text-center">
