@@ -765,7 +765,7 @@ const Dashboard = () => {
             <Users size={16} className="text-primary" />
             CRM — Leads & Agendamentos {cidadeFiltro && <span className="text-xs text-muted-foreground font-normal">({cidadeFiltro})</span>}
           </CardTitle>
-          <p className="text-xs text-muted-foreground">Dados puxados diretamente do CRM no período selecionado</p>
+          <p className="text-xs text-muted-foreground">"Leads que chegaram" = total bruto (todas as origens, todos os dias). "Origem anúncio" segue a mesma regra do gráfico (dias úteis + cidade identificada).</p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -773,8 +773,8 @@ const Dashboard = () => {
               <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
               <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
             </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-blue-500">{crmAdLeadsCount}</p>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center" title="Mesma regra do gráfico: dias úteis e leads com cidade identificada">
+              <p className="text-2xl font-bold text-blue-500">{totalLeadsNoPeriodo}</p>
               <p className="text-xs text-muted-foreground mt-1">Origem anúncio</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-3 text-center">
