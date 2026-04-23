@@ -66,6 +66,7 @@ const Dashboard = () => {
   const [crmAppointments, setCrmAppointments] = useState<any[]>([]);
   const [crmStages, setCrmStages] = useState<any[]>([]);
   const [crmStageHistory, setCrmStageHistory] = useState<any[]>([]);
+  const [adIdMapping, setAdIdMapping] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
