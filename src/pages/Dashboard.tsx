@@ -100,36 +100,60 @@ const Dashboard = () => {
     setHolidays((hd || []) as Holiday[]);
   };
 
+  const fetchAll = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
+    supabase.from("clinicas").select("*").eq("ativa", true),
+    supabase.from("pagamentos").select("*, clinicas(nome)"),
+    supabase.from("tratamentos").select("*, clinicas(nome)"),
+    supabase.from("pacientes").select("*"),
+    supabase.from("leads_diarios").select("*, clinicas(nome)"),
+    (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
+    supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id").limit(10000),
+    supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000),
+    supabase.from("crm_stages").select("id, name, pipeline_id"),
+    supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
+    (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
+    );
+    setClinicas(cl || []);
+    setPagamentos(pg || []);
+    setTratamentos(tr || []);
+    setPacientes(pc || []);
+    setLeadsData(ld || []);
+    setHolidays((hd || []) as Holiday[]);
+    setCrmLeads(cLeads || []);
+    setCrmAppointments(cAppts || []);
+    setCrmStages(cStages || []);
+    setCrmStageHistory(cHist || []);
+    setAdIdMapping(adMap || []);
+    if (showLoading) setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
-      supabase.from("clinicas").select("*").eq("ativa", true),
-      supabase.from("pagamentos").select("*, clinicas(nome)"),
-      supabase.from("tratamentos").select("*, clinicas(nome)"),
-      supabase.from("pacientes").select("*"),
-      supabase.from("leads_diarios").select("*, clinicas(nome)"),
-      (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id").limit(10000),
-      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000),
-      supabase.from("crm_stages").select("id, name, pipeline_id"),
-      supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
-      (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
-      );
-      setClinicas(cl || []);
-      setPagamentos(pg || []);
-      setTratamentos(tr || []);
-      setPacientes(pc || []);
-      setLeadsData(ld || []);
-      setHolidays((hd || []) as Holiday[]);
-      setCrmLeads(cLeads || []);
-      setCrmAppointments(cAppts || []);
-      setCrmStages(cStages || []);
-      setCrmStageHistory(cHist || []);
-      setAdIdMapping(adMap || []);
-      setLoading(false);
-    };
     fetchAll();
+
+    // Realtime: refetch on changes to relevant tables
+    let debounceTimer: any = null;
+    const scheduleRefetch = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => fetchAll(false), 800);
+    };
+
+    const channel = supabase
+      .channel("dashboard-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads_diarios" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_appointments" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_lead_stage_history" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pagamentos" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "ad_id_mapping" }, scheduleRefetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "dashboard_holidays" }, scheduleRefetch)
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Unique values for filter dropdowns
