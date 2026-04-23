@@ -362,24 +362,44 @@ const Dashboard = () => {
     return days;
   }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart, rangeBounds, holidaySet]);
 
-  // Chart: Leads Novos Diários — puxado AUTOMATICAMENTE do CRM
-  // Considera apenas leads com origem "anúncio" (ad_id presente OU source contendo anúncio/ads/meta/facebook/instagram)
-  // Filtra pela cidade da clínica selecionada (quando aplicável)
+  // Chart: Leads Novos Diários
+  // Para cada dia: usa o valor manual de leads_diarios se existir; caso contrário,
+  // puxa automaticamente do CRM (leads com origem "anúncio" criados naquele dia).
   const leadsDiario = useMemo(() => {
     const isAdLead = (l: any) =>
       !!l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "");
     const matchCidade = (cid: string | null | undefined) =>
       !cidadeFiltro || (cid || "").toLowerCase().includes(cidadeFiltro.toLowerCase());
 
-    const adLeads = crmLeads.filter((l) => isAdLead(l) && matchCidade(l.cidade));
+    // Mapa de leads do CRM (anúncio) por data
+    const crmAdMap = new Map<string, number>();
+    crmLeads.forEach((l: any) => {
+      if (!isAdLead(l) || !matchCidade(l.cidade)) return;
+      const d = (l.created_at || "").split("T")[0];
+      if (!d) return;
+      crmAdMap.set(d, (crmAdMap.get(d) || 0) + 1);
+    });
+
+    // Datas (YYYY-MM-DD) com lançamento manual existente em leads_diarios
+    const manualDates = new Set<string>(filtered.leads.map((l: any) => l.data));
+
+    // Mapa manual de leads_novos por data
+    const manualMap = new Map<string, number>();
+    filtered.leads.forEach((l: any) => {
+      manualMap.set(l.data, (manualMap.get(l.data) || 0) + l.leads_novos);
+    });
+
+    const getValue = (dateStr: string) =>
+      manualDates.has(dateStr) ? (manualMap.get(dateStr) || 0) : (crmAdMap.get(dateStr) || 0);
 
     if (useMonthlyChart) {
       const monthMap = new Map<string, number>();
-      adLeads.forEach((l) => {
-        const d = (l.created_at || "").split("T")[0];
-        if (!d || !isInSelectedRanges(d)) return;
+      // Combina todas as datas relevantes (manuais + CRM)
+      const allDates = new Set<string>([...manualDates, ...crmAdMap.keys()]);
+      allDates.forEach((d) => {
+        if (!isInSelectedRanges(d)) return;
         const key = d.substring(0, 7);
-        monthMap.set(key, (monthMap.get(key) || 0) + 1);
+        monthMap.set(key, (monthMap.get(key) || 0) + getValue(d));
       });
       const sorted = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
       return sorted.map(([key, leads]) => {
@@ -392,24 +412,18 @@ const Dashboard = () => {
     today.setHours(12, 0, 0, 0);
     const endRaw = new Date(dateTo + "T12:00:00");
     const end = endRaw > today ? today : endRaw;
-    const leadsMap = new Map<string, number>();
-    adLeads.forEach((l) => {
-      const d = (l.created_at || "").split("T")[0];
-      if (!d) return;
-      leadsMap.set(d, (leadsMap.get(d) || 0) + 1);
-    });
     const days: { dia: string; leads: number }[] = [];
     const current = new Date(start);
     while (current <= end) {
       const dateStr = current.toISOString().split("T")[0];
       if (isWorkingDay(current, dateStr) && isInSelectedRanges(dateStr)) {
         const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-        days.push({ dia: label, leads: leadsMap.get(dateStr) || 0 });
+        days.push({ dia: label, leads: getValue(dateStr) });
       }
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, crmLeads, cidadeFiltro, useMonthlyChart, rangeBounds, holidaySet]);
+  }, [dateFrom, dateTo, filtered.leads, crmLeads, cidadeFiltro, useMonthlyChart, rangeBounds, holidaySet]);
 
   // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
   const fatClinicaRaw = clinicas.map((c) => {
