@@ -415,6 +415,8 @@ const Dashboard = () => {
     crmLeads.forEach((l: any) => {
       if (!isAdLead(l)) return;
       const cid = cidadeFromAdAccount(l);
+      // Só conta no total se a cidade for identificável (consistência: total = soma das unidades).
+      if (!cid) return;
       if (!matchCidade(cid)) return;
       // Conta o lead na data em que enviou a PRIMEIRA mensagem (first_inbound_at).
       // Se ainda não tiver primeira mensagem, usa created_at como fallback.
