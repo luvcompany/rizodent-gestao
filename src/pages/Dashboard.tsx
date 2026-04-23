@@ -433,8 +433,13 @@ const Dashboard = () => {
       manualMap.set(l.data, (manualMap.get(l.data) || 0) + l.leads_novos);
     });
 
-    const getValue = (dateStr: string) =>
-      manualDates.has(dateStr) ? (manualMap.get(dateStr) || 0) : (crmAdMap.get(dateStr) || 0);
+    // Usa o lançamento manual quando existir E tiver valor > 0.
+    // Se o manual for 0 (não preenchido), cai para a contagem do CRM por anúncio.
+    const getValue = (dateStr: string) => {
+      const manual = manualMap.get(dateStr) || 0;
+      if (manual > 0) return manual;
+      return crmAdMap.get(dateStr) || 0;
+    };
 
     if (useMonthlyChart) {
       const monthMap = new Map<string, number>();
