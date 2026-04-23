@@ -432,10 +432,11 @@ export default function CrmKanban() {
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
 
     (async () => {
-      const [{ data: pags }, { data: links }] = await Promise.all([
+      const [{ data: pags }, { data: links }, { data: allPags }] = await Promise.all([
         supabase.from("pagamentos").select("valor, paciente_id")
           .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
         supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
+        supabase.from("pagamentos").select("paciente_id"),
       ]);
 
       // Selecionar UM único lead por paciente para evitar contagem duplicada
@@ -456,8 +457,23 @@ export default function CrmKanban() {
         if (leadId) map.set(leadId, (map.get(leadId) || 0) + v);
       });
 
+      // Set de leads com QUALQUER pagamento vinculado (todos os tempos),
+      // considerando todos os leads ligados ao paciente que pagou.
+      const pacienteToAllLeads = new Map<string, string[]>();
+      (links || []).forEach((l: any) => {
+        const arr = pacienteToAllLeads.get(l.paciente_id) || [];
+        arr.push(l.lead_id);
+        pacienteToAllLeads.set(l.paciente_id, arr);
+      });
+      const paidLeadIds = new Set<string>();
+      (allPags || []).forEach((p: any) => {
+        const ids = pacienteToAllLeads.get(p.paciente_id) || [];
+        ids.forEach((id) => paidLeadIds.add(id));
+      });
+
       setVendasConcluidas(total);
       setLeadMonthValueMap(map);
+      setLeadsWithPagamento(paidLeadIds);
     })();
   }, [leads]);
 
