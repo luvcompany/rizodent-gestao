@@ -429,14 +429,16 @@ export default function CrmKanban() {
       const [{ data: pags }, { data: links }] = await Promise.all([
         supabase.from("pagamentos").select("valor, paciente_id")
           .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
-        supabase.from("crm_lead_pacientes").select("lead_id, paciente_id"),
+        supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
       ]);
 
-      const pacienteToLeads = new Map<string, string[]>();
+      // Selecionar UM único lead por paciente para evitar contagem duplicada
+      // quando um paciente está vinculado a múltiplos leads.
+      // Prioriza o vínculo primário; senão, mantém o primeiro encontrado.
+      const pacienteToLead = new Map<string, string>();
       (links || []).forEach((l: any) => {
-        const arr = pacienteToLeads.get(l.paciente_id) || [];
-        arr.push(l.lead_id);
-        pacienteToLeads.set(l.paciente_id, arr);
+        const existing = pacienteToLead.get(l.paciente_id);
+        if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
       });
 
       const map = new Map<string, number>();
@@ -444,8 +446,8 @@ export default function CrmKanban() {
       (pags || []).forEach((p: any) => {
         const v = Number(p.valor || 0);
         total += v;
-        const leadIds = pacienteToLeads.get(p.paciente_id) || [];
-        leadIds.forEach(lid => map.set(lid, (map.get(lid) || 0) + v));
+        const leadId = pacienteToLead.get(p.paciente_id);
+        if (leadId) map.set(leadId, (map.get(leadId) || 0) + v);
       });
 
       setVendasConcluidas(total);
