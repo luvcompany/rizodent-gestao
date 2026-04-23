@@ -425,6 +425,7 @@ export default function CrmKanban() {
   // Usado tanto no card "Vendas concluídas (mês)" quanto no total exibido em cada etapa.
   const [vendasConcluidas, setVendasConcluidas] = useState(0);
   const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
+  const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
   useEffect(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
