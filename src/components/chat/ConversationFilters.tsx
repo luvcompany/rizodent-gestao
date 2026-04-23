@@ -20,6 +20,7 @@ export type ConversationFilterValues = {
   source: string;
   assignedTo: string;
   cidade: string;
+  hasPagamento: string; // "" | "yes" | "no"
 };
 
 const emptyFilters: ConversationFilterValues = {
@@ -31,6 +32,7 @@ const emptyFilters: ConversationFilterValues = {
   source: "",
   assignedTo: "",
   cidade: "",
+  hasPagamento: "",
 };
 
 const CIDADES = [
@@ -50,6 +52,7 @@ function countActive(f: ConversationFilterValues): number {
   if (f.source) c++;
   if (f.assignedTo) c++;
   if (f.cidade) c++;
+  if (f.hasPagamento) c++;
   return c;
 }
 
