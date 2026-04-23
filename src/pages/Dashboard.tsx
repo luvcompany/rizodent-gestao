@@ -103,17 +103,18 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
       supabase.from("clinicas").select("*").eq("ativa", true),
       supabase.from("pagamentos").select("*, clinicas(nome)"),
       supabase.from("tratamentos").select("*, clinicas(nome)"),
       supabase.from("pacientes").select("*"),
       supabase.from("leads_diarios").select("*, clinicas(nome)"),
       (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, paciente_id, pipeline_id").limit(10000),
+      supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id").limit(10000),
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000),
       supabase.from("crm_stages").select("id, name, pipeline_id"),
-      supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000)]
+      supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
+      (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
       );
       setClinicas(cl || []);
       setPagamentos(pg || []);
@@ -125,6 +126,7 @@ const Dashboard = () => {
       setCrmAppointments(cAppts || []);
       setCrmStages(cStages || []);
       setCrmStageHistory(cHist || []);
+      setAdIdMapping(adMap || []);
       setLoading(false);
     };
     fetchAll();
