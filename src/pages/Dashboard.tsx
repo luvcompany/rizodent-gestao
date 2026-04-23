@@ -109,7 +109,7 @@ const Dashboard = () => {
       supabase.from("pacientes").select("*"),
       supabase.from("leads_diarios").select("*, clinicas(nome)"),
       (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      supabase.from("crm_leads").select("id, name, cidade, source, created_at, ad_id, paciente_id, pipeline_id").limit(10000),
+      supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, paciente_id, pipeline_id").limit(10000),
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000),
       supabase.from("crm_stages").select("id, name, pipeline_id"),
       supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000)]
@@ -375,7 +375,10 @@ const Dashboard = () => {
     const crmAdMap = new Map<string, number>();
     crmLeads.forEach((l: any) => {
       if (!isAdLead(l) || !matchCidade(l.cidade)) return;
-      const d = (l.created_at || "").split("T")[0];
+      // Conta o lead na data em que enviou a PRIMEIRA mensagem (first_inbound_at).
+      // Se ainda não tiver primeira mensagem, usa created_at como fallback.
+      const ref = l.first_inbound_at || l.created_at;
+      const d = (ref || "").split("T")[0];
       if (!d) return;
       crmAdMap.set(d, (crmAdMap.get(d) || 0) + 1);
     });
