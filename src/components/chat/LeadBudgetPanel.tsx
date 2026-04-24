@@ -11,6 +11,8 @@ import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin, Star, X } fro
 
 const CIDADES = ["Vitória da Conquista", "Guanambi", "Ipiaú", "Itabuna"];
 const EMPTY_CITY_VALUE = "none";
+const ORIGENS = ["Anúncio", "Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
+const EMPTY_ORIGEM_VALUE = "none";
 
 type Lead = {
   id: string;
@@ -61,6 +63,9 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicates, setDuplicates] = useState<Paciente[]>([]);
   const [newPersonName, setNewPersonName] = useState("");
+  const [newOrigem, setNewOrigem] = useState<string>(EMPTY_ORIGEM_VALUE);
+  const [newNomeAnuncio, setNewNomeAnuncio] = useState("");
+  const [newOrigemOutros, setNewOrigemOutros] = useState("");
 
   useEffect(() => {
     setCidade(lead.cidade || EMPTY_CITY_VALUE);
@@ -253,10 +258,17 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       }
     }
 
+    const origemFinal = newOrigem === EMPTY_ORIGEM_VALUE ? null : newOrigem;
+    const nomeAnuncioFinal =
+      origemFinal === "Anúncio" ? (newNomeAnuncio.trim() || null)
+      : origemFinal === "Outros" ? (newOrigemOutros.trim() || null)
+      : null;
+
     const { data, error } = await supabase.from("pacientes").insert({
       nome: nomeFinal,
       telefone: stripCountryCode(lead.phone || ""),
       cidade: normalizedCity,
+      origem: origemFinal,
     }).select("id").single();
     if (error || !data) { toast.error("Erro ao criar paciente"); return; }
 
@@ -264,12 +276,24 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     await supabase.from("crm_lead_pacientes").insert({
       lead_id: lead.id, paciente_id: data.id, is_primary: isFirst,
     });
+
+    // Update lead with origem info if provided
+    if (origemFinal || nomeAnuncioFinal) {
+      await supabase.from("crm_leads").update({
+        ...(origemFinal ? { source: origemFinal } : {}),
+        ...(nomeAnuncioFinal ? { nome_anuncio: nomeAnuncioFinal } : {}),
+      }).eq("id", lead.id);
+    }
+
     if (isFirst) onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
     await fetchAllLinks();
 
     setLinkOpen(false);
     setDuplicateOpen(false);
     setNewPersonName("");
+    setNewOrigem(EMPTY_ORIGEM_VALUE);
+    setNewNomeAnuncio("");
+    setNewOrigemOutros("");
     toast.success("Paciente criado e vinculado!");
 
     navigate("/atendimento", {
@@ -463,6 +487,43 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                   {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
                 </select>
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Origem do Lead</label>
+                <select
+                  value={newOrigem}
+                  onChange={(e) => {
+                    setNewOrigem(e.target.value);
+                    setNewNomeAnuncio("");
+                    setNewOrigemOutros("");
+                  }}
+                  className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
+                >
+                  <option value={EMPTY_ORIGEM_VALUE}>Selecione</option>
+                  {ORIGENS.map((o) => (<option key={o} value={o}>{o}</option>))}
+                </select>
+              </div>
+              {newOrigem === "Anúncio" && (
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Nome do Anúncio</label>
+                  <Input
+                    value={newNomeAnuncio}
+                    onChange={(e) => setNewNomeAnuncio(e.target.value)}
+                    placeholder="Ex: Campanha Implante Jan"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              )}
+              {newOrigem === "Outros" && (
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">De onde veio o lead?</label>
+                  <Input
+                    value={newOrigemOutros}
+                    onChange={(e) => setNewOrigemOutros(e.target.value)}
+                    placeholder="Descreva a origem"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
