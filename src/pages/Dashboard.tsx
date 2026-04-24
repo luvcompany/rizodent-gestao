@@ -520,20 +520,27 @@ const Dashboard = () => {
   });
   const fatClinica = Array.from(fatClinicaGrouped.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0);
 
-  // Chart: Procedimentos mais contratados (volume)
-  const procMap = new Map<string, number>();
-  filtered.tratamentos.forEach((t) => {
-    procMap.set(t.procedimento, (procMap.get(t.procedimento) || 0) + 1);
+  // Chart: Faturamento por Especialidade (soma dos pagamentos)
+  const espFatMap = new Map<string, number>();
+  filtered.pagamentos.forEach((p) => {
+    const esp = p.especialidade || "Sem Especialidade";
+    espFatMap.set(esp, (espFatMap.get(esp) || 0) + Number(p.valor || 0));
   });
-  const procVolume = Array.from(procMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
+  const espFaturamento = Array.from(espFatMap.entries())
+    .map(([name, value]) => ({ name, value }))
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value);
 
-  // Chart: Volume por Especialidade (quantidade de tratamentos, não faturamento)
-  const espMap = new Map<string, number>();
-  filtered.tratamentos.forEach((t) => {
-    const esp = t.especialidade || "Sem Especialidade";
-    espMap.set(esp, (espMap.get(esp) || 0) + 1);
+  // Chart: Quantidade de pagamentos por Especialidade
+  const espQtdMap = new Map<string, number>();
+  filtered.pagamentos.forEach((p) => {
+    const esp = p.especialidade || "Sem Especialidade";
+    espQtdMap.set(esp, (espQtdMap.get(esp) || 0) + 1);
   });
-  const espVolume = Array.from(espMap.entries()).map(([name, value]) => ({ name, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  const espVolume = Array.from(espQtdMap.entries())
+    .map(([name, value]) => ({ name, value }))
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value);
 
 
   const origemMap = new Map<string, {qtd: number;fat: number;}>();
@@ -896,19 +903,21 @@ const Dashboard = () => {
           </ChartCard>
         }
 
-        <ChartCard title="Procedimentos Mais Contratados">
+        <ChartCard title="Faturamento por Especialidade">
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={procVolume} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
+            <BarChart data={espFaturamento} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
               <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: ct.axisColor }} />
-              <YAxis stroke={ct.axisColor} fontSize={11} allowDecimals={false} width={40} tick={{ fill: ct.axisColor }} />
-              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Quantidade"]} />
-              <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle} />
+              <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
+              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
+              <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
+                {espFaturamento.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Tratamentos por Especialidade">
+        <ChartCard title="Pagamentos por Especialidade">
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={espVolume} margin={{ top: 30, right: 10, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
