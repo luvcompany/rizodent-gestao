@@ -11,6 +11,8 @@ import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin, Star, X } fro
 
 const CIDADES = ["Vitória da Conquista", "Guanambi", "Ipiaú", "Itabuna"];
 const EMPTY_CITY_VALUE = "none";
+const ORIGENS = ["Anúncio", "Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
+const EMPTY_ORIGEM_VALUE = "none";
 
 type Lead = {
   id: string;
