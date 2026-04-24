@@ -760,23 +760,20 @@ const Relatorios = () => {
                 <XAxis dataKey="nome" stroke={ct.axisColor} fontSize={9} angle={-20} textAnchor="end" height={50} />
                 <YAxis stroke={ct.axisColor} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="orcado" fill="hsl(25,100%,50%)" name="Orçado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                 <Bar dataKey="contratado" fill="hsl(120,50%,50%)" name="Contratado" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                 <Legend />
               </BarChart>
             </ResponsiveContainer>
             <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Tratamentos</TableHead><TableHead>Orçado</TableHead><TableHead>Contratado</TableHead><TableHead>Restante</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Paciente</TableHead><TableHead>Pagamentos</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {rankingPacientes.map((r, i) => (
                     <TableRow key={r.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${r.id}`)}>
                       <TableCell className="font-bold text-primary">{i + 1}</TableCell>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{r.nome}</TableCell>
-                      <TableCell>{r.qtdTratamentos}</TableCell>
-                      <TableCell>{formatCurrency(r.orcado)}</TableCell>
-                      <TableCell>{formatCurrency(r.contratado)}</TableCell>
-                      <TableCell className={r.orcado - r.contratado > 0 ? "text-destructive" : "text-green-400"}>{formatCurrency(r.orcado - r.contratado)}</TableCell>
+                      <TableCell>{r.qtdPagamentos}</TableCell>
+                      <TableCell className="text-green-400">{formatCurrency(r.contratado)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
