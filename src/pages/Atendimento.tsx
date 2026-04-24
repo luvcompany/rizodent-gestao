@@ -45,7 +45,7 @@ interface PagamentoEntry {
   valor: string;
 }
 
-const createEmptyEntry = (mode: EspMode = "existente"): PagamentoEntry => ({
+const createEmptyEntry = (mode: EspMode = "nova"): PagamentoEntry => ({
   id: crypto.randomUUID(),
   mode,
   especialidade: "",
@@ -69,7 +69,7 @@ const Atendimento = () => {
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
   const [especialidadesDoLead, setEspecialidadesDoLead] = useState<{ especialidade: string; total: number }[]>([]);
-  const [entries, setEntries] = useState<PagamentoEntry[]>([createEmptyEntry("existente")]);
+  const [entries, setEntries] = useState<PagamentoEntry[]>([createEmptyEntry("nova")]);
   const [saving, setSaving] = useState(false);
   const [initialPatientLoaded, setInitialPatientLoaded] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
@@ -118,6 +118,11 @@ const Atendimento = () => {
       .map(([especialidade, total]) => ({ especialidade, total }))
       .sort((a, b) => b.total - a.total);
     setEspecialidadesDoLead(list);
+    // Ajusta modo dos entries vazios para o padrão certo
+    const defaultMode: EspMode = list.length > 0 ? "existente" : "nova";
+    setEntries((prev) =>
+      prev.map((e) => (!e.especialidade && !e.valor ? { ...e, mode: defaultMode } : e))
+    );
     return list;
   };
 
