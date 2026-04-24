@@ -281,8 +281,11 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     const leadUpdates: Record<string, any> = {};
     if (origemFinal) leadUpdates.source = origemFinal;
     if (nomeAnuncioFinal) leadUpdates.nome_anuncio = nomeAnuncioFinal;
-    if (Object.keys(leadUpdates).length > 0) {
-      await supabase.from("crm_leads").update(leadUpdates).eq("id", lead.id);
+    if (origemFinal || nomeAnuncioFinal) {
+      await supabase.from("crm_leads").update({
+        ...(origemFinal ? { source: origemFinal } : {}),
+        ...(nomeAnuncioFinal ? { nome_anuncio: nomeAnuncioFinal } : {}),
+      }).eq("id", lead.id);
     }
 
     if (isFirst) onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
