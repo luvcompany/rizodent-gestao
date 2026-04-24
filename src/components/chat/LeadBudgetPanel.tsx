@@ -278,9 +278,6 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     });
 
     // Update lead with origem info if provided
-    const leadUpdates: Record<string, any> = {};
-    if (origemFinal) leadUpdates.source = origemFinal;
-    if (nomeAnuncioFinal) leadUpdates.nome_anuncio = nomeAnuncioFinal;
     if (origemFinal || nomeAnuncioFinal) {
       await supabase.from("crm_leads").update({
         ...(origemFinal ? { source: origemFinal } : {}),
