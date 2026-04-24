@@ -118,6 +118,11 @@ const Atendimento = () => {
       .map(([especialidade, total]) => ({ especialidade, total }))
       .sort((a, b) => b.total - a.total);
     setEspecialidadesDoLead(list);
+    // Ajusta modo dos entries vazios para o padrão certo
+    const defaultMode: EspMode = list.length > 0 ? "existente" : "nova";
+    setEntries((prev) =>
+      prev.map((e) => (!e.especialidade && !e.valor ? { ...e, mode: defaultMode } : e))
+    );
     return list;
   };
 
