@@ -45,7 +45,7 @@ interface PagamentoEntry {
   valor: string;
 }
 
-const createEmptyEntry = (mode: EspMode = "existente"): PagamentoEntry => ({
+const createEmptyEntry = (mode: EspMode = "nova"): PagamentoEntry => ({
   id: crypto.randomUUID(),
   mode,
   especialidade: "",
