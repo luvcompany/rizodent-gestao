@@ -1792,12 +1792,13 @@ export type Database = {
           created_at: string
           created_by: string | null
           data_pagamento: string
+          especialidade: string | null
           forma_pagamento: string
           id: string
           orcamento_id: string | null
           paciente_id: string
           tipo: string
-          tratamento_id: string
+          tratamento_id: string | null
           valor: number
         }
         Insert: {
@@ -1805,12 +1806,13 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           data_pagamento?: string
+          especialidade?: string | null
           forma_pagamento: string
           id?: string
           orcamento_id?: string | null
           paciente_id: string
           tipo?: string
-          tratamento_id: string
+          tratamento_id?: string | null
           valor: number
         }
         Update: {
@@ -1818,12 +1820,13 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           data_pagamento?: string
+          especialidade?: string | null
           forma_pagamento?: string
           id?: string
           orcamento_id?: string | null
           paciente_id?: string
           tipo?: string
-          tratamento_id?: string
+          tratamento_id?: string | null
           valor?: number
         }
         Relationships: [
