@@ -641,16 +641,14 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Previsibilidade</CardTitle>
             <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-              `Total Orçado: ${formatCurrency(predictability.totalOrcado)}\nTotal Contratado: ${formatCurrency(predictability.totalContratado)}\nA Receber: ${formatCurrency(predictability.aReceber)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${formatCurrency(predictability.projecaoMensal)}`
+              `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${formatCurrency(predictability.projecaoMensal)}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">💰 Faturamento</h3>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Total Orçado</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.totalOrcado)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Total Contratado</p><p className="text-xl font-bold text-accent-foreground">{formatCurrency(predictability.totalContratado)}</p></div>
-                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">A Receber</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.aReceber)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Ticket Médio por Pagamento</p><p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioPgto)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Ticket Médio Diário</p><p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioDiario)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Projeção Mensal ({diasUteisMes} dias úteis)</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.projecaoMensal)}</p></div>
@@ -658,16 +656,14 @@ const Relatorios = () => {
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={[
-                { name: "Orçado", value: predictability.totalOrcado },
                 { name: "Contratado", value: predictability.totalContratado },
-                { name: "A Receber", value: predictability.aReceber },
                 { name: "Projeção", value: predictability.projecaoMensal },
               ]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} />
                 <YAxis stroke={ct.axisColor} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="value" fill="hsl(25,100%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="value" fill="hsl(120,50%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div>
