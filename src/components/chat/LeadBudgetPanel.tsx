@@ -63,6 +63,9 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicates, setDuplicates] = useState<Paciente[]>([]);
   const [newPersonName, setNewPersonName] = useState("");
+  const [newOrigem, setNewOrigem] = useState<string>(EMPTY_ORIGEM_VALUE);
+  const [newNomeAnuncio, setNewNomeAnuncio] = useState("");
+  const [newOrigemOutros, setNewOrigemOutros] = useState("");
 
   useEffect(() => {
     setCidade(lead.cidade || EMPTY_CITY_VALUE);
