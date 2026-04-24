@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Save, Search, UserCheck, CalendarIcon, FileText, Plus, CreditCard, Trash2, UserPlus } from "lucide-react";
+import { Save, Search, UserCheck, CalendarIcon, Plus, CreditCard, Trash2, UserPlus, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -31,46 +31,23 @@ const formatCurrencyDisplay = (value: number): string => {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 };
 
-type ModoAtendimento = "selecionar" | "novo_tratamento" | "novo_pagamento";
-
 interface TipoProcedimento {
-  id: string;
-  nome: string;
-  valor_referencia: number | null;
   especialidade: string | null;
   especialidade_secundaria: string | null;
 }
 
-interface ProcedimentoEntry {
-  id: string;
-  procedimento: string;
-  especialidade: string;
-  valorContratado: string;
-}
-
-const createEmptyProcedimento = (): ProcedimentoEntry => ({
-  id: crypto.randomUUID(),
-  procedimento: "",
-  especialidade: "",
-  valorContratado: "",
-});
-
-type PagamentoModo = "existente" | "novo";
+type EspMode = "existente" | "nova";
 
 interface PagamentoEntry {
   id: string;
-  modo: PagamentoModo;
-  tratamentoId: string; // when modo === "existente"
-  procedimento: string; // when modo === "novo"
-  especialidade: string; // when modo === "novo"
+  mode: EspMode;
+  especialidade: string;
   valor: string;
 }
 
-const createEmptyPagamento = (): PagamentoEntry => ({
+const createEmptyEntry = (mode: EspMode = "existente"): PagamentoEntry => ({
   id: crypto.randomUUID(),
-  modo: "existente",
-  tratamentoId: "",
-  procedimento: "",
+  mode,
   especialidade: "",
   valor: "",
 });
@@ -79,30 +56,21 @@ const Atendimento = () => {
   const { user } = useAuth();
   const location = useLocation();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
-  const [tiposProcedimento, setTiposProcedimento] = useState<TipoProcedimento[]>([]);
+  const [especialidadesDisponiveis, setEspecialidadesDisponiveis] = useState<string[]>([]);
   const [telefone, setTelefone] = useState("");
   const [nome, setNome] = useState("");
   const [clinicaId, setClinicaId] = useState("");
   const [cidade, setCidade] = useState("");
-  const [procedimentos, setProcedimentos] = useState<ProcedimentoEntry[]>([createEmptyProcedimento()]);
-  const [pagamentosLista, setPagamentosLista] = useState<PagamentoEntry[]>([createEmptyPagamento()]);
-  const [pagamentosPorTratamento, setPagamentosPorTratamento] = useState<Record<string, number>>({});
-  const [valorOrcadoGeral, setValorOrcadoGeral] = useState("");
   const [origem, setOrigem] = useState("");
-  const [valorPago, setValorPago] = useState("");
-  const [tipoPagamento, setTipoPagamento] = useState("primeiro");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [origemOutrosDesc, setOrigemOutrosDesc] = useState("");
+  const [tipoPagamento, setTipoPagamento] = useState("primeiro");
   const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
-  const [tratamentosExistentes, setTratamentosExistentes] = useState<any[]>([]);
-  const [orcamentosAbertos, setOrcamentosAbertos] = useState<any[]>([]);
-  const [orcamentoSelecionado, setOrcamentoSelecionado] = useState<any | null>(null);
-  const [totalPagoExistente, setTotalPagoExistente] = useState(0);
-  const [totalOrcadoExistente, setTotalOrcadoExistente] = useState(0);
+  const [especialidadesDoLead, setEspecialidadesDoLead] = useState<{ especialidade: string; total: number }[]>([]);
+  const [entries, setEntries] = useState<PagamentoEntry[]>([createEmptyEntry("existente")]);
   const [saving, setSaving] = useState(false);
-  const [modo, setModo] = useState<ModoAtendimento>("selecionar");
   const [initialPatientLoaded, setInitialPatientLoaded] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicates, setDuplicates] = useState<Tables<"pacientes">[]>([]);
@@ -112,10 +80,46 @@ const Atendimento = () => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
       if (data) setClinicas(data);
     });
-    supabase.from("tipos_procedimento").select("id, nome, valor_referencia, especialidade, especialidade_secundaria").eq("ativo", true).order("nome").then(({ data }) => {
-      if (data) setTiposProcedimento(data as TipoProcedimento[]);
-    });
+    supabase
+      .from("tipos_procedimento")
+      .select("especialidade, especialidade_secundaria")
+      .eq("ativo", true)
+      .then(({ data }) => {
+        const set = new Set<string>();
+        (data as TipoProcedimento[] | null)?.forEach((t) => {
+          if (t.especialidade) set.add(t.especialidade);
+          if (t.especialidade_secundaria) set.add(t.especialidade_secundaria);
+        });
+        setEspecialidadesDisponiveis(Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR")));
+      });
   }, []);
+
+  const especialidadesJaCadastradas = useMemo(
+    () => new Set(especialidadesDoLead.map((e) => e.especialidade)),
+    [especialidadesDoLead]
+  );
+
+  const especialidadesNovasDisponiveis = useMemo(
+    () => especialidadesDisponiveis.filter((e) => !especialidadesJaCadastradas.has(e)),
+    [especialidadesDisponiveis, especialidadesJaCadastradas]
+  );
+
+  const carregarEspecialidadesDoLead = async (pacienteId: string) => {
+    const { data } = await supabase
+      .from("pagamentos")
+      .select("valor, especialidade")
+      .eq("paciente_id", pacienteId);
+    const map = new Map<string, number>();
+    (data || []).forEach((p: any) => {
+      const esp = p.especialidade || "Sem especialidade";
+      map.set(esp, (map.get(esp) || 0) + Number(p.valor || 0));
+    });
+    const list = Array.from(map.entries())
+      .map(([especialidade, total]) => ({ especialidade, total }))
+      .sort((a, b) => b.total - a.total);
+    setEspecialidadesDoLead(list);
+    return list;
+  };
 
   const preencherPacienteSelecionado = async (paciente: {
     id: string;
@@ -135,17 +139,12 @@ const Atendimento = () => {
     setNomeAnuncio(paciente.nome_anuncio || "");
     setPacienteSelecionadoId(paciente.id);
     setSugestoes([]);
-    setValorPago("");
-    setValorOrcadoGeral("");
-    setProcedimentos([createEmptyProcedimento()]);
-    setPagamentosLista([createEmptyPagamento()]);
     setClinicaId("");
-    setModo("selecionar");
 
-    await carregarTratamentos(paciente.id);
+    const list = await carregarEspecialidadesDoLead(paciente.id);
+    setEntries([createEmptyEntry(list.length > 0 ? "existente" : "nova")]);
   };
 
-  // Auto-load patient from navigation state
   useEffect(() => {
     const state = location.state as { pacienteId?: string; pacienteNome?: string; pacienteTelefone?: string; pacienteCidade?: string; pacienteOrigem?: string; pacienteNomeAnuncio?: string } | null;
     if (state?.pacienteId && !initialPatientLoaded) {
@@ -161,16 +160,6 @@ const Atendimento = () => {
     }
   }, [location.state, initialPatientLoaded]);
 
-  const getEspecialidadesDisponiveis = (procNome: string) => {
-    if (!procNome) return [];
-    const tp = tiposProcedimento.find(t => t.nome === procNome);
-    if (!tp) return [];
-    const list: string[] = [];
-    if (tp.especialidade) list.push(tp.especialidade);
-    if (tp.especialidade_secundaria) list.push(tp.especialidade_secundaria);
-    return list;
-  };
-
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, "");
     if (digits.length <= 2) return `(${digits}`;
@@ -182,12 +171,8 @@ const Atendimento = () => {
     const formatted = formatPhone(value);
     setTelefone(formatted);
     setPacienteSelecionadoId(null);
-    setTratamentosExistentes([]);
-    setModo("selecionar");
-    setTotalPagoExistente(0);
-    setTotalOrcadoExistente(0);
-    setOrcamentosAbertos([]);
-    setOrcamentoSelecionado(null);
+    setEspecialidadesDoLead([]);
+    setEntries([createEmptyEntry("nova")]);
 
     const digits = value.replace(/\D/g, "");
     if (digits.length >= 4) {
@@ -202,284 +187,77 @@ const Atendimento = () => {
     }
   };
 
-  const carregarTratamentos = async (pacienteId: string) => {
-    const [{ data: orcs }, { data: trats }, { data: pags }] = await Promise.all([
-      supabase.from("orcamentos").select("*").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
-      supabase.from("tratamentos").select("*, clinicas(nome)").eq("paciente_id", pacienteId).order("created_at", { ascending: false }),
-      supabase.from("pagamentos").select("valor, orcamento_id, tratamento_id").eq("paciente_id", pacienteId),
-    ]);
-
-    const tratPagMap: Record<string, number> = {};
-    (pags || []).forEach((p: any) => {
-      if (p.tratamento_id) tratPagMap[p.tratamento_id] = (tratPagMap[p.tratamento_id] || 0) + Number(p.valor || 0);
-    });
-    setPagamentosPorTratamento(tratPagMap);
-
-    if (trats) {
-      setTratamentosExistentes(trats);
-      const openOrcs = (orcs || []).filter((o: any) => o.status === "aberto");
-      
-      // Enrich with pago info
-      const enriched = openOrcs.map((o: any) => {
-        const totalPago = pags?.filter(p => p.orcamento_id === o.id).reduce((s, p) => s + Number(p.valor), 0) || 0;
-        return { ...o, totalPago, restante: Math.max(0, Number(o.valor_orcado || 0) - totalPago) };
-      }).filter((o: any) => o.restante > 0);
-
-      setOrcamentosAbertos(enriched);
-
-      if (trats.length === 0) {
-        setModo("novo_tratamento");
-        setOrcamentoSelecionado(null);
-        setTotalOrcadoExistente(0);
-        setTotalPagoExistente(0);
-      } else if (enriched.length === 1) {
-        setModo("selecionar");
-        selecionarOrcamento(enriched[0]);
-      } else {
-        setModo("selecionar");
-        setOrcamentoSelecionado(null);
-        setTotalOrcadoExistente(0);
-        setTotalPagoExistente(0);
-      }
-    }
-  };
-
-  const selecionarOrcamento = (orc: any) => {
-    setOrcamentoSelecionado(orc);
-    setTotalOrcadoExistente(Number(orc.valor_orcado || 0));
-    setTotalPagoExistente(orc.totalPago || 0);
-  };
-
   const selecionarPaciente = async (pac: Tables<"pacientes">) => {
     await preencherPacienteSelecionado(pac);
     toast.success(`Paciente ${pac.nome} selecionado!`);
   };
 
-  const iniciarNovoPagamento = () => {
-    setModo("novo_pagamento");
-    if (tratamentosExistentes.length > 0) {
-      setClinicaId(tratamentosExistentes[0].clinica_id);
-      const cl = clinicas.find(c => c.id === tratamentosExistentes[0].clinica_id);
-      if (cl) setCidade(cl.cidade);
-    }
-    // Pre-fill first payment with first treatment of selected orcamento
-    const orcTrats = orcamentoSelecionado
-      ? tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id)
-      : [];
-    setPagamentosLista([
-      {
-        ...createEmptyPagamento(),
-        tratamentoId: orcTrats[0]?.id || "",
-      },
-    ]);
-  };
-
-  const updatePagamentoEntry = (index: number, field: keyof PagamentoEntry, value: string) => {
-    setPagamentosLista(prev => {
+  const updateEntry = (index: number, field: keyof PagamentoEntry, value: string) => {
+    setEntries((prev) => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
-      if (field === "procedimento") {
-        const tp = tiposProcedimento.find(t => t.nome === value);
-        if (tp && tp.especialidade && !tp.especialidade_secundaria) {
-          updated[index].especialidade = tp.especialidade;
-        } else {
-          updated[index].especialidade = "";
-        }
+      if (field === "mode") {
+        updated[index].especialidade = "";
       }
       return updated;
     });
   };
 
-  const addPagamentoEntry = () => {
-    setPagamentosLista(prev => [...prev, createEmptyPagamento()]);
+  const addEntry = () => {
+    const defaultMode: EspMode = especialidadesDoLead.length > 0 ? "existente" : "nova";
+    setEntries((prev) => [...prev, createEmptyEntry(defaultMode)]);
   };
 
-  const removePagamentoEntry = (index: number) => {
-    setPagamentosLista(prev => prev.length <= 1 ? prev : prev.filter((_, i) => i !== index));
-  };
-
-  const iniciarNovoTratamento = () => {
-    setModo("novo_tratamento");
-    setClinicaId("");
-    setProcedimentos([createEmptyProcedimento()]);
-    setCidade("");
+  const removeEntry = (index: number) => {
+    setEntries((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   };
 
   const resetForm = () => {
-    setTelefone(""); setNome(""); setClinicaId(""); setCidade("");
-    setProcedimentos([createEmptyProcedimento()]);
-    setValorPago(""); setTipoPagamento("primeiro");
-    setOrigem(""); setNomeAnuncio(""); setOrigemOutrosDesc(""); setPacienteSelecionadoId(null);
+    setTelefone("");
+    setNome("");
+    setClinicaId("");
+    setCidade("");
+    setOrigem("");
+    setNomeAnuncio("");
+    setOrigemOutrosDesc("");
+    setTipoPagamento("primeiro");
     setDataPagamento(new Date().toISOString().split("T")[0]);
-    setValorOrcadoGeral("");
-    setPagamentosLista([createEmptyPagamento()]);
-    setModo("selecionar");
-    setTotalPagoExistente(0);
-    setTotalOrcadoExistente(0);
-    setTratamentosExistentes([]);
-    setOrcamentosAbertos([]);
-    setOrcamentoSelecionado(null);
+    setPacienteSelecionadoId(null);
+    setEspecialidadesDoLead([]);
+    setEntries([createEmptyEntry("nova")]);
   };
 
-  const updateProcedimento = (index: number, field: keyof ProcedimentoEntry, value: string) => {
-    setProcedimentos(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      if (field === "procedimento") {
-        const tp = tiposProcedimento.find(t => t.nome === value);
-        if (tp && tp.especialidade && !tp.especialidade_secundaria) {
-          updated[index].especialidade = tp.especialidade;
-        } else {
-          updated[index].especialidade = "";
-        }
-      }
-      return updated;
-    });
-  };
-
-  const addProcedimento = () => {
-    setProcedimentos(prev => [...prev, createEmptyProcedimento()]);
-  };
-
-  const removeProcedimento = (index: number) => {
-    if (procedimentos.length <= 1) return;
-    setProcedimentos(prev => prev.filter((_, i) => i !== index));
-  };
+  const totalLancamento = entries.reduce((s, e) => s + parseCurrency(e.valor), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (modo === "novo_pagamento") {
-      if (!orcamentoSelecionado) {
-        toast.error("Selecione um orçamento para registrar o pagamento.");
-        return;
-      }
-
-      // Validate each entry
-      for (let i = 0; i < pagamentosLista.length; i++) {
-        const p = pagamentosLista[i];
-        const v = parseCurrency(p.valor);
-        if (v <= 0) {
-          toast.error(`Preencha o valor do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
-          return;
-        }
-        if (p.modo === "existente" && !p.tratamentoId) {
-          toast.error(`Selecione o procedimento do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
-          return;
-        }
-        if (p.modo === "novo") {
-          if (!p.procedimento) {
-            toast.error(`Selecione o novo procedimento do pagamento ${pagamentosLista.length > 1 ? i + 1 : ""}.`);
-            return;
-          }
-          const espDisp = getEspecialidadesDisponiveis(p.procedimento);
-          if (espDisp.length > 0 && !p.especialidade) {
-            toast.error(`Selecione a especialidade do novo procedimento.`);
-            return;
-          }
-        }
-      }
-
-      const totalNovos = pagamentosLista.reduce((s, p) => s + parseCurrency(p.valor), 0);
-      const novoTotalContratado = totalPagoExistente + totalNovos;
-
-      if (novoTotalContratado > totalOrcadoExistente) {
-        toast.error(`O valor total contratado (${formatCurrencyDisplay(novoTotalContratado)}) ultrapassaria o valor orçado (${formatCurrencyDisplay(totalOrcadoExistente)}).`);
-        return;
-      }
-
-      setSaving(true);
-      try {
-        const tipo = tipoPagamento;
-        const targetClinicaId = clinicaId || tratamentosExistentes[0]?.clinica_id;
-
-        for (const p of pagamentosLista) {
-          let tratamentoId = p.tratamentoId;
-
-          if (p.modo === "novo") {
-            const { data: trat, error: tratError } = await supabase
-              .from("tratamentos")
-              .insert({
-                paciente_id: pacienteSelecionadoId!,
-                clinica_id: targetClinicaId,
-                procedimento: p.procedimento,
-                especialidade: p.especialidade || null,
-                created_by: user?.id,
-                orcamento_id: orcamentoSelecionado.id,
-              })
-              .select("id")
-              .single();
-            if (tratError) throw tratError;
-            tratamentoId = trat.id;
-          }
-
-          if (!tratamentoId) throw new Error("Tratamento inválido.");
-
-          const { error: pagError } = await supabase
-            .from("pagamentos")
-            .insert({
-              tratamento_id: tratamentoId,
-              paciente_id: pacienteSelecionadoId!,
-              clinica_id: targetClinicaId,
-              valor: parseCurrency(p.valor),
-              forma_pagamento: "Não informado",
-              tipo,
-              data_pagamento: dataPagamento,
-              created_by: user?.id,
-              orcamento_id: orcamentoSelecionado.id,
-            });
-          if (pagError) throw pagError;
-        }
-
-        if (novoTotalContratado >= totalOrcadoExistente) {
-          await supabase.from("orcamentos").update({ status: "concluido" }).eq("id", orcamentoSelecionado.id);
-        }
-
-        toast.success(`${pagamentosLista.length > 1 ? `${pagamentosLista.length} pagamentos registrados` : "Pagamento registrado"} com sucesso!`);
-        resetForm();
-      } catch (err: any) {
-        toast.error("Erro ao salvar: " + err.message);
-      } finally {
-        setSaving(false);
-      }
+    if (!nome.trim()) {
+      toast.error("Informe o nome do paciente.");
       return;
     }
-
-    // New treatment flow
     if (!clinicaId) {
       toast.error("Selecione a clínica.");
       return;
     }
 
-    for (let i = 0; i < procedimentos.length; i++) {
-      const p = procedimentos[i];
-      if (!p.procedimento) {
-        toast.error(`Selecione o procedimento ${i + 1}.`);
+    for (let i = 0; i < entries.length; i++) {
+      const ent = entries[i];
+      if (!ent.especialidade) {
+        toast.error(`Selecione a especialidade do pagamento ${entries.length > 1 ? i + 1 : ""}.`);
         return;
       }
-      const espDisp = getEspecialidadesDisponiveis(p.procedimento);
-      if (espDisp.length > 0 && !p.especialidade) {
-        toast.error(`Selecione a especialidade do procedimento "${p.procedimento}".`);
+      if (parseCurrency(ent.valor) <= 0) {
+        toast.error(`Informe o valor do pagamento ${entries.length > 1 ? i + 1 : ""}.`);
         return;
       }
     }
 
     setSaving(true);
-
     try {
       let pacienteId = pacienteSelecionadoId;
 
-      const totalOrcado = parseCurrency(valorOrcadoGeral);
-      const totalContratado = procedimentos.reduce((s, p) => s + parseCurrency(p.valorContratado), 0);
-
-      if (totalOrcado > 0 && totalContratado > totalOrcado) {
-        toast.error(`O total contratado (${formatCurrencyDisplay(totalContratado)}) ultrapassa o valor orçado (${formatCurrencyDisplay(totalOrcado)}).`);
-        setSaving(false);
-        return;
-      }
-
       if (!pacienteId) {
-        // Duplicate phone check (last 8 digits) — unless user already confirmed
         if (!forceCreateNew) {
           const phoneClean = telefone.replace(/\D/g, "");
           if (phoneClean.length >= 8) {
@@ -510,55 +288,25 @@ const Atendimento = () => {
         setForceCreateNew(false);
       }
 
-      // Always create a new orcamento for new treatments
-      const { data: newOrc, error: orcError } = await supabase
-        .from("orcamentos")
-        .insert({
+      for (const ent of entries) {
+        const { error: pagError } = await supabase.from("pagamentos").insert({
           paciente_id: pacienteId,
-          valor_orcado: totalOrcado,
-          status: totalOrcado > 0 && totalContratado >= totalOrcado ? "concluido" : "aberto",
-        })
-        .select("id")
-        .single();
-      if (orcError) throw orcError;
-      const orcamentoId = newOrc.id;
-
-      // Create treatments + per-procedure payments
-      for (const proc of procedimentos) {
-        const { data: trat, error: tratError } = await supabase
-          .from("tratamentos")
-          .insert({
-            paciente_id: pacienteId,
-            clinica_id: clinicaId,
-            procedimento: proc.procedimento,
-            especialidade: proc.especialidade || null,
-            created_by: user?.id,
-            orcamento_id: orcamentoId,
-          })
-          .select("id")
-          .single();
-        if (tratError) throw tratError;
-
-        const valorProc = parseCurrency(proc.valorContratado);
-        if (valorProc > 0) {
-          const { error: pagError } = await supabase
-            .from("pagamentos")
-            .insert({
-              tratamento_id: trat.id,
-              paciente_id: pacienteId,
-              clinica_id: clinicaId,
-              valor: valorProc,
-              forma_pagamento: "Não informado",
-              tipo: tipoPagamento,
-              data_pagamento: dataPagamento,
-              created_by: user?.id,
-              orcamento_id: orcamentoId,
-            });
-          if (pagError) throw pagError;
-        }
+          clinica_id: clinicaId,
+          especialidade: ent.especialidade,
+          valor: parseCurrency(ent.valor),
+          forma_pagamento: "Não informado",
+          tipo: tipoPagamento,
+          data_pagamento: dataPagamento,
+          created_by: user?.id,
+        });
+        if (pagError) throw pagError;
       }
 
-      toast.success(`${procedimentos.length > 1 ? `${procedimentos.length} procedimentos registrados` : "Atendimento registrado"} com sucesso!`);
+      toast.success(
+        entries.length > 1
+          ? `${entries.length} pagamentos registrados com sucesso!`
+          : "Pagamento registrado com sucesso!"
+      );
       resetForm();
     } catch (err: any) {
       toast.error("Erro ao salvar: " + err.message);
@@ -567,16 +315,13 @@ const Atendimento = () => {
     }
   };
 
-  const showTratamentoSelector = pacienteSelecionadoId && tratamentosExistentes.length > 0 && modo === "selecionar";
-  const showNovoTratamentoFields = !pacienteSelecionadoId || modo === "novo_tratamento" || (pacienteSelecionadoId && tratamentosExistentes.length === 0);
-  const showPagamentoFields = modo === "novo_pagamento";
-  const naoContratadoExistente = Math.max(0, totalOrcadoExistente - totalPagoExistente);
+  const isExistingPatient = !!pacienteSelecionadoId;
 
   return (
     <div className="mx-auto max-w-3xl animate-fade-in">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Novo Atendimento</h1>
-        <p className="text-sm text-muted-foreground">Cadastro único de atendimento</p>
+        <p className="text-sm text-muted-foreground">Cadastro de pagamento por especialidade</p>
       </div>
 
       <Card className="gradient-card border-border shadow-card">
@@ -588,7 +333,6 @@ const Atendimento = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Phone with smart search */}
             <div className="relative space-y-2">
               <Label>Telefone do Paciente</Label>
               <div className="relative">
@@ -638,11 +382,9 @@ const Atendimento = () => {
                   onClick={() => {
                     setPacienteSelecionadoId("");
                     setNome("");
-                    setTratamentosExistentes([]);
-                    setOrcamentosAbertos([]);
-                    setOrcamentoSelecionado(null);
+                    setEspecialidadesDoLead([]);
+                    setEntries([createEmptyEntry("nova")]);
                     setForceCreateNew(true);
-                    setModo("novo_tratamento");
                     toast.info("Preencha o nome — será criado um novo paciente com este telefone.");
                   }}
                   className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline"
@@ -653,125 +395,25 @@ const Atendimento = () => {
               )}
             </div>
 
-            {/* Grouped treatment selector for existing patients */}
-            {showTratamentoSelector && (
+            {isExistingPatient && especialidadesDoLead.length > 0 && (
               <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="pt-4 pb-3">
                   <p className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
-                    <FileText size={14} /> Procedimentos do paciente
+                    <Stethoscope size={14} /> Especialidades já contratadas
                   </p>
-
-                  {/* List procedures */}
-                  <div className="space-y-1 mb-3">
-                    {tratamentosExistentes.map((t) => (
-                      <div key={t.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded bg-background/50">
-                        <span className="font-medium text-foreground">{t.procedimento}</span>
-                        {t.especialidade && <span className="text-xs text-muted-foreground">· {t.especialidade}</span>}
-                        <span className="text-xs text-muted-foreground ml-auto">{(t.clinicas as any)?.nome}</span>
+                  <div className="space-y-1">
+                    {especialidadesDoLead.map((e) => (
+                      <div key={e.especialidade} className="flex items-center justify-between text-sm px-3 py-1.5 rounded bg-background/50">
+                        <span className="font-medium text-foreground">{e.especialidade}</span>
+                        <span className="text-xs text-primary font-semibold">{formatCurrencyDisplay(e.total)}</span>
                       </div>
                     ))}
                   </div>
-
-                   {/* Orçamentos abertos - seleção */}
-                   {orcamentosAbertos.length > 1 && (
-                     <div className="space-y-2 mb-3">
-                       <p className="text-xs font-semibold text-muted-foreground">Selecione o orçamento:</p>
-                       {orcamentosAbertos.map((orc, i) => {
-                         const isSelected = orcamentoSelecionado?.id === orc.id;
-                         const orcTrats = tratamentosExistentes.filter((t: any) => t.orcamento_id === orc.id);
-                         return (
-                           <button
-                             key={orc.id}
-                             type="button"
-                             onClick={() => selecionarOrcamento(orc)}
-                             className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors ${isSelected ? 'border-primary bg-primary/10' : 'border-border bg-background hover:border-primary/50'}`}
-                           >
-                             <div className="text-left">
-                               <p className="font-medium">Orçamento #{orcamentosAbertos.length - i}</p>
-                               <p className="text-xs text-muted-foreground">
-                                 {orcTrats.map((t: any) => t.procedimento).join(", ") || "Sem tratamentos"}
-                               </p>
-                             </div>
-                             <div className="text-right">
-                               <p className="text-xs text-muted-foreground">Orçado: {formatCurrencyDisplay(Number(orc.valor_orcado || 0))}</p>
-                               <p className="text-xs text-primary font-semibold">Restante: {formatCurrencyDisplay(orc.restante)}</p>
-                             </div>
-                           </button>
-                         );
-                       })}
-                     </div>
-                   )}
-
-                   {/* Financial summary of selected orcamento */}
-                   {orcamentoSelecionado && (
-                     <div className="grid grid-cols-3 gap-2 mb-3 text-center">
-                       <div className="rounded-lg bg-background p-2">
-                         <p className="text-xs text-muted-foreground">Orçado</p>
-                         <p className="text-sm font-semibold">{formatCurrencyDisplay(totalOrcadoExistente)}</p>
-                       </div>
-                       <div className="rounded-lg bg-background p-2">
-                         <p className="text-xs text-muted-foreground">Contratado</p>
-                         <p className="text-sm font-semibold text-primary">{formatCurrencyDisplay(totalPagoExistente)}</p>
-                       </div>
-                       <div className="rounded-lg bg-background p-2">
-                         <p className="text-xs text-muted-foreground">Não Contratado</p>
-                         <p className="text-sm font-semibold text-destructive">{formatCurrencyDisplay(naoContratadoExistente)}</p>
-                       </div>
-                     </div>
-                   )}
-
-                   {orcamentosAbertos.length === 0 && (
-                     <div className="rounded-lg bg-background p-3 mb-3 text-center">
-                       <p className="text-sm text-muted-foreground">Todos os orçamentos estão concluídos.</p>
-                     </div>
-                   )}
-
-                  <div className="space-y-2">
-                    {orcamentosAbertos.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={iniciarNovoPagamento}
-                        className="flex w-full items-center gap-3 rounded-lg border border-border bg-background px-4 py-3 text-sm hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                      >
-                        <CreditCard size={16} className="text-primary" />
-                        <div className="text-left">
-                          <p className="font-medium text-foreground">Registrar novo pagamento</p>
-                          <p className="text-xs text-muted-foreground">
-                            {totalPagoExistente === 0 ? "Primeiro pagamento" : "Pagamento recorrente"} · Restante: {formatCurrencyDisplay(naoContratadoExistente)}
-                          </p>
-                        </div>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={iniciarNovoTratamento}
-                      className="flex w-full items-center gap-3 rounded-lg border border-dashed border-border bg-background px-4 py-3 text-sm hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                    >
-                      <Plus size={16} className="text-primary" />
-                      <span className="font-medium text-foreground">Novo tratamento / orçamento</span>
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Payment summary for payment mode */}
-            {showPagamentoFields && (
-              <Card className="border-green-500/30 bg-green-500/5">
-                <CardContent className="pt-4 pb-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground flex items-center gap-2">
-                        <CreditCard size={14} className="text-green-600" />
-                        Registrar pagamento
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Orçado: {formatCurrencyDisplay(totalOrcadoExistente)} · Contratado: {formatCurrencyDisplay(totalPagoExistente)} · Restante: {formatCurrencyDisplay(naoContratadoExistente)}
-                      </p>
-                    </div>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setModo("selecionar")}>
-                      Voltar
-                    </Button>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                    <span className="text-sm font-semibold">Total contratado</span>
+                    <span className="text-sm font-bold text-primary">
+                      {formatCurrencyDisplay(especialidadesDoLead.reduce((s, e) => s + e.total, 0))}
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -779,352 +421,252 @@ const Atendimento = () => {
 
             <div className="space-y-2">
               <Label>Nome do Paciente</Label>
-              <Input placeholder="Nome completo" value={nome} onChange={(e) => setNome(e.target.value)} className="bg-secondary border-border" required readOnly={!!pacienteSelecionadoId} />
+              <Input
+                placeholder="Nome completo"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                className="bg-secondary border-border"
+                required
+                readOnly={!!pacienteSelecionadoId}
+              />
             </div>
 
-            {/* New treatment fields */}
-            {showNovoTratamentoFields && (
-              <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Clínica</Label>
-                    <Select value={clinicaId} onValueChange={(v) => {
-                      setClinicaId(v);
-                      const cl = clinicas.find(c => c.id === v);
-                      if (cl) setCidade(cl.cidade);
-                    }}>
-                      <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        {clinicas.map((c) => (<SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Cidade</Label>
-                    <Input placeholder="Cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} className="bg-secondary border-border" />
-                  </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Clínica</Label>
+                <Select
+                  value={clinicaId}
+                  onValueChange={(v) => {
+                    setClinicaId(v);
+                    const cl = clinicas.find((c) => c.id === v);
+                    if (cl) setCidade(cl.cidade);
+                  }}
+                >
+                  <SelectTrigger className="bg-secondary border-border">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clinicas.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Cidade</Label>
+                <Input
+                  placeholder="Cidade"
+                  value={cidade}
+                  onChange={(e) => setCidade(e.target.value)}
+                  className="bg-secondary border-border"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Data do Pagamento</Label>
+                <div className="relative">
+                  <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    value={dataPagamento}
+                    onChange={(e) => setDataPagamento(e.target.value)}
+                    className="bg-secondary border-border pl-10"
+                  />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo de Pagamento</Label>
+                <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
+                  <SelectTrigger className="bg-secondary border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
+                    <SelectItem value="recorrente">Recorrente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-                {/* Procedures list */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-semibold">Procedimentos</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addProcedimento} className="gap-1 text-xs">
-                      <Plus size={14} /> Adicionar Procedimento
-                    </Button>
-                  </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold flex items-center gap-2">
+                  <CreditCard size={14} className="text-primary" />
+                  Pagamentos por especialidade
+                </Label>
+                <Button type="button" variant="outline" size="sm" onClick={addEntry} className="gap-1 text-xs">
+                  <Plus size={14} /> Adicionar pagamento
+                </Button>
+              </div>
 
-                  {procedimentos.map((proc, index) => {
-                    const espDisp = getEspecialidadesDisponiveis(proc.procedimento);
-                    const temMultiplas = espDisp.length > 1;
+              {entries.map((ent, index) => {
+                const opcoesParaModo =
+                  ent.mode === "existente"
+                    ? especialidadesDoLead.map((e) => e.especialidade)
+                    : especialidadesNovasDisponiveis;
 
-                    return (
-                      <Card key={proc.id} className="border-border bg-secondary/30">
-                        <CardContent className="pt-4 pb-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-muted-foreground">
-                              Procedimento {procedimentos.length > 1 ? `${index + 1}` : ""}
-                            </span>
-                            {procedimentos.length > 1 && (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removeProcedimento(index)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
-                                <Trash2 size={14} />
-                              </Button>
-                            )}
-                          </div>
+                return (
+                  <Card key={ent.id} className="border-border bg-secondary/30">
+                    <CardContent className="pt-4 pb-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          Pagamento {entries.length > 1 ? `${index + 1}` : ""}
+                        </span>
+                        {entries.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeEntry(index)}
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        )}
+                      </div>
 
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Procedimento</Label>
-                              <Select value={proc.procedimento} onValueChange={(v) => updateProcedimento(index, "procedimento", v)}>
-                                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                                <SelectContent>
-                                  {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Especialidade</Label>
-                              {temMultiplas ? (
-                                <Select value={proc.especialidade} onValueChange={(v) => updateProcedimento(index, "especialidade", v)}>
-                                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                                  <SelectContent>
-                                    {espDisp.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
-                                  </SelectContent>
-                                </Select>
+                      {isExistingPatient && especialidadesDoLead.length > 0 && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Tipo</Label>
+                          <Select
+                            value={ent.mode}
+                            onValueChange={(v) => updateEntry(index, "mode", v as EspMode)}
+                          >
+                            <SelectTrigger className="bg-secondary border-border">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="existente">Especialidade já cadastrada (somar)</SelectItem>
+                              <SelectItem value="nova">Nova especialidade</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Especialidade</Label>
+                          <Select
+                            value={ent.especialidade}
+                            onValueChange={(v) => updateEntry(index, "especialidade", v)}
+                          >
+                            <SelectTrigger className="bg-secondary border-border">
+                              <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {opcoesParaModo.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-muted-foreground">
+                                  {ent.mode === "existente"
+                                    ? "Nenhuma especialidade cadastrada"
+                                    : "Todas as especialidades já estão cadastradas para este paciente"}
+                                </div>
                               ) : (
-                                <Input
-                                  readOnly
-                                  value={proc.especialidade || "Selecione um procedimento"}
-                                  className="bg-muted border-border cursor-not-allowed text-sm"
-                                />
-                              )}
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label className="text-xs">Valor Contratado deste procedimento (R$)</Label>
-                            <Input
-                              inputMode="numeric"
-                              placeholder="R$ 0,00"
-                              value={proc.valorContratado}
-                              onChange={(e) => updateProcedimento(index, "valorContratado", formatCurrencyInput(e.target.value))}
-                              className="bg-secondary border-border"
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-
-                {/* Valores gerais do orçamento */}
-                {(() => {
-                  const totalOrc = parseCurrency(valorOrcadoGeral);
-                  const totalContr = procedimentos.reduce((s, p) => s + parseCurrency(p.valorContratado), 0);
-                  return (
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <div className="space-y-2">
-                        <Label>Valor Orçado total (R$)</Label>
-                        <Input
-                          inputMode="numeric"
-                          placeholder="R$ 0,00"
-                          value={valorOrcadoGeral}
-                          onChange={(e) => setValorOrcadoGeral(formatCurrencyInput(e.target.value))}
-                          className="bg-secondary border-border"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Total Contratado (R$)</Label>
-                        <Input readOnly value={formatCurrencyDisplay(totalContr)} className="bg-muted border-border cursor-not-allowed text-sm" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Não Contratado (R$)</Label>
-                        <Input readOnly value={formatCurrencyDisplay(Math.max(0, totalOrc - totalContr))} className="bg-muted border-border cursor-not-allowed text-sm" />
-                      </div>
-                    </div>
-                  );
-                })()}
-              </>
-            )}
-
-            {/* Payment-only fields */}
-            {showPagamentoFields && (
-              <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Data do Pagamento</Label>
-                    <div className="relative">
-                      <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tipo de Pagamento</Label>
-                    <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
-                      <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
-                        <SelectItem value="recorrente">Recorrente</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Procedures already in the budget — quick reference */}
-                {orcamentoSelecionado && (() => {
-                  const orcTrats = tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id);
-                  if (orcTrats.length === 0) return null;
-                  return (
-                    <div className="rounded-lg border border-border bg-secondary/30 p-3">
-                      <p className="text-xs font-semibold text-muted-foreground mb-2">Procedimentos do orçamento</p>
-                      <div className="space-y-1">
-                        {orcTrats.map((t: any) => (
-                          <div key={t.id} className="flex items-center justify-between text-sm">
-                            <span>{t.procedimento}{t.especialidade ? ` · ${t.especialidade}` : ""}</span>
-                            <span className="text-xs text-primary font-medium">Pago: {formatCurrencyDisplay(pagamentosPorTratamento[t.id] || 0)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Dynamic payment list */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-semibold">Pagamentos</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addPagamentoEntry} className="gap-1 text-xs">
-                      <Plus size={14} /> Adicionar outro pagamento
-                    </Button>
-                  </div>
-
-                  {pagamentosLista.map((entry, index) => {
-                    const orcTrats = orcamentoSelecionado
-                      ? tratamentosExistentes.filter((t: any) => t.orcamento_id === orcamentoSelecionado.id)
-                      : [];
-                    const espDisp = getEspecialidadesDisponiveis(entry.procedimento);
-                    const temMultiplas = espDisp.length > 1;
-
-                    return (
-                      <Card key={entry.id} className="border-border bg-secondary/30">
-                        <CardContent className="pt-4 pb-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-muted-foreground">
-                              Pagamento {pagamentosLista.length > 1 ? `${index + 1}` : ""}
-                            </span>
-                            {pagamentosLista.length > 1 && (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removePagamentoEntry(index)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
-                                <Trash2 size={14} />
-                              </Button>
-                            )}
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <Label className="text-xs">Tipo de procedimento</Label>
-                            <Select value={entry.modo} onValueChange={(v) => updatePagamentoEntry(index, "modo", v as PagamentoModo)}>
-                              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="existente">Procedimento já existente</SelectItem>
-                                <SelectItem value="novo">Novo procedimento</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {entry.modo === "existente" ? (
-                            <div className="space-y-1.5">
-                              <Label className="text-xs">Procedimento</Label>
-                              <Select value={entry.tratamentoId} onValueChange={(v) => updatePagamentoEntry(index, "tratamentoId", v)}>
-                                <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                                <SelectContent>
-                                  {orcTrats.map((t: any) => (
-                                    <SelectItem key={t.id} value={t.id}>
-                                      {t.procedimento}{t.especialidade ? ` · ${t.especialidade}` : ""} (Pago: {formatCurrencyDisplay(pagamentosPorTratamento[t.id] || 0)})
+                                opcoesParaModo.map((esp) => {
+                                  const total = especialidadesDoLead.find((e) => e.especialidade === esp)?.total;
+                                  return (
+                                    <SelectItem key={esp} value={esp}>
+                                      {esp}
+                                      {ent.mode === "existente" && total !== undefined
+                                        ? ` (atual: ${formatCurrencyDisplay(total)})`
+                                        : ""}
                                     </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          ) : (
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Novo procedimento</Label>
-                                <Select value={entry.procedimento} onValueChange={(v) => updatePagamentoEntry(index, "procedimento", v)}>
-                                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                                  <SelectContent>
-                                    {tiposProcedimento.map((p) => (<SelectItem key={p.id} value={p.nome}>{p.nome}</SelectItem>))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Especialidade</Label>
-                                {temMultiplas ? (
-                                  <Select value={entry.especialidade} onValueChange={(v) => updatePagamentoEntry(index, "especialidade", v)}>
-                                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                                    <SelectContent>
-                                      {espDisp.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
-                                    </SelectContent>
-                                  </Select>
-                                ) : (
-                                  <Input
-                                    readOnly
-                                    value={entry.especialidade || "Selecione um procedimento"}
-                                    className="bg-muted border-border cursor-not-allowed text-sm"
-                                  />
-                                )}
-                              </div>
-                            </div>
-                          )}
+                                  );
+                                })
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Valor contratado (R$)</Label>
+                          <Input
+                            inputMode="numeric"
+                            placeholder="R$ 0,00"
+                            value={ent.valor}
+                            onChange={(e) => updateEntry(index, "valor", formatCurrencyInput(e.target.value))}
+                            className="bg-secondary border-border"
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
 
-                          <div className="space-y-1.5">
-                            <Label className="text-xs">Valor a pagar (R$)</Label>
-                            <Input
-                              inputMode="numeric"
-                              placeholder="R$ 0,00"
-                              value={entry.valor}
-                              onChange={(e) => updatePagamentoEntry(index, "valor", formatCurrencyInput(e.target.value))}
-                              className="bg-secondary border-border"
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+              <div className="rounded-lg bg-secondary/30 p-3 text-sm flex items-center justify-between">
+                <span className="text-muted-foreground">Total deste lançamento</span>
+                <span className="font-semibold text-primary">{formatCurrencyDisplay(totalLancamento)}</span>
+              </div>
+            </div>
 
-                  <div className="rounded-lg bg-secondary/30 p-3 text-sm flex items-center justify-between">
-                    <span className="text-muted-foreground">Total deste lançamento</span>
-                    <span className="font-semibold text-primary">
-                      {formatCurrencyDisplay(pagamentosLista.reduce((s, p) => s + parseCurrency(p.valor), 0))}
-                    </span>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* New treatment: date + origin */}
-            {showNovoTratamentoFields && (
-              <div className="grid gap-4 sm:grid-cols-2">
+            {!isExistingPatient && (
+              <>
                 <div className="space-y-2">
-                  <Label>Data do Pagamento</Label>
-                  <div className="relative">
-                    <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <Input type="date" value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="bg-secondary border-border pl-10" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Tipo de Pagamento</Label>
-                  <Select value={tipoPagamento} onValueChange={setTipoPagamento}>
-                    <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                  <Label>Origem do Lead</Label>
+                  <Select
+                    value={origem}
+                    onValueChange={(v) => {
+                      setOrigem(v);
+                      setNomeAnuncio("");
+                      setOrigemOutrosDesc("");
+                    }}
+                  >
+                    <SelectTrigger className="bg-secondary border-border">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
-                      <SelectItem value="recorrente">Recorrente</SelectItem>
+                      {origens.map((o) => (
+                        <SelectItem key={o} value={o}>
+                          {o}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-            )}
-
-            {(showNovoTratamentoFields || showPagamentoFields) && (
-              <>
-                {showNovoTratamentoFields && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Origem do Lead</Label>
-                      <Select value={origem} onValueChange={(v) => { setOrigem(v); setNomeAnuncio(""); setOrigemOutrosDesc(""); }}>
-                        <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                        <SelectContent>
-                          {origens.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {origem === "Anúncio" && (
-                      <div className="space-y-2">
-                        <Label>Nome do Anúncio</Label>
-                        <Input placeholder="Ex: Campanha Implante Jan" value={nomeAnuncio} onChange={(e) => setNomeAnuncio(e.target.value)} className="bg-secondary border-border" />
-                      </div>
-                    )}
-                    {origem === "Outros" && (
-                      <div className="space-y-2">
-                        <Label>De onde veio o lead?</Label>
-                        <Input placeholder="Descreva a origem do lead" value={origemOutrosDesc} onChange={(e) => setOrigemOutrosDesc(e.target.value)} className="bg-secondary border-border" />
-                      </div>
-                    )}
-                  </>
+                {origem === "Anúncio" && (
+                  <div className="space-y-2">
+                    <Label>Nome do Anúncio</Label>
+                    <Input
+                      placeholder="Ex: Campanha Implante Jan"
+                      value={nomeAnuncio}
+                      onChange={(e) => setNomeAnuncio(e.target.value)}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
                 )}
-
-                <Button
-                  type="submit"
-                  disabled={saving}
-                  className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity"
-                >
-                  <Save size={18} className="mr-2" />
-                  {saving ? "Salvando..." : modo === "novo_pagamento" ? "Registrar Pagamento" : `Salvar Atendimento${procedimentos.length > 1 ? ` (${procedimentos.length} procedimentos)` : ""}`}
-                </Button>
+                {origem === "Outros" && (
+                  <div className="space-y-2">
+                    <Label>De onde veio o lead?</Label>
+                    <Input
+                      placeholder="Descreva a origem do lead"
+                      value={origemOutrosDesc}
+                      onChange={(e) => setOrigemOutrosDesc(e.target.value)}
+                      className="bg-secondary border-border"
+                    />
+                  </div>
+                )}
               </>
             )}
+
+            <Button
+              type="submit"
+              disabled={saving}
+              className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity"
+            >
+              <Save size={18} className="mr-2" />
+              {saving
+                ? "Salvando..."
+                : entries.length > 1
+                ? `Registrar ${entries.length} pagamentos`
+                : "Registrar Pagamento"}
+            </Button>
           </form>
         </CardContent>
       </Card>
 
-      {/* Duplicate phone confirmation dialog */}
       <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1138,7 +680,10 @@ const Atendimento = () => {
               <div key={p.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-secondary/50">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
-                  <p className="text-xs text-muted-foreground truncate">{p.telefone}{p.cidade ? ` · ${p.cidade}` : ""}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {p.telefone}
+                    {p.cidade ? ` · ${p.cidade}` : ""}
+                  </p>
                 </div>
                 <Button
                   size="sm"
@@ -1156,13 +701,14 @@ const Atendimento = () => {
             ))}
           </div>
           <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
-            <Button variant="outline" type="button" onClick={() => setDuplicateOpen(false)}>Cancelar</Button>
+            <Button variant="outline" type="button" onClick={() => setDuplicateOpen(false)}>
+              Cancelar
+            </Button>
             <Button
               type="button"
               onClick={() => {
                 setForceCreateNew(true);
                 setDuplicateOpen(false);
-                // Programmatic submit
                 setTimeout(() => {
                   const form = document.querySelector("form");
                   if (form) form.requestSubmit();
