@@ -69,7 +69,7 @@ const Atendimento = () => {
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
   const [especialidadesDoLead, setEspecialidadesDoLead] = useState<{ especialidade: string; total: number }[]>([]);
-  const [entries, setEntries] = useState<PagamentoEntry[]>([createEmptyEntry("existente")]);
+  const [entries, setEntries] = useState<PagamentoEntry[]>([createEmptyEntry("nova")]);
   const [saving, setSaving] = useState(false);
   const [initialPatientLoaded, setInitialPatientLoaded] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
