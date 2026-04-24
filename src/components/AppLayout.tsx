@@ -12,8 +12,6 @@ import logo from "@/assets/logo-rizodent.webp";
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/atendimento", icon: UserPlus, label: "Atendimento" },
-  { to: "/leads", icon: TrendingUp, label: "Cadastro Leads" },
-  { to: "/registro-diario", icon: ClipboardList, label: "Registro Diário" },
   { to: "/pacientes", icon: Users, label: "Pacientes" },
   { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },
   { to: "/marketing", icon: Megaphone, label: "Marketing" },
