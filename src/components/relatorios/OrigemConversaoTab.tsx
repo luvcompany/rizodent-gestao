@@ -54,30 +54,72 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     if (!range) return;
     setLoading(true);
     (async () => {
-      const { data: ls } = await supabase
-        .from("crm_leads")
-        .select("id,name,pipeline_id,cidade,source,nome_anuncio,created_at,first_inbound_at,paciente_id")
-        .eq("pipeline_id", pipelineId)
-        .gte("created_at", range.start.toISOString())
-        .lte("created_at", range.end.toISOString())
-        .limit(5000);
-      const leadIds = (ls || []).map(l => l.id);
-      const pacIds = (ls || []).map(l => (l as any).paciente_id).filter(Boolean) as string[];
-      const [{ data: aps }, { data: ms }, { data: pgs }] = await Promise.all([
-        leadIds.length
-          ? supabase.from("crm_appointments").select("id,lead_id,scheduled_date,status").in("lead_id", leadIds).limit(5000)
-          : Promise.resolve({ data: [] as Appointment[] }),
-        leadIds.length
-          ? supabase.from("messages").select("lead_id,direction,created_at").in("lead_id", leadIds).limit(20000)
-          : Promise.resolve({ data: [] as Msg[] }),
-        pacIds.length
-          ? supabase.from("pagamentos").select("paciente_id,tipo,data_pagamento").in("paciente_id", pacIds).limit(5000)
-          : Promise.resolve({ data: [] as Pagamento[] }),
-      ]);
-      setLeads((ls as Lead[]) || []);
-      setAppts((aps as Appointment[]) || []);
-      setMsgs((ms as Msg[]) || []);
-      setPagamentos((pgs as Pagamento[]) || []);
+      // Paginar leads (Supabase limita a 1000 por padrão)
+      let allLeads: Lead[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("crm_leads")
+          .select("id,name,pipeline_id,cidade,source,nome_anuncio,created_at,first_inbound_at,paciente_id")
+          .eq("pipeline_id", pipelineId)
+          .gte("created_at", range.start.toISOString())
+          .lte("created_at", range.end.toISOString())
+          .order("created_at")
+          .range(from, from + pageSize - 1);
+        if (error || !data || data.length === 0) break;
+        allLeads = allLeads.concat(data as Lead[]);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+
+      const leadIds = allLeads.map(l => l.id);
+      const pacIds = allLeads.map(l => l.paciente_id).filter(Boolean) as string[];
+
+      // Buscar em chunks de 200 para evitar URL longa demais
+      const CHUNK = 200;
+      let allAppts: Appointment[] = [];
+      let allMsgs: Msg[] = [];
+      let allPagamentos: Pagamento[] = [];
+
+      for (let i = 0; i < leadIds.length; i += CHUNK) {
+        const chunk = leadIds.slice(i, i + CHUNK);
+        // Appointments + paginação interna por chunk (raro passar de 1000, mas garantimos)
+        const { data: aps } = await supabase
+          .from("crm_appointments")
+          .select("id,lead_id,scheduled_date,status")
+          .in("lead_id", chunk);
+        if (aps) allAppts = allAppts.concat(aps as Appointment[]);
+
+        // Mensagens: paginação por range pois pode passar de 1000 fácil
+        let mFrom = 0;
+        while (true) {
+          const { data: ms } = await supabase
+            .from("messages")
+            .select("lead_id,direction,created_at")
+            .in("lead_id", chunk)
+            .order("created_at")
+            .range(mFrom, mFrom + 999);
+          if (!ms || ms.length === 0) break;
+          allMsgs = allMsgs.concat(ms as Msg[]);
+          if (ms.length < 1000) break;
+          mFrom += 1000;
+        }
+      }
+
+      for (let i = 0; i < pacIds.length; i += CHUNK) {
+        const chunk = pacIds.slice(i, i + CHUNK);
+        const { data: pgs } = await supabase
+          .from("pagamentos")
+          .select("paciente_id,tipo,data_pagamento")
+          .in("paciente_id", chunk);
+        if (pgs) allPagamentos = allPagamentos.concat(pgs as Pagamento[]);
+      }
+
+      setLeads(allLeads);
+      setAppts(allAppts);
+      setMsgs(allMsgs);
+      setPagamentos(allPagamentos);
       setLoading(false);
     })();
   }, [pipelineId, period]);
