@@ -637,11 +637,11 @@ export default function CrmCalendario() {
                                   setApptMovePipelineId("");
                                 }}
                               >
-                                <div className="font-medium truncate">
-                                  {statusIcon && <span className="mr-0.5">{statusIcon}</span>}
-                                  {!statusIcon && (appt as any).is_rescheduled && <span className="text-purple-500 mr-0.5">↻</span>}
-                                  {appt.lead_name}
-                                </div>
+                                <div className="font-medium break-words leading-tight">
+                                   {statusIcon && <span className="mr-0.5">{statusIcon}</span>}
+                                   {!statusIcon && (appt as any).is_rescheduled && <span className="text-purple-500 mr-0.5">↻</span>}
+                                   {appt.lead_name}
+                                 </div>
                                 <div className="opacity-70">{appt.scheduled_time?.slice(0, 5)}</div>
                               </div>
                             );
