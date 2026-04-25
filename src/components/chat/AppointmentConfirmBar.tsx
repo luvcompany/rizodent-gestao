@@ -233,7 +233,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     });
 
     return scheduledStage.id;
-  }, [leadId]);
+  }, [leadId, isRescheduleMode]);
 
   const handleConfirm = async (task: Task) => {
     if (!date) { toast.error("Selecione a data do agendamento"); return; }
