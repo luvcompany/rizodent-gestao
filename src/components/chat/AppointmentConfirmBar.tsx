@@ -170,10 +170,17 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
     const isPreOrRe = (n: string) => n.includes("pre") || n.includes("pré") || n.startsWith("reagend") || n.includes("nao compareceu") || n.includes("não compareceu");
 
-    let scheduledStage = allStages?.find((stage) => {
-      const n = normalize(stage.name);
-      return (n === "agendado" || n === "agendados" || n === "agendamento" || n === "agendamentos");
-    });
+    let scheduledStage;
+    if (isRescheduleMode) {
+      // Lead vindo de "Não compareceu" ou "Reagendado" → vai para "Reagendado"
+      scheduledStage = allStages?.find((stage) => normalize(stage.name).startsWith("reagend"));
+    }
+    if (!scheduledStage) {
+      scheduledStage = allStages?.find((stage) => {
+        const n = normalize(stage.name);
+        return (n === "agendado" || n === "agendados" || n === "agendamento" || n === "agendamentos");
+      });
+    }
     // Fallback: any stage containing "agendad"/"agendamento" but NOT pre/re/no-show
     if (!scheduledStage) {
       scheduledStage = allStages?.find((stage) => {
