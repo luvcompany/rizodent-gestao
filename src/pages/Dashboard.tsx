@@ -491,7 +491,8 @@ const Dashboard = () => {
     const current = new Date(start);
     while (current <= end) {
       const dateStr = current.toISOString().split("T")[0];
-      if (isWorkingDay(current, dateStr) && isInSelectedRanges(dateStr)) {
+      // Leads são contados todos os dias (inclui sábados, domingos e feriados)
+      if (isInSelectedRanges(dateStr)) {
         const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
         days.push({ dia: label, leads: getValue(dateStr) });
       }
