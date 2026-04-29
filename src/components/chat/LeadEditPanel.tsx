@@ -268,7 +268,10 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
         <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
           <Pencil size={14} className="mr-1" /> Editar
         </Button>
-        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Bloquear lead" onClick={() => setBlockOpen(true)}>
+          <Ban size={14} />
+        </Button>
+        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Excluir lead" onClick={() => setDeleteOpen(true)}>
           <Trash2 size={14} />
         </Button>
       </div>
