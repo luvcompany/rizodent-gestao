@@ -63,8 +63,10 @@ const SOURCE_OPTIONS = [
 ];
 
 export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Props) {
+  const { user } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [blockOpen, setBlockOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState(lead.name);
