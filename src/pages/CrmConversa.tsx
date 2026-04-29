@@ -24,7 +24,8 @@ import ConversationInlineNote, { AddInlineNoteButton } from "@/components/chat/C
 import { useConversationNotes } from "@/hooks/useConversationNotes";
 import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
-import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog } from "lucide-react";
+import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
 
@@ -255,6 +256,41 @@ export default function CrmConversa() {
               )}
             </div>
           </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" title="Bloquear lead">
+                <Ban size={16} />
+                <span className="hidden sm:inline">Bloquear</span>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Bloquear este lead?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  As mensagens recebidas deste lead serão descartadas e ele não aparecerá mais no Kanban nem na lista de conversas. Você pode desbloqueá-lo depois em Configurações → Bloqueados.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={async () => {
+                    if (!id) return;
+                    const { error } = await supabase.from("crm_leads").update({
+                      is_blocked: true,
+                      blocked_at: new Date().toISOString(),
+                      blocked_by: user?.id || null,
+                    } as any).eq("id", id);
+                    if (error) { toast.error("Erro ao bloquear: " + error.message); return; }
+                    toast.success("Lead bloqueado");
+                    navigate("/crm");
+                  }}
+                >
+                  Bloquear
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
         {/* Notes Bar */}
