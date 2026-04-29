@@ -220,9 +220,20 @@ async function persistMessage(opts: {
   }
 
   // Find or create lead — ONLY for DMs. Comments stay in instagram_messages only.
-  const leadId = opts.messageType === "dm"
-    ? await findOrCreateLead(opts.senderId, profile, opts.accountName)
-    : null;
+  let leadId: string | null = null;
+  if (opts.messageType === "dm") {
+    // Pre-check block status to fully drop messages from blocked leads
+    const { data: blockedCheck } = await supabase
+      .from("crm_leads")
+      .select("id, is_blocked")
+      .eq("instagram_user_id", opts.senderId)
+      .maybeSingle();
+    if (blockedCheck && (blockedCheck as any).is_blocked) {
+      console.log(`[instagram-webhook] DM de lead bloqueado ${blockedCheck.id} — descartado.`);
+      return;
+    }
+    leadId = await findOrCreateLead(opts.senderId, profile, opts.accountName);
+  }
 
   // Insert into instagram_messages (legacy table — used for both DMs & comments)
   await supabase.from("instagram_messages").insert({
