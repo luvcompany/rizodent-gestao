@@ -982,6 +982,8 @@ export type Database = {
           ad_id: string | null
           assigned_to: string | null
           automation_paused: boolean | null
+          blocked_at: string | null
+          blocked_by: string | null
           cidade: string | null
           created_at: string
           descricao_anuncio: string | null
@@ -993,6 +995,7 @@ export type Database = {
           instagram_profile_pic_url: string | null
           instagram_user_id: string | null
           instagram_username: string | null
+          is_blocked: boolean
           last_inbound_at: string | null
           last_message: string | null
           last_message_at: string | null
@@ -1021,6 +1024,8 @@ export type Database = {
           ad_id?: string | null
           assigned_to?: string | null
           automation_paused?: boolean | null
+          blocked_at?: string | null
+          blocked_by?: string | null
           cidade?: string | null
           created_at?: string
           descricao_anuncio?: string | null
@@ -1032,6 +1037,7 @@ export type Database = {
           instagram_profile_pic_url?: string | null
           instagram_user_id?: string | null
           instagram_username?: string | null
+          is_blocked?: boolean
           last_inbound_at?: string | null
           last_message?: string | null
           last_message_at?: string | null
@@ -1060,6 +1066,8 @@ export type Database = {
           ad_id?: string | null
           assigned_to?: string | null
           automation_paused?: boolean | null
+          blocked_at?: string | null
+          blocked_by?: string | null
           cidade?: string | null
           created_at?: string
           descricao_anuncio?: string | null
@@ -1071,6 +1079,7 @@ export type Database = {
           instagram_profile_pic_url?: string | null
           instagram_user_id?: string | null
           instagram_username?: string | null
+          is_blocked?: boolean
           last_inbound_at?: string | null
           last_message?: string | null
           last_message_at?: string | null

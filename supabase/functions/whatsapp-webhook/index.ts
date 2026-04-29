@@ -630,9 +630,15 @@ Deno.serve(async (req) => {
             // Find or create lead by phone
             let { data: lead } = await supabase
               .from("crm_leads")
-              .select("id, name, source")
+              .select("id, name, source, is_blocked")
               .eq("phone", from)
               .maybeSingle();
+
+            // 🚫 Blocked lead: drop the inbound message entirely
+            if (lead && (lead as any).is_blocked) {
+              console.log(`[WEBHOOK] Lead ${lead.id} (${from}) está BLOQUEADO — mensagem descartada.`);
+              continue;
+            }
 
             if (!lead) {
               const leadName = contactName || `Lead WhatsApp ${from}`;
