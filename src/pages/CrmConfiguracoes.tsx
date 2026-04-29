@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Upload, Bell, CheckCircle2 } from "lucide-react";
+import { Upload, Bell, CheckCircle2, Ban, RotateCcw } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════
    Importação em Massa
