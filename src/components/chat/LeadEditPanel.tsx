@@ -448,6 +448,35 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={blockOpen} onOpenChange={setBlockOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bloquear este lead?</AlertDialogTitle>
+            <AlertDialogDescription>
+              As mensagens recebidas de "{lead.name}" serão descartadas e ele não aparecerá mais no Kanban nem na lista de conversas. Você pode desbloqueá-lo depois em Configurações → Bloqueados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                const { error } = await supabase.from("crm_leads").update({
+                  is_blocked: true,
+                  blocked_at: new Date().toISOString(),
+                  blocked_by: user?.id || null,
+                } as any).eq("id", lead.id);
+                if (error) { toast.error("Erro ao bloquear: " + error.message); return; }
+                toast.success("Lead bloqueado");
+                onLeadDeleted();
+              }}
+            >
+              Bloquear
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
