@@ -343,12 +343,17 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, (payload) => {
         if (payload.eventType === "INSERT") {
           const newLead = payload.new as LeadConversation;
+          if ((newLead as any).is_blocked) return;
           setLeads((prev) => {
             if (prev.some((l) => l.id === newLead.id)) return prev;
             return [newLead, ...prev];
           });
         } else if (payload.eventType === "UPDATE") {
           const updated = payload.new as any;
+          if (updated.is_blocked) {
+            setLeads((prev) => prev.filter((l) => l.id !== updated.id));
+            return;
+          }
           if (updated.last_inbound_at && updated.last_outbound_at) {
             updated.last_direction = new Date(updated.last_inbound_at) > new Date(updated.last_outbound_at) ? "inbound" : "outbound";
           } else if (updated.last_inbound_at) {
