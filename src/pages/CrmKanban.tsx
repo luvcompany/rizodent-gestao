@@ -146,7 +146,9 @@ export default function CrmKanban() {
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
     setLoading(true);
     // Fetch everything in a single parallel round when we know the pipeline
-    const targetPipelineId = selectedPipelineId || pipeline?.id;
+    // Persist last selected pipeline so the user doesn't lose it on navigation
+    const stored = typeof window !== "undefined" ? localStorage.getItem("crm:lastPipelineId") : null;
+    const targetPipelineId = selectedPipelineId || pipeline?.id || stored || undefined;
     
     const [pipelinesRes, profilesRes, stagesRes, leadsRes, fqRes] = await Promise.all([
       supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
@@ -170,7 +172,8 @@ export default function CrmKanban() {
     
     if (p) {
       setPipeline(p);
-      
+      try { localStorage.setItem("crm:lastPipelineId", p.id); } catch {}
+
       // If we already fetched for the right pipeline, use the data
       if (targetPipelineId === p.id && stagesRes.data && leadsRes.data) {
         setStages((stagesRes.data as Stage[]) || []);
