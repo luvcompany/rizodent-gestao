@@ -172,7 +172,8 @@ export default function CrmKanban() {
     
     if (p) {
       setPipeline(p);
-      
+      try { localStorage.setItem("crm:lastPipelineId", p.id); } catch {}
+
       // If we already fetched for the right pipeline, use the data
       if (targetPipelineId === p.id && stagesRes.data && leadsRes.data) {
         setStages((stagesRes.data as Stage[]) || []);
