@@ -15,7 +15,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Pencil, Trash2, X, Plus, Link2, Unlink, Video } from "lucide-react";
+import { Pencil, Trash2, X, Plus, Link2, Unlink, Video, Ban } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Lead = {
   id: string;
@@ -62,8 +63,10 @@ const SOURCE_OPTIONS = [
 ];
 
 export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Props) {
+  const { user } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [blockOpen, setBlockOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState(lead.name);
@@ -265,7 +268,10 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
         <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
           <Pencil size={14} className="mr-1" /> Editar
         </Button>
-        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Bloquear lead" onClick={() => setBlockOpen(true)}>
+          <Ban size={14} />
+        </Button>
+        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Excluir lead" onClick={() => setDeleteOpen(true)}>
           <Trash2 size={14} />
         </Button>
       </div>
@@ -438,6 +444,35 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={blockOpen} onOpenChange={setBlockOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bloquear este lead?</AlertDialogTitle>
+            <AlertDialogDescription>
+              As mensagens recebidas de "{lead.name}" serão descartadas e ele não aparecerá mais no Kanban nem na lista de conversas. Você pode desbloqueá-lo depois em Configurações → Bloqueados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                const { error } = await supabase.from("crm_leads").update({
+                  is_blocked: true,
+                  blocked_at: new Date().toISOString(),
+                  blocked_by: user?.id || null,
+                } as any).eq("id", lead.id);
+                if (error) { toast.error("Erro ao bloquear: " + error.message); return; }
+                toast.success("Lead bloqueado");
+                onLeadDeleted();
+              }}
+            >
+              Bloquear
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
