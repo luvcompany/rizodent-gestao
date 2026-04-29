@@ -215,20 +215,120 @@ function NotificationsTab() {
 }
 
 /* ═══════════════════════════════════════════════════
+   Leads Bloqueados
+   ═══════════════════════════════════════════════════ */
+function BlockedTab() {
+  const [leads, setLeads] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("crm_leads")
+      .select("id, name, phone, blocked_at, source, instagram_username")
+      .eq("is_blocked", true)
+      .order("blocked_at", { ascending: false });
+    setLeads(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const unblock = async (id: string) => {
+    const { error } = await supabase.from("crm_leads").update({
+      is_blocked: false,
+      blocked_at: null,
+      blocked_by: null,
+    } as any).eq("id", id);
+    if (error) { toast.error("Erro ao desbloquear: " + error.message); return; }
+    toast.success("Lead desbloqueado");
+    setLeads(prev => prev.filter(l => l.id !== id));
+  };
+
+  const filtered = leads.filter(l => {
+    if (!search.trim()) return true;
+    const t = search.toLowerCase();
+    return (l.name || "").toLowerCase().includes(t)
+      || (l.phone || "").toLowerCase().includes(t)
+      || (l.instagram_username || "").toLowerCase().includes(t);
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-lg font-semibold">Leads Bloqueados</h3>
+        <Input
+          placeholder="Buscar por nome, telefone ou @"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-xs"
+        />
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Leads bloqueados não aparecem no Kanban nem na lista de conversas, e mensagens recebidas deles são automaticamente descartadas.
+      </p>
+      <Card className="p-0 overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">Carregando...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            {leads.length === 0 ? "Nenhum lead bloqueado." : "Nenhum lead encontrado."}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nome</TableHead>
+                <TableHead>Contato</TableHead>
+                <TableHead>Origem</TableHead>
+                <TableHead>Bloqueado em</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((l) => (
+                <TableRow key={l.id}>
+                  <TableCell className="font-medium">{l.name}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {l.phone || (l.instagram_username ? `@${l.instagram_username}` : "—")}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{l.source || "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {l.blocked_at ? new Date(l.blocked_at).toLocaleString("pt-BR") : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="outline" onClick={() => unblock(l.id)}>
+                      <RotateCcw size={14} className="mr-1" /> Desbloquear
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
    PÁGINA PRINCIPAL — Configurações CRM
    ═══════════════════════════════════════════════════ */
 export default function CrmConfiguracoes() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Configurações</h1>
-      <p className="text-muted-foreground">Importação de dados e preferências de notificação.</p>
+      <p className="text-muted-foreground">Importação de dados, notificações e leads bloqueados.</p>
       <Tabs defaultValue="import" className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="import"><Upload size={14} className="mr-1" /> Importação</TabsTrigger>
           <TabsTrigger value="notifications"><Bell size={14} className="mr-1" /> Notificações</TabsTrigger>
+          <TabsTrigger value="blocked"><Ban size={14} className="mr-1" /> Bloqueados</TabsTrigger>
         </TabsList>
         <TabsContent value="import"><ImportTab /></TabsContent>
         <TabsContent value="notifications"><NotificationsTab /></TabsContent>
+        <TabsContent value="blocked"><BlockedTab /></TabsContent>
       </Tabs>
     </div>
   );
