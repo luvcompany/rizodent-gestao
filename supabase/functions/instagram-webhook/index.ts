@@ -130,9 +130,14 @@ async function findOrCreateLead(
   // 1. Try to find existing lead by instagram_user_id
   const { data: existing } = await supabase
     .from("crm_leads")
-    .select("id, instagram_username, instagram_profile_pic_url, name")
+    .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked")
     .eq("instagram_user_id", igUserId)
     .maybeSingle();
+
+  if (existing && (existing as any).is_blocked) {
+    console.log(`[instagram-webhook] Lead ${existing.id} (IG ${igUserId}) está BLOQUEADO — mensagem descartada.`);
+    return null;
+  }
 
   if (existing) {
     // Update profile cache fields if missing/stale
