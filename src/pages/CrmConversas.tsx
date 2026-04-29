@@ -736,6 +736,25 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                 <CheckCheck size={14} className="mr-2 text-primary" /> Marcar como respondida
                               </DropdownMenuItem>
                             )}
+                            {isInbound && <DropdownMenuSeparator />}
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!window.confirm("Bloquear este lead? As mensagens dele serão descartadas e ele não aparecerá mais no Kanban nem na lista de conversas. Você pode desbloqueá-lo depois em Configurações → Bloqueados.")) return;
+                                const { error } = await supabase.from("crm_leads").update({
+                                  is_blocked: true,
+                                  blocked_at: new Date().toISOString(),
+                                  blocked_by: user?.id || null,
+                                } as any).eq("id", lead.id);
+                                if (error) { toast.error("Erro ao bloquear: " + error.message); return; }
+                                setLeads(prev => prev.filter(l => l.id !== lead.id));
+                                if (selectedLeadId === lead.id) setSelectedLead(null as any);
+                                toast.success("Lead bloqueado");
+                              }}
+                            >
+                              <Ban size={14} className="mr-2" /> Bloquear lead
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
