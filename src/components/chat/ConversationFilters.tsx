@@ -75,19 +75,14 @@ export default function ConversationFilters({
   adAccounts = [],
   ads = [],
 }: {
-  stages,
-  profiles,
-  allTags,
-  filters,
-  onApply,
-  pipelines = [],
-}: {
   stages: Stage[];
   profiles: Profile[];
   allTags: string[];
   filters: ConversationFilterValues;
   onApply: (f: ConversationFilterValues) => void;
   pipelines?: Pipeline[];
+  adAccounts?: AdAccountOption[];
+  ads?: AdOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConversationFilterValues>(filters);
