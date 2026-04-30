@@ -459,8 +459,8 @@ export default function CrmKanban() {
   const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
   useEffect(() => {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+    const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    const monthEnd = toLocalDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
     (async () => {
       const [{ data: pags }, { data: links }, { data: allPags }] = await Promise.all([
