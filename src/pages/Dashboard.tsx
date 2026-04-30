@@ -119,7 +119,7 @@ const Dashboard = () => {
     supabase.from("leads_diarios").select("*, clinicas(nome)"),
     (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
     supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id").limit(10000),
-    supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, created_at, crm_leads(cidade)").limit(10000),
+    supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").limit(10000),
     supabase.from("crm_stages").select("id, name, pipeline_id"),
     supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
     (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
