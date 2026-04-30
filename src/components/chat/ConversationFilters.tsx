@@ -60,10 +60,21 @@ function countActive(f: ConversationFilterValues): number {
   if (f.assignedTo) c++;
   if (f.cidade) c++;
   if (f.hasPagamento) c++;
+  if (f.adAccountId) c++;
+  if (f.adId) c++;
   return c;
 }
 
 export default function ConversationFilters({
+  stages,
+  profiles,
+  allTags,
+  filters,
+  onApply,
+  pipelines = [],
+  adAccounts = [],
+  ads = [],
+}: {
   stages,
   profiles,
   allTags,
