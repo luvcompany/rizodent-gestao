@@ -130,7 +130,7 @@ const Relatorios = () => {
     const getWeek = (dateStr: string) => {
       const d = new Date(dateStr + "T12:00:00");
       const start = new Date(d); start.setDate(d.getDate() - d.getDay());
-      return start.toISOString().split("T")[0];
+      return toLocalDateISO(start);
     };
     const map = new Map<string, { week: string; faturamento: number; pagamentos: number }>();
     filteredPagamentos.forEach((p) => {
