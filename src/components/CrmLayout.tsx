@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toLocalDateISO } from "@/lib/utils";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
@@ -94,7 +95,7 @@ const CrmLayout = () => {
 
   useEffect(() => {
     const fetchTodayTasks = async () => {
-      const today = new Date().toISOString().split("T")[0];
+      const today = toLocalDateISO();
       const { count } = await supabase
         .from("crm_tasks")
         .select("id", { count: "exact", head: true })

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { toLocalDateISO } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,9 +39,9 @@ const Relatorios = () => {
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0];
+    const d = new Date(); d.setDate(1); return toLocalDateISO(d);
   });
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dateTo, setDateTo] = useState(() => toLocalDateISO());
   const [showContratadoDialog, setShowContratadoDialog] = useState(false);
   const [showEmAbertoDialog, setShowEmAbertoDialog] = useState(false);
   const [showConcluidosDialog, setShowConcluidosDialog] = useState(false);
@@ -129,7 +130,7 @@ const Relatorios = () => {
     const getWeek = (dateStr: string) => {
       const d = new Date(dateStr + "T12:00:00");
       const start = new Date(d); start.setDate(d.getDate() - d.getDay());
-      return start.toISOString().split("T")[0];
+      return toLocalDateISO(start);
     };
     const map = new Map<string, { week: string; faturamento: number; pagamentos: number }>();
     filteredPagamentos.forEach((p) => {

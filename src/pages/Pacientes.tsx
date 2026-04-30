@@ -70,10 +70,17 @@ const Pacientes = () => {
         pagMap.get(p.paciente_id)!.push(p);
       });
 
-      // Date filter
+      // Date filter — formata em horário LOCAL (evita o bug de toISOString em BRT,
+      // que desloca o fim do dia para o dia seguinte).
+      const toLocal = (d: Date) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      };
       const range = getDateRangeFromFilter(dateFilter);
-      const dataMinima = range ? range.start.toISOString().split("T")[0] : null;
-      const dataMaxima = range ? range.end.toISOString().split("T")[0] : null;
+      const dataMinima = range ? toLocal(range.start) : null;
+      const dataMaxima = range ? toLocal(range.end) : null;
 
       const result: PacienteView[] = [];
       for (const p of pacs) {
