@@ -245,7 +245,7 @@ const Dashboard = () => {
     let count = 0;
     const current = new Date(firstDate);
     while (current <= end) {
-      const ds = current.toISOString().split("T")[0];
+      const ds = toLocalDateStr(current);
       if (isWorkingDay(current, ds)) count++;
       current.setDate(current.getDate() + 1);
     }
@@ -261,7 +261,7 @@ const Dashboard = () => {
     let count = 0;
     const current = new Date(firstDate);
     while (current <= lastDay) {
-      const ds = current.toISOString().split("T")[0];
+      const ds = toLocalDateStr(current);
       if (isWorkingDay(current, ds)) count++;
       current.setDate(current.getDate() + 1);
     }
@@ -388,7 +388,7 @@ const Dashboard = () => {
     const days: { dia: string; valor: number }[] = [];
     const current = new Date(start);
     while (current <= end) {
-      const dateStr = current.toISOString().split("T")[0];
+      const dateStr = toLocalDateStr(current);
       if (isWorkingDay(current, dateStr) && isInSelectedRanges(dateStr)) {
         const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
         days.push({ dia: label, valor: pgMap.get(dateStr) || 0 });
@@ -499,7 +499,7 @@ const Dashboard = () => {
     const days: { dia: string; leads: number }[] = [];
     const current = new Date(start);
     while (current <= end) {
-      const dateStr = current.toISOString().split("T")[0];
+      const dateStr = toLocalDateStr(current);
       // Leads são contados todos os dias (inclui sábados, domingos e feriados)
       if (isInSelectedRanges(dateStr)) {
         const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
