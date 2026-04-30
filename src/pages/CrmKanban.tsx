@@ -51,6 +51,11 @@ type Lead = {
   assigned_to: string | null;
   cidade: string | null;
   paciente_id: string | null;
+  ad_id?: string | null;
+  ad_account_id?: string | null;
+  ad_account_name?: string | null;
+  nome_anuncio?: string | null;
+  titulo_anuncio?: string | null;
 };
 
 type Pipeline = {
@@ -157,7 +162,7 @@ export default function CrmKanban() {
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       targetPipelineId
-        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id").eq("pipeline_id", targetPipelineId).eq("is_blocked", false).order("position")
+        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio").eq("pipeline_id", targetPipelineId).eq("is_blocked", false).order("position")
         : Promise.resolve({ data: null }),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
@@ -182,7 +187,7 @@ export default function CrmKanban() {
         // Pipeline changed, need a second fetch for stages/leads only
         const [s2, l2] = await Promise.all([
           supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
-          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id").eq("pipeline_id", p.id).eq("is_blocked", false).order("position"),
+          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio").eq("pipeline_id", p.id).eq("is_blocked", false).order("position"),
         ]);
         setStages((s2.data as Stage[]) || []);
         setLeads((l2.data as Lead[]) || []);
@@ -390,6 +395,8 @@ export default function CrmKanban() {
         } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
       }
       if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
+      if (kanbanFilters.adAccountId && (l.ad_account_id || "") !== kanbanFilters.adAccountId) return false;
+      if (kanbanFilters.adId && (l.ad_id || "") !== kanbanFilters.adId) return false;
       if (kanbanFilters.hasPagamento) {
         const hasPag = leadsWithPagamento.has(l.id);
         if (kanbanFilters.hasPagamento === "yes" && !hasPag) return false;
@@ -415,7 +422,19 @@ export default function CrmKanban() {
     leads.forEach((l) => l.tags?.forEach((t: string) => set.add(t)));
     return Array.from(set);
   }, [leads]);
-  // Metrics based on filtered leads (user-specific)
+
+  const { adAccounts, ads } = useMemo(() => {
+    const accMap = new Map<string, string>();
+    const adMap = new Map<string, { name: string; ad_account_id: string | null }>();
+    leads.forEach((l) => {
+      if (l.ad_account_id) accMap.set(l.ad_account_id, l.ad_account_name || l.ad_account_id);
+      if (l.ad_id) adMap.set(l.ad_id, { name: l.nome_anuncio || l.titulo_anuncio || l.ad_id, ad_account_id: l.ad_account_id || null });
+    });
+    return {
+      adAccounts: Array.from(accMap, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
+      ads: Array.from(adMap, ([id, v]) => ({ id, name: v.name, ad_account_id: v.ad_account_id })).sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }, [leads]);
   const myLeads = allFilteredLeads;
   const withTaskToday = myLeads.filter(l => l.has_task && !l.task_overdue).length;
   const noTasks = myLeads.filter(l => !l.has_task).length;
@@ -542,6 +561,8 @@ export default function CrmKanban() {
             filters={kanbanFilters}
             onApply={setKanbanFilters}
             pipelines={pipelines}
+            adAccounts={adAccounts}
+            ads={ads}
           />
           <div className="relative">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />

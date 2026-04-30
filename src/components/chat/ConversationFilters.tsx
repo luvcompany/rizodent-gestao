@@ -21,6 +21,8 @@ export type ConversationFilterValues = {
   assignedTo: string;
   cidade: string;
   hasPagamento: string; // "" | "yes" | "no"
+  adAccountId: string;
+  adId: string;
 };
 
 const emptyFilters: ConversationFilterValues = {
@@ -33,7 +35,12 @@ const emptyFilters: ConversationFilterValues = {
   assignedTo: "",
   cidade: "",
   hasPagamento: "",
+  adAccountId: "",
+  adId: "",
 };
+
+export type AdAccountOption = { id: string; name: string };
+export type AdOption = { id: string; name: string; ad_account_id?: string | null };
 
 const CIDADES = [
   "Vitória da Conquista",
@@ -53,6 +60,8 @@ function countActive(f: ConversationFilterValues): number {
   if (f.assignedTo) c++;
   if (f.cidade) c++;
   if (f.hasPagamento) c++;
+  if (f.adAccountId) c++;
+  if (f.adId) c++;
   return c;
 }
 
@@ -63,6 +72,8 @@ export default function ConversationFilters({
   filters,
   onApply,
   pipelines = [],
+  adAccounts = [],
+  ads = [],
 }: {
   stages: Stage[];
   profiles: Profile[];
@@ -70,6 +81,8 @@ export default function ConversationFilters({
   filters: ConversationFilterValues;
   onApply: (f: ConversationFilterValues) => void;
   pipelines?: Pipeline[];
+  adAccounts?: AdAccountOption[];
+  ads?: AdOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConversationFilterValues>(filters);
@@ -85,6 +98,11 @@ export default function ConversationFilters({
   const filteredStages = draft.pipelineId
     ? stages.filter((s) => (s as any).pipeline_id === draft.pipelineId)
     : stages;
+
+  const filteredAds = useMemo(() => {
+    if (!draft.adAccountId) return ads;
+    return ads.filter((a) => a.ad_account_id === draft.adAccountId);
+  }, [ads, draft.adAccountId]);
 
   const matchingTags = useMemo(() => {
     if (!tagSearch.trim()) return [];
@@ -258,6 +276,39 @@ export default function ConversationFilters({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Conta de anúncio */}
+            {adAccounts.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Conta de anúncio</label>
+                <Select
+                  value={draft.adAccountId}
+                  onValueChange={(v) => setDraft({ ...draft, adAccountId: v, adId: "" })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    {adAccounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Anúncio específico */}
+            {ads.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Anúncio</label>
+                <Select value={draft.adId} onValueChange={(v) => setDraft({ ...draft, adId: v })}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    {filteredAds.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Assigned */}
             <div>
