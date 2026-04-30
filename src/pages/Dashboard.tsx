@@ -25,6 +25,15 @@ const formatAxisValue = (v: number) => {
 
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Formata Date para "YYYY-MM-DD" em HORÁRIO LOCAL (evita o bug de fuso de toISOString,
+// que em BRT/UTC-3 desloca o fim do dia para o dia seguinte e contamina filtros e gráficos).
+const toLocalDateStr = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
 
 
@@ -73,11 +82,11 @@ const Dashboard = () => {
   const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
   const allRanges = useMemo(() => getDateRangesFromFilter(dateFilter), [dateFilter]);
   const isAllPeriod = dateFilter.preset === "all";
-  const dateFrom = useMemo(() => dateRange ? dateRange.start.toISOString().split("T")[0] : "2020-01-01", [dateRange]);
-  const dateTo = useMemo(() => dateRange ? dateRange.end.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
+  const dateFrom = useMemo(() => dateRange ? toLocalDateStr(dateRange.start) : "2020-01-01", [dateRange]);
+  const dateTo = useMemo(() => dateRange ? toLocalDateStr(dateRange.end) : toLocalDateStr(new Date()), [dateRange]);
   // Pre-compute interval bounds as YYYY-MM-DD strings for fast date comparison
   const rangeBounds = useMemo(
-    () => allRanges?.map((r) => ({ from: r.start.toISOString().split("T")[0], to: r.end.toISOString().split("T")[0] })) ?? null,
+    () => allRanges?.map((r) => ({ from: toLocalDateStr(r.start), to: toLocalDateStr(r.end) })) ?? null,
     [allRanges]
   );
   const isInSelectedRanges = (dateStr: string | undefined | null) => {
@@ -236,7 +245,7 @@ const Dashboard = () => {
     let count = 0;
     const current = new Date(firstDate);
     while (current <= end) {
-      const ds = current.toISOString().split("T")[0];
+      const ds = toLocalDateStr(current);
       if (isWorkingDay(current, ds)) count++;
       current.setDate(current.getDate() + 1);
     }
@@ -252,7 +261,7 @@ const Dashboard = () => {
     let count = 0;
     const current = new Date(firstDate);
     while (current <= lastDay) {
-      const ds = current.toISOString().split("T")[0];
+      const ds = toLocalDateStr(current);
       if (isWorkingDay(current, ds)) count++;
       current.setDate(current.getDate() + 1);
     }
@@ -379,7 +388,7 @@ const Dashboard = () => {
     const days: { dia: string; valor: number }[] = [];
     const current = new Date(start);
     while (current <= end) {
-      const dateStr = current.toISOString().split("T")[0];
+      const dateStr = toLocalDateStr(current);
       if (isWorkingDay(current, dateStr) && isInSelectedRanges(dateStr)) {
         const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
         days.push({ dia: label, valor: pgMap.get(dateStr) || 0 });
@@ -490,7 +499,7 @@ const Dashboard = () => {
     const days: { dia: string; leads: number }[] = [];
     const current = new Date(start);
     while (current <= end) {
-      const dateStr = current.toISOString().split("T")[0];
+      const dateStr = toLocalDateStr(current);
       // Leads são contados todos os dias (inclui sábados, domingos e feriados)
       if (isInSelectedRanges(dateStr)) {
         const label = current.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
