@@ -616,6 +616,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     filters={filters}
                     onApply={setFilters}
                     pipelines={pipelines}
+                    adAccounts={adAccounts}
+                    ads={ads}
                   />
                    <span className="text-xs text-muted-foreground">{sortedFiltered.length}</span>
                    <DropdownMenu>
