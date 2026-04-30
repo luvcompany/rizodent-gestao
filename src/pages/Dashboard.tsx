@@ -285,33 +285,25 @@ const Dashboard = () => {
     const leadCidade = new Map<string, string | null>();
     crmLeads.forEach((l: any) => leadCidade.set(l.id, l.cidade || null));
 
-    // Identificar IDs de etapas "Agendado" (excluindo Pré-Agendado e Reagendado)
-    const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const agendStageIds = new Set(
-      (crmStages || []).filter((s: any) => {
-        const n = norm(s.name);
-        return /agend/.test(n) && !/pre|pré/.test(n) && !/reagend/.test(n);
-      }).map((s: any) => s.id)
-    );
-
-    // Leads movidos para etapa Agendado dentro do período (DISTINCT lead_id por dia agrupado)
-    const agendadosLeadIds = new Set<string>();
-    (crmStageHistory || []).forEach((h: any) => {
-      if (!agendStageIds.has(h.stage_id)) return;
-      const d = (h.entered_at || "").split("T")[0];
-      if (!isInSelectedRanges(d)) return;
-      if (!matchCidade(leadCidade.get(h.lead_id))) return;
-      agendadosLeadIds.add(h.lead_id);
+    // KPIs CRM agora usam crm_appointments como fonte de verdade (mesma do calendário).
+    // Filtra agendamentos cuja DATA AGENDADA está no período selecionado.
+    const apptsNoPeriodo = (crmAppointments || []).filter((a: any) => {
+      const d = (a.scheduled_date || "").split("T")[0];
+      if (!d || !isInSelectedRanges(d)) return false;
+      const cid = (a as any).crm_leads?.cidade ?? leadCidade.get(a.lead_id);
+      return matchCidade(cid);
     });
 
-    // Appointments dos leads agendados no período (para status compareceram/faltaram/contratados)
-    const apptsDosAgendados = (crmAppointments || []).filter((a: any) => agendadosLeadIds.has(a.lead_id));
+    // Conjunto de leads que tiveram pelo menos um agendamento no período
+    const agendadosLeadIds = new Set<string>(apptsNoPeriodo.map((a: any) => a.lead_id));
 
-    return { leads, agendadosLeadIds, apptsDosAgendados };
+    return { leads, agendadosLeadIds, apptsDosAgendados: apptsNoPeriodo };
   }, [crmLeads, crmAppointments, crmStages, crmStageHistory, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
   const crmLeadsCount = crmFiltered.leads.length;
   const crmAdLeadsCount = crmFiltered.leads.filter(l => l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "")).length;
-  const crmAgendados = crmFiltered.agendadosLeadIds.size;
+  // Agendados = total de agendamentos no período (cada appointment conta), excluindo reagendamentos para evitar dupla contagem
+  const crmAgendados = crmFiltered.apptsDosAgendados.filter((a: any) => !a.is_rescheduled).length;
+  const crmReagendados = crmFiltered.apptsDosAgendados.filter((a: any) => a.is_rescheduled).length;
   const crmCompareceram = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
   const crmFaltaram = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "no_show").length;
   const crmContratadosByAppt = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "contracted").length;
