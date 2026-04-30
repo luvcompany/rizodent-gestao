@@ -25,6 +25,15 @@ const formatAxisValue = (v: number) => {
 
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Formata Date para "YYYY-MM-DD" em HORÁRIO LOCAL (evita o bug de fuso de toISOString,
+// que em BRT/UTC-3 desloca o fim do dia para o dia seguinte e contamina filtros e gráficos).
+const toLocalDateStr = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
 
 
