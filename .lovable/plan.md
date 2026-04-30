@@ -1,42 +1,35 @@
-## Problema
+# Unificar dados do Dashboard — Funil de Atendimentos
 
-Quando um lead está em **Não compareceu** (ou **Reagendado**) e o usuário clica em **Reagendar** no painel da conversa, o sistema cria o agendamento corretamente, mas move o lead para a etapa **Agendado** em vez de **Reagendado**.
+## Diagnóstico
 
-Causa: a função `moveLeadToScheduledStage` em `src/components/chat/AppointmentConfirmBar.tsx` sempre procura a etapa "Agendado" no pipeline atual, ignorando o fato de que `isRescheduleMode = true` (lead vindo de "Não compareceu" ou "Reagendado").
+As duas seções da imagem mostram a mesma informação mas vêm de fontes diferentes:
 
-A segunda parte do pedido (botão "Compareceu / Não compareceu" 1h após o horário, e em seguida "Contratou / Não contratou") **já está implementada** no mesmo componente para qualquer agendamento com `status = "confirmed"` cujo horário tenha passado há ≥1h — independente da etapa atual. Como o reagendamento também grava `status = "confirmed"`, ele passará a aparecer automaticamente assim que o lead for movido para "Reagendado". Não precisa de código novo para isso, apenas garantir o fluxo correto da etapa.
+- **Card "CRM — Leads & Agendamentos"** (em cima): usa `crm_appointments` filtrando por `scheduled_date` no período (corrigido no turno anterior). Por isso mostra `24 Agendados` e `2 Faltaram` corretamente.
+- **"Funil de Atendimentos"** (em baixo): usa a tabela `leads_diarios` (lançamento manual diário do CRC). Quando o período filtrado não tem registros manuais lançados, todos os campos ficam zerados.
 
-## Solução
+Daí a inconsistência: dados reais em cima, zeros em baixo.
 
-### 1. Mover para "Reagendado" quando for reagendamento
+## Correção
 
-Em `moveLeadToScheduledStage`, quando `isRescheduleMode === true`, procurar primeiro a etapa **"Reagendado"** no pipeline atual. Caso contrário (fluxo normal), manter a busca atual por **"Agendado"**.
+Unificar **as 3 abas do Funil** (`Agendamentos`, `Reagendados`, `Conversão Total`) para usarem a mesma fonte do card CRM (`crm_appointments` filtrado pelo período via `scheduled_date`), acabando com a divergência.
 
-Lógica:
-```text
-if (isRescheduleMode) {
-  alvo = stage cujo nome normalizado começa com "reagend"
-} else {
-  alvo = stage "agendado" (lógica existente, que já exclui "pré-agendado" e "reagendado")
-}
-```
+### Aba "Agendamentos" (não-reagendados)
+- Agendados = appointments do período onde `is_rescheduled = false`
+- Compareceram = status `contracted` + `not_contracted`
+- Contrataram = status `contracted`
+- Não Contrataram = Compareceram − Contrataram
+- Faltaram = status `no_show`
 
-A função passará a receber `isRescheduleMode` (já existente no estado do componente) ou ler novamente a etapa atual para decidir — vou usar o estado já calculado em `checkRescheduleMode`.
+### Aba "Reagendados"
+- Mesma lógica, mas filtrando `is_rescheduled = true`
 
-### 2. Garantir que o desfecho funcione em "Reagendado"
-
-Verificar a função `applyAppointmentOutcome` em `src/lib/appointmentOutcome.ts`:
-- **Não compareceu**: já procura etapa contendo "nao compar" — funciona em qualquer pipeline.
-- **Contratou**: já procura "contratado" — funciona.
-- **Não contratou**: move para pipeline "Não Contratados" — funciona.
-
-Nenhuma mudança necessária aqui. O card "Qual o resultado?" aparece automaticamente 1h após o horário do agendamento reagendado (mesmo critério já implementado nas linhas 80–87 de `AppointmentConfirmBar.tsx`).
-
-## Arquivo afetado
-
-- `src/components/chat/AppointmentConfirmBar.tsx` — ajustar `moveLeadToScheduledStage` para escolher entre "Agendado" e "Reagendado" conforme `isRescheduleMode`.
+### Aba "Conversão Total"
+- Mantém como está (já usa `crmLeadsCount` + `crmAgendados` + `pacientesPagantesPeriodo`, que já são consistentes com o card de cima).
 
 ## Resultado esperado
 
-- Lead em **Não compareceu** ou **Reagendado** → clicar em **Reagendar** → cria agendamento com `is_rescheduled = true` e move o lead para a etapa **Reagendado** (não mais "Agendado").
-- 1h após o horário do reagendamento, aparece o card laranja **"Qual o resultado?"** com **Compareceu / Não compareceu**, e em seguida **Contratou / Não contratou** — exatamente como já funciona para agendamentos normais.
+Os números do funil de baixo passam a bater exatamente com os do card CRM de cima — fim das inconsistências. O lançamento manual em `leads_diarios` continua sendo usado para o gráfico "Leads Novos Diários" como fallback, mas não impacta mais o funil.
+
+## Arquivo afetado
+
+- `src/pages/Dashboard.tsx` — substituir o cálculo de `funnelDataAgendamentos` e `funnelDataReagendados` para derivar de `crmFiltered.apptsDosAgendados` separados por flag `is_rescheduled`.
