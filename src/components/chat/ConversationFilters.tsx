@@ -99,6 +99,11 @@ export default function ConversationFilters({
     ? stages.filter((s) => (s as any).pipeline_id === draft.pipelineId)
     : stages;
 
+  const filteredAds = useMemo(() => {
+    if (!draft.adAccountId) return ads;
+    return ads.filter((a) => a.ad_account_id === draft.adAccountId);
+  }, [ads, draft.adAccountId]);
+
   const matchingTags = useMemo(() => {
     if (!tagSearch.trim()) return [];
     const q = tagSearch.toLowerCase();
