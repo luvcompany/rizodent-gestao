@@ -40,7 +40,14 @@ const emptyFilters: ConversationFilterValues = {
 };
 
 export type AdAccountOption = { id: string; name: string };
-export type AdOption = { id: string; name: string; ad_account_id?: string | null };
+export type AdOption = {
+  id: string;
+  name: string;
+  ad_account_id?: string | null;
+  image?: string | null;
+  description?: string | null;
+  link?: string | null;
+};
 
 const CIDADES = [
   "Vitória da Conquista",
@@ -301,12 +308,46 @@ export default function ConversationFilters({
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Anúncio</label>
                 <Select value={draft.adId} onValueChange={(v) => setDraft({ ...draft, adId: v })}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-[400px]">
                     {filteredAds.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      <SelectItem key={a.id} value={a.id} className="py-2">
+                        <div className="flex gap-2 items-start max-w-[260px]">
+                          {a.image ? (
+                            <img
+                              src={a.image}
+                              alt=""
+                              className="w-10 h-10 rounded object-cover flex-shrink-0 border border-border"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded bg-muted flex-shrink-0" />
+                          )}
+                          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span className="text-xs font-medium truncate">{a.name}</span>
+                            {a.description && (
+                              <span className="text-[10px] text-muted-foreground line-clamp-2">{a.description}</span>
+                            )}
+                            <span className="text-[9px] text-muted-foreground/70 truncate">ID: {a.id}</span>
+                          </div>
+                        </div>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {draft.adId && (() => {
+                  const sel = filteredAds.find((a) => a.id === draft.adId);
+                  if (!sel?.link) return null;
+                  return (
+                    <a
+                      href={sel.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-primary hover:underline mt-1 inline-block"
+                    >
+                      Ver anúncio ↗
+                    </a>
+                  );
+                })()}
               </div>
             )}
 
