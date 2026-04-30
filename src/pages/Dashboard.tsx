@@ -599,23 +599,36 @@ const Dashboard = () => {
 
   const [funnelView, setFunnelView] = useState<"agendamentos" | "conversao" | "reagendados">("agendamentos");
 
+  // Funil de Agendamentos — usa crm_appointments (mesma fonte dos cards CRM acima)
+  // para garantir consistência. Exclui reagendamentos para não duplicar.
+  const apptsPeriodo = crmFiltered.apptsDosAgendados;
+  const apptsAgendamentosBase = apptsPeriodo.filter((a: any) => !a.is_rescheduled);
+  const apptsReagendamentosBase = apptsPeriodo.filter((a: any) => a.is_rescheduled);
+
+  const agAgendados = apptsAgendamentosBase.length;
+  const agCompareceram = apptsAgendamentosBase.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
+  const agContrataram = apptsAgendamentosBase.filter((a: any) => a.status === "contracted").length;
+  const agFaltaram = apptsAgendamentosBase.filter((a: any) => a.status === "no_show").length;
+
+  const reAgendados = apptsReagendamentosBase.length;
+  const reCompareceram = apptsReagendamentosBase.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
+  const reContrataram = apptsReagendamentosBase.filter((a: any) => a.status === "contracted").length;
+  const reFaltaram = apptsReagendamentosBase.filter((a: any) => a.status === "no_show").length;
+
   const funnelDataAgendamentos = [
-    { name: "Agendados", value: funnelTotals.agendaram, fill: FUNNEL_COLORS[1], refValue: funnelTotals.agendaram },
-    { name: "Compareceram", value: funnelTotals.compareceram, fill: FUNNEL_COLORS[4], refValue: funnelTotals.agendaram },
-    { name: "Contrataram", value: funnelTotals.contrataram, fill: FUNNEL_COLORS[5], refValue: funnelTotals.compareceram },
-    { name: "Não Contrataram", value: Math.max(funnelTotals.compareceram - funnelTotals.contrataram, 0), fill: FUNNEL_COLORS[6], refValue: funnelTotals.compareceram },
-    { name: "Faltaram", value: funnelTotals.faltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.agendaram },
+    { name: "Agendados", value: agAgendados, fill: FUNNEL_COLORS[1], refValue: agAgendados },
+    { name: "Compareceram", value: agCompareceram, fill: FUNNEL_COLORS[4], refValue: agAgendados },
+    { name: "Contrataram", value: agContrataram, fill: FUNNEL_COLORS[5], refValue: agCompareceram },
+    { name: "Não Contrataram", value: Math.max(agCompareceram - agContrataram, 0), fill: FUNNEL_COLORS[6], refValue: agCompareceram },
+    { name: "Faltaram", value: agFaltaram, fill: FUNNEL_COLORS[2], refValue: agAgendados },
   ];
 
-  const reagFaltaram = Math.max(funnelTotals.remarcados - funnelTotals.reagendadosCompareceram, 0);
-  const reagNaoContrataram = Math.max(funnelTotals.reagendadosCompareceram - funnelTotals.reagendadosContrataram, 0);
-
   const funnelDataReagendados = [
-    { name: "Reagendados", value: funnelTotals.remarcados, fill: FUNNEL_COLORS[3], refValue: funnelTotals.remarcados },
-    { name: "Compareceram", value: funnelTotals.reagendadosCompareceram, fill: FUNNEL_COLORS[4], refValue: funnelTotals.remarcados },
-    { name: "Contrataram", value: funnelTotals.reagendadosContrataram, fill: FUNNEL_COLORS[5], refValue: funnelTotals.reagendadosCompareceram },
-    { name: "Não Contrataram", value: reagNaoContrataram, fill: FUNNEL_COLORS[6], refValue: funnelTotals.reagendadosCompareceram },
-    { name: "Faltaram", value: reagFaltaram, fill: FUNNEL_COLORS[2], refValue: funnelTotals.remarcados },
+    { name: "Reagendados", value: reAgendados, fill: FUNNEL_COLORS[3], refValue: reAgendados },
+    { name: "Compareceram", value: reCompareceram, fill: FUNNEL_COLORS[4], refValue: reAgendados },
+    { name: "Contrataram", value: reContrataram, fill: FUNNEL_COLORS[5], refValue: reCompareceram },
+    { name: "Não Contrataram", value: Math.max(reCompareceram - reContrataram, 0), fill: FUNNEL_COLORS[6], refValue: reCompareceram },
+    { name: "Faltaram", value: reFaltaram, fill: FUNNEL_COLORS[2], refValue: reAgendados },
   ];
 
   // Conversão Total: usa CRM (agendados/compareceram/faltaram) + pagamentos como verdade para "Contrataram"
