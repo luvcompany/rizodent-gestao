@@ -40,7 +40,14 @@ const emptyFilters: ConversationFilterValues = {
 };
 
 export type AdAccountOption = { id: string; name: string };
-export type AdOption = { id: string; name: string; ad_account_id?: string | null };
+export type AdOption = {
+  id: string;
+  name: string;
+  ad_account_id?: string | null;
+  image?: string | null;
+  description?: string | null;
+  link?: string | null;
+};
 
 const CIDADES = [
   "Vitória da Conquista",
