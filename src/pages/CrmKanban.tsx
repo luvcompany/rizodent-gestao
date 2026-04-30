@@ -395,6 +395,8 @@ export default function CrmKanban() {
         } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
       }
       if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
+      if (kanbanFilters.adAccountId && (l.ad_account_id || "") !== kanbanFilters.adAccountId) return false;
+      if (kanbanFilters.adId && (l.ad_id || "") !== kanbanFilters.adId) return false;
       if (kanbanFilters.hasPagamento) {
         const hasPag = leadsWithPagamento.has(l.id);
         if (kanbanFilters.hasPagamento === "yes" && !hasPag) return false;
