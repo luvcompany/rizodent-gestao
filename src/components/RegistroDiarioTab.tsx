@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { toLocalDateISO } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,7 +34,7 @@ const RegistroDiarioTab = () => {
   const { user } = useAuth();
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaId, setClinicaId] = useState("");
-  const [data, setData] = useState(() => new Date().toISOString().split("T")[0]);
+  const [data, setData] = useState(() => toLocalDateISO());
   const [leadsAgendadosFuturo, setLeadsAgendadosFuturo] = useState("");
   const [leadsReagendados, setLeadsReagendados] = useState("");
   const [leadsReagendadosLigacao, setLeadsReagendadosLigacao] = useState("");
@@ -176,7 +177,7 @@ const RegistroDiarioTab = () => {
         setExistingId(null);
         resetFields();
         setClinicaId("");
-        setData(new Date().toISOString().split("T")[0]);
+        setData(toLocalDateISO());
       }
       fetchRegistros();
     } catch (err: any) {

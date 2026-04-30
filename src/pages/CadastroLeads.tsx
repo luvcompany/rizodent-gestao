@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { toLocalDateISO } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,14 +21,14 @@ const CadastroLeads = () => {
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
 
   // Leads Novos - separate date, clinic, value
-  const [dataLeads, setDataLeads] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dataLeads, setDataLeads] = useState(() => toLocalDateISO());
   const [clinicaIdLeads, setClinicaIdLeads] = useState("");
   const [leadsNovos, setLeadsNovos] = useState("");
   const [savingLeads, setSavingLeads] = useState(false);
   const [existingIdLeads, setExistingIdLeads] = useState<string | null>(null);
 
   // Agendados + Reagendados - separate date, clinic
-  const [dataAgendados, setDataAgendados] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dataAgendados, setDataAgendados] = useState(() => toLocalDateISO());
   const [clinicaIdAgendados, setClinicaIdAgendados] = useState("");
   const [agendaram, setAgendaram] = useState("");
   const [compareceram, setCompareceram] = useState("");

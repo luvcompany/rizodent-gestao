@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { toLocalDateISO } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ const Relatorios = () => {
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0];
   });
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dateTo, setDateTo] = useState(() => toLocalDateISO());
   const [showContratadoDialog, setShowContratadoDialog] = useState(false);
   const [showEmAbertoDialog, setShowEmAbertoDialog] = useState(false);
   const [showConcluidosDialog, setShowConcluidosDialog] = useState(false);
