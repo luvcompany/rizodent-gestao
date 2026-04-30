@@ -75,7 +75,7 @@ const Atendimento = () => {
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [origemOutrosDesc, setOrigemOutrosDesc] = useState("");
   const [tipoPagamento, setTipoPagamento] = useState("primeiro");
-  const [dataPagamento, setDataPagamento] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dataPagamento, setDataPagamento] = useState(() => todayLocalISO());
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string | null>(null);
   const [especialidadesDoLead, setEspecialidadesDoLead] = useState<{ especialidade: string; total: number }[]>([]);
@@ -236,7 +236,7 @@ const Atendimento = () => {
     setNomeAnuncio("");
     setOrigemOutrosDesc("");
     setTipoPagamento("primeiro");
-    setDataPagamento(new Date().toISOString().split("T")[0]);
+    setDataPagamento(todayLocalISO());
     setPacienteSelecionadoId(null);
     setEspecialidadesDoLead([]);
     setEntries([createEmptyEntry("nova")]);
