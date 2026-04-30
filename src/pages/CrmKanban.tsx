@@ -51,6 +51,11 @@ type Lead = {
   assigned_to: string | null;
   cidade: string | null;
   paciente_id: string | null;
+  ad_id?: string | null;
+  ad_account_id?: string | null;
+  ad_account_name?: string | null;
+  nome_anuncio?: string | null;
+  titulo_anuncio?: string | null;
 };
 
 type Pipeline = {
