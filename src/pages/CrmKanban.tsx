@@ -561,6 +561,8 @@ export default function CrmKanban() {
             filters={kanbanFilters}
             onApply={setKanbanFilters}
             pipelines={pipelines}
+            adAccounts={adAccounts}
+            ads={ads}
           />
           <div className="relative">
             <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
