@@ -113,10 +113,10 @@ const Dashboard = () => {
     if (showLoading) setLoading(true);
     const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
     supabase.from("clinicas").select("*").eq("ativa", true),
-    supabase.from("pagamentos").select("*, clinicas(nome)"),
-    supabase.from("tratamentos").select("*, clinicas(nome)"),
-    supabase.from("pacientes").select("*"),
-    supabase.from("leads_diarios").select("*, clinicas(nome)"),
+    supabase.from("pagamentos").select("*, clinicas(nome)").limit(50000),
+    supabase.from("tratamentos").select("*, clinicas(nome)").limit(20000),
+    supabase.from("pacientes").select("*").limit(20000),
+    supabase.from("leads_diarios").select("*, clinicas(nome)").limit(20000),
     (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
     supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id").limit(10000),
     supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").limit(10000),
