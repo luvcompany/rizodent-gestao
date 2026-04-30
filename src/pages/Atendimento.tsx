@@ -14,6 +14,16 @@ import type { Tables } from "@/integrations/supabase/types";
 
 const origens = ["Anúncio", "Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
+// Retorna "YYYY-MM-DD" do dia atual em horário LOCAL (BRT). Usar toISOString aqui
+// causaria deslocamento de fuso (à noite o sistema gravaria o dia seguinte).
+const todayLocalISO = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 const formatCurrencyInput = (value: string): string => {
   const digits = value.replace(/\D/g, "");
   if (!digits) return "";
