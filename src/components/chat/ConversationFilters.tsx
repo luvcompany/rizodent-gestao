@@ -107,8 +107,13 @@ export default function ConversationFilters({
     : stages;
 
   const filteredAds = useMemo(() => {
-    if (!draft.adAccountId) return ads;
-    return ads.filter((a) => a.ad_account_id === draft.adAccountId);
+    const base = !draft.adAccountId ? ads : ads.filter((a) => a.ad_account_id === draft.adAccountId);
+    // Ads with images first, then ads without; preserve relative order otherwise
+    return [...base].sort((a, b) => {
+      const ai = a.image ? 1 : 0;
+      const bi = b.image ? 1 : 0;
+      return bi - ai;
+    });
   }, [ads, draft.adAccountId]);
 
   const matchingTags = useMemo(() => {
@@ -308,26 +313,31 @@ export default function ConversationFilters({
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Anúncio</label>
                 <Select value={draft.adId} onValueChange={(v) => setDraft({ ...draft, adId: v })}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent className="max-h-[400px]">
+                  <SelectContent className="max-h-[400px] w-[300px]">
                     {filteredAds.map((a) => (
-                      <SelectItem key={a.id} value={a.id} className="py-2">
-                        <div className="flex gap-2 items-start max-w-[260px]">
+                      <SelectItem key={a.id} value={a.id} className="py-2 pr-2">
+                        <div className="flex gap-2 items-center w-[260px]">
                           {a.image ? (
                             <img
                               src={a.image}
                               alt=""
-                              className="w-10 h-10 rounded object-cover flex-shrink-0 border border-border"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                              className="w-10 h-10 rounded object-cover flex-shrink-0 border border-border bg-muted"
+                              onError={(e) => {
+                                const t = e.target as HTMLImageElement;
+                                t.style.visibility = "hidden";
+                              }}
                             />
                           ) : (
-                            <div className="w-10 h-10 rounded bg-muted flex-shrink-0" />
+                            <div className="w-10 h-10 rounded bg-muted flex-shrink-0 flex items-center justify-center text-[9px] text-muted-foreground/60">
+                              s/ img
+                            </div>
                           )}
                           <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                            <span className="text-xs font-medium truncate">{a.name}</span>
+                            <span className="text-xs font-medium truncate leading-tight">{a.name}</span>
                             {a.description && (
-                              <span className="text-[10px] text-muted-foreground line-clamp-2">{a.description}</span>
+                              <span className="text-[10px] text-muted-foreground line-clamp-1 leading-tight">{a.description}</span>
                             )}
-                            <span className="text-[9px] text-muted-foreground/70 truncate">ID: {a.id}</span>
+                            <span className="text-[9px] text-muted-foreground/70 truncate leading-tight">ID: {a.id}</span>
                           </div>
                         </div>
                       </SelectItem>
