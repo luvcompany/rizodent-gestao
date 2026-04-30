@@ -422,7 +422,19 @@ export default function CrmKanban() {
     leads.forEach((l) => l.tags?.forEach((t: string) => set.add(t)));
     return Array.from(set);
   }, [leads]);
-  // Metrics based on filtered leads (user-specific)
+
+  const { adAccounts, ads } = useMemo(() => {
+    const accMap = new Map<string, string>();
+    const adMap = new Map<string, { name: string; ad_account_id: string | null }>();
+    leads.forEach((l) => {
+      if (l.ad_account_id) accMap.set(l.ad_account_id, l.ad_account_name || l.ad_account_id);
+      if (l.ad_id) adMap.set(l.ad_id, { name: l.nome_anuncio || l.titulo_anuncio || l.ad_id, ad_account_id: l.ad_account_id || null });
+    });
+    return {
+      adAccounts: Array.from(accMap, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
+      ads: Array.from(adMap, ([id, v]) => ({ id, name: v.name, ad_account_id: v.ad_account_id })).sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }, [leads]);
   const myLeads = allFilteredLeads;
   const withTaskToday = myLeads.filter(l => l.has_task && !l.task_overdue).length;
   const noTasks = myLeads.filter(l => !l.has_task).length;
