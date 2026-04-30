@@ -82,11 +82,11 @@ const Dashboard = () => {
   const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
   const allRanges = useMemo(() => getDateRangesFromFilter(dateFilter), [dateFilter]);
   const isAllPeriod = dateFilter.preset === "all";
-  const dateFrom = useMemo(() => dateRange ? dateRange.start.toISOString().split("T")[0] : "2020-01-01", [dateRange]);
-  const dateTo = useMemo(() => dateRange ? dateRange.end.toISOString().split("T")[0] : new Date().toISOString().split("T")[0], [dateRange]);
+  const dateFrom = useMemo(() => dateRange ? toLocalDateStr(dateRange.start) : "2020-01-01", [dateRange]);
+  const dateTo = useMemo(() => dateRange ? toLocalDateStr(dateRange.end) : toLocalDateStr(new Date()), [dateRange]);
   // Pre-compute interval bounds as YYYY-MM-DD strings for fast date comparison
   const rangeBounds = useMemo(
-    () => allRanges?.map((r) => ({ from: r.start.toISOString().split("T")[0], to: r.end.toISOString().split("T")[0] })) ?? null,
+    () => allRanges?.map((r) => ({ from: toLocalDateStr(r.start), to: toLocalDateStr(r.end) })) ?? null,
     [allRanges]
   );
   const isInSelectedRanges = (dateStr: string | undefined | null) => {
