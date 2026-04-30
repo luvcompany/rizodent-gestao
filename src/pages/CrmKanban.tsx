@@ -162,7 +162,7 @@ export default function CrmKanban() {
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       targetPipelineId
-        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id").eq("pipeline_id", targetPipelineId).eq("is_blocked", false).order("position")
+        ? supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio").eq("pipeline_id", targetPipelineId).eq("is_blocked", false).order("position")
         : Promise.resolve({ data: null }),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
@@ -187,7 +187,7 @@ export default function CrmKanban() {
         // Pipeline changed, need a second fetch for stages/leads only
         const [s2, l2] = await Promise.all([
           supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
-          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id").eq("pipeline_id", p.id).eq("is_blocked", false).order("position"),
+          supabase.from("crm_leads").select("id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio").eq("pipeline_id", p.id).eq("is_blocked", false).order("position"),
         ]);
         setStages((s2.data as Stage[]) || []);
         setLeads((l2.data as Lead[]) || []);
