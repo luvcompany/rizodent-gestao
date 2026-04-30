@@ -107,8 +107,13 @@ export default function ConversationFilters({
     : stages;
 
   const filteredAds = useMemo(() => {
-    if (!draft.adAccountId) return ads;
-    return ads.filter((a) => a.ad_account_id === draft.adAccountId);
+    const base = !draft.adAccountId ? ads : ads.filter((a) => a.ad_account_id === draft.adAccountId);
+    // Ads with images first, then ads without; preserve relative order otherwise
+    return [...base].sort((a, b) => {
+      const ai = a.image ? 1 : 0;
+      const bi = b.image ? 1 : 0;
+      return bi - ai;
+    });
   }, [ads, draft.adAccountId]);
 
   const matchingTags = useMemo(() => {
