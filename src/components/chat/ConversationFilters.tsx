@@ -21,6 +21,8 @@ export type ConversationFilterValues = {
   assignedTo: string;
   cidade: string;
   hasPagamento: string; // "" | "yes" | "no"
+  adAccountId: string;
+  adId: string;
 };
 
 const emptyFilters: ConversationFilterValues = {
@@ -33,7 +35,12 @@ const emptyFilters: ConversationFilterValues = {
   assignedTo: "",
   cidade: "",
   hasPagamento: "",
+  adAccountId: "",
+  adId: "",
 };
+
+export type AdAccountOption = { id: string; name: string };
+export type AdOption = { id: string; name: string; ad_account_id?: string | null };
 
 const CIDADES = [
   "Vitória da Conquista",
