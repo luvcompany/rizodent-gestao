@@ -39,7 +39,7 @@ const Relatorios = () => {
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0];
+    const d = new Date(); d.setDate(1); return toLocalDateISO(d);
   });
   const [dateTo, setDateTo] = useState(() => toLocalDateISO());
   const [showContratadoDialog, setShowContratadoDialog] = useState(false);
