@@ -425,14 +425,22 @@ export default function CrmKanban() {
 
   const { adAccounts, ads } = useMemo(() => {
     const accMap = new Map<string, string>();
-    const adMap = new Map<string, { name: string; ad_account_id: string | null }>();
-    leads.forEach((l) => {
+    const adMap = new Map<string, { name: string; ad_account_id: string | null; image: string | null; description: string | null; link: string | null }>();
+    leads.forEach((l: any) => {
       if (l.ad_account_id) accMap.set(l.ad_account_id, l.ad_account_name || l.ad_account_id);
-      if (l.ad_id) adMap.set(l.ad_id, { name: l.nome_anuncio || l.titulo_anuncio || l.ad_id, ad_account_id: l.ad_account_id || null });
+      if (l.ad_id && !adMap.has(l.ad_id)) {
+        adMap.set(l.ad_id, {
+          name: l.nome_anuncio || l.titulo_anuncio || l.ad_id,
+          ad_account_id: l.ad_account_id || null,
+          image: l.imagem_origem || null,
+          description: l.descricao_anuncio || l.titulo_anuncio || null,
+          link: l.link_anuncio || null,
+        });
+      }
     });
     return {
       adAccounts: Array.from(accMap, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)),
-      ads: Array.from(adMap, ([id, v]) => ({ id, name: v.name, ad_account_id: v.ad_account_id })).sort((a, b) => a.name.localeCompare(b.name)),
+      ads: Array.from(adMap, ([id, v]) => ({ id, ...v })).sort((a, b) => a.name.localeCompare(b.name)),
     };
   }, [leads]);
   const myLeads = allFilteredLeads;
