@@ -277,6 +277,39 @@ export default function ConversationFilters({
               </Select>
             </div>
 
+            {/* Conta de anúncio */}
+            {adAccounts.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Conta de anúncio</label>
+                <Select
+                  value={draft.adAccountId}
+                  onValueChange={(v) => setDraft({ ...draft, adAccountId: v, adId: "" })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectContent>
+                    {adAccounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Anúncio específico */}
+            {ads.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Anúncio</label>
+                <Select value={draft.adId} onValueChange={(v) => setDraft({ ...draft, adId: v })}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    {filteredAds.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Assigned */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Responsável</label>
