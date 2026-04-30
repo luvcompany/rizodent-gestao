@@ -449,7 +449,7 @@ export default function CrmKanban() {
   const noTasks = myLeads.filter(l => !l.has_task).length;
   const overdue = myLeads.filter(l => l.task_overdue).length;
   const today = toLocalDateISO();
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+  const yesterday = toLocalDateISO(new Date(Date.now() - 86400000));
   const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
   const newYesterday = myLeads.filter(l => l.created_at.startsWith(yesterday)).length;
 
