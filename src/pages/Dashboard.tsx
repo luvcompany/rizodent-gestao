@@ -814,7 +814,7 @@ const Dashboard = () => {
               <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-emerald-600">{pacientesPagantesPeriodo}</p>
+              <p className="text-2xl font-bold text-emerald-600">{crmContratadosByAppt}</p>
               <p className="text-xs text-muted-foreground mt-1">Novos contratados</p>
             </div>
             <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
