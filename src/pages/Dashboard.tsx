@@ -607,7 +607,8 @@ const Dashboard = () => {
 
   const agAgendados = apptsAgendamentosBase.length;
   const agCompareceram = apptsAgendamentosBase.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
-  const agContrataram = apptsAgendamentosBase.filter((a: any) => a.status === "contracted").length;
+  // "Contrataram" usa a fonte financeira (1º pagamento no período) para bater com a aba Pacientes
+  const agContrataram = pacientesPagantesPeriodo;
   const agFaltaram = apptsAgendamentosBase.filter((a: any) => a.status === "no_show").length;
 
   const reAgendados = apptsReagendamentosBase.length;
