@@ -616,11 +616,13 @@ const Dashboard = () => {
   const reContrataram = apptsReagendamentosBase.filter((a: any) => a.status === "contracted").length;
   const reFaltaram = apptsReagendamentosBase.filter((a: any) => a.status === "no_show").length;
 
+  // Para o funil ser consistente: Compareceram >= Contrataram (quem contratou compareceu).
+  const agCompareceramAjustado = Math.max(agCompareceram, agContrataram);
   const funnelDataAgendamentos = [
     { name: "Agendados", value: agAgendados, fill: FUNNEL_COLORS[1], refValue: agAgendados },
-    { name: "Compareceram", value: agCompareceram, fill: FUNNEL_COLORS[4], refValue: agAgendados },
-    { name: "Contrataram", value: agContrataram, fill: FUNNEL_COLORS[5], refValue: agCompareceram },
-    { name: "Não Contrataram", value: Math.max(agCompareceram - agContrataram, 0), fill: FUNNEL_COLORS[6], refValue: agCompareceram },
+    { name: "Compareceram", value: agCompareceramAjustado, fill: FUNNEL_COLORS[4], refValue: agAgendados },
+    { name: "Contrataram", value: agContrataram, fill: FUNNEL_COLORS[5], refValue: agCompareceramAjustado },
+    { name: "Não Contrataram", value: Math.max(agCompareceramAjustado - agContrataram, 0), fill: FUNNEL_COLORS[6], refValue: agCompareceramAjustado },
     { name: "Faltaram", value: agFaltaram, fill: FUNNEL_COLORS[2], refValue: agAgendados },
   ];
 
