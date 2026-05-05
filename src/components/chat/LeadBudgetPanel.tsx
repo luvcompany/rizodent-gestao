@@ -369,27 +369,10 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
               <span className="text-xs text-muted-foreground">Valor Contratado (pago)</span>
               <p className="text-primary font-bold text-lg">{formatCurrency(totalPaid)}</p>
             </div>
-            <div className="text-right">
-              <span className="text-xs text-muted-foreground">Orçado</span>
-              <p className="text-sm text-muted-foreground">{formatCurrency(totalBudgeted)}</p>
-            </div>
           </div>
 
-          {orcamentos.length > 0 && (
-            <div className="space-y-1">
-              {orcamentos.map(o => (
-                <div key={o.id} className="flex items-center justify-between text-xs p-1.5 bg-muted/30 rounded">
-                  <span className="text-muted-foreground">Orç. {formatCurrency(o.valor_orcado)}</span>
-                  <span className={o.valor_pago > 0 ? "text-primary font-medium" : "text-muted-foreground"}>
-                    Pago: {formatCurrency(o.valor_pago)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
           <Button size="sm" variant="outline" className="w-full" onClick={() => goToAtendimentoForPaciente(linkedPacientes[0])}>
-            <Plus size={14} className="mr-1" /> Novo Orçamento / Atendimento
+            <Plus size={14} className="mr-1" /> Novo Atendimento
             <ExternalLink size={12} className="ml-auto" />
           </Button>
         </div>
