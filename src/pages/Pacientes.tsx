@@ -209,7 +209,7 @@ const Pacientes = () => {
                 <div className="flex items-center gap-4">
                   <div className="text-right space-y-0.5">
                     <p className={`text-sm font-semibold ${concluido ? 'text-green-500' : 'text-primary'}`}>
-                      Contratado: R$ {pac.valor_orcado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      Contratado: R$ {(pac.valor_orcado > 0 ? pac.valor_orcado : pac.valor_contratado).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Pago: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
