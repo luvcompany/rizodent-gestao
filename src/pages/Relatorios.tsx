@@ -35,7 +35,7 @@ const Relatorios = () => {
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
-  const [orcamentos, setOrcamentos] = useState<any[]>([]);
+  // orçamentos removido
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState(() => {
@@ -51,16 +51,15 @@ const Relatorios = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: orcs }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }] = await Promise.all([
         supabase.from("clinicas").select("*").eq("ativa", true),
         supabase.from("pagamentos").select("*, clinicas(nome), pacientes(nome)"),
         supabase.from("tratamentos").select("*, clinicas(nome), pacientes(nome)"),
         supabase.from("pacientes").select("*"),
         supabase.from("leads_diarios").select("*, clinicas(nome)"),
-        supabase.from("orcamentos").select("*"),
       ]);
       setClinicas(cl || []); setPagamentos(pg || []); setTratamentos(tr || []);
-      setPacientes(pc || []); setLeadsData(ld || []); setOrcamentos(orcs || []);
+      setPacientes(pc || []); setLeadsData(ld || []);
       setLoading(false);
     };
     fetchAll();
@@ -91,12 +90,7 @@ const Relatorios = () => {
     });
   }, [tratamentos, clinicaFiltro, dateFrom, dateTo]);
 
-  const filteredOrcamentos = useMemo(() => {
-    return orcamentos.filter((o) => {
-      const createdDate = o.created_at?.split("T")[0] || "";
-      return createdDate >= dateFrom && createdDate <= dateTo;
-    });
-  }, [orcamentos, dateFrom, dateTo]);
+  const filteredOrcamentos = useMemo(() => [] as any[], []);
 
   // ========== CONTRATADO POR PACIENTE ==========
   const contratadoVsPago = useMemo(() => {
@@ -312,31 +306,7 @@ const Relatorios = () => {
       });
     });
 
-    orcamentos.forEach((o) => {
-      const pac = pacientes.find((x) => x.id === o.paciente_id);
-      items.push({
-        id: `or-${o.id}-c`,
-        tipo: "orcamento_novo",
-        timestamp: o.created_at,
-        titulo: "Orçamento criado",
-        descricao: `Status: ${o.status}`,
-        pacienteId: o.paciente_id,
-        pacienteNome: pac?.nome,
-        valor: Number(o.valor_orcado || 0),
-      });
-      if (o.updated_at && o.updated_at !== o.created_at) {
-        items.push({
-          id: `or-${o.id}-u`,
-          tipo: "orcamento_atualizado",
-          timestamp: o.updated_at,
-          titulo: "Orçamento atualizado",
-          descricao: `Status: ${o.status}`,
-          pacienteId: o.paciente_id,
-          pacienteNome: pac?.nome,
-          valor: Number(o.valor_orcado || 0),
-        });
-      }
-    });
+    // orçamentos removidos do sistema
 
     tratamentos.forEach((t) => {
       items.push({

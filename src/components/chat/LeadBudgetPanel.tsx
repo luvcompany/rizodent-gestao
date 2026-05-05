@@ -33,15 +33,6 @@ type Paciente = {
 
 type LinkedPaciente = Paciente & { link_id: string; is_primary: boolean };
 
-type OrcamentoComPago = {
-  id: string;
-  paciente_id: string;
-  valor_orcado: number;
-  valor_pago: number;
-  status: string;
-  created_at: string;
-};
-
 type Props = {
   lead: Lead;
   onLeadUpdated: (updates: Partial<Lead>) => void;
@@ -51,9 +42,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const navigate = useNavigate();
   const autoLinkAttemptedRef = useRef<Set<string>>(new Set());
   const [linkedPacientes, setLinkedPacientes] = useState<LinkedPaciente[]>([]);
-  const [orcamentos, setOrcamentos] = useState<OrcamentoComPago[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
-  const [totalBudgeted, setTotalBudgeted] = useState(0);
   const [cidade, setCidade] = useState(lead.cidade || EMPTY_CITY_VALUE);
   const [linkOpen, setLinkOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -94,9 +83,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     setLinkedPacientes(list);
 
     if (list.length === 0) {
-      setOrcamentos([]);
       setTotalPaid(0);
-      setTotalBudgeted(0);
       // Auto-link by phone signature if no link exists yet
       if (!autoLinkAttemptedRef.current.has(lead.id)) {
         autoLinkAttemptedRef.current.add(lead.id);
@@ -126,26 +113,13 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   };
 
   const fetchBudgetsForPacientes = async (pacienteIds: string[]) => {
-    const [oRes, pagRes] = await Promise.all([
-      supabase.from("orcamentos").select("id, paciente_id, valor_orcado, status, created_at").in("paciente_id", pacienteIds),
-      supabase.from("pagamentos").select("valor, orcamento_id, paciente_id").in("paciente_id", pacienteIds),
-    ]);
+    const { data: payments } = await supabase
+      .from("pagamentos")
+      .select("valor, paciente_id")
+      .in("paciente_id", pacienteIds);
 
-    const payments = pagRes.data || [];
-    const paid = payments.reduce((sum, p) => sum + Number(p.valor), 0);
+    const paid = (payments || []).reduce((sum, p: any) => sum + Number(p.valor || 0), 0);
     setTotalPaid(paid);
-
-    if (oRes.data) {
-      const withPago = oRes.data.map(o => {
-        const oPaid = payments.filter(p => p.orcamento_id === o.id).reduce((s, p) => s + Number(p.valor), 0);
-        return { ...o, valor_pago: oPaid };
-      });
-      setOrcamentos(withPago);
-      setTotalBudgeted(oRes.data.reduce((sum, o) => sum + Number(o.valor_orcado), 0));
-    } else {
-      setOrcamentos([]);
-      setTotalBudgeted(0);
-    }
 
     if (paid !== (lead.value || 0)) {
       await supabase.from("crm_leads").update({ value: paid }).eq("id", lead.id);
@@ -395,27 +369,10 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
               <span className="text-xs text-muted-foreground">Valor Contratado (pago)</span>
               <p className="text-primary font-bold text-lg">{formatCurrency(totalPaid)}</p>
             </div>
-            <div className="text-right">
-              <span className="text-xs text-muted-foreground">Orçado</span>
-              <p className="text-sm text-muted-foreground">{formatCurrency(totalBudgeted)}</p>
-            </div>
           </div>
 
-          {orcamentos.length > 0 && (
-            <div className="space-y-1">
-              {orcamentos.map(o => (
-                <div key={o.id} className="flex items-center justify-between text-xs p-1.5 bg-muted/30 rounded">
-                  <span className="text-muted-foreground">Orç. {formatCurrency(o.valor_orcado)}</span>
-                  <span className={o.valor_pago > 0 ? "text-primary font-medium" : "text-muted-foreground"}>
-                    Pago: {formatCurrency(o.valor_pago)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
           <Button size="sm" variant="outline" className="w-full" onClick={() => goToAtendimentoForPaciente(linkedPacientes[0])}>
-            <Plus size={14} className="mr-1" /> Novo Orçamento / Atendimento
+            <Plus size={14} className="mr-1" /> Novo Atendimento
             <ExternalLink size={12} className="ml-auto" />
           </Button>
         </div>
