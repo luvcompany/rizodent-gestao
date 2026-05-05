@@ -33,15 +33,6 @@ type Paciente = {
 
 type LinkedPaciente = Paciente & { link_id: string; is_primary: boolean };
 
-type OrcamentoComPago = {
-  id: string;
-  paciente_id: string;
-  valor_orcado: number;
-  valor_pago: number;
-  status: string;
-  created_at: string;
-};
-
 type Props = {
   lead: Lead;
   onLeadUpdated: (updates: Partial<Lead>) => void;
@@ -51,9 +42,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const navigate = useNavigate();
   const autoLinkAttemptedRef = useRef<Set<string>>(new Set());
   const [linkedPacientes, setLinkedPacientes] = useState<LinkedPaciente[]>([]);
-  const [orcamentos, setOrcamentos] = useState<OrcamentoComPago[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
-  const [totalBudgeted, setTotalBudgeted] = useState(0);
   const [cidade, setCidade] = useState(lead.cidade || EMPTY_CITY_VALUE);
   const [linkOpen, setLinkOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
