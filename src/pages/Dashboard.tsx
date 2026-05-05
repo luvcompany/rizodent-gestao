@@ -821,11 +821,11 @@ const Dashboard = () => {
             </div>
             <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
               <p className="text-2xl font-bold text-primary">{taxaConversao.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Conversão (Compareceram → Contrato)</p>
+              <p className="text-xs text-muted-foreground mt-1">Conversão (Agendados → Contrato)</p>
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3 italic">
-            ✓ Novos contratados = pacientes com 1º pagamento registrado no período (mesma fonte da aba Pacientes). Recorrentes não entram. Conversão = novos contratados ÷ pacientes que compareceram. Taxa de presença: {taxaPresenca.toFixed(0)}%.
+            ✓ Novos contratados = pacientes com 1º pagamento registrado no período (mesma fonte da aba Pacientes). Recorrentes não entram. Conversão = novos contratados ÷ pacientes agendados. Taxa de presença: {taxaPresenca.toFixed(0)}%.
           </p>
         </CardContent>
       </Card>
