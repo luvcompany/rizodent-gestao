@@ -101,6 +101,7 @@ const Pacientes = () => {
         const allPags = pagMap.get(p.id) || [];
         const ultimaVisita = allPags[0]?.data_pagamento || null;
         const clinicaNome = pags[0]?.clinica_id ? clinicaMap.get(pags[0].clinica_id) || null : null;
+        const isRecorrente = allPags.some((pg: any) => pg.tipo === "recorrente");
 
         result.push({
           ...p,
@@ -108,6 +109,7 @@ const Pacientes = () => {
           valor_contratado: valorContratado,
           ultima_visita: ultimaVisita,
           clinica_nome: clinicaNome,
+          is_recorrente: isRecorrente,
         });
       }
 
