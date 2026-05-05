@@ -825,7 +825,7 @@ const Dashboard = () => {
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3 italic">
-            ✓ Novos contratados = pacientes com 1º pagamento registrado no período (mesma fonte da aba Pacientes). Recorrentes não entram. Conversão = novos contratados ÷ leads do CRM. Taxa de presença: {taxaPresenca.toFixed(0)}%.
+            ✓ Novos contratados = pacientes com 1º pagamento registrado no período (mesma fonte da aba Pacientes). Recorrentes não entram. Conversão = novos contratados ÷ pacientes que compareceram. Taxa de presença: {taxaPresenca.toFixed(0)}%.
           </p>
         </CardContent>
       </Card>
