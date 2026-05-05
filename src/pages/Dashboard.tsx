@@ -342,8 +342,8 @@ const Dashboard = () => {
   }, [filtered.pagamentos]);
 
   const pacientesPagantesPeriodo = novosPagantesPeriodo;
-  // Conversão = novos contratados ÷ pacientes que compareceram (não sobre todos os leads)
-  const taxaConversao = crmCompareceram > 0 ? (pacientesPagantesPeriodo / crmCompareceram) * 100 : 0;
+  // Conversão = novos contratados ÷ pacientes agendados
+  const taxaConversao = crmAgendados > 0 ? (pacientesPagantesPeriodo / crmAgendados) * 100 : 0;
 
   const kpis = [
   { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp },
