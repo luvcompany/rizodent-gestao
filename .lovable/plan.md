@@ -1,35 +1,37 @@
-# Unificar dados do Dashboard — Funil de Atendimentos
+Vou corrigir a lógica do Dashboard para que “Novos contratados” seja sempre baseado na mesma fonte da aba Pacientes: pagamentos registrados como `tipo = primeiro` dentro do período filtrado.
 
-## Diagnóstico
+O que será ajustado:
 
-As duas seções da imagem mostram a mesma informação mas vêm de fontes diferentes:
+1. Definir uma regra única para “Novos contratados”
+   - Contar pacientes distintos com pagamento `primeiro` na data/período selecionado.
+   - Não depender do status do agendamento no CRM.
+   - Não excluir pacientes por vínculo com lead do CRM.
+   - Exemplo esperado confirmado no banco:
+     - 02/05/2026: 3 pacientes distintos com `primeiro pagamento`.
+     - 30/04/2026: 6 pacientes distintos com `primeiro pagamento`.
 
-- **Card "CRM — Leads & Agendamentos"** (em cima): usa `crm_appointments` filtrando por `scheduled_date` no período (corrigido no turno anterior). Por isso mostra `24 Agendados` e `2 Faltaram` corretamente.
-- **"Funil de Atendimentos"** (em baixo): usa a tabela `leads_diarios` (lançamento manual diário do CRC). Quando o período filtrado não tem registros manuais lançados, todos os campos ficam zerados.
+2. Aplicar essa mesma regra em todos os pontos do Dashboard
+   - Card “Novos contratados” em “CRM — Leads & Agendamentos”.
+   - Funil “Conversão Total” no item “Contrataram”.
+   - Qualquer cálculo de conversão que use contratados no período.
+   - Textos explicativos, para ficar claro que recorrentes não entram e que a fonte é pagamento do tipo “primeiro”.
 
-Daí a inconsistência: dados reais em cima, zeros em baixo.
+3. Corrigir a divergência entre os gráficos/funis
+   - O funil de “Agendamentos” continuará mostrando agendamentos/comparecimentos/faltas pelo CRM.
+   - O funil de “Conversão Total” mostrará contratos pela fonte financeira real: primeiro pagamento.
+   - Onde aparecer “Contrataram” como indicador de clientes novos, ele usará a mesma contagem do pagamento `primeiro`.
 
-## Correção
+4. Melhorar a consistência dos filtros
+   - Manter filtro por período usando `data_pagamento` para novos contratados.
+   - Manter filtro por clínica usando `clinica_id` do pagamento.
+   - Se houver filtro de canal, aplicar a mesma restrição já usada pelo Dashboard para pagamentos/pacientes, sem mudar a regra principal.
 
-Unificar **as 3 abas do Funil** (`Agendamentos`, `Reagendados`, `Conversão Total`) para usarem a mesma fonte do card CRM (`crm_appointments` filtrado pelo período via `scheduled_date`), acabando com a divergência.
+5. Remover a lógica que causou o erro atual
+   - Retirar a restrição que conta apenas pacientes vinculados ao CRM.
+   - Retirar a comparação/ajuste com status `contracted` de agendamentos para “Novos contratados”.
+   - Isso evita casos onde existem 3 primeiros pagamentos no financeiro, mas o dashboard mostra 1 ou 2 por causa de dados incompletos do CRM.
 
-### Aba "Agendamentos" (não-reagendados)
-- Agendados = appointments do período onde `is_rescheduled = false`
-- Compareceram = status `contracted` + `not_contracted`
-- Contrataram = status `contracted`
-- Não Contrataram = Compareceram − Contrataram
-- Faltaram = status `no_show`
-
-### Aba "Reagendados"
-- Mesma lógica, mas filtrando `is_rescheduled = true`
-
-### Aba "Conversão Total"
-- Mantém como está (já usa `crmLeadsCount` + `crmAgendados` + `pacientesPagantesPeriodo`, que já são consistentes com o card de cima).
-
-## Resultado esperado
-
-Os números do funil de baixo passam a bater exatamente com os do card CRM de cima — fim das inconsistências. O lançamento manual em `leads_diarios` continua sendo usado para o gráfico "Leads Novos Diários" como fallback, mas não impacta mais o funil.
-
-## Arquivo afetado
-
-- `src/pages/Dashboard.tsx` — substituir o cálculo de `funnelDataAgendamentos` e `funnelDataReagendados` para derivar de `crmFiltered.apptsDosAgendados` separados por flag `is_rescheduled`.
+Resultado esperado:
+- Dia 02/05: Dashboard mostra 3 novos contratados.
+- Dia 30/04: Dashboard mostra 6 novos contratados.
+- Os cards e o funil deixam de divergir quando estiverem falando de “contrataram/novos contratados”.

@@ -329,21 +329,19 @@ const Dashboard = () => {
     return set;
   }, [crmLeads]);
 
-  // Novos pagantes no período: tipo=primeiro, após início do CRM, vinculado a lead do CRM
+  // Novos contratados no período: pacientes distintos com pagamento tipo "primeiro"
+  // dentro do período/clínica filtrados. Mesma fonte usada na aba Pacientes.
+  // Não filtra por vínculo com CRM nem por status de agendamento — fonte é o financeiro.
   const novosPagantesPeriodo = useMemo(() => {
     const ids = new Set<string>();
     filtered.pagamentos.forEach(p => {
       if (p.tipo !== "primeiro") return;
-      const dp = (p.data_pagamento || "").split("T")[0];
-      if (crmStartDate && dp < crmStartDate) return;
-      if (crmPacienteIds.size > 0 && !crmPacienteIds.has(p.paciente_id)) return;
       ids.add(p.paciente_id);
     });
     return ids.size;
-  }, [filtered.pagamentos, crmStartDate, crmPacienteIds]);
+  }, [filtered.pagamentos]);
 
   const pacientesPagantesPeriodo = novosPagantesPeriodo;
-  const crmContratados = Math.max(crmContratadosByAppt, pacientesPagantesPeriodo);
   const taxaConversao = crmLeadsCount > 0 ? (pacientesPagantesPeriodo / crmLeadsCount) * 100 : 0;
 
   const kpis = [
@@ -609,7 +607,8 @@ const Dashboard = () => {
 
   const agAgendados = apptsAgendamentosBase.length;
   const agCompareceram = apptsAgendamentosBase.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
-  const agContrataram = apptsAgendamentosBase.filter((a: any) => a.status === "contracted").length;
+  // "Contrataram" usa a fonte financeira (1º pagamento no período) para bater com a aba Pacientes
+  const agContrataram = pacientesPagantesPeriodo;
   const agFaltaram = apptsAgendamentosBase.filter((a: any) => a.status === "no_show").length;
 
   const reAgendados = apptsReagendamentosBase.length;
@@ -617,11 +616,13 @@ const Dashboard = () => {
   const reContrataram = apptsReagendamentosBase.filter((a: any) => a.status === "contracted").length;
   const reFaltaram = apptsReagendamentosBase.filter((a: any) => a.status === "no_show").length;
 
+  // Para o funil ser consistente: Compareceram >= Contrataram (quem contratou compareceu).
+  const agCompareceramAjustado = Math.max(agCompareceram, agContrataram);
   const funnelDataAgendamentos = [
     { name: "Agendados", value: agAgendados, fill: FUNNEL_COLORS[1], refValue: agAgendados },
-    { name: "Compareceram", value: agCompareceram, fill: FUNNEL_COLORS[4], refValue: agAgendados },
-    { name: "Contrataram", value: agContrataram, fill: FUNNEL_COLORS[5], refValue: agCompareceram },
-    { name: "Não Contrataram", value: Math.max(agCompareceram - agContrataram, 0), fill: FUNNEL_COLORS[6], refValue: agCompareceram },
+    { name: "Compareceram", value: agCompareceramAjustado, fill: FUNNEL_COLORS[4], refValue: agAgendados },
+    { name: "Contrataram", value: agContrataram, fill: FUNNEL_COLORS[5], refValue: agCompareceramAjustado },
+    { name: "Não Contrataram", value: Math.max(agCompareceramAjustado - agContrataram, 0), fill: FUNNEL_COLORS[6], refValue: agCompareceramAjustado },
     { name: "Faltaram", value: agFaltaram, fill: FUNNEL_COLORS[2], refValue: agAgendados },
   ];
 
@@ -823,7 +824,7 @@ const Dashboard = () => {
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3 italic">
-            ✓ Conversão = novos pagantes (1º pagamento) vinculados a leads do CRM ÷ leads do CRM no período. Recorrentes não entram nesta conta. Taxa de presença: {taxaPresenca.toFixed(0)}%.
+            ✓ Novos contratados = pacientes com 1º pagamento registrado no período (mesma fonte da aba Pacientes). Recorrentes não entram. Conversão = novos contratados ÷ leads do CRM. Taxa de presença: {taxaPresenca.toFixed(0)}%.
           </p>
         </CardContent>
       </Card>
