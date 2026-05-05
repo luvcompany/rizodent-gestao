@@ -58,15 +58,22 @@ const Pacientes = () => {
         orcadoMap.set(o.paciente_id, (orcadoMap.get(o.paciente_id) || 0) + Number(o.valor_orcado || 0));
       });
 
+      // Hoje (local) — ignora pagamentos com data futura para evitar "última visita" no futuro
+      const hojeLocal = (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })();
+      const pagamentosValidos = (pagamentos || []).filter((p: any) => !p.data_pagamento || p.data_pagamento <= hojeLocal);
+
       // Sum contratado per patient from pagamentos
       const contratadoMap = new Map<string, number>();
-      pagamentos?.forEach((p) => {
+      pagamentosValidos.forEach((p) => {
         contratadoMap.set(p.paciente_id, (contratadoMap.get(p.paciente_id) || 0) + Number(p.valor || 0));
       });
 
       // Group pagamentos by paciente_id
       const pagMap = new Map<string, typeof pagamentos>();
-      pagamentos?.forEach((p) => {
+      pagamentosValidos.forEach((p) => {
         if (!pagMap.has(p.paciente_id)) pagMap.set(p.paciente_id, []);
         pagMap.get(p.paciente_id)!.push(p);
       });
