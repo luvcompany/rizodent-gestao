@@ -306,31 +306,7 @@ const Relatorios = () => {
       });
     });
 
-    orcamentos.forEach((o) => {
-      const pac = pacientes.find((x) => x.id === o.paciente_id);
-      items.push({
-        id: `or-${o.id}-c`,
-        tipo: "orcamento_novo",
-        timestamp: o.created_at,
-        titulo: "Orçamento criado",
-        descricao: `Status: ${o.status}`,
-        pacienteId: o.paciente_id,
-        pacienteNome: pac?.nome,
-        valor: Number(o.valor_orcado || 0),
-      });
-      if (o.updated_at && o.updated_at !== o.created_at) {
-        items.push({
-          id: `or-${o.id}-u`,
-          tipo: "orcamento_atualizado",
-          timestamp: o.updated_at,
-          titulo: "Orçamento atualizado",
-          descricao: `Status: ${o.status}`,
-          pacienteId: o.paciente_id,
-          pacienteNome: pac?.nome,
-          valor: Number(o.valor_orcado || 0),
-        });
-      }
-    });
+    // orçamentos removidos do sistema
 
     tratamentos.forEach((t) => {
       items.push({
