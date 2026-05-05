@@ -43,7 +43,7 @@ const Pacientes = () => {
       const [{ data: pacs }, { data: orcamentos }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
         supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
         supabase.from("orcamentos").select("id, paciente_id, valor_orcado"),
-        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id, orcamento_id").order("data_pagamento", { ascending: false }),
+        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id, orcamento_id, tipo").order("data_pagamento", { ascending: false }),
         supabase.from("clinicas").select("id, nome"),
       ]);
 
