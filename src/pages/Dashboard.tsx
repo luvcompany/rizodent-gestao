@@ -329,21 +329,19 @@ const Dashboard = () => {
     return set;
   }, [crmLeads]);
 
-  // Novos pagantes no período: tipo=primeiro, após início do CRM, vinculado a lead do CRM
+  // Novos contratados no período: pacientes distintos com pagamento tipo "primeiro"
+  // dentro do período/clínica filtrados. Mesma fonte usada na aba Pacientes.
+  // Não filtra por vínculo com CRM nem por status de agendamento — fonte é o financeiro.
   const novosPagantesPeriodo = useMemo(() => {
     const ids = new Set<string>();
     filtered.pagamentos.forEach(p => {
       if (p.tipo !== "primeiro") return;
-      const dp = (p.data_pagamento || "").split("T")[0];
-      if (crmStartDate && dp < crmStartDate) return;
-      if (crmPacienteIds.size > 0 && !crmPacienteIds.has(p.paciente_id)) return;
       ids.add(p.paciente_id);
     });
     return ids.size;
-  }, [filtered.pagamentos, crmStartDate, crmPacienteIds]);
+  }, [filtered.pagamentos]);
 
   const pacientesPagantesPeriodo = novosPagantesPeriodo;
-  const crmContratados = Math.max(crmContratadosByAppt, pacientesPagantesPeriodo);
   const taxaConversao = crmLeadsCount > 0 ? (pacientesPagantesPeriodo / crmLeadsCount) * 100 : 0;
 
   const kpis = [
