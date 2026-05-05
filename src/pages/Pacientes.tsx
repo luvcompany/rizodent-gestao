@@ -84,12 +84,13 @@ const Pacientes = () => {
       const dataMaxima = range ? toLocal(range.end) : null;
 
       const result: PacienteView[] = [];
+      const periodActive = !!(dataMinima || dataMaxima);
       for (const p of pacs) {
         const valorOrcado = orcadoMap.get(p.id) || 0;
-        const valorContratado = contratadoMap.get(p.id) || 0;
+        const valorContratadoTotal = contratadoMap.get(p.id) || 0;
         let pags = pagMap.get(p.id) || [];
 
-        if (dataMinima || dataMaxima) {
+        if (periodActive) {
           pags = pags.filter((pg) => {
             if (dataMinima && pg.data_pagamento < dataMinima) return false;
             if (dataMaxima && pg.data_pagamento > dataMaxima) return false;
@@ -98,10 +99,14 @@ const Pacientes = () => {
           if (pags.length === 0) continue;
         }
 
-        const allPags = pagMap.get(p.id) || [];
-        const ultimaVisita = allPags[0]?.data_pagamento || null;
+        // Quando há filtro de período, mostra valor pago e última visita DENTRO do período
+        // (alinhado com o faturamento do Dashboard). Sem filtro, usa o total geral.
+        const valorContratado = periodActive
+          ? pags.reduce((s, pg) => s + Number(pg.valor || 0), 0)
+          : valorContratadoTotal;
+        const ultimaVisita = pags[0]?.data_pagamento || null;
         const clinicaNome = pags[0]?.clinica_id ? clinicaMap.get(pags[0].clinica_id) || null : null;
-        const isRecorrente = allPags.some((pg: any) => pg.tipo === "recorrente");
+        const isRecorrente = (pagMap.get(p.id) || []).some((pg: any) => pg.tipo === "recorrente");
 
         result.push({
           ...p,
