@@ -90,12 +90,7 @@ const Relatorios = () => {
     });
   }, [tratamentos, clinicaFiltro, dateFrom, dateTo]);
 
-  const filteredOrcamentos = useMemo(() => {
-    return orcamentos.filter((o) => {
-      const createdDate = o.created_at?.split("T")[0] || "";
-      return createdDate >= dateFrom && createdDate <= dateTo;
-    });
-  }, [orcamentos, dateFrom, dateTo]);
+  const filteredOrcamentos = useMemo(() => [] as any[], []);
 
   // ========== CONTRATADO POR PACIENTE ==========
   const contratadoVsPago = useMemo(() => {
