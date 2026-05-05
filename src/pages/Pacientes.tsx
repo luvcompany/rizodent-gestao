@@ -25,6 +25,7 @@ interface PacienteView {
   valor_contratado: number;
   ultima_visita: string | null;
   clinica_nome: string | null;
+  is_recorrente: boolean;
 }
 
 const Pacientes = () => {
