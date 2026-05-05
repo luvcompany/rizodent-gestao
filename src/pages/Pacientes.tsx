@@ -118,6 +118,14 @@ const Pacientes = () => {
         });
       }
 
+      // Ordena por última visita (pagamento mais recente) desc; sem pagamento vai pro fim
+      result.sort((a, b) => {
+        if (a.ultima_visita && b.ultima_visita) return b.ultima_visita.localeCompare(a.ultima_visita);
+        if (a.ultima_visita) return -1;
+        if (b.ultima_visita) return 1;
+        return 0;
+      });
+
       setPacientes(result);
       setLoading(false);
     };
