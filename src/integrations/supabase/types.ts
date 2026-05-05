@@ -1724,41 +1724,6 @@ export type Database = {
           },
         ]
       }
-      orcamentos: {
-        Row: {
-          created_at: string
-          id: string
-          paciente_id: string
-          status: string
-          updated_at: string
-          valor_orcado: number
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          paciente_id: string
-          status?: string
-          updated_at?: string
-          valor_orcado?: number
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          paciente_id?: string
-          status?: string
-          updated_at?: string
-          valor_orcado?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "orcamentos_paciente_id_fkey"
-            columns: ["paciente_id"]
-            isOneToOne: false
-            referencedRelation: "pacientes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       pacientes: {
         Row: {
           cidade: string | null
@@ -1804,7 +1769,6 @@ export type Database = {
           especialidade: string | null
           forma_pagamento: string
           id: string
-          orcamento_id: string | null
           paciente_id: string
           tipo: string
           tratamento_id: string | null
@@ -1818,7 +1782,6 @@ export type Database = {
           especialidade?: string | null
           forma_pagamento: string
           id?: string
-          orcamento_id?: string | null
           paciente_id: string
           tipo?: string
           tratamento_id?: string | null
@@ -1832,7 +1795,6 @@ export type Database = {
           especialidade?: string | null
           forma_pagamento?: string
           id?: string
-          orcamento_id?: string | null
           paciente_id?: string
           tipo?: string
           tratamento_id?: string | null
@@ -1844,13 +1806,6 @@ export type Database = {
             columns: ["clinica_id"]
             isOneToOne: false
             referencedRelation: "clinicas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pagamentos_orcamento_id_fkey"
-            columns: ["orcamento_id"]
-            isOneToOne: false
-            referencedRelation: "orcamentos"
             referencedColumns: ["id"]
           },
           {
@@ -1998,7 +1953,6 @@ export type Database = {
           created_by: string | null
           especialidade: string | null
           id: string
-          orcamento_id: string | null
           paciente_id: string
           procedimento: string
           status: string
@@ -2010,7 +1964,6 @@ export type Database = {
           created_by?: string | null
           especialidade?: string | null
           id?: string
-          orcamento_id?: string | null
           paciente_id: string
           procedimento: string
           status?: string
@@ -2022,7 +1975,6 @@ export type Database = {
           created_by?: string | null
           especialidade?: string | null
           id?: string
-          orcamento_id?: string | null
           paciente_id?: string
           procedimento?: string
           status?: string
@@ -2034,13 +1986,6 @@ export type Database = {
             columns: ["clinica_id"]
             isOneToOne: false
             referencedRelation: "clinicas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "tratamentos_orcamento_id_fkey"
-            columns: ["orcamento_id"]
-            isOneToOne: false
-            referencedRelation: "orcamentos"
             referencedColumns: ["id"]
           },
           {
