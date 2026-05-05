@@ -193,8 +193,13 @@ const Pacientes = () => {
             <Card key={pac.id} className={`gradient-card border-border shadow-card hover:border-primary/30 transition-colors ${concluido ? 'border-green-500/30' : ''}`}>
               <CardContent className="flex items-center justify-between p-4">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold">{pac.nome}</p>
+                    {pac.is_recorrente ? (
+                      <Badge className="bg-blue-600/20 text-blue-400 border-blue-600/30 text-xs">Recorrente</Badge>
+                    ) : (
+                      <Badge className="bg-orange-600/20 text-orange-400 border-orange-600/30 text-xs">Cliente novo</Badge>
+                    )}
                     {concluido && <Badge className="bg-green-600/20 text-green-400 border-green-600/30 text-xs gap-1"><CheckCircle2 size={12} />Concluído</Badge>}
                   </div>
                   <p className="text-sm text-muted-foreground">
