@@ -821,7 +821,7 @@ const Dashboard = () => {
             </div>
             <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
               <p className="text-2xl font-bold text-primary">{taxaConversao.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Conversão Lead → Contrato</p>
+              <p className="text-xs text-muted-foreground mt-1">Conversão (Compareceram → Contrato)</p>
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3 italic">
