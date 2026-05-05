@@ -83,9 +83,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     setLinkedPacientes(list);
 
     if (list.length === 0) {
-      setOrcamentos([]);
       setTotalPaid(0);
-      setTotalBudgeted(0);
       // Auto-link by phone signature if no link exists yet
       if (!autoLinkAttemptedRef.current.has(lead.id)) {
         autoLinkAttemptedRef.current.add(lead.id);
