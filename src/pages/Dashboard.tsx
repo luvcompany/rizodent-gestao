@@ -301,12 +301,14 @@ const Dashboard = () => {
   }, [crmLeads, crmAppointments, crmStages, crmStageHistory, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
   const crmLeadsCount = crmFiltered.leads.length;
   const crmAdLeadsCount = crmFiltered.leads.filter(l => l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "")).length;
-  // Agendados = total de agendamentos no período (cada appointment conta), excluindo reagendamentos para evitar dupla contagem
-  const crmAgendados = crmFiltered.apptsDosAgendados.filter((a: any) => !a.is_rescheduled).length;
+  // KPIs CRM excluem reagendamentos para manter o mesmo escopo do funil "Agendamentos".
+  // Reagendamentos têm aba/funil próprios.
+  const apptsNaoReagendados = crmFiltered.apptsDosAgendados.filter((a: any) => !a.is_rescheduled);
+  const crmAgendados = apptsNaoReagendados.length;
   const crmReagendados = crmFiltered.apptsDosAgendados.filter((a: any) => a.is_rescheduled).length;
-  const crmCompareceram = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
-  const crmFaltaram = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "no_show").length;
-  const crmContratadosByAppt = crmFiltered.apptsDosAgendados.filter((a: any) => a.status === "contracted").length;
+  const crmCompareceram = apptsNaoReagendados.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
+  const crmFaltaram = apptsNaoReagendados.filter((a: any) => a.status === "no_show").length;
+  const crmContratadosByAppt = apptsNaoReagendados.filter((a: any) => a.status === "contracted").length;
   const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
 
   // Conversão real: SOMENTE novos leads (não recorrentes) que viraram pagantes
