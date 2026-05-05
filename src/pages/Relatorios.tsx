@@ -35,7 +35,7 @@ const Relatorios = () => {
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
-  const [orcamentos, setOrcamentos] = useState<any[]>([]);
+  // orçamentos removido
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState(() => {
