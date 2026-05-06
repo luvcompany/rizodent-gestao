@@ -34,6 +34,30 @@ const toLocalDateStr = (d: Date) => {
   return `${y}-${m}-${day}`;
 };
 
+const CRM_LEADS_PAGE_SIZE = 1000;
+const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
+
+const fetchAllCrmLeads = async () => {
+  const rows: any[] = [];
+
+  for (let from = 0; ; from += CRM_LEADS_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("crm_leads")
+      .select(CRM_LEADS_SELECT)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + CRM_LEADS_PAGE_SIZE - 1);
+
+    if (error) throw error;
+    if (!data?.length) break;
+
+    rows.push(...data);
+    if (data.length < CRM_LEADS_PAGE_SIZE) break;
+  }
+
+  return rows;
+};
+
 const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
 
 
@@ -111,14 +135,14 @@ const Dashboard = () => {
 
   const fetchAll = async (showLoading = true) => {
     if (showLoading) setLoading(true);
-    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, { data: cLeads }, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
+    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
     supabase.from("clinicas").select("*").eq("ativa", true),
     supabase.from("pagamentos").select("*, clinicas(nome)").limit(50000),
     supabase.from("tratamentos").select("*, clinicas(nome)").limit(20000),
     supabase.from("pacientes").select("*").limit(20000),
     supabase.from("leads_diarios").select("*, clinicas(nome)").limit(20000),
     (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-    supabase.from("crm_leads").select("id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id").limit(10000),
+    fetchAllCrmLeads(),
     supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").limit(10000),
     supabase.from("crm_stages").select("id, name, pipeline_id"),
     supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
