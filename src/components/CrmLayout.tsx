@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
@@ -61,6 +61,7 @@ const CrmLayout = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
+  const unreadFetchSeq = useRef(0);
 
   const toggleGroup = (label: string) => {
     setExpandedGroups(prev => {
@@ -73,36 +74,29 @@ const CrmLayout = () => {
 
   useEffect(() => {
     const fetchUnread = async () => {
+      const seq = ++unreadFetchSeq.current;
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || seq !== unreadFetchSeq.current) return;
       const PAGE_SIZE = 1000;
-      // No outbound yet → unread
-      const { count: noReplyCount } = await supabase
-        .from("crm_leads")
-        .select("id", { count: "exact", head: true })
-        .eq("is_blocked", false)
-        .not("last_inbound_at", "is", null)
-        .is("last_outbound_at", null);
-      // Has outbound but inbound is newer → unread.
-      // PostgREST caps responses at 1000 rows, so page through all candidates.
-      let newerInboundCount = 0;
+      let unreadTotal = 0;
       for (let from = 0; ; from += PAGE_SIZE) {
-        const { data: bothData, error } = await supabase
+        const { data: unreadCandidates, error } = await supabase
           .from("crm_leads")
           .select("id, last_inbound_at, last_outbound_at")
           .eq("is_blocked", false)
           .not("last_inbound_at", "is", null)
-          .not("last_outbound_at", "is", null)
           .order("id", { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
 
-        if (error || !bothData?.length) break;
-        newerInboundCount += bothData.filter(
-          (l: any) => new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
+        if (seq !== unreadFetchSeq.current || error || !unreadCandidates?.length) break;
+        unreadTotal += unreadCandidates.filter(
+          (l: any) => !l.last_outbound_at || new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
         ).length;
-        if (bothData.length < PAGE_SIZE) break;
+        if (unreadCandidates.length < PAGE_SIZE) break;
       }
-      setUnreadCount((noReplyCount || 0) + newerInboundCount);
+      if (seq === unreadFetchSeq.current) {
+        setUnreadCount(unreadTotal);
+      }
     };
     fetchUnread();
     const ch = supabase.channel("unread-badge")
