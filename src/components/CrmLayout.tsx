@@ -53,6 +53,8 @@ const crmNavItems: SidebarEntry[] = [
   { to: "/crm/configuracoes", icon: Settings, label: "Configurações" },
 ];
 
+const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+
 const CrmLayout = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -84,6 +86,7 @@ const CrmLayout = () => {
           .from("crm_leads")
           .select("id, last_inbound_at, last_outbound_at")
           .eq("is_blocked", false)
+          .neq("pipeline_id", INSTAGRAM_PIPELINE_ID)
           .not("last_inbound_at", "is", null)
           .order("id", { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
