@@ -75,6 +75,7 @@ const CrmLayout = () => {
     const fetchUnread = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      const PAGE_SIZE = 1000;
       // No outbound yet → unread
       const { count: noReplyCount } = await supabase
         .from("crm_leads")
@@ -82,17 +83,25 @@ const CrmLayout = () => {
         .eq("is_blocked", false)
         .not("last_inbound_at", "is", null)
         .is("last_outbound_at", null);
-      // Has outbound but inbound is newer → unread (compare client-side)
-      const { data: bothData } = await supabase
-        .from("crm_leads")
-        .select("last_inbound_at, last_outbound_at")
-        .eq("is_blocked", false)
-        .not("last_inbound_at", "is", null)
-        .not("last_outbound_at", "is", null)
-        .limit(5000);
-      const newerInboundCount = (bothData || []).filter(
-        (l: any) => new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
-      ).length;
+      // Has outbound but inbound is newer → unread.
+      // PostgREST caps responses at 1000 rows, so page through all candidates.
+      let newerInboundCount = 0;
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: bothData, error } = await supabase
+          .from("crm_leads")
+          .select("id, last_inbound_at, last_outbound_at")
+          .eq("is_blocked", false)
+          .not("last_inbound_at", "is", null)
+          .not("last_outbound_at", "is", null)
+          .order("id", { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (error || !bothData?.length) break;
+        newerInboundCount += bothData.filter(
+          (l: any) => new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
+        ).length;
+        if (bothData.length < PAGE_SIZE) break;
+      }
       setUnreadCount((noReplyCount || 0) + newerInboundCount);
     };
     fetchUnread();
