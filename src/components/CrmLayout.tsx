@@ -75,16 +75,25 @@ const CrmLayout = () => {
     const fetchUnread = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase
+      // No outbound yet → unread
+      const { count: noReplyCount } = await supabase
+        .from("crm_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("is_blocked", false)
+        .not("last_inbound_at", "is", null)
+        .is("last_outbound_at", null);
+      // Has outbound but inbound is newer → unread (compare client-side)
+      const { data: bothData } = await supabase
         .from("crm_leads")
         .select("last_inbound_at, last_outbound_at")
+        .eq("is_blocked", false)
         .not("last_inbound_at", "is", null)
-        .or(`assigned_to.eq.${user.id},assigned_to.is.null`);
-      const count = (data || []).filter((l) => {
-        if (!l.last_outbound_at) return true;
-        return new Date(l.last_inbound_at!) > new Date(l.last_outbound_at);
-      }).length;
-      setUnreadCount(count);
+        .not("last_outbound_at", "is", null)
+        .limit(5000);
+      const newerInboundCount = (bothData || []).filter(
+        (l: any) => new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
+      ).length;
+      setUnreadCount((noReplyCount || 0) + newerInboundCount);
     };
     fetchUnread();
     const ch = supabase.channel("unread-badge")

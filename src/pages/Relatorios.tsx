@@ -358,7 +358,7 @@ const Relatorios = () => {
       .filter((i) => !!i.timestamp)
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
       .slice(0, 100);
-  }, [pagamentos, orcamentos, tratamentos, pacientes]);
+  }, [pagamentos, tratamentos, pacientes]);
 
   // ========== EXPORT HELPERS ==========
   const exportToExcel = (data: any[], filename: string) => {
