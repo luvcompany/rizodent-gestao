@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
@@ -61,6 +61,7 @@ const CrmLayout = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
+  const unreadFetchSeq = useRef(0);
 
   const toggleGroup = (label: string) => {
     setExpandedGroups(prev => {
@@ -73,8 +74,9 @@ const CrmLayout = () => {
 
   useEffect(() => {
     const fetchUnread = async () => {
+      const seq = ++unreadFetchSeq.current;
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user || seq !== unreadFetchSeq.current) return;
       const PAGE_SIZE = 1000;
       // No outbound yet → unread
       const { count: noReplyCount } = await supabase
@@ -102,7 +104,9 @@ const CrmLayout = () => {
         ).length;
         if (bothData.length < PAGE_SIZE) break;
       }
-      setUnreadCount((noReplyCount || 0) + newerInboundCount);
+      if (seq === unreadFetchSeq.current) {
+        setUnreadCount((noReplyCount || 0) + newerInboundCount);
+      }
     };
     fetchUnread();
     const ch = supabase.channel("unread-badge")
