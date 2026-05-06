@@ -75,35 +75,25 @@ const CrmLayout = () => {
     const fetchUnread = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      // Count leads with no outbound reply yet
+      // No outbound yet → unread
       const { count: noReplyCount } = await supabase
         .from("crm_leads")
         .select("id", { count: "exact", head: true })
         .eq("is_blocked", false)
         .not("last_inbound_at", "is", null)
         .is("last_outbound_at", null);
-      // Count leads where last inbound is more recent than last outbound
-      const { count: newerInboundCount } = await supabase
+      // Has outbound but inbound is newer → unread (compare client-side)
+      const { data: bothData } = await supabase
         .from("crm_leads")
-        .select("id", { count: "exact", head: true })
+        .select("last_inbound_at, last_outbound_at")
         .eq("is_blocked", false)
         .not("last_inbound_at", "is", null)
         .not("last_outbound_at", "is", null)
-        .filter("last_inbound_at", "gt", "last_outbound_at");
-      // Fallback: the .filter gt column-vs-column may not work; use RPC-less approach by fetching ids
-      let total = (noReplyCount || 0) + (newerInboundCount || 0);
-      if (newerInboundCount === null) {
-        const { data } = await supabase
-          .from("crm_leads")
-          .select("last_inbound_at, last_outbound_at")
-          .eq("is_blocked", false)
-          .not("last_inbound_at", "is", null)
-          .not("last_outbound_at", "is", null)
-          .limit(5000);
-        const c = (data || []).filter((l: any) => new Date(l.last_inbound_at) > new Date(l.last_outbound_at)).length;
-        total = (noReplyCount || 0) + c;
-      }
-      setUnreadCount(total);
+        .limit(5000);
+      const newerInboundCount = (bothData || []).filter(
+        (l: any) => new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
+      ).length;
+      setUnreadCount((noReplyCount || 0) + newerInboundCount);
     };
     fetchUnread();
     const ch = supabase.channel("unread-badge")
