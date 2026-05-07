@@ -358,32 +358,24 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       .channel("conv-leads-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, (payload) => {
         if (payload.eventType === "INSERT") {
-          const newLead = payload.new as LeadConversation;
+          const newLead = normalizeLead(payload.new as LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null });
           if ((newLead as any).is_blocked) return;
           setLeads((prev) => {
             if (prev.some((l) => l.id === newLead.id)) return prev;
-            return [newLead, ...prev];
+            return sortLeadsByLastActivity([newLead, ...prev]);
           });
         } else if (payload.eventType === "UPDATE") {
-          const updated = payload.new as any;
+          const updated = normalizeLead(payload.new as LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) as any;
           if (updated.is_blocked) {
             setLeads((prev) => prev.filter((l) => l.id !== updated.id));
             return;
           }
-          if (updated.last_inbound_at && updated.last_outbound_at) {
-            updated.last_direction = new Date(updated.last_inbound_at) > new Date(updated.last_outbound_at) ? "inbound" : "outbound";
-          } else if (updated.last_inbound_at) {
-            updated.last_direction = "inbound";
-          } else if (updated.last_outbound_at) {
-            updated.last_direction = "outbound";
-          }
           setLeads((prev) => {
-            const newList = prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l);
-            return newList.sort((a, b) => {
-              if (!a.last_message_at) return 1;
-              if (!b.last_message_at) return -1;
-              return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
-            });
+            const exists = prev.some((l) => l.id === updated.id);
+            const newList = exists
+              ? prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l)
+              : [updated, ...prev];
+            return sortLeadsByLastActivity(newList);
           });
           if (updated.id === selectedLeadId) {
             setSelectedLead((prev) => prev ? { ...prev, ...updated } : prev);
