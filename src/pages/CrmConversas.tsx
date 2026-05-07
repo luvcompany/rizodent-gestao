@@ -92,6 +92,47 @@ const SidePanelFallback = () => (
   </div>
 );
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+const CONVERSATION_PAGE_SIZE = 1000;
+const LEAD_SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
+
+const getLastDirection = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => {
+  if (lead.last_inbound_at && lead.last_outbound_at) {
+    return new Date(lead.last_inbound_at) > new Date(lead.last_outbound_at) ? "inbound" : "outbound";
+  }
+  if (lead.last_inbound_at) return "inbound";
+  if (lead.last_outbound_at) return "outbound";
+  return undefined;
+};
+
+const normalizeLead = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => ({
+  ...lead,
+  last_direction: getLastDirection(lead),
+});
+
+const sortLeadsByLastActivity = (items: LeadConversation[]) =>
+  [...items].sort((a, b) => {
+    const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : new Date(a.created_at).getTime();
+    const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : new Date(b.created_at).getTime();
+    return bTime - aTime;
+  });
+
+const fetchAllConversationLeads = async () => {
+  const all: LeadConversation[] = [];
+  for (let from = 0; ; from += CONVERSATION_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("crm_leads")
+      .select(LEAD_SELECT_COLS)
+      .eq("is_blocked", false)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .range(from, from + CONVERSATION_PAGE_SIZE - 1);
+
+    if (error) throw error;
+    const page = ((data || []) as any as LeadConversation[]).map(normalizeLead);
+    all.push(...page);
+    if (page.length < CONVERSATION_PAGE_SIZE) break;
+  }
+  return sortLeadsByLastActivity(all);
+};
 
 interface ConversationsViewProps {
   pipelineFilter?: string;          // include only this pipeline
@@ -192,19 +233,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   // Fetch leads list with global cache
   useEffect(() => {
-    const processLeads = (rawLeads: (LeadConversation & { last_inbound_at?: string; last_outbound_at?: string })[]) => {
-      rawLeads.forEach((l) => {
-        if (l.last_inbound_at && l.last_outbound_at) {
-          l.last_direction = new Date(l.last_inbound_at) > new Date(l.last_outbound_at) ? "inbound" : "outbound";
-        } else if (l.last_inbound_at) {
-          l.last_direction = "inbound";
-        } else if (l.last_outbound_at) {
-          l.last_direction = "outbound";
-        }
-      });
-      return rawLeads;
-    };
-
     // If cache is fresh, skip network fetch entirely
     if (leadsListCache.leads && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL) {
       setLeads(leadsListCache.leads);
@@ -213,16 +241,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setLoading(false);
       // Still refresh in background
       (async () => {
-        const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
-          supabase.from("crm_leads")
-          .select("id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url")
-            .eq("is_blocked", false)
-            .order("last_message_at", { ascending: false, nullsFirst: false })
-            .limit(500),
+        const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
+          fetchAllConversationLeads(),
           supabase.from("profiles").select("id, nome"),
           supabase.from("crm_pipelines").select("id, name").order("created_at"),
         ]);
-        const rawLeads = processLeads((leadsRes.data || []) as any);
         const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
         const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
         leadsListCache.leads = rawLeads;
@@ -237,16 +260,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     }
 
     const fetchLeads = async () => {
-      const [leadsRes, profilesRes, pipelinesRes] = await Promise.all([
-        supabase.from("crm_leads")
-          .select("id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url")
-          .eq("is_blocked", false)
-          .order("last_message_at", { ascending: false, nullsFirst: false })
-          .limit(500),
+      const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
+        fetchAllConversationLeads(),
         supabase.from("profiles").select("id, nome"),
         supabase.from("crm_pipelines").select("id, name").order("created_at"),
       ]);
-      const rawLeads = processLeads((leadsRes.data || []) as any);
       const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
       const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
 
@@ -270,8 +288,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     if (term.length < 2) return;
     const handle = setTimeout(async () => {
       const digits = term.replace(/\D/g, "");
-      const SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
-
       // Build OR filter: match by name (case-insensitive) and phone variants (handles BR 9th digit + country code)
       const orParts: string[] = [];
       if (term.length >= 2) orParts.push(`name.ilike.%${term}%`);
@@ -289,7 +305,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       const { data, error } = await supabase
         .from("crm_leads")
-        .select(SELECT_COLS)
+        .select(LEAD_SELECT_COLS)
         .eq("is_blocked", false)
         .or(orParts.join(","))
         .limit(50);
@@ -297,9 +313,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       setLeads((prev) => {
         const existingIds = new Set(prev.map((l) => l.id));
-        const additions = (data as any as LeadConversation[]).filter((l) => !existingIds.has(l.id));
+        const additions = (data as any as LeadConversation[]).map(normalizeLead).filter((l) => !existingIds.has(l.id));
         if (!additions.length) return prev;
-        return [...prev, ...additions];
+        return sortLeadsByLastActivity([...prev, ...additions]);
       });
     }, 350);
     return () => clearTimeout(handle);
@@ -342,32 +358,24 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       .channel("conv-leads-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, (payload) => {
         if (payload.eventType === "INSERT") {
-          const newLead = payload.new as LeadConversation;
+          const newLead = normalizeLead(payload.new as LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null });
           if ((newLead as any).is_blocked) return;
           setLeads((prev) => {
             if (prev.some((l) => l.id === newLead.id)) return prev;
-            return [newLead, ...prev];
+            return sortLeadsByLastActivity([newLead, ...prev]);
           });
         } else if (payload.eventType === "UPDATE") {
-          const updated = payload.new as any;
+          const updated = normalizeLead(payload.new as LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) as any;
           if (updated.is_blocked) {
             setLeads((prev) => prev.filter((l) => l.id !== updated.id));
             return;
           }
-          if (updated.last_inbound_at && updated.last_outbound_at) {
-            updated.last_direction = new Date(updated.last_inbound_at) > new Date(updated.last_outbound_at) ? "inbound" : "outbound";
-          } else if (updated.last_inbound_at) {
-            updated.last_direction = "inbound";
-          } else if (updated.last_outbound_at) {
-            updated.last_direction = "outbound";
-          }
           setLeads((prev) => {
-            const newList = prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l);
-            return newList.sort((a, b) => {
-              if (!a.last_message_at) return 1;
-              if (!b.last_message_at) return -1;
-              return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
-            });
+            const exists = prev.some((l) => l.id === updated.id);
+            const newList = exists
+              ? prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l)
+              : [updated, ...prev];
+            return sortLeadsByLastActivity(newList);
           });
           if (updated.id === selectedLeadId) {
             setSelectedLead((prev) => prev ? { ...prev, ...updated } : prev);

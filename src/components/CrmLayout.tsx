@@ -143,7 +143,7 @@ const CrmLayout = () => {
       {item.label}
       {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
         <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
-          {unreadCount > 99 ? "99+" : unreadCount}
+          {unreadCount > 999 ? "999+" : unreadCount}
         </span>
       )}
       {"badgeKey" in item && item.badgeKey === "tasks" && todayTaskCount > 0 && (
