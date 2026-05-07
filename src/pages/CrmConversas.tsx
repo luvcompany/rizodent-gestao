@@ -288,8 +288,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     if (term.length < 2) return;
     const handle = setTimeout(async () => {
       const digits = term.replace(/\D/g, "");
-      const SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
-
       // Build OR filter: match by name (case-insensitive) and phone variants (handles BR 9th digit + country code)
       const orParts: string[] = [];
       if (term.length >= 2) orParts.push(`name.ilike.%${term}%`);
@@ -307,7 +305,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       const { data, error } = await supabase
         .from("crm_leads")
-        .select(SELECT_COLS)
+        .select(LEAD_SELECT_COLS)
         .eq("is_blocked", false)
         .or(orParts.join(","))
         .limit(50);
@@ -315,9 +313,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       setLeads((prev) => {
         const existingIds = new Set(prev.map((l) => l.id));
-        const additions = (data as any as LeadConversation[]).filter((l) => !existingIds.has(l.id));
+        const additions = (data as any as LeadConversation[]).map(normalizeLead).filter((l) => !existingIds.has(l.id));
         if (!additions.length) return prev;
-        return [...prev, ...additions];
+        return sortLeadsByLastActivity([...prev, ...additions]);
       });
     }, 350);
     return () => clearTimeout(handle);
