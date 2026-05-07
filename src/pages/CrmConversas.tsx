@@ -92,6 +92,47 @@ const SidePanelFallback = () => (
   </div>
 );
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+const CONVERSATION_PAGE_SIZE = 1000;
+const LEAD_SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
+
+const getLastDirection = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => {
+  if (lead.last_inbound_at && lead.last_outbound_at) {
+    return new Date(lead.last_inbound_at) > new Date(lead.last_outbound_at) ? "inbound" : "outbound";
+  }
+  if (lead.last_inbound_at) return "inbound";
+  if (lead.last_outbound_at) return "outbound";
+  return undefined;
+};
+
+const normalizeLead = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => ({
+  ...lead,
+  last_direction: getLastDirection(lead),
+});
+
+const sortLeadsByLastActivity = (items: LeadConversation[]) =>
+  [...items].sort((a, b) => {
+    const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : new Date(a.created_at).getTime();
+    const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : new Date(b.created_at).getTime();
+    return bTime - aTime;
+  });
+
+const fetchAllConversationLeads = async () => {
+  const all: LeadConversation[] = [];
+  for (let from = 0; ; from += CONVERSATION_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("crm_leads")
+      .select(LEAD_SELECT_COLS)
+      .eq("is_blocked", false)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .range(from, from + CONVERSATION_PAGE_SIZE - 1);
+
+    if (error) throw error;
+    const page = ((data || []) as any as LeadConversation[]).map(normalizeLead);
+    all.push(...page);
+    if (page.length < CONVERSATION_PAGE_SIZE) break;
+  }
+  return sortLeadsByLastActivity(all);
+};
 
 interface ConversationsViewProps {
   pipelineFilter?: string;          // include only this pipeline
