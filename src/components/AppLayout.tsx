@@ -128,7 +128,7 @@ const AppLayout = () => {
             <Menu size={22} />
           </button>
           <div className="ml-auto text-sm text-muted-foreground">
-            RizoDent — Sistema de Gestão
+            {tenant.name} — Sistema de Gestão
           </div>
         </header>
 
