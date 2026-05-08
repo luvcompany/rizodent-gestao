@@ -82,7 +82,8 @@ const CrclinLanding = () => {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.15),transparent_50%)]" />
         <div className="relative mx-auto max-w-7xl px-6 py-20 lg:py-28">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-4 py-1.5 text-xs font-medium text-blue-300">
+            <img src={crclinBrand} alt="CRClin — CRM completo para clínicas" className="mx-auto mb-8 w-full max-w-md rounded-2xl shadow-2xl shadow-blue-500/20" />
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-300">
               <Sparkles size={14} /> CRM completo para quem vive de agendamento
             </div>
             <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
