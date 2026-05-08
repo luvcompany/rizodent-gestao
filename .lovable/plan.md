@@ -1,100 +1,93 @@
-## Diagnóstico
 
-Auditei `src/pages/CrmRelatorios.tsx` (Visão Geral + Ações por Dia + Antecedência) e `src/components/relatorios/OrigemConversaoTab.tsx`. Os "números menores que o real" têm 3 causas reais, todas reproduzíveis em qualquer funil/período:
+# Plano: CRClin White-Label
 
-### 🔴 Causa #1 — Limite de 1000 do Supabase em quase todas as queries
-
-Na **Visão Geral** (`CrmRelatorios.tsx`):
-
-- **L107** `crm_leads` é buscado **sem paginação** → no funil Principal (que tem milhares de leads), só carrega os primeiros 1000. Como `cohort = leads.filter(inRange)`, se os 1000 mais recentes não cobrem o período, faltam leads no funil, na agenda, em cidades, em fantasmas, em tempo até contratação — em tudo.
-- **L120-121** `crm_lead_stage_history` e `crm_appointments` rodam em chunks de 500 leads, mas dentro de cada chunk não tem paginação interna. Um chunk de 500 leads facilmente gera >1000 linhas de histórico → entradas em etapas perdidas.
-- **L126** `messages` idem — sem paginação interna por chunk.
-
-Em **OrigemConversaoTab** o `messages` já tem paginação interna por chunk, mas `crm_appointments` e `pagamentos` ainda usam `.in()` sem range.
-
-### 🟠 Causa #2 — `lastStage` é "última posição", não "Contratado"
-
-**L152** `lastStage = stages[stages.length - 1]`. Se o funil tem etapas pós-contratação (ex.: "Pós-venda", "Arquivo", "Desqualificado"), o relatório **Tempo até Contratação** mede até a etapa errada e mostra `count: 0` em quase todos os períodos. Deveria detectar a etapa "Contratado" via `isContratStage`.
-
-### 🟠 Causa #3 — Agenda só olha etapa atual, ignora histórico
-
-**L164-177** classifica `compareceram/remarcaram/faltaram` apenas pela `stage_id` **atual** do lead. Lead que passou por "Compareceu" e foi para "Contratado" cai apenas em compareceram (OK pela regex), mas:
-- Lead que passou por "Reagendado" e voltou para "Agendado" não conta como remarcou.
-- Lead que faltou e foi movido para "Recuperação" some da contagem de faltaram.
-
-O correto é cruzar com `crm_lead_stage_history` (entradas no período) para contar quem **já passou** por cada etapa.
-
-### 🟡 Outros pontos menores
-
-- **L149** `cohort = leads.filter(inRange(created_at))` — depois de truncar em 1000. Filtrar por `created_at` no servidor reduz o universo e elimina o problema do limite.
-- **L329** `fantasmas` exige `first_inbound_at === last_inbound_at` (string compare) — frágil; melhor comparar timestamps.
-- **OrigemConversaoTab L139** `funnel.scheduled = leadIdsWithAppt.size` (leads com agendamento), enquanto a label diz "agendados". OK semanticamente, só confirmar.
+Transforma o sistema atual (hoje dedicado à Rizodent) em uma plataforma SaaS white-label chamada **CRClin**, mantendo a Rizodent como o primeiro cliente (tenant #1). A entrega é dividida em 4 fases para reduzir risco — multi-tenant em banco de dados é uma mudança grande e precisa ser feita com cuidado.
 
 ---
 
-## Correções
+## Fase 1 — Landing page pública de vendas (rápida, sem risco)
 
-### 1. `src/pages/CrmRelatorios.tsx`
+Nova rota pública `/crclin` (e também acessível via `crclin.com.br` quando o domínio for conectado), totalmente separada do app atual.
 
-**a) Helper de paginação universal** (no topo do arquivo):
-```ts
-async function fetchAllPages<T>(query: (from: number, to: number) => Promise<{ data: T[] | null }>): Promise<T[]> {
-  const PAGE = 1000; const out: T[] = []; let from = 0;
-  while (true) {
-    const { data } = await query(from, from + PAGE - 1);
-    if (!data || data.length === 0) break;
-    out.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return out;
-}
-```
+**Conteúdo da landing:**
+- Hero: "CRClin — CRM completo para clínicas e empresas que vivem de agendamento"
+- Seções: Benefícios, Funcionalidades (Kanban, WhatsApp, Bots, Agenda, Relatórios, Pagamentos), Para quem é, Depoimentos (placeholder), FAQ
+- CTA principal e botão flutuante: **"Falar no WhatsApp"** → `https://wa.me/5577981223133?text=Quero%20conhecer%20o%20CRClin`
+- SEO: title, meta description, Open Graph, JSON-LD de Organization
+- Identidade visual neutra (não usa o laranja Rizodent) — paleta a definir; sugiro azul/grafite para diferenciar
 
-**b) `crm_leads` filtrado por período E paginado** (L107). Carrega leads com `created_at` no range OU com atividade no range (`last_inbound_at`/`last_outbound_at` no range), para que os blocos "inativos", "tempo de resposta" continuem corretos com leads antigos relevantes. Estratégia mais simples e segura: duas queries paginadas (cohort do período + leads com qualquer atividade no período) e merge por id.
-
-**c) Paginação interna nos chunks** (L117-132): para cada chunk de 500 leads, paginar `crm_lead_stage_history`, `crm_appointments` e `messages` com `range()` até esgotar.
-
-**d) `lastStage` correto** (L152):
-```ts
-const contratStage = useMemo(() => stages.find(s => isContratStage(s.name)) ?? stages[stages.length - 1], [stages]);
-```
-Usar `contratStage` em `tempoContratacao` e na descrição "até chegar em **{nome}**".
-
-**e) Agenda baseada em histórico** (L164): em vez de ler `stage_id` atual, montar `Set<lead_id>` para cada categoria a partir de `history` filtrado pelo período (`entered_at` no range), olhando o nome da `stage_id` correspondente. Mantém compatibilidade com leads que já avançaram.
-
-**f) `fantasmas`**: comparar timestamps (`Date(...).getTime()`).
-
-### 2. `src/components/relatorios/OrigemConversaoTab.tsx`
-
-- Substituir o loop `crm_leads` (já tem paginação) por chamada ao mesmo helper.
-- Adicionar paginação interna em `crm_appointments` e `pagamentos` por chunk.
-
-### 3. Sub-aba "Ações por Dia" (`AcoesPorDiaTab`)
-
-Já tem paginação correta — auditar só se o `leadIds` coletado mas nunca usado deve realmente sumir (já é morto). Remover o bloco morto para clareza.
-
-### 4. Sub-aba "Antecedência" (`distribAgendamento`)
-
-Depende do `appointments` carregado na Visão Geral — já corrigido pelo item 1c.
+**O que NÃO muda:** rota `/`, login da Rizodent e todo o sistema atual continuam exatamente como estão.
 
 ---
 
-## Validação
+## Fase 2 — Painel Super-Admin (você como dono da plataforma)
 
-Após o fix, vou rodar SQL de sanidade comparando:
+Nova área `/admin` protegida por uma nova role `superadmin` (apenas você). Permite operar o negócio antes mesmo do isolamento total de dados estar pronto.
 
-- `SELECT count(*) FROM crm_leads WHERE pipeline_id=X AND created_at BETWEEN ...` vs número da coorte na tela.
-- `SELECT count(*) FROM crm_appointments WHERE lead_id IN (...) AND created_at BETWEEN ...` vs total de agendamentos por cidade.
-- `SELECT lead_id, stage_id, name FROM crm_lead_stage_history JOIN crm_stages WHERE entered_at BETWEEN ... AND name ILIKE '%compar%'` vs "Compareceram".
+**Tabelas novas:**
+- `tenants` — id, slug (subdomínio), nome, logo_url, cor primária, status (ativo/suspenso/trial), plano_id, created_at, trial_ends_at
+- `plans` — id, nome, preço mensal, limite de usuários, limite de leads, limite de mensagens WhatsApp/mês, recursos habilitados (jsonb)
+- `tenant_subscriptions` — tenant_id, plano_id, status (ativa/atrasada/cancelada), data início, próxima cobrança, valor
+- `tenant_usage` — tenant_id, mês, leads_criados, mensagens_enviadas, usuários_ativos (atualizada por trigger/cron)
+- `tenant_invoices` — tenant_id, mês de referência, valor, status (paga/aberta/atrasada), data pagamento, comprovante_url
 
-Relatório com os deltas antes/depois no chat.
+**Telas do painel super-admin:**
+1. **Clientes** — lista de tenants com status, plano, MRR, último login, uso vs. limite. Ações: criar, editar, suspender, reativar, excluir
+2. **Criar cliente** — wizard: dados da clínica + slug (subdomínio) + upload da logo + escolher plano + criar primeiro usuário admin (email + senha gerada) → mostra link final `https://{slug}.crclin.com.br` para enviar
+3. **Planos** — CRUD de planos e limites
+4. **Métricas** — uso por cliente (leads, mensagens, storage), gráficos, alertas de quem passou do limite
+5. **Cobrança** — faturas em aberto, marcar como paga manualmente, gerar próxima fatura, histórico
+
+Logo do tenant: bucket `tenant-logos` (público) com RLS adequado.
 
 ---
 
-## Escopo NÃO incluído
+## Fase 3 — Multi-tenant no banco (Rizodent vira tenant #1)
 
-- Mudanças visuais / novos KPIs.
-- Reescrita do "Origem & Conversão" (apenas paginação).
-- Aba "Ações por Dia" — só remoção de código morto, sem mudar cálculo.
-- Página `Relatorios.tsx` (clínica) — não foi mencionada como problemática; posso incluir se quiser.
+A mudança mais delicada. Feita em uma migração planejada, **fora do horário de uso**.
+
+**Passos:**
+1. Criar tenant `Rizodent` na tabela `tenants` com slug `rizodent`
+2. Adicionar coluna `tenant_id uuid` em **todas** as ~40 tabelas de negócio (`crm_leads`, `crm_pipelines`, `crm_stages`, `crm_tasks`, `messages`, `pacientes`, `clinicas`, `bots`, etc.) com default = id da Rizodent
+3. Adicionar `tenant_id` em `profiles` e `user_roles` (cada usuário pertence a 1 tenant; superadmin = sem tenant)
+4. Backfill: setar tenant_id da Rizodent em todas as linhas existentes
+5. Tornar `tenant_id NOT NULL` em todas as tabelas
+6. Reescrever **todas as RLS policies** para incluir `tenant_id = current_tenant_id()`, onde `current_tenant_id()` é uma função `SECURITY DEFINER` que lê o tenant do `profiles` do `auth.uid()` (evita recursão)
+7. Função `has_role` passa a considerar role dentro do tenant
+8. No frontend, criar `TenantContext` que carrega o tenant do usuário logado e injeta a logo/cor no `AppLayout` e `Login`
+9. Edge functions (webhooks WhatsApp/Instagram, bot-engine, followup-engine, automation-engine, etc.) precisam ser revisadas para resolver e propagar o `tenant_id` correto a cada operação
+
+---
+
+## Fase 4 — Acesso por subdomínio
+
+**Pré-requisito de infraestrutura:** comprar `crclin.com.br`, configurar wildcard DNS `*.crclin.com.br` apontando para a Lovable e conectar como domínio custom (Lovable suporta subdomínios, mas wildcard exige modo proxy/Cloudflare; documentar passo a passo).
+
+**Comportamento:**
+- `crclin.com.br` → landing pública (Fase 1)
+- `admin.crclin.com.br` → painel super-admin
+- `{slug}.crclin.com.br` → login + sistema do tenant; logo, cor, nome lidos de `tenants` pelo slug; sessão isolada
+- Rizodent migra de `rizodent-gestao.lovable.app` para `rizodent.crclin.com.br` (domínio antigo pode redirecionar)
+
+Frontend lê `window.location.hostname`, extrai o slug e carrega o branding **antes** de mostrar a tela de login (evita flash de marca errada).
+
+---
+
+## Detalhes técnicos relevantes
+
+- **Senhas iniciais:** ao criar cliente, super-admin define senha temporária; usuário troca no primeiro login (forçar `must_change_password`)
+- **Limites de uso:** validados em edge functions (ex: `send-whatsapp-message` checa cota antes de enviar) e em triggers de insert (ex: bloqueia novo lead acima do limite)
+- **Isolamento de Storage:** buckets `chat-media` e `avatars` passam a usar prefixo `tenant_id/...` no path; policies validam o prefixo
+- **Cobrança manual agora**, com estrutura pronta para integrar Stripe/Asaas em fase futura — sem implementar checkout nesta entrega
+- **Memória atualizada** ao final: nova entrada `mem://tenant/architecture` documentando o modelo
+
+---
+
+## Ordem de execução sugerida
+
+1. **Fase 1** (landing) — entrega imediata, você já pode começar a vender
+2. **Fase 2** (painel super-admin com tabelas, mas ainda sem isolar dados) — você cadastra leads/clientes interessados
+3. **Fase 3** (multi-tenant no banco) — janela de manutenção planejada
+4. **Fase 4** (subdomínios) — depois do domínio comprado e DNS pronto
+
+Confirma essa ordem? Se sim, começo pela **Fase 1** (landing `/crclin` + botão WhatsApp).
