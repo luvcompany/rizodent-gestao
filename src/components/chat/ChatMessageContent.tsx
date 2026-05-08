@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { Mic, File as FileIcon, Image } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
+import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
 
 type ChatMessage = {
+  id?: string;
   lead_id?: string;
   type: string;
   content: string | null;
   media_url: string | null;
+  transcription?: string | null;
 };
 
 type TemplateData = {
@@ -294,7 +297,12 @@ export default function ChatMessageContent({
 
   if (message.type === "audio") {
     if (hasResolvedMedia) {
-      return <AudioPlayer src={resolvedUrl!} />;
+      return (
+        <div>
+          <AudioPlayer src={resolvedUrl!} />
+          <AudioTranscriptionToggle messageId={message.id} initialTranscription={message.transcription} />
+        </div>
+      );
     }
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">

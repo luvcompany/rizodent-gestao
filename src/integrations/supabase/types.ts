@@ -1701,6 +1701,7 @@ export type Database = {
           reply_to_message_id: string | null
           sender_id: string | null
           status: string
+          transcription: string | null
           type: string
           whatsapp_message_id: string | null
         }
@@ -1727,6 +1728,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string
+          transcription?: string | null
           type?: string
           whatsapp_message_id?: string | null
         }
@@ -1753,6 +1755,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string
+          transcription?: string | null
           type?: string
           whatsapp_message_id?: string | null
         }

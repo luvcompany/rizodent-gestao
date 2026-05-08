@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from("messages")
-        .select("direction, type, content, created_at, channel, status")
+        .select("direction, type, content, transcription, created_at, channel, status")
         .eq("lead_id", leadId)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
@@ -95,7 +95,12 @@ Deno.serve(async (req) => {
     const transcript = allMsgs
       .map((m) => {
         const who = m.direction === "inbound" ? "PACIENTE" : "ATENDENTE";
-        const txt = (m.content || `[${m.type}]`).replace(/\s+/g, " ").trim();
+        let txt: string;
+        if (m.type === "audio") {
+          txt = m.transcription ? `[áudio transcrito] ${m.transcription}` : "[áudio não transcrito]";
+        } else {
+          txt = (m.content || `[${m.type}]`).replace(/\s+/g, " ").trim();
+        }
         const dt = new Date(m.created_at).toLocaleString("pt-BR");
         return `[${dt}] ${who}: ${txt}`;
       })
