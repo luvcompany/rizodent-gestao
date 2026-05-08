@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Mic, File as FileIcon, Image } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
+import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
 
