@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from("messages")
-        .select("direction, type, content, created_at, channel, status")
+        .select("direction, type, content, transcription, created_at, channel, status")
         .eq("lead_id", leadId)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
