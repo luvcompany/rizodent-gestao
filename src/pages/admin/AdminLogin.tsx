@@ -7,6 +7,7 @@ import { Eye, EyeOff, Shield } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import crclinIcon from "@/assets/crclin-icon.png";
 
 const AdminLogin = () => {
   const navigate = useNavigate();
