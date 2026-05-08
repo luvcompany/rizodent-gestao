@@ -78,7 +78,7 @@ export default function CrmCampanhas() {
     }
     setOpen(false); setForm({ name: "", template_id: "", pipeline_id: "", stage_id: "" }); setPreviewCount(null);
     load();
-    toast.success(`Campanha criada com ${leads?.length || 0} destinatários`);
+    toast.success(`Campanha criada com ${leads.length} destinatários`);
   };
 
   const send = async (id: string) => {
