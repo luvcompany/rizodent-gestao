@@ -297,7 +297,12 @@ export default function ChatMessageContent({
 
   if (message.type === "audio") {
     if (hasResolvedMedia) {
-      return <AudioPlayer src={resolvedUrl!} />;
+      return (
+        <div>
+          <AudioPlayer src={resolvedUrl!} />
+          <AudioTranscriptionToggle messageId={message.id} initialTranscription={message.transcription} />
+        </div>
+      );
     }
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
