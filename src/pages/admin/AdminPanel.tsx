@@ -49,7 +49,7 @@ export const AdminLayout = () => {
             </NavLink>
           ))}
         </nav>
-        <button onClick={async () => { await signOut(); navigate("/"); }}
+        <button onClick={async () => { await signOut(); navigate("/admin/login"); }}
           className="mt-8 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/60">
           <LogOut size={16} /> Sair
         </button>
