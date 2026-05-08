@@ -50,6 +50,22 @@ function fmtDuration(ms: number): string {
   return `${d}d ${h % 24}h`;
 }
 
+async function fetchAllPages<T>(
+  build: (from: number, to: number) => any
+): Promise<T[]> {
+  const PAGE = 1000;
+  const out: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await build(from, from + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    out.push(...(data as T[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return out;
+}
+
 function median(arr: number[]): number {
   if (!arr.length) return 0;
   const s = [...arr].sort((a, b) => a - b);
@@ -100,12 +116,52 @@ export default function CrmRelatorios() {
     const endISO = range?.end.toISOString();
 
     (async () => {
-      const stagesRes = await supabase.from("crm_stages").select("id, name, color, position, pipeline_id").eq("pipeline_id", pipelineId).order("position");
+      const stagesRes = await supabase
+        .from("crm_stages")
+        .select("id, name, color, position, pipeline_id")
+        .eq("pipeline_id", pipelineId)
+        .order("position");
       const stagesList = (stagesRes.data || []) as Stage[];
       setStages(stagesList);
 
-      const leadsRes = await supabase.from("crm_leads").select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at").eq("pipeline_id", pipelineId);
-      const leadsAll = (leadsRes.data || []) as Lead[];
+      // Carrega leads em duas frentes (paginadas, sem perder por limite de 1000):
+      // 1) Coorte: criados no período  2) Atividade: leads com inbound/outbound no período
+      // Necessário para "tempo de resposta", "inativos" e "fantasmas" funcionarem com leads antigos.
+      const cohortLeads = startISO && endISO
+        ? await fetchAllPages<Lead>((f, t) =>
+            supabase
+              .from("crm_leads")
+              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .eq("pipeline_id", pipelineId)
+              .gte("created_at", startISO)
+              .lte("created_at", endISO)
+              .order("created_at")
+              .range(f, t)
+          )
+        : await fetchAllPages<Lead>((f, t) =>
+            supabase
+              .from("crm_leads")
+              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .eq("pipeline_id", pipelineId)
+              .order("created_at")
+              .range(f, t)
+          );
+
+      const activityInbound = startISO && endISO
+        ? await fetchAllPages<Lead>((f, t) =>
+            supabase
+              .from("crm_leads")
+              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .eq("pipeline_id", pipelineId)
+              .gte("last_inbound_at", startISO)
+              .lte("last_inbound_at", endISO)
+              .range(f, t)
+          )
+        : [];
+
+      const merged = new Map<string, Lead>();
+      [...cohortLeads, ...activityInbound].forEach(l => merged.set(l.id, l));
+      const leadsAll = Array.from(merged.values());
       setLeads(leadsAll);
 
       const leadIds = leadsAll.map(l => l.id);
@@ -114,21 +170,41 @@ export default function CrmRelatorios() {
       let apptRows: Appointment[] = [];
       let msgRows: Msg[] = [];
 
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const msgsLowerISO = startISO && new Date(startISO) < todayStart ? startISO : todayStart.toISOString();
+
       for (let i = 0; i < leadIds.length; i += 500) {
         const chunk = leadIds.slice(i, i + 500);
-        const [h, a, m] = await Promise.all([
-          supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").in("lead_id", chunk),
-          supabase.from("crm_appointments").select("id, lead_id, created_at, scheduled_date, status").in("lead_id", chunk),
-          (() => {
-            // Sempre inclui o dia de hoje para o bloco "Ações do Dia"
-            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-            const lower = startISO && new Date(startISO) < todayStart ? startISO : todayStart.toISOString();
-            return supabase.from("messages").select("id, lead_id, direction, created_at").in("lead_id", chunk).gte("created_at", lower).order("created_at");
-          })(),
+        const [hist, appt, msgs] = await Promise.all([
+          fetchAllPages<StageHistory>((f, t) =>
+            supabase
+              .from("crm_lead_stage_history")
+              .select("lead_id, stage_id, entered_at")
+              .in("lead_id", chunk)
+              .order("entered_at")
+              .range(f, t)
+          ),
+          fetchAllPages<Appointment>((f, t) =>
+            supabase
+              .from("crm_appointments")
+              .select("id, lead_id, created_at, scheduled_date, status")
+              .in("lead_id", chunk)
+              .order("created_at")
+              .range(f, t)
+          ),
+          fetchAllPages<Msg>((f, t) =>
+            supabase
+              .from("messages")
+              .select("id, lead_id, direction, created_at")
+              .in("lead_id", chunk)
+              .gte("created_at", msgsLowerISO)
+              .order("created_at")
+              .range(f, t)
+          ),
         ]);
-        if (h.data) histRows = histRows.concat(h.data as StageHistory[]);
-        if (a.data) apptRows = apptRows.concat(a.data as Appointment[]);
-        if (m.data) msgRows = msgRows.concat(m.data as Msg[]);
+        histRows = histRows.concat(hist);
+        apptRows = apptRows.concat(appt);
+        msgRows = msgRows.concat(msgs);
       }
 
       setHistory(histRows);
@@ -149,7 +225,12 @@ export default function CrmRelatorios() {
   const cohort = useMemo(() => leads.filter(l => inRange(l.created_at)), [leads, range]);
   const cohortIds = useMemo(() => new Set(cohort.map(l => l.id)), [cohort]);
   const stageById = useMemo(() => new Map(stages.map(s => [s.id, s])), [stages]);
-  const lastStage = useMemo(() => stages.length ? stages[stages.length - 1] : null, [stages]);
+  // Etapa "Contratado" detectada pelo nome (não simplesmente a última posição)
+  const contratStage = useMemo(
+    () => stages.find(s => isContratStage(s.name)) ?? (stages.length ? stages[stages.length - 1] : null),
+    [stages]
+  );
+  const lastStage = contratStage;
 
   // 1. Funil visual
   const funnelData = useMemo(() => {
@@ -160,25 +241,48 @@ export default function CrmRelatorios() {
     }));
   }, [stages, cohort]);
 
-  // 2. Agenda por etapa
+  // 2. Agenda por etapa — usa histórico no período (quem JÁ passou pela etapa)
   const agenda = useMemo(() => {
-    let agendados = 0, compareceram = 0, remarcaram = 0, faltaram = 0;
+    const agendados = new Set<string>();
+    const compareceram = new Set<string>();
+    const remarcaram = new Set<string>();
+    const faltaram = new Set<string>();
+
+    history.forEach(h => {
+      if (!cohortIds.has(h.lead_id)) return;
+      if (!inRange(h.entered_at)) return;
+      const st = stageById.get(h.stage_id);
+      if (!st) return;
+      const n = st.name;
+      if (isAgendStage(n) || isReagendStage(n) || isComparStage(n) || isFaltouStage(n) || isContratStage(n)) {
+        agendados.add(h.lead_id);
+      }
+      if (isComparStage(n) || isContratStage(n)) compareceram.add(h.lead_id);
+      if (isReagendStage(n)) remarcaram.add(h.lead_id);
+      if (isFaltouStage(n)) faltaram.add(h.lead_id);
+    });
+
+    // Fallback: lead atual em etapa relevante mas sem registro de histórico no período
     cohort.forEach(l => {
       const st = stageById.get(l.stage_id);
       if (!st) return;
       const n = st.name;
-      if (isAgendStage(n) || isReagendStage(n) || isComparStage(n) || isFaltouStage(n) || isContratStage(n)) agendados++;
-      if (isComparStage(n) || isContratStage(n)) compareceram++;
-      if (isReagendStage(n)) remarcaram++;
-      if (isFaltouStage(n)) faltaram++;
+      if (isAgendStage(n) || isReagendStage(n) || isComparStage(n) || isFaltouStage(n) || isContratStage(n)) {
+        agendados.add(l.id);
+      }
+      if (isComparStage(n) || isContratStage(n)) compareceram.add(l.id);
+      if (isReagendStage(n)) remarcaram.add(l.id);
+      if (isFaltouStage(n)) faltaram.add(l.id);
     });
-    const presenca = (compareceram + faltaram) > 0 ? (compareceram / (compareceram + faltaram)) * 100 : 0;
-    return { agendados, compareceram, remarcaram, faltaram, presenca };
-  }, [cohort, stageById]);
 
-  // 3. Tempo até contratação
+    const c = compareceram.size, f = faltaram.size;
+    const presenca = (c + f) > 0 ? (c / (c + f)) * 100 : 0;
+    return { agendados: agendados.size, compareceram: c, remarcaram: remarcaram.size, faltaram: f, presenca };
+  }, [cohort, cohortIds, stageById, history, range]);
+
+  // 3. Tempo até contratação (até entrar na etapa "Contratado")
   const tempoContratacao = useMemo(() => {
-    if (!lastStage) return null;
+    if (!contratStage) return null;
     const histByLead = new Map<string, StageHistory[]>();
     history.forEach(h => {
       if (!histByLead.has(h.lead_id)) histByLead.set(h.lead_id, []);
@@ -187,8 +291,8 @@ export default function CrmRelatorios() {
     const durations: number[] = [];
     cohort.forEach(l => {
       const hs = histByLead.get(l.id) || [];
-      const lastEntry = hs.filter(h => h.stage_id === lastStage.id).map(h => new Date(h.entered_at).getTime()).sort((a, b) => a - b)[0];
-      const target = lastEntry ?? (l.stage_id === lastStage.id ? new Date(l.created_at).getTime() : null);
+      const lastEntry = hs.filter(h => h.stage_id === contratStage.id).map(h => new Date(h.entered_at).getTime()).sort((a, b) => a - b)[0];
+      const target = lastEntry ?? (l.stage_id === contratStage.id ? new Date(l.created_at).getTime() : null);
       if (target == null) return;
       const dur = target - new Date(l.created_at).getTime();
       if (dur > 0) durations.push(dur);
@@ -200,7 +304,7 @@ export default function CrmRelatorios() {
       min: durations.length ? Math.min(...durations) : 0,
       max: durations.length ? Math.max(...durations) : 0,
     };
-  }, [cohort, history, lastStage]);
+  }, [cohort, history, contratStage]);
 
   // 4. Tempo até primeiro agendamento
   const tempoAgendamento = useMemo(() => {
@@ -329,7 +433,7 @@ export default function CrmRelatorios() {
   const fantasmas = useMemo(() => {
     return cohort.filter(l => {
       if (!l.first_inbound_at || !l.last_inbound_at) return false;
-      return l.first_inbound_at === l.last_inbound_at;
+      return new Date(l.first_inbound_at).getTime() === new Date(l.last_inbound_at).getTime();
     });
   }, [cohort]);
 
