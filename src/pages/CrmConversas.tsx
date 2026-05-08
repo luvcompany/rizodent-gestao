@@ -325,9 +325,25 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   useEffect(() => {
     if (!urlGhost && !urlAppointmentStatus && !urlInactiveDays) return;
     const loadSpecialFilters = async () => {
+      const PAGE = 1000;
+      const fetchAll = async <T,>(build: (from: number, to: number) => any): Promise<T[]> => {
+        const out: T[] = [];
+        let from = 0;
+        while (true) {
+          const { data, error } = await build(from, from + PAGE - 1);
+          if (error || !data || data.length === 0) break;
+          out.push(...(data as T[]));
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
+        return out;
+      };
+
       if (urlGhost) {
-        const { data: msgs } = await supabase.from("messages").select("lead_id").eq("direction", "inbound").neq("status", "system");
-        const inboundIds = new Set((msgs || []).map((m: any) => m.lead_id));
+        const msgs = await fetchAll<{ lead_id: string }>((f, t) =>
+          supabase.from("messages").select("lead_id").eq("direction", "inbound").neq("status", "system").range(f, t)
+        );
+        const inboundIds = new Set(msgs.map((m) => m.lead_id));
         // Ghost = leads NOT in inboundIds → we store inbound ids and invert in filter
         setGhostLeadIds(inboundIds);
       }
@@ -336,8 +352,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
           : urlAppointmentStatus === "missed" ? ["missed", "faltou"]
           : urlAppointmentStatus === "attended" ? ["completed", "contratou", "nao_contratou"]
           : [urlAppointmentStatus];
-        const { data: apts } = await supabase.from("crm_appointments").select("lead_id").in("status", statuses);
-        setAppointmentLeadIds(new Set((apts || []).map((a: any) => a.lead_id)));
+        const apts = await fetchAll<{ lead_id: string }>((f, t) =>
+          supabase.from("crm_appointments").select("lead_id").in("status", statuses).range(f, t)
+        );
+        setAppointmentLeadIds(new Set(apts.map((a) => a.lead_id)));
       }
     };
     loadSpecialFilters();
