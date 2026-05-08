@@ -1,2 +1,4 @@
+project_id = "oybroifaleftwrhnlhqc"
+
 [functions.admin-create-tenant]
 verify_jwt = true
