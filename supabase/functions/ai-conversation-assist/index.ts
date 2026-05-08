@@ -337,8 +337,29 @@ ${transcript}`;
     const data = await aiResp.json();
     const text = data?.choices?.[0]?.message?.content || "";
 
+    // Persist cache (upsert by lead_id + mode + question)
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      await supabase.from("ai_conversation_analysis").upsert(
+        {
+          lead_id: leadId,
+          mode,
+          question: userQuestion || "",
+          result: text,
+          message_count: allMsgs.length,
+          last_message_at: allMsgs[allMsgs.length - 1]?.created_at || null,
+          model: config.model,
+          created_by: userData?.user?.id || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "lead_id,mode,question" },
+      );
+    } catch (e) {
+      console.error("Failed to cache analysis:", e);
+    }
+
     return new Response(
-      JSON.stringify({ result: text, message_count: allMsgs.length, model: config.model }),
+      JSON.stringify({ result: text, message_count: allMsgs.length, model: config.model, cached: false }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e: any) {
