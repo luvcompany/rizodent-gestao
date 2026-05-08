@@ -64,15 +64,29 @@ export default function CrmDashboard() {
     const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
     const monthEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
 
-    const [tasksRes, leadsRes, appointmentsRes, leadsCountRes, pagamentosRes] = await Promise.all([
-      supabase.from("crm_tasks").select("*").order("due_date"),
-      supabase.from("crm_leads").select("id, name"),
-      supabase.from("crm_appointments").select("*").order("scheduled_date"),
+    const PAGE = 1000;
+    const fetchAll = async <T,>(build: (from: number, to: number) => any): Promise<T[]> => {
+      const out: T[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await build(from, from + PAGE - 1);
+        if (error || !data || data.length === 0) break;
+        out.push(...(data as T[]));
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      return out;
+    };
+
+    const [tasksAll, leadsAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
+      fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").order("due_date").range(f, t)),
+      fetchAll<any>((f, t) => supabase.from("crm_leads").select("id, name").range(f, t)),
+      fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").order("scheduled_date").range(f, t)),
       supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
-      supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
+      fetchAll<any>((f, t) => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd).range(f, t)),
     ]);
 
-    const leadsList = (leadsRes.data || []) as any[];
+    const leadsList = leadsAll;
     const nameMap = new Map(leadsList.map((l) => [l.id, l.name]));
 
     const rawTasks = (tasksRes.data || []) as Task[];
