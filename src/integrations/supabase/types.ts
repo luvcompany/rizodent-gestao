@@ -24,6 +24,7 @@ export type Database = {
           ad_name: string | null
           cidade: string | null
           created_at: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -35,6 +36,7 @@ export type Database = {
           ad_name?: string | null
           cidade?: string | null
           created_at?: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -46,9 +48,18 @@ export type Database = {
           ad_name?: string | null
           cidade?: string | null
           created_at?: string
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ad_id_mapping_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_assistant_config: {
         Row: {
@@ -61,6 +72,7 @@ export type Database = {
           model: string
           name: string
           system_prompt: string
+          tenant_id: string | null
           tone: string
           updated_at: string
         }
@@ -74,6 +86,7 @@ export type Database = {
           model?: string
           name?: string
           system_prompt?: string
+          tenant_id?: string | null
           tone?: string
           updated_at?: string
         }
@@ -87,10 +100,19 @@ export type Database = {
           model?: string
           name?: string
           system_prompt?: string
+          tenant_id?: string | null
           tone?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_assistant_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_conversation_analysis: {
         Row: {
@@ -330,6 +352,7 @@ export type Database = {
           mark_as_read: boolean
           name: string
           status: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -342,6 +365,7 @@ export type Database = {
           mark_as_read?: boolean
           name: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -354,9 +378,18 @@ export type Database = {
           mark_as_read?: boolean
           name?: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bots_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       clinicas: {
         Row: {
@@ -367,6 +400,7 @@ export type Database = {
           id: string
           nome: string
           telefone: string | null
+          tenant_id: string | null
         }
         Insert: {
           ativa?: boolean
@@ -376,6 +410,7 @@ export type Database = {
           id?: string
           nome: string
           telefone?: string | null
+          tenant_id?: string | null
         }
         Update: {
           ativa?: boolean
@@ -385,8 +420,17 @@ export type Database = {
           id?: string
           nome?: string
           telefone?: string | null
+          tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clinicas_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crm_appointments: {
         Row: {
@@ -401,6 +445,7 @@ export type Database = {
           scheduled_time: string
           status: string
           task_id: string | null
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -415,6 +460,7 @@ export type Database = {
           scheduled_time: string
           status?: string
           task_id?: string | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -429,6 +475,7 @@ export type Database = {
           scheduled_time?: string
           status?: string
           task_id?: string | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -444,6 +491,13 @@ export type Database = {
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "crm_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_appointments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -546,6 +600,7 @@ export type Database = {
           id: string
           is_active: boolean
           stage_id: string
+          tenant_id: string | null
           trigger_type: string
         }
         Insert: {
@@ -555,6 +610,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           stage_id: string
+          tenant_id?: string | null
           trigger_type?: string
         }
         Update: {
@@ -564,6 +620,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           stage_id?: string
+          tenant_id?: string | null
           trigger_type?: string
         }
         Relationships: [
@@ -572,6 +629,13 @@ export type Database = {
             columns: ["stage_id"]
             isOneToOne: false
             referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_automations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -631,6 +695,7 @@ export type Database = {
           sent_count: number
           status: string
           template_id: string | null
+          tenant_id: string | null
           total_leads: number
         }
         Insert: {
@@ -645,6 +710,7 @@ export type Database = {
           sent_count?: number
           status?: string
           template_id?: string | null
+          tenant_id?: string | null
           total_leads?: number
         }
         Update: {
@@ -659,6 +725,7 @@ export type Database = {
           sent_count?: number
           status?: string
           template_id?: string | null
+          tenant_id?: string | null
           total_leads?: number
         }
         Relationships: [
@@ -683,6 +750,13 @@ export type Database = {
             referencedRelation: "crm_whatsapp_templates"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "crm_broadcasts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       crm_conversation_notes: {
@@ -693,6 +767,7 @@ export type Database = {
           created_at: string
           id: string
           lead_id: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -702,6 +777,7 @@ export type Database = {
           created_at?: string
           id?: string
           lead_id: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -711,6 +787,7 @@ export type Database = {
           created_at?: string
           id?: string
           lead_id?: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -728,6 +805,13 @@ export type Database = {
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "crm_conversation_notes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       crm_custom_fields: {
@@ -738,6 +822,7 @@ export type Database = {
           name: string
           options: Json | null
           position: number
+          tenant_id: string | null
         }
         Insert: {
           created_at?: string
@@ -746,6 +831,7 @@ export type Database = {
           name: string
           options?: Json | null
           position?: number
+          tenant_id?: string | null
         }
         Update: {
           created_at?: string
@@ -754,8 +840,17 @@ export type Database = {
           name?: string
           options?: Json | null
           position?: number
+          tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "crm_custom_fields_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crm_followup_configs: {
         Row: {
@@ -776,6 +871,7 @@ export type Database = {
           return_to_stage_id: string | null
           stage_id: string
           stop_on_stages: string[] | null
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -796,6 +892,7 @@ export type Database = {
           return_to_stage_id?: string | null
           stage_id: string
           stop_on_stages?: string[] | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -816,6 +913,7 @@ export type Database = {
           return_to_stage_id?: string | null
           stage_id?: string
           stop_on_stages?: string[] | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -852,6 +950,13 @@ export type Database = {
             columns: ["stage_id"]
             isOneToOne: false
             referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_followup_configs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1098,6 +1203,7 @@ export type Database = {
           stage_id: string
           tags: string[] | null
           task_overdue: boolean
+          tenant_id: string | null
           titulo_anuncio: string | null
           updated_at: string
           value: number | null
@@ -1140,6 +1246,7 @@ export type Database = {
           stage_id: string
           tags?: string[] | null
           task_overdue?: boolean
+          tenant_id?: string | null
           titulo_anuncio?: string | null
           updated_at?: string
           value?: number | null
@@ -1182,6 +1289,7 @@ export type Database = {
           stage_id?: string
           tags?: string[] | null
           task_overdue?: boolean
+          tenant_id?: string | null
           titulo_anuncio?: string | null
           updated_at?: string
           value?: number | null
@@ -1206,6 +1314,13 @@ export type Database = {
             columns: ["stage_id"]
             isOneToOne: false
             referencedRelation: "crm_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_leads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1291,6 +1406,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          tenant_id: string | null
         }
         Insert: {
           color?: string | null
@@ -1298,6 +1414,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          tenant_id?: string | null
         }
         Update: {
           color?: string | null
@@ -1305,8 +1422,17 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "crm_pipelines_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crm_quick_replies: {
         Row: {
@@ -1316,6 +1442,7 @@ export type Database = {
           id: string
           media_type: string | null
           media_url: string | null
+          tenant_id: string | null
           title: string
         }
         Insert: {
@@ -1325,6 +1452,7 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          tenant_id?: string | null
           title: string
         }
         Update: {
@@ -1334,9 +1462,18 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          tenant_id?: string | null
           title?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "crm_quick_replies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crm_stages: {
         Row: {
@@ -1346,6 +1483,7 @@ export type Database = {
           name: string
           pipeline_id: string
           position: number
+          tenant_id: string | null
         }
         Insert: {
           color?: string
@@ -1354,6 +1492,7 @@ export type Database = {
           name: string
           pipeline_id: string
           position?: number
+          tenant_id?: string | null
         }
         Update: {
           color?: string
@@ -1362,6 +1501,7 @@ export type Database = {
           name?: string
           pipeline_id?: string
           position?: number
+          tenant_id?: string | null
         }
         Relationships: [
           {
@@ -1369,6 +1509,13 @@ export type Database = {
             columns: ["pipeline_id"]
             isOneToOne: false
             referencedRelation: "crm_pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_stages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1382,6 +1529,7 @@ export type Database = {
           lead_id: string
           notes: string | null
           status: string
+          tenant_id: string | null
           title: string
           type: string
           updated_at: string
@@ -1394,6 +1542,7 @@ export type Database = {
           lead_id: string
           notes?: string | null
           status?: string
+          tenant_id?: string | null
           title: string
           type?: string
           updated_at?: string
@@ -1406,6 +1555,7 @@ export type Database = {
           lead_id?: string
           notes?: string | null
           status?: string
+          tenant_id?: string | null
           title?: string
           type?: string
           updated_at?: string
@@ -1416,6 +1566,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_tasks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1434,6 +1591,7 @@ export type Database = {
           meta_template_id: string | null
           name: string
           status: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1449,6 +1607,7 @@ export type Database = {
           meta_template_id?: string | null
           name: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1464,9 +1623,18 @@ export type Database = {
           meta_template_id?: string | null
           name?: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "crm_whatsapp_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dashboard_holidays: {
         Row: {
@@ -1476,6 +1644,7 @@ export type Database = {
           data: string
           descricao: string | null
           id: string
+          tenant_id: string | null
         }
         Insert: {
           clinica_id?: string | null
@@ -1484,6 +1653,7 @@ export type Database = {
           data: string
           descricao?: string | null
           id?: string
+          tenant_id?: string | null
         }
         Update: {
           clinica_id?: string | null
@@ -1492,6 +1662,7 @@ export type Database = {
           data?: string
           descricao?: string | null
           id?: string
+          tenant_id?: string | null
         }
         Relationships: [
           {
@@ -1499,6 +1670,13 @@ export type Database = {
             columns: ["clinica_id"]
             isOneToOne: false
             referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dashboard_holidays_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1510,6 +1688,7 @@ export type Database = {
           created_at: string | null
           id: string
           pipeline_id: string
+          tenant_id: string | null
         }
         Insert: {
           channel_config?: Json | null
@@ -1517,6 +1696,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           pipeline_id: string
+          tenant_id?: string | null
         }
         Update: {
           channel_config?: Json | null
@@ -1524,6 +1704,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           pipeline_id?: string
+          tenant_id?: string | null
         }
         Relationships: [
           {
@@ -1531,6 +1712,13 @@ export type Database = {
             columns: ["pipeline_id"]
             isOneToOne: false
             referencedRelation: "crm_pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funnel_channels_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1743,6 +1931,7 @@ export type Database = {
           reply_to_message_id: string | null
           sender_id: string | null
           status: string
+          tenant_id: string | null
           transcription: string | null
           type: string
           whatsapp_message_id: string | null
@@ -1770,6 +1959,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string
+          tenant_id?: string | null
           transcription?: string | null
           type?: string
           whatsapp_message_id?: string | null
@@ -1797,6 +1987,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string
+          tenant_id?: string | null
           transcription?: string | null
           type?: string
           whatsapp_message_id?: string | null
@@ -1807,6 +1998,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1821,6 +2019,7 @@ export type Database = {
           nome_anuncio: string | null
           origem: string | null
           telefone: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1832,6 +2031,7 @@ export type Database = {
           nome_anuncio?: string | null
           origem?: string | null
           telefone: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1843,9 +2043,18 @@ export type Database = {
           nome_anuncio?: string | null
           origem?: string | null
           telefone?: string
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pacientes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pagamentos: {
         Row: {
@@ -1911,6 +2120,42 @@ export type Database = {
           },
         ]
       }
+      plans: {
+        Row: {
+          created_at: string
+          features: Json
+          id: string
+          is_active: boolean
+          lead_limit: number
+          message_limit: number
+          monthly_price: number
+          name: string
+          user_limit: number
+        }
+        Insert: {
+          created_at?: string
+          features?: Json
+          id?: string
+          is_active?: boolean
+          lead_limit?: number
+          message_limit?: number
+          monthly_price?: number
+          name: string
+          user_limit?: number
+        }
+        Update: {
+          created_at?: string
+          features?: Json
+          id?: string
+          is_active?: boolean
+          lead_limit?: number
+          message_limit?: number
+          monthly_price?: number
+          name?: string
+          user_limit?: number
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1918,8 +2163,10 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          must_change_password: boolean
           nome: string
           signature_enabled: boolean
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1928,8 +2175,10 @@ export type Database = {
           created_at?: string
           email: string
           id: string
+          must_change_password?: boolean
           nome: string
           signature_enabled?: boolean
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1938,11 +2187,21 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          must_change_password?: boolean
           nome?: string
           signature_enabled?: boolean
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       registros_diarios_atendimento: {
         Row: {
@@ -1996,6 +2255,175 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tenant_invoices: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          notes: string | null
+          paid_at: string | null
+          receipt_url: string | null
+          reference_month: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          receipt_url?: string | null
+          reference_month: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          receipt_url?: string | null
+          reference_month?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_subscriptions: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          next_billing_at: string | null
+          plan_id: string | null
+          started_at: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          next_billing_at?: string | null
+          plan_id?: string | null
+          started_at?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          next_billing_at?: string | null
+          plan_id?: string | null
+          started_at?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_subscriptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_usage: {
+        Row: {
+          active_users: number
+          id: string
+          leads_created: number
+          messages_sent: number
+          month: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active_users?: number
+          id?: string
+          leads_created?: number
+          messages_sent?: number
+          month: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active_users?: number
+          id?: string
+          leads_created?: number
+          messages_sent?: number
+          month?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_usage_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenants: {
+        Row: {
+          created_at: string
+          id: string
+          logo_url: string | null
+          name: string
+          primary_color: string
+          slug: string
+          status: string
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          name: string
+          primary_color?: string
+          slug: string
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          logo_url?: string | null
+          name?: string
+          primary_color?: string
+          slug?: string
+          status?: string
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       tipos_procedimento: {
         Row: {
@@ -2088,19 +2516,30 @@ export type Database = {
         Row: {
           id: string
           role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string | null
           user_id: string
         }
         Insert: {
           id?: string
           role: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string | null
           user_id: string
         }
         Update: {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -2115,6 +2554,7 @@ export type Database = {
           lead_name: string
         }[]
       }
+      current_tenant_id: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
