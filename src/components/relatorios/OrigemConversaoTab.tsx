@@ -84,12 +84,20 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
       for (let i = 0; i < leadIds.length; i += CHUNK) {
         const chunk = leadIds.slice(i, i + CHUNK);
-        // Appointments + paginação interna por chunk (raro passar de 1000, mas garantimos)
-        const { data: aps } = await supabase
-          .from("crm_appointments")
-          .select("id,lead_id,scheduled_date,status")
-          .in("lead_id", chunk);
-        if (aps) allAppts = allAppts.concat(aps as Appointment[]);
+        // Appointments paginados por chunk
+        let aFrom = 0;
+        while (true) {
+          const { data: aps } = await supabase
+            .from("crm_appointments")
+            .select("id,lead_id,scheduled_date,status")
+            .in("lead_id", chunk)
+            .order("created_at")
+            .range(aFrom, aFrom + 999);
+          if (!aps || aps.length === 0) break;
+          allAppts = allAppts.concat(aps as Appointment[]);
+          if (aps.length < 1000) break;
+          aFrom += 1000;
+        }
 
         // Mensagens: paginação por range pois pode passar de 1000 fácil
         let mFrom = 0;
@@ -109,11 +117,18 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
       for (let i = 0; i < pacIds.length; i += CHUNK) {
         const chunk = pacIds.slice(i, i + CHUNK);
-        const { data: pgs } = await supabase
-          .from("pagamentos")
-          .select("paciente_id,tipo,data_pagamento")
-          .in("paciente_id", chunk);
-        if (pgs) allPagamentos = allPagamentos.concat(pgs as Pagamento[]);
+        let pFrom = 0;
+        while (true) {
+          const { data: pgs } = await supabase
+            .from("pagamentos")
+            .select("paciente_id,tipo,data_pagamento")
+            .in("paciente_id", chunk)
+            .range(pFrom, pFrom + 999);
+          if (!pgs || pgs.length === 0) break;
+          allPagamentos = allPagamentos.concat(pgs as Pagamento[]);
+          if (pgs.length < 1000) break;
+          pFrom += 1000;
+        }
       }
 
       setLeads(allLeads);
