@@ -4,7 +4,7 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
-  Home, Settings, ChevronDown, Send, Sun, Moon,
+  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles,
 } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,6 +50,7 @@ const crmNavItems: SidebarEntry[] = [
   { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
   { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
   { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
+  { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
   { to: "/crm/configuracoes", icon: Settings, label: "Configurações" },
 ];
 
