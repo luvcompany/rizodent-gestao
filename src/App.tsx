@@ -40,6 +40,7 @@ import CrmIaConfig from "./pages/CrmIaConfig";
 import CrclinLanding from "./pages/CrclinLanding";
 import ChangePassword from "./pages/ChangePassword";
 import { AdminLayout, AdminClientes, AdminPlanos, AdminMetricas, AdminCobranca } from "./pages/admin/AdminPanel";
+import AdminLogin from "./pages/admin/AdminLogin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
