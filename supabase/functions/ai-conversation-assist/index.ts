@@ -114,6 +114,7 @@ Deno.serve(async (req) => {
     const leadId = body.lead_id as string | undefined;
     const mode = (body.mode as string) || "summary_and_suggestions"; // or "summary", "suggestions"
     const userQuestion = (body.question as string) || "";
+    const force = body.force === true;
 
     if (!leadId) {
       return new Response(JSON.stringify({ error: "lead_id é obrigatório" }), {
