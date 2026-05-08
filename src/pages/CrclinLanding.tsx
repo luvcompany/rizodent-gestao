@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { MessageCircle, Calendar, Users, Bot, BarChart3, CreditCard, CheckCircle2, Sparkles, Zap, Shield, ArrowRight, Phone } from "lucide-react";
+import crclinBrand from "@/assets/crclin-brand.png";
+import crclinIcon from "@/assets/crclin-icon.png";
 
 const WHATSAPP_URL = "https://wa.me/5577981223133?text=Ol%C3%A1!%20Quero%20conhecer%20o%20CRClin";
 
