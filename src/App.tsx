@@ -57,7 +57,8 @@ const App = () => (
             <Route path="/" element={<Login />} />
             <Route path="/crclin" element={<CrclinLanding />} />
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
-            <Route element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route element={<AdminLayout />}>
               <Route path="/admin" element={<AdminClientes />} />
               <Route path="/admin/planos" element={<AdminPlanos />} />
               <Route path="/admin/metricas" element={<AdminMetricas />} />
