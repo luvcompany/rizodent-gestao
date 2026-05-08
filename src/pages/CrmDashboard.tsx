@@ -89,19 +89,18 @@ export default function CrmDashboard() {
     const leadsList = leadsAll;
     const nameMap = new Map(leadsList.map((l) => [l.id, l.name]));
 
-    const rawTasks = (tasksRes.data || []) as Task[];
+    const rawTasks = tasksAll as Task[];
     rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
     setTasks(rawTasks);
 
-    const rawAppts = (appointmentsRes.data || []) as Appointment[];
+    const rawAppts = appointmentsAll as Appointment[];
     rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
     setAppointments(rawAppts);
 
     setLeadsToday(leadsCountRes.count || 0);
 
     // Faturamento do mês = soma direta de TODOS os pagamentos (mesma fonte do Dashboard principal)
-    const totalFat = (pagamentosRes.data || [])
-      .reduce((s: number, p: any) => s + Number(p.valor || 0), 0);
+    const totalFat = pagamentosAll.reduce((s: number, p: any) => s + Number(p.valor || 0), 0);
     setFaturamentoMes(totalFat);
 
     setLoading(false);
