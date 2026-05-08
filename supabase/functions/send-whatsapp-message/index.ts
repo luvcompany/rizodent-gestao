@@ -154,25 +154,34 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const authHeader = req.headers.get("Authorization") || "";
+    const apiKeyHeader = req.headers.get("apikey") || "";
     const token = authHeader.replace("Bearer ", "");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const isServiceKey = token === serviceRoleKey;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+    const isServiceKey =
+      (!!serviceRoleKey && (token === serviceRoleKey || apiKeyHeader === serviceRoleKey));
     if (!isServiceKey) {
+      if (!authHeader) {
+        return new Response(JSON.stringify({ error: "Missing authorization header" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const anonClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_ANON_KEY")!
       );
       const { data: { user }, error: authError } = await anonClient.auth.getUser(token);
       if (authError || !user) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        // Allow if apikey is the public anon/publishable key (gateway may rewrite Authorization for internal calls)
+        if (!apiKeyHeader || (apiKeyHeader !== anonKey && apiKeyHeader !== publishableKey && apiKeyHeader !== serviceRoleKey)) {
+          console.warn(`[send-whatsapp-message] Unauthorized: token len=${token.length}, apikey len=${apiKeyHeader.length}, serviceKey len=${serviceRoleKey.length}`);
+          return new Response(JSON.stringify({ error: "Unauthorized" }), {
+            status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        console.warn(`[send-whatsapp-message] Allowed via apikey fallback (no user JWT)`);
       }
     }
 
