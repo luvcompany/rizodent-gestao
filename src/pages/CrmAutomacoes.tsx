@@ -219,11 +219,26 @@ export default function CrmAutomacoes() {
 
     // Execute "send to all existing" if checked
     const config = autoForm.action_config;
+    const fetchAllLeadsInStage = async (): Promise<{ id: string; phone: string | null }[]> => {
+      const PAGE = 1000;
+      const out: { id: string; phone: string | null }[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("crm_leads")
+          .select("id, phone")
+          .eq("stage_id", autoForm.stage_id)
+          .range(from, from + PAGE - 1);
+        if (error || !data || data.length === 0) break;
+        out.push(...(data as any[]));
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      return out;
+    };
+
     if (config.send_to_all_existing && autoForm.action_type === "send_bot" && config.bot_id) {
-      const { data: leadsInStage } = await supabase
-        .from("crm_leads")
-        .select("id, phone")
-        .eq("stage_id", autoForm.stage_id);
+      const leadsInStage = await fetchAllLeadsInStage();
 
       if (leadsInStage?.length) {
         toast.info(`Disparando bot para ${leadsInStage.length} leads...`);
@@ -235,10 +250,7 @@ export default function CrmAutomacoes() {
         toast.success(`Bot disparado para ${leadsInStage.length} leads`);
       }
     } else if (config.send_to_all_existing && autoForm.action_type === "send_template" && config.template_id) {
-      const { data: leadsInStage } = await supabase
-        .from("crm_leads")
-        .select("id, phone")
-        .eq("stage_id", autoForm.stage_id);
+      const leadsInStage = await fetchAllLeadsInStage();
 
       if (leadsInStage?.length) {
         const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", config.template_id as string).single();
