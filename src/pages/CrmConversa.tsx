@@ -66,6 +66,7 @@ const LeadBudgetPanel = lazy(() => import("@/components/chat/LeadBudgetPanel"));
 const InlineTagsEditor = lazy(() => import("@/components/chat/InlineTagsEditor"));
 const LeadFollowUpPanel = lazy(() => import("@/components/chat/LeadFollowUpPanel"));
 const TaskPanel = lazy(() => import("@/components/chat/TaskPanel"));
+const LeadAiAssistPanel = lazy(() => import("@/components/chat/LeadAiAssistPanel"));
 const AppointmentConfirmBar = lazy(() => import("@/components/chat/AppointmentConfirmBar"));
 
 const SidePanelFallback = () => (
@@ -421,6 +422,7 @@ export default function CrmConversa() {
               <h2 className="font-bold text-foreground">{lead.name}</h2>
               <p className="text-sm text-muted-foreground">{lead.phone || "Sem telefone"}</p>
             </div>
+            <LeadAiAssistPanel leadId={lead.id} leadName={lead.name} />
           </div>
 
           <LeadEditPanel

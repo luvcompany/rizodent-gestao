@@ -16,6 +16,7 @@ import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
+import LeadAiAssistPanel from "@/components/chat/LeadAiAssistPanel";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
 import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
@@ -866,6 +867,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     )}
                   </div>
                 </div>
+                <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRightPanelVisible(!rightPanelVisible)}>
                   {rightPanelVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>

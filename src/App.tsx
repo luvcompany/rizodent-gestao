@@ -35,6 +35,7 @@ import CrmExtras from "./pages/CrmExtras";
 import CrmConfiguracoes from "./pages/CrmConfiguracoes";
 import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
 import CrmCampanhas from "./pages/CrmCampanhas";
+import CrmIaConfig from "./pages/CrmIaConfig";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -90,6 +91,7 @@ const App = () => (
               <Route path="/crm/configuracoes" element={<CrmConfiguracoes />} />
               <Route path="/crm/respostas-rapidas" element={<CrmRespostasRapidas />} />
               <Route path="/crm/campanhas" element={<CrmCampanhas />} />
+              <Route path="/crm/ia-config" element={<CrmIaConfig />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
