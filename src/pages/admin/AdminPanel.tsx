@@ -24,13 +24,15 @@ export const AdminLayout = () => {
   const [isSuper, setIsSuper] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { navigate("/admin/login", { replace: true }); return; }
     supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "superadmin" as any).maybeSingle()
-      .then(({ data }) => setIsSuper(!!data));
-  }, [user]);
+      .then(({ data }) => {
+        if (!data) navigate("/admin/login", { replace: true });
+        else setIsSuper(true);
+      });
+  }, [user, navigate]);
 
   if (isSuper === null) return <div className="flex h-screen items-center justify-center text-muted-foreground">Verificando acesso...</div>;
-  if (!isSuper) return <div className="flex h-screen items-center justify-center text-muted-foreground">Acesso restrito ao super-admin.</div>;
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
@@ -47,7 +49,7 @@ export const AdminLayout = () => {
             </NavLink>
           ))}
         </nav>
-        <button onClick={async () => { await signOut(); navigate("/"); }}
+        <button onClick={async () => { await signOut(); navigate("/admin/login"); }}
           className="mt-8 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/60">
           <LogOut size={16} /> Sair
         </button>
