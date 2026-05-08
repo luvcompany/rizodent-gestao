@@ -50,6 +50,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Login />} />
+            <Route path="/crclin" element={<CrclinLanding />} />
             <Route
               element={
                 <ProtectedRoute>
