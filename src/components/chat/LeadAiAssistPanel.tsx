@@ -120,9 +120,9 @@ export default function LeadAiAssistPanel({ leadId, leadName, trigger }: Props) 
             />
           </TabsContent>
 
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             <Button
-              onClick={() => run(tab)}
+              onClick={() => run(tab, !!result)}
               disabled={loading || (tab === "ask" && !question.trim())}
               className="gradient-orange text-primary-foreground"
               size="sm"
@@ -137,9 +137,14 @@ export default function LeadAiAssistPanel({ leadId, leadName, trigger }: Props) 
               </Button>
             )}
             {result && (
-              <Button onClick={() => run(tab)} variant="ghost" size="icon" title="Atualizar">
+              <Button onClick={() => run(tab, true)} variant="ghost" size="icon" title="Forçar nova análise">
                 <RefreshCw size={14} />
               </Button>
+            )}
+            {cachedAt && result && !loading && (
+              <span className="text-xs text-muted-foreground ml-auto">
+                Análise salva — {new Date(cachedAt).toLocaleString("pt-BR")}
+              </span>
             )}
           </div>
 
