@@ -35,8 +35,12 @@ const Login = () => {
       <div className="w-full max-w-md animate-fade-in">
         <div className="gradient-card rounded-2xl border border-border p-8 shadow-card">
           <div className="mb-8 flex flex-col items-center gap-4">
-            <img src={logo} alt="RizoDent" className="h-12 object-contain invert" />
-            <p className="text-sm text-muted-foreground">Sistema de Gestão Odontológica</p>
+            {tenant.logo_url ? (
+              <img src={tenant.logo_url} alt={tenant.name} className="h-12 object-contain" />
+            ) : (
+              <img src={logo} alt={tenant.name} className="h-12 object-contain invert" />
+            )}
+            <p className="text-sm text-muted-foreground">{tenant.name}</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
