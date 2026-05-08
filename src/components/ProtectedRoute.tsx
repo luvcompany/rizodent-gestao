@@ -1,8 +1,9 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading } = useAuth();
+  const { session, loading, profile } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -14,6 +15,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (!session) {
     return <Navigate to="/" replace />;
+  }
+
+  if (profile?.must_change_password && location.pathname !== "/change-password") {
+    return <Navigate to="/change-password" replace />;
   }
 
   return <>{children}</>;
