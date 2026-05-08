@@ -2126,7 +2126,7 @@ export type Database = {
       recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
     }
     Enums: {
-      app_role: "admin" | "gerente" | "crc"
+      app_role: "admin" | "gerente" | "crc" | "superadmin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2254,7 +2254,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "gerente", "crc"],
+      app_role: ["admin", "gerente", "crc", "superadmin"],
     },
   },
 } as const
