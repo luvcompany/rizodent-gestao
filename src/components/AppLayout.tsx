@@ -7,7 +7,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { useTheme } from "@/hooks/useTheme";
-import { useTenant } from "@/contexts/TenantContext";
 import logo from "@/assets/logo-rizodent.webp";
 
 const navItems = [
