@@ -50,6 +50,22 @@ function fmtDuration(ms: number): string {
   return `${d}d ${h % 24}h`;
 }
 
+async function fetchAllPages<T>(
+  build: (from: number, to: number) => any
+): Promise<T[]> {
+  const PAGE = 1000;
+  const out: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await build(from, from + PAGE - 1);
+    if (error || !data || data.length === 0) break;
+    out.push(...(data as T[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return out;
+}
+
 function median(arr: number[]): number {
   if (!arr.length) return 0;
   const s = [...arr].sort((a, b) => a - b);

@@ -1,86 +1,100 @@
+## Diagnóstico
 
-## Diagnóstico — falhas e comportamentos suspeitos encontrados
+Auditei `src/pages/CrmRelatorios.tsx` (Visão Geral + Ações por Dia + Antecedência) e `src/components/relatorios/OrigemConversaoTab.tsx`. Os "números menores que o real" têm 3 causas reais, todas reproduzíveis em qualquer funil/período:
 
-Investiguei os logs das edge functions (bot-engine, automation-engine, send-whatsapp-message, whatsapp-webhook, followup-engine, instagram-webhook), o estado do banco (filas, executions, tasks) e o lead Vitor Santos (`0c04e03a-…`, etapa atual: `Desqualificado`, source `whatsapp`, sem ad_id).
+### 🔴 Causa #1 — Limite de 1000 do Supabase em quase todas as queries
 
-### 🔴 P0 — Rate limit em loop no automation-engine (CRÍTICO, ativo agora)
+Na **Visão Geral** (`CrmRelatorios.tsx`):
 
-**Sintoma:** o cron do `automation-engine` está derramando dezenas de erros por minuto:
-```
-[AUTOMATION-ENGINE] Bot timeout error for <exec_id>: Rate limit exceeded
-for trace ... Retry after ~45000ms.
-```
+- **L107** `crm_leads` é buscado **sem paginação** → no funil Principal (que tem milhares de leads), só carrega os primeiros 1000. Como `cohort = leads.filter(inRange)`, se os 1000 mais recentes não cobrem o período, faltam leads no funil, na agenda, em cidades, em fantasmas, em tempo até contratação — em tudo.
+- **L120-121** `crm_lead_stage_history` e `crm_appointments` rodam em chunks de 500 leads, mas dentro de cada chunk não tem paginação interna. Um chunk de 500 leads facilmente gera >1000 linhas de histórico → entradas em etapas perdidas.
+- **L126** `messages` idem — sem paginação interna por chunk.
 
-**Causa raiz:**
-1. A query em `automation-engine/index.ts:161-167` pega até **50 execuções com `timeout_at` vencido** por rodada.
-2. Linhas 169-191 fazem `await fetch` sequencial para `/bot-engine` para cada uma — sem espaçamento, sem retry, sem marcar como processada antes de chamar.
-3. O gateway de Edge Functions rate-limita as chamadas seguidas ao mesmo trace → falha → execução continua com `status='waiting_reply'` e `timeout_at` vencido → no próximo cron volta a entrar no batch. Loop infinito.
-4. Resultado atual: **65 bot_executions travadas** (34 no bot "Follow - UP", 9 no "Disparo mães"), refazendo o batch a cada minuto.
+Em **OrigemConversaoTab** o `messages` já tem paginação interna por chunk, mas `crm_appointments` e `pagamentos` ainda usam `.in()` sem range.
 
-### 🟠 P1 — Tasks vencidas há mais de 1 dia ainda `pending`
-27 tarefas com `due_date` há mais de 24h e `status='pending'`. Pode ser intencional (CRC ainda vai concluir) ou indicar que o auto-close pelo `appointmentOutcome` não está rodando para alguns fluxos. Precisa amostragem.
+### 🟠 Causa #2 — `lastStage` é "última posição", não "Contratado"
 
-### 🟡 P2 — Bot "Follow - UP" com timeouts sem caminho definido
-Logs mostram repetidamente:
-```
-[bot-engine] Timeout fired for node send_text-1777992099191
-but no timeout edge found, completing
-```
-O nó não tem aresta de `timeout` ligada, então o bot termina silenciosamente — o que é correto comportamentalmente, mas indica que o fluxo do bot está incompleto.
+**L152** `lastStage = stages[stages.length - 1]`. Se o funil tem etapas pós-contratação (ex.: "Pós-venda", "Arquivo", "Desqualificado"), o relatório **Tempo até Contratação** mede até a etapa errada e mostra `count: 0` em quase todos os períodos. Deveria detectar a etapa "Contratado" via `isContratStage`.
 
-### 🟡 P3 — Pendências menores
-- `automation-engine` chama `bot-engine` por HTTP cru com header `Authorization: Bearer ${serviceKey}`. Funciona, mas adiciona latência e não tem timeout de fetch — se o bot-engine demora, o batch inteiro empaca.
-- Não há **deduplicação** entre rodadas: se a fila do minuto N não termina antes do cron N+1 disparar, ambos competem.
+### 🟠 Causa #3 — Agenda só olha etapa atual, ignora histórico
 
-### ⚪ Lead Vitor Santos — pré-checagem
-- Etapa: `Desqualificado` (não bate em nenhum gatilho de "Novo Lead" / "Anúncio").
-- Última inbound: 06/05; última outbound: 06/05.
-- Sem bot ativo, sem follow-up agendado, sem task pendente.
-- Para testar ponta a ponta, vou movê-lo temporariamente para etapas com gatilhos e reverter no final.
+**L164-177** classifica `compareceram/remarcaram/faltaram` apenas pela `stage_id` **atual** do lead. Lead que passou por "Compareceu" e foi para "Contratado" cai apenas em compareceram (OK pela regex), mas:
+- Lead que passou por "Reagendado" e voltou para "Agendado" não conta como remarcou.
+- Lead que faltou e foi movido para "Recuperação" some da contagem de faltaram.
+
+O correto é cruzar com `crm_lead_stage_history` (entradas no período) para contar quem **já passou** por cada etapa.
+
+### 🟡 Outros pontos menores
+
+- **L149** `cohort = leads.filter(inRange(created_at))` — depois de truncar em 1000. Filtrar por `created_at` no servidor reduz o universo e elimina o problema do limite.
+- **L329** `fantasmas` exige `first_inbound_at === last_inbound_at` (string compare) — frágil; melhor comparar timestamps.
+- **OrigemConversaoTab L139** `funnel.scheduled = leadIdsWithAppt.size` (leads com agendamento), enquanto a label diz "agendados". OK semanticamente, só confirmar.
 
 ---
 
-## Plano de correção e validação
+## Correções
 
-### Passo 1 — Resolver o loop de rate limit (`automation-engine`)
-- Reduzir `limit(50)` para `limit(10)` no batch de bot timeout.
-- Trocar o `for ... await fetch` sequencial por `Promise.allSettled` em **chunks de 3** com `await sleep(300ms)` entre chunks.
-- Antes de invocar o bot-engine, **marcar a execução** como `processing` (campo `current_node_id = '__processing__'` ou novo flag) para não voltar ao batch no mesmo minuto.
-- Adicionar `AbortSignal.timeout(15_000)` no fetch para nunca empacar o cron.
-- Em caso de erro 429, **não** tentar de novo na mesma rodada — agendar para o próximo cron e logar.
+### 1. `src/pages/CrmRelatorios.tsx`
 
-### Passo 2 — Limpar as 65 execuções travadas
-Migration `UPDATE bot_executions SET status='completed', completed_at=now(), timeout_at=NULL WHERE status IN ('active','waiting_reply') AND timeout_at < now() - interval '10 min'` para destravar o estado atual em uma única operação (sem chamar bot-engine).
+**a) Helper de paginação universal** (no topo do arquivo):
+```ts
+async function fetchAllPages<T>(query: (from: number, to: number) => Promise<{ data: T[] | null }>): Promise<T[]> {
+  const PAGE = 1000; const out: T[] = []; let from = 0;
+  while (true) {
+    const { data } = await query(from, from + PAGE - 1);
+    if (!data || data.length === 0) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return out;
+}
+```
 
-### Passo 3 — Auditoria das tasks `pending` vencidas
-Listar as 27, verificar se têm appointment vinculado com result já preenchido. Se sim, fechar via `auto_confirm_appointments_on_contracted` ou trigger equivalente. Se não, deixar como está (responsabilidade do CRC).
+**b) `crm_leads` filtrado por período E paginado** (L107). Carrega leads com `created_at` no range OU com atividade no range (`last_inbound_at`/`last_outbound_at` no range), para que os blocos "inativos", "tempo de resposta" continuem corretos com leads antigos relevantes. Estratégia mais simples e segura: duas queries paginadas (cohort do período + leads com qualquer atividade no período) e merge por id.
 
-### Passo 4 — Testar ponta a ponta no Vitor Santos
-1. Mover Vitor para a etapa **"Conversando"** → validar que automações `on_enter` rodam, mensagem do sistema aparece, follow-up é enfileirado.
-2. Disparar manualmente um **template** via `send-whatsapp-message` para confirmar que envio real funciona (ele vai receber no WhatsApp).
-3. Disparar manualmente o **bot-engine** com um botId publicado para confirmar execução, salvamento em `bot_executions` e timeout.
-4. Mover Vitor para **"Novo Lead"** simulando origem `Anúncio` → validar gatilho `send_audio` que vinha falhando antes.
-5. Limpar: voltar para `Desqualificado`, cancelar quaisquer execuções/follow-ups gerados pelo teste.
-6. Reportar cada teste com ✅/❌ e link para a mensagem/registro criado.
+**c) Paginação interna nos chunks** (L117-132): para cada chunk de 500 leads, paginar `crm_lead_stage_history`, `crm_appointments` e `messages` com `range()` até esgotar.
 
-### Passo 5 — Varredura final
-Após corrigir o P0, esperar 2 minutos e re-checar:
-- `bot_executions` travadas → deve estar 0.
-- `crm_automation_queue` com `status='failed'` → deve ser 0.
-- Logs do `automation-engine` sem `Rate limit`.
+**d) `lastStage` correto** (L152):
+```ts
+const contratStage = useMemo(() => stages.find(s => isContratStage(s.name)) ?? stages[stages.length - 1], [stages]);
+```
+Usar `contratStage` em `tempoContratacao` e na descrição "até chegar em **{nome}**".
+
+**e) Agenda baseada em histórico** (L164): em vez de ler `stage_id` atual, montar `Set<lead_id>` para cada categoria a partir de `history` filtrado pelo período (`entered_at` no range), olhando o nome da `stage_id` correspondente. Mantém compatibilidade com leads que já avançaram.
+
+**f) `fantasmas`**: comparar timestamps (`Date(...).getTime()`).
+
+### 2. `src/components/relatorios/OrigemConversaoTab.tsx`
+
+- Substituir o loop `crm_leads` (já tem paginação) por chamada ao mesmo helper.
+- Adicionar paginação interna em `crm_appointments` e `pagamentos` por chunk.
+
+### 3. Sub-aba "Ações por Dia" (`AcoesPorDiaTab`)
+
+Já tem paginação correta — auditar só se o `leadIds` coletado mas nunca usado deve realmente sumir (já é morto). Remover o bloco morto para clareza.
+
+### 4. Sub-aba "Antecedência" (`distribAgendamento`)
+
+Depende do `appointments` carregado na Visão Geral — já corrigido pelo item 1c.
 
 ---
 
-## Detalhes técnicos
+## Validação
 
-**Arquivos a editar:**
-- `supabase/functions/automation-engine/index.ts` (linhas ~161-191): batch + chunking + abort.
-- Nova migration SQL para destravar bot_executions órfãs.
+Após o fix, vou rodar SQL de sanidade comparando:
 
-**Sem mudança de UI nesta passagem** — todas as correções são em edge functions e migration. Caso o teste no Vitor revele algo no front (ex: o painel do bot não atualiza após `cancelled`), abrirei follow-up.
+- `SELECT count(*) FROM crm_leads WHERE pipeline_id=X AND created_at BETWEEN ...` vs número da coorte na tela.
+- `SELECT count(*) FROM crm_appointments WHERE lead_id IN (...) AND created_at BETWEEN ...` vs total de agendamentos por cidade.
+- `SELECT lead_id, stage_id, name FROM crm_lead_stage_history JOIN crm_stages WHERE entered_at BETWEEN ... AND name ILIKE '%compar%'` vs "Compareceram".
 
-**Riscos:**
-- Mover o Vitor entre etapas vai gerar mensagens de sistema e potencialmente disparar automações reais (ex: enviar áudio). Você autorizou envios reais.
-- A migration de cleanup das 65 executions é one-shot e idempotente; não afeta executions ativas legítimas.
+Relatório com os deltas antes/depois no chat.
 
-Pronto para implementar quando você aprovar.
+---
+
+## Escopo NÃO incluído
+
+- Mudanças visuais / novos KPIs.
+- Reescrita do "Origem & Conversão" (apenas paginação).
+- Aba "Ações por Dia" — só remoção de código morto, sem mudar cálculo.
+- Página `Relatorios.tsx` (clínica) — não foi mencionada como problemática; posso incluir se quiser.
