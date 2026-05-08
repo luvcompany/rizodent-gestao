@@ -12,6 +12,7 @@ import logo from "@/assets/logo-rizodent.webp";
 const Login = () => {
   const navigate = useNavigate();
   const { signIn } = useAuth();
+  const { tenant } = useTenant();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
