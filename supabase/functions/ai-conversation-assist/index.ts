@@ -1,0 +1,194 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurado");
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Não autenticado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const body = await req.json().catch(() => ({}));
+    const leadId = body.lead_id as string | undefined;
+    const mode = (body.mode as string) || "summary_and_suggestions"; // or "summary", "suggestions"
+    const userQuestion = (body.question as string) || "";
+
+    if (!leadId) {
+      return new Response(JSON.stringify({ error: "lead_id é obrigatório" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch config
+    const { data: config } = await supabase
+      .from("ai_assistant_config")
+      .select("*")
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!config) {
+      return new Response(JSON.stringify({ error: "Nenhuma configuração de IA ativa" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch lead
+    const { data: lead } = await supabase
+      .from("crm_leads")
+      .select("id, name, phone, source, tags, cidade, servico_interesse, value, notes")
+      .eq("id", leadId)
+      .maybeSingle();
+
+    if (!lead) {
+      return new Response(JSON.stringify({ error: "Lead não encontrado" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch all messages (paginated)
+    const PAGE = 1000;
+    const allMsgs: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("direction, type, content, created_at, channel, status")
+        .eq("lead_id", leadId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error || !data?.length) break;
+      allMsgs.push(...data);
+      if (data.length < PAGE) break;
+    }
+
+    if (allMsgs.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Esta conversa ainda não tem mensagens para analisar." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const transcript = allMsgs
+      .map((m) => {
+        const who = m.direction === "inbound" ? "PACIENTE" : "ATENDENTE";
+        const txt = (m.content || `[${m.type}]`).replace(/\s+/g, " ").trim();
+        const dt = new Date(m.created_at).toLocaleString("pt-BR");
+        return `[${dt}] ${who}: ${txt}`;
+      })
+      .join("\n");
+
+    const leadInfo = `
+Nome: ${lead.name}
+Telefone: ${lead.phone || "—"}
+Cidade: ${lead.cidade || "—"}
+Serviço de interesse: ${lead.servico_interesse || "—"}
+Origem: ${lead.source || "—"}
+Tags: ${(lead.tags || []).join(", ") || "—"}
+Valor previsto: ${lead.value || 0}
+Anotações internas: ${lead.notes || "—"}
+`.trim();
+
+    let userPrompt = "";
+    if (mode === "summary") {
+      userPrompt = `Resuma de forma objetiva (máx 6 bullets) o histórico abaixo do atendimento.\n\n=== LEAD ===\n${leadInfo}\n\n=== CONVERSA ===\n${transcript}`;
+    } else if (mode === "suggestions") {
+      userPrompt = `Com base no histórico abaixo, gere 3 a 5 sugestões práticas de próximas mensagens que o atendente pode enviar para avançar o paciente no funil. Cada sugestão deve estar pronta para ser copiada e enviada (em português brasileiro, tom ${config.tone}).\n\n=== LEAD ===\n${leadInfo}\n\n=== CONVERSA ===\n${transcript}`;
+    } else if (mode === "ask" && userQuestion) {
+      userPrompt = `Responda à pergunta do atendente sobre este atendimento.\n\nPergunta: ${userQuestion}\n\n=== LEAD ===\n${leadInfo}\n\n=== CONVERSA ===\n${transcript}`;
+    } else {
+      userPrompt = `Analise o histórico de atendimento abaixo e responda em DOIS blocos com cabeçalhos em markdown:
+
+## Resumo
+- Resumo objetivo em até 6 bullets (intenção do paciente, etapa atual, objeções, urgência, valores discutidos, próximos passos pendentes).
+
+## Sugestões de Atendimento
+- 3 a 5 sugestões práticas de próximas mensagens prontas para enviar (cada sugestão começando com "•" e em parágrafo único, em português brasileiro, tom ${config.tone}).
+
+=== LEAD ===
+${leadInfo}
+
+=== CONVERSA (${allMsgs.length} mensagens) ===
+${transcript}`;
+    }
+
+    const systemPrompt = [
+      config.system_prompt,
+      config.custom_instructions ? `\n\nInstruções adicionais:\n${config.custom_instructions}` : "",
+      `\n\nTom de voz: ${config.tone}. Idioma: ${config.language}.`,
+    ].join("");
+
+    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: config.model || "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+
+    if (aiResp.status === 429) {
+      return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em instantes." }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (aiResp.status === 402) {
+      return new Response(JSON.stringify({ error: "Créditos da IA esgotados. Adicione créditos no workspace." }), {
+        status: 402,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!aiResp.ok) {
+      const t = await aiResp.text();
+      console.error("AI gateway error:", aiResp.status, t);
+      return new Response(JSON.stringify({ error: "Erro no gateway de IA" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const data = await aiResp.json();
+    const text = data?.choices?.[0]?.message?.content || "";
+
+    return new Response(
+      JSON.stringify({ result: text, message_count: allMsgs.length, model: config.model }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (e: any) {
+    console.error("ai-conversation-assist error:", e);
+    return new Response(JSON.stringify({ error: e.message || "Erro desconhecido" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
