@@ -6,10 +6,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
 
 type ChatMessage = {
+  id?: string;
   lead_id?: string;
   type: string;
   content: string | null;
   media_url: string | null;
+  transcription?: string | null;
 };
 
 type TemplateData = {
