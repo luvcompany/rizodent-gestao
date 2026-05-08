@@ -92,6 +92,48 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_conversation_analysis: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          last_message_at: string | null
+          lead_id: string
+          message_count: number
+          mode: string
+          model: string | null
+          question: string
+          result: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_message_at?: string | null
+          lead_id: string
+          message_count?: number
+          mode: string
+          model?: string | null
+          question?: string
+          result: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          last_message_at?: string | null
+          lead_id?: string
+          message_count?: number
+          mode?: string
+          model?: string | null
+          question?: string
+          result?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bot_execution_logs: {
         Row: {
           action: string
