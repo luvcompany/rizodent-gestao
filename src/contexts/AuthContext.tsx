@@ -8,6 +8,7 @@ interface ProfileData {
   cargo: string | null;
   avatar_url: string | null;
   signature_enabled: boolean;
+  must_change_password: boolean;
 }
 
 interface AuthContextType {
