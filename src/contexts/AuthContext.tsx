@@ -9,6 +9,7 @@ interface ProfileData {
   avatar_url: string | null;
   signature_enabled: boolean;
   must_change_password: boolean;
+  is_blocked: boolean;
 }
 
 interface AuthContextType {
