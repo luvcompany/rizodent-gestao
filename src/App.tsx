@@ -50,6 +50,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <TenantProvider>
         <AuthProvider>
           <Routes>
             <Route path="/" element={<Login />} />
