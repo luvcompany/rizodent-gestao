@@ -23,12 +23,22 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     const { error } = await signIn(email, password);
-    setLoading(false);
     if (error) {
+      setLoading(false);
       toast.error("Erro ao entrar: " + error);
-    } else {
-      navigate("/dashboard");
+      return;
     }
+    const { data: { user: u } } = await supabase.auth.getUser();
+    if (u) {
+      const blocked = await enforceBlockCheck(u.id, u.email ?? email, "client");
+      if (blocked) {
+        setLoading(false);
+        toast.error("Acesso bloqueado. Entre em contato com o administrador.");
+        return;
+      }
+    }
+    setLoading(false);
+    navigate("/dashboard");
   };
 
   return (
