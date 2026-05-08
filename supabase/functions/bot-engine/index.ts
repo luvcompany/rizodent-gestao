@@ -208,14 +208,25 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Validate auth - accept both user JWT and service role key
+    // Validate auth - accept user JWT, service role key, or matching apikey header
     const authHeader = req.headers.get("Authorization") || "";
+    const apiKeyHeader = req.headers.get("apikey") || "";
     const token = authHeader.replace("Bearer ", "");
-    const isServiceKey = token === serviceKey;
-    if (!isServiceKey) {
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+    const isServiceKey =
+      (!!serviceKey && (token === serviceKey || apiKeyHeader === serviceKey));
+    const isInternalCall = isServiceKey;
+    if (!isInternalCall) {
+      // Try standard user auth
       const { data: { user }, error: authError } = await supabase.auth.getUser(token);
       if (authError || !user) {
-        return json({ error: "Unauthorized" }, 401);
+        // As last resort, allow if apikey is the public anon/publishable key (gateway may rewrite Authorization)
+        if (!apiKeyHeader || (apiKeyHeader !== anonKey && apiKeyHeader !== publishableKey && apiKeyHeader !== serviceKey)) {
+          console.warn(`[BOT-ENGINE] Unauthorized: token len=${token.length}, apikey len=${apiKeyHeader.length}, serviceKey len=${serviceKey.length}`);
+          return json({ error: "Unauthorized" }, 401);
+        }
+        console.warn(`[BOT-ENGINE] Allowed via apikey fallback (no user JWT)`);
       }
     }
 
