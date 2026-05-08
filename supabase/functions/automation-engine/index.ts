@@ -543,7 +543,7 @@ Deno.serve(async (req) => {
 
       const { data: leads } = await supabase
         .from("crm_leads")
-        .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
+        .select("id, phone, last_inbound_at, created_at, updated_at")
         .eq("stage_id", auto.stage_id)
         .not("automation_paused", "is", true);
 
