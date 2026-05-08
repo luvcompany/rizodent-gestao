@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await supabase
         .from("messages")
-        .select("direction, type, content, transcription, created_at, channel, status")
+        .select("id, direction, type, content, media_url, transcription, created_at, channel, status")
         .eq("lead_id", leadId)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
@@ -83,6 +83,31 @@ Deno.serve(async (req) => {
       if (error || !data?.length) break;
       allMsgs.push(...data);
       if (data.length < PAGE) break;
+    }
+
+    // Auto-transcribe any audio messages that don't have a transcription yet
+    const pending = allMsgs.filter(
+      (m) => m.type === "audio" && !m.transcription && m.media_url,
+    );
+    if (pending.length > 0) {
+      console.log(`Transcribing ${pending.length} pending audios for lead ${leadId}`);
+      const CONCURRENCY = 3;
+      for (let i = 0; i < pending.length; i += CONCURRENCY) {
+        const batch = pending.slice(i, i + CONCURRENCY);
+        await Promise.all(
+          batch.map(async (m) => {
+            try {
+              const text = await transcribeAudio(m.media_url, supabase, LOVABLE_API_KEY);
+              if (text) {
+                m.transcription = text;
+                await supabase.from("messages").update({ transcription: text }).eq("id", m.id);
+              }
+            } catch (e) {
+              console.error(`Failed to transcribe message ${m.id}:`, e);
+            }
+          }),
+        );
+      }
     }
 
     if (allMsgs.length === 0) {
