@@ -37,6 +37,8 @@ import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
 import CrmCampanhas from "./pages/CrmCampanhas";
 import CrmIaConfig from "./pages/CrmIaConfig";
 import CrclinLanding from "./pages/CrclinLanding";
+import ChangePassword from "./pages/ChangePassword";
+import { AdminLayout, AdminClientes, AdminPlanos, AdminMetricas, AdminCobranca } from "./pages/admin/AdminPanel";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -51,6 +53,13 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Login />} />
             <Route path="/crclin" element={<CrclinLanding />} />
+            <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
+            <Route element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
+              <Route path="/admin" element={<AdminClientes />} />
+              <Route path="/admin/planos" element={<AdminPlanos />} />
+              <Route path="/admin/metricas" element={<AdminMetricas />} />
+              <Route path="/admin/cobranca" element={<AdminCobranca />} />
+            </Route>
             <Route
               element={
                 <ProtectedRoute>

@@ -1,13 +1,4 @@
 project_id = "oybroifaleftwrhnlhqc"
 
-[functions.instagram-oauth-callback]
-verify_jwt = false
-
-[functions.instagram-webhook]
-verify_jwt = false
-
-[functions.instagram-refresh-tokens]
-verify_jwt = false
-
-[functions.bot-engine]
-verify_jwt = false
+[functions.admin-create-tenant]
+verify_jwt = true
