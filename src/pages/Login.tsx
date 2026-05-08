@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { useTenant } from "@/contexts/TenantContext";
 import logo from "@/assets/logo-rizodent.webp";
 
 const Login = () => {
