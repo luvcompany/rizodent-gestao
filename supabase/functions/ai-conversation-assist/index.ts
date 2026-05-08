@@ -153,6 +153,49 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Quick count + latest timestamp to check cache freshness BEFORE doing heavy work
+    const { count: msgCount } = await supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("lead_id", leadId)
+      .is("deleted_at", null);
+    const { data: latestRow } = await supabase
+      .from("messages")
+      .select("created_at")
+      .eq("lead_id", leadId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const latestAt = latestRow?.created_at || null;
+    const currentCount = msgCount || 0;
+
+    if (!force) {
+      const { data: cached } = await supabase
+        .from("ai_conversation_analysis")
+        .select("result, message_count, last_message_at, model, updated_at")
+        .eq("lead_id", leadId)
+        .eq("mode", mode)
+        .eq("question", userQuestion || "")
+        .maybeSingle();
+      if (
+        cached &&
+        cached.message_count === currentCount &&
+        (cached.last_message_at || null) === latestAt
+      ) {
+        return new Response(
+          JSON.stringify({
+            result: cached.result,
+            message_count: cached.message_count,
+            model: cached.model,
+            cached: true,
+            cached_at: cached.updated_at,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     // Fetch all messages (paginated)
     const PAGE = 1000;
     const allMsgs: any[] = [];
