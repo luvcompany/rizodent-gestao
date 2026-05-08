@@ -9,13 +9,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Building2, CreditCard, BarChart3, Receipt, LogOut, Plus, Loader2 } from "lucide-react";
+import { Building2, CreditCard, BarChart3, Receipt, LogOut, Plus, Loader2, ShieldAlert } from "lucide-react";
 
 const navItems = [
   { to: "/admin", icon: Building2, label: "Clientes", end: true },
   { to: "/admin/planos", icon: CreditCard, label: "Planos" },
   { to: "/admin/metricas", icon: BarChart3, label: "Métricas" },
   { to: "/admin/cobranca", icon: Receipt, label: "Cobrança" },
+  { to: "/admin/logs", icon: ShieldAlert, label: "Logs & Acesso" },
 ];
 
 export const AdminLayout = () => {

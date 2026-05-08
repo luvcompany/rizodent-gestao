@@ -1,9 +1,18 @@
 import { Navigate, useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading, profile } = useAuth();
+  const { session, loading, profile, signOut } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    if (profile?.is_blocked) {
+      toast.error("Seu acesso foi bloqueado pelo administrador.");
+      signOut();
+    }
+  }, [profile?.is_blocked, signOut]);
 
   if (loading) {
     return (
@@ -14,6 +23,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!session) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (profile?.is_blocked) {
     return <Navigate to="/" replace />;
   }
 

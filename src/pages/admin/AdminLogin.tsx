@@ -48,12 +48,16 @@ const AdminLogin = () => {
       .eq("user_id", u.id)
       .eq("role", "superadmin")
       .maybeSingle();
-    setLoading(false);
     if (!role) {
       await supabase.auth.signOut();
+      setLoading(false);
       toast.error("Esta conta não tem acesso ao painel CRClin.");
       return;
     }
+    const { enforceBlockCheck } = await import("@/lib/accessLog");
+    const blocked = await enforceBlockCheck(u.id, u.email ?? email, "admin");
+    setLoading(false);
+    if (blocked) { toast.error("Acesso bloqueado."); return; }
     navigate("/admin", { replace: true });
   };
 

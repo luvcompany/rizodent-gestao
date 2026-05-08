@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_logs: {
+        Row: {
+          context: string
+          created_at: string
+          email: string | null
+          event: string
+          id: string
+          ip: string | null
+          metadata: Json | null
+          tenant_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          context?: string
+          created_at?: string
+          email?: string | null
+          event?: string
+          id?: string
+          ip?: string | null
+          metadata?: Json | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          context?: string
+          created_at?: string
+          email?: string | null
+          event?: string
+          id?: string
+          ip?: string | null
+          metadata?: Json | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       ad_id_mapping: {
         Row: {
           ad_account_id: string | null
@@ -2159,10 +2198,13 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          blocked_at: string | null
+          blocked_by: string | null
           cargo: string | null
           created_at: string
           email: string
           id: string
+          is_blocked: boolean
           must_change_password: boolean
           nome: string
           signature_enabled: boolean
@@ -2171,10 +2213,13 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          blocked_at?: string | null
+          blocked_by?: string | null
           cargo?: string | null
           created_at?: string
           email: string
           id: string
+          is_blocked?: boolean
           must_change_password?: boolean
           nome: string
           signature_enabled?: boolean
@@ -2183,10 +2228,13 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          blocked_at?: string | null
+          blocked_by?: string | null
           cargo?: string | null
           created_at?: string
           email?: string
           id?: string
+          is_blocked?: boolean
           must_change_password?: boolean
           nome?: string
           signature_enabled?: boolean

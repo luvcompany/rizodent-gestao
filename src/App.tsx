@@ -40,6 +40,7 @@ import CrmIaConfig from "./pages/CrmIaConfig";
 import CrclinLanding from "./pages/CrclinLanding";
 import ChangePassword from "./pages/ChangePassword";
 import { AdminLayout, AdminClientes, AdminPlanos, AdminMetricas, AdminCobranca } from "./pages/admin/AdminPanel";
+import AdminLogs from "./pages/admin/AdminLogs";
 import AdminLogin from "./pages/admin/AdminLogin";
 import NotFound from "./pages/NotFound";
 
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/admin/planos" element={<AdminPlanos />} />
               <Route path="/admin/metricas" element={<AdminMetricas />} />
               <Route path="/admin/cobranca" element={<AdminCobranca />} />
+              <Route path="/admin/logs" element={<AdminLogs />} />
             </Route>
             <Route
               element={
