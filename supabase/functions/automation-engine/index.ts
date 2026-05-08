@@ -543,26 +543,21 @@ Deno.serve(async (req) => {
 
       const { data: leads } = await supabase
         .from("crm_leads")
-        .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
+        .select("id, phone, last_inbound_at, created_at, updated_at")
         .eq("stage_id", auto.stage_id)
         .not("automation_paused", "is", true);
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
-        // "Sem resposta" = o LEAD não respondeu à NOSSA última mensagem há X tempo.
-        // Só dispara quando a última mensagem foi NOSSA (outbound) e o lead ainda não respondeu.
-        // Se o lead respondeu por último, a bola está conosco — não dispara.
+        // "Sem resposta" neste gatilho = tempo desde a última resposta do LEAD.
+        // Não usamos last_outbound_at aqui, porque uma resposta nossa antiga/recente não deve
+        // ser a referência. O gatilho dispara somente se o lead não fala conosco há X tempo.
         const lastInboundMs = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
-        const lastOutboundMs = lead.last_outbound_at ? new Date(lead.last_outbound_at).getTime() : 0;
 
-        // Precisa ter havido pelo menos uma mensagem nossa
-        if (!lastOutboundMs) continue;
+        // Precisa ter havido pelo menos uma mensagem do lead para medir a inatividade dele.
+        if (!lastInboundMs) continue;
 
-        // Se o lead respondeu DEPOIS da nossa última mensagem → ele já respondeu, não dispara
-        if (lastInboundMs > lastOutboundMs) continue;
-
-        // Referência = nossa última mensagem (estamos esperando a resposta dele desde então)
-        const referenceTime = lastOutboundMs;
+        const referenceTime = lastInboundMs;
 
         const { data: currentStageEntry } = await supabase
           .from("crm_lead_stage_history")
