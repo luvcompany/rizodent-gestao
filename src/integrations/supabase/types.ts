@@ -50,6 +50,48 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_assistant_config: {
+        Row: {
+          created_at: string
+          custom_instructions: string | null
+          enabled_features: Json
+          id: string
+          is_active: boolean
+          language: string
+          model: string
+          name: string
+          system_prompt: string
+          tone: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          custom_instructions?: string | null
+          enabled_features?: Json
+          id?: string
+          is_active?: boolean
+          language?: string
+          model?: string
+          name?: string
+          system_prompt?: string
+          tone?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          custom_instructions?: string | null
+          enabled_features?: Json
+          id?: string
+          is_active?: boolean
+          language?: string
+          model?: string
+          name?: string
+          system_prompt?: string
+          tone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bot_execution_logs: {
         Row: {
           action: string
