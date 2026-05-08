@@ -55,17 +55,30 @@ export default function CrmCampanhas() {
     }).select().single();
     if (!bc) return toast.error("Erro ao criar campanha");
 
-    let q = supabase.from("crm_leads").select("id");
-    if (form.pipeline_id) q = q.eq("pipeline_id", form.pipeline_id);
-    if (form.stage_id) q = q.eq("stage_id", form.stage_id);
-    const { data: leads } = await q;
-    if (leads && leads.length > 0) {
-      const recipients = leads.map(l => ({ broadcast_id: bc.id, lead_id: l.id }));
-      await supabase.from("crm_broadcast_recipients").insert(recipients);
+    const PAGE = 1000;
+    const leads: { id: string }[] = [];
+    let from = 0;
+    while (true) {
+      let q = supabase.from("crm_leads").select("id").range(from, from + PAGE - 1);
+      if (form.pipeline_id) q = q.eq("pipeline_id", form.pipeline_id);
+      if (form.stage_id) q = q.eq("stage_id", form.stage_id);
+      const { data, error } = await q;
+      if (error || !data || data.length === 0) break;
+      leads.push(...(data as { id: string }[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    if (leads.length > 0) {
+      // Insert recipients in chunks to avoid payload size limits
+      const CHUNK = 500;
+      for (let i = 0; i < leads.length; i += CHUNK) {
+        const recipients = leads.slice(i, i + CHUNK).map(l => ({ broadcast_id: bc.id, lead_id: l.id }));
+        await supabase.from("crm_broadcast_recipients").insert(recipients);
+      }
     }
     setOpen(false); setForm({ name: "", template_id: "", pipeline_id: "", stage_id: "" }); setPreviewCount(null);
     load();
-    toast.success(`Campanha criada com ${leads?.length || 0} destinatários`);
+    toast.success(`Campanha criada com ${leads.length} destinatários`);
   };
 
   const send = async (id: string) => {
