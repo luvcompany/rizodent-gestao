@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles, Loader2, Copy, Check, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -22,19 +22,49 @@ export default function LeadAiAssistPanel({ leadId, leadName, trigger }: Props) 
   const [tab, setTab] = useState<Mode>("summary_and_suggestions");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string>("");
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const run = async (mode: Mode) => {
+  const loadCached = async (mode: Mode, q: string) => {
+    if (mode === "ask" && !q.trim()) {
+      setResult("");
+      setCachedAt(null);
+      return;
+    }
+    const { data } = await supabase
+      .from("ai_conversation_analysis")
+      .select("result, updated_at")
+      .eq("lead_id", leadId)
+      .eq("mode", mode)
+      .eq("question", mode === "ask" ? q : "")
+      .maybeSingle();
+    if (data?.result) {
+      setResult(data.result);
+      setCachedAt(data.updated_at);
+    } else {
+      setResult("");
+      setCachedAt(null);
+    }
+  };
+
+  useEffect(() => {
+    if (open) loadCached(tab, question);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, tab, leadId]);
+
+  const run = async (mode: Mode, force = false) => {
     setLoading(true);
     setResult("");
+    setCachedAt(null);
     try {
       const { data, error } = await supabase.functions.invoke("ai-conversation-assist", {
-        body: { lead_id: leadId, mode, question: mode === "ask" ? question : undefined },
+        body: { lead_id: leadId, mode, question: mode === "ask" ? question : undefined, force },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       setResult((data as any)?.result || "");
+      setCachedAt((data as any)?.cached_at || new Date().toISOString());
     } catch (e: any) {
       toast.error(e.message || "Erro ao consultar a IA");
     } finally {
@@ -45,6 +75,7 @@ export default function LeadAiAssistPanel({ leadId, leadName, trigger }: Props) 
   const onTabChange = (v: string) => {
     setTab(v as Mode);
     setResult("");
+    setCachedAt(null);
   };
 
   const copyAll = async () => {
@@ -89,9 +120,9 @@ export default function LeadAiAssistPanel({ leadId, leadName, trigger }: Props) 
             />
           </TabsContent>
 
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             <Button
-              onClick={() => run(tab)}
+              onClick={() => run(tab, !!result)}
               disabled={loading || (tab === "ask" && !question.trim())}
               className="gradient-orange text-primary-foreground"
               size="sm"
@@ -106,9 +137,14 @@ export default function LeadAiAssistPanel({ leadId, leadName, trigger }: Props) 
               </Button>
             )}
             {result && (
-              <Button onClick={() => run(tab)} variant="ghost" size="icon" title="Atualizar">
+              <Button onClick={() => run(tab, true)} variant="ghost" size="icon" title="Forçar nova análise">
                 <RefreshCw size={14} />
               </Button>
+            )}
+            {cachedAt && result && !loading && (
+              <span className="text-xs text-muted-foreground ml-auto">
+                Análise salva — {new Date(cachedAt).toLocaleString("pt-BR")}
+              </span>
             )}
           </div>
 

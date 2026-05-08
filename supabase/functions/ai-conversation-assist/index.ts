@@ -114,6 +114,7 @@ Deno.serve(async (req) => {
     const leadId = body.lead_id as string | undefined;
     const mode = (body.mode as string) || "summary_and_suggestions"; // or "summary", "suggestions"
     const userQuestion = (body.question as string) || "";
+    const force = body.force === true;
 
     if (!leadId) {
       return new Response(JSON.stringify({ error: "lead_id é obrigatório" }), {
@@ -150,6 +151,49 @@ Deno.serve(async (req) => {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Quick count + latest timestamp to check cache freshness BEFORE doing heavy work
+    const { count: msgCount } = await supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("lead_id", leadId)
+      .is("deleted_at", null);
+    const { data: latestRow } = await supabase
+      .from("messages")
+      .select("created_at")
+      .eq("lead_id", leadId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const latestAt = latestRow?.created_at || null;
+    const currentCount = msgCount || 0;
+
+    if (!force) {
+      const { data: cached } = await supabase
+        .from("ai_conversation_analysis")
+        .select("result, message_count, last_message_at, model, updated_at")
+        .eq("lead_id", leadId)
+        .eq("mode", mode)
+        .eq("question", userQuestion || "")
+        .maybeSingle();
+      if (
+        cached &&
+        cached.message_count === currentCount &&
+        (cached.last_message_at || null) === latestAt
+      ) {
+        return new Response(
+          JSON.stringify({
+            result: cached.result,
+            message_count: cached.message_count,
+            model: cached.model,
+            cached: true,
+            cached_at: cached.updated_at,
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     // Fetch all messages (paginated)
@@ -293,8 +337,29 @@ ${transcript}`;
     const data = await aiResp.json();
     const text = data?.choices?.[0]?.message?.content || "";
 
+    // Persist cache (upsert by lead_id + mode + question)
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      await supabase.from("ai_conversation_analysis").upsert(
+        {
+          lead_id: leadId,
+          mode,
+          question: userQuestion || "",
+          result: text,
+          message_count: allMsgs.length,
+          last_message_at: allMsgs[allMsgs.length - 1]?.created_at || null,
+          model: config.model,
+          created_by: userData?.user?.id || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "lead_id,mode,question" },
+      );
+    } catch (e) {
+      console.error("Failed to cache analysis:", e);
+    }
+
     return new Response(
-      JSON.stringify({ result: text, message_count: allMsgs.length, model: config.model }),
+      JSON.stringify({ result: text, message_count: allMsgs.length, model: config.model, cached: false }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e: any) {
