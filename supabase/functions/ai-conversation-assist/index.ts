@@ -1,10 +1,93 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+function extractStoragePath(url: string): string | null {
+  if (!url) return null;
+  const pub = "/storage/v1/object/public/chat-media/";
+  const sig = "/storage/v1/object/sign/chat-media/";
+  let i = url.indexOf(pub);
+  if (i !== -1) return url.substring(i + pub.length).split("?")[0];
+  i = url.indexOf(sig);
+  if (i !== -1) return url.substring(i + sig.length).split("?")[0];
+  return null;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function mimeToFormat(mime: string): string {
+  const m = (mime || "").toLowerCase();
+  if (m.includes("ogg") || m.includes("opus")) return "ogg";
+  if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
+  if (m.includes("wav")) return "wav";
+  if (m.includes("mp4") || m.includes("m4a") || m.includes("aac")) return "m4a";
+  if (m.includes("webm")) return "webm";
+  if (m.includes("flac")) return "flac";
+  return "ogg";
+}
+
+async function transcribeAudio(
+  mediaUrl: string,
+  supabase: any,
+  apiKey: string,
+): Promise<string | null> {
+  const path = extractStoragePath(mediaUrl);
+  let bytes: Uint8Array;
+  let mime = "audio/ogg";
+  if (path) {
+    const { data, error } = await supabase.storage.from("chat-media").download(path);
+    if (error || !data) throw new Error(`download failed: ${error?.message}`);
+    bytes = new Uint8Array(await data.arrayBuffer());
+    mime = (data as Blob).type || mime;
+  } else {
+    const r = await fetch(mediaUrl);
+    if (!r.ok) throw new Error(`external fetch failed: ${r.status}`);
+    bytes = new Uint8Array(await r.arrayBuffer());
+    mime = r.headers.get("content-type") || mime;
+  }
+  const b64 = bytesToBase64(bytes);
+  const format = mimeToFormat(mime);
+
+  const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Você transcreve áudios em português brasileiro. Devolva APENAS o texto transcrito, sem comentários nem prefixos. Se não houver fala, responda exatamente: [áudio sem fala].",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Transcreva este áudio:" },
+            { type: "input_audio", input_audio: { data: b64, format } },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!aiResp.ok) {
+    const t = await aiResp.text();
+    throw new Error(`ai gateway ${aiResp.status}: ${t}`);
+  }
+  const j = await aiResp.json();
+  return (j?.choices?.[0]?.message?.content || "").trim() || null;
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
