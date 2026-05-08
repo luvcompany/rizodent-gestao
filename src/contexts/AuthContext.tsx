@@ -8,6 +8,7 @@ interface ProfileData {
   cargo: string | null;
   avatar_url: string | null;
   signature_enabled: boolean;
+  must_change_password: boolean;
 }
 
 interface AuthContextType {
@@ -32,10 +33,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchProfile = async (userId: string) => {
     const [{ data: prof }, { data: role }] = await Promise.all([
-      supabase.from("profiles").select("nome, email, cargo, avatar_url, signature_enabled").eq("id", userId).maybeSingle(),
+      supabase.from("profiles").select("nome, email, cargo, avatar_url, signature_enabled, must_change_password").eq("id", userId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
     ]);
-    setProfile(prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false } : null);
+    setProfile(prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false, must_change_password: (prof as any).must_change_password ?? false } : null);
     setUserRole(role?.role ?? null);
   };
 

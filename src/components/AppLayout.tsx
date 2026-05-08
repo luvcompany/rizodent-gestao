@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { useTheme } from "@/hooks/useTheme";
+import { useTenant } from "@/contexts/TenantContext";
 import logo from "@/assets/logo-rizodent.webp";
 
 const navItems = [
@@ -27,6 +28,7 @@ const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const { tenant } = useTenant();
 
   const handleLogout = async () => {
     await signOut();
@@ -50,7 +52,11 @@ const AppLayout = () => {
         }`}
       >
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
-          <img src={logo} alt="RizoDent" className={`h-7 object-contain ${theme === 'dark' ? 'invert' : ''}`} />
+          {tenant.logo_url ? (
+            <img src={tenant.logo_url} alt={tenant.name} className="h-7 object-contain" />
+          ) : (
+            <img src={logo} alt={tenant.name} className={`h-7 object-contain ${theme === 'dark' ? 'invert' : ''}`} />
+          )}
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}
@@ -122,7 +128,7 @@ const AppLayout = () => {
             <Menu size={22} />
           </button>
           <div className="ml-auto text-sm text-muted-foreground">
-            RizoDent — Sistema de Gestão
+            {tenant.name} — Sistema de Gestão
           </div>
         </header>
 
