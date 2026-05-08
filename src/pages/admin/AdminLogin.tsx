@@ -7,6 +7,7 @@ import { Eye, EyeOff, Shield } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import crclinIcon from "@/assets/crclin-icon.png";
 
 const AdminLogin = () => {
   const navigate = useNavigate();
@@ -66,9 +67,7 @@ const AdminLogin = () => {
       <div className="w-full max-w-md animate-fade-in">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 backdrop-blur p-8 shadow-2xl">
           <div className="mb-8 flex flex-col items-center gap-3 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500/10 border border-blue-500/30">
-              <Shield className="h-7 w-7 text-blue-400" />
-            </div>
+            <img src={crclinIcon} alt="CRClin" className="h-16 w-16" />
             <div>
               <h1 className="text-2xl font-bold text-white">CRClin Admin</h1>
               <p className="text-sm text-slate-400 mt-1">Painel de gestão de clientes</p>

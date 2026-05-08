@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { MessageCircle, Calendar, Users, Bot, BarChart3, CreditCard, CheckCircle2, Sparkles, Zap, Shield, ArrowRight, Phone } from "lucide-react";
+import crclinBrand from "@/assets/crclin-brand.png";
+import crclinIcon from "@/assets/crclin-icon.png";
 
 const WHATSAPP_URL = "https://wa.me/5577981223133?text=Ol%C3%A1!%20Quero%20conhecer%20o%20CRClin";
 
@@ -66,10 +68,10 @@ const CrclinLanding = () => {
       <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-slate-950">C</div>
+            <img src={crclinIcon} alt="CRClin" className="h-9 w-9" />
             <span className="text-lg font-bold tracking-tight">CRClin</span>
           </div>
-          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-blue-500/20 hover:opacity-90">
+          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-400 via-blue-500 to-purple-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-blue-500/20 hover:opacity-90">
             <MessageCircle size={16} /> Falar no WhatsApp
           </a>
         </div>
@@ -80,18 +82,19 @@ const CrclinLanding = () => {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.15),transparent_50%)]" />
         <div className="relative mx-auto max-w-7xl px-6 py-20 lg:py-28">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-4 py-1.5 text-xs font-medium text-blue-300">
+            <img src={crclinBrand} alt="CRClin — CRM completo para clínicas" className="mx-auto mb-8 w-full max-w-md rounded-2xl shadow-2xl shadow-blue-500/20" />
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-300">
               <Sparkles size={14} /> CRM completo para quem vive de agendamento
             </div>
             <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
               Transforme leads em clientes.<br />
-              <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">Pare de perder vendas no WhatsApp.</span>
+              <span className="bg-gradient-to-r from-emerald-300 via-blue-400 to-purple-400 bg-clip-text text-transparent">Pare de perder vendas no WhatsApp.</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-300">
               O CRClin centraliza atendimento, agenda, automações e gestão de pagamentos da sua clínica ou empresa em uma única plataforma — personalizada com a sua marca.
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 px-7 py-4 text-base font-semibold text-slate-950 shadow-xl shadow-blue-500/30 transition hover:scale-[1.02]">
+              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 via-blue-500 to-purple-500 px-7 py-4 text-base font-semibold text-slate-950 shadow-xl shadow-blue-500/30 transition hover:scale-[1.02]">
                 <MessageCircle size={18} /> Falar com um especialista
                 <ArrowRight size={18} />
               </a>
@@ -115,7 +118,7 @@ const CrclinLanding = () => {
           <div className="mt-12 grid gap-4 sm:grid-cols-2">
             {benefits.map((b) => (
               <div key={b} className="flex items-start gap-3 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-                <CheckCircle2 className="mt-0.5 shrink-0 text-cyan-400" size={20} />
+                <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-400" size={20} />
                 <p className="text-sm text-slate-200">{b}</p>
               </div>
             ))}
@@ -131,8 +134,8 @@ const CrclinLanding = () => {
         </div>
         <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f) => (
-            <div key={f.title} className="group rounded-2xl border border-slate-800 bg-slate-900/40 p-6 transition hover:border-blue-500/40 hover:bg-slate-900/70">
-              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/20 to-cyan-400/20 text-cyan-300">
+            <div key={f.title} className="group rounded-2xl border border-slate-800 bg-slate-900/40 p-6 transition hover:border-purple-500/40 hover:bg-slate-900/70">
+              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/20 to-cyan-400/20 text-emerald-300">
                 <f.icon size={22} />
               </div>
               <h3 className="text-lg font-semibold">{f.title}</h3>
@@ -168,7 +171,7 @@ const CrclinLanding = () => {
             <details key={f.q} className="group rounded-xl border border-slate-800 bg-slate-900/40 p-5 open:bg-slate-900/70">
               <summary className="flex cursor-pointer items-center justify-between font-medium text-slate-100">
                 {f.q}
-                <span className="ml-4 text-cyan-400 transition group-open:rotate-45">+</span>
+                <span className="ml-4 text-emerald-400 transition group-open:rotate-45">+</span>
               </summary>
               <p className="mt-3 text-sm text-slate-400">{f.a}</p>
             </details>
@@ -183,7 +186,7 @@ const CrclinLanding = () => {
           <div className="relative">
             <h2 className="text-3xl font-bold sm:text-4xl">Pronto para organizar sua clínica?</h2>
             <p className="mx-auto mt-4 max-w-xl text-slate-300">Fale agora com nosso time pelo WhatsApp e veja uma demonstração personalizada gratuita.</p>
-            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 px-8 py-4 text-base font-bold text-slate-950 shadow-xl shadow-blue-500/30 transition hover:scale-[1.02]">
+            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 via-blue-500 to-purple-500 px-8 py-4 text-base font-bold text-slate-950 shadow-xl shadow-blue-500/30 transition hover:scale-[1.02]">
               <MessageCircle size={20} /> Falar no WhatsApp
             </a>
             <p className="mt-4 text-xs text-slate-400 inline-flex items-center gap-1.5"><Phone size={12} /> (77) 98122-3133</p>
@@ -195,7 +198,7 @@ const CrclinLanding = () => {
       <footer className="border-t border-slate-800 bg-slate-950">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-6 py-8 text-xs text-slate-500 sm:flex-row">
           <p>© {new Date().getFullYear()} CRClin. Todos os direitos reservados.</p>
-          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hover:text-cyan-300">Contato</a>
+          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-300">Contato</a>
         </div>
       </footer>
 
