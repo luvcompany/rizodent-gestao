@@ -27,7 +27,7 @@ const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
-  const { tenant } = useTenant();
+  
 
   const handleLogout = async () => {
     await signOut();
