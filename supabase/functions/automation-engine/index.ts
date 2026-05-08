@@ -164,11 +164,23 @@ Deno.serve(async (req) => {
       .eq("status", "waiting_reply")
       .not("timeout_at", "is", null)
       .lte("timeout_at", new Date().toISOString())
-      .limit(50);
+      .limit(10);
 
-    for (const exec of expiredExecutions || []) {
+    // Reserve these executions immediately so the next cron tick doesn't pick them up
+    // while we're still processing this batch (push timeout_at +5min into the future).
+    if (expiredExecutions && expiredExecutions.length > 0) {
+      const reserveUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      await supabase
+        .from("bot_executions")
+        .update({ timeout_at: reserveUntil })
+        .in("id", expiredExecutions.map((e) => e.id));
+    }
+
+    const callBotTimeout = async (exec: { id: string; lead_id: string }) => {
       try {
         console.log(`[AUTOMATION-ENGINE] Bot timeout fired for execution ${exec.id}, lead ${exec.lead_id}`);
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 15_000);
         const resp = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
           method: "POST",
           headers: {
@@ -176,17 +188,37 @@ Deno.serve(async (req) => {
             Authorization: `Bearer ${serviceKey}`,
             apikey: serviceKey,
           },
-          body: JSON.stringify({
-            leadId: exec.lead_id,
-            executionId: exec.id,
-            trigger: "timeout",
-          }),
-        });
+          body: JSON.stringify({ leadId: exec.lead_id, executionId: exec.id, trigger: "timeout" }),
+          signal: ctrl.signal,
+        }).finally(() => clearTimeout(t));
         const respText = await resp.text();
         console.log(`[AUTOMATION-ENGINE] Bot timeout response for ${exec.id}: ${resp.status} ${respText.substring(0, 200)}`);
+        if (resp.status === 429) {
+          // Rate-limited: release reservation so the next tick can retry once gateway cools down
+          await supabase
+            .from("bot_executions")
+            .update({ timeout_at: new Date(Date.now() + 60_000).toISOString() })
+            .eq("id", exec.id);
+        }
         results.bot_timeout++;
       } catch (e: any) {
         console.error(`[AUTOMATION-ENGINE] Bot timeout error for ${exec.id}:`, e.message);
+        // On error, release the reservation so it can be retried later
+        await supabase
+          .from("bot_executions")
+          .update({ timeout_at: new Date(Date.now() + 60_000).toISOString() })
+          .eq("id", exec.id);
+      }
+    };
+
+    // Process in chunks of 3 with a small gap between chunks to avoid gateway rate-limit
+    const chunkSize = 3;
+    const list = expiredExecutions || [];
+    for (let i = 0; i < list.length; i += chunkSize) {
+      const chunk = list.slice(i, i + chunkSize);
+      await Promise.allSettled(chunk.map(callBotTimeout));
+      if (i + chunkSize < list.length) {
+        await new Promise((r) => setTimeout(r, 400));
       }
     }
 
