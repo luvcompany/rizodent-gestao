@@ -24,13 +24,15 @@ export const AdminLayout = () => {
   const [isSuper, setIsSuper] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { navigate("/admin/login", { replace: true }); return; }
     supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "superadmin" as any).maybeSingle()
-      .then(({ data }) => setIsSuper(!!data));
-  }, [user]);
+      .then(({ data }) => {
+        if (!data) navigate("/admin/login", { replace: true });
+        else setIsSuper(true);
+      });
+  }, [user, navigate]);
 
   if (isSuper === null) return <div className="flex h-screen items-center justify-center text-muted-foreground">Verificando acesso...</div>;
-  if (!isSuper) return <div className="flex h-screen items-center justify-center text-muted-foreground">Acesso restrito ao super-admin.</div>;
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
