@@ -68,7 +68,7 @@ const CrclinLanding = () => {
       <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-slate-950">C</div>
+            <img src={crclinIcon} alt="CRClin" className="h-9 w-9" />
             <span className="text-lg font-bold tracking-tight">CRClin</span>
           </div>
           <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-blue-500/20 hover:opacity-90">
