@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.instagram-refresh-tokens]
 verify_jwt = false
+
+[functions.bot-engine]
+verify_jwt = false
