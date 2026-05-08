@@ -433,7 +433,7 @@ export default function CrmRelatorios() {
   const fantasmas = useMemo(() => {
     return cohort.filter(l => {
       if (!l.first_inbound_at || !l.last_inbound_at) return false;
-      return l.first_inbound_at === l.last_inbound_at;
+      return new Date(l.first_inbound_at).getTime() === new Date(l.last_inbound_at).getTime();
     });
   }, [cohort]);
 
