@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     }
 
     await admin.from("access_logs").insert({
-      user_id: user.id,
+      user_id: userId,
       tenant_id,
       context: "admin",
       event: "impersonate",
