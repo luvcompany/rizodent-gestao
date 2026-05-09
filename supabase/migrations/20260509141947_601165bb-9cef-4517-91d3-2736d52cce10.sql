@@ -1,0 +1,1 @@
+UPDATE public.tenants SET slug = 'del-' || substr(gen_random_uuid()::text, 1, 8), status = 'deleted' WHERE slug ILIKE '%luvagency%';
