@@ -8,14 +8,9 @@ const corsHeaders = {
 };
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-function randomPassword(length = 16) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-  let pass = "";
-  for (let i = 0; i < length; i++) {
-    pass += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return pass;
-}
+// Note: previous implementation reset the user's password to a random one to log in,
+// which broke the user's real password permanently. We now use generateLink({ magiclink })
+// + verifyOtp to mint a real session WITHOUT touching the password.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -52,24 +47,28 @@ Deno.serve(async (req) => {
 
     const { data: tenant } = await admin.from("tenants").select("slug").eq("id", tenant_id).single();
 
-    // Generate temporary password and update user
-    const tempPassword = randomPassword(20);
-    const { error: updateErr } = await admin.auth.admin.updateUserById(targetUserId, { password: tempPassword });
-    if (updateErr) return json({ error: updateErr.message }, 500);
-
-    // Sign in via REST API to get tokens
-    const tokenRes = await fetch(`${URL}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers: {
-        "apikey": ANON,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email: targetProf.email, password: tempPassword }),
+    // Generate a magic link (does NOT change the user's password)
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email: targetProf.email,
     });
-    const tokenData = await tokenRes.json();
-    if (!tokenRes.ok || !tokenData.access_token) {
-      return json({ error: tokenData.error_description || tokenData.error || "Falha ao gerar sessão." }, 500);
+    if (linkErr || !linkData?.properties?.hashed_token) {
+      return json({ error: linkErr?.message || "Falha ao gerar link de acesso." }, 500);
     }
+
+    // Exchange the OTP hash for an actual session (access + refresh tokens)
+    const userClient = createClient(URL, ANON);
+    const { data: verifyData, error: verifyErr } = await userClient.auth.verifyOtp({
+      type: "magiclink",
+      token_hash: linkData.properties.hashed_token,
+    });
+    if (verifyErr || !verifyData?.session) {
+      return json({ error: verifyErr?.message || "Falha ao gerar sessão." }, 500);
+    }
+    const tokenData = {
+      access_token: verifyData.session.access_token,
+      refresh_token: verifyData.session.refresh_token,
+    };
 
     await admin.from("access_logs").insert({
       user_id: userId,
