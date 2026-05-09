@@ -44,9 +44,12 @@ Deno.serve(async (req) => {
       const status = action === "pause" ? "paused" : action === "activate" ? "active" : "deleted";
       const patchObj: any = { status };
       if (action === "delete") {
-        const { data: cur } = await admin.from("tenants").select("slug").eq("id", tenant_id).maybeSingle();
-        if (cur?.slug && !cur.slug.startsWith("deleted-")) {
-          patchObj.slug = `deleted-${Date.now()}-${cur.slug}`.slice(0, 63);
+        // Free up the slug entirely by replacing with a random throwaway value
+        patchObj.slug = `del-${crypto.randomUUID().slice(0, 8)}`;
+        // Also free up admin emails by removing auth users linked to this tenant
+        const { data: profs } = await admin.from("profiles").select("id").eq("tenant_id", tenant_id);
+        for (const p of profs ?? []) {
+          try { await admin.auth.admin.deleteUser(p.id); } catch (_) { /* ignore */ }
         }
       }
       const { error } = await admin.from("tenants").update(patchObj).eq("id", tenant_id);
