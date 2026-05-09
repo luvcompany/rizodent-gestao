@@ -2,8 +2,24 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature-256",
 };
+
+const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? Deno.env.get("META_APP_SECRET") ?? "";
+
+async function verifyMetaSignature(rawBody: string, signature: string | null): Promise<boolean> {
+  if (!APP_SECRET) return false;
+  if (!signature || !signature.startsWith("sha256=")) return false;
+  const sigHex = signature.slice("sha256=".length);
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sigBuf = await crypto.subtle.sign("HMAC", key, enc.encode(rawBody));
+  const computed = Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  if (computed.length !== sigHex.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < computed.length; i++) mismatch |= computed.charCodeAt(i) ^ sigHex.charCodeAt(i);
+  return mismatch === 0;
+}
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
@@ -294,7 +310,14 @@ Deno.serve(async (req) => {
   // POST = incoming message
   if (req.method === "POST") {
     try {
-      const body = await req.json();
+      const rawBody = await req.text();
+      const signature = req.headers.get("x-hub-signature-256");
+      const valid = await verifyMetaSignature(rawBody, signature);
+      if (!valid) {
+        console.warn("[WEBHOOK] Invalid or missing x-hub-signature-256");
+        return new Response("Forbidden", { status: 403, headers: corsHeaders });
+      }
+      const body = JSON.parse(rawBody);
       const entries = body?.entry || [];
 
       for (const entry of entries) {
