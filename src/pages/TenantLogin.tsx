@@ -64,6 +64,29 @@ const TenantLogin = () => {
     return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Carregando...</div>;
   }
 
+  // Handle admin impersonation tokens
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const at = params.get("impersonate_at");
+    const rt = params.get("impersonate_rt");
+    if (at && rt) {
+      (async () => {
+        const { error } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
+        if (error) {
+          toast.error("Erro ao estabelecer sessão: " + error.message);
+        } else {
+          // Clean URL and redirect to dashboard
+          const url = new URL(window.location.href);
+          url.searchParams.delete("impersonate_at");
+          url.searchParams.delete("impersonate_rt");
+          window.history.replaceState({}, "", url.toString());
+          await refreshProfile();
+          navigate("/dashboard");
+        }
+      })();
+    }
+  }, []);
+
   if (!tenant.id) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
