@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import crclinLogo from "@/assets/crclin-logo-full.png";
+
+export const CRCLIN_DEFAULT_LOGO = crclinLogo;
 
 interface TenantBranding {
   id: string | null;
@@ -13,7 +16,7 @@ const DEFAULT_TENANT: TenantBranding = {
   id: null,
   slug: null,
   name: "CRClin",
-  logo_url: null,
+  logo_url: crclinLogo,
   primary_color: null,
 };
 
@@ -45,7 +48,7 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
           id: data.id,
           slug: data.slug,
           name: data.name,
-          logo_url: data.logo_url,
+          logo_url: data.logo_url || crclinLogo,
           primary_color: data.primary_color,
         });
         if (data.primary_color) {
@@ -53,7 +56,7 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
         }
         document.title = data.name;
       } else {
-        setTenant({ ...DEFAULT_TENANT, slug: slugOverride });
+        setTenant({ ...DEFAULT_TENANT, slug: slugOverride, logo_url: crclinLogo });
       }
       setLoading(false);
     })();

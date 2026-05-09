@@ -31,10 +31,13 @@ Deno.serve(async (req) => {
     if (!roleRow) return new Response(JSON.stringify({ error: "Forbidden — superadmin only" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const body = await req.json();
-    const { name, slug, primary_color, secondary_color, tertiary_color, logo_url, favicon_url, plan_id, admin_email, admin_password, admin_name } = body;
+    const { name, slug, primary_color, secondary_color, tertiary_color, logo_url, favicon_url, plan_id, admin_email, admin_password, admin_name, clinic_name, clinic_city } = body;
 
     if (!name || !slug || !admin_email || !admin_password) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (!clinic_name) {
+      return new Response(JSON.stringify({ error: "Informe o nome da clínica" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Create tenant
@@ -73,6 +76,14 @@ Deno.serve(async (req) => {
 
     // Add admin role for this user (within tenant)
     await admin.from("user_roles").insert({ user_id: created.user.id, role: "admin", tenant_id: tenant.id });
+
+    // Create the clinic record for this tenant (starts empty otherwise)
+    await admin.from("clinicas").insert({
+      tenant_id: tenant.id,
+      nome: clinic_name,
+      cidade: clinic_city || clinic_name,
+      ativa: true,
+    });
 
     return new Response(JSON.stringify({ tenant, user_id: created.user.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
