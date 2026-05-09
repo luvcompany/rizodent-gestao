@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
     if (!roleRow) return new Response(JSON.stringify({ error: "Forbidden — superadmin only" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const body = await req.json();
-    const { name, slug, primary_color, logo_url, plan_id, admin_email, admin_password, admin_name } = body;
+    const { name, slug, primary_color, secondary_color, tertiary_color, logo_url, favicon_url, plan_id, admin_email, admin_password, admin_name } = body;
 
     if (!name || !slug || !admin_email || !admin_password) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -35,7 +35,11 @@ Deno.serve(async (req) => {
 
     // Create tenant
     const { data: tenant, error: tErr } = await admin.from("tenants").insert({
-      name, slug, primary_color: primary_color || "#3b82f6", logo_url, status: "active",
+      name, slug,
+      primary_color: primary_color || "#3b82f6",
+      secondary_color: secondary_color || "#fb923c",
+      tertiary_color: tertiary_color || "#fed7aa",
+      logo_url, favicon_url, status: "active",
     }).select().single();
     if (tErr) throw tErr;
 
