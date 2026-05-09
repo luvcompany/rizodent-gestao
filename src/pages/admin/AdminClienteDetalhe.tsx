@@ -16,7 +16,8 @@ import {
 
 type Tenant = {
   id: string; slug: string; name: string; logo_url: string | null;
-  favicon_url: string | null; primary_color: string; status: string; created_at: string;
+  favicon_url: string | null; primary_color: string; secondary_color: string;
+  tertiary_color: string; status: string; created_at: string;
 };
 type Profile = {
   id: string; nome: string; email: string; cargo: string | null;
