@@ -57,8 +57,8 @@ Deno.serve(async (req) => {
     }
 
     // Exchange the OTP hash for an actual session (access + refresh tokens)
-    const userClient = createClient(URL, ANON);
-    const { data: verifyData, error: verifyErr } = await userClient.auth.verifyOtp({
+    const anonClient = createClient(URL, ANON);
+    const { data: verifyData, error: verifyErr } = await anonClient.auth.verifyOtp({
       type: "magiclink",
       token_hash: linkData.properties.hashed_token,
     });
