@@ -27,8 +27,70 @@ const TenantContext = createContext<{ tenant: TenantBranding; loading: boolean }
 
 interface ProviderProps {
   children: ReactNode;
-  /** Slug resolvido pelo main.tsx (path ou subdomínio). null = modo público. */
   slugOverride?: string | null;
+}
+
+/** Convert "#rrggbb" or "rgb()" to "h s% l%" string for Tailwind hsl(var(--x)) usage. */
+function hexToHslTriplet(input: string): string | null {
+  if (!input) return null;
+  let r = 0, g = 0, b = 0;
+  const hex = input.trim().replace("#", "");
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+    r = parseInt(hex.slice(0, 2), 16);
+    g = parseInt(hex.slice(2, 4), 16);
+    b = parseInt(hex.slice(4, 6), 16);
+  } else if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    r = parseInt(hex[0] + hex[0], 16);
+    g = parseInt(hex[1] + hex[1], 16);
+    b = parseInt(hex[2] + hex[2], 16);
+  } else {
+    return null;
+  }
+  const rN = r / 255, gN = g / 255, bN = b / 255;
+  const max = Math.max(rN, gN, bN), min = Math.min(rN, gN, bN);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case rN: h = (gN - bN) / d + (gN < bN ? 6 : 0); break;
+      case gN: h = (bN - rN) / d + 2; break;
+      case bN: h = (rN - gN) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
+
+function applyPrimaryColor(hex: string | null) {
+  const root = document.documentElement;
+  if (!hex) {
+    root.style.removeProperty("--primary");
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--ring");
+    root.style.removeProperty("--gradient-orange");
+    root.style.removeProperty("--shadow-orange");
+    root.style.removeProperty("--tenant-primary");
+    return;
+  }
+  const triplet = hexToHslTriplet(hex);
+  if (!triplet) return;
+  root.style.setProperty("--primary", triplet);
+  root.style.setProperty("--accent", triplet);
+  root.style.setProperty("--ring", triplet);
+  root.style.setProperty(
+    "--gradient-orange",
+    `linear-gradient(135deg, hsl(${triplet}) 0%, hsl(${triplet} / 0.85) 100%)`
+  );
+  // shadow uses the same hue with reduced alpha
+  const [h, s] = triplet.split(" ");
+  const sNum = s.replace("%", "");
+  root.style.setProperty(
+    "--shadow-orange",
+    `0 4px 20px -4px hsla(${h}, ${sNum}%, 50%, 0.3)`
+  );
+  root.style.setProperty("--tenant-primary", hex);
 }
 
 export const TenantProvider = ({ children, slugOverride = null }: ProviderProps) => {
@@ -37,6 +99,7 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
 
   useEffect(() => {
     if (!slugOverride) {
+      applyPrimaryColor(null);
       setLoading(false);
       return;
     }
@@ -51,12 +114,11 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
           logo_url: data.logo_url || crclinLogo,
           primary_color: data.primary_color,
         });
-        if (data.primary_color) {
-          document.documentElement.style.setProperty("--tenant-primary", data.primary_color);
-        }
+        applyPrimaryColor(data.primary_color || null);
         document.title = data.name;
       } else {
         setTenant({ ...DEFAULT_TENANT, slug: slugOverride, logo_url: crclinLogo });
+        applyPrimaryColor(null);
       }
       setLoading(false);
     })();
