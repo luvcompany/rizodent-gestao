@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import crclinLogo from "@/assets/crclin-logo-full.png";
+
+export const CRCLIN_DEFAULT_LOGO = crclinLogo;
 
 interface TenantBranding {
   id: string | null;
@@ -13,7 +16,7 @@ const DEFAULT_TENANT: TenantBranding = {
   id: null,
   slug: null,
   name: "CRClin",
-  logo_url: null,
+  logo_url: crclinLogo,
   primary_color: null,
 };
 
