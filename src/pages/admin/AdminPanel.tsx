@@ -36,22 +36,22 @@ export const AdminLayout = () => {
   if (isSuper === null) return <div className="flex h-screen items-center justify-center text-muted-foreground">Verificando acesso...</div>;
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100">
-      <aside className="w-60 border-r border-slate-800 bg-slate-900/40 p-4">
+    <div className="dark flex min-h-screen bg-slate-950 text-slate-100">
+      <aside className="w-60 border-r border-slate-800 bg-slate-900/60 p-4">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-slate-950">C</div>
-          <span className="font-bold">CRClin Admin</span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-orange-500 to-amber-400 font-black text-slate-950">C</div>
+          <span className="font-bold tracking-tight">CRClin Admin</span>
         </div>
         <nav className="space-y-1">
           {navItems.map((it) => (
             <NavLink key={it.to} to={it.to} end={it.end}
-              className={({ isActive }) => `flex items-center gap-2 rounded-md px-3 py-2 text-sm ${isActive ? "bg-blue-500/20 text-blue-200" : "hover:bg-slate-800/60"}`}>
+              className={({ isActive }) => `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive ? "bg-orange-500/15 text-orange-200 ring-1 ring-orange-500/30" : "text-slate-300 hover:bg-slate-800/60 hover:text-slate-100"}`}>
               <it.icon size={16} /> {it.label}
             </NavLink>
           ))}
         </nav>
         <button onClick={async () => { await signOut(); navigate("/admin/login"); }}
-          className="mt-8 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/60">
+          className="mt-8 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/60 hover:text-slate-100">
           <LogOut size={16} /> Sair
         </button>
       </aside>
@@ -64,7 +64,7 @@ export const AdminClientes = () => {
   const [tenants, setTenants] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", primary_color: "#3b82f6", admin_name: "", admin_email: "", admin_password: "" });
+  const [form, setForm] = useState({ name: "", slug: "", primary_color: "#f97316", secondary_color: "#fb923c", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "" });
 
   const load = async () => {
     const { data } = await (supabase as any).from("tenants").select("*").order("created_at", { ascending: false });
@@ -82,7 +82,7 @@ export const AdminClientes = () => {
     if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message || "Erro"); return; }
     toast.success(`Cliente ${form.name} criado! Link: ${form.slug}.crclin.com.br`);
     setOpen(false);
-    setForm({ name: "", slug: "", primary_color: "#3b82f6", admin_name: "", admin_email: "", admin_password: "" });
+    setForm({ name: "", slug: "", primary_color: "#f97316", secondary_color: "#fb923c", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "" });
     load();
   };
 
@@ -93,7 +93,7 @@ export const AdminClientes = () => {
           <h1 className="text-2xl font-bold">Clientes</h1>
           <p className="text-sm text-slate-400">Gerencie todos os clientes da plataforma CRClin.</p>
         </div>
-        <Button onClick={() => setOpen(true)} className="bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950"><Plus size={16} /> Novo cliente</Button>
+        <Button onClick={() => setOpen(true)} className="bg-gradient-to-r from-orange-500 to-amber-400 text-slate-950 hover:opacity-90"><Plus size={16} /> Novo cliente</Button>
       </div>
 
       <div className="grid gap-3">
@@ -122,7 +122,11 @@ export const AdminClientes = () => {
           <div className="space-y-3">
             <div><Label>Nome da clínica/empresa</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div><Label>Slug (subdomínio)</Label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} placeholder="ex: clinicaxyz" /></div>
-            <div><Label>Cor primária</Label><Input type="color" value={form.primary_color} onChange={(e) => setForm({ ...form, primary_color: e.target.value })} className="h-10 w-20" /></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>Cor primária</Label><Input type="color" value={form.primary_color} onChange={(e) => setForm({ ...form, primary_color: e.target.value })} className="h-10 w-full p-1" /></div>
+              <div><Label>Cor secundária</Label><Input type="color" value={form.secondary_color} onChange={(e) => setForm({ ...form, secondary_color: e.target.value })} className="h-10 w-full p-1" /></div>
+              <div><Label>Cor terciária</Label><Input type="color" value={form.tertiary_color} onChange={(e) => setForm({ ...form, tertiary_color: e.target.value })} className="h-10 w-full p-1" /></div>
+            </div>
             <div className="border-t border-slate-800 pt-3"><p className="mb-2 text-sm font-semibold">Primeiro usuário (admin do cliente)</p></div>
             <div><Label>Nome</Label><Input value={form.admin_name} onChange={(e) => setForm({ ...form, admin_name: e.target.value })} /></div>
             <div><Label>E-mail</Label><Input type="email" value={form.admin_email} onChange={(e) => setForm({ ...form, admin_email: e.target.value })} /></div>
