@@ -2451,8 +2451,10 @@ export type Database = {
           logo_url: string | null
           name: string
           primary_color: string
+          secondary_color: string
           slug: string
           status: string
+          tertiary_color: string
           trial_ends_at: string | null
           updated_at: string
         }
@@ -2463,8 +2465,10 @@ export type Database = {
           logo_url?: string | null
           name: string
           primary_color?: string
+          secondary_color?: string
           slug: string
           status?: string
+          tertiary_color?: string
           trial_ends_at?: string | null
           updated_at?: string
         }
@@ -2475,8 +2479,10 @@ export type Database = {
           logo_url?: string | null
           name?: string
           primary_color?: string
+          secondary_color?: string
           slug?: string
           status?: string
+          tertiary_color?: string
           trial_ends_at?: string | null
           updated_at?: string
         }
