@@ -114,6 +114,15 @@ export default function CrmCalendario() {
   const [crmStages, setCrmStages] = useState<Stage[]>(calendarCache.stages || []);
   const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>(calendarCache.pipelines || []);
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
+  const [tenantCities, setTenantCities] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("clinicas").select("cidade").eq("ativa", true);
+      const unique = Array.from(new Set((data || []).map((c: any) => c.cidade).filter(Boolean)));
+      setTenantCities(unique);
+    })();
+  }, []);
 
   const weekRange = useMemo(() => ({
     start: format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
@@ -300,9 +309,8 @@ export default function CrmCalendario() {
     return all.filter(d => d.getDay() !== 0); // Exclude Sunday
   }, [currentDate]);
 
-  // Fixed city rows for the appointment matrix
-  const FIXED_CITIES = ["Vitória da Conquista", "Guanambi", "Ipiaú", "Itabuna"];
-  const apptCities = FIXED_CITIES;
+  // City rows from tenant's clinicas table (empty for new tenants)
+  const apptCities = tenantCities;
 
   return (
     <div className="flex flex-col h-full -m-6 p-4" style={{ height: "calc(100vh - 4rem)" }}>
