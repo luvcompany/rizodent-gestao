@@ -73,7 +73,7 @@ export const AdminClientes = () => {
   useEffect(() => { load(); }, []);
 
   const create = async () => {
-    if (!form.name || !form.slug || !form.admin_email || !form.admin_password) {
+    if (!form.name || !form.slug || !form.admin_email || !form.admin_password || !form.clinic_name) {
       toast.error("Preencha todos os campos obrigatórios"); return;
     }
     setLoading(true);
