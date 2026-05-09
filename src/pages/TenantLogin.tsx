@@ -106,11 +106,13 @@ const TenantLogin = () => {
       <div className="w-full max-w-md animate-fade-in">
         <div className="gradient-card rounded-2xl border border-border p-8 shadow-card">
           <div className="mb-8 flex flex-col items-center gap-4">
-            {tenant.logo_url ? (
-              <img src={tenant.logo_url} alt={tenant.name} className="h-16 object-contain" />
-            ) : (
-              <img src={logoFallback} alt={tenant.name} className="h-12 object-contain invert" />
-            )}
+            <div className="rounded-2xl bg-[#0b1226] p-3 shadow-xl shadow-black/40 ring-1 ring-white/5">
+              {tenant.logo_url ? (
+                <img src={tenant.logo_url} alt={tenant.name} className="h-16 object-contain" />
+              ) : (
+                <img src={logoFallback} alt={tenant.name} className="h-14 object-contain" />
+              )}
+            </div>
             <div className="text-center">
               <h1 className="text-xl font-bold">{tenant.name}</h1>
               <p className="text-sm text-muted-foreground">Acesso da equipe</p>
