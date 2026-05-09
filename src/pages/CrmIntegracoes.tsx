@@ -26,6 +26,7 @@ type WhatsAppConfig = {
   token: string;
   phone_number_id: string;
   waba_id: string;
+  app_id: string;
   api_version: string;
   webhook_verify_token: string;
   display_name: string;
@@ -58,6 +59,7 @@ const defaultConfig: WhatsAppConfig = {
   token: "",
   phone_number_id: "",
   waba_id: "",
+  app_id: "",
   api_version: "v25.0",
   webhook_verify_token: "",
   display_name: "",
@@ -523,6 +525,11 @@ export default function CrmIntegracoes() {
                 <div>
                   <Label className="flex items-center gap-2">WABA ID <FieldStatus value={editEntry.config.waba_id} /></Label>
                   <Input value={editEntry.config.waba_id} onChange={(e) => setEditEntry(prev => prev ? { ...prev, config: { ...prev.config, waba_id: e.target.value } } : prev)} placeholder="987654321..." />
+                </div>
+                <div>
+                  <Label className="flex items-center gap-2">App ID (Meta) <FieldStatus value={editEntry.config.app_id} /></Label>
+                  <Input value={editEntry.config.app_id} onChange={(e) => setEditEntry(prev => prev ? { ...prev, config: { ...prev.config, app_id: e.target.value } } : prev)} placeholder="ID do aplicativo no Meta for Developers" />
+                  <p className="text-[11px] text-muted-foreground mt-1">Encontrado em: developers.facebook.com → Seu app → Configurações → Básico → ID do aplicativo</p>
                 </div>
                 <div>
                   <Label>Versão da API</Label>
