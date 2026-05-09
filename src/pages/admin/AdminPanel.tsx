@@ -64,7 +64,7 @@ export const AdminClientes = () => {
   const [tenants, setTenants] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", primary_color: "#3b82f6", admin_name: "", admin_email: "", admin_password: "" });
+  const [form, setForm] = useState({ name: "", slug: "", primary_color: "#f97316", secondary_color: "#fb923c", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "" });
 
   const load = async () => {
     const { data } = await (supabase as any).from("tenants").select("*").order("created_at", { ascending: false });
