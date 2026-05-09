@@ -59,6 +59,7 @@ const defaultConfig: WhatsAppConfig = {
   token: "",
   phone_number_id: "",
   waba_id: "",
+  app_id: "",
   api_version: "v25.0",
   webhook_verify_token: "",
   display_name: "",
