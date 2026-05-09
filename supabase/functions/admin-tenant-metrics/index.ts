@@ -29,7 +29,9 @@ Deno.serve(async (req) => {
     const { tenant_id } = await req.json();
     if (!tenant_id) return json({ error: "tenant_id required" }, 400);
 
-    const { data, error } = await admin.rpc("admin_tenant_metrics", { _tenant_id: tenant_id });
+    const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const userClient = createClient(URL, ANON, { global: { headers: { Authorization: `Bearer ${token}` } } });
+    const { data, error } = await userClient.rpc("admin_tenant_metrics", { _tenant_id: tenant_id });
     if (error) return json({ error: error.message }, 500);
     return json(data);
   } catch (e: any) {
