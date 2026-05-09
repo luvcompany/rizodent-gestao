@@ -42,7 +42,14 @@ Deno.serve(async (req) => {
 
     if (action === "pause" || action === "activate" || action === "delete") {
       const status = action === "pause" ? "paused" : action === "activate" ? "active" : "deleted";
-      const { error } = await admin.from("tenants").update({ status }).eq("id", tenant_id);
+      const patchObj: any = { status };
+      if (action === "delete") {
+        const { data: cur } = await admin.from("tenants").select("slug").eq("id", tenant_id).maybeSingle();
+        if (cur?.slug && !cur.slug.startsWith("deleted-")) {
+          patchObj.slug = `deleted-${Date.now()}-${cur.slug}`.slice(0, 63);
+        }
+      }
+      const { error } = await admin.from("tenants").update(patchObj).eq("id", tenant_id);
       if (error) return json({ error: error.message }, 400);
       await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: `tenant_${action}` });
       return json({ ok: true, status });
