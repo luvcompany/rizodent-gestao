@@ -17,6 +17,10 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+  const auth = req.headers.get("authorization") || "";
+  const expected = `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
+  if (auth !== expected) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
 
   if (!META_APP_ID || !META_APP_SECRET) {
     return new Response(JSON.stringify({ error: "Missing META secrets" }), {

@@ -9,6 +9,18 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "POST only" }), { status: 405, headers: corsHeaders });
 
+  // Require shared secret to prevent fake-lead flooding
+  const expectedSecret = Deno.env.get("WEBHOOK_SECRET");
+  const providedSecret = req.headers.get("x-webhook-secret") || new URL(req.url).searchParams.get("secret");
+  const auth = req.headers.get("authorization") || "";
+  const isServiceRole = auth === `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
+  if (!isServiceRole) {
+    if (!expectedSecret || providedSecret !== expectedSecret) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+  }
+
+
   try {
     const body = await req.json();
     const { name, phone, tags, pipeline, source } = body;

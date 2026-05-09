@@ -136,6 +136,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
+  // Require authenticated caller (user JWT) or service role
+  const authHeader = req.headers.get("authorization") || "";
+  const isServiceRole = authHeader === `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
+  if (!isServiceRole) {
+    if (!authHeader.startsWith("Bearer ")) return jsonResponse({ error: "Unauthorized" }, 401);
+    const token = authHeader.slice("Bearer ".length);
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) return jsonResponse({ error: "Unauthorized" }, 401);
+  }
+
   let body: Body;
   try {
     body = await req.json();

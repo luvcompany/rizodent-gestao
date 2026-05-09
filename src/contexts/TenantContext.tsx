@@ -46,11 +46,8 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     // On Lovable preview/sandbox/localhost, default to Rizodent branding
     const fallbackSlug = slug || "rizodent";
     (async () => {
-      const { data } = await supabase
-        .from("tenants")
-        .select("id, slug, name, logo_url, primary_color")
-        .eq("slug", fallbackSlug)
-        .maybeSingle();
+      const { data: rows } = await (supabase as any).rpc("get_tenant_by_slug", { _slug: fallbackSlug });
+      const data = Array.isArray(rows) ? rows[0] : rows;
       if (data) {
         setTenant({
           id: data.id,
