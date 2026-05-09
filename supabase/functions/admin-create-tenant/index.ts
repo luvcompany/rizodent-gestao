@@ -40,6 +40,16 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Informe o nome da clínica" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Free up slug if it belongs to a previously deleted tenant
+    const { data: existing } = await admin.from("tenants").select("id, status, slug").eq("slug", slug).maybeSingle();
+    if (existing) {
+      if (existing.status === "deleted") {
+        await admin.from("tenants").update({ slug: `deleted-${Date.now()}-${existing.slug}`.slice(0, 63) }).eq("id", existing.id);
+      } else {
+        return json({ error: `Slug "${slug}" já está em uso por outro cliente ativo.` }, 400);
+      }
+    }
+
     // Create tenant
     const { data: tenant, error: tErr } = await admin.from("tenants").insert({
       name, slug,
