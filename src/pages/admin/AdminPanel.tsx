@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Building2, CreditCard, BarChart3, Receipt, LogOut, Plus, Loader2, ShieldAlert } from "lucide-react";
+import { Building2, CreditCard, BarChart3, Receipt, LogOut, Plus, Loader2, ShieldAlert, Trash2 } from "lucide-react";
 
 const navItems = [
   { to: "/admin", icon: Building2, label: "Clientes", end: true },
