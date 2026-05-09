@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION public.admin_tenant_metrics(uuid) TO authenticated;
