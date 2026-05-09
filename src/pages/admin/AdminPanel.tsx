@@ -93,7 +93,7 @@ export const AdminClientes = () => {
           <h1 className="text-2xl font-bold">Clientes</h1>
           <p className="text-sm text-slate-400">Gerencie todos os clientes da plataforma CRClin.</p>
         </div>
-        <Button onClick={() => setOpen(true)} className="bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950"><Plus size={16} /> Novo cliente</Button>
+        <Button onClick={() => setOpen(true)} className="bg-gradient-to-r from-orange-500 to-amber-400 text-slate-950 hover:opacity-90"><Plus size={16} /> Novo cliente</Button>
       </div>
 
       <div className="grid gap-3">
