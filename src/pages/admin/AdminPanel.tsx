@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, NavLink, Outlet } from "react-router-dom";
+import { useNavigate, NavLink, Outlet, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -99,15 +99,18 @@ export const AdminClientes = () => {
       <div className="grid gap-3">
         {tenants.map((t) => (
           <Card key={t.id} className="flex items-center justify-between border-slate-800 bg-slate-900/40 p-4 text-slate-100">
-            <div className="flex items-center gap-3">
+            <Link to={`/admin/clientes/${t.id}`} className="flex flex-1 items-center gap-3 hover:opacity-80">
               {t.logo_url ? <img src={t.logo_url} alt="" className="h-10 w-10 rounded object-contain" /> :
                 <div className="flex h-10 w-10 items-center justify-center rounded font-bold" style={{ background: t.primary_color }}>{t.name[0]}</div>}
               <div>
                 <p className="font-semibold">{t.name}</p>
                 <p className="text-xs text-slate-400">{t.slug}.crclin.com.br · criado em {new Date(t.created_at).toLocaleDateString("pt-BR")}</p>
               </div>
+            </Link>
+            <div className="flex items-center gap-2">
+              <Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge>
+              <Button asChild size="sm" variant="outline"><Link to={`/admin/clientes/${t.id}`}>Gerenciar</Link></Button>
             </div>
-            <Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge>
           </Card>
         ))}
         {tenants.length === 0 && <p className="text-slate-500">Nenhum cliente ainda.</p>}
