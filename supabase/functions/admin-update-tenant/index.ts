@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
     if (action === "update") {
       const allowed: any = {};
-      const fields = ["name", "slug", "primary_color", "logo_url", "favicon_url", "status"];
+      const fields = ["name", "slug", "primary_color", "secondary_color", "tertiary_color", "logo_url", "favicon_url", "status"];
       for (const f of fields) if (patch?.[f] !== undefined) allowed[f] = patch[f];
       if (allowed.slug) allowed.slug = String(allowed.slug).toLowerCase().replace(/[^a-z0-9-]/g, "");
       const { data, error } = await admin.from("tenants").update(allowed).eq("id", tenant_id).select().single();
