@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Building2, CreditCard, BarChart3, Receipt, LogOut, Plus, Loader2, ShieldAlert } from "lucide-react";
+import { Building2, CreditCard, BarChart3, Receipt, LogOut, Plus, Loader2, ShieldAlert, Trash2 } from "lucide-react";
 
 const navItems = [
   { to: "/admin", icon: Building2, label: "Clientes", end: true },
@@ -67,8 +67,16 @@ export const AdminClientes = () => {
   const [form, setForm] = useState({ name: "", slug: "", primary_color: "#f97316", secondary_color: "#fb923c", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "" });
 
   const load = async () => {
-    const { data } = await (supabase as any).from("tenants").select("*").order("created_at", { ascending: false });
+    const { data } = await (supabase as any).from("tenants").select("*").neq("status", "deleted").order("created_at", { ascending: false });
     setTenants(data || []);
+  };
+
+  const handleDelete = async (t: any) => {
+    if (!confirm(`Tem certeza que deseja apagar o cliente "${t.name}"? Essa ação pode ser revertida apenas via banco de dados.`)) return;
+    const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: t.id, action: "delete" } });
+    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message || "Erro ao apagar"); return; }
+    toast.success(`Cliente ${t.name} removido`);
+    load();
   };
   useEffect(() => { load(); }, []);
 
@@ -110,6 +118,7 @@ export const AdminClientes = () => {
             <div className="flex items-center gap-2">
               <Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge>
               <Button asChild size="sm" variant="outline"><Link to={`/admin/clientes/${t.id}`}>Gerenciar</Link></Button>
+              <Button size="sm" variant="outline" className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => handleDelete(t)}><Trash2 size={14} /></Button>
             </div>
           </Card>
         ))}
