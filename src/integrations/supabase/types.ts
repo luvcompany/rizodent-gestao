@@ -2208,6 +2208,7 @@ export type Database = {
           email: string
           id: string
           is_blocked: boolean
+          last_login_at: string | null
           must_change_password: boolean
           nome: string
           signature_enabled: boolean
@@ -2223,6 +2224,7 @@ export type Database = {
           email: string
           id: string
           is_blocked?: boolean
+          last_login_at?: string | null
           must_change_password?: boolean
           nome: string
           signature_enabled?: boolean
@@ -2238,6 +2240,7 @@ export type Database = {
           email?: string
           id?: string
           is_blocked?: boolean
+          last_login_at?: string | null
           must_change_password?: boolean
           nome?: string
           signature_enabled?: boolean
@@ -2443,6 +2446,7 @@ export type Database = {
       tenants: {
         Row: {
           created_at: string
+          favicon_url: string | null
           id: string
           logo_url: string | null
           name: string
@@ -2454,6 +2458,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          favicon_url?: string | null
           id?: string
           logo_url?: string | null
           name: string
@@ -2465,6 +2470,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          favicon_url?: string | null
           id?: string
           logo_url?: string | null
           name?: string
@@ -2597,6 +2603,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_tenant_metrics: { Args: { _tenant_id: string }; Returns: Json }
       check_duplicate_phone: {
         Args: { p_phone: string }
         Returns: {
