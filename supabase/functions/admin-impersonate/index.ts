@@ -8,13 +8,21 @@ const corsHeaders = {
 };
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+function randomPassword(length = 16) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+  let pass = "";
+  for (let i = 0; i < length; i++) {
+    pass += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return pass;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
     const URL = Deno.env.get("SUPABASE_URL")!;
     const SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const FRONTEND = Deno.env.get("FRONTEND_URL") ?? "https://crclin.com.br";
 
     const auth = req.headers.get("Authorization") ?? "";
     const userClient = createClient(URL, ANON, { global: { headers: { Authorization: auth } } });
@@ -41,12 +49,24 @@ Deno.serve(async (req) => {
 
     const { data: tenant } = await admin.from("tenants").select("slug").eq("id", tenant_id).single();
 
-    const { data: link, error } = await admin.auth.admin.generateLink({
-      type: "magiclink",
-      email: targetProf.email,
-      options: { redirectTo: `${FRONTEND}/${tenant!.slug}/dashboard` },
+    // Generate temporary password and update user
+    const tempPassword = randomPassword(20);
+    const { error: updateErr } = await admin.auth.admin.updateUserById(targetUserId, { password: tempPassword });
+    if (updateErr) return json({ error: updateErr.message }, 500);
+
+    // Sign in via REST API to get tokens
+    const tokenRes = await fetch(`${URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: {
+        "apikey": ANON,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: targetProf.email, password: tempPassword }),
     });
-    if (error) return json({ error: error.message }, 500);
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.access_token) {
+      return json({ error: tokenData.error_description || tokenData.error || "Falha ao gerar sessão." }, 500);
+    }
 
     await admin.from("access_logs").insert({
       user_id: user.id,
@@ -56,7 +76,12 @@ Deno.serve(async (req) => {
       metadata: { target_user_id: targetUserId, target_email: targetProf.email },
     });
 
-    return json({ url: link.properties?.action_link, slug: tenant!.slug, email: targetProf.email });
+    return json({
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token,
+      slug: tenant!.slug,
+      email: targetProf.email,
+    });
   } catch (e: any) {
     return json({ error: e?.message ?? String(e) }, 500);
   }
