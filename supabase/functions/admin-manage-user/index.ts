@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,12 +15,15 @@ Deno.serve(async (req) => {
     const SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
     const auth = req.headers.get("Authorization") ?? "";
+    if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+    const token = auth.replace("Bearer ", "");
     const userClient = createClient(URL, ANON, { global: { headers: { Authorization: auth } } });
-    const { data: { user } } = await userClient.auth.getUser();
-    if (!user) return json({ error: "Unauthorized" }, 401);
+    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
+    if (claimsErr || !claimsData?.claims) return json({ error: "Unauthorized" }, 401);
+    const userId = claimsData.claims.sub;
 
     const admin = createClient(URL, SR);
-    const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", user.id).eq("role", "superadmin").maybeSingle();
+    const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", userId).eq("role", "superadmin").maybeSingle();
     if (!roleRow) return json({ error: "Forbidden" }, 403);
 
     const { action, tenant_id, user_id, email, password, nome } = await req.json();
@@ -40,7 +43,7 @@ Deno.serve(async (req) => {
     if (!user_id) return json({ error: "user_id required" }, 400);
 
     if (action === "block") {
-      await admin.from("profiles").update({ is_blocked: true, blocked_at: new Date().toISOString(), blocked_by: user.id }).eq("id", user_id);
+      await admin.from("profiles").update({ is_blocked: true, blocked_at: new Date().toISOString(), blocked_by: userId }).eq("id", user_id);
       return json({ ok: true });
     }
     if (action === "unblock") {
