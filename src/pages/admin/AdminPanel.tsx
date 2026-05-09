@@ -127,6 +127,11 @@ export const AdminClientes = () => {
               <div><Label>Cor secundária</Label><Input type="color" value={form.secondary_color} onChange={(e) => setForm({ ...form, secondary_color: e.target.value })} className="h-10 w-full p-1 bg-slate-800 border-slate-700" /></div>
               <div><Label>Cor terciária</Label><Input type="color" value={form.tertiary_color} onChange={(e) => setForm({ ...form, tertiary_color: e.target.value })} className="h-10 w-full p-1 bg-slate-800 border-slate-700" /></div>
             </div>
+            <div className="border-t border-slate-800 pt-3"><p className="mb-2 text-sm font-semibold">Clínica principal</p></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Nome da clínica</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.clinic_name} onChange={(e) => setForm({ ...form, clinic_name: e.target.value })} placeholder="ex: Clínica Centro" /></div>
+              <div><Label>Cidade</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.clinic_city} onChange={(e) => setForm({ ...form, clinic_city: e.target.value })} placeholder="ex: São Paulo" /></div>
+            </div>
             <div className="border-t border-slate-800 pt-3"><p className="mb-2 text-sm font-semibold">Primeiro usuário (admin do cliente)</p></div>
             <div><Label>Nome</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.admin_name} onChange={(e) => setForm({ ...form, admin_name: e.target.value })} /></div>
             <div><Label>E-mail</Label><Input type="email" className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.admin_email} onChange={(e) => setForm({ ...form, admin_email: e.target.value })} /></div>
