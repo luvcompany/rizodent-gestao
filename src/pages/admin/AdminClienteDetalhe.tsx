@@ -262,9 +262,25 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
           <Input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "favicon")} />
         </div>
       </div>
-      <div>
-        <Label>Cor primária</Label>
-        <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-10 w-24" />
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <Label>Cor primária</Label>
+          <Input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} className="h-10 w-full p-1" />
+        </div>
+        <div>
+          <Label>Cor secundária</Label>
+          <Input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="h-10 w-full p-1" />
+        </div>
+        <div>
+          <Label>Cor terciária</Label>
+          <Input type="color" value={tertiary} onChange={(e) => setTertiary(e.target.value)} className="h-10 w-full p-1" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 p-3">
+        <span className="text-xs text-slate-400">Pré-visualização:</span>
+        <span className="h-6 w-6 rounded" style={{ background: primary }} />
+        <span className="h-6 w-6 rounded" style={{ background: secondary }} />
+        <span className="h-6 w-6 rounded" style={{ background: tertiary }} />
       </div>
       <Button onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin" size={14} />} Salvar</Button>
     </Card>
