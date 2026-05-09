@@ -36,22 +36,22 @@ export const AdminLayout = () => {
   if (isSuper === null) return <div className="flex h-screen items-center justify-center text-muted-foreground">Verificando acesso...</div>;
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100">
-      <aside className="w-60 border-r border-slate-800 bg-slate-900/40 p-4">
+    <div className="dark flex min-h-screen bg-slate-950 text-slate-100">
+      <aside className="w-60 border-r border-slate-800 bg-slate-900/60 p-4">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-blue-500 to-cyan-400 font-black text-slate-950">C</div>
-          <span className="font-bold">CRClin Admin</span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-orange-500 to-amber-400 font-black text-slate-950">C</div>
+          <span className="font-bold tracking-tight">CRClin Admin</span>
         </div>
         <nav className="space-y-1">
           {navItems.map((it) => (
             <NavLink key={it.to} to={it.to} end={it.end}
-              className={({ isActive }) => `flex items-center gap-2 rounded-md px-3 py-2 text-sm ${isActive ? "bg-blue-500/20 text-blue-200" : "hover:bg-slate-800/60"}`}>
+              className={({ isActive }) => `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${isActive ? "bg-orange-500/15 text-orange-200 ring-1 ring-orange-500/30" : "text-slate-300 hover:bg-slate-800/60 hover:text-slate-100"}`}>
               <it.icon size={16} /> {it.label}
             </NavLink>
           ))}
         </nav>
         <button onClick={async () => { await signOut(); navigate("/admin/login"); }}
-          className="mt-8 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/60">
+          className="mt-8 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/60 hover:text-slate-100">
           <LogOut size={16} /> Sair
         </button>
       </aside>
