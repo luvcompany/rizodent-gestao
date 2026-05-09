@@ -118,6 +118,7 @@ export const AdminClientes = () => {
             <div className="flex items-center gap-2">
               <Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge>
               <Button asChild size="sm" variant="outline"><Link to={`/admin/clientes/${t.id}`}>Gerenciar</Link></Button>
+              <Button size="sm" variant="outline" className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => handleDelete(t)}><Trash2 size={14} /></Button>
             </div>
           </Card>
         ))}
