@@ -40,19 +40,21 @@ Deno.serve(async (req) => {
       return json({ tenant: data });
     }
 
-    if (action === "pause" || action === "activate" || action === "delete") {
-      const status = action === "pause" ? "paused" : action === "activate" ? "active" : "deleted";
-      const patchObj: any = { status };
-      if (action === "delete") {
-        // Free up the slug entirely by replacing with a random throwaway value
-        patchObj.slug = `del-${crypto.randomUUID().slice(0, 8)}`;
-        // Also free up admin emails by removing auth users linked to this tenant
-        const { data: profs } = await admin.from("profiles").select("id").eq("tenant_id", tenant_id);
-        for (const p of profs ?? []) {
-          try { await admin.auth.admin.deleteUser(p.id); } catch (_) { /* ignore */ }
-        }
+    if (action === "delete") {
+      // Collect auth user ids first, then hard-delete all tenant data, then remove auth users
+      const { data: profs } = await admin.from("profiles").select("id").eq("tenant_id", tenant_id);
+      const { error: rpcErr } = await admin.rpc("hard_delete_tenant", { _tenant_id: tenant_id });
+      if (rpcErr) return json({ error: rpcErr.message }, 400);
+      for (const p of profs ?? []) {
+        try { await admin.auth.admin.deleteUser(p.id); } catch (_) { /* ignore */ }
       }
-      const { error } = await admin.from("tenants").update(patchObj).eq("id", tenant_id);
+      await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: "tenant_delete" });
+      return json({ ok: true, status: "deleted" });
+    }
+
+    if (action === "pause" || action === "activate") {
+      const status = action === "pause" ? "paused" : "active";
+      const { error } = await admin.from("tenants").update({ status }).eq("id", tenant_id);
       if (error) return json({ error: error.message }, 400);
       await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: `tenant_${action}` });
       return json({ ok: true, status });
