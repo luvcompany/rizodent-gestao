@@ -26,6 +26,7 @@ type WhatsAppConfig = {
   token: string;
   phone_number_id: string;
   waba_id: string;
+  app_id: string;
   api_version: string;
   webhook_verify_token: string;
   display_name: string;
