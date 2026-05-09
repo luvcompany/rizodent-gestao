@@ -2635,6 +2635,7 @@ export type Database = {
           slug: string
         }[]
       }
+      hard_delete_tenant: { Args: { _tenant_id: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
