@@ -87,6 +87,7 @@ Deno.serve(async (req) => {
     }
 
     await logAttempt("login", prof.id);
+    try { await admin.from("profiles").update({ last_login_at: new Date().toISOString() }).eq("id", prof.id); } catch (_e) {}
 
     return json({
       session: {
