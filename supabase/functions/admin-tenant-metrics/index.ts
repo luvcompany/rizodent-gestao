@@ -18,19 +18,21 @@ Deno.serve(async (req) => {
     const token = authHeader.replace(/^Bearer\s+/i, "");
     if (!token) return json({ error: "Unauthorized" }, 401);
 
-    const admin = createClient(URL, SR);
-    const { data: userData, error: userErr } = await admin.auth.getUser(token);
-    if (userErr || !userData?.user) return json({ error: "Unauthorized" }, 401);
-    const user = userData.user;
+    const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const authClient = createClient(URL, ANON, { global: { headers: { Authorization: authHeader } } });
+    const { data: claimsData, error: claimsErr } = await authClient.auth.getClaims(token);
+    const userId = claimsData?.claims?.sub;
+    if (claimsErr || !userId) return json({ error: "Unauthorized" }, 401);
 
-    const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", user.id).eq("role", "superadmin").maybeSingle();
+    const admin = createClient(URL, SR);
+
+    const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", userId).eq("role", "superadmin").maybeSingle();
     if (!roleRow) return json({ error: "Forbidden" }, 403);
 
     const { tenant_id } = await req.json();
     if (!tenant_id) return json({ error: "tenant_id required" }, 400);
 
-    const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const userClient = createClient(URL, ANON, { global: { headers: { Authorization: `Bearer ${token}` } } });
+    const userClient = createClient(URL, ANON, { global: { headers: { Authorization: authHeader } } });
     const { data, error } = await userClient.rpc("admin_tenant_metrics", { _tenant_id: tenant_id });
     if (error) return json({ error: error.message }, 500);
     return json(data);
