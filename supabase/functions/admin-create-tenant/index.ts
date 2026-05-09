@@ -77,6 +77,14 @@ Deno.serve(async (req) => {
     // Add admin role for this user (within tenant)
     await admin.from("user_roles").insert({ user_id: created.user.id, role: "admin", tenant_id: tenant.id });
 
+    // Create the clinic record for this tenant (starts empty otherwise)
+    await admin.from("clinicas").insert({
+      tenant_id: tenant.id,
+      nome: clinic_name,
+      cidade: clinic_city || clinic_name,
+      ativa: true,
+    });
+
     return new Response(JSON.stringify({ tenant, user_id: created.user.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
