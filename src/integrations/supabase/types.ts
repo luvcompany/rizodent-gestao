@@ -1772,6 +1772,7 @@ export type Database = {
           name: string
           page_access_token: string | null
           page_id: string | null
+          tenant_id: string | null
         }
         Insert: {
           created_at?: string
@@ -1782,6 +1783,7 @@ export type Database = {
           name: string
           page_access_token?: string | null
           page_id?: string | null
+          tenant_id?: string | null
         }
         Update: {
           created_at?: string
@@ -1792,6 +1794,7 @@ export type Database = {
           name?: string
           page_access_token?: string | null
           page_id?: string | null
+          tenant_id?: string | null
         }
         Relationships: []
       }
@@ -2603,6 +2606,16 @@ export type Database = {
         }[]
       }
       current_tenant_id: { Args: never; Returns: string }
+      get_tenant_by_slug: {
+        Args: { _slug: string }
+        Returns: {
+          id: string
+          logo_url: string
+          name: string
+          primary_color: string
+          slug: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
