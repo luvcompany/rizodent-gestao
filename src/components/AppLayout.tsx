@@ -56,8 +56,10 @@ const AppLayout = () => {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-20 items-center gap-3 border-b border-sidebar-border px-4">
-          <img src={logo} alt={tenant.name} className="h-14 max-w-full object-contain" />
+        <div className="flex h-20 items-center gap-3 border-b border-sidebar-border px-3">
+          <div className="flex-1 rounded-2xl bg-[#0b1226] p-2 shadow-lg shadow-black/30 ring-1 ring-white/5 transition-transform hover:scale-[1.02]">
+            <img src={logo} alt={tenant.name} className="h-12 w-full object-contain" />
+          </div>
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}
