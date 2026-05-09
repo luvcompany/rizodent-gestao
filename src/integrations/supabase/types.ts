@@ -1867,6 +1867,7 @@ export type Database = {
           id: string
           key: string
           status: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1875,6 +1876,7 @@ export type Database = {
           id?: string
           key: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1883,6 +1885,7 @@ export type Database = {
           id?: string
           key?: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -2497,6 +2500,7 @@ export type Database = {
           especialidade_secundaria: string | null
           id: string
           nome: string
+          tenant_id: string | null
           updated_at: string
           valor_referencia: number | null
         }
@@ -2508,6 +2512,7 @@ export type Database = {
           especialidade_secundaria?: string | null
           id?: string
           nome: string
+          tenant_id?: string | null
           updated_at?: string
           valor_referencia?: number | null
         }
@@ -2519,6 +2524,7 @@ export type Database = {
           especialidade_secundaria?: string | null
           id?: string
           nome?: string
+          tenant_id?: string | null
           updated_at?: string
           valor_referencia?: number | null
         }
