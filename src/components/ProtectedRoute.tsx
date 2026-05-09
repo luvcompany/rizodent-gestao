@@ -1,11 +1,34 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading, profile, signOut } = useAuth();
+  const { session, loading, profile, signOut, user } = useAuth();
+  const { tenant, loading: tenantLoading } = useTenant();
   const location = useLocation();
+
+  // Bloqueio cross-tenant: se logou com conta de outro cliente nesta URL,
+  // desloga imediatamente para impedir o acesso.
+  useEffect(() => {
+    if (loading || tenantLoading) return;
+    if (!user) return;
+    if (!tenant.id) return;
+    (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .maybeSingle();
+      const userTenantId = (data as any)?.tenant_id;
+      if (userTenantId && userTenantId !== tenant.id) {
+        toast.error("Esta conta não pertence a este cliente.");
+        await signOut();
+      }
+    })();
+  }, [user, tenant.id, loading, tenantLoading, signOut]);
 
   useEffect(() => {
     if (profile?.is_blocked) {
