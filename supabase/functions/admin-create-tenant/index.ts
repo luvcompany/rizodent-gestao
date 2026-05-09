@@ -68,6 +68,16 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Free up email if it belongs to a previously orphaned/deleted tenant user
+    try {
+      const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+      const existingUser = list?.users?.find((u: any) => u.email?.toLowerCase() === String(admin_email).toLowerCase());
+      if (existingUser) {
+        await admin.from("profiles").delete().eq("id", existingUser.id);
+        await admin.auth.admin.deleteUser(existingUser.id);
+      }
+    } catch (_) { /* ignore */ }
+
     // Create auth user with metadata
     const { data: created, error: uErr } = await admin.auth.admin.createUser({
       email: admin_email,
