@@ -220,7 +220,9 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
 function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void }) {
   const [logo, setLogo] = useState(tenant.logo_url ?? "");
   const [favicon, setFavicon] = useState(tenant.favicon_url ?? "");
-  const [color, setColor] = useState(tenant.primary_color);
+  const [primary, setPrimary] = useState(tenant.primary_color);
+  const [secondary, setSecondary] = useState(tenant.secondary_color ?? "#fb923c");
+  const [tertiary, setTertiary] = useState(tenant.tertiary_color ?? "#ffedd5");
   const [saving, setSaving] = useState(false);
 
   const upload = async (f: File, kind: "logo" | "favicon") => {
@@ -234,7 +236,10 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
   const save = async () => {
     setSaving(true);
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", {
-      body: { tenant_id: tenant.id, action: "update", patch: { logo_url: logo || null, favicon_url: favicon || null, primary_color: color } },
+      body: { tenant_id: tenant.id, action: "update", patch: {
+        logo_url: logo || null, favicon_url: favicon || null,
+        primary_color: primary, secondary_color: secondary, tertiary_color: tertiary,
+      } },
     });
     setSaving(false);
     if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
