@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     if (!user_id) return json({ error: "user_id required" }, 400);
 
     if (action === "block") {
-      await admin.from("profiles").update({ is_blocked: true, blocked_at: new Date().toISOString(), blocked_by: user.id }).eq("id", user_id);
+      await admin.from("profiles").update({ is_blocked: true, blocked_at: new Date().toISOString(), blocked_by: userId }).eq("id", user_id);
       return json({ ok: true });
     }
     if (action === "unblock") {
