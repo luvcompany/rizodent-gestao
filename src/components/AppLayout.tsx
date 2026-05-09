@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { useTheme } from "@/hooks/useTheme";
 import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
+import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -28,8 +29,10 @@ const AppLayout = () => {
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const { tenant } = useTenant();
-  const logo = tenant.logo_url || CRCLIN_DEFAULT_LOGO;
   const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
+  const logo = isDefaultLogo
+    ? (theme === "light" ? crclinLogoLight : CRCLIN_DEFAULT_LOGO)
+    : tenant.logo_url!;
   
 
   const handleLogout = async () => {
@@ -54,7 +57,7 @@ const AppLayout = () => {
         }`}
       >
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
-          <img src={logo} alt={tenant.name} className={`h-8 object-contain ${theme === 'dark' && isDefaultLogo ? 'invert' : ''}`} />
+          <img src={logo} alt={tenant.name} className="h-8 object-contain" />
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}
