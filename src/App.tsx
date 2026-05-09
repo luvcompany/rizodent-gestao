@@ -40,6 +40,7 @@ import CrmIaConfig from "./pages/CrmIaConfig";
 import CrclinLanding from "./pages/CrclinLanding";
 import ChangePassword from "./pages/ChangePassword";
 import { AdminLayout, AdminClientes, AdminPlanos, AdminMetricas, AdminCobranca } from "./pages/admin/AdminPanel";
+import AdminClienteDetalhe from "./pages/admin/AdminClienteDetalhe";
 import AdminLogs from "./pages/admin/AdminLogs";
 import AdminLogin from "./pages/admin/AdminLogin";
 import NotFound from "./pages/NotFound";
@@ -67,6 +68,7 @@ export const PublicApp = ({ basename }: { basename: string }) => (
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<AdminLayout />}>
               <Route path="/admin" element={<AdminClientes />} />
+              <Route path="/admin/clientes/:id" element={<AdminClienteDetalhe />} />
               <Route path="/admin/planos" element={<AdminPlanos />} />
               <Route path="/admin/metricas" element={<AdminMetricas />} />
               <Route path="/admin/cobranca" element={<AdminCobranca />} />
