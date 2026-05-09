@@ -56,7 +56,7 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
         }
         document.title = data.name;
       } else {
-        setTenant({ ...DEFAULT_TENANT, slug: slugOverride });
+        setTenant({ ...DEFAULT_TENANT, slug: slugOverride, logo_url: crclinLogo });
       }
       setLoading(false);
     })();
