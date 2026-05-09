@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { useTheme } from "@/hooks/useTheme";
 import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
+import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
