@@ -7,7 +7,14 @@ const SUBDOMAIN_SKIP = new Set(["www", "admin", "crclin"]);
 
 function getSubdomainSlug(): string | null {
   const host = window.location.hostname;
-  if (host.includes("lovable.app") || host.includes("lovable.dev") || host === "localhost" || host.startsWith("127.")) {
+  if (
+    host.includes("lovable.app") ||
+    host.includes("lovable.dev") ||
+    host.includes("lovableproject.com") ||
+    host.includes("lovable.host") ||
+    host === "localhost" ||
+    host.startsWith("127.")
+  ) {
     return null;
   }
   const parts = host.split(".");
