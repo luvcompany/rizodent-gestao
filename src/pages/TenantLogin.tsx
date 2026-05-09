@@ -110,9 +110,7 @@ const TenantLogin = () => {
                 <img src={tenant.logo_url} alt={tenant.name} className="h-16 object-contain" />
               </div>
             ) : (
-              <div className="rounded-2xl bg-primary p-3 shadow-xl shadow-primary/40 ring-1 ring-white/10">
-                <img src={logoFallback} alt={tenant.name} className="h-14 object-contain" />
-              </div>
+              <img src={logoFallback} alt={tenant.name} className="h-12 object-contain invert" />
             )}
             <div className="text-center">
               <h1 className="text-xl font-bold">{tenant.name}</h1>
