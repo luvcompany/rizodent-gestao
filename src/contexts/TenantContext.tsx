@@ -22,31 +22,23 @@ const TenantContext = createContext<{ tenant: TenantBranding; loading: boolean }
   loading: true,
 });
 
-function getSlugFromHost(): string | null {
-  if (typeof window === "undefined") return null;
-  const host = window.location.hostname;
-  // Skip lovable preview/sandbox hosts and bare apex
-  if (host.includes("lovable.app") || host.includes("lovable.dev") || host === "localhost" || host.startsWith("127.")) {
-    return null;
-  }
-  const parts = host.split(".");
-  // e.g. clinica.crclin.com.br -> ["clinica","crclin","com","br"]
-  if (parts.length >= 3 && parts[0] !== "www" && parts[0] !== "admin" && parts[0] !== "crclin") {
-    return parts[0];
-  }
-  return null;
+interface ProviderProps {
+  children: ReactNode;
+  /** Slug resolvido pelo main.tsx (path ou subdomínio). null = modo público. */
+  slugOverride?: string | null;
 }
 
-export const TenantProvider = ({ children }: { children: ReactNode }) => {
+export const TenantProvider = ({ children, slugOverride = null }: ProviderProps) => {
   const [tenant, setTenant] = useState<TenantBranding>(DEFAULT_TENANT);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const slug = getSlugFromHost();
-    // On Lovable preview/sandbox/localhost, default to Rizodent branding
-    const fallbackSlug = slug || "rizodent";
+    if (!slugOverride) {
+      setLoading(false);
+      return;
+    }
     (async () => {
-      const { data: rows } = await (supabase as any).rpc("get_tenant_by_slug", { _slug: fallbackSlug });
+      const { data: rows } = await (supabase as any).rpc("get_tenant_by_slug", { _slug: slugOverride });
       const data = Array.isArray(rows) ? rows[0] : rows;
       if (data) {
         setTenant({
@@ -60,10 +52,12 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
           document.documentElement.style.setProperty("--tenant-primary", data.primary_color);
         }
         document.title = data.name;
+      } else {
+        setTenant({ ...DEFAULT_TENANT, slug: slugOverride });
       }
       setLoading(false);
     })();
-  }, []);
+  }, [slugOverride]);
 
   return <TenantContext.Provider value={{ tenant, loading }}>{children}</TenantContext.Provider>;
 };

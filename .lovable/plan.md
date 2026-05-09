@@ -1,93 +1,118 @@
 
-# Plano: CRClin White-Label
+# Plataforma multi-tenant CRClin — reestruturação completa
 
-Transforma o sistema atual (hoje dedicado à Rizodent) em uma plataforma SaaS white-label chamada **CRClin**, mantendo a Rizodent como o primeiro cliente (tenant #1). A entrega é dividida em 4 fases para reduzir risco — multi-tenant em banco de dados é uma mudança grande e precisa ser feita com cuidado.
+## 1. Roteamento (path + subdomínio funcionando juntos)
 
----
+**Domínio raiz `crclin.com.br/`** → Landing page CRClin (hoje em `/crclin`, vira a rota `/`).
 
-## Fase 1 — Landing page pública de vendas (rápida, sem risco)
+**Login do cliente** acessível por dois caminhos equivalentes:
+- `crclin.com.br/{slug}` (ex: `crclin.com.br/rizodent`)
+- `{slug}.crclin.com.br` (subdomínio, mantido)
 
-Nova rota pública `/crclin` (e também acessível via `crclin.com.br` quando o domínio for conectado), totalmente separada do app atual.
+**App do cliente após login** sempre prefixado pelo slug:
+- `crclin.com.br/{slug}/dashboard`, `/{slug}/crm`, `/{slug}/crm/conversas`, etc.
+- No subdomínio fica sem prefixo: `rizodent.crclin.com.br/dashboard`.
 
-**Conteúdo da landing:**
-- Hero: "CRClin — CRM completo para clínicas e empresas que vivem de agendamento"
-- Seções: Benefícios, Funcionalidades (Kanban, WhatsApp, Bots, Agenda, Relatórios, Pagamentos), Para quem é, Depoimentos (placeholder), FAQ
-- CTA principal e botão flutuante: **"Falar no WhatsApp"** → `https://wa.me/5577981223133?text=Quero%20conhecer%20o%20CRClin`
-- SEO: title, meta description, Open Graph, JSON-LD de Organization
-- Identidade visual neutra (não usa o laranja Rizodent) — paleta a definir; sugiro azul/grafite para diferenciar
+**Admin** continua em `crclin.com.br/admin` (somente superadmin).
 
-**O que NÃO muda:** rota `/`, login da Rizodent e todo o sistema atual continuam exatamente como estão.
+```text
+/                         → Landing CRClin (pública)
+/admin/login              → Login admin
+/admin/*                  → Painel admin (superadmin)
+/{slug}                   → Login do cliente (branding do tenant)
+/{slug}/dashboard         → App cliente
+/{slug}/crm/*             → CRM cliente
+{slug}.crclin.com.br/*    → mesma coisa, sem prefixo
+```
 
----
+Um `TenantResolver` (HOC + contexto) lê o slug de `params.slug` OU do subdomínio e injeta `tenant_id` em todo o contexto. Todo `Link`/`navigate` interno passa por `useTenantPath()` que prefixa automaticamente.
 
-## Fase 2 — Painel Super-Admin (você como dono da plataforma)
+## 2. Login isolado por tenant (segurança crítica)
 
-Nova área `/admin` protegida por uma nova role `superadmin` (apenas você). Permite operar o negócio antes mesmo do isolamento total de dados estar pronto.
+Hoje o Supabase Auth aceita qualquer email/senha válido independente do tenant. Solução:
 
-**Tabelas novas:**
-- `tenants` — id, slug (subdomínio), nome, logo_url, cor primária, status (ativo/suspenso/trial), plano_id, created_at, trial_ends_at
-- `plans` — id, nome, preço mensal, limite de usuários, limite de leads, limite de mensagens WhatsApp/mês, recursos habilitados (jsonb)
-- `tenant_subscriptions` — tenant_id, plano_id, status (ativa/atrasada/cancelada), data início, próxima cobrança, valor
-- `tenant_usage` — tenant_id, mês, leads_criados, mensagens_enviadas, usuários_ativos (atualizada por trigger/cron)
-- `tenant_invoices` — tenant_id, mês de referência, valor, status (paga/aberta/atrasada), data pagamento, comprovante_url
+**Edge Function `tenant-login`**:
+1. Recebe `{ slug, email, password }`.
+2. Resolve `tenant_id` pelo slug (RPC `get_tenant_by_slug`).
+3. Confere se existe `profile` com esse email **dentro daquele tenant**. Se não, retorna 403 `tenant_mismatch` — sem nem tentar autenticar.
+4. Só então chama `signInWithPassword` server-side; se OK, retorna a sessão para o frontend gravar via `supabase.auth.setSession`.
+5. Registra no `access_logs` (sucesso, falha, ou tentativa cross-tenant — esta gera alerta).
 
-**Telas do painel super-admin:**
-1. **Clientes** — lista de tenants com status, plano, MRR, último login, uso vs. limite. Ações: criar, editar, suspender, reativar, excluir
-2. **Criar cliente** — wizard: dados da clínica + slug (subdomínio) + upload da logo + escolher plano + criar primeiro usuário admin (email + senha gerada) → mostra link final `https://{slug}.crclin.com.br` para enviar
-3. **Planos** — CRUD de planos e limites
-4. **Métricas** — uso por cliente (leads, mensagens, storage), gráficos, alertas de quem passou do limite
-5. **Cobrança** — faturas em aberto, marcar como paga manualmente, gerar próxima fatura, histórico
+Frontend nunca chama `signInWithPassword` direto na tela de cliente — sempre via essa edge function. Isso garante que descobrir senha de outro cliente não dá acesso.
 
-Logo do tenant: bucket `tenant-logos` (público) com RLS adequado.
+**Reforço extra:** após login, `AuthContext` valida `profile.tenant_id === tenant_da_url`. Se não bater, faz `signOut` imediato.
 
----
+## 3. Admin redesenhado
 
-## Fase 3 — Multi-tenant no banco (Rizodent vira tenant #1)
+Layout mais limpo, baseado em cards/tabs claras. Estrutura:
 
-A mudança mais delicada. Feita em uma migração planejada, **fora do horário de uso**.
+**Sidebar:** Clientes · Planos · Métricas globais · Cobrança · Logs & Acesso · Configurações.
 
-**Passos:**
-1. Criar tenant `Rizodent` na tabela `tenants` com slug `rizodent`
-2. Adicionar coluna `tenant_id uuid` em **todas** as ~40 tabelas de negócio (`crm_leads`, `crm_pipelines`, `crm_stages`, `crm_tasks`, `messages`, `pacientes`, `clinicas`, `bots`, etc.) com default = id da Rizodent
-3. Adicionar `tenant_id` em `profiles` e `user_roles` (cada usuário pertence a 1 tenant; superadmin = sem tenant)
-4. Backfill: setar tenant_id da Rizodent em todas as linhas existentes
-5. Tornar `tenant_id NOT NULL` em todas as tabelas
-6. Reescrever **todas as RLS policies** para incluir `tenant_id = current_tenant_id()`, onde `current_tenant_id()` é uma função `SECURITY DEFINER` que lê o tenant do `profiles` do `auth.uid()` (evita recursão)
-7. Função `has_role` passa a considerar role dentro do tenant
-8. No frontend, criar `TenantContext` que carrega o tenant do usuário logado e injeta a logo/cor no `AppLayout` e `Login`
-9. Edge functions (webhooks WhatsApp/Instagram, bot-engine, followup-engine, automation-engine, etc.) precisam ser revisadas para resolver e propagar o `tenant_id` correto a cada operação
+**Página do cliente (`/admin/clientes/:id`)** com tabs:
+- **Visão geral** — status (ativo/pausado), plano, criado em, último acesso, KPIs do mês (mensagens enviadas/recebidas WA+Insta, leads novos, leads ativos, chamadas IA + tokens estimados, usuários ativos).
+- **Usuários** — listar, adicionar, editar nome/email, redefinir senha, pausar (`is_blocked`), excluir, ver último login.
+- **Branding** — nome, slug, cor primária, **upload de logomarca** (bucket `tenant-logos`), favicon.
+- **Integrações** — status WhatsApp/Instagram/Meta, editar tokens, reconectar, testar webhook.
+- **Acesso/Impersonar** — botão "Entrar como este cliente" que abre nova aba em `/{slug}/dashboard` com sessão impersonada (edge function `admin-impersonate` gera um magic-link de service role para um usuário admin do tenant; sessão marcada com flag visual "Modo admin").
+- **Ações** — Editar, **Pausar acesso** (bloqueia todos os usuários do tenant), **Excluir** (soft-delete com confirmação dupla).
 
----
+**Lista de clientes:** tabela com busca, status colorido, último acesso, mensagens do mês, botões rápidos (pausar/abrir).
 
-## Fase 4 — Acesso por subdomínio
+## 4. Métricas e gestão
 
-**Pré-requisito de infraestrutura:** comprar `crclin.com.br`, configurar wildcard DNS `*.crclin.com.br` apontando para a Lovable e conectar como domínio custom (Lovable suporta subdomínios, mas wildcard exige modo proxy/Cloudflare; documentar passo a passo).
+Nova tabela `tenant_usage_daily` (ou agrega das existentes):
+- `messages_in`, `messages_out` — agregar de `messages` por tenant/dia.
+- `leads_created` — count `crm_leads` por tenant/dia.
+- `ai_calls`, `ai_tokens` — incrementar nas edge functions que usam Lovable AI (`ai-conversation-assist`, `transcribe-audio`).
+- `active_users` — distinct logins de `access_logs` no dia.
 
-**Comportamento:**
-- `crclin.com.br` → landing pública (Fase 1)
-- `admin.crclin.com.br` → painel super-admin
-- `{slug}.crclin.com.br` → login + sistema do tenant; logo, cor, nome lidos de `tenants` pelo slug; sessão isolada
-- Rizodent migra de `rizodent-gestao.lovable.app` para `rizodent.crclin.com.br` (domínio antigo pode redirecionar)
+Edge function cron diária consolida. Cards do admin leem direto.
 
-Frontend lê `window.location.hostname`, extrai o slug e carrega o branding **antes** de mostrar a tela de login (evita flash de marca errada).
+## 5. Pause / bloqueio em camadas
 
----
+- **Tenant pausado** (`tenants.status = 'paused'`): edge `tenant-login` recusa todos. RLS adicional bloqueia leitura.
+- **Usuário pausado** (`profiles.is_blocked = true`): `tenant-login` recusa só esse user. `enforceBlockCheck` já existe — reaproveitar.
+- **Cliente excluído** (`tenants.status = 'deleted'`): soft delete; dados preservados, login bloqueado.
 
-## Detalhes técnicos relevantes
+## 6. Segurança
 
-- **Senhas iniciais:** ao criar cliente, super-admin define senha temporária; usuário troca no primeiro login (forçar `must_change_password`)
-- **Limites de uso:** validados em edge functions (ex: `send-whatsapp-message` checa cota antes de enviar) e em triggers de insert (ex: bloqueia novo lead acima do limite)
-- **Isolamento de Storage:** buckets `chat-media` e `avatars` passam a usar prefixo `tenant_id/...` no path; policies validam o prefixo
-- **Cobrança manual agora**, com estrutura pronta para integrar Stripe/Asaas em fase futura — sem implementar checkout nesta entrega
-- **Memória atualizada** ao final: nova entrada `mem://tenant/architecture` documentando o modelo
+- Manter RLS `tenant_isolation` (já em todas as tabelas principais).
+- Adicionar policy global em `profiles`/`user_roles`: admin de tenant só insere users com `tenant_id = current_tenant_id()`.
+- Edge functions sensíveis (`admin-create-tenant`, `admin-impersonate`, `tenant-login`) validam `superadmin` via JWT antes de qualquer ação.
+- `access_logs` ganha campo `success boolean` e `failure_reason text`. Admin vê tentativas cross-tenant para auditoria.
 
----
+## 7. Fases de entrega
 
-## Ordem de execução sugerida
+1. **Roteamento + landing como `/`** + `TenantResolver` + prefixo de slug em todas as rotas autenticadas.
+2. **Edge function `tenant-login`** + tela de login do cliente reescrita + remoção do login direto Supabase no frontend cliente.
+3. **Admin redesenhado** — lista + página de detalhe com tabs (Visão geral, Usuários, Branding).
+4. **Métricas** — agregação `tenant_usage_daily` + cron + cards.
+5. **Integrações no admin** + impersonação.
+6. **Pausar/excluir cliente** + reforço de RLS + auditoria de logs.
 
-1. **Fase 1** (landing) — entrega imediata, você já pode começar a vender
-2. **Fase 2** (painel super-admin com tabelas, mas ainda sem isolar dados) — você cadastra leads/clientes interessados
-3. **Fase 3** (multi-tenant no banco) — janela de manutenção planejada
-4. **Fase 4** (subdomínios) — depois do domínio comprado e DNS pronto
+## Detalhes técnicos
 
-Confirma essa ordem? Se sim, começo pela **Fase 1** (landing `/crclin` + botão WhatsApp).
+**Migrations necessárias:**
+- `tenants`: adicionar `status` (`active|paused|deleted`), `logo_url` (já existe), `favicon_url`.
+- `profiles`: garantir `is_blocked`, `last_login_at`.
+- Nova `tenant_usage_daily(tenant_id, day, messages_in, messages_out, leads_created, ai_calls, ai_tokens, active_users)`.
+- Policy: `profiles INSERT` com `tenant_id = current_tenant_id()` para admin não-super.
+- RPC `get_tenant_branding_by_slug` (já existe `get_tenant_by_slug`).
+
+**Edge functions novas:**
+- `tenant-login` (público, valida tenant+credencial).
+- `admin-impersonate` (superadmin, gera sessão).
+- `admin-update-tenant` / `admin-pause-tenant` / `admin-delete-tenant`.
+- `admin-tenant-metrics` (agrega on-demand para gráficos).
+- `usage-aggregator-cron` (diário).
+
+**Frontend:**
+- `src/contexts/TenantContext.tsx` — passa a aceitar slug via param de rota além de subdomínio.
+- `src/lib/tenantPath.ts` — helper `tenantPath('/dashboard')` → `/rizodent/dashboard`.
+- `src/components/ProtectedRoute.tsx` — valida match user.tenant ↔ url.slug, faz signOut se divergir.
+- `src/pages/TenantLogin.tsx` — nova, substitui `Login.tsx` para clientes.
+- `src/pages/admin/*` — refatorado em `AdminClientesList`, `AdminClienteDetalhe` com tabs `OverviewTab`, `UsersTab`, `BrandingTab`, `IntegrationsTab`, `AccessTab`.
+
+**Não muda:** estrutura interna do CRM, dados existentes, nomes de tabelas já em uso.
+
+Posso começar pela Fase 1 (roteamento + landing na raiz) que destrava o resto, ou prefere outra ordem?

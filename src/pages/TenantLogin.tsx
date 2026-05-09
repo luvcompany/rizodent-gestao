@@ -4,16 +4,17 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, LogIn } from "lucide-react";
+import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { enforceBlockCheck } from "@/lib/accessLog";
-import logo from "@/assets/logo-rizodent.webp";
+import logoFallback from "@/assets/logo-rizodent.webp";
 
-const Login = () => {
+const TenantLogin = () => {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
-  
+  const { tenant, loading: tenantLoading } = useTenant();
+  const { refreshProfile } = useAuth();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -21,33 +22,76 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    const { error } = await signIn(email, password);
-    if (error) {
-      setLoading(false);
-      toast.error("Erro ao entrar: " + error);
+    if (!tenant.slug) {
+      toast.error("Cliente não identificado nesta URL.");
       return;
     }
-    const { data: { user: u } } = await supabase.auth.getUser();
-    if (u) {
-      const blocked = await enforceBlockCheck(u.id, u.email ?? email, "client");
-      if (blocked) {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("tenant-login", {
+        body: { slug: tenant.slug, email, password },
+      });
+      if (error || (data as any)?.error) {
+        const msg = (data as any)?.error || error?.message || "Falha no login.";
+        toast.error(msg);
         setLoading(false);
-        toast.error("Acesso bloqueado. Entre em contato com o administrador.");
         return;
       }
+      const sess = (data as any)?.session;
+      if (!sess?.access_token || !sess?.refresh_token) {
+        toast.error("Resposta inválida do servidor.");
+        setLoading(false);
+        return;
+      }
+      const { error: setErr } = await supabase.auth.setSession({
+        access_token: sess.access_token,
+        refresh_token: sess.refresh_token,
+      });
+      if (setErr) {
+        toast.error(setErr.message);
+        setLoading(false);
+        return;
+      }
+      await refreshProfile();
+      navigate("/dashboard");
+    } catch (err: any) {
+      toast.error(err?.message || "Erro inesperado.");
+      setLoading(false);
     }
-    setLoading(false);
-    navigate("/dashboard");
   };
+
+  if (tenantLoading) {
+    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Carregando...</div>;
+  }
+
+  if (!tenant.id) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-bold mb-2">Cliente não encontrado</h1>
+          <p className="text-muted-foreground mb-4">
+            O endereço <code className="px-2 py-1 rounded bg-muted">/{tenant.slug}</code> não corresponde a nenhum cliente ativo.
+          </p>
+          <a href="/" className="text-primary underline">Voltar à página inicial</a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md animate-fade-in">
         <div className="gradient-card rounded-2xl border border-border p-8 shadow-card">
           <div className="mb-8 flex flex-col items-center gap-4">
-            <img src={logo} alt="RizoDent" className="h-12 object-contain invert" />
-            <p className="text-sm text-muted-foreground">Sistema de Gestão Odontológica</p>
+            {tenant.logo_url ? (
+              <img src={tenant.logo_url} alt={tenant.name} className="h-16 object-contain" />
+            ) : (
+              <img src={logoFallback} alt={tenant.name} className="h-12 object-contain invert" />
+            )}
+            <div className="text-center">
+              <h1 className="text-xl font-bold">{tenant.name}</h1>
+              <p className="text-sm text-muted-foreground">Acesso da equipe</p>
+            </div>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
@@ -89,7 +133,8 @@ const Login = () => {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity"
+              className="w-full font-semibold"
+              style={tenant.primary_color ? { backgroundColor: tenant.primary_color, color: "#fff" } : undefined}
             >
               {loading ? (
                 <span className="animate-pulse">Entrando...</span>
@@ -107,4 +152,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default TenantLogin;

@@ -8,7 +8,7 @@ import { TenantProvider } from "@/contexts/TenantContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
-import Login from "./pages/Login";
+import TenantLogin from "./pages/TenantLogin";
 import Dashboard from "./pages/Dashboard";
 import Atendimento from "./pages/Atendimento";
 import Pacientes from "./pages/Pacientes";
@@ -46,18 +46,24 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const App = () => (
+const Providers = ({ children }: { children: React.ReactNode }) => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <TenantProvider>
+      {children}
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+/** Public shell — landing + admin panel. No tenant context required. */
+export const PublicApp = ({ basename }: { basename: string }) => (
+  <Providers>
+    <BrowserRouter basename={basename}>
+      <TenantProvider slugOverride={null}>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Login />} />
-            <Route path="/crclin" element={<CrclinLanding />} />
-            <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
+            <Route path="/" element={<CrclinLanding />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<AdminLayout />}>
               <Route path="/admin" element={<AdminClientes />} />
@@ -66,6 +72,23 @@ const App = () => (
               <Route path="/admin/cobranca" element={<AdminCobranca />} />
               <Route path="/admin/logs" element={<AdminLogs />} />
             </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
+      </TenantProvider>
+    </BrowserRouter>
+  </Providers>
+);
+
+/** Tenant shell — client login + full app. Slug-bound. */
+export const TenantApp = ({ slug, basename }: { slug: string; basename: string }) => (
+  <Providers>
+    <BrowserRouter basename={basename}>
+      <TenantProvider slugOverride={slug}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<TenantLogin />} />
+            <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
             <Route
               element={
                 <ProtectedRoute>
@@ -113,10 +136,9 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
-        </TenantProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+      </TenantProvider>
+    </BrowserRouter>
+  </Providers>
 );
 
-export default App;
+export default PublicApp;
