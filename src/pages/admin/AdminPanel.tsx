@@ -122,7 +122,11 @@ export const AdminClientes = () => {
           <div className="space-y-3">
             <div><Label>Nome da clínica/empresa</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div><Label>Slug (subdomínio)</Label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} placeholder="ex: clinicaxyz" /></div>
-            <div><Label>Cor primária</Label><Input type="color" value={form.primary_color} onChange={(e) => setForm({ ...form, primary_color: e.target.value })} className="h-10 w-20" /></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>Cor primária</Label><Input type="color" value={form.primary_color} onChange={(e) => setForm({ ...form, primary_color: e.target.value })} className="h-10 w-full p-1" /></div>
+              <div><Label>Cor secundária</Label><Input type="color" value={form.secondary_color} onChange={(e) => setForm({ ...form, secondary_color: e.target.value })} className="h-10 w-full p-1" /></div>
+              <div><Label>Cor terciária</Label><Input type="color" value={form.tertiary_color} onChange={(e) => setForm({ ...form, tertiary_color: e.target.value })} className="h-10 w-full p-1" /></div>
+            </div>
             <div className="border-t border-slate-800 pt-3"><p className="mb-2 text-sm font-semibold">Primeiro usuário (admin do cliente)</p></div>
             <div><Label>Nome</Label><Input value={form.admin_name} onChange={(e) => setForm({ ...form, admin_name: e.target.value })} /></div>
             <div><Label>E-mail</Label><Input type="email" value={form.admin_email} onChange={(e) => setForm({ ...form, admin_email: e.target.value })} /></div>
