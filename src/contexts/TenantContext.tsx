@@ -48,7 +48,7 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
           id: data.id,
           slug: data.slug,
           name: data.name,
-          logo_url: data.logo_url,
+          logo_url: data.logo_url || crclinLogo,
           primary_color: data.primary_color,
         });
         if (data.primary_color) {
