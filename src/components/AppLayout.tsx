@@ -29,8 +29,10 @@ const AppLayout = () => {
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const { tenant } = useTenant();
-  const logo = tenant.logo_url || CRCLIN_DEFAULT_LOGO;
   const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
+  const logo = isDefaultLogo
+    ? (theme === "light" ? crclinLogoLight : CRCLIN_DEFAULT_LOGO)
+    : tenant.logo_url!;
   
 
   const handleLogout = async () => {
