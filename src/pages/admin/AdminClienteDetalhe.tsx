@@ -329,8 +329,15 @@ function ActionsTab({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
     const { data, error } = await supabase.functions.invoke("admin-impersonate", { body: { tenant_id: tenant.id } });
     setBusy(false);
     if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
-    const url = (data as any)?.url;
-    if (url) { window.open(url, "_blank"); toast.success("Link de acesso aberto"); }
+    const at = (data as any)?.access_token;
+    const rt = (data as any)?.refresh_token;
+    const slug = (data as any)?.slug ?? tenant.slug;
+    if (at && rt) {
+      const origin = window.location.origin.includes("lovable") ? "https://crclin.com.br" : window.location.origin;
+      const url = `${origin}/${slug}/dashboard?impersonate_at=${encodeURIComponent(at)}&impersonate_rt=${encodeURIComponent(rt)}`;
+      window.open(url, "_blank");
+      toast.success("Painel do cliente aberto em nova aba");
+    }
   };
 
   return (
