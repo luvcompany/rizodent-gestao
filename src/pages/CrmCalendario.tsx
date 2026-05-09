@@ -114,6 +114,15 @@ export default function CrmCalendario() {
   const [crmStages, setCrmStages] = useState<Stage[]>(calendarCache.stages || []);
   const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>(calendarCache.pipelines || []);
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
+  const [tenantCities, setTenantCities] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("clinicas").select("cidade").eq("ativa", true);
+      const unique = Array.from(new Set((data || []).map((c: any) => c.cidade).filter(Boolean)));
+      setTenantCities(unique);
+    })();
+  }, []);
 
   const weekRange = useMemo(() => ({
     start: format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
