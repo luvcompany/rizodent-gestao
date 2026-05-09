@@ -60,11 +60,7 @@ const TenantLogin = () => {
     }
   };
 
-  if (tenantLoading) {
-    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Carregando...</div>;
-  }
-
-  // Handle admin impersonation tokens
+  // Handle admin impersonation tokens (must run before any conditional return)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const at = params.get("impersonate_at");
@@ -75,7 +71,6 @@ const TenantLogin = () => {
         if (error) {
           toast.error("Erro ao estabelecer sessão: " + error.message);
         } else {
-          // Clean URL and redirect to dashboard
           const url = new URL(window.location.href);
           url.searchParams.delete("impersonate_at");
           url.searchParams.delete("impersonate_rt");
@@ -86,6 +81,10 @@ const TenantLogin = () => {
       })();
     }
   }, []);
+
+  if (tenantLoading) {
+    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Carregando...</div>;
+  }
 
   if (!tenant.id) {
     return (

@@ -57,8 +57,8 @@ const AppLayout = () => {
         }`}
       >
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-3">
-          <div className="flex-1 rounded-xl bg-[#0b1226] p-1.5 shadow-md shadow-black/30 ring-1 ring-white/5 transition-transform hover:scale-[1.02]">
-            <img src={logo} alt={tenant.name} className="h-8 w-full object-contain" />
+          <div className="flex-1 rounded-lg bg-[#0b1226] p-1 shadow-md shadow-black/30 ring-1 ring-white/5">
+            <img src={logo} alt={tenant.name} className="h-6 w-full object-contain" />
           </div>
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
