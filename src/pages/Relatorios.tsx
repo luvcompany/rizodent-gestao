@@ -106,8 +106,45 @@ const Relatorios = () => {
     return { totalContratado, lista };
   }, [pacientes, filteredPagamentos]);
 
+  // ========== PACIENTES CONTRATADOS POR MÊS ==========
+  const pacientesContratadosPorMes = useMemo(() => {
+    const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const porMes = new Map<string, { mes: string; pacientesSet: Set<string>; valor: number; ordem: string }>();
+    filteredPagamentos.forEach((p) => {
+      if (!p.data_pagamento) return;
+      const [y, m] = String(p.data_pagamento).split("-");
+      if (!y || !m) return;
+      const key = `${y}-${m}`;
+      const label = `${MESES[parseInt(m, 10) - 1]}/${y.slice(2)}`;
+      const cur = porMes.get(key) || { mes: label, pacientesSet: new Set<string>(), valor: 0, ordem: key };
+      if (p.paciente_id) cur.pacientesSet.add(p.paciente_id);
+      cur.valor += Number(p.valor) || 0;
+      porMes.set(key, cur);
+    });
+    const chart = Array.from(porMes.values())
+      .sort((a, b) => a.ordem.localeCompare(b.ordem))
+      .map((r) => ({ mes: r.mes, pacientes: r.pacientesSet.size, valor: r.valor }));
+
+    const lista = [...filteredPagamentos]
+      .sort((a, b) => String(b.data_pagamento).localeCompare(String(a.data_pagamento)))
+      .map((p) => ({
+        id: p.id,
+        paciente_id: p.paciente_id,
+        paciente: p.pacientes?.nome || "—",
+        data: p.data_pagamento,
+        valor: Number(p.valor) || 0,
+        clinica: p.clinicas?.nome || "—",
+      }));
+
+    const totalPacientes = new Set(lista.map((l) => l.paciente_id).filter(Boolean)).size;
+    const totalValor = lista.reduce((s, l) => s + l.valor, 0);
+
+    return { chart, lista, totalPacientes, totalValor };
+  }, [filteredPagamentos]);
+
   // ========== DAILY REPORT ==========
   const dailyReport = useMemo(() => {
+
     const map = new Map<string, { date: string; faturamento: number; pagamentos: number }>();
     filteredPagamentos.forEach((p) => {
       const d = p.data_pagamento;
