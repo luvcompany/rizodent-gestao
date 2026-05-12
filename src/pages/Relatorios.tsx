@@ -461,7 +461,8 @@ const Relatorios = () => {
     { key: "especialidade", label: "Por Especialidade", desc: "Quantidade de tratamentos por especialidade", icon: Stethoscope },
     { key: "origem", label: "Origem / Anúncio", desc: "Performance por canal de origem e anúncio", icon: Megaphone },
     { key: "pagamentos", label: "Pagamentos", desc: "Detalhamento de todos os pagamentos realizados", icon: CreditCard },
-    { key: "pacientes_mes", label: "Pacientes Contratados/Mês", desc: "Quantidade de pacientes contratados por mês com lista de pagamentos", icon: Users },
+    { key: "pacientes_mes", label: "Pacientes Contratados/Mês", desc: "Quantidade de pacientes contratados por mês", icon: Users },
+    { key: "pagamentos_lista", label: "Pagamentos Detalhados", desc: "Nome do paciente, data do pagamento e valor pago", icon: CreditCard },
   ];
 
   const renderReportContent = () => {
@@ -1121,14 +1122,14 @@ const Relatorios = () => {
       }
 
       case "pacientes_mes": {
-        const { chart, lista, totalPacientes, totalValor } = pacientesContratadosPorMes;
+        const { chart, totalPacientes, totalValor, lista } = pacientesContratadosPorMes;
         return (
           <Card className="gradient-card border-border shadow-card">
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="text-base flex items-center gap-2"><Users size={18} className="text-primary" /> Pacientes Contratados por Mês</CardTitle>
               <ShareButtons
                 title="Pacientes Contratados por Mês"
-                data={lista.map((l) => ({ paciente: l.paciente, data_pagamento: l.data, valor: l.valor, clinica: l.clinica }))}
+                data={chart}
                 getSummary={() =>
                   `Pacientes únicos: ${totalPacientes}\nValor total: ${formatCurrency(totalValor)}\n\nPor mês:\n${chart.map((c) => `${c.mes}: ${c.pacientes} pacientes - ${formatCurrency(c.valor)}`).join("\n")}`
                 }
@@ -1160,8 +1161,42 @@ const Relatorios = () => {
                   <Bar dataKey="pacientes" name="Pacientes" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                 </BarChart>
               </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        );
+      }
 
-              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+      case "pagamentos_lista": {
+        const { lista, totalPacientes, totalValor } = pacientesContratadosPorMes;
+        return (
+          <Card className="gradient-card border-border shadow-card">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-base flex items-center gap-2"><CreditCard size={18} className="text-primary" /> Pagamentos Detalhados</CardTitle>
+              <ShareButtons
+                title="Pagamentos Detalhados"
+                data={lista.map((l) => ({ paciente: l.paciente, data_pagamento: l.data, valor: l.valor, clinica: l.clinica }))}
+                getSummary={() =>
+                  `Pacientes únicos: ${totalPacientes}\nPagamentos: ${lista.length}\nValor total: ${formatCurrency(totalValor)}`
+                }
+              />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Pacientes únicos</p>
+                  <p className="text-xl font-bold text-primary">{totalPacientes}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Pagamentos</p>
+                  <p className="text-xl font-bold text-primary">{lista.length}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Valor total</p>
+                  <p className="text-xl font-bold text-accent-foreground">{formatCurrency(totalValor)}</p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
