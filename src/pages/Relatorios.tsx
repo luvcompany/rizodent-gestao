@@ -106,8 +106,45 @@ const Relatorios = () => {
     return { totalContratado, lista };
   }, [pacientes, filteredPagamentos]);
 
+  // ========== PACIENTES CONTRATADOS POR MÊS ==========
+  const pacientesContratadosPorMes = useMemo(() => {
+    const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const porMes = new Map<string, { mes: string; pacientesSet: Set<string>; valor: number; ordem: string }>();
+    filteredPagamentos.forEach((p) => {
+      if (!p.data_pagamento) return;
+      const [y, m] = String(p.data_pagamento).split("-");
+      if (!y || !m) return;
+      const key = `${y}-${m}`;
+      const label = `${MESES[parseInt(m, 10) - 1]}/${y.slice(2)}`;
+      const cur = porMes.get(key) || { mes: label, pacientesSet: new Set<string>(), valor: 0, ordem: key };
+      if (p.paciente_id) cur.pacientesSet.add(p.paciente_id);
+      cur.valor += Number(p.valor) || 0;
+      porMes.set(key, cur);
+    });
+    const chart = Array.from(porMes.values())
+      .sort((a, b) => a.ordem.localeCompare(b.ordem))
+      .map((r) => ({ mes: r.mes, pacientes: r.pacientesSet.size, valor: r.valor }));
+
+    const lista = [...filteredPagamentos]
+      .sort((a, b) => String(b.data_pagamento).localeCompare(String(a.data_pagamento)))
+      .map((p) => ({
+        id: p.id,
+        paciente_id: p.paciente_id,
+        paciente: p.pacientes?.nome || "—",
+        data: p.data_pagamento,
+        valor: Number(p.valor) || 0,
+        clinica: p.clinicas?.nome || "—",
+      }));
+
+    const totalPacientes = new Set(lista.map((l) => l.paciente_id).filter(Boolean)).size;
+    const totalValor = lista.reduce((s, l) => s + l.valor, 0);
+
+    return { chart, lista, totalPacientes, totalValor };
+  }, [filteredPagamentos]);
+
   // ========== DAILY REPORT ==========
   const dailyReport = useMemo(() => {
+
     const map = new Map<string, { date: string; faturamento: number; pagamentos: number }>();
     filteredPagamentos.forEach((p) => {
       const d = p.data_pagamento;
@@ -424,6 +461,7 @@ const Relatorios = () => {
     { key: "especialidade", label: "Por Especialidade", desc: "Quantidade de tratamentos por especialidade", icon: Stethoscope },
     { key: "origem", label: "Origem / Anúncio", desc: "Performance por canal de origem e anúncio", icon: Megaphone },
     { key: "pagamentos", label: "Pagamentos", desc: "Detalhamento de todos os pagamentos realizados", icon: CreditCard },
+    { key: "pacientes_mes", label: "Pacientes Contratados/Mês", desc: "Quantidade de pacientes contratados por mês com lista de pagamentos", icon: Users },
   ];
 
   const renderReportContent = () => {
@@ -1073,6 +1111,77 @@ const Relatorios = () => {
                           Nenhuma atividade recente
                         </TableCell>
                       </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      }
+
+      case "pacientes_mes": {
+        const { chart, lista, totalPacientes, totalValor } = pacientesContratadosPorMes;
+        return (
+          <Card className="gradient-card border-border shadow-card">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-base flex items-center gap-2"><Users size={18} className="text-primary" /> Pacientes Contratados por Mês</CardTitle>
+              <ShareButtons
+                title="Pacientes Contratados por Mês"
+                data={lista.map((l) => ({ paciente: l.paciente, data_pagamento: l.data, valor: l.valor, clinica: l.clinica }))}
+                getSummary={() =>
+                  `Pacientes únicos: ${totalPacientes}\nValor total: ${formatCurrency(totalValor)}\n\nPor mês:\n${chart.map((c) => `${c.mes}: ${c.pacientes} pacientes - ${formatCurrency(c.valor)}`).join("\n")}`
+                }
+              />
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Pacientes únicos</p>
+                  <p className="text-xl font-bold text-primary">{totalPacientes}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Pagamentos</p>
+                  <p className="text-xl font-bold text-primary">{lista.length}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Valor total</p>
+                  <p className="text-xl font-bold text-accent-foreground">{formatCurrency(totalValor)}</p>
+                </div>
+              </div>
+
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={chart} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                  <XAxis dataKey="mes" stroke={ct.axisColor} fontSize={12} />
+                  <YAxis stroke={ct.axisColor} fontSize={12} allowDecimals={false} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: any, name) => name === "valor" ? formatCurrency(Number(v)) : `${v} pacientes`} />
+                  <Legend />
+                  <Bar dataKey="pacientes" name="Pacientes" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                </BarChart>
+              </ResponsiveContainer>
+
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Data do Pagamento</TableHead>
+                      <TableHead>Valor Pago</TableHead>
+                      <TableHead>Clínica</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lista.map((l) => (
+                      <TableRow key={l.id} className="cursor-pointer hover:bg-muted/50" onClick={() => l.paciente_id && navigate(`/pacientes/${l.paciente_id}`)}>
+                        <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{l.paciente}</TableCell>
+                        <TableCell>{l.data ? new Date(l.data + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</TableCell>
+                        <TableCell className="text-green-400">{formatCurrency(l.valor)}</TableCell>
+                        <TableCell className="text-muted-foreground">{l.clinica}</TableCell>
+                      </TableRow>
+                    ))}
+                    {lista.length === 0 && (
+                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhum pagamento no período</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
