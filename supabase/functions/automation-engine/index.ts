@@ -149,8 +149,8 @@ Deno.serve(async (req) => {
           }
         }
 
-        // For weekly: clear executions so next occurrence opens fresh for all leads
-        if (mode === "weekly") {
+        // For weekly: clear executions only on the close edge so next occurrence opens fresh
+        if (mode === "weekly" && resetExecutions) {
           await supabase
             .from("crm_automation_executions")
             .delete()
