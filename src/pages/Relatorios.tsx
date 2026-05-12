@@ -1120,6 +1120,77 @@ const Relatorios = () => {
         );
       }
 
+      case "pacientes_mes": {
+        const { chart, lista, totalPacientes, totalValor } = pacientesContratadosPorMes;
+        return (
+          <Card className="gradient-card border-border shadow-card">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-base flex items-center gap-2"><Users size={18} className="text-primary" /> Pacientes Contratados por Mês</CardTitle>
+              <ShareButtons
+                title="Pacientes Contratados por Mês"
+                data={lista.map((l) => ({ paciente: l.paciente, data_pagamento: l.data, valor: l.valor, clinica: l.clinica }))}
+                getSummary={() =>
+                  `Pacientes únicos: ${totalPacientes}\nValor total: ${formatCurrency(totalValor)}\n\nPor mês:\n${chart.map((c) => `${c.mes}: ${c.pacientes} pacientes - ${formatCurrency(c.valor)}`).join("\n")}`
+                }
+              />
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Pacientes únicos</p>
+                  <p className="text-xl font-bold text-primary">{totalPacientes}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Pagamentos</p>
+                  <p className="text-xl font-bold text-primary">{lista.length}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-4">
+                  <p className="text-xs text-muted-foreground">Valor total</p>
+                  <p className="text-xl font-bold text-accent-foreground">{formatCurrency(totalValor)}</p>
+                </div>
+              </div>
+
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={chart} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                  <XAxis dataKey="mes" stroke={ct.axisColor} fontSize={12} />
+                  <YAxis stroke={ct.axisColor} fontSize={12} allowDecimals={false} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: any, name) => name === "valor" ? formatCurrency(Number(v)) : `${v} pacientes`} />
+                  <Legend />
+                  <Bar dataKey="pacientes" name="Pacientes" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                </BarChart>
+              </ResponsiveContainer>
+
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Data do Pagamento</TableHead>
+                      <TableHead>Valor Pago</TableHead>
+                      <TableHead>Clínica</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lista.map((l) => (
+                      <TableRow key={l.id} className="cursor-pointer hover:bg-muted/50" onClick={() => l.paciente_id && navigate(`/pacientes/${l.paciente_id}`)}>
+                        <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{l.paciente}</TableCell>
+                        <TableCell>{l.data ? new Date(l.data + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</TableCell>
+                        <TableCell className="text-green-400">{formatCurrency(l.valor)}</TableCell>
+                        <TableCell className="text-muted-foreground">{l.clinica}</TableCell>
+                      </TableRow>
+                    ))}
+                    {lista.length === 0 && (
+                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhum pagamento no período</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      }
+
       default: return null;
     }
   };
