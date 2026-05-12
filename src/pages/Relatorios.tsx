@@ -461,7 +461,8 @@ const Relatorios = () => {
     { key: "especialidade", label: "Por Especialidade", desc: "Quantidade de tratamentos por especialidade", icon: Stethoscope },
     { key: "origem", label: "Origem / Anúncio", desc: "Performance por canal de origem e anúncio", icon: Megaphone },
     { key: "pagamentos", label: "Pagamentos", desc: "Detalhamento de todos os pagamentos realizados", icon: CreditCard },
-    { key: "pacientes_mes", label: "Pacientes Contratados/Mês", desc: "Quantidade de pacientes contratados por mês com lista de pagamentos", icon: Users },
+    { key: "pacientes_mes", label: "Pacientes Contratados/Mês", desc: "Quantidade de pacientes contratados por mês", icon: Users },
+    { key: "pagamentos_lista", label: "Pagamentos Detalhados", desc: "Nome do paciente, data do pagamento e valor pago", icon: CreditCard },
   ];
 
   const renderReportContent = () => {
