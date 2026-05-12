@@ -105,11 +105,14 @@ Deno.serve(async (req) => {
         let shouldCleanup = false;
         let deactivate = false;
 
+        let resetExecutions = false;
         if (mode === "weekly") {
           const state = evalWeekly(cfg);
           if (!state) continue;
-          // On the close minute (and few minutes after), cancel bots + clear executions to allow next occurrence
-          shouldCleanup = state.justClosed;
+          // Sempre que a janela estiver fechada, cancela bots ainda pendurados.
+          // Reset do dedup só acontece na "borda" do fechamento (justClosed).
+          shouldCleanup = !state.isOpen;
+          resetExecutions = state.justClosed;
         } else {
           if (!auto.is_active) continue;
           const windowEnd = cfg.window_end ? parseLocalBR(cfg.window_end as string) : null;
