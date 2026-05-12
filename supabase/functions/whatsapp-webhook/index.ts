@@ -1060,7 +1060,7 @@ Deno.serve(async (req) => {
               try {
                 const { data: botExec } = await supabase
                   .from("bot_executions")
-                  .select("id, started_at")
+                  .select("id, started_at, bot_id")
                   .eq("lead_id", lead.id)
                   .eq("status", "waiting_reply")
                   .order("started_at", { ascending: false })
@@ -1074,29 +1074,93 @@ Deno.serve(async (req) => {
                 if (botExec && inboundMs < execStartedMs) {
                   console.log(`[WEBHOOK] Ignoring stale inbound (${new Date(inboundMs).toISOString()}) — older than execution start (${botExec.started_at})`);
                 } else if (botExec) {
-                  console.log(`[WEBHOOK] Bot execution ${botExec.id} waiting for reply, triggering continue`);
-                  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-                  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+                  // Gate: if this bot was started by a time_window automation that is
+                  // currently CLOSED, cancel the execution and do not continue.
+                  let windowClosed = false;
                   try {
-                    const botRes = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${serviceKey}`,
-                        "apikey": serviceKey,
-                      },
-                      body: JSON.stringify({
-                        leadId: lead.id,
-                        trigger: "continue",
-                        executionId: botExec.id,
-                        replyText: content || "",
-                        replyOptionId,
-                      }),
-                    });
-                    const botBody = await botRes.text();
-                    console.log(`[WEBHOOK] Bot-engine continue response (${botRes.status}): ${botBody}`);
-                  } catch (err: any) {
-                    console.error("[WEBHOOK] Bot-engine continue error:", err.message);
+                    const { data: twAutos } = await supabase
+                      .from("crm_automations")
+                      .select("id, action_config, is_active")
+                      .eq("trigger_type", "time_window")
+                      .eq("action_type", "send_bot");
+                    const related = (twAutos || []).filter((a: any) => (a.action_config?.bot_id) === botExec.bot_id);
+                    if (related.length > 0) {
+                      const nowMs = Date.now();
+                      const brNow = new Date(nowMs - 3 * 3600 * 1000);
+                      const brDay = brNow.getUTCDay();
+                      const brMin = brNow.getUTCHours() * 60 + brNow.getUTCMinutes();
+                      const nowWeekMin = brDay * 1440 + brMin;
+                      const parseLocalBR = (s: string): number => {
+                        if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s).getTime();
+                        return new Date(s + "-03:00").getTime();
+                      };
+                      let anyOpen = false;
+                      for (const a of related) {
+                        const cfg = (a.action_config || {}) as Record<string, any>;
+                        const mode = (cfg.window_mode as string) || "once";
+                        if (mode === "weekly") {
+                          const startDay = Number(cfg.start_day);
+                          const endDay = Number(cfg.end_day);
+                          const [sh, sm] = String(cfg.start_time || "00:00").split(":").map(Number);
+                          const [eh, em] = String(cfg.end_time || "23:59").split(":").map(Number);
+                          if ([startDay, endDay, sh, sm, eh, em].some(v => Number.isNaN(v))) continue;
+                          const startWeekMin = startDay * 1440 + sh * 60 + sm;
+                          const endWeekMin = endDay * 1440 + eh * 60 + em;
+                          let isOpen: boolean;
+                          if (startWeekMin <= endWeekMin) {
+                            isOpen = nowWeekMin >= startWeekMin && nowWeekMin <= endWeekMin;
+                          } else {
+                            isOpen = nowWeekMin >= startWeekMin || nowWeekMin <= endWeekMin;
+                          }
+                          if (isOpen) { anyOpen = true; break; }
+                        } else {
+                          if (!a.is_active) continue;
+                          const winStart = cfg.window_start as string | undefined;
+                          const winEnd = cfg.window_end as string | undefined;
+                          if (!winStart || !winEnd) continue;
+                          const startMs = parseLocalBR(winStart);
+                          const endMs = parseLocalBR(winEnd);
+                          if (isNaN(startMs) || isNaN(endMs)) continue;
+                          if (nowMs >= startMs && nowMs <= endMs) { anyOpen = true; break; }
+                        }
+                      }
+                      windowClosed = !anyOpen;
+                    }
+                  } catch (gateErr: any) {
+                    console.error("[WEBHOOK] time_window gate error:", gateErr.message);
+                  }
+
+                  if (windowClosed) {
+                    await supabase
+                      .from("bot_executions")
+                      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+                      .eq("id", botExec.id);
+                    console.log(`[WEBHOOK] Bot execution ${botExec.id} cancelled — time_window closed (lead ${lead.id}, bot ${botExec.bot_id})`);
+                  } else {
+                    console.log(`[WEBHOOK] Bot execution ${botExec.id} waiting for reply, triggering continue`);
+                    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+                    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+                    try {
+                      const botRes = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Authorization": `Bearer ${serviceKey}`,
+                          "apikey": serviceKey,
+                        },
+                        body: JSON.stringify({
+                          leadId: lead.id,
+                          trigger: "continue",
+                          executionId: botExec.id,
+                          replyText: content || "",
+                          replyOptionId,
+                        }),
+                      });
+                      const botBody = await botRes.text();
+                      console.log(`[WEBHOOK] Bot-engine continue response (${botRes.status}): ${botBody}`);
+                    } catch (err: any) {
+                      console.error("[WEBHOOK] Bot-engine continue error:", err.message);
+                    }
                   }
                 }
               } catch (botErr: any) {
