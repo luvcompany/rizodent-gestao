@@ -23,6 +23,7 @@ export type ConversationFilterValues = {
   hasPagamento: string; // "" | "yes" | "no"
   adAccountId: string;
   adId: string;
+  instagramAccountId: string;
 };
 
 const emptyFilters: ConversationFilterValues = {
@@ -37,6 +38,7 @@ const emptyFilters: ConversationFilterValues = {
   hasPagamento: "",
   adAccountId: "",
   adId: "",
+  instagramAccountId: "",
 };
 
 export type AdAccountOption = { id: string; name: string };
