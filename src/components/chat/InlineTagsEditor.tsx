@@ -64,11 +64,13 @@ function sourceToDropdown(source: string | null, options: { value: string; label
 }
 
 export default function InlineTagsEditor({
-  leadId, tags, source, adId, imagemOrigem, nomeAnuncio, descricaoAnuncio, linkAnuncio, adAccountId, adAccountName, onUpdated,
+  leadId, tags, source, adId, imagemOrigem, nomeAnuncio, descricaoAnuncio, linkAnuncio, adAccountId, adAccountName, pipelineId, onUpdated,
 }: Props) {
+  const isInstagramLead = pipelineId === INSTAGRAM_PIPELINE_ID;
+  const SOURCE_OPTIONS = isInstagramLead ? SOURCE_OPTIONS_INSTAGRAM : SOURCE_OPTIONS_DEFAULT;
   const [newTag, setNewTag] = useState("");
   const [customSource, setCustomSource] = useState("");
-  const dropdownValue = sourceToDropdown(source);
+  const dropdownValue = sourceToDropdown(source, SOURCE_OPTIONS);
   const showCustom = dropdownValue === "outro" && !SOURCE_OPTIONS.slice(0, -1).some((o) => o.value === source?.toLowerCase());
 
   // Ad selector state
