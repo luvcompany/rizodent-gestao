@@ -764,6 +764,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             preferredMimeTypes={isInstagram ? ["audio/mp4", "audio/mp4;codecs=mp4a.40.2", "audio/wav"] : undefined}
           />
         </div>
+        </>
       )}
 
       {/* 24h window countdown (WhatsApp only) */}
