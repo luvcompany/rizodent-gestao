@@ -33,6 +33,7 @@ type Lead = {
   link_anuncio?: string | null;
   ad_account_id?: string | null;
   ad_account_name?: string | null;
+  pipeline_id?: string | null;
 };
 
 type AdOption = {
@@ -51,7 +52,9 @@ type Props = {
   onLeadDeleted: () => void;
 };
 
-const SOURCE_OPTIONS = [
+const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+
+const SOURCE_OPTIONS_DEFAULT = [
   { value: "whatsapp", label: "WhatsApp" },
   { value: "facebook_ad", label: "Anúncio Facebook" },
   { value: "instagram_ad", label: "Anúncio Instagram" },
@@ -60,6 +63,12 @@ const SOURCE_OPTIONS = [
   { value: "site", label: "Site" },
   { value: "ligação", label: "Ligação" },
   { value: "outro", label: "Outro" },
+];
+
+const SOURCE_OPTIONS_INSTAGRAM = [
+  { value: "comentário", label: "Comentário" },
+  { value: "direct", label: "Direct" },
+  { value: "anúncio", label: "Anúncio" },
 ];
 
 export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Props) {
