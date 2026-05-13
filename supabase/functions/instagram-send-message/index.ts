@@ -61,21 +61,13 @@ type ResolvedAccount = {
 };
 
 async function lookupByIgUserId(igUserId: string): Promise<ResolvedAccount | null> {
-  // Try legacy instagram_accounts first
-  const { data: legacy } = await supabase
-    .from("instagram_accounts")
-    .select("id, page_access_token, is_active, instagram_account_id, name")
-    .eq("instagram_account_id", igUserId)
-    .maybeSingle();
-  if (legacy) return legacy as ResolvedAccount;
-
-  // Fallback: ig_accounts (Instagram Lite)
+  // Try ig_accounts (Instagram Lite) first — these have fresh long-lived tokens
   const { data: lite } = await supabase
     .from("ig_accounts")
     .select("id, access_token, active, ig_user_id, username")
     .eq("ig_user_id", igUserId)
     .maybeSingle();
-  if (lite) {
+  if (lite && lite.access_token) {
     return {
       id: lite.id,
       page_access_token: lite.access_token,
@@ -84,6 +76,15 @@ async function lookupByIgUserId(igUserId: string): Promise<ResolvedAccount | nul
       name: lite.username,
     };
   }
+
+  // Fallback: legacy instagram_accounts
+  const { data: legacy } = await supabase
+    .from("instagram_accounts")
+    .select("id, page_access_token, is_active, instagram_account_id, name")
+    .eq("instagram_account_id", igUserId)
+    .maybeSingle();
+  if (legacy) return legacy as ResolvedAccount;
+
   return null;
 }
 
