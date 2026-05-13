@@ -30,10 +30,13 @@ type Props = {
   linkAnuncio?: string | null;
   adAccountId?: string | null;
   adAccountName?: string | null;
+  pipelineId?: string | null;
   onUpdated: (updates: Record<string, any>) => void;
 };
 
-const SOURCE_OPTIONS = [
+const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+
+const SOURCE_OPTIONS_DEFAULT = [
   { value: "anúncio", label: "Anúncio" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "indicação", label: "Indicação" },
@@ -43,21 +46,31 @@ const SOURCE_OPTIONS = [
   { value: "outro", label: "Outro" },
 ];
 
+const SOURCE_OPTIONS_INSTAGRAM = [
+  { value: "comentário", label: "Comentário" },
+  { value: "direct", label: "Direct" },
+  { value: "anúncio", label: "Anúncio" },
+];
+
 const AD_SOURCE_VALUES = ["facebook_ad", "instagram_ad", "anúncio"];
 
-function sourceToDropdown(source: string | null): string {
+function sourceToDropdown(source: string | null, options: { value: string; label: string }[]): string {
   if (!source) return "";
   if (AD_SOURCE_VALUES.includes(source.toLowerCase())) return "anúncio";
-  const match = SOURCE_OPTIONS.find((o) => o.value === source.toLowerCase());
-  return match ? match.value : "outro";
+  const match = options.find((o) => o.value === source.toLowerCase());
+  if (match) return match.value;
+  // If "outro" is in options, fall back to it; otherwise empty
+  return options.some((o) => o.value === "outro") ? "outro" : "";
 }
 
 export default function InlineTagsEditor({
-  leadId, tags, source, adId, imagemOrigem, nomeAnuncio, descricaoAnuncio, linkAnuncio, adAccountId, adAccountName, onUpdated,
+  leadId, tags, source, adId, imagemOrigem, nomeAnuncio, descricaoAnuncio, linkAnuncio, adAccountId, adAccountName, pipelineId, onUpdated,
 }: Props) {
+  const isInstagramLead = pipelineId === INSTAGRAM_PIPELINE_ID;
+  const SOURCE_OPTIONS = isInstagramLead ? SOURCE_OPTIONS_INSTAGRAM : SOURCE_OPTIONS_DEFAULT;
   const [newTag, setNewTag] = useState("");
   const [customSource, setCustomSource] = useState("");
-  const dropdownValue = sourceToDropdown(source);
+  const dropdownValue = sourceToDropdown(source, SOURCE_OPTIONS);
   const showCustom = dropdownValue === "outro" && !SOURCE_OPTIONS.slice(0, -1).some((o) => o.value === source?.toLowerCase());
 
   // Ad selector state

@@ -1,0 +1,2 @@
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS instagram_account_id text;
+CREATE INDEX IF NOT EXISTS idx_messages_instagram_account_id ON public.messages(instagram_account_id) WHERE instagram_account_id IS NOT NULL;

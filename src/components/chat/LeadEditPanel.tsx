@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Pencil, Trash2, X, Plus, Link2, Unlink, Video, Ban } from "lucide-react";
+import { Pencil, Trash2, X, Plus, Link2, Unlink, Video, Ban, MessageCircle, Send, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Lead = {
@@ -33,6 +33,7 @@ type Lead = {
   link_anuncio?: string | null;
   ad_account_id?: string | null;
   ad_account_name?: string | null;
+  pipeline_id?: string | null;
 };
 
 type AdOption = {
@@ -51,7 +52,9 @@ type Props = {
   onLeadDeleted: () => void;
 };
 
-const SOURCE_OPTIONS = [
+const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+
+const SOURCE_OPTIONS_DEFAULT = [
   { value: "whatsapp", label: "WhatsApp" },
   { value: "facebook_ad", label: "Anúncio Facebook" },
   { value: "instagram_ad", label: "Anúncio Instagram" },
@@ -60,6 +63,12 @@ const SOURCE_OPTIONS = [
   { value: "site", label: "Site" },
   { value: "ligação", label: "Ligação" },
   { value: "outro", label: "Outro" },
+];
+
+const SOURCE_OPTIONS_INSTAGRAM = [
+  { value: "comentário", label: "Comentário" },
+  { value: "direct", label: "Direct" },
+  { value: "anúncio", label: "Anúncio" },
 ];
 
 export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Props) {
@@ -92,8 +101,10 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
   const [loadingAds, setLoadingAds] = useState(false);
   const [showAdSelector, setShowAdSelector] = useState(false);
 
+  const isInstagramLead = lead.pipeline_id === INSTAGRAM_PIPELINE_ID;
+  const SOURCE_OPTIONS = isInstagramLead ? SOURCE_OPTIONS_INSTAGRAM : SOURCE_OPTIONS_DEFAULT;
   const isKnownSource = SOURCE_OPTIONS.some((o) => o.value === source);
-  const effectiveSource = isKnownSource ? source : "outro";
+  const effectiveSource = isKnownSource ? source : (SOURCE_OPTIONS.some((o) => o.value === "outro") ? "outro" : "");
 
   useEffect(() => {
     if (editOpen) {
@@ -290,7 +301,44 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Telefone</label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5511999999999" />
+              <div className="flex gap-2">
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5511999999999" />
+                {isInstagramLead && phone.trim() && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    title="Enviar mensagem via WhatsApp"
+                    onClick={async () => {
+                      const text = window.prompt("Mensagem WhatsApp para enviar:");
+                      if (!text || !text.trim()) return;
+                      try {
+                        // Save phone first if changed
+                        if (phone.trim() !== (lead.phone || "")) {
+                          await supabase.from("crm_leads").update({ phone: phone.trim() }).eq("id", lead.id);
+                        }
+                        const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+                          body: { lead_id: lead.id, to: phone.trim(), message: text, type: "text" },
+                        });
+                        if (error || (data as any)?.error) {
+                          toast.error((data as any)?.user_message || (data as any)?.error || error?.message || "Erro ao enviar");
+                          return;
+                        }
+                        toast.success("Mensagem WhatsApp enviada");
+                      } catch (e: any) {
+                        toast.error(e?.message || "Erro ao enviar");
+                      }
+                    }}
+                  >
+                    <MessageCircle size={14} className="mr-1" /> WhatsApp
+                  </Button>
+                )}
+              </div>
+              {isInstagramLead && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  As mensagens WhatsApp aparecem nesta mesma conversa e também na aba WhatsApp.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Origem</label>
