@@ -59,10 +59,20 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const isInstagram = channel === "instagram";
   const sendFnName = isInstagram ? "instagram-send-message" : "send-whatsapp-message";
 
-  const buildSendBody = async (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null }): Promise<SendBody> => {
+  const buildSendBody = async (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null; replyMode?: "direct" | "comment"; commentTarget?: { comment_id: string; post_id: string | null } | null }): Promise<SendBody> => {
     if (isInstagram) {
       const igType: InstagramMediaKind | undefined = params.type === "text" ? undefined : (params.type === "image" || params.type === "video" || params.type === "audio" ? params.type : undefined);
       const resolvedIgAccountId = await resolveInstagramAccountId();
+      if (params.replyMode === "comment" && params.commentTarget?.comment_id) {
+        return {
+          lead_id: leadId,
+          instagram_account_id: resolvedIgAccountId ?? undefined,
+          message: params.message,
+          message_type: "comment",
+          comment_id: params.commentTarget.comment_id,
+          post_id: params.commentTarget.post_id ?? undefined,
+        };
+      }
       return {
         lead_id: leadId,
         instagram_account_id: resolvedIgAccountId ?? undefined,
