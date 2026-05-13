@@ -60,6 +60,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       const igType = params.type === "text" ? undefined : (params.type === "image" || params.type === "video" || params.type === "audio" ? params.type : undefined);
       return {
         lead_id: leadId,
+        instagram_account_id: igAccountId ?? undefined,
         message: params.message,
         message_type: "dm",
         media_type: igType,
@@ -83,8 +84,29 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
   const [startingBotId, setStartingBotId] = useState<string | null>(null);
   const [recorderActive, setRecorderActive] = useState(false);
+  const [igAccountId, setIgAccountId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Resolve Instagram ig_account_id from latest instagram_messages for this lead
+  useEffect(() => {
+    if (!isInstagram || !leadId) {
+      setIgAccountId(null);
+      return;
+    }
+    supabase
+      .from("instagram_messages")
+      .select("ig_account_id")
+      .eq("lead_id", leadId)
+      .not("ig_account_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        setIgAccountId((data as any)?.ig_account_id ?? null);
+      });
+  }, [isInstagram, leadId]);
+
   // Fetch published bots
   useEffect(() => {
     supabase
