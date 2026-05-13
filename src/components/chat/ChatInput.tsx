@@ -684,6 +684,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             onSendAudio={sendRecordedAudio}
             onModeChange={setRecorderActive}
             showMicButton={!newMessage.trim() && !attachedFile}
+            preferredMimeTypes={isInstagram ? ["audio/mp4", "audio/mp4;codecs=mp4a.40.2", "audio/wav"] : undefined}
           />
         </div>
       )}
