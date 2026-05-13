@@ -316,8 +316,8 @@ export default function ConversationFilters({
               </Select>
             </div>
 
-            {/* Conta de anúncio */}
-            {adAccounts.length > 0 && (
+            {/* Conta de anúncio (escondido na aba Instagram) */}
+            {adAccounts.length > 0 && channel !== "instagram" && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Conta de anúncio</label>
                 <Select
