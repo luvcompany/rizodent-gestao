@@ -71,8 +71,11 @@ function countActive(f: ConversationFilterValues): number {
   if (f.hasPagamento) c++;
   if (f.adAccountId) c++;
   if (f.adId) c++;
+  if (f.instagramAccountId) c++;
   return c;
 }
+
+export type InstagramAccountOption = { id: string; username: string };
 
 export default function ConversationFilters({
   stages,
@@ -83,6 +86,8 @@ export default function ConversationFilters({
   pipelines = [],
   adAccounts = [],
   ads = [],
+  channel = "whatsapp",
+  instagramAccounts = [],
 }: {
   stages: Stage[];
   profiles: Profile[];
@@ -92,6 +97,8 @@ export default function ConversationFilters({
   pipelines?: Pipeline[];
   adAccounts?: AdAccountOption[];
   ads?: AdOption[];
+  channel?: "whatsapp" | "instagram";
+  instagramAccounts?: InstagramAccountOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConversationFilterValues>(filters);
