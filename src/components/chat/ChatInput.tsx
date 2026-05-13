@@ -303,7 +303,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           const url = await uploadFile(fileToUpload!, type);
           if (!url) { onMessageError?.(tempId); return; }
 
-          const body = await buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo });
+          const body = await buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo, replyMode: igReplyMode, commentTarget: igCommentTarget });
 
           const { data, error } = await supabase.functions.invoke(sendFnName, { body });
           if (error || data?.error || data?.ok === false) {
