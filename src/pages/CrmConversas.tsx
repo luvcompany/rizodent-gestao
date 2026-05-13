@@ -486,7 +486,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [instagramAccounts, setInstagramAccounts] = useState<{ id: string; username: string }[]>([]);
   const [leadIgAccountMap, setLeadIgAccountMap] = useState<Map<string, Set<string>>>(new Map());
   useEffect(() => {
-    if (channel !== "instagram") return;
     let cancelled = false;
     (async () => {
       const { data: accs } = await supabase
