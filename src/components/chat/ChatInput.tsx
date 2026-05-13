@@ -413,7 +413,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       throw new Error("Janela expirada");
     }
 
-    const uploadBlob = isInstagram ? await convertAudioBlobToInstagramWav(oggBlob) : oggBlob;
+    let uploadBlob: Blob;
+    try {
+      uploadBlob = isInstagram ? await convertAudioBlobToInstagramWav(oggBlob) : oggBlob;
+    } catch (err: any) {
+      toast.error(err?.message || "Não foi possível preparar o áudio para o Instagram");
+      throw err;
+    }
 
     // Pick a sensible extension/content-type from the upload blob's mime.
     const rawType = (oggBlob.type || "").toLowerCase();
