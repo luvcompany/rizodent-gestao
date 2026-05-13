@@ -29,6 +29,7 @@ type Message = {
   instagram_post_id?: string | null;
   instagram_post_thumbnail?: string | null;
   instagram_post_permalink?: string | null;
+  instagram_account_id?: string | null;
 };
 
 type Props = {
@@ -40,6 +41,7 @@ type Props = {
   onReact: (msg: Message, emoji: string) => void;
   onMediaClick: (url: string, type: "image" | "video") => void;
   onScrollToMessage: (msgId: string) => void;
+  igAccountsMap?: Record<string, string>;
 };
 
 function getStatusIcon(status: string) {
@@ -81,7 +83,7 @@ function getDefaultErrorMessage(msg: Message) {
 }
 
 const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
-  ({ msg, leadName, allMessages, onReply, onForward, onReact, onMediaClick, onScrollToMessage }, ref) => {
+  ({ msg, leadName, allMessages, onReply, onForward, onReact, onMediaClick, onScrollToMessage, igAccountsMap }, ref) => {
     const quotedMsg = msg.reply_to_message_id
       ? allMessages.find((m) => m.id === msg.reply_to_message_id)
       : null;
@@ -213,6 +215,11 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
             })()}
             <ChatMessageContent message={msg} onMediaClick={onMediaClick} leadName={leadName} />
             <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
+              {msg.channel === "instagram" && msg.instagram_account_id && igAccountsMap?.[msg.instagram_account_id] && (
+                <span className="text-[10px] px-1.5 py-0 rounded-full bg-primary/10 text-primary font-medium">
+                  @{igAccountsMap[msg.instagram_account_id]}
+                </span>
+              )}
               <span className="text-[10px] text-muted-foreground">
                 {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
               </span>
