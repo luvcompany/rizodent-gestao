@@ -263,8 +263,16 @@ export default function InstagramConversations() {
                 {/* Header */}
                 <div className="flex-shrink-0 border-b border-border bg-card px-4 py-3 flex items-center gap-3">
                   <Avatar className="h-9 w-9">
+                    {selectedConv.sender_profile_pic && (
+                      <AvatarImage
+                        src={selectedConv.sender_profile_pic}
+                        alt={selectedConv.sender_name || selectedConv.sender_id}
+                      />
+                    )}
                     <AvatarFallback style={{ backgroundColor: IG_PURPLE, color: "white" }}>
-                      <Instagram size={16} />
+                      {(selectedConv.sender_name || selectedConv.sender_id || "?")
+                        .charAt(0)
+                        .toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
