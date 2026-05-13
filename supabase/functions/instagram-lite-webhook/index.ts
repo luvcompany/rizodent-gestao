@@ -230,6 +230,7 @@ async function persistMessage(opts: {
       channel: "instagram",
       instagram_message_id: isComment ? opts.commentId : opts.igMessageId,
       instagram_sender_id: opts.senderId,
+      instagram_account_id: opts.account.ig_user_id,
       instagram_comment_id: isComment ? opts.commentId : null,
       instagram_post_id: isComment ? opts.postId : null,
       instagram_post_thumbnail: isComment ? postThumbnail : null,
