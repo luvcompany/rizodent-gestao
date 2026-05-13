@@ -393,7 +393,11 @@ export function useChatConversation(leadId: string | null | undefined) {
   }, [leadId, stages, showActivityToast]);
 
   // ─── Reactions ───
-  const handleReact = useCallback(async (msg: ChatMessage, emoji: string, leadPhone: string | null) => {
+  const handleReact = useCallback(async (msg: ChatMessage, emoji: string, leadPhone: string | null, channel: "whatsapp" | "instagram" = "whatsapp") => {
+    if (channel === "instagram") {
+      toast.info("Reações ainda não são suportadas no Instagram Direct");
+      return;
+    }
     if (!leadPhone) { toast.error("Lead sem telefone"); return; }
 
     setMessages((prev) =>
@@ -463,7 +467,11 @@ export function useChatConversation(leadId: string | null | undefined) {
     setTemplatesOpen(true);
   }, []);
 
-  const sendTemplate = useCallback(async (template: any, leadPhone: string | null) => {
+  const sendTemplate = useCallback(async (template: any, leadPhone: string | null, channel: "whatsapp" | "instagram" = "whatsapp") => {
+    if (channel === "instagram") {
+      toast.error("Templates só estão disponíveis no WhatsApp");
+      return;
+    }
     if (!leadPhone) { toast.error("Lead sem telefone configurado"); return; }
     setTemplatesOpen(false);
 

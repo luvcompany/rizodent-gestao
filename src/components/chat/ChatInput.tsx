@@ -466,10 +466,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 rows={1}
               />
             </div>
-            <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
-              <FileText size={16} />
-              Enviar Template
-            </Button>
+            {!isInstagram && (
+              <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
+                <FileText size={16} />
+                Enviar Template
+              </Button>
+            )}
           </div>
         </div>
       ) : (
@@ -545,9 +547,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 onEmojiSelect={(emoji) => setNewMessage((prev) => prev + emoji)}
               />
 
-              <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
-                <FileText size={20} />
-              </button>
+              {!isInstagram && (
+                <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
+                  <FileText size={20} />
+                </button>
+              )}
 
               <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
                 <PopoverTrigger asChild>

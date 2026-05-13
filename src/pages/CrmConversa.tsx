@@ -164,7 +164,8 @@ export default function CrmConversa() {
   }, [lead, handleSaveNotes]);
 
   const handleSendTemplate = useCallback(async (template: any) => {
-    await chat.sendTemplate(template, lead?.phone || null);
+    const ch: "whatsapp" | "instagram" = lead?.instagram_user_id ? "instagram" : "whatsapp";
+    await chat.sendTemplate(template, lead?.phone || null, ch);
   }, [chat, lead]);
 
   // ===== Bot Active Execution State =====
@@ -343,7 +344,7 @@ export default function CrmConversa() {
                   allMessages={chat.messages}
                   onReply={chat.setReplyTo}
                   onForward={chat.setForwardMsg}
-                  onReact={(m, emoji) => chat.handleReact(m, emoji, lead.phone)}
+                  onReact={(m, emoji) => chat.handleReact(m, emoji, lead.phone, lead.instagram_user_id ? "instagram" : "whatsapp")}
                   onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                   onScrollToMessage={chat.scrollToMessage}
                 />
