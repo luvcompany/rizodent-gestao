@@ -239,6 +239,13 @@ Deno.serve(async (req: Request) => {
   let metaJson: any;
 
   try {
+    // IGAA-prefixed tokens come from Instagram Login API (Lite) and MUST hit graph.instagram.com.
+    // Other tokens (Page access tokens via Facebook Login) hit graph.facebook.com.
+    const isIgLiteToken = token.startsWith("IGAA");
+    const apiBase = isIgLiteToken
+      ? "https://graph.instagram.com/v21.0"
+      : "https://graph.facebook.com/v25.0";
+
     if (message_type === "dm") {
       const messagePayload: Record<string, unknown> = {};
       if (media_url && media_type) {
@@ -249,7 +256,7 @@ Deno.serve(async (req: Request) => {
       } else {
         messagePayload.text = message;
       }
-      metaResponse = await fetch("https://graph.facebook.com/v25.0/me/messages", {
+      metaResponse = await fetch(`${apiBase}/me/messages`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -261,7 +268,7 @@ Deno.serve(async (req: Request) => {
         }),
       });
     } else {
-      const url = `https://graph.facebook.com/v25.0/${comment_id}/replies?access_token=${encodeURIComponent(token)}`;
+      const url = `${apiBase}/${comment_id}/replies?access_token=${encodeURIComponent(token)}`;
       metaResponse = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
