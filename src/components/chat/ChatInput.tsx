@@ -259,6 +259,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           if (type === "image") {
             try { fileToUpload = await compressImage(fileToUpload!); } catch {}
           }
+          if (isInstagram && type === "audio") {
+            const wavBlob = await convertAudioBlobToInstagramWav(fileToUpload!);
+            fileToUpload = new globalThis.File([wavBlob], `audio_${Date.now()}.wav`, { type: "audio/wav" });
+          }
 
           const url = await uploadFile(fileToUpload!, type);
           if (!url) { onMessageError?.(tempId); return; }
