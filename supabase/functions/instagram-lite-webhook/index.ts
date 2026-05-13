@@ -200,6 +200,19 @@ async function findOrCreateLead(
     console.error("[ig-lite] Failed to create lead:", createErr);
     return null;
   }
+
+  await supabase
+    .from("crm_lead_instagram_identities")
+    .upsert(
+      {
+        lead_id: created.id,
+        ig_account_id: igAccountId,
+        ig_scoped_user_id: igUserId,
+        username: profile.username,
+      },
+      { onConflict: "ig_account_id,ig_scoped_user_id" }
+    );
+
   return created.id;
 }
 
