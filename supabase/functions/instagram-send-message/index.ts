@@ -105,6 +105,11 @@ async function resolveAccount(input: { instagram_account_id?: string; lead_id?: 
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    // Prefer Lite/legacy lookup by ig_user_id (Lite token is fresher)
+    if (msg?.instagram_account_id) {
+      const found = await lookupByIgUserId(msg.instagram_account_id);
+      if (found?.page_access_token) return found;
+    }
     if (msg?.instagram_account_config_id) {
       const { data } = await supabase
         .from("instagram_accounts")
@@ -112,10 +117,6 @@ async function resolveAccount(input: { instagram_account_id?: string; lead_id?: 
         .eq("id", msg.instagram_account_config_id)
         .maybeSingle();
       if (data) return data as ResolvedAccount;
-    }
-    if (msg?.instagram_account_id) {
-      const found = await lookupByIgUserId(msg.instagram_account_id);
-      if (found) return found;
     }
   }
 
@@ -128,6 +129,10 @@ async function resolveAccount(input: { instagram_account_id?: string; lead_id?: 
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (c?.instagram_account_id) {
+      const found = await lookupByIgUserId(c.instagram_account_id);
+      if (found?.page_access_token) return found;
+    }
     if (c?.instagram_account_config_id) {
       const { data } = await supabase
         .from("instagram_accounts")
@@ -135,10 +140,6 @@ async function resolveAccount(input: { instagram_account_id?: string; lead_id?: 
         .eq("id", c.instagram_account_config_id)
         .maybeSingle();
       if (data) return data as ResolvedAccount;
-    }
-    if (c?.instagram_account_id) {
-      const found = await lookupByIgUserId(c.instagram_account_id);
-      if (found) return found;
     }
   }
 
