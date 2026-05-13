@@ -1847,10 +1847,13 @@ export type Database = {
           message_text: string | null
           message_type: string | null
           post_id: string | null
+          replied_at: string | null
+          reply_text: string | null
           sender_id: string | null
           sender_name: string | null
           sender_profile_pic: string | null
           sender_username: string | null
+          status: string
         }
         Insert: {
           comment_id?: string | null
@@ -1864,10 +1867,13 @@ export type Database = {
           message_text?: string | null
           message_type?: string | null
           post_id?: string | null
+          replied_at?: string | null
+          reply_text?: string | null
           sender_id?: string | null
           sender_name?: string | null
           sender_profile_pic?: string | null
           sender_username?: string | null
+          status?: string
         }
         Update: {
           comment_id?: string | null
@@ -1881,10 +1887,13 @@ export type Database = {
           message_text?: string | null
           message_type?: string | null
           post_id?: string | null
+          replied_at?: string | null
+          reply_text?: string | null
           sender_id?: string | null
           sender_name?: string | null
           sender_profile_pic?: string | null
           sender_username?: string | null
+          status?: string
         }
         Relationships: [
           {
