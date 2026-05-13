@@ -163,10 +163,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
   }, [externalMessage, onExternalMessageConsumed]);
 
-  const uploadFile = async (file: globalThis.File, folder: string): Promise<string | null> => {
+  const uploadFile = async (file: globalThis.File, folder: string, contentType?: string): Promise<string | null> => {
     const ext = file.name.split(".").pop() || "bin";
     const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("chat-media").upload(path, file);
+    const { error } = await supabase.storage.from("chat-media").upload(path, file, {
+      contentType: contentType || file.type || undefined,
+    });
     if (error) {
       toast.error(`Erro ao fazer upload: ${error.message}`);
       return null;
@@ -384,11 +386,34 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       throw new Error("Janela expirada");
     }
 
-    const audioFile = new globalThis.File(
-      [oggBlob],
-      `audio_${Date.now()}.ogg`,
-      { type: oggBlob.type || "audio/ogg" }
-    );
+    let audioFile: globalThis.File;
+    let uploadContentType: string | undefined;
+    let convertingToastId: string | number | undefined;
+
+    if (isInstagram) {
+      try {
+        convertingToastId = toast.loading("Convertendo áudio...");
+        const { convertAudioBlobToMp3 } = await import("@/lib/audioConverter");
+        const mp3Blob = await convertAudioBlobToMp3(oggBlob);
+        audioFile = new globalThis.File(
+          [mp3Blob],
+          `audio_${Date.now()}.mp3`,
+          { type: "audio/mpeg" }
+        );
+        uploadContentType = "audio/mpeg";
+        toast.dismiss(convertingToastId);
+      } catch (err: any) {
+        if (convertingToastId) toast.dismiss(convertingToastId);
+        toast.error(err?.message || "Falha ao converter áudio para MP3");
+        throw err;
+      }
+    } else {
+      audioFile = new globalThis.File(
+        [oggBlob],
+        `audio_${Date.now()}.ogg`,
+        { type: oggBlob.type || "audio/ogg" }
+      );
+    }
 
     const tempId = crypto.randomUUID();
     const optimisticUrl = URL.createObjectURL(oggBlob);
@@ -409,7 +434,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     try {
       console.log(`[ChatInput] Sending audio: size=${audioFile.size}, type=${audioFile.type}`);
 
-      const url = await uploadFile(audioFile, "audio");
+      const url = await uploadFile(audioFile, "audio", uploadContentType);
       if (!url) {
         onMessageError?.(tempId);
         toast.error("Falha no upload do áudio");
@@ -417,7 +442,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       }
 
       const audioBody = isInstagram
-        ? { lead_id: leadId, message_type: "dm" as const, media_type: "audio" as const, media_url: url }
+        ? { lead_id: leadId, instagram_account_id: igAccountId ?? undefined, message_type: "dm" as const, media_type: "audio" as const, media_url: url }
         : { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true };
 
       const { data, error } = await supabase.functions.invoke(sendFnName, { body: audioBody });
@@ -437,7 +462,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       onMessageError?.(tempId);
       toast.error(err?.message || "Erro ao enviar áudio");
     }
-  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName]);
+  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, igAccountId]);
 
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
