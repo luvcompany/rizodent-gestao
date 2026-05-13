@@ -100,6 +100,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [startingBotId, setStartingBotId] = useState<string | null>(null);
   const [recorderActive, setRecorderActive] = useState(false);
   const [igAccountId, setIgAccountId] = useState<string | null>(null);
+  const [igReplyMode, setIgReplyMode] = useState<"direct" | "comment">("direct");
+  const [igCommentTarget, setIgCommentTarget] = useState<{ comment_id: string; post_id: string | null; preview: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
