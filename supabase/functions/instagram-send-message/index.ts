@@ -52,15 +52,46 @@ function getMetaPermissionError(metaJson: any) {
   };
 }
 
-async function resolveAccount(input: { instagram_account_id?: string; lead_id?: string; comment_id?: string }) {
+type ResolvedAccount = {
+  id: string;
+  page_access_token: string;
+  is_active: boolean;
+  instagram_account_id: string;
+  name: string | null;
+};
+
+async function lookupByIgUserId(igUserId: string): Promise<ResolvedAccount | null> {
+  // Try legacy instagram_accounts first
+  const { data: legacy } = await supabase
+    .from("instagram_accounts")
+    .select("id, page_access_token, is_active, instagram_account_id, name")
+    .eq("instagram_account_id", igUserId)
+    .maybeSingle();
+  if (legacy) return legacy as ResolvedAccount;
+
+  // Fallback: ig_accounts (Instagram Lite)
+  const { data: lite } = await supabase
+    .from("ig_accounts")
+    .select("id, access_token, active, ig_user_id, username")
+    .eq("ig_user_id", igUserId)
+    .maybeSingle();
+  if (lite) {
+    return {
+      id: lite.id,
+      page_access_token: lite.access_token,
+      is_active: lite.active,
+      instagram_account_id: lite.ig_user_id,
+      name: lite.username,
+    };
+  }
+  return null;
+}
+
+async function resolveAccount(input: { instagram_account_id?: string; lead_id?: string; comment_id?: string }): Promise<ResolvedAccount | null> {
   // Strategy A: explicit IG account id
   if (input.instagram_account_id) {
-    const { data } = await supabase
-      .from("instagram_accounts")
-      .select("id, page_access_token, is_active, instagram_account_id, name")
-      .eq("instagram_account_id", input.instagram_account_id)
-      .maybeSingle();
-    if (data) return data;
+    const found = await lookupByIgUserId(input.instagram_account_id);
+    if (found) return found;
   }
 
   // Strategy B: derive from lead's most recent instagram_messages
@@ -79,15 +110,11 @@ async function resolveAccount(input: { instagram_account_id?: string; lead_id?: 
         .select("id, page_access_token, is_active, instagram_account_id, name")
         .eq("id", msg.instagram_account_config_id)
         .maybeSingle();
-      if (data) return data;
+      if (data) return data as ResolvedAccount;
     }
     if (msg?.instagram_account_id) {
-      const { data } = await supabase
-        .from("instagram_accounts")
-        .select("id, page_access_token, is_active, instagram_account_id, name")
-        .eq("instagram_account_id", msg.instagram_account_id)
-        .maybeSingle();
-      if (data) return data;
+      const found = await lookupByIgUserId(msg.instagram_account_id);
+      if (found) return found;
     }
   }
 
@@ -106,25 +133,38 @@ async function resolveAccount(input: { instagram_account_id?: string; lead_id?: 
         .select("id, page_access_token, is_active, instagram_account_id, name")
         .eq("id", c.instagram_account_config_id)
         .maybeSingle();
-      if (data) return data;
+      if (data) return data as ResolvedAccount;
     }
     if (c?.instagram_account_id) {
-      const { data } = await supabase
-        .from("instagram_accounts")
-        .select("id, page_access_token, is_active, instagram_account_id, name")
-        .eq("instagram_account_id", c.instagram_account_id)
-        .maybeSingle();
-      if (data) return data;
+      const found = await lookupByIgUserId(c.instagram_account_id);
+      if (found) return found;
     }
   }
 
-  // Strategy D: only one active IG account → use it
-  const { data: accounts } = await supabase
-    .from("instagram_accounts")
-    .select("id, page_access_token, is_active, instagram_account_id, name")
-    .eq("is_active", true)
-    .limit(2);
-  if (accounts && accounts.length === 1) return accounts[0];
+  // Strategy D: only one active IG account total (legacy + lite) → use it
+  const [{ data: legacyAccs }, { data: liteAccs }] = await Promise.all([
+    supabase
+      .from("instagram_accounts")
+      .select("id, page_access_token, is_active, instagram_account_id, name")
+      .eq("is_active", true)
+      .limit(2),
+    supabase
+      .from("ig_accounts")
+      .select("id, access_token, active, ig_user_id, username")
+      .eq("active", true)
+      .limit(2),
+  ]);
+  const combined: ResolvedAccount[] = [
+    ...((legacyAccs ?? []) as ResolvedAccount[]),
+    ...((liteAccs ?? []).map((l: any) => ({
+      id: l.id,
+      page_access_token: l.access_token,
+      is_active: l.active,
+      instagram_account_id: l.ig_user_id,
+      name: l.username,
+    }))),
+  ];
+  if (combined.length === 1) return combined[0];
   return null;
 }
 
