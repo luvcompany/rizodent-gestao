@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { Check, CheckCheck, Clock, AlertCircle } from "lucide-react";
+import { Check, CheckCheck, Clock, AlertCircle, MessageCircle, ExternalLink, Reply } from "lucide-react";
 import ChatMessageContent from "./ChatMessageContent";
 import MessageActions from "./MessageActions";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -25,6 +25,8 @@ type Message = {
   ad_account_name?: string | null;
   error_reason?: string | null;
   deleted_at?: string | null;
+  instagram_comment_id?: string | null;
+  instagram_post_id?: string | null;
 };
 
 type Props = {
