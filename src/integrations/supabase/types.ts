@@ -1762,6 +1762,42 @@ export type Database = {
           },
         ]
       }
+      ig_accounts: {
+        Row: {
+          access_token: string
+          active: boolean
+          created_at: string
+          id: string
+          ig_user_id: string
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          access_token: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          ig_user_id: string
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          access_token?: string
+          active?: boolean
+          created_at?: string
+          id?: string
+          ig_user_id?: string
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
       instagram_accounts: {
         Row: {
           created_at: string
