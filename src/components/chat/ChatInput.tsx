@@ -60,6 +60,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       const igType = params.type === "text" ? undefined : (params.type === "image" || params.type === "video" || params.type === "audio" ? params.type : undefined);
       return {
         lead_id: leadId,
+        instagram_account_id: igAccountId ?? undefined,
         message: params.message,
         message_type: "dm",
         media_type: igType,
