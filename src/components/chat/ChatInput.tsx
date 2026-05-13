@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
   Send, Paperclip, FileText, Image, File, Video, X,
-  Loader2, Clock, AlertTriangle, Bot
+  Loader2, Clock, AlertTriangle, Bot, MessageCircle, Reply
 } from "lucide-react";
 import {
   DropdownMenu,
