@@ -172,12 +172,39 @@ export function useInstagramMessages() {
     }
   }, []);
 
+  const replyToMessage = useCallback(
+    async (message: InstagramMessage, replyText: string) => {
+      if (!message.instagram_account_id) {
+        throw new Error("Conta do Instagram não identificada");
+      }
+      const isComment = message.message_type === "comment";
+      const { data, error: invokeErr } = await supabase.functions.invoke("instagram-reply", {
+        body: {
+          event_id: message.id,
+          ig_account_id: message.instagram_account_id,
+          sender_id: message.sender_id ?? undefined,
+          comment_id: isComment ? message.comment_id ?? undefined : undefined,
+          reply_text: replyText,
+          event_type: isComment ? "comments" : "dm",
+        },
+      });
+      if (invokeErr) throw invokeErr;
+      const resp = data as { success?: boolean; error?: string } | null;
+      if (resp && resp.success === false) {
+        throw new Error(resp.error || "Erro ao responder no Instagram");
+      }
+      return data;
+    },
+    []
+  );
+
   return {
     conversations,
     messages: conversationMessages,
     selectedConversationId,
     setSelectedConversationId,
     sendMessage,
+    replyToMessage,
     markAsRead,
     loading,
     error,
