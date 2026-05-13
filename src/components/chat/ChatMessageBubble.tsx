@@ -114,10 +114,31 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
             </div>
           ) : (
           <div className={`rounded-lg px-3 py-2 ${
-            msg.direction === "outbound"
-              ? "bg-primary/20 text-foreground rounded-br-none"
-              : "bg-card border border-border text-foreground rounded-bl-none"
+            msg.type === "comment"
+              ? (msg.direction === "outbound"
+                  ? "bg-purple-500/15 border border-purple-500/40 text-foreground rounded-br-none"
+                  : "bg-purple-500/10 border border-purple-500/30 text-foreground rounded-bl-none")
+              : msg.direction === "outbound"
+                ? "bg-primary/20 text-foreground rounded-br-none"
+                : "bg-card border border-border text-foreground rounded-bl-none"
           }`}>
+            {msg.type === "comment" && (
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-purple-600 dark:text-purple-400">
+                <MessageCircle size={11} />
+                <span>{msg.direction === "outbound" ? "Resposta ao comentário" : "Comentário no post"}</span>
+                {msg.instagram_post_id && (
+                  <a
+                    href={`https://www.instagram.com/p/${msg.instagram_post_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-auto inline-flex items-center gap-0.5 text-muted-foreground hover:text-primary"
+                    title="Ver post"
+                  >
+                    <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+            )}
             {quotedMsg && (
               <div
                 onClick={() => onScrollToMessage(quotedMsg.id)}
