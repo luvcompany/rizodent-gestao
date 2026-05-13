@@ -431,8 +431,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   }, [selectedLead, handleSaveNotes]);
 
   const handleSendTemplate = useCallback(async (template: any) => {
-    await chat.sendTemplate(template, selectedLead?.phone || null);
-  }, [chat, selectedLead]);
+    const ch: "whatsapp" | "instagram" =
+      channel === "instagram" || !!selectedLead?.instagram_user_id || selectedLead?.pipeline_id === INSTAGRAM_PIPELINE_ID
+        ? "instagram"
+        : "whatsapp";
+    await chat.sendTemplate(template, selectedLead?.phone || null, ch);
+  }, [chat, selectedLead, channel]);
 
   // Transfer lead to another user
   const handleTransferLead = useCallback(async (newUserId: string) => {
