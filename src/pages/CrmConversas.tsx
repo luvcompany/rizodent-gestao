@@ -624,6 +624,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (filters.cidade && (l.cidade || "") !== filters.cidade) return false;
       if (filters.adAccountId && ((l as any).ad_account_id || "") !== filters.adAccountId) return false;
       if (filters.adId && ((l as any).ad_id || "") !== filters.adId) return false;
+      if (filters.instagramAccountId) {
+        const set = leadIgAccountMap.get(l.id);
+        if (!set || !set.has(filters.instagramAccountId)) return false;
+      }
       // Special URL filters
       if (urlGhost && ghostLeadIds && ghostLeadIds.has(l.id)) return false; // ghost = NOT in inbound set
       if (urlAppointmentStatus && appointmentLeadIds && !appointmentLeadIds.has(l.id)) return false;
