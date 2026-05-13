@@ -35,7 +35,29 @@ export default function InstagramConversations() {
   const [accounts, setAccounts] = useState<{ instagram_account_id: string; name: string }[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyingId, setReplyingId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleInlineReply = async (msg: typeof messages[number]) => {
+    const text = (replyDrafts[msg.id] || "").trim();
+    if (!text || replyingId) return;
+    setReplyingId(msg.id);
+    try {
+      await replyToMessage(msg, text);
+      setReplyDrafts((d) => {
+        const n = { ...d };
+        delete n[msg.id];
+        return n;
+      });
+      toast.success("Resposta enviada");
+    } catch (e: any) {
+      console.error("[InstagramConversations] reply error", e);
+      toast.error(e?.message ?? "Erro ao responder");
+    } finally {
+      setReplyingId(null);
+    }
+  };
 
   useEffect(() => {
     supabase
