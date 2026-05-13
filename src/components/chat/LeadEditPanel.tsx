@@ -101,8 +101,10 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
   const [loadingAds, setLoadingAds] = useState(false);
   const [showAdSelector, setShowAdSelector] = useState(false);
 
+  const isInstagramLead = lead.pipeline_id === INSTAGRAM_PIPELINE_ID;
+  const SOURCE_OPTIONS = isInstagramLead ? SOURCE_OPTIONS_INSTAGRAM : SOURCE_OPTIONS_DEFAULT;
   const isKnownSource = SOURCE_OPTIONS.some((o) => o.value === source);
-  const effectiveSource = isKnownSource ? source : "outro";
+  const effectiveSource = isKnownSource ? source : (SOURCE_OPTIONS.some((o) => o.value === "outro") ? "outro" : "");
 
   useEffect(() => {
     if (editOpen) {
