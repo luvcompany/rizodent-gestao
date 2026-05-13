@@ -15,7 +15,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Pencil, Trash2, X, Plus, Link2, Unlink, Video, Ban } from "lucide-react";
+import { Pencil, Trash2, X, Plus, Link2, Unlink, Video, Ban, MessageCircle, Send, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type Lead = {
