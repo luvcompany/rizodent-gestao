@@ -57,9 +57,15 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
     profile_pic: null,
   };
 
-  // Attempt 1: full set (works for IG Business / Creator users that messaged a connected page)
+  // IG Login API tokens (IGAA…) must use graph.instagram.com; FB Page tokens use graph.facebook.com
+  const isIgLite = accessToken.startsWith("IGAA");
+  const base = isIgLite
+    ? "https://graph.instagram.com/v21.0"
+    : "https://graph.facebook.com/v25.0";
+
+  // Attempt 1: full set
   try {
-    const url = `https://graph.facebook.com/v25.0/${igUserId}?fields=name,username,profile_pic&access_token=${encodeURIComponent(accessToken)}`;
+    const url = `${base}/${igUserId}?fields=name,username,profile_pic&access_token=${encodeURIComponent(accessToken)}`;
     const r = await fetch(url);
     const j = await r.json().catch(() => ({}));
     console.log(`[instagram-webhook] profile (full) ${igUserId} status=${r.status}:`, JSON.stringify(j));
@@ -74,10 +80,10 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
     console.warn("[instagram-webhook] fetchIgProfile attempt1 error", igUserId, e);
   }
 
-  // Attempt 2: fallback to just username + profile_picture_url
+  // Attempt 2: fallback to username + profile_picture_url
   if (!out.username || !out.profile_pic) {
     try {
-      const url2 = `https://graph.facebook.com/v25.0/${igUserId}?fields=username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`;
+      const url2 = `${base}/${igUserId}?fields=username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`;
       const r2 = await fetch(url2);
       const j2 = await r2.json().catch(() => ({}));
       console.log(`[instagram-webhook] profile (fallback) ${igUserId} status=${r2.status}:`, JSON.stringify(j2));
@@ -91,11 +97,10 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
     }
   }
 
-  // Attempt 3: query the conversation participants endpoint — most reliable for DMs
-  // because the IG user is in a messaging context with our page.
-  if (!out.name && !out.username) {
+  // Attempt 3: conversation participants (only useful for FB Page tokens)
+  if (!isIgLite && !out.name && !out.username) {
     try {
-      const convUrl = `https://graph.facebook.com/v25.0/me/conversations?platform=instagram&user_id=${encodeURIComponent(igUserId)}&fields=participants&access_token=${encodeURIComponent(accessToken)}`;
+      const convUrl = `${base}/me/conversations?platform=instagram&user_id=${encodeURIComponent(igUserId)}&fields=participants&access_token=${encodeURIComponent(accessToken)}`;
       const r3 = await fetch(convUrl);
       const j3 = await r3.json().catch(() => ({}));
       console.log(`[instagram-webhook] profile (conv) ${igUserId} status=${r3.status}:`, JSON.stringify(j3));
