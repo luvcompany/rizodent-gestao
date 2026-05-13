@@ -343,7 +343,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     onMessageSent?.(optimisticMsg);
 
     // Send in background
-    const body = await buildSendBody({ type, message: message || undefined, reply: currentReplyTo });
+    const body = await buildSendBody({ type, message: message || undefined, reply: currentReplyTo, replyMode: igReplyMode, commentTarget: igCommentTarget });
 
     try {
       const { data, error } = await supabase.functions.invoke(sendFnName, { body });
