@@ -158,8 +158,8 @@ export default function ConversationFilters({
             <SheetTitle>Filtros</SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-4 overflow-y-auto max-h-[calc(100vh-120px)]">
-            {/* Pipeline */}
-            {pipelines.length > 0 && (
+            {/* Pipeline (escondido na aba Instagram) */}
+            {pipelines.length > 0 && channel !== "instagram" && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Funil</label>
                 <Select
@@ -170,6 +170,24 @@ export default function ConversationFilters({
                   <SelectContent>
                     {pipelines.map((p) => (
                       <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Conta de Instagram (apenas na aba Instagram) */}
+            {channel === "instagram" && instagramAccounts.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Conta de Instagram</label>
+                <Select
+                  value={draft.instagramAccountId}
+                  onValueChange={(v) => setDraft({ ...draft, instagramAccountId: v })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas as contas" /></SelectTrigger>
+                  <SelectContent>
+                    {instagramAccounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
