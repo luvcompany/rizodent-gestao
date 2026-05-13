@@ -215,6 +215,11 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
             })()}
             <ChatMessageContent message={msg} onMediaClick={onMediaClick} leadName={leadName} />
             <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
+              {msg.channel === "instagram" && msg.instagram_account_id && igAccountsMap?.[msg.instagram_account_id] && (
+                <span className="text-[10px] px-1.5 py-0 rounded-full bg-primary/10 text-primary font-medium">
+                  @{igAccountsMap[msg.instagram_account_id]}
+                </span>
+              )}
               <span className="text-[10px] text-muted-foreground">
                 {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
               </span>
