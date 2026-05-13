@@ -14,7 +14,7 @@ import { ptBR } from "date-fns/locale";
 
 const IG_PURPLE = "#833AB4";
 
-type SubFilter = "directs" | "comments";
+type ReplyMode = "dm" | "comment";
 
 export default function InstagramConversations() {
   const {
@@ -29,35 +29,13 @@ export default function InstagramConversations() {
     error,
   } = useInstagramMessages();
 
-  const [subFilter, setSubFilter] = useState<SubFilter>("directs");
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [accounts, setAccounts] = useState<{ instagram_account_id: string; name: string }[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
-  const [replyingId, setReplyingId] = useState<string | null>(null);
+  const [replyMode, setReplyMode] = useState<ReplyMode>("dm");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const handleInlineReply = async (msg: typeof messages[number]) => {
-    const text = (replyDrafts[msg.id] || "").trim();
-    if (!text || replyingId) return;
-    setReplyingId(msg.id);
-    try {
-      await replyToMessage(msg, text);
-      setReplyDrafts((d) => {
-        const n = { ...d };
-        delete n[msg.id];
-        return n;
-      });
-      toast.success("Resposta enviada");
-    } catch (e: any) {
-      console.error("[InstagramConversations] reply error", e);
-      toast.error(e?.message ?? "Erro ao responder");
-    } finally {
-      setReplyingId(null);
-    }
-  };
 
   useEffect(() => {
     supabase
@@ -69,15 +47,12 @@ export default function InstagramConversations() {
       });
   }, []);
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, selectedConversationId]);
 
   const filteredConversations = useMemo(() => {
     return conversations.filter((c) => {
-      if (subFilter === "directs" && c.message_type !== "dm") return false;
-      if (subFilter === "comments" && c.message_type !== "comment") return false;
       if (accountFilter !== "all" && c.instagram_account_id !== accountFilter) return false;
       if (search.trim()) {
         const s = search.toLowerCase();
@@ -86,12 +61,25 @@ export default function InstagramConversations() {
       }
       return true;
     });
-  }, [conversations, subFilter, accountFilter, search]);
+  }, [conversations, accountFilter, search]);
 
   const selectedConv = useMemo(
     () => conversations.find((c) => c.sender_id === selectedConversationId) || null,
     [conversations, selectedConversationId]
   );
+
+  // Most recent comment in this conversation (used to reply as a comment)
+  const lastComment = useMemo(
+    () => [...messages].reverse().find((m) => m.message_type === "comment" && m.comment_id),
+    [messages]
+  );
+
+  // When switching conversation, default mode based on the last inbound message
+  useEffect(() => {
+    if (!selectedConv) return;
+    const lastInbound = [...messages].reverse().find((m) => !m.is_outbound);
+    setReplyMode(lastInbound?.message_type === "comment" ? "comment" : "dm");
+  }, [selectedConversationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelect = (sender_id: string) => {
     setSelectedConversationId(sender_id);
@@ -104,20 +92,22 @@ export default function InstagramConversations() {
       toast.error("Conta do Instagram não identificada para esta conversa");
       return;
     }
+    if (replyMode === "comment" && !lastComment?.comment_id) {
+      toast.error("Não há comentário para responder nesta conversa");
+      return;
+    }
     setSending(true);
     try {
-      const isComment = selectedConv.message_type === "comment";
-      const lastCommentId = isComment
-        ? [...messages].reverse().find((m) => m.comment_id)?.comment_id ?? undefined
-        : undefined;
-
-      await sendMessage({
-        instagram_account_id: selectedConv.instagram_account_id,
-        recipient_id: selectedConv.sender_id,
-        message: input.trim(),
-        message_type: isComment ? "comment" : "dm",
-        comment_id: lastCommentId,
-      });
+      if (replyMode === "comment" && lastComment) {
+        await replyToMessage(lastComment, input.trim());
+      } else {
+        await sendMessage({
+          instagram_account_id: selectedConv.instagram_account_id,
+          recipient_id: selectedConv.sender_id,
+          message: input.trim(),
+          message_type: "dm",
+        });
+      }
       setInput("");
     } catch (e: any) {
       console.error("[InstagramConversations] send error", e);
@@ -127,18 +117,12 @@ export default function InstagramConversations() {
     }
   };
 
-  const firstPostId = useMemo(
-    () => messages.find((m) => m.post_id)?.post_id,
-    [messages]
-  );
-
   return (
     <div className="flex-1 overflow-hidden">
       <ResizablePanelGroup direction="horizontal" className="h-full">
         {/* LEFT — conversation list */}
         <ResizablePanel defaultSize={28} minSize={20} maxSize={40}>
           <div className="flex flex-col h-full border-r border-border bg-card">
-            {/* Filters */}
             <div className="p-3 border-b border-border space-y-2">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -148,26 +132,6 @@ export default function InstagramConversations() {
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9 h-9 bg-secondary border-border text-xs"
                 />
-              </div>
-              <div className="flex gap-1">
-                <Button
-                  size="sm"
-                  variant={subFilter === "directs" ? "default" : "outline"}
-                  className="flex-1 h-8 text-xs"
-                  onClick={() => setSubFilter("directs")}
-                  style={subFilter === "directs" ? { backgroundColor: IG_PURPLE, color: "white" } : {}}
-                >
-                  <MessageSquare size={12} className="mr-1" /> Directs
-                </Button>
-                <Button
-                  size="sm"
-                  variant={subFilter === "comments" ? "default" : "outline"}
-                  className="flex-1 h-8 text-xs"
-                  onClick={() => setSubFilter("comments")}
-                  style={subFilter === "comments" ? { backgroundColor: IG_PURPLE, color: "white" } : {}}
-                >
-                  <MessageCircle size={12} className="mr-1" /> Comentários
-                </Button>
               </div>
               <Select value={accountFilter} onValueChange={setAccountFilter}>
                 <SelectTrigger className="h-8 text-xs bg-secondary border-border">
@@ -184,7 +148,6 @@ export default function InstagramConversations() {
               </Select>
             </div>
 
-            {/* List */}
             <div className="flex-1 overflow-y-auto">
               {loading && (
                 <div className="p-4 text-center text-sm text-muted-foreground">
@@ -224,7 +187,10 @@ export default function InstagramConversations() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <span className="text-xs text-muted-foreground truncate">
+                        <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                          {c.message_type === "comment" && (
+                            <MessageCircle size={11} className="flex-shrink-0" style={{ color: IG_PURPLE }} />
+                          )}
                           {c.last_message || <em>(sem texto)</em>}
                         </span>
                         {c.unread_count > 0 && (
@@ -280,7 +246,7 @@ export default function InstagramConversations() {
                       {selectedConv.sender_name || selectedConv.sender_id}
                     </div>
                     <div className="text-[10px] text-muted-foreground">
-                      {selectedConv.message_type === "comment" ? "Comentários" : "Direct Message"}
+                      Instagram
                       {selectedConv.account_name ? ` • ${selectedConv.account_name}` : ""}
                     </div>
                   </div>
@@ -288,12 +254,6 @@ export default function InstagramConversations() {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                  {selectedConv.message_type === "comment" && firstPostId && (
-                    <div className="bg-secondary/60 border border-border rounded-lg p-3 mb-3 text-xs text-muted-foreground">
-                      💬 Comentário no post <span className="font-mono text-foreground">{firstPostId}</span>
-                    </div>
-                  )}
-
                   {messages.length === 0 && (
                     <div className="text-center text-xs text-muted-foreground py-8">
                       Nenhuma mensagem nesta conversa.
@@ -302,16 +262,30 @@ export default function InstagramConversations() {
 
                   {messages.map((m) => {
                     const isOut = m.is_outbound;
-                    const isReplied = m.status === "replied";
-                    const draft = replyDrafts[m.id] ?? "";
-                    const isReplyingThis = replyingId === m.id;
+                    const isComment = m.message_type === "comment";
                     return (
                       <div key={m.id} className={`flex flex-col ${isOut ? "items-end" : "items-start"}`}>
+                        {isComment && (
+                          <div
+                            className={`flex items-center gap-1 text-[10px] mb-0.5 ${
+                              isOut ? "text-muted-foreground" : ""
+                            }`}
+                            style={!isOut ? { color: IG_PURPLE } : {}}
+                          >
+                            <MessageCircle size={10} />
+                            <span>
+                              Comentário{m.post_id ? ` no post ${m.post_id.slice(-6)}` : ""}
+                            </span>
+                          </div>
+                        )}
                         <div
                           className={`max-w-[70%] rounded-2xl px-3 py-2 text-sm ${
                             isOut ? "text-white" : "bg-secondary text-foreground"
-                          }`}
-                          style={isOut ? { backgroundColor: IG_PURPLE } : {}}
+                          } ${isComment ? "border-2" : ""}`}
+                          style={{
+                            ...(isOut ? { backgroundColor: IG_PURPLE } : {}),
+                            ...(isComment && !isOut ? { borderColor: IG_PURPLE } : {}),
+                          }}
                         >
                           {m.message_text || <em className="opacity-70">(sem texto)</em>}
                           <div
@@ -320,51 +294,8 @@ export default function InstagramConversations() {
                             }`}
                           >
                             <span>{format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR })}</span>
-                            {!isOut && isReplied && (
-                              <Badge className="h-4 px-1.5 bg-green-600 hover:bg-green-600 text-white text-[9px]">
-                                Respondido
-                              </Badge>
-                            )}
                           </div>
                         </div>
-
-                        {!isOut && !isReplied && (
-                          <div className="mt-1 flex gap-1 max-w-[70%] w-full">
-                            <Input
-                              value={draft}
-                              onChange={(e) =>
-                                setReplyDrafts((d) => ({ ...d, [m.id]: e.target.value }))
-                              }
-                              placeholder={
-                                m.message_type === "comment"
-                                  ? "Responder este comentário..."
-                                  : "Responder esta mensagem..."
-                              }
-                              maxLength={1000}
-                              disabled={isReplyingThis}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleInlineReply(m);
-                                }
-                              }}
-                              className="h-8 text-xs bg-background border-border"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={() => handleInlineReply(m)}
-                              disabled={!draft.trim() || isReplyingThis}
-                              style={{ backgroundColor: IG_PURPLE, color: "white" }}
-                              className="h-8 px-3 text-xs hover:opacity-90"
-                            >
-                              {isReplyingThis ? (
-                                <Loader2 className="animate-spin" size={12} />
-                              ) : (
-                                "Responder"
-                              )}
-                            </Button>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -372,15 +303,38 @@ export default function InstagramConversations() {
                 </div>
 
                 {/* Input */}
-                <div className="flex-shrink-0 border-t border-border bg-card p-3">
+                <div className="flex-shrink-0 border-t border-border bg-card p-3 space-y-2">
+                  {/* Mode toggle */}
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant={replyMode === "dm" ? "default" : "outline"}
+                      className="h-7 text-xs"
+                      onClick={() => setReplyMode("dm")}
+                      style={replyMode === "dm" ? { backgroundColor: IG_PURPLE, color: "white" } : {}}
+                    >
+                      <MessageSquare size={12} className="mr-1" /> Direct
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={replyMode === "comment" ? "default" : "outline"}
+                      className="h-7 text-xs"
+                      onClick={() => setReplyMode("comment")}
+                      disabled={!lastComment}
+                      title={!lastComment ? "Sem comentário para responder" : "Responder último comentário"}
+                      style={replyMode === "comment" ? { backgroundColor: IG_PURPLE, color: "white" } : {}}
+                    >
+                      <MessageCircle size={12} className="mr-1" /> Comentário
+                    </Button>
+                  </div>
                   <div className="flex gap-2 items-end">
                     <Input
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       placeholder={
-                        selectedConv.message_type === "comment"
-                          ? "Responder comentário..."
-                          : "Digite uma mensagem..."
+                        replyMode === "comment"
+                          ? "Responder ao último comentário..."
+                          : "Digite uma mensagem direta..."
                       }
                       maxLength={1000}
                       onKeyDown={(e) => {

@@ -130,6 +130,7 @@ export function useInstagramMessages() {
           last_message: m.message_text,
           last_message_time: m.created_at,
           unread_count: !m.is_read && !m.is_outbound ? 1 : 0,
+          // Unified inbox: keep last message_type just for the preview indicator
           message_type: (m.message_type as "dm" | "comment" | null) ?? null,
           instagram_account_id: m.instagram_account_id,
           account_name: m.instagram_account_id ? accountsMap[m.instagram_account_id] ?? null : null,
@@ -140,6 +141,10 @@ export function useInstagramMessages() {
         }
         if (!existing.sender_name && m.sender_name) {
           existing.sender_name = m.sender_name;
+        }
+        if (!existing.instagram_account_id && m.instagram_account_id) {
+          existing.instagram_account_id = m.instagram_account_id;
+          existing.account_name = accountsMap[m.instagram_account_id] ?? null;
         }
         if (!m.is_read && !m.is_outbound) existing.unread_count += 1;
       }
