@@ -62,7 +62,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         lead_id: leadId,
         instagram_account_id: igAccountId ?? undefined,
         message: params.message,
-        message_type: "dm",
+        message_type: igType ?? "dm",
         media_type: igType,
         media_url: params.media_url,
       };
@@ -96,14 +96,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
     supabase
       .from("instagram_messages")
-      .select("ig_account_id")
+      .select("instagram_account_id")
       .eq("lead_id", leadId)
-      .not("ig_account_id", "is", null)
+      .not("instagram_account_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
-        setIgAccountId((data as any)?.ig_account_id ?? null);
+        setIgAccountId((data as any)?.instagram_account_id ?? null);
       });
   }, [isInstagram, leadId]);
 
@@ -442,7 +442,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       }
 
       const audioBody = isInstagram
-        ? { lead_id: leadId, instagram_account_id: igAccountId ?? undefined, message_type: "dm" as const, media_type: "audio" as const, media_url: url }
+        ? { lead_id: leadId, instagram_account_id: igAccountId ?? undefined, message_type: "audio" as const, media_type: "audio" as const, media_url: url }
         : { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true };
 
       const { data, error } = await supabase.functions.invoke(sendFnName, { body: audioBody });
