@@ -17,7 +17,7 @@ interface Body {
   recipient_id?: string;
   // Content
   message?: string;
-  message_type: "dm" | "comment";
+  message_type: "dm" | "comment" | "image" | "video" | "audio";
   comment_id?: string;
   // Comment-thread grouping (so outbound reply stays in same thread)
   post_id?: string;
@@ -26,6 +26,8 @@ interface Body {
   media_type?: "image" | "video" | "audio";
   media_url?: string;
 }
+
+const MEDIA_MESSAGE_TYPES = new Set(["image", "video", "audio"]);
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -195,7 +197,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Invalid JSON body" }, 400);
   }
 
-  const { lead_id, message, message_type, comment_id, media_type, media_url, post_id, thread_sender_id } = body ?? {};
+  const { lead_id, message, message_type, comment_id, media_url, post_id, thread_sender_id } = body ?? {};
+  const media_type = body?.media_type ?? (MEDIA_MESSAGE_TYPES.has(message_type) ? message_type as "image" | "video" | "audio" : undefined);
   let { instagram_account_id, recipient_id } = body ?? {};
 
   if (!message_type) {
@@ -218,8 +221,11 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  if (message_type === "dm" && !recipient_id) {
-    return jsonResponse({ error: "recipient_id (or lead with instagram_user_id) is required for DM" }, 400);
+  if (message_type !== "comment" && !recipient_id) {
+    return jsonResponse({ error: "recipient_id (or lead with instagram_user_id) is required for Instagram DM/media" }, 400);
+  }
+  if (MEDIA_MESSAGE_TYPES.has(message_type) && !media_url) {
+    return jsonResponse({ error: "media_url is required for media messages" }, 400);
   }
   if (!message && !media_url) {
     return jsonResponse({ error: "message or media_url is required" }, 400);
@@ -246,12 +252,12 @@ Deno.serve(async (req: Request) => {
       ? "https://graph.instagram.com/v21.0"
       : "https://graph.facebook.com/v25.0";
 
-    if (message_type === "dm") {
+    if (message_type !== "comment") {
       const messagePayload: Record<string, unknown> = {};
       if (media_url && media_type) {
         messagePayload.attachment = {
           type: media_type, // image | video | audio
-          payload: { url: media_url, is_reusable: false },
+          payload: { url: media_url, is_reusable: true },
         };
       } else {
         messagePayload.text = message;
@@ -301,7 +307,7 @@ Deno.serve(async (req: Request) => {
     sender_id: message_type === "comment" ? (thread_sender_id ?? null) : (recipient_id || null),
     sender_name: null,
     message_text: message ?? null,
-    message_type,
+    message_type: message_type === "comment" ? "comment" : "dm",
     post_id: message_type === "comment" ? (post_id ?? null) : null,
     comment_id: message_type === "comment" ? comment_id ?? null : null,
     is_outbound: true,

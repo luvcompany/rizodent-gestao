@@ -36,6 +36,9 @@ type ReplyMessage = {
   direction: string;
 };
 
+type InstagramMediaKind = "image" | "video" | "audio";
+type SendBody = Record<string, unknown>;
+
 type ChatInputProps = {
   leadId: string;
   leadPhone: string | null;
@@ -55,19 +58,20 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const isInstagram = channel === "instagram";
   const sendFnName = isInstagram ? "instagram-send-message" : "send-whatsapp-message";
 
-  const buildSendBody = (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null }): any => {
+  const buildSendBody = async (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null }): Promise<SendBody> => {
     if (isInstagram) {
-      const igType = params.type === "text" ? undefined : (params.type === "image" || params.type === "video" || params.type === "audio" ? params.type : undefined);
+      const igType: InstagramMediaKind | undefined = params.type === "text" ? undefined : (params.type === "image" || params.type === "video" || params.type === "audio" ? params.type : undefined);
+      const resolvedIgAccountId = await resolveInstagramAccountId();
       return {
         lead_id: leadId,
-        instagram_account_id: igAccountId ?? undefined,
+        instagram_account_id: resolvedIgAccountId ?? undefined,
         message: params.message,
-        message_type: "dm",
+        message_type: igType ?? "dm",
         media_type: igType,
         media_url: params.media_url,
       };
     }
-    const body: any = { lead_id: leadId, to: leadPhone, message: params.message, type: params.type, media_url: params.media_url };
+    const body: SendBody = { lead_id: leadId, to: leadPhone, message: params.message, type: params.type, media_url: params.media_url };
     if (params.reply) {
       body.reply_to_message_id = params.reply.id;
       if (params.reply.whatsapp_message_id) body.reply_to_wamid = params.reply.whatsapp_message_id;
@@ -88,6 +92,24 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const resolveInstagramAccountId = useCallback(async () => {
+    if (!isInstagram) return null;
+    if (igAccountId) return igAccountId;
+
+    const { data } = await supabase
+      .from("instagram_messages")
+      .select("instagram_account_id")
+      .eq("lead_id", leadId)
+      .not("instagram_account_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const resolved = (data as { instagram_account_id?: string | null } | null)?.instagram_account_id ?? null;
+    if (resolved) setIgAccountId(resolved);
+    return resolved;
+  }, [isInstagram, igAccountId, leadId]);
+
   // Resolve Instagram ig_account_id from latest instagram_messages for this lead
   useEffect(() => {
     if (!isInstagram || !leadId) {
@@ -96,14 +118,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
     supabase
       .from("instagram_messages")
-      .select("ig_account_id")
+      .select("instagram_account_id")
       .eq("lead_id", leadId)
-      .not("ig_account_id", "is", null)
+      .not("instagram_account_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
-        setIgAccountId((data as any)?.ig_account_id ?? null);
+        setIgAccountId((data as { instagram_account_id?: string | null } | null)?.instagram_account_id ?? null);
       });
   }, [isInstagram, leadId]);
 
@@ -240,7 +262,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           const url = await uploadFile(fileToUpload!, type);
           if (!url) { onMessageError?.(tempId); return; }
 
-          const body = buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo });
+          const body = await buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo });
 
           const { data, error } = await supabase.functions.invoke(sendFnName, { body });
           if (error || data?.error || data?.ok === false) {
@@ -280,7 +302,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     onMessageSent?.(optimisticMsg);
 
     // Send in background
-    const body = buildSendBody({ type, message: message || undefined, reply: currentReplyTo });
+    const body = await buildSendBody({ type, message: message || undefined, reply: currentReplyTo });
 
     try {
       const { data, error } = await supabase.functions.invoke(sendFnName, { body });
@@ -441,8 +463,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         return;
       }
 
+      const resolvedIgAccountId = isInstagram ? await resolveInstagramAccountId() : null;
       const audioBody = isInstagram
-        ? { lead_id: leadId, instagram_account_id: igAccountId ?? undefined, message_type: "dm" as const, media_type: "audio" as const, media_url: url }
+        ? { lead_id: leadId, instagram_account_id: resolvedIgAccountId ?? undefined, message_type: "audio" as const, media_type: "audio" as const, media_url: url }
         : { lead_id: leadId, to: leadPhone, type: "audio", media_url: url, audio_voice: true };
 
       const { data, error } = await supabase.functions.invoke(sendFnName, { body: audioBody });
@@ -462,7 +485,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       onMessageError?.(tempId);
       toast.error(err?.message || "Erro ao enviar áudio");
     }
-  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, igAccountId]);
+  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, resolveInstagramAccountId]);
 
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
