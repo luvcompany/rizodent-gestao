@@ -80,6 +80,12 @@ Deno.serve(async (req: Request) => {
 
   const isComment = event_type === 'comments' || event_type === 'comment'
 
+  // IGAA-prefixed tokens are Instagram Login API (Lite) and must use graph.instagram.com
+  const isIgLiteToken = typeof account.token === 'string' && account.token.startsWith('IGAA')
+  const apiBase = isIgLiteToken
+    ? 'https://graph.instagram.com/v21.0'
+    : 'https://graph.facebook.com/v21.0'
+
   let apiUrl = ''
   let payload: Record<string, unknown> = {}
 
@@ -90,7 +96,7 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    apiUrl = `https://graph.facebook.com/v21.0/${comment_id}/replies`
+    apiUrl = `${apiBase}/${comment_id}/replies`
     payload = { message: reply_text }
   } else {
     if (!sender_id) {
@@ -99,7 +105,7 @@ Deno.serve(async (req: Request) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    apiUrl = `https://graph.facebook.com/v21.0/me/messages`
+    apiUrl = `${apiBase}/me/messages`
     payload = {
       recipient: { id: sender_id },
       message: { text: reply_text },
