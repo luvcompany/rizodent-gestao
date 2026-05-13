@@ -232,6 +232,8 @@ async function persistMessage(opts: {
       instagram_sender_id: opts.senderId,
       instagram_comment_id: isComment ? opts.commentId : null,
       instagram_post_id: isComment ? opts.postId : null,
+      instagram_post_thumbnail: isComment ? postThumbnail : null,
+      instagram_post_permalink: isComment ? postPermalink : null,
       status: "received",
     });
     await supabase
