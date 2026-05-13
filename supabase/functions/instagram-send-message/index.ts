@@ -252,12 +252,12 @@ Deno.serve(async (req: Request) => {
       ? "https://graph.instagram.com/v21.0"
       : "https://graph.facebook.com/v25.0";
 
-    if (message_type === "dm") {
+    if (message_type !== "comment") {
       const messagePayload: Record<string, unknown> = {};
       if (media_url && media_type) {
         messagePayload.attachment = {
           type: media_type, // image | video | audio
-          payload: { url: media_url, is_reusable: false },
+          payload: { url: media_url, is_reusable: true },
         };
       } else {
         messagePayload.text = message;
@@ -307,7 +307,7 @@ Deno.serve(async (req: Request) => {
     sender_id: message_type === "comment" ? (thread_sender_id ?? null) : (recipient_id || null),
     sender_name: null,
     message_text: message ?? null,
-    message_type,
+    message_type: message_type === "comment" ? "comment" : "dm",
     post_id: message_type === "comment" ? (post_id ?? null) : null,
     comment_id: message_type === "comment" ? comment_id ?? null : null,
     is_outbound: true,
