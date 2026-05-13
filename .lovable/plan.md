@@ -1,41 +1,42 @@
-## Problema identificado
+# Renovação automática dos tokens do Instagram Lite
 
-A automação de **janela de tempo (`time_window`)** dispara o bot "Agendamento" entre **sábado 13:30** e **segunda 07:29**. No caso da imagem:
+## O que será feito
 
-1. Sábado/domingo o lead recebeu a primeira mensagem do bot, e o bot ficou em estado `waiting_reply` (aguardando resposta).
-2. Segunda às 07:41 o bot ainda enviou outra pergunta (dentro da janela, OK).
-3. Segunda às 13:47 (já **fora** da janela) o lead respondeu "Oi". O webhook localizou a `bot_execution` ainda em `waiting_reply` e chamou `bot-engine` com `trigger: "continue"`, avançando o fluxo e enviando "Aguarde você será atendido no próximo dia útil...".
+1. **Criar Edge Function `instagram-token-refresh`**
+   - Arquivo: `supabase/functions/instagram-token-refresh/index.ts`
+   - Lê todas as contas em `ig_accounts` com `active = true` cujo `token_expires_at` esteja nos próximos 7 dias.
+   - Para cada conta, chama `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=...` e atualiza `access_token`, `token_expires_at` e `updated_at` na tabela.
+   - Retorna um JSON com o resultado de cada conta (renovado, erro, exceção).
+   - Inclui CORS e validação básica para chamadas via HTTP.
+   - Usa `SUPABASE_SERVICE_ROLE_KEY` para ignorar RLS na atualização.
 
-### Causas técnicas
+2. **Agendar execução semanal via `pg_cron` + `pg_net`**
+   - Habilitar (se ainda não estiverem) as extensões `pg_cron` e `pg_net`.
+   - Criar o job `instagram-token-refresh` com schedule `0 8 * * 1` (toda segunda 08:00 UTC = 05:00 Brasília).
+   - O job dispara `net.http_post` para a URL da função, com `Authorization: Bearer <anon key>` (necessário para invocar Edge Functions; a função em si usa o service role internamente).
+   - O agendamento será criado via `supabase--insert` (e não migration), porque contém URL e key específicos do projeto e não devem rodar em remixes.
 
-- `whatsapp-webhook/index.ts` (linhas ~1059-1101): ao receber mensagem do lead, continua qualquer `bot_execution` em `waiting_reply` **sem verificar se a janela da automação que iniciou o bot ainda está aberta**.
-- `automation-engine/index.ts` (linhas ~67-156): o cleanup que cancela bots de janelas expiradas só roda durante a "janela de fechamento" (`justClosed` = até ~6 min depois do fim). Se o cron atrasar ou se a execução ficar pendurada além disso, ela nunca é cancelada.
-- Existem **duas automações duplicadas** apontando para o mesmo bot (start_time 13:30 e 13:35) — provavelmente criadas sem querer. Vou apontar isso ao final, mas não removo automaticamente.
+## Detalhes técnicos
 
-## Correções
+- **Tabela usada:** `ig_accounts` (já existe, criada na migration anterior).
+- **Campo de renovação:** o endpoint `refresh_access_token` retorna `{ access_token, token_type, expires_in }` — `expires_in` em segundos (~60 dias). A nova `token_expires_at` é calculada como `now() + expires_in`.
+- **Pré-requisito do token:** só funciona com tokens longos do tipo Instagram Graph API (Long-Lived). Tokens já expirados não podem ser renovados — nesse caso a função registra erro e segue para o próximo.
+- **Segurança:** a função roda com `verify_jwt = false` (padrão Lovable) mas só executa operações via service role; o cron envia o header `Authorization: Bearer` para passar o gateway.
+- **Logs:** cada renovação imprime `✅` ou `❌` no log da função, visível em Edge Function Logs.
 
-### 1. `supabase/functions/automation-engine/index.ts`
-Tornar o cleanup robusto: sempre que a janela `weekly` estiver **fechada agora** (não só nos primeiros 6 min após o fechamento), cancelar todas as `bot_executions` ainda `active`/`waiting_reply` daquele `bot_id` para os leads que já receberam a automação. Manter o reset de `crm_automation_executions` apenas no `justClosed` (para não apagar dedup repetidamente).
+## Estrutura final
 
-Mudança principal:
-```ts
-shouldCleanup = !state.isOpen;       // antes: state.justClosed
-const resetExecutions = state.justClosed;  // só limpa dedup uma vez
+```text
+supabase/functions/
+└── instagram-token-refresh/
+    └── index.ts        ← novo
 ```
 
-### 2. `supabase/functions/whatsapp-webhook/index.ts`
-Antes de chamar `bot-engine` com `trigger: "continue"`, validar a janela:
-- Buscar a automação `time_window` + `send_bot` associada ao `bot_id` da execução.
-- Se a janela estiver **fechada agora**, marcar a `bot_execution` como `cancelled` e **não** continuar.
-- Caso contrário, segue o fluxo normal.
+Cron job (no banco):
+```text
+cron.job  →  'instagram-token-refresh'  schedule '0 8 * * 1'
+```
 
-Isso garante que mesmo se o cleanup do cron falhar/atrasar, a continuação nunca dispare fora da janela.
+## Após a aprovação
 
-### 3. (Opcional, recomendo) Remover automação duplicada
-Há 2 automações `time_window → send_bot` para o mesmo bot, com horários quase iguais (sáb 13:30 e 13:35). Vou avisar para você remover manualmente em **CRM > Automações** — não deleto sem sua confirmação.
-
-## Validação
-
-Após o deploy:
-- Forçar uma `bot_execution` em `waiting_reply` e simular mensagem inbound com janela fechada → deve cancelar e não enviar.
-- Verificar logs do `automation-engine` mostrando `cancelled N bot executions` em qualquer execução fora da janela.
+Vou criar o arquivo da função e, em seguida, agendar o cron job. Não precisa adicionar nenhum secret novo — `SUPABASE_SERVICE_ROLE_KEY` e `SUPABASE_URL` já estão disponíveis automaticamente nas Edge Functions.
