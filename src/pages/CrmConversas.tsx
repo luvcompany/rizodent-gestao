@@ -923,7 +923,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         allMessages={chat.messages}
                         onReply={chat.setReplyTo}
                         onForward={chat.setForwardMsg}
-                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone)}
+                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone, channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp")}
                         onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                         onScrollToMessage={chat.scrollToMessage}
                       />
