@@ -163,10 +163,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
   }, [externalMessage, onExternalMessageConsumed]);
 
-  const uploadFile = async (file: globalThis.File, folder: string): Promise<string | null> => {
+  const uploadFile = async (file: globalThis.File, folder: string, contentType?: string): Promise<string | null> => {
     const ext = file.name.split(".").pop() || "bin";
     const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("chat-media").upload(path, file);
+    const { error } = await supabase.storage.from("chat-media").upload(path, file, {
+      contentType: contentType || file.type || undefined,
+    });
     if (error) {
       toast.error(`Erro ao fazer upload: ${error.message}`);
       return null;
