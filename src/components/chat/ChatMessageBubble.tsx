@@ -27,6 +27,8 @@ type Message = {
   deleted_at?: string | null;
   instagram_comment_id?: string | null;
   instagram_post_id?: string | null;
+  instagram_post_thumbnail?: string | null;
+  instagram_post_permalink?: string | null;
 };
 
 type Props = {
