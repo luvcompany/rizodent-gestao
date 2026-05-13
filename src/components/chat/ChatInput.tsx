@@ -416,8 +416,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     let uploadBlob: Blob;
     try {
       uploadBlob = isInstagram ? await convertAudioBlobToInstagramWav(oggBlob) : oggBlob;
-    } catch (err: any) {
-      toast.error(err?.message || "Não foi possível preparar o áudio para o Instagram");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível preparar o áudio para o Instagram");
       throw err;
     }
 
