@@ -257,17 +257,20 @@ async function persistMessage(opts: {
 
   // Tanto DMs quanto comments são vinculados a um lead — chat unificado por usuário.
   let leadId: string | null = null;
-  const { data: blockedCheck } = await supabase
-    .from("crm_leads")
-    .select("id, is_blocked")
-    .eq("instagram_user_id", opts.senderId)
-    .maybeSingle();
-  if (blockedCheck && (blockedCheck as any).is_blocked) return;
   leadId = await findOrCreateLead(
     opts.senderId,
     { name: finalName, username: finalUsername, profile_pic: finalPic },
-    opts.account.username
+    opts.account.username,
+    opts.account.ig_user_id
   );
+  if (leadId) {
+    const { data: blockedCheck } = await supabase
+      .from("crm_leads")
+      .select("is_blocked")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (blockedCheck && (blockedCheck as any).is_blocked) return;
+  }
 
   // Grava em instagram_messages (mantém histórico legado)
   await supabase.from("instagram_messages").insert({
