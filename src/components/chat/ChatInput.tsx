@@ -100,6 +100,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [startingBotId, setStartingBotId] = useState<string | null>(null);
   const [recorderActive, setRecorderActive] = useState(false);
   const [igAccountId, setIgAccountId] = useState<string | null>(null);
+  const [igAccounts, setIgAccounts] = useState<{ id: string; username: string }[]>([]);
   const [igReplyMode, setIgReplyMode] = useState<"direct" | "comment">("direct");
   const [igCommentTarget, setIgCommentTarget] = useState<{ comment_id: string; post_id: string | null; preview: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -141,6 +142,23 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         setIgAccountId((data as { instagram_account_id?: string | null } | null)?.instagram_account_id ?? null);
       });
   }, [isInstagram, leadId]);
+
+  // Load all active Instagram accounts so the user can choose which one to send from
+  useEffect(() => {
+    if (!isInstagram) return;
+    supabase
+      .from("ig_accounts")
+      .select("ig_user_id, username, active")
+      .eq("active", true)
+      .then(({ data }) => {
+        const list = (data ?? [])
+          .filter((a: any) => a.ig_user_id && a.username)
+          .map((a: any) => ({ id: a.ig_user_id as string, username: a.username as string }));
+        setIgAccounts(list);
+        // If none was resolved from history, default to first available
+        setIgAccountId((prev) => prev ?? list[0]?.id ?? null);
+      });
+  }, [isInstagram]);
 
   // Reset Instagram reply mode/comment target when switching leads
   useEffect(() => {
@@ -622,6 +640,18 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 <MessageCircle size={12} /> Comentário
               </button>
             </div>
+            {igAccounts.length > 0 && (
+              <Select value={igAccountId ?? ""} onValueChange={(v) => setIgAccountId(v)}>
+                <SelectTrigger className="h-7 text-xs w-auto min-w-[140px] gap-1">
+                  <SelectValue placeholder="Conta IG" />
+                </SelectTrigger>
+                <SelectContent>
+                  {igAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id} className="text-xs">@{a.username}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {igReplyMode === "comment" && igCommentTarget && (
               <div className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-muted-foreground bg-purple-500/5 border border-purple-500/20 rounded px-2 py-1">
                 <Reply size={11} className="text-purple-500 flex-shrink-0" />
