@@ -329,6 +329,7 @@ Deno.serve(async (req: Request) => {
       channel: "instagram",
       instagram_message_id: isComment ? newCommentId : igMessageId,
       instagram_sender_id: recipient_id ?? thread_sender_id ?? null,
+      instagram_account_id: instagram_account_id ?? null,
       instagram_comment_id: isComment ? (newCommentId ?? comment_id ?? null) : null,
       instagram_post_id: isComment ? (post_id ?? null) : null,
       status: "sent",
