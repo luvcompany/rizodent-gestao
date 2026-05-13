@@ -25,6 +25,7 @@ export interface InstagramMessage {
 export interface InstagramConversation {
   sender_id: string;
   sender_name: string | null;
+  sender_profile_pic: string | null;
   last_message: string | null;
   last_message_time: string;
   unread_count: number;
