@@ -83,7 +83,7 @@ function getDefaultErrorMessage(msg: Message) {
 }
 
 const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
-  ({ msg, leadName, allMessages, onReply, onForward, onReact, onMediaClick, onScrollToMessage }, ref) => {
+  ({ msg, leadName, allMessages, onReply, onForward, onReact, onMediaClick, onScrollToMessage, igAccountsMap }, ref) => {
     const quotedMsg = msg.reply_to_message_id
       ? allMessages.find((m) => m.id === msg.reply_to_message_id)
       : null;
