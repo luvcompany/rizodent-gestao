@@ -16,6 +16,9 @@ export interface InstagramMessage {
   is_outbound: boolean;
   is_read: boolean;
   created_at: string;
+  status?: string | null;
+  replied_at?: string | null;
+  reply_text?: string | null;
   account_name?: string | null;
 }
 
