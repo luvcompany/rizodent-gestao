@@ -142,6 +142,30 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       });
   }, [isInstagram, leadId]);
 
+  // Reset Instagram reply mode/comment target when switching leads
+  useEffect(() => {
+    setIgReplyMode("direct");
+    setIgCommentTarget(null);
+  }, [leadId]);
+
+  // Listen for "Responder este comentário" clicks on bubbles
+  useEffect(() => {
+    if (!isInstagram) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { comment_id?: string; post_id?: string | null; preview?: string } | undefined;
+      if (!detail?.comment_id) return;
+      setIgCommentTarget({
+        comment_id: detail.comment_id,
+        post_id: detail.post_id ?? null,
+        preview: detail.preview ?? "",
+      });
+      setIgReplyMode("comment");
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    };
+    window.addEventListener("ig:set-comment-target", handler);
+    return () => window.removeEventListener("ig:set-comment-target", handler);
+  }, [isInstagram]);
+
   // Fetch published bots
   useEffect(() => {
     supabase
