@@ -209,8 +209,11 @@ export default function InstagramConversations() {
                     }`}
                   >
                     <Avatar className="h-10 w-10 flex-shrink-0">
+                      {c.sender_profile_pic && (
+                        <AvatarImage src={c.sender_profile_pic} alt={displayName} />
+                      )}
                       <AvatarFallback style={{ backgroundColor: IG_PURPLE, color: "white" }}>
-                        <Instagram size={18} />
+                        {displayName?.charAt(0)?.toUpperCase() || <Instagram size={18} />}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
