@@ -301,7 +301,44 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Telefone</label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5511999999999" />
+              <div className="flex gap-2">
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5511999999999" />
+                {isInstagramLead && phone.trim() && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    title="Enviar mensagem via WhatsApp"
+                    onClick={async () => {
+                      const text = window.prompt("Mensagem WhatsApp para enviar:");
+                      if (!text || !text.trim()) return;
+                      try {
+                        // Save phone first if changed
+                        if (phone.trim() !== (lead.phone || "")) {
+                          await supabase.from("crm_leads").update({ phone: phone.trim() }).eq("id", lead.id);
+                        }
+                        const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+                          body: { lead_id: lead.id, to: phone.trim(), message: text, type: "text" },
+                        });
+                        if (error || (data as any)?.error) {
+                          toast.error((data as any)?.user_message || (data as any)?.error || error?.message || "Erro ao enviar");
+                          return;
+                        }
+                        toast.success("Mensagem WhatsApp enviada");
+                      } catch (e: any) {
+                        toast.error(e?.message || "Erro ao enviar");
+                      }
+                    }}
+                  >
+                    <MessageCircle size={14} className="mr-1" /> WhatsApp
+                  </Button>
+                )}
+              </div>
+              {isInstagramLead && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  As mensagens WhatsApp aparecem nesta mesma conversa e também na aba WhatsApp.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Origem</label>
