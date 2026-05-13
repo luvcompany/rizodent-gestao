@@ -334,8 +334,8 @@ export default function ConversationFilters({
               </div>
             )}
 
-            {/* Anúncio específico */}
-            {ads.length > 0 && (
+            {/* Anúncio específico (escondido na aba Instagram) */}
+            {ads.length > 0 && channel !== "instagram" && (
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Anúncio</label>
                 <Select value={draft.adId} onValueChange={(v) => setDraft({ ...draft, adId: v })}>
