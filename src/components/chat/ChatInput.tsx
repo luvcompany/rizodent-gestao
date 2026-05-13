@@ -596,6 +596,47 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </div>
         </div>
       ) : (
+        <>
+        {isInstagram && (
+          <div className="flex items-center gap-2 mb-2">
+            <div className="inline-flex rounded-md border border-border bg-secondary p-0.5">
+              <button
+                type="button"
+                onClick={() => setIgReplyMode("direct")}
+                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "direct" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Send size={12} /> Direct
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!igCommentTarget) {
+                    toast.info("Clique em \"Responder comentário\" numa bolha de comentário para escolher qual responder.");
+                    return;
+                  }
+                  setIgReplyMode("comment");
+                }}
+                disabled={!igCommentTarget}
+                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "comment" ? "bg-purple-500/15 text-purple-700 dark:text-purple-300" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <MessageCircle size={12} /> Comentário
+              </button>
+            </div>
+            {igReplyMode === "comment" && igCommentTarget && (
+              <div className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-muted-foreground bg-purple-500/5 border border-purple-500/20 rounded px-2 py-1">
+                <Reply size={11} className="text-purple-500 flex-shrink-0" />
+                <span className="truncate">Respondendo: {igCommentTarget.preview || "(sem texto)"}</span>
+                <button
+                  type="button"
+                  onClick={() => { setIgReplyMode("direct"); setIgCommentTarget(null); }}
+                  className="ml-auto p-0.5 hover:text-foreground flex-shrink-0"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex items-end gap-2">
           {/* Hide normal controls when recorder is active, but NEVER unmount the recorder */}
           {!recorderActive && (
