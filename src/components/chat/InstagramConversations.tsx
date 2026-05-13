@@ -23,6 +23,7 @@ export default function InstagramConversations() {
     selectedConversationId,
     setSelectedConversationId,
     sendMessage,
+    replyToMessage,
     markAsRead,
     loading,
     error,
