@@ -466,10 +466,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 rows={1}
               />
             </div>
-            <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
-              <FileText size={16} />
-              Enviar Template
-            </Button>
+            {!isInstagram && (
+              <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
+                <FileText size={16} />
+                Enviar Template
+              </Button>
+            )}
           </div>
         </div>
       ) : (
