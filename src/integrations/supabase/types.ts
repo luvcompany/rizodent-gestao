@@ -1112,6 +1112,41 @@ export type Database = {
           },
         ]
       }
+      crm_lead_instagram_identities: {
+        Row: {
+          created_at: string
+          id: string
+          ig_account_id: string
+          ig_scoped_user_id: string
+          lead_id: string
+          username: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ig_account_id: string
+          ig_scoped_user_id: string
+          lead_id: string
+          username?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ig_account_id?: string
+          ig_scoped_user_id?: string
+          lead_id?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_lead_instagram_identities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_lead_pacientes: {
         Row: {
           created_at: string
