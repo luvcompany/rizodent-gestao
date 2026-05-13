@@ -164,7 +164,8 @@ export default function CrmConversa() {
   }, [lead, handleSaveNotes]);
 
   const handleSendTemplate = useCallback(async (template: any) => {
-    await chat.sendTemplate(template, lead?.phone || null);
+    const ch: "whatsapp" | "instagram" = lead?.instagram_user_id ? "instagram" : "whatsapp";
+    await chat.sendTemplate(template, lead?.phone || null, ch);
   }, [chat, lead]);
 
   // ===== Bot Active Execution State =====
