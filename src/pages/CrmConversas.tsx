@@ -482,6 +482,41 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     return Array.from(set);
   }, [leads]);
 
+  // Instagram accounts (only on instagram tab)
+  const [instagramAccounts, setInstagramAccounts] = useState<{ id: string; username: string }[]>([]);
+  const [leadIgAccountMap, setLeadIgAccountMap] = useState<Map<string, Set<string>>>(new Map());
+  useEffect(() => {
+    if (channel !== "instagram") return;
+    let cancelled = false;
+    (async () => {
+      const { data: accs } = await supabase
+        .from("ig_accounts")
+        .select("ig_user_id, username, active")
+        .eq("active", true);
+      if (cancelled) return;
+      setInstagramAccounts(
+        (accs ?? [])
+          .filter((a: any) => a.ig_user_id && a.username)
+          .map((a: any) => ({ id: a.ig_user_id, username: a.username }))
+      );
+      // Map lead -> set(instagram_account_id) from messages
+      const { data: msgs } = await supabase
+        .from("messages")
+        .select("lead_id, instagram_account_id")
+        .not("instagram_account_id", "is", null)
+        .limit(5000);
+      if (cancelled) return;
+      const map = new Map<string, Set<string>>();
+      (msgs ?? []).forEach((m: any) => {
+        if (!m.lead_id || !m.instagram_account_id) return;
+        if (!map.has(m.lead_id)) map.set(m.lead_id, new Set());
+        map.get(m.lead_id)!.add(m.instagram_account_id);
+      });
+      setLeadIgAccountMap(map);
+    })();
+    return () => { cancelled = true; };
+  }, [channel]);
+
   // Collect ad accounts and ads available among leads
   const { adAccounts, ads } = useMemo(() => {
     const accMap = new Map<string, string>();
@@ -589,6 +624,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (filters.cidade && (l.cidade || "") !== filters.cidade) return false;
       if (filters.adAccountId && ((l as any).ad_account_id || "") !== filters.adAccountId) return false;
       if (filters.adId && ((l as any).ad_id || "") !== filters.adId) return false;
+      if (filters.instagramAccountId) {
+        const set = leadIgAccountMap.get(l.id);
+        if (!set || !set.has(filters.instagramAccountId)) return false;
+      }
       // Special URL filters
       if (urlGhost && ghostLeadIds && ghostLeadIds.has(l.id)) return false; // ghost = NOT in inbound set
       if (urlAppointmentStatus && appointmentLeadIds && !appointmentLeadIds.has(l.id)) return false;
@@ -600,7 +639,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       }
       return true;
     });
-  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, leadIgAccountMap]);
 
   // Sorting
   const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
@@ -657,6 +696,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     pipelines={pipelines}
                     adAccounts={adAccounts}
                     ads={ads}
+                    channel={channel}
+                    instagramAccounts={instagramAccounts}
                   />
                    <span className="text-xs text-muted-foreground">{sortedFiltered.length}</span>
                    <DropdownMenu>
