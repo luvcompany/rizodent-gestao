@@ -459,8 +459,27 @@ export default function CrmIntegracoes() {
           </div>
         </div>
 
-        {/* Instagram Section */}
-        <InstagramAccountsSection />
+        {/* Instagram (Full API) — Em breve */}
+        <div className="mt-6">
+          <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+            <Instagram size={20} /> Instagram (API Completa)
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl">
+            <Card className="opacity-50 cursor-not-allowed">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="p-2 rounded-lg bg-primary/10"><Instagram size={24} className="text-primary" /></div>
+                  <Badge variant="secondary" className="text-muted-foreground">Em breve</Badge>
+                </div>
+                <h3 className="font-semibold text-foreground mb-1">Instagram (API do Meta)</h3>
+                <p className="text-sm text-muted-foreground">Integração automática via Facebook/Meta Business. Em desenvolvimento.</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Instagram Lite */}
+        <InstagramLiteSection />
 
         {/* Other Integrations */}
         <h2 className="font-semibold text-foreground mt-6 mb-4">Outros Canais</h2>
