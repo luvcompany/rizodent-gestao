@@ -29,6 +29,7 @@ type Message = {
   instagram_post_id?: string | null;
   instagram_post_thumbnail?: string | null;
   instagram_post_permalink?: string | null;
+  instagram_account_id?: string | null;
 };
 
 type Props = {
@@ -40,6 +41,7 @@ type Props = {
   onReact: (msg: Message, emoji: string) => void;
   onMediaClick: (url: string, type: "image" | "video") => void;
   onScrollToMessage: (msgId: string) => void;
+  igAccountsMap?: Record<string, string>;
 };
 
 function getStatusIcon(status: string) {
