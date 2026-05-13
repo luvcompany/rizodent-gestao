@@ -2013,7 +2013,9 @@ export type Database = {
           direction: string
           error_reason: string | null
           id: string
+          instagram_comment_id: string | null
           instagram_message_id: string | null
+          instagram_post_id: string | null
           instagram_sender_id: string | null
           lead_id: string
           media_url: string | null
@@ -2041,7 +2043,9 @@ export type Database = {
           direction?: string
           error_reason?: string | null
           id?: string
+          instagram_comment_id?: string | null
           instagram_message_id?: string | null
+          instagram_post_id?: string | null
           instagram_sender_id?: string | null
           lead_id: string
           media_url?: string | null
@@ -2069,7 +2073,9 @@ export type Database = {
           direction?: string
           error_reason?: string | null
           id?: string
+          instagram_comment_id?: string | null
           instagram_message_id?: string | null
+          instagram_post_id?: string | null
           instagram_sender_id?: string | null
           lead_id?: string
           media_url?: string | null
