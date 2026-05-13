@@ -386,34 +386,34 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       throw new Error("Janela expirada");
     }
 
-    let audioFile: globalThis.File;
-    let uploadContentType: string | undefined;
-    let convertingToastId: string | number | undefined;
-
-    if (isInstagram) {
-      try {
-        convertingToastId = toast.loading("Convertendo áudio...");
-        const { convertAudioBlobToMp3 } = await import("@/lib/audioConverter");
-        const mp3Blob = await convertAudioBlobToMp3(oggBlob);
-        audioFile = new globalThis.File(
-          [mp3Blob],
-          `audio_${Date.now()}.mp3`,
-          { type: "audio/mpeg" }
-        );
-        uploadContentType = "audio/mpeg";
-        toast.dismiss(convertingToastId);
-      } catch (err: any) {
-        if (convertingToastId) toast.dismiss(convertingToastId);
-        toast.error(err?.message || "Falha ao converter áudio para MP3");
-        throw err;
-      }
-    } else {
-      audioFile = new globalThis.File(
-        [oggBlob],
-        `audio_${Date.now()}.ogg`,
-        { type: oggBlob.type || "audio/ogg" }
-      );
+    // Send audio in the browser's native recording format (no conversion).
+    // Pick a sensible extension/content-type from the blob's mime.
+    const rawType = (oggBlob.type || "").toLowerCase();
+    let ext = "ogg";
+    let contentType = rawType || "audio/ogg";
+    if (rawType.includes("mp4") || rawType.includes("aac") || rawType.includes("m4a")) {
+      ext = "m4a";
+      contentType = "audio/mp4";
+    } else if (rawType.includes("mpeg") || rawType.includes("mp3")) {
+      ext = "mp3";
+      contentType = "audio/mpeg";
+    } else if (rawType.includes("wav")) {
+      ext = "wav";
+      contentType = "audio/wav";
+    } else if (rawType.includes("webm")) {
+      ext = "webm";
+      contentType = "audio/webm";
+    } else if (rawType.includes("ogg")) {
+      ext = "ogg";
+      contentType = "audio/ogg";
     }
+
+    const audioFile = new globalThis.File(
+      [oggBlob],
+      `audio_${Date.now()}.${ext}`,
+      { type: contentType }
+    );
+    const uploadContentType = contentType;
 
     const tempId = crypto.randomUUID();
     const optimisticUrl = URL.createObjectURL(oggBlob);
