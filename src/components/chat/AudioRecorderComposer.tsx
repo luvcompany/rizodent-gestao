@@ -9,6 +9,7 @@ type AudioRecorderComposerProps = {
   onModeChange?: (active: boolean) => void;
   showMicButton?: boolean;
   autoStart?: boolean;
+  preferredMimeTypes?: string[];
 };
 
 type RecorderMode = "idle" | "preparing" | "recording" | "preview" | "sending";
@@ -54,6 +55,7 @@ export default function AudioRecorderComposer({
   onModeChange,
   showMicButton = true,
   autoStart = false,
+  preferredMimeTypes,
 }: AudioRecorderComposerProps) {
   const [mode, setMode] = useState<RecorderMode>("idle");
   const [recordingPaused, setRecordingPaused] = useState(false);
@@ -214,12 +216,19 @@ export default function AudioRecorderComposer({
 
       // Create recorder
       let recorder: any;
+      const preferredNativeMime = preferredMimeTypes?.find((mimeType) =>
+        typeof MediaRecorder !== "undefined" &&
+        typeof MediaRecorder.isTypeSupported === "function" &&
+        MediaRecorder.isTypeSupported(mimeType)
+      );
       const nativeOgg =
         typeof MediaRecorder !== "undefined" &&
         typeof MediaRecorder.isTypeSupported === "function" &&
         MediaRecorder.isTypeSupported("audio/ogg;codecs=opus");
 
-      if (nativeOgg) {
+      if (preferredNativeMime) {
+        recorder = new MediaRecorder(stream, { mimeType: preferredNativeMime });
+      } else if (nativeOgg) {
         recorder = new MediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" });
       } else {
         const OpusMediaRecorder = await preloadOpusRecorder();
@@ -286,7 +295,7 @@ export default function AudioRecorderComposer({
       resetToIdle();
       toast.error(err?.message || "Não foi possível acessar o microfone");
     }
-  }, [disabled, finalizeDraft, mode, resetToIdle, startMeter, startRecordingTimer, clearTimer, stopAudioProcessing]);
+  }, [disabled, finalizeDraft, mode, preferredMimeTypes, resetToIdle, startMeter, startRecordingTimer, clearTimer, stopAudioProcessing]);
 
   const togglePauseRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;

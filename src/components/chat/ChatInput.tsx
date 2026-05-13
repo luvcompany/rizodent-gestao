@@ -21,6 +21,7 @@ import { compressImage } from "./imageCompressor";
 import SlashCommandMenu from "./SlashCommandMenu";
 import AudioRecorderComposer from "./AudioRecorderComposer";
 import EmojiPickerButton from "./EmojiPickerButton";
+import { convertAudioBlobToInstagramWav } from "@/lib/audioConverter";
 
 const getInvokeErrorMessage = (data: any, error: any) => {
   if (data?.user_message) return data.user_message;
@@ -258,6 +259,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           if (type === "image") {
             try { fileToUpload = await compressImage(fileToUpload!); } catch {}
           }
+          if (isInstagram && type === "audio") {
+            const wavBlob = await convertAudioBlobToInstagramWav(fileToUpload!);
+            fileToUpload = new globalThis.File([wavBlob], `audio_${Date.now()}.wav`, { type: "audio/wav" });
+          }
 
           const url = await uploadFile(fileToUpload!, type);
           if (!url) { onMessageError?.(tempId); return; }
@@ -408,12 +413,22 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       throw new Error("Janela expirada");
     }
 
-    // Send audio in the browser's native recording format (no conversion).
-    // Pick a sensible extension/content-type from the blob's mime.
+    let uploadBlob: Blob;
+    try {
+      uploadBlob = isInstagram ? await convertAudioBlobToInstagramWav(oggBlob) : oggBlob;
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Não foi possível preparar o áudio para o Instagram");
+      throw err;
+    }
+
+    // Pick a sensible extension/content-type from the upload blob's mime.
     const rawType = (oggBlob.type || "").toLowerCase();
     let ext = "ogg";
     let contentType = rawType || "audio/ogg";
-    if (rawType.includes("mp4") || rawType.includes("aac") || rawType.includes("m4a")) {
+    if (isInstagram) {
+      ext = "wav";
+      contentType = "audio/wav";
+    } else if (rawType.includes("mp4") || rawType.includes("aac") || rawType.includes("m4a")) {
       ext = "m4a";
       contentType = "audio/mp4";
     } else if (rawType.includes("mpeg") || rawType.includes("mp3")) {
@@ -431,7 +446,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
 
     const audioFile = new globalThis.File(
-      [oggBlob],
+      [uploadBlob],
       `audio_${Date.now()}.${ext}`,
       { type: contentType }
     );
@@ -669,6 +684,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             onSendAudio={sendRecordedAudio}
             onModeChange={setRecorderActive}
             showMicButton={!newMessage.trim() && !attachedFile}
+            preferredMimeTypes={isInstagram ? ["audio/mp4", "audio/mp4;codecs=mp4a.40.2", "audio/wav"] : undefined}
           />
         </div>
       )}
