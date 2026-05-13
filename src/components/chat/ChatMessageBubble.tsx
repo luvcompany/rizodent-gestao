@@ -215,6 +215,25 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                 </Tooltip>
               </TooltipProvider>
             )}
+            {msg.type === "comment" && msg.direction === "inbound" && msg.instagram_comment_id && (
+              <div className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-purple-500/20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent("ig:set-comment-target", {
+                      detail: {
+                        comment_id: msg.instagram_comment_id,
+                        post_id: msg.instagram_post_id ?? null,
+                        preview: msg.content ?? "",
+                      },
+                    }));
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 rounded px-1.5 py-0.5"
+                >
+                  <Reply size={11} /> Responder comentário
+                </button>
+              </div>
+            )}
           </div>
           )}
           {reactions.length > 0 && (
