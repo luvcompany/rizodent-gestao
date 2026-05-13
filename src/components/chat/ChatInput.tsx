@@ -640,6 +640,18 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 <MessageCircle size={12} /> Comentário
               </button>
             </div>
+            {igAccounts.length > 0 && (
+              <Select value={igAccountId ?? ""} onValueChange={(v) => setIgAccountId(v)}>
+                <SelectTrigger className="h-7 text-xs w-auto min-w-[140px] gap-1">
+                  <SelectValue placeholder="Conta IG" />
+                </SelectTrigger>
+                <SelectContent>
+                  {igAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id} className="text-xs">@{a.username}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {igReplyMode === "comment" && igCommentTarget && (
               <div className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-muted-foreground bg-purple-500/5 border border-purple-500/20 rounded px-2 py-1">
                 <Reply size={11} className="text-purple-500 flex-shrink-0" />
