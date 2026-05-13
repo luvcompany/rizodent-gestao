@@ -165,6 +165,29 @@ async function persistMessage(opts: {
   const finalUsername = profile.username ?? opts.senderUsername;
   const finalPic = profile.profile_pic;
 
+  // Para comentários, buscar miniatura + permalink do post
+  let postThumbnail: string | null = null;
+  let postPermalink: string | null = null;
+  if (opts.messageType === "comment" && opts.postId) {
+    try {
+      const isIgLite = opts.account.access_token.startsWith("IGAA");
+      const base = isIgLite
+        ? "https://graph.instagram.com/v21.0"
+        : "https://graph.facebook.com/v25.0";
+      const url = `${base}/${opts.postId}?fields=media_type,media_url,thumbnail_url,permalink&access_token=${encodeURIComponent(opts.account.access_token)}`;
+      const r = await fetch(url);
+      const j = await r.json().catch(() => ({} as any));
+      if (r.ok) {
+        postThumbnail = j?.thumbnail_url || j?.media_url || null;
+        postPermalink = j?.permalink || null;
+      } else {
+        console.warn("[ig-lite] post fetch failed", { postId: opts.postId, status: r.status, body: j });
+      }
+    } catch (e) {
+      console.warn("[ig-lite] post fetch error", opts.postId, e);
+    }
+  }
+
   // Tanto DMs quanto comments são vinculados a um lead — chat unificado por usuário.
   let leadId: string | null = null;
   const { data: blockedCheck } = await supabase
