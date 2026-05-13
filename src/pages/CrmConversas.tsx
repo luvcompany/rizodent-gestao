@@ -514,7 +514,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setLeadIgAccountMap(map);
     })();
     return () => { cancelled = true; };
-  }, [channel]);
+  }, []);
 
   // Collect ad accounts and ads available among leads
   const { adAccounts, ads } = useMemo(() => {
