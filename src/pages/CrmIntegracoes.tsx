@@ -20,6 +20,7 @@ import {
 import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 import InstagramAccountsSection from "@/components/integrations/InstagramAccountsSection";
+import InstagramLiteSection from "@/components/integrations/InstagramLiteSection";
 
 
 type WhatsAppConfig = {
