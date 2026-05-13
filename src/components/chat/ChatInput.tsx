@@ -143,6 +143,23 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       });
   }, [isInstagram, leadId]);
 
+  // Load all active Instagram accounts so the user can choose which one to send from
+  useEffect(() => {
+    if (!isInstagram) return;
+    supabase
+      .from("ig_accounts")
+      .select("ig_user_id, username, active")
+      .eq("active", true)
+      .then(({ data }) => {
+        const list = (data ?? [])
+          .filter((a: any) => a.ig_user_id && a.username)
+          .map((a: any) => ({ id: a.ig_user_id as string, username: a.username as string }));
+        setIgAccounts(list);
+        // If none was resolved from history, default to first available
+        setIgAccountId((prev) => prev ?? list[0]?.id ?? null);
+      });
+  }, [isInstagram]);
+
   // Reset Instagram reply mode/comment target when switching leads
   useEffect(() => {
     setIgReplyMode("direct");
