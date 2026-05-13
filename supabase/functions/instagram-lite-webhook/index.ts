@@ -83,33 +83,87 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
 async function findOrCreateLead(
   igUserId: string,
   profile: { name: string | null; username: string | null; profile_pic: string | null },
-  accountUsername: string | null
+  accountUsername: string | null,
+  igAccountId: string
 ): Promise<string | null> {
   if (!igUserId) return null;
 
-  const { data: existing } = await supabase
-    .from("crm_leads")
-    .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked")
-    .eq("instagram_user_id", igUserId)
+  // 1) Tenta achar por identidade (ig_account_id, scoped sender id) — agrupa multi-conta
+  const { data: identity } = await supabase
+    .from("crm_lead_instagram_identities")
+    .select("lead_id")
+    .eq("ig_account_id", igAccountId)
+    .eq("ig_scoped_user_id", igUserId)
     .maybeSingle();
 
-  if (existing && (existing as any).is_blocked) return null;
-  if (existing) {
-    const updates: Record<string, unknown> = {};
-    if (profile.username && existing.instagram_username !== profile.username) {
-      updates.instagram_username = profile.username;
+  let existingId: string | null = identity?.lead_id ?? null;
+
+  // 2) Se não achou por identidade, tenta achar por @username (mesmo usuário em outra conta)
+  if (!existingId && profile.username) {
+    const { data: byUsernameIdentity } = await supabase
+      .from("crm_lead_instagram_identities")
+      .select("lead_id")
+      .ilike("username", profile.username)
+      .limit(1)
+      .maybeSingle();
+    existingId = byUsernameIdentity?.lead_id ?? null;
+    if (!existingId) {
+      const { data: byUsernameLead } = await supabase
+        .from("crm_leads")
+        .select("id")
+        .ilike("instagram_username", profile.username)
+        .limit(1)
+        .maybeSingle();
+      existingId = byUsernameLead?.id ?? null;
     }
-    if (profile.profile_pic && existing.instagram_profile_pic_url !== profile.profile_pic) {
-      updates.instagram_profile_pic_url = profile.profile_pic;
+  }
+
+  // 3) Fallback legado por instagram_user_id direto
+  if (!existingId) {
+    const { data: legacy } = await supabase
+      .from("crm_leads")
+      .select("id")
+      .eq("instagram_user_id", igUserId)
+      .maybeSingle();
+    existingId = legacy?.id ?? null;
+  }
+
+  if (existingId) {
+    const { data: existing } = await supabase
+      .from("crm_leads")
+      .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked")
+      .eq("id", existingId)
+      .maybeSingle();
+    if (existing && (existing as any).is_blocked) return null;
+    if (existing) {
+      const updates: Record<string, unknown> = {};
+      if (profile.username && existing.instagram_username !== profile.username) {
+        updates.instagram_username = profile.username;
+      }
+      if (profile.profile_pic && existing.instagram_profile_pic_url !== profile.profile_pic) {
+        updates.instagram_profile_pic_url = profile.profile_pic;
+      }
+      if (existing.name?.startsWith("IG ")) {
+        const better = profile.name || profile.username;
+        if (better) updates.name = better;
+      }
+      if (Object.keys(updates).length > 0) {
+        await supabase.from("crm_leads").update(updates).eq("id", existing.id);
+      }
+      // Garante que essa identidade (account, scoped id) está vinculada ao lead
+      await supabase
+        .from("crm_lead_instagram_identities")
+        .upsert(
+          {
+            lead_id: existing.id,
+            ig_account_id: igAccountId,
+            ig_scoped_user_id: igUserId,
+            username: profile.username,
+          },
+          { onConflict: "ig_account_id,ig_scoped_user_id" }
+        );
+      return existing.id;
     }
-    if (existing.name?.startsWith("IG ")) {
-      const better = profile.name || profile.username;
-      if (better) updates.name = better;
-    }
-    if (Object.keys(updates).length > 0) {
-      await supabase.from("crm_leads").update(updates).eq("id", existing.id);
-    }
-    return existing.id;
   }
 
   const { data: firstStage } = await supabase
