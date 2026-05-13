@@ -62,6 +62,6 @@ export async function convertAudioBlobToMp3(blob: Blob): Promise<Blob> {
   const out = await ffmpeg.readFile(outputName);
   try { await ffmpeg.deleteFile(inputName); } catch {}
   try { await ffmpeg.deleteFile(outputName); } catch {}
-  const buffer = (out as Uint8Array).buffer;
-  return new Blob([buffer], { type: "audio/mpeg" });
+  const bytes = new Uint8Array(out as Uint8Array);
+  return new Blob([bytes], { type: "audio/mpeg" });
 }
