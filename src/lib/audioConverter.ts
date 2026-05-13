@@ -4,6 +4,10 @@
 const INSTAGRAM_AUDIO_SAMPLE_RATE = 16_000;
 const MAX_INSTAGRAM_AUDIO_BYTES = 25 * 1024 * 1024;
 
+type WindowWithWebkitAudio = Window & typeof globalThis & {
+  webkitAudioContext?: typeof AudioContext;
+};
+
 function floatTo16BitPcm(output: DataView, offset: number, input: Float32Array) {
   for (let i = 0; i < input.length; i++, offset += 2) {
     const sample = Math.max(-1, Math.min(1, input[i]));
@@ -70,7 +74,7 @@ function resampleLinear(input: Float32Array, sourceRate: number, targetRate: num
 }
 
 export async function convertAudioBlobToInstagramWav(blob: Blob): Promise<Blob> {
-  const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+  const AudioContextCtor = window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext;
   if (!AudioContextCtor) {
     throw new Error("Conversão de áudio não suportada neste navegador");
   }
