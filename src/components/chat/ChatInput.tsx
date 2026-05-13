@@ -21,6 +21,7 @@ import { compressImage } from "./imageCompressor";
 import SlashCommandMenu from "./SlashCommandMenu";
 import AudioRecorderComposer from "./AudioRecorderComposer";
 import EmojiPickerButton from "./EmojiPickerButton";
+import { convertAudioBlobToInstagramWav } from "@/lib/audioConverter";
 
 const getInvokeErrorMessage = (data: any, error: any) => {
   if (data?.user_message) return data.user_message;
@@ -408,12 +409,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       throw new Error("Janela expirada");
     }
 
-    // Send audio in the browser's native recording format (no conversion).
-    // Pick a sensible extension/content-type from the blob's mime.
+    const uploadBlob = isInstagram ? await convertAudioBlobToInstagramWav(oggBlob) : oggBlob;
+
+    // Pick a sensible extension/content-type from the upload blob's mime.
     const rawType = (oggBlob.type || "").toLowerCase();
     let ext = "ogg";
     let contentType = rawType || "audio/ogg";
-    if (rawType.includes("mp4") || rawType.includes("aac") || rawType.includes("m4a")) {
+    if (isInstagram) {
+      ext = "wav";
+      contentType = "audio/wav";
+    } else if (rawType.includes("mp4") || rawType.includes("aac") || rawType.includes("m4a")) {
       ext = "m4a";
       contentType = "audio/mp4";
     } else if (rawType.includes("mpeg") || rawType.includes("mp3")) {
@@ -431,7 +436,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
 
     const audioFile = new globalThis.File(
-      [oggBlob],
+      [uploadBlob],
       `audio_${Date.now()}.${ext}`,
       { type: contentType }
     );
