@@ -165,26 +165,24 @@ async function persistMessage(opts: {
   const finalUsername = profile.username ?? opts.senderUsername;
   const finalPic = profile.profile_pic;
 
-  // DMs: vincular a um lead (criando se necessário). Comments: ficam só em instagram_messages.
+  // Tanto DMs quanto comments são vinculados a um lead — chat unificado por usuário.
   let leadId: string | null = null;
-  if (opts.messageType === "dm") {
-    const { data: blockedCheck } = await supabase
-      .from("crm_leads")
-      .select("id, is_blocked")
-      .eq("instagram_user_id", opts.senderId)
-      .maybeSingle();
-    if (blockedCheck && (blockedCheck as any).is_blocked) return;
-    leadId = await findOrCreateLead(
-      opts.senderId,
-      { name: finalName, username: finalUsername, profile_pic: finalPic },
-      opts.account.username
-    );
-  }
+  const { data: blockedCheck } = await supabase
+    .from("crm_leads")
+    .select("id, is_blocked")
+    .eq("instagram_user_id", opts.senderId)
+    .maybeSingle();
+  if (blockedCheck && (blockedCheck as any).is_blocked) return;
+  leadId = await findOrCreateLead(
+    opts.senderId,
+    { name: finalName, username: finalUsername, profile_pic: finalPic },
+    opts.account.username
+  );
 
-  // Grava em instagram_messages para aparecer na aba Conversas → Instagram (Direct/Comentários)
+  // Grava em instagram_messages (mantém histórico legado)
   await supabase.from("instagram_messages").insert({
     instagram_account_id: opts.account.ig_user_id,
-    instagram_account_config_id: null, // ig_accounts é tabela separada de instagram_accounts
+    instagram_account_config_id: null,
     sender_id: opts.senderId,
     sender_name: finalName,
     sender_username: finalUsername,
@@ -198,22 +196,25 @@ async function persistMessage(opts: {
     lead_id: leadId,
   });
 
-  // Espelha DMs em messages para o chat unificado / KPIs do lead
-  if (opts.messageType === "dm" && leadId) {
+  // Espelha no chat unificado (DMs e comentários no mesmo thread do lead)
+  if (leadId) {
+    const isComment = opts.messageType === "comment";
     await supabase.from("messages").insert({
       lead_id: leadId,
       direction: "inbound",
-      type: "text",
+      type: isComment ? "comment" : "text",
       content: opts.text,
       channel: "instagram",
-      instagram_message_id: opts.igMessageId,
+      instagram_message_id: isComment ? opts.commentId : opts.igMessageId,
       instagram_sender_id: opts.senderId,
+      instagram_comment_id: isComment ? opts.commentId : null,
+      instagram_post_id: isComment ? opts.postId : null,
       status: "received",
     });
     await supabase
       .from("crm_leads")
       .update({
-        last_message: opts.text,
+        last_message: isComment ? `[Comentário] ${opts.text ?? ""}` : opts.text,
         last_message_at: new Date().toISOString(),
         last_inbound_at: new Date().toISOString(),
       })

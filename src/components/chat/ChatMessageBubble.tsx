@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { Check, CheckCheck, Clock, AlertCircle } from "lucide-react";
+import { Check, CheckCheck, Clock, AlertCircle, MessageCircle, ExternalLink, Reply } from "lucide-react";
 import ChatMessageContent from "./ChatMessageContent";
 import MessageActions from "./MessageActions";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -25,6 +25,8 @@ type Message = {
   ad_account_name?: string | null;
   error_reason?: string | null;
   deleted_at?: string | null;
+  instagram_comment_id?: string | null;
+  instagram_post_id?: string | null;
 };
 
 type Props = {
@@ -112,10 +114,31 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
             </div>
           ) : (
           <div className={`rounded-lg px-3 py-2 ${
-            msg.direction === "outbound"
-              ? "bg-primary/20 text-foreground rounded-br-none"
-              : "bg-card border border-border text-foreground rounded-bl-none"
+            msg.type === "comment"
+              ? (msg.direction === "outbound"
+                  ? "bg-purple-500/15 border border-purple-500/40 text-foreground rounded-br-none"
+                  : "bg-purple-500/10 border border-purple-500/30 text-foreground rounded-bl-none")
+              : msg.direction === "outbound"
+                ? "bg-primary/20 text-foreground rounded-br-none"
+                : "bg-card border border-border text-foreground rounded-bl-none"
           }`}>
+            {msg.type === "comment" && (
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-purple-600 dark:text-purple-400">
+                <MessageCircle size={11} />
+                <span>{msg.direction === "outbound" ? "Resposta ao comentário" : "Comentário no post"}</span>
+                {msg.instagram_post_id && (
+                  <a
+                    href={`https://www.instagram.com/p/${msg.instagram_post_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-auto inline-flex items-center gap-0.5 text-muted-foreground hover:text-primary"
+                    title="Ver post"
+                  >
+                    <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+            )}
             {quotedMsg && (
               <div
                 onClick={() => onScrollToMessage(quotedMsg.id)}
@@ -191,6 +214,25 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+            )}
+            {msg.type === "comment" && msg.direction === "inbound" && msg.instagram_comment_id && (
+              <div className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-purple-500/20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent("ig:set-comment-target", {
+                      detail: {
+                        comment_id: msg.instagram_comment_id,
+                        post_id: msg.instagram_post_id ?? null,
+                        preview: msg.content ?? "",
+                      },
+                    }));
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 rounded px-1.5 py-0.5"
+                >
+                  <Reply size={11} /> Responder comentário
+                </button>
+              </div>
             )}
           </div>
           )}

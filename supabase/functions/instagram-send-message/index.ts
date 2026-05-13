@@ -317,7 +317,9 @@ Deno.serve(async (req: Request) => {
 
   // Mirror into unified messages table for chat UI
   if (leadId) {
-    const msgType = media_type ?? "text";
+    const isComment = message_type === "comment";
+    const msgType = isComment ? "comment" : (media_type ?? "text");
+    const newCommentId = isComment ? (metaJson?.id ?? null) : null;
     await supabase.from("messages").insert({
       lead_id: leadId,
       direction: "outbound",
@@ -325,15 +327,19 @@ Deno.serve(async (req: Request) => {
       content: message ?? null,
       media_url: media_url ?? null,
       channel: "instagram",
-      instagram_message_id: igMessageId,
-      instagram_sender_id: recipient_id ?? null,
+      instagram_message_id: isComment ? newCommentId : igMessageId,
+      instagram_sender_id: recipient_id ?? thread_sender_id ?? null,
+      instagram_comment_id: isComment ? (newCommentId ?? comment_id ?? null) : null,
+      instagram_post_id: isComment ? (post_id ?? null) : null,
       status: "sent",
     });
 
     await supabase
       .from("crm_leads")
       .update({
-        last_message: message ?? (media_url ? `[${media_type ?? "mídia"}]` : null),
+        last_message: isComment
+          ? `[Comentário] ${message ?? ""}`
+          : (message ?? (media_url ? `[${media_type ?? "mídia"}]` : null)),
         last_message_at: new Date().toISOString(),
         last_outbound_at: new Date().toISOString(),
       })

@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
   Send, Paperclip, FileText, Image, File, Video, X,
-  Loader2, Clock, AlertTriangle, Bot
+  Loader2, Clock, AlertTriangle, Bot, MessageCircle, Reply
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -59,10 +59,20 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const isInstagram = channel === "instagram";
   const sendFnName = isInstagram ? "instagram-send-message" : "send-whatsapp-message";
 
-  const buildSendBody = async (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null }): Promise<SendBody> => {
+  const buildSendBody = async (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null; replyMode?: "direct" | "comment"; commentTarget?: { comment_id: string; post_id: string | null } | null }): Promise<SendBody> => {
     if (isInstagram) {
       const igType: InstagramMediaKind | undefined = params.type === "text" ? undefined : (params.type === "image" || params.type === "video" || params.type === "audio" ? params.type : undefined);
       const resolvedIgAccountId = await resolveInstagramAccountId();
+      if (params.replyMode === "comment" && params.commentTarget?.comment_id) {
+        return {
+          lead_id: leadId,
+          instagram_account_id: resolvedIgAccountId ?? undefined,
+          message: params.message,
+          message_type: "comment",
+          comment_id: params.commentTarget.comment_id,
+          post_id: params.commentTarget.post_id ?? undefined,
+        };
+      }
       return {
         lead_id: leadId,
         instagram_account_id: resolvedIgAccountId ?? undefined,
@@ -90,6 +100,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [startingBotId, setStartingBotId] = useState<string | null>(null);
   const [recorderActive, setRecorderActive] = useState(false);
   const [igAccountId, setIgAccountId] = useState<string | null>(null);
+  const [igReplyMode, setIgReplyMode] = useState<"direct" | "comment">("direct");
+  const [igCommentTarget, setIgCommentTarget] = useState<{ comment_id: string; post_id: string | null; preview: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -129,6 +141,30 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         setIgAccountId((data as { instagram_account_id?: string | null } | null)?.instagram_account_id ?? null);
       });
   }, [isInstagram, leadId]);
+
+  // Reset Instagram reply mode/comment target when switching leads
+  useEffect(() => {
+    setIgReplyMode("direct");
+    setIgCommentTarget(null);
+  }, [leadId]);
+
+  // Listen for "Responder este comentário" clicks on bubbles
+  useEffect(() => {
+    if (!isInstagram) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { comment_id?: string; post_id?: string | null; preview?: string } | undefined;
+      if (!detail?.comment_id) return;
+      setIgCommentTarget({
+        comment_id: detail.comment_id,
+        post_id: detail.post_id ?? null,
+        preview: detail.preview ?? "",
+      });
+      setIgReplyMode("comment");
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    };
+    window.addEventListener("ig:set-comment-target", handler);
+    return () => window.removeEventListener("ig:set-comment-target", handler);
+  }, [isInstagram]);
 
   // Fetch published bots
   useEffect(() => {
@@ -267,7 +303,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           const url = await uploadFile(fileToUpload!, type);
           if (!url) { onMessageError?.(tempId); return; }
 
-          const body = await buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo });
+          const body = await buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo, replyMode: igReplyMode, commentTarget: igCommentTarget });
 
           const { data, error } = await supabase.functions.invoke(sendFnName, { body });
           if (error || data?.error || data?.ok === false) {
@@ -307,7 +343,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     onMessageSent?.(optimisticMsg);
 
     // Send in background
-    const body = await buildSendBody({ type, message: message || undefined, reply: currentReplyTo });
+    const body = await buildSendBody({ type, message: message || undefined, reply: currentReplyTo, replyMode: igReplyMode, commentTarget: igCommentTarget });
 
     try {
       const { data, error } = await supabase.functions.invoke(sendFnName, { body });
@@ -560,6 +596,47 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           </div>
         </div>
       ) : (
+        <>
+        {isInstagram && (
+          <div className="flex items-center gap-2 mb-2">
+            <div className="inline-flex rounded-md border border-border bg-secondary p-0.5">
+              <button
+                type="button"
+                onClick={() => setIgReplyMode("direct")}
+                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "direct" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Send size={12} /> Direct
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!igCommentTarget) {
+                    toast.info("Clique em \"Responder comentário\" numa bolha de comentário para escolher qual responder.");
+                    return;
+                  }
+                  setIgReplyMode("comment");
+                }}
+                disabled={!igCommentTarget}
+                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "comment" ? "bg-purple-500/15 text-purple-700 dark:text-purple-300" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <MessageCircle size={12} /> Comentário
+              </button>
+            </div>
+            {igReplyMode === "comment" && igCommentTarget && (
+              <div className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-muted-foreground bg-purple-500/5 border border-purple-500/20 rounded px-2 py-1">
+                <Reply size={11} className="text-purple-500 flex-shrink-0" />
+                <span className="truncate">Respondendo: {igCommentTarget.preview || "(sem texto)"}</span>
+                <button
+                  type="button"
+                  onClick={() => { setIgReplyMode("direct"); setIgCommentTarget(null); }}
+                  className="ml-auto p-0.5 hover:text-foreground flex-shrink-0"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex items-end gap-2">
           {/* Hide normal controls when recorder is active, but NEVER unmount the recorder */}
           {!recorderActive && (
@@ -687,6 +764,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             preferredMimeTypes={isInstagram ? ["audio/mp4", "audio/mp4;codecs=mp4a.40.2", "audio/wav"] : undefined}
           />
         </div>
+        </>
       )}
 
       {/* 24h window countdown (WhatsApp only) */}
