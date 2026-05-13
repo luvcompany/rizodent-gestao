@@ -44,19 +44,37 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
     username: null as string | null,
     profile_pic: null as string | null,
   };
-  try {
-    const url = `https://graph.facebook.com/v25.0/${igUserId}?fields=name,username,profile_pic&access_token=${encodeURIComponent(accessToken)}`;
-    const r = await fetch(url);
-    const j = await r.json().catch(() => ({}));
-    if (r.ok) {
-      out = {
-        name: j?.name ?? null,
-        username: j?.username ?? null,
-        profile_pic: j?.profile_pic ?? null,
-      };
+  const isIgLite = accessToken.startsWith("IGAA");
+  const base = isIgLite
+    ? "https://graph.instagram.com/v21.0"
+    : "https://graph.facebook.com/v25.0";
+  const tryFetch = async (fields: string) => {
+    try {
+      const url = `${base}/${igUserId}?fields=${fields}&access_token=${encodeURIComponent(accessToken)}`;
+      const r = await fetch(url);
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) {
+        console.warn("[ig-lite] profile fetch failed", { igUserId, fields, status: r.status, body: j });
+        return null;
+      }
+      return j as any;
+    } catch (e) {
+      console.warn("[ig-lite] fetchIgProfile error", igUserId, e);
+      return null;
     }
-  } catch (e) {
-    console.warn("[ig-lite] fetchIgProfile error", igUserId, e);
+  };
+  const j1 = await tryFetch("name,username,profile_pic");
+  if (j1) {
+    out.name = j1?.name ?? null;
+    out.username = j1?.username ?? null;
+    out.profile_pic = j1?.profile_pic ?? null;
+  }
+  if (!out.username || !out.profile_pic) {
+    const j2 = await tryFetch("username,profile_picture_url");
+    if (j2) {
+      out.username = out.username || j2?.username || null;
+      out.profile_pic = out.profile_pic || j2?.profile_picture_url || null;
+    }
   }
   profileCache.set(igUserId, out);
   return out;
