@@ -25,6 +25,7 @@ export interface InstagramMessage {
 export interface InstagramConversation {
   sender_id: string;
   sender_name: string | null;
+  sender_profile_pic: string | null;
   last_message: string | null;
   last_message_time: string;
   unread_count: number;
@@ -125,6 +126,7 @@ export function useInstagramMessages() {
         grouped.set(sid, {
           sender_id: sid,
           sender_name: m.sender_name,
+          sender_profile_pic: m.sender_profile_pic,
           last_message: m.message_text,
           last_message_time: m.created_at,
           unread_count: !m.is_read && !m.is_outbound ? 1 : 0,
@@ -132,8 +134,14 @@ export function useInstagramMessages() {
           instagram_account_id: m.instagram_account_id,
           account_name: m.instagram_account_id ? accountsMap[m.instagram_account_id] ?? null : null,
         });
-      } else if (!m.is_read && !m.is_outbound) {
-        existing.unread_count += 1;
+      } else {
+        if (!existing.sender_profile_pic && m.sender_profile_pic) {
+          existing.sender_profile_pic = m.sender_profile_pic;
+        }
+        if (!existing.sender_name && m.sender_name) {
+          existing.sender_name = m.sender_name;
+        }
+        if (!m.is_read && !m.is_outbound) existing.unread_count += 1;
       }
     }
     return Array.from(grouped.values()).sort(

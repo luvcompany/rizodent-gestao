@@ -3,7 +3,7 @@ import { useInstagramMessages } from "@/hooks/useInstagramMessages";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { Instagram, Send, Loader2, Search, MessageSquare, MessageCircle } from "lucide-react";
@@ -209,8 +209,11 @@ export default function InstagramConversations() {
                     }`}
                   >
                     <Avatar className="h-10 w-10 flex-shrink-0">
+                      {c.sender_profile_pic && (
+                        <AvatarImage src={c.sender_profile_pic} alt={displayName} />
+                      )}
                       <AvatarFallback style={{ backgroundColor: IG_PURPLE, color: "white" }}>
-                        <Instagram size={18} />
+                        {displayName?.charAt(0)?.toUpperCase() || <Instagram size={18} />}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
@@ -260,8 +263,16 @@ export default function InstagramConversations() {
                 {/* Header */}
                 <div className="flex-shrink-0 border-b border-border bg-card px-4 py-3 flex items-center gap-3">
                   <Avatar className="h-9 w-9">
+                    {selectedConv.sender_profile_pic && (
+                      <AvatarImage
+                        src={selectedConv.sender_profile_pic}
+                        alt={selectedConv.sender_name || selectedConv.sender_id}
+                      />
+                    )}
                     <AvatarFallback style={{ backgroundColor: IG_PURPLE, color: "white" }}>
-                      <Instagram size={16} />
+                      {(selectedConv.sender_name || selectedConv.sender_id || "?")
+                        .charAt(0)
+                        .toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
