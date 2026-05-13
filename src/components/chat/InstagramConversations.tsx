@@ -291,8 +291,11 @@ export default function InstagramConversations() {
 
                   {messages.map((m) => {
                     const isOut = m.is_outbound;
+                    const isReplied = m.status === "replied";
+                    const draft = replyDrafts[m.id] ?? "";
+                    const isReplyingThis = replyingId === m.id;
                     return (
-                      <div key={m.id} className={`flex ${isOut ? "justify-end" : "justify-start"}`}>
+                      <div key={m.id} className={`flex flex-col ${isOut ? "items-end" : "items-start"}`}>
                         <div
                           className={`max-w-[70%] rounded-2xl px-3 py-2 text-sm ${
                             isOut ? "text-white" : "bg-secondary text-foreground"
@@ -301,13 +304,56 @@ export default function InstagramConversations() {
                         >
                           {m.message_text || <em className="opacity-70">(sem texto)</em>}
                           <div
-                            className={`text-[10px] mt-1 ${
+                            className={`text-[10px] mt-1 flex items-center gap-2 ${
                               isOut ? "text-white/70" : "text-muted-foreground"
                             }`}
                           >
-                            {format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR })}
+                            <span>{format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR })}</span>
+                            {!isOut && isReplied && (
+                              <Badge className="h-4 px-1.5 bg-green-600 hover:bg-green-600 text-white text-[9px]">
+                                Respondido
+                              </Badge>
+                            )}
                           </div>
                         </div>
+
+                        {!isOut && !isReplied && (
+                          <div className="mt-1 flex gap-1 max-w-[70%] w-full">
+                            <Input
+                              value={draft}
+                              onChange={(e) =>
+                                setReplyDrafts((d) => ({ ...d, [m.id]: e.target.value }))
+                              }
+                              placeholder={
+                                m.message_type === "comment"
+                                  ? "Responder este comentário..."
+                                  : "Responder esta mensagem..."
+                              }
+                              maxLength={1000}
+                              disabled={isReplyingThis}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleInlineReply(m);
+                                }
+                              }}
+                              className="h-8 text-xs bg-background border-border"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => handleInlineReply(m)}
+                              disabled={!draft.trim() || isReplyingThis}
+                              style={{ backgroundColor: IG_PURPLE, color: "white" }}
+                              className="h-8 px-3 text-xs hover:opacity-90"
+                            >
+                              {isReplyingThis ? (
+                                <Loader2 className="animate-spin" size={12} />
+                              ) : (
+                                "Responder"
+                              )}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
