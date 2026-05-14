@@ -347,13 +347,21 @@ Deno.serve(async (req: Request) => {
 
         const { data: accountConfig } = await supabase
           .from("instagram_accounts")
-          .select("id, name, page_access_token, is_active")
+          .select("id, name, page_access_token, is_active, tenant_id")
           .eq("instagram_account_id", accountId)
           .maybeSingle();
 
-        // Per-account kill-switch
-        if (accountConfig && accountConfig.is_active === false) {
+        if (!accountConfig) {
+          console.log(`[instagram-webhook] Account ${accountId} not registered. Skipping entry.`);
+          continue;
+        }
+        if (accountConfig.is_active === false) {
           console.log(`[instagram-webhook] Account ${accountId} is inactive. Skipping entry.`);
+          continue;
+        }
+        const tenantId = (accountConfig as any).tenant_id as string | null;
+        if (!tenantId) {
+          console.warn(`[instagram-webhook] Account ${accountId} sem tenant_id. Skipping entry.`);
           continue;
         }
 
