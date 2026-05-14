@@ -225,6 +225,7 @@ async function persistMessage(opts: {
   accountConfigId: string | null;
   accountName: string | null;
   accessToken: string | null;
+  tenantId: string;
   senderId: string;
   senderUsername: string | null;
   senderName: string | null;
@@ -234,29 +235,26 @@ async function persistMessage(opts: {
   commentId: string | null;
   igMessageId: string | null;
 }) {
-  // Enrich profile via Graph API if we have a token
   let profile = { name: opts.senderName, username: opts.senderUsername, profile_pic: null as string | null };
   if (opts.accessToken && opts.senderId) {
     profile = await fetchIgProfile(opts.senderId, opts.accessToken);
   }
 
-  // Find or create lead — ONLY for DMs. Comments stay in instagram_messages only.
   let leadId: string | null = null;
   if (opts.messageType === "dm") {
-    // Pre-check block status to fully drop messages from blocked leads
     const { data: blockedCheck } = await supabase
       .from("crm_leads")
       .select("id, is_blocked")
+      .eq("tenant_id", opts.tenantId)
       .eq("instagram_user_id", opts.senderId)
       .maybeSingle();
     if (blockedCheck && (blockedCheck as any).is_blocked) {
       console.log(`[instagram-webhook] DM de lead bloqueado ${blockedCheck.id} — descartado.`);
       return;
     }
-    leadId = await findOrCreateLead(opts.senderId, profile, opts.accountName);
+    leadId = await findOrCreateLead(opts.senderId, profile, opts.accountName, opts.tenantId);
   }
 
-  // Insert into instagram_messages (legacy table — used for both DMs & comments)
   await supabase.from("instagram_messages").insert({
     instagram_account_id: opts.accountId,
     instagram_account_config_id: opts.accountConfigId,
@@ -271,12 +269,13 @@ async function persistMessage(opts: {
     is_outbound: false,
     is_read: false,
     lead_id: leadId,
+    tenant_id: opts.tenantId,
   });
 
-  // Mirror into unified messages table for chat UI
   if (leadId) {
     await supabase.from("messages").insert({
       lead_id: leadId,
+      tenant_id: opts.tenantId,
       direction: "inbound",
       type: "text",
       content: opts.text,
@@ -286,7 +285,6 @@ async function persistMessage(opts: {
       status: "received",
     });
 
-    // Update lead last_message
     await supabase
       .from("crm_leads")
       .update({
