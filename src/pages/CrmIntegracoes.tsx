@@ -501,8 +501,8 @@ export default function CrmIntegracoes() {
           })}
         </div>
 
-        {/* Credenciais Meta App por tenant */}
-        <MetaAppCredentialsSection />
+        {/* Credenciais Meta App por tenant — oculto para Rizodent (continua usando secrets globais) */}
+        {tenant?.slug !== "rizodent" && <MetaAppCredentialsSection />}
 
         {/* Webhook Genérico */}
         <WebhookSection />
