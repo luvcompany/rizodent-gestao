@@ -337,7 +337,7 @@ Deno.serve(async (req) => {
           if (incomingPhoneNumberId) {
             const { data: allIntegrations } = await supabase
               .from("integrations")
-              .select("id, key, config, status")
+              .select("id, key, config, status, tenant_id")
               .like("key", "whatsapp_%");
 
             if (allIntegrations) {
@@ -654,10 +654,17 @@ Deno.serve(async (req) => {
               mediaUrl = await downloadAndStoreMedia(mediaId, msgType, whatsappToken, supabase);
             }
 
-            // Find or create lead by phone
+            // Find or create lead by phone (scoped by tenant)
+            const tenantId: string | null = matchedIntegration?.tenant_id ?? null;
+            if (!tenantId) {
+              console.warn(`[WEBHOOK] Integração ${matchedIntegration?.key} sem tenant_id — descartando mensagem.`);
+              continue;
+            }
+
             let { data: lead } = await supabase
               .from("crm_leads")
               .select("id, name, source, is_blocked")
+              .eq("tenant_id", tenantId)
               .eq("phone", from)
               .maybeSingle();
 
@@ -675,6 +682,7 @@ Deno.serve(async (req) => {
                 const { data: funnelChannel } = await supabase
                   .from("funnel_channels")
                   .select("pipeline_id")
+                  .eq("tenant_id", tenantId)
                   .eq("channel_type", "whatsapp")
                   .eq("channel_config->>integration_key", matchedIntegration.key)
                   .maybeSingle();
@@ -688,8 +696,9 @@ Deno.serve(async (req) => {
                 const { data: fallbackPipeline } = await supabase
                   .from("crm_pipelines")
                   .select("id")
+                  .eq("tenant_id", tenantId)
                   .limit(1)
-                  .single();
+                  .maybeSingle();
                 pipelineId = fallbackPipeline?.id || null;
               }
 
@@ -708,6 +717,7 @@ Deno.serve(async (req) => {
                     phone: from,
                     pipeline_id: pipelineId,
                     stage_id: stage.id,
+                    tenant_id: tenantId,
                     source: referral ? "facebook_ad" : "whatsapp",
                   };
                   // Save ad referral data if present
@@ -805,6 +815,7 @@ Deno.serve(async (req) => {
 
               const insertPayload: any = {
                 lead_id: lead.id,
+                tenant_id: tenantId,
                 direction: "inbound",
                 type: msgType,
                 content: content || null,
