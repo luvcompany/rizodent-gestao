@@ -337,7 +337,7 @@ Deno.serve(async (req) => {
           if (incomingPhoneNumberId) {
             const { data: allIntegrations } = await supabase
               .from("integrations")
-              .select("id, key, config, status")
+              .select("id, key, config, status, tenant_id")
               .like("key", "whatsapp_%");
 
             if (allIntegrations) {
