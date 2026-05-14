@@ -270,11 +270,12 @@ Deno.serve(async (req) => {
       const layers = (config.layers || []) as Array<{ delay_minutes: number; action_type: string; action_config: Record<string, any> }>;
       if (!layers.length) continue;
 
-      const { data: leads } = await supabase
+      const leads = await fetchAllRows(() => supabase
         .from("crm_leads")
         .select("id, phone, last_inbound_at, last_outbound_at")
         .eq("stage_id", auto.stage_id)
-        .not("automation_paused", "is", true);
+        .not("automation_paused", "is", true)
+        .order("id"));
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -337,12 +338,13 @@ Deno.serve(async (req) => {
       const staleDays = config.stale_days || 7;
       const cutoff = new Date(Date.now() - staleDays * 86400000).toISOString();
 
-      const { data: leads } = await supabase
+      const leads = await fetchAllRows(() => supabase
         .from("crm_leads")
         .select("id, phone, updated_at, last_message_at")
         .eq("stage_id", auto.stage_id)
         .not("automation_paused", "is", true)
-        .lt("updated_at", cutoff);
+        .lt("updated_at", cutoff)
+        .order("id"));
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -483,10 +485,11 @@ Deno.serve(async (req) => {
       // Pending appointments (e.g. pre-scheduled by bot, awaiting human confirmation)
       // must NOT trigger this automation until a CRC confirms them.
       if (scheduledType === "appointment" || scheduledType === "both") {
-        const { data: appointments } = await supabase
+        const appointments = await fetchAllRows(() => supabase
           .from("crm_appointments")
           .select("id, lead_id, scheduled_date, scheduled_time")
-          .eq("status", "confirmed");
+          .eq("status", "confirmed")
+          .order("id"));
 
         console.log(`[BEFORE_SCHEDULED] Checking ${appointments?.length || 0} appointments, beforeMs=${beforeMs}, now=${new Date(now).toISOString()}`);
 
@@ -536,10 +539,11 @@ Deno.serve(async (req) => {
 
       // Check tasks
       if (scheduledType === "task" || scheduledType === "both") {
-        const { data: tasks } = await supabase
+        const tasks = await fetchAllRows(() => supabase
           .from("crm_tasks")
           .select("id, lead_id, due_date, title")
-          .eq("status", "pending");
+          .eq("status", "pending")
+          .order("id"));
 
         console.log(`[BEFORE_SCHEDULED] Checking ${tasks?.length || 0} pending tasks, beforeMs=${beforeMs}`);
 
