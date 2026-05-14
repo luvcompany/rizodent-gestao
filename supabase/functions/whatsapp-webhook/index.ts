@@ -654,10 +654,17 @@ Deno.serve(async (req) => {
               mediaUrl = await downloadAndStoreMedia(mediaId, msgType, whatsappToken, supabase);
             }
 
-            // Find or create lead by phone
+            // Find or create lead by phone (scoped by tenant)
+            const tenantId: string | null = matchedIntegration?.tenant_id ?? null;
+            if (!tenantId) {
+              console.warn(`[WEBHOOK] Integração ${matchedIntegration?.key} sem tenant_id — descartando mensagem.`);
+              continue;
+            }
+
             let { data: lead } = await supabase
               .from("crm_leads")
               .select("id, name, source, is_blocked")
+              .eq("tenant_id", tenantId)
               .eq("phone", from)
               .maybeSingle();
 
@@ -675,6 +682,7 @@ Deno.serve(async (req) => {
                 const { data: funnelChannel } = await supabase
                   .from("funnel_channels")
                   .select("pipeline_id")
+                  .eq("tenant_id", tenantId)
                   .eq("channel_type", "whatsapp")
                   .eq("channel_config->>integration_key", matchedIntegration.key)
                   .maybeSingle();
@@ -688,8 +696,9 @@ Deno.serve(async (req) => {
                 const { data: fallbackPipeline } = await supabase
                   .from("crm_pipelines")
                   .select("id")
+                  .eq("tenant_id", tenantId)
                   .limit(1)
-                  .single();
+                  .maybeSingle();
                 pipelineId = fallbackPipeline?.id || null;
               }
 
