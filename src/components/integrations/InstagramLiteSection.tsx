@@ -23,8 +23,47 @@ import {
   CheckCircle,
   XCircle,
   Settings,
+  Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+
+/**
+ * Valida um token IG/FB chamando a Graph API. Retorna { ok, username?, error? }.
+ * Aceita tanto tokens de Página/Usuário Facebook (EAA…) quanto tokens de
+ * Instagram Login (IGAA…).
+ */
+async function validateIgToken(igUserId: string, accessToken: string): Promise<{
+  ok: boolean;
+  username?: string | null;
+  error?: string;
+}> {
+  const isIgLite = accessToken.startsWith("IGAA");
+  const base = isIgLite
+    ? "https://graph.instagram.com/v21.0"
+    : "https://graph.facebook.com/v25.0";
+  try {
+    const url = `${base}/${igUserId}?fields=username,name&access_token=${encodeURIComponent(
+      accessToken
+    )}`;
+    const r = await fetch(url);
+    const j = await r.json().catch(() => ({} as any));
+    if (!r.ok || j?.error) {
+      const code = j?.error?.code;
+      const msg = j?.error?.message || `HTTP ${r.status}`;
+      if (code === 190) {
+        return { ok: false, error: "Token inválido ou expirado. Gere um novo no Meta Developers." };
+      }
+      if (code === 100) {
+        return { ok: false, error: "Instagram User ID não confere com o token." };
+      }
+      return { ok: false, error: `Meta: ${msg}` };
+    }
+    return { ok: true, username: j?.username ?? null };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Falha de rede ao validar token" };
+  }
+}
 
 const IG_PURPLE = "#833AB4";
 
@@ -107,6 +146,8 @@ export default function InstagramLiteSection() {
     setShowToken(false);
   };
 
+  const [testingId, setTestingId] = useState<string | null>(null);
+
   const handleAdd = async () => {
     const cleanUser = cleanUsername(username);
     const cleanId = igUserId.trim();
@@ -122,9 +163,24 @@ export default function InstagramLiteSection() {
     }
 
     setSaving(true);
+
+    // 1. Validar token na Meta antes de salvar — evita gravar credencial inválida
+    const v = await validateIgToken(cleanId, cleanToken);
+    if (!v.ok) {
+      toast.error(v.error || "Token rejeitado pela Meta");
+      setSaving(false);
+      return;
+    }
+
+    // Se a Meta retornou um username diferente, usar o oficial
+    const finalUser = v.username ? v.username.toLowerCase() : cleanUser;
+    if (v.username && v.username.toLowerCase() !== cleanUser) {
+      toast.message(`Username ajustado para @${v.username} (conforme retornado pela Meta)`);
+    }
+
     const { error } = await (supabase as any).from("ig_accounts").insert({
       ig_user_id: cleanId,
-      username: cleanUser,
+      username: finalUser,
       access_token: cleanToken,
       token_expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       active: true,
@@ -137,11 +193,22 @@ export default function InstagramLiteSection() {
         toast.error("Erro ao salvar conta: " + error.message);
       }
     } else {
-      toast.success("Conta Instagram conectada");
+      toast.success("Conta Instagram conectada e token validado");
       resetForm();
       load();
     }
     setSaving(false);
+  };
+
+  const handleTestToken = async (acc: IgAccount) => {
+    setTestingId(acc.id);
+    const v = await validateIgToken(acc.ig_user_id, acc.access_token);
+    setTestingId(null);
+    if (v.ok) {
+      toast.success(`Token de @${acc.username || acc.ig_user_id} está válido`);
+    } else {
+      toast.error(v.error || "Token rejeitado pela Meta");
+    }
   };
 
   const handleDelete = async (acc: IgAccount) => {
@@ -300,6 +367,20 @@ export default function InstagramLiteSection() {
                             onCheckedChange={() => handleToggleActive(acc)}
                             disabled={expired}
                           />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            title="Testar token na Meta"
+                            onClick={() => handleTestToken(acc)}
+                            disabled={testingId === acc.id}
+                          >
+                            {testingId === acc.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <ShieldCheck size={14} />
+                            )}
+                          </Button>
                           <Button
                             size="sm"
                             variant="ghost"
