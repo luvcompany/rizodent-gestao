@@ -15,6 +15,7 @@ import { cleanTemplateName } from "@/lib/templateUtils";
 import ChatInput from "@/components/chat/ChatInput";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
+import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
