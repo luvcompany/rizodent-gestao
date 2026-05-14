@@ -3,7 +3,7 @@
 // are env secrets, so we expose them only to authenticated users of that
 // tenant.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,13 +18,20 @@ Deno.serve(async (req) => {
   const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
   const authHeader = req.headers.get("Authorization") || "";
+  if (!authHeader.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const token = authHeader.replace("Bearer ", "");
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   });
-  const { data: userRes } = await userClient.auth.getUser();
-  const user = userRes?.user;
-  if (!user) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
+  const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
+  const userId = claimsData?.claims?.sub as string | undefined;
+  if (claimsErr || !userId) {
+    return new Response(JSON.stringify({ error: "unauthorized", detail: claimsErr?.message }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -34,7 +41,7 @@ Deno.serve(async (req) => {
   const { data: profile } = await admin
     .from("profiles")
     .select("tenant_id")
-    .eq("id", user.id)
+    .eq("id", userId)
     .maybeSingle();
   const tenantId = (profile as any)?.tenant_id;
   if (!tenantId) {
