@@ -24,6 +24,7 @@ import {
   XCircle,
   Settings,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 const IG_PURPLE = "#833AB4";
 
@@ -93,6 +94,7 @@ export default function InstagramLiteSection() {
   );
 
   const activeCount = accounts.filter((a) => {
+    if (!a.active) return false;
     if (!a.token_expires_at) return true;
     return new Date(a.token_expires_at).getTime() >= Date.now();
   }).length;
@@ -150,6 +152,20 @@ export default function InstagramLiteSection() {
       return;
     }
     toast.success("Conta desconectada");
+    load();
+  };
+
+  const handleToggleActive = async (acc: IgAccount) => {
+    const newActive = !acc.active;
+    const { error } = await (supabase as any)
+      .from("ig_accounts")
+      .update({ active: newActive })
+      .eq("id", acc.id);
+    if (error) {
+      toast.error("Erro ao atualizar status");
+      return;
+    }
+    toast.success(newActive ? "Conta ativada" : "Conta desativada");
     load();
   };
 
