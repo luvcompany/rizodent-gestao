@@ -2612,6 +2612,7 @@ export type Database = {
           favicon_url: string | null
           id: string
           logo_url: string | null
+          meta_app_version: string
           name: string
           primary_color: string
           secondary_color: string
@@ -2626,6 +2627,7 @@ export type Database = {
           favicon_url?: string | null
           id?: string
           logo_url?: string | null
+          meta_app_version?: string
           name: string
           primary_color?: string
           secondary_color?: string
@@ -2640,6 +2642,7 @@ export type Database = {
           favicon_url?: string | null
           id?: string
           logo_url?: string | null
+          meta_app_version?: string
           name?: string
           primary_color?: string
           secondary_color?: string
@@ -2797,6 +2800,10 @@ export type Database = {
       }
       get_tenant_by_whatsapp_phone_number_id: {
         Args: { _phone_number_id: string }
+        Returns: string
+      }
+      get_tenant_meta_app_version: {
+        Args: { _tenant_id: string }
         Returns: string
       }
       hard_delete_tenant: { Args: { _tenant_id: string }; Returns: Json }
