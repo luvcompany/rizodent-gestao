@@ -225,9 +225,10 @@ Deno.serve(async (req) => {
 
     const { data: leadData } = await supabase
       .from("crm_leads")
-      .select("pipeline_id")
+      .select("pipeline_id, tenant_id")
       .eq("id", lead_id)
       .maybeSingle();
+    const leadTenantId: string | null = (leadData as any)?.tenant_id ?? null;
 
     if (leadData?.pipeline_id) {
       const { data: funnelChannel } = await supabase
