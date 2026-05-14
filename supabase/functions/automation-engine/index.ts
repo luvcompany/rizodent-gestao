@@ -391,11 +391,12 @@ Deno.serve(async (req) => {
       const hoursAfter = config.hours_after || 2;
       const cutoffTime = new Date(Date.now() - hoursAfter * 3600000).toISOString();
 
-      const { data: appointments } = await supabase
+      const appointments = await fetchAllRows(() => supabase
         .from("crm_appointments")
         .select("id, lead_id, scheduled_date, scheduled_time, status")
         .eq("status", "confirmed")
-        .lt("scheduled_date", new Date().toISOString().split("T")[0]);
+        .lt("scheduled_date", new Date().toISOString().split("T")[0])
+        .order("id"));
 
       for (const appt of appointments || []) {
         const { data: lead } = await supabase
@@ -611,11 +612,12 @@ Deno.serve(async (req) => {
       const thresholdMs = amount * (noResponseUnitsMs[unit] || 3600000);
       const nowMs = Date.now();
 
-      const { data: leads } = await supabase
+      const leads = await fetchAllRows(() => supabase
         .from("crm_leads")
         .select("id, phone, last_inbound_at, created_at, updated_at")
         .eq("stage_id", auto.stage_id)
-        .not("automation_paused", "is", true);
+        .not("automation_paused", "is", true)
+        .order("id"));
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -703,7 +705,7 @@ Deno.serve(async (req) => {
       .eq("status", "pending")
       .lte("scheduled_at", new Date().toISOString())
       .order("scheduled_at")
-      .limit(100);
+      .limit(pendingBatchLimit);
 
     for (const item of pendingQueue || []) {
       const autoConfig = ((item as any).crm_automations?.action_config || {}) as Record<string, any>;
