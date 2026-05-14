@@ -286,11 +286,20 @@ export default function InstagramLiteSection() {
                             <Badge className="bg-red-900/30 text-red-400 border-0">
                               <XCircle size={12} className="mr-1" /> Token expirado
                             </Badge>
-                          ) : (
+                          ) : acc.active ? (
                             <Badge className="bg-green-900/30 text-green-400 border-0">
                               <CheckCircle size={12} className="mr-1" /> Ativo
                             </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-muted-foreground">
+                              <XCircle size={12} className="mr-1" /> Inativo
+                            </Badge>
                           )}
+                          <Switch
+                            checked={acc.active}
+                            onCheckedChange={() => handleToggleActive(acc)}
+                            disabled={expired}
+                          />
                           <Button
                             size="sm"
                             variant="ghost"
