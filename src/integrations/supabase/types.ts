@@ -2452,6 +2452,71 @@ export type Database = {
           },
         ]
       }
+      tenant_meta_credentials: {
+        Row: {
+          created_at: string
+          instagram_app_secret: string | null
+          instagram_enabled: boolean
+          instagram_redirect_uri: string | null
+          instagram_verify_token: string
+          meta_app_id: string | null
+          meta_app_secret: string | null
+          tenant_id: string
+          updated_at: string
+          whatsapp_app_id: string | null
+          whatsapp_app_secret: string | null
+          whatsapp_enabled: boolean
+          whatsapp_phone_number_id: string | null
+          whatsapp_token: string | null
+          whatsapp_verify_token: string
+          whatsapp_waba_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          instagram_app_secret?: string | null
+          instagram_enabled?: boolean
+          instagram_redirect_uri?: string | null
+          instagram_verify_token?: string
+          meta_app_id?: string | null
+          meta_app_secret?: string | null
+          tenant_id: string
+          updated_at?: string
+          whatsapp_app_id?: string | null
+          whatsapp_app_secret?: string | null
+          whatsapp_enabled?: boolean
+          whatsapp_phone_number_id?: string | null
+          whatsapp_token?: string | null
+          whatsapp_verify_token?: string
+          whatsapp_waba_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          instagram_app_secret?: string | null
+          instagram_enabled?: boolean
+          instagram_redirect_uri?: string | null
+          instagram_verify_token?: string
+          meta_app_id?: string | null
+          meta_app_secret?: string | null
+          tenant_id?: string
+          updated_at?: string
+          whatsapp_app_id?: string | null
+          whatsapp_app_secret?: string | null
+          whatsapp_enabled?: boolean
+          whatsapp_phone_number_id?: string | null
+          whatsapp_token?: string | null
+          whatsapp_verify_token?: string
+          whatsapp_waba_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_meta_credentials_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_subscriptions: {
         Row: {
           amount: number
@@ -2729,6 +2794,10 @@ export type Database = {
           primary_color: string
           slug: string
         }[]
+      }
+      get_tenant_by_whatsapp_phone_number_id: {
+        Args: { _phone_number_id: string }
+        Returns: string
       }
       hard_delete_tenant: { Args: { _tenant_id: string }; Returns: Json }
       has_role: {
