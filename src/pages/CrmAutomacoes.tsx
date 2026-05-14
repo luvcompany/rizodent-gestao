@@ -207,12 +207,19 @@ export default function CrmAutomacoes() {
       action_config: autoForm.action_config as unknown as import("@/integrations/supabase/types").Json,
       is_active: true,
     };
+    let savedAutomation: Automation | null = null;
     if (autoForm.editId) {
       const { data } = await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId).select().single();
-      if (data) setAutomations(prev => prev.map(a => a.id === autoForm.editId ? data as Automation : a));
+      if (data) {
+        savedAutomation = data as Automation;
+        setAutomations(prev => prev.map(a => a.id === autoForm.editId ? data as Automation : a));
+      }
     } else {
       const { data } = await supabase.from("crm_automations").insert(payload).select().single();
-      if (data) setAutomations(prev => [...prev, data as Automation]);
+      if (data) {
+        savedAutomation = data as Automation;
+        setAutomations(prev => [...prev, data as Automation]);
+      }
     }
     toast.success("Automação salva");
     setAutoModalOpen(false);
@@ -237,35 +244,35 @@ export default function CrmAutomacoes() {
       return out;
     };
 
+    const enqueueForExistingLeads = async (actionType: string, actionConfig: Record<string, unknown>) => {
+      if (!savedAutomation?.id) return;
+      const leadsInStage = await fetchAllLeadsInStage();
+
+      if (leadsInStage?.length) {
+        toast.info(`Enfileirando automação para ${leadsInStage.length} leads...`);
+        const BATCH = 500;
+        for (let i = 0; i < leadsInStage.length; i += BATCH) {
+          const rows = leadsInStage.slice(i, i + BATCH).map((lead) => ({
+            automation_id: savedAutomation.id,
+            lead_id: lead.id,
+            action_type: actionType,
+            action_config: actionConfig,
+            scheduled_at: new Date().toISOString(),
+            status: "pending",
+            layer_index: 0,
+          }));
+          const { error } = await supabase.from("crm_automation_queue").insert(rows);
+          if (error) throw error;
+        }
+        supabase.functions.invoke("automation-engine", { body: { pending_batch_limit: 500 } }).catch(e => console.error("[Automacoes] Queue kick error:", e));
+        toast.success(`Automação enfileirada para ${leadsInStage.length} leads`);
+      }
+    };
+
     if (config.send_to_all_existing && autoForm.action_type === "send_bot" && config.bot_id) {
-      const leadsInStage = await fetchAllLeadsInStage();
-
-      if (leadsInStage?.length) {
-        toast.info(`Disparando bot para ${leadsInStage.length} leads...`);
-        for (const lead of leadsInStage) {
-          supabase.functions.invoke("bot-engine", {
-            body: { leadId: lead.id, botId: config.bot_id, trigger: "automation_bulk" },
-          }).catch(e => console.error("[Automacoes] Bulk bot error:", e));
-        }
-        toast.success(`Bot disparado para ${leadsInStage.length} leads`);
-      }
+      await enqueueForExistingLeads("send_bot", config);
     } else if (config.send_to_all_existing && autoForm.action_type === "send_template" && config.template_id) {
-      const leadsInStage = await fetchAllLeadsInStage();
-
-      if (leadsInStage?.length) {
-        const { data: tpl } = await supabase.from("crm_whatsapp_templates").select("name, language").eq("id", config.template_id as string).single();
-        if (tpl) {
-          toast.info(`Enviando template para ${leadsInStage.length} leads...`);
-          for (const lead of leadsInStage) {
-            if (lead.phone) {
-              supabase.functions.invoke("send-whatsapp-message", {
-                body: { lead_id: lead.id, to: lead.phone, type: "template", template_name: tpl.name, template_language: tpl.language },
-              }).catch(e => console.error("[Automacoes] Bulk template error:", e));
-            }
-          }
-          toast.success(`Template enviado para ${leadsInStage.length} leads`);
-        }
-      }
+      await enqueueForExistingLeads("send_template", config);
     }
   };
 
