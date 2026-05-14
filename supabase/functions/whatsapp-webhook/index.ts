@@ -815,6 +815,7 @@ Deno.serve(async (req) => {
 
               const insertPayload: any = {
                 lead_id: lead.id,
+                tenant_id: tenantId,
                 direction: "inbound",
                 type: msgType,
                 content: content || null,
