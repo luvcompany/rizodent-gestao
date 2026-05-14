@@ -441,17 +441,19 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                 onChange={(e) => setNewPersonName(e.target.value)}
                 placeholder={`Nome (padrão: ${lead.name})`}
               />
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Cidade</label>
-                <select
-                  value={cidade}
-                  onChange={(e) => setCidade(e.target.value)}
-                  className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
-                >
-                  <option value={EMPTY_CITY_VALUE}>Sem localização</option>
-                  {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
-                </select>
-              </div>
+              {cidade === EMPTY_CITY_VALUE && (
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Cidade</label>
+                  <select
+                    value={cidade}
+                    onChange={(e) => setCidade(e.target.value)}
+                    className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
+                  >
+                    <option value={EMPTY_CITY_VALUE}>Sem localização</option>
+                    {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Origem do Lead</label>
                 <select
