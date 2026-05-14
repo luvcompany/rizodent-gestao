@@ -717,6 +717,7 @@ Deno.serve(async (req) => {
                     phone: from,
                     pipeline_id: pipelineId,
                     stage_id: stage.id,
+                    tenant_id: tenantId,
                     source: referral ? "facebook_ad" : "whatsapp",
                   };
                   // Save ad referral data if present
