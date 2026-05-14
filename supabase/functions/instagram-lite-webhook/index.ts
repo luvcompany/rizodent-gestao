@@ -109,45 +109,52 @@ async function findOrCreateLead(
   igUserId: string,
   profile: { name: string | null; username: string | null; profile_pic: string | null },
   accountUsername: string | null,
-  igAccountId: string
+  igAccountId: string,
+  tenantId: string
 ): Promise<string | null> {
   if (!igUserId) return null;
 
-  // 1) Tenta achar por identidade (ig_account_id, scoped sender id) — agrupa multi-conta
-  const { data: identity } = await supabase
+  const pipelineId = await resolveInstagramPipeline(tenantId);
+  if (!pipelineId) {
+    console.error("[ig-lite] No pipeline for tenant", tenantId);
+    return null;
+  }
+
+  // 1) Tenta achar por identidade dentro do tenant
+  const { data: identityRows } = await supabase
     .from("crm_lead_instagram_identities")
-    .select("lead_id")
+    .select("lead_id, crm_leads!inner(id, tenant_id)")
     .eq("ig_account_id", igAccountId)
-    .eq("ig_scoped_user_id", igUserId)
-    .maybeSingle();
+    .eq("ig_scoped_user_id", igUserId);
 
-  let existingId: string | null = identity?.lead_id ?? null;
-
-  // 2) Se não achou por identidade, tenta achar por @username (mesmo usuário em outra conta)
-  if (!existingId && profile.username) {
-    const { data: byUsernameIdentity } = await supabase
-      .from("crm_lead_instagram_identities")
-      .select("lead_id")
-      .ilike("username", profile.username)
-      .limit(1)
-      .maybeSingle();
-    existingId = byUsernameIdentity?.lead_id ?? null;
-    if (!existingId) {
-      const { data: byUsernameLead } = await supabase
-        .from("crm_leads")
-        .select("id")
-        .ilike("instagram_username", profile.username)
-        .limit(1)
-        .maybeSingle();
-      existingId = byUsernameLead?.id ?? null;
+  let existingId: string | null = null;
+  if (Array.isArray(identityRows)) {
+    for (const row of identityRows as any[]) {
+      if (row?.crm_leads?.tenant_id === tenantId) {
+        existingId = row.lead_id;
+        break;
+      }
     }
   }
 
-  // 3) Fallback legado por instagram_user_id direto
+  // 2) Por @username dentro do tenant
+  if (!existingId && profile.username) {
+    const { data: byUsernameLead } = await supabase
+      .from("crm_leads")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .ilike("instagram_username", profile.username)
+      .limit(1)
+      .maybeSingle();
+    existingId = byUsernameLead?.id ?? null;
+  }
+
+  // 3) Fallback legado por instagram_user_id dentro do tenant
   if (!existingId) {
     const { data: legacy } = await supabase
       .from("crm_leads")
       .select("id")
+      .eq("tenant_id", tenantId)
       .eq("instagram_user_id", igUserId)
       .maybeSingle();
     existingId = legacy?.id ?? null;
@@ -156,11 +163,14 @@ async function findOrCreateLead(
   if (existingId) {
     const { data: existing } = await supabase
       .from("crm_leads")
-      .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked")
+      .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked, tenant_id")
       .eq("id", existingId)
       .maybeSingle();
     if (existing && (existing as any).is_blocked) return null;
-    if (existing) {
+    if (existing && (existing as any).tenant_id !== tenantId) {
+      // segurança extra: nunca usar lead de outro tenant
+      existingId = null;
+    } else if (existing) {
       const updates: Record<string, unknown> = {};
       if (profile.username && existing.instagram_username !== profile.username) {
         updates.instagram_username = profile.username;
@@ -175,7 +185,6 @@ async function findOrCreateLead(
       if (Object.keys(updates).length > 0) {
         await supabase.from("crm_leads").update(updates).eq("id", existing.id);
       }
-      // Garante que essa identidade (account, scoped id) está vinculada ao lead
       await supabase
         .from("crm_lead_instagram_identities")
         .upsert(
@@ -194,13 +203,13 @@ async function findOrCreateLead(
   const { data: firstStage } = await supabase
     .from("crm_stages")
     .select("id")
-    .eq("pipeline_id", INSTAGRAM_PIPELINE_ID)
+    .eq("pipeline_id", pipelineId)
     .order("position", { ascending: true })
     .limit(1)
     .maybeSingle();
 
   if (!firstStage) {
-    console.error("[ig-lite] No stages in Instagram pipeline");
+    console.error("[ig-lite] No stages in Instagram pipeline", { tenantId, pipelineId });
     return null;
   }
 
@@ -211,8 +220,9 @@ async function findOrCreateLead(
     .from("crm_leads")
     .insert({
       name: displayName,
-      pipeline_id: INSTAGRAM_PIPELINE_ID,
+      pipeline_id: pipelineId,
       stage_id: firstStage.id,
+      tenant_id: tenantId,
       source: sourceLabel,
       instagram_user_id: igUserId,
       instagram_username: profile.username,
