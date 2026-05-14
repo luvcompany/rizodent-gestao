@@ -140,9 +140,10 @@ interface ConversationsViewProps {
   pipelineFilter?: string;          // include only this pipeline
   excludePipelines?: string[];      // exclude these pipelines
   channel?: "whatsapp" | "instagram";
+  channelFilter?: "whatsapp" | "instagram"; // filter leads by channel (instagram = has instagram_user_id)
 }
 
-function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp" }: ConversationsViewProps = {}) {
+function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp", channelFilter }: ConversationsViewProps = {}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [leads, setLeads] = useState<LeadConversation[]>(() => leadsListCache.leads || []);
@@ -545,6 +546,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       // Tab-level pipeline scoping (WhatsApp vs Instagram)
       if (pipelineFilter && l.pipeline_id !== pipelineFilter) return false;
       if (excludePipelines && excludePipelines.includes(l.pipeline_id)) return false;
+      // Channel-based filtering (tenant-agnostic): IG leads have instagram_user_id
+      if (channelFilter === "instagram" && !l.instagram_user_id) return false;
+      if (channelFilter === "whatsapp" && l.instagram_user_id) return false;
       // Filter by assigned user - skip when drill-down filter is active
       const hasUrlFilters = urlGhost || urlAppointmentStatus || urlInactiveDays || searchParams.get("assigned_to") || searchParams.get("stage_id") || searchParams.get("pipeline");
       if (!hasUrlFilters && user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
@@ -639,7 +643,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       }
       return true;
     });
-  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, leadIgAccountMap]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap]);
 
   // Sorting
   const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
@@ -1258,10 +1262,10 @@ export default function CrmConversas() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="whatsapp" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <WhatsAppConversations excludePipelines={["c2d3e4f5-0001-4000-8000-000000000002"]} channel="whatsapp" />
+          <WhatsAppConversations channelFilter="whatsapp" channel="whatsapp" />
         </TabsContent>
         <TabsContent value="instagram" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <WhatsAppConversations pipelineFilter="c2d3e4f5-0001-4000-8000-000000000002" channel="instagram" />
+          <WhatsAppConversations channelFilter="instagram" channel="instagram" />
         </TabsContent>
       </Tabs>
     </div>
