@@ -19,6 +19,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const PAGE_SIZE = 500;
+
+async function fetchAllRows<T = any>(buildQuery: () => any, pageSize = PAGE_SIZE, maxRows = 10000): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; from < maxRows; from += pageSize) {
+    const to = Math.min(from + pageSize - 1, maxRows - 1);
+    const { data, error } = await buildQuery().range(from, to);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < pageSize) break;
+  }
+  return rows;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -39,6 +54,14 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  let requestBody: Record<string, any> = {};
+  try {
+    requestBody = await req.json();
+  } catch (_) {
+    requestBody = {};
+  }
+  const pendingBatchLimit = Math.min(Math.max(Number(requestBody.pending_batch_limit) || 250, 1), 500);
 
   const results: Record<string, number> = {
     progressive_reengagement: 0,
