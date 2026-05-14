@@ -297,6 +297,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // so older conversations (sorted lower by last_message_at) are still findable.
   useEffect(() => {
     const term = search.trim();
+    if (!tenant.id) return;
     if (term.length < 2) return;
     const handle = setTimeout(async () => {
       const digits = term.replace(/\D/g, "");
@@ -318,6 +319,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       const { data, error } = await supabase
         .from("crm_leads")
         .select(LEAD_SELECT_COLS)
+        .eq("tenant_id", tenant.id)
         .eq("is_blocked", false)
         .or(orParts.join(","))
         .limit(50);
@@ -331,7 +333,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       });
     }, 350);
     return () => clearTimeout(handle);
-  }, [search]);
+  }, [search, tenant.id]);
 
   // Load special URL filter data (ghost leads, appointment leads)
   useEffect(() => {
@@ -498,10 +500,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [leadIgAccountMap, setLeadIgAccountMap] = useState<Map<string, Set<string>>>(new Map());
   useEffect(() => {
     let cancelled = false;
+    if (!tenant.id) return;
     (async () => {
       const { data: accs } = await supabase
         .from("ig_accounts")
         .select("ig_user_id, username, active")
+        .eq("tenant_id", tenant.id)
         .eq("active", true);
       if (cancelled) return;
       setInstagramAccounts(
@@ -513,6 +517,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       const { data: msgs } = await supabase
         .from("messages")
         .select("lead_id, instagram_account_id")
+        .eq("tenant_id", tenant.id)
         .not("instagram_account_id", "is", null)
         .limit(5000);
       if (cancelled) return;
@@ -525,7 +530,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setLeadIgAccountMap(map);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [tenant.id]);
 
   // Collect ad accounts and ads available among leads
   const { adAccounts, ads } = useMemo(() => {
