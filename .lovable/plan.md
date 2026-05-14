@@ -1,34 +1,51 @@
-## Objetivo
+## Causa raiz
 
-Remover da página de Integrações (`/crm/integracoes`) as informações sensíveis do Meta App (Callback URLs, Verify Tokens, OAuth Redirect URI e o switch "Ativar" que aparecia no card global do WhatsApp/Instagram dentro da seção "Conecte sua conta ao nosso Meta App"). Em vez disso, manter apenas os cards principais (WhatsApp Business e Instagram Lite) que abrem os popups de configuração, e colocar o toggle ativar/desativar dentro de cada conta conectada listada nos popups.
+A LUV Agency está vendo leads da Rizodent (e vice-versa) porque o RLS de várias tabelas tem **duas políticas permissivas** que são combinadas com OR:
 
-## Mudanças
+1. `tenant_isolation` — exige `tenant_id = current_tenant_id()` ✅
+2. `Users can view assigned or own leads` (e similares) — permite admin/gerente ver tudo, **sem checar tenant** ❌
 
-### 1. Esconder a seção de credenciais do Meta App
-Em `src/pages/CrmIntegracoes.tsx`:
-- Remover o `<MetaAppCredentialsSection />` da renderização (e remover o import).
-- Remover também o aviso azul "Conecte sua conta ao nosso Meta App" que está no rodapé da página (vindo dessa seção).
+Como políticas permissivas são unidas por OR no Postgres, um admin da LUV passa pela segunda política e enxerga leads de qualquer tenant. Por isso o lead `Vitor Santos | Tecladista` (Instagram da LUV) aparece também no CRM da Rizodent, e leads da Rizodent aparecem na LUV inclusive na aba WhatsApp.
 
-Resultado: o usuário não vê mais Callback URL, Verify Token, OAuth Redirect URI, nem o switch global por canal. Os secrets continuam configurados no backend; apenas a UI deixa de expô-los. A função `tenant-meta-info` continua existindo (uso interno do nosso técnico), mas não é mais chamada pelo frontend.
+Isso afeta `crm_leads`, mas provavelmente também `messages`, `crm_appointments`, `crm_tasks`, `crm_stages`, `crm_pipelines`, `pacientes`, `bots`, etc. — qualquer tabela com uma política "admin pode tudo" sem cláusula de tenant.
 
-### 2. Toggle ativar/desativar por conta conectada
+## Plano
 
-**WhatsApp** (cards na grade `whatsappEntries` em `CrmIntegracoes.tsx`):
-- Já existe um `Switch` por card que chama `handleToggleIntegration` alternando `integrations.status` entre `connected` e `disabled`. Está correto — manter como está. Apenas garantir que esse é o único ponto de ativar/desativar (já que o switch global está sendo removido).
+### 1. Auditoria das políticas RLS por tenant
+Listar todas as tabelas com `tenant_id` que tenham políticas permissivas concedendo acesso por role (admin/gerente) sem filtrar `tenant_id`. Critério: a política passa quando `has_role(...)` é true, sem `AND tenant_id = current_tenant_id()`.
 
-**Instagram Lite** (cada `IgAccount` listada no popup em `InstagramLiteSection.tsx`):
-- Adicionar um `Switch` ao lado do badge "Ativo/Token expirado" e antes do botão de lixeira.
-- O switch lê e grava `ig_accounts.active`. Quando `active = false`, o badge passa a "Inativo" e a conta não envia/recebe mensagens (a lógica de webhooks/envio Instagram já consulta `active`).
-- Handler novo `handleToggleActive(acc)` que faz `update({ active: !acc.active })` em `ig_accounts` e recarrega a lista.
-- Atualizar o contador "X ativas" do card principal para considerar `active === true` (além de token não expirado).
+### 2. Tornar `tenant_isolation` RESTRICTIVE
+Em vez de reescrever dezenas de políticas, converter a política `tenant_isolation` de PERMISSIVE para RESTRICTIVE em todas as tabelas multi-tenant. Políticas RESTRICTIVE são combinadas com AND, então a tenant_id se torna obrigatória independentemente das outras políticas.
 
-### 3. Limpeza
-- Manter o arquivo `src/components/integrations/MetaAppCredentialsSection.tsx` no projeto (não deletar) caso seja necessário no futuro para uso interno/superadmin, mas ele deixa de ser importado.
+Migração:
+```sql
+DROP POLICY "tenant_isolation" ON public.crm_leads;
+CREATE POLICY "tenant_isolation" ON public.crm_leads
+  AS RESTRICTIVE FOR ALL
+  USING (tenant_id = current_tenant_id() OR has_role(auth.uid(), 'superadmin'))
+  WITH CHECK (tenant_id = current_tenant_id() OR has_role(auth.uid(), 'superadmin'));
+```
+
+Aplicar o mesmo pattern em: `messages`, `instagram_messages`, `crm_appointments`, `crm_tasks`, `crm_stages`, `crm_pipelines`, `crm_conversation_notes`, `crm_followup_configs`, `crm_followup_queue`, `crm_automations`, `crm_automation_queue`, `crm_automation_executions`, `crm_broadcasts`, `crm_broadcast_recipients`, `crm_custom_fields`, `crm_lead_custom_values`, `crm_lead_pacientes`, `crm_lead_stage_history`, `crm_quick_replies`, `crm_whatsapp_templates`, `pacientes`, `clinicas`, `bots`, `bot_versions`, `bot_executions`, `bot_stage_triggers`, `tipos_procedimento`, `ai_assistant_config`, `dashboard_holidays`, `funnel_channels`, `ad_id_mapping`, `integrations`, `instagram_accounts`, `ig_accounts`, `tenant_meta_credentials`, `access_logs`, `user_roles`, `profiles`.
+
+### 3. Limpar lead da Rizodent que foi atribuído incorretamente
+O lead `Jorge` (`f2caaa1d…`, telefone 557193779350) está no tenant Rizodent porque é o único com `whatsapp_config` no `phone_number_id 846998725169815` — isso está correto e não precisa mudar.
+
+Mas se o usuário criou algum lead manualmente na LUV que vazou para a Rizodent, eu posso identificar e corrigir após confirmar.
+
+### 4. Validar
+Após o RLS estar restrictive, abrir o CRM da LUV como admin e confirmar que:
+- Aba WhatsApp só mostra leads da LUV
+- Aba Instagram só mostra leads IG da LUV
+- O lead `Vitor Santos | Tecladista` não aparece mais na Rizodent
 
 ## Detalhes técnicos
 
-- Nenhuma mudança no banco: a coluna `ig_accounts.active` já existe e `integrations.status` já é usada.
-- Nenhuma mudança em edge functions.
-- Trabalho 100% frontend, em 2 arquivos:
-  - `src/pages/CrmIntegracoes.tsx` — remover import + render do `MetaAppCredentialsSection`.
-  - `src/components/integrations/InstagramLiteSection.tsx` — adicionar Switch por conta, handler de toggle, ajustar contagem de "ativas".
+- Não removeremos as políticas `Users can view assigned or own leads` etc. — elas continuam controlando acesso por role dentro do tenant.
+- `superadmin` mantém acesso global (necessário pro AdminPanel).
+- Edge functions usando service role key não são afetadas (bypassa RLS).
+
+## Fora de escopo
+
+- Não alterar lógica de webhook (Instagram e WhatsApp já estão atribuindo corretamente por `phone_number_id` / `ig_user_id`).
+- Não alterar UI da página `Conversas` (o filtro frontend está correto; o problema é puramente RLS no backend).
