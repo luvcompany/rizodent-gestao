@@ -388,7 +388,7 @@ Deno.serve(async (req: Request) => {
 
         const { data: account } = await supabase
           .from("ig_accounts")
-          .select("id, ig_user_id, username, access_token, active, token_expires_at")
+          .select("id, ig_user_id, username, access_token, active, token_expires_at, tenant_id")
           .eq("ig_user_id", accountId)
           .maybeSingle();
 
