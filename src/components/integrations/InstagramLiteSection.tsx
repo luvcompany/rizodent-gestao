@@ -23,8 +23,47 @@ import {
   CheckCircle,
   XCircle,
   Settings,
+  Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+
+/**
+ * Valida um token IG/FB chamando a Graph API. Retorna { ok, username?, error? }.
+ * Aceita tanto tokens de Página/Usuário Facebook (EAA…) quanto tokens de
+ * Instagram Login (IGAA…).
+ */
+async function validateIgToken(igUserId: string, accessToken: string): Promise<{
+  ok: boolean;
+  username?: string | null;
+  error?: string;
+}> {
+  const isIgLite = accessToken.startsWith("IGAA");
+  const base = isIgLite
+    ? "https://graph.instagram.com/v21.0"
+    : "https://graph.facebook.com/v25.0";
+  try {
+    const url = `${base}/${igUserId}?fields=username,name&access_token=${encodeURIComponent(
+      accessToken
+    )}`;
+    const r = await fetch(url);
+    const j = await r.json().catch(() => ({} as any));
+    if (!r.ok || j?.error) {
+      const code = j?.error?.code;
+      const msg = j?.error?.message || `HTTP ${r.status}`;
+      if (code === 190) {
+        return { ok: false, error: "Token inválido ou expirado. Gere um novo no Meta Developers." };
+      }
+      if (code === 100) {
+        return { ok: false, error: "Instagram User ID não confere com o token." };
+      }
+      return { ok: false, error: `Meta: ${msg}` };
+    }
+    return { ok: true, username: j?.username ?? null };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Falha de rede ao validar token" };
+  }
+}
 
 const IG_PURPLE = "#833AB4";
 
