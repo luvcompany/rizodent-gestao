@@ -1815,7 +1815,7 @@ export type Database = {
           created_at?: string
           id?: string
           ig_user_id: string
-          tenant_id?: string
+          tenant_id: string
           token_expires_at?: string | null
           updated_at?: string
           username?: string | null

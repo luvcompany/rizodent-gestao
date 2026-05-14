@@ -1,0 +1,1 @@
+ALTER TABLE public.ig_accounts ALTER COLUMN tenant_id DROP DEFAULT;
