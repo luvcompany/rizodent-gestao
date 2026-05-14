@@ -20,6 +20,7 @@ import {
 import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 import InstagramLiteSection from "@/components/integrations/InstagramLiteSection";
+import MetaAppCredentialsSection from "@/components/integrations/MetaAppCredentialsSection";
 
 
 type WhatsAppConfig = {
@@ -499,6 +500,9 @@ export default function CrmIntegracoes() {
             );
           })}
         </div>
+
+        {/* Credenciais Meta App por tenant */}
+        <MetaAppCredentialsSection />
 
         {/* Webhook Genérico */}
         <WebhookSection />
