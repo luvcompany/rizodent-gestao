@@ -934,10 +934,19 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 )}
                 {!chat.loading && chat.messages.map((msg, idx) => {
                   const msgDate = new Date(msg.created_at);
-                  const prevDate = idx > 0 ? new Date(chat.messages[idx - 1].created_at) : null;
+                  const prevMsg = idx > 0 ? chat.messages[idx - 1] : null;
+                  const prevDate = prevMsg ? new Date(prevMsg.created_at) : null;
                   const showDateSep = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
 
                   const dateSep = showDateSep ? <ChatDateSeparator key={`date-${msg.id}`} date={msgDate} /> : null;
+
+                  const igAccountsMap = Object.fromEntries(instagramAccounts.map((a) => [a.id, a.username]));
+                  const currIgAcc = (msg as any).channel === "instagram" ? (msg as any).instagram_account_id : null;
+                  const prevIgAcc = prevMsg && (prevMsg as any).channel === "instagram" ? (prevMsg as any).instagram_account_id : null;
+                  const showAccSep = !!currIgAcc && currIgAcc !== prevIgAcc && !!igAccountsMap[currIgAcc];
+                  const accSep = showAccSep ? (
+                    <ChatAccountSeparator key={`acc-${msg.id}`} username={igAccountsMap[currIgAcc]} />
+                  ) : null;
 
                   if (chat.isSystemMessage(msg)) {
                     const destName = msg.content?.split("→").pop()?.trim();
@@ -945,6 +954,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     return (
                       <div key={msg.id}>
                         {dateSep}
+                        {accSep}
                         <ChatActivitySeparator
                           content={msg.content || ""}
                           timestamp={msg.created_at}
@@ -957,6 +967,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   return (
                     <div key={msg.id} className="group">
                       {dateSep}
+                      {accSep}
                       <ChatMessageBubble
                         ref={(el) => { chat.messageRefs.current[msg.id] = el; }}
                         msg={msg}
