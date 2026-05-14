@@ -85,6 +85,21 @@ export default function CrmConversa() {
   const [templateMessage, setTemplateMessage] = useState("");
   const [newNote, setNewNote] = useState("");
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => profilesCacheConv.data || []);
+  const [igAccountsMap, setIgAccountsMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    supabase
+      .from("ig_accounts")
+      .select("ig_user_id, username, active")
+      .eq("active", true)
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        (data ?? []).forEach((a: any) => {
+          if (a.ig_user_id && a.username) map[a.ig_user_id] = a.username;
+        });
+        setIgAccountsMap(map);
+      });
+  }, []);
 
   const chat = useChatConversation(id);
   const convNotes = useConversationNotes(id);
