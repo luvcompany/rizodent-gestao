@@ -275,13 +275,21 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         pacienteId: data.id,
         pacienteNome: nomeFinal,
         pacienteTelefone: stripCountryCode(lead.phone || ""),
+        pacienteCidade: normalizedCity,
+        pacienteOrigem: origemFinal,
+        pacienteNomeAnuncio: nomeAnuncioFinal,
       },
     });
   };
 
   const goToAtendimentoForPaciente = (p: LinkedPaciente) => {
     navigate("/atendimento", {
-      state: { pacienteId: p.id, pacienteNome: p.nome, pacienteTelefone: p.telefone },
+      state: {
+        pacienteId: p.id,
+        pacienteNome: p.nome,
+        pacienteTelefone: p.telefone,
+        pacienteCidade: p.cidade || (cidade === EMPTY_CITY_VALUE ? null : cidade),
+      },
     });
   };
 
@@ -433,17 +441,19 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                 onChange={(e) => setNewPersonName(e.target.value)}
                 placeholder={`Nome (padrão: ${lead.name})`}
               />
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Cidade</label>
-                <select
-                  value={cidade}
-                  onChange={(e) => setCidade(e.target.value)}
-                  className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
-                >
-                  <option value={EMPTY_CITY_VALUE}>Sem localização</option>
-                  {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
-                </select>
-              </div>
+              {cidade === EMPTY_CITY_VALUE && (
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Cidade</label>
+                  <select
+                    value={cidade}
+                    onChange={(e) => setCidade(e.target.value)}
+                    className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
+                  >
+                    <option value={EMPTY_CITY_VALUE}>Sem localização</option>
+                    {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Origem do Lead</label>
                 <select
