@@ -16,7 +16,8 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const VERIFY_TOKEN = Deno.env.get("INSTAGRAM_LITE_VERIFY_TOKEN") ?? "";
+const VERIFY_TOKEN_V1 = Deno.env.get("INSTAGRAM_LITE_VERIFY_TOKEN") ?? Deno.env.get("INSTAGRAM_VERIFY_TOKEN") ?? "";
+const VERIFY_TOKEN_V2 = Deno.env.get("INSTAGRAM_VERIFY_TOKEN_V2") ?? "";
 
 // Pipeline padrão para leads vindos do Instagram Lite (mesmo do IG legado)
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
@@ -330,7 +331,8 @@ Deno.serve(async (req: Request) => {
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
-    if (mode === "subscribe" && token === VERIFY_TOKEN && challenge) {
+    const tokenOk = !!token && (token === VERIFY_TOKEN_V1 || token === VERIFY_TOKEN_V2);
+    if (mode === "subscribe" && tokenOk && challenge) {
       return new Response(challenge, { status: 200, headers: corsHeaders });
     }
     return new Response("Forbidden", { status: 403, headers: corsHeaders });

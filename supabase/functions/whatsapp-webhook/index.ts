@@ -279,31 +279,35 @@ Deno.serve(async (req) => {
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
 
-    let verifyToken = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "";
-    try {
-      const { data: integrations } = await supabase
-        .from("integrations")
-        .select("config")
-        .like("key", "whatsapp_%")
-        .limit(10);
-      if (integrations) {
-        for (const intg of integrations) {
-          const cfg = intg.config as any;
-          if (cfg?.webhook_verify_token && cfg.webhook_verify_token === token) {
-            verifyToken = cfg.webhook_verify_token;
+    // Aceita os 2 verify tokens globais (v1 = Rizodent legado, v2 = novo app único)
+    // ou um verify token customizado de integração legada.
+    const v1 = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "";
+    const v2 = Deno.env.get("WHATSAPP_VERIFY_TOKEN_V2") || "";
+    let matched = (token && (token === v1 || token === v2));
+    if (!matched && token) {
+      try {
+        const { data: integrations } = await supabase
+          .from("integrations")
+          .select("config")
+          .like("key", "whatsapp_%")
+          .limit(10);
+        for (const intg of (integrations || [])) {
+          const cfg = (intg as any).config || {};
+          if (cfg.webhook_verify_token && cfg.webhook_verify_token === token) {
+            matched = true;
             break;
           }
         }
+      } catch (e) {
+        console.log("[WEBHOOK] Erro ao buscar verify token das integrações:", e);
       }
-    } catch (e) {
-      console.log("[WEBHOOK] Erro ao buscar verify token das integrações:", e);
     }
 
-    if (mode === "subscribe" && token === verifyToken) {
+    if (mode === "subscribe" && matched) {
       console.log("Webhook verified successfully");
       return new Response(challenge, { status: 200, headers: corsHeaders });
     }
-    console.log("Webhook verification failed", { mode, tokenMatch: token === verifyToken });
+    console.log("Webhook verification failed", { mode, tokenMatch: matched });
     return new Response("Forbidden", { status: 403, headers: corsHeaders });
   }
 
