@@ -2,6 +2,7 @@ import { Suspense, lazy, useState, useEffect, useCallback, useMemo } from "react
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ type LeadConversation = {
 
 // Global cache for leads list — survives component remounts
 const leadsListCache = {
+  cacheKey: null as string | null,
   leads: null as LeadConversation[] | null,
   profiles: null as { id: string; nome: string }[] | null,
   pipelines: null as { id: string; name: string }[] | null,
@@ -118,12 +120,13 @@ const sortLeadsByLastActivity = (items: LeadConversation[]) =>
     return bTime - aTime;
   });
 
-const fetchAllConversationLeads = async () => {
+const fetchAllConversationLeads = async (tenantId: string) => {
   const all: LeadConversation[] = [];
   for (let from = 0; ; from += CONVERSATION_PAGE_SIZE) {
     const { data, error } = await supabase
       .from("crm_leads")
       .select(LEAD_SELECT_COLS)
+      .eq("tenant_id", tenantId)
       .eq("is_blocked", false)
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .range(from, from + CONVERSATION_PAGE_SIZE - 1);
@@ -145,10 +148,13 @@ interface ConversationsViewProps {
 
 function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp", channelFilter }: ConversationsViewProps = {}) {
   const { user } = useAuth();
+  const { tenant } = useTenant();
+  const cacheKey = tenant.id && user?.id ? `${tenant.id}:${user.id}` : null;
   const [searchParams, setSearchParams] = useSearchParams();
-  const [leads, setLeads] = useState<LeadConversation[]>(() => leadsListCache.leads || []);
+  const canUseInitialCache = !!cacheKey && leadsListCache.cacheKey === cacheKey && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL;
+  const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? leadsListCache.leads || [] : []);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(!leadsListCache.leads);
+  const [loading, setLoading] = useState(!canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
@@ -171,8 +177,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const urlAppointmentStatus = searchParams.get("appointment_status");
   const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
   const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
-  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => leadsListCache.profiles || []);
-  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(() => leadsListCache.pipelines || []);
+  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? leadsListCache.profiles || [] : []);
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(() => canUseInitialCache ? leadsListCache.pipelines || [] : []);
   const [activeExecution, setActiveExecution] = useState<{
     id: string; status: string; bot_name?: string;
   } | null>(null);
@@ -236,8 +242,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   // Fetch leads list with global cache
   useEffect(() => {
+    if (!tenant.id || !cacheKey) return;
     // If cache is fresh, skip network fetch entirely
-    if (leadsListCache.leads && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL) {
+    if (leadsListCache.cacheKey === cacheKey && leadsListCache.leads && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL) {
       setLeads(leadsListCache.leads);
       setProfiles(leadsListCache.profiles || []);
       setPipelines(leadsListCache.pipelines || []);
@@ -245,12 +252,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       // Still refresh in background
       (async () => {
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
-          fetchAllConversationLeads(),
-          supabase.from("profiles").select("id, nome"),
-          supabase.from("crm_pipelines").select("id, name").order("created_at"),
+          fetchAllConversationLeads(tenant.id),
+          supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
+          supabase.from("crm_pipelines").select("id, name").eq("tenant_id", tenant.id).order("created_at"),
         ]);
         const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
         const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
+        leadsListCache.cacheKey = cacheKey;
         leadsListCache.leads = rawLeads;
         leadsListCache.profiles = profs;
         leadsListCache.pipelines = pipes;
@@ -264,13 +272,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
     const fetchLeads = async () => {
       const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
-        fetchAllConversationLeads(),
-        supabase.from("profiles").select("id, nome"),
-        supabase.from("crm_pipelines").select("id, name").order("created_at"),
+        fetchAllConversationLeads(tenant.id),
+        supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
+        supabase.from("crm_pipelines").select("id, name").eq("tenant_id", tenant.id).order("created_at"),
       ]);
       const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
       const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
 
+      leadsListCache.cacheKey = cacheKey;
       leadsListCache.leads = rawLeads;
       leadsListCache.profiles = profs;
       leadsListCache.pipelines = pipes;
@@ -282,12 +291,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setLoading(false);
     };
     fetchLeads();
-  }, []);
+  }, [tenant.id, cacheKey]);
 
   // Server-side search: when user types, fetch matching leads beyond the initial 500-row cache
   // so older conversations (sorted lower by last_message_at) are still findable.
   useEffect(() => {
     const term = search.trim();
+    if (!tenant.id) return;
     if (term.length < 2) return;
     const handle = setTimeout(async () => {
       const digits = term.replace(/\D/g, "");
@@ -309,6 +319,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       const { data, error } = await supabase
         .from("crm_leads")
         .select(LEAD_SELECT_COLS)
+        .eq("tenant_id", tenant.id)
         .eq("is_blocked", false)
         .or(orParts.join(","))
         .limit(50);
@@ -322,7 +333,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       });
     }, 350);
     return () => clearTimeout(handle);
-  }, [search]);
+  }, [search, tenant.id]);
 
   // Load special URL filter data (ghost leads, appointment leads)
   useEffect(() => {
@@ -489,10 +500,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [leadIgAccountMap, setLeadIgAccountMap] = useState<Map<string, Set<string>>>(new Map());
   useEffect(() => {
     let cancelled = false;
+    if (!tenant.id) return;
     (async () => {
       const { data: accs } = await supabase
         .from("ig_accounts")
         .select("ig_user_id, username, active")
+        .eq("tenant_id", tenant.id)
         .eq("active", true);
       if (cancelled) return;
       setInstagramAccounts(
@@ -504,6 +517,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       const { data: msgs } = await supabase
         .from("messages")
         .select("lead_id, instagram_account_id")
+        .eq("tenant_id", tenant.id)
         .not("instagram_account_id", "is", null)
         .limit(5000);
       if (cancelled) return;
@@ -516,7 +530,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setLeadIgAccountMap(map);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [tenant.id]);
 
   // Collect ad accounts and ads available among leads
   const { adAccounts, ads } = useMemo(() => {

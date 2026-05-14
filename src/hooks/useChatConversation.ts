@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { executeStageAutomations } from "@/lib/automationUtils";
 import { toast } from "sonner";
 import { batchSignMediaUrls } from "@/lib/mediaUtils";
+import { useTenant } from "@/contexts/TenantContext";
 
 // Global message cache to avoid re-fetching when switching between leads
 const messageCache = new Map<string, { messages: any[]; timestamp: number }>();
@@ -39,7 +40,7 @@ export type ChatStage = {
   pipeline_id: string;
 };
 
-const stageCache = { data: null as ChatStage[] | null, timestamp: 0 };
+const stageCache = { cacheKey: null as string | null, data: null as ChatStage[] | null, timestamp: 0 };
 const STAGE_CACHE_TTL = 5 * 60_000;
 const repairedMediaLeadCache = new Set<string>();
 
@@ -54,6 +55,7 @@ const normalizeOutboundStatus = (message: ChatMessage): ChatMessage => {
 };
 
 export function useChatConversation(leadId: string | null | undefined) {
+  const { tenant } = useTenant();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [stages, setStages] = useState<ChatStage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,23 +98,25 @@ export function useChatConversation(leadId: string | null | undefined) {
   const stagesLoadedRef = useRef(false);
 
   const fetchStages = useCallback(async () => {
+    if (!tenant.id) return;
     if (stagesLoadedRef.current && stages.length > 0) return;
 
-    if (stageCache.data && Date.now() - stageCache.timestamp < STAGE_CACHE_TTL) {
+    if (stageCache.cacheKey === tenant.id && stageCache.data && Date.now() - stageCache.timestamp < STAGE_CACHE_TTL) {
       setStages(stageCache.data);
       stagesLoadedRef.current = true;
       return;
     }
 
-    const { data } = await supabase.from("crm_stages").select("*").order("position");
+    const { data } = await supabase.from("crm_stages").select("*").eq("tenant_id", tenant.id).order("position");
     if (data) {
       const nextStages = data as ChatStage[];
+      stageCache.cacheKey = tenant.id;
       stageCache.data = nextStages;
       stageCache.timestamp = Date.now();
       setStages(nextStages);
       stagesLoadedRef.current = true;
     }
-  }, [stages.length]);
+  }, [stages.length, tenant.id]);
 
   // ─── Fetch messages with cache ───
   const fetchMessages = useCallback(async (skipCache = false) => {
@@ -462,10 +466,11 @@ export function useChatConversation(leadId: string | null | undefined) {
 
   // ─── Templates ───
   const loadTemplates = useCallback(async () => {
-    const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("status", "APPROVED").order("created_at", { ascending: false });
+    if (!tenant.id) return;
+    const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("tenant_id", tenant.id).eq("status", "APPROVED").order("created_at", { ascending: false });
     setTemplates(deduplicateTemplates(data || []));
     setTemplatesOpen(true);
-  }, []);
+  }, [tenant.id]);
 
   const sendTemplate = useCallback(async (template: any, leadPhone: string | null, channel: "whatsapp" | "instagram" = "whatsapp") => {
     if (channel === "instagram") {
