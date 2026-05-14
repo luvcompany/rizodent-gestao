@@ -9,38 +9,28 @@ import { Badge } from "@/components/ui/badge";
 import { Copy, Eye, EyeOff, Save, RefreshCw, Info } from "lucide-react";
 import { toast } from "sonner";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-
-type Row = {
+type MetaInfo = {
   tenant_id: string;
-  // WhatsApp
-  whatsapp_app_id: string | null;
-  whatsapp_app_secret: string | null;
+  tenant_slug: string | null;
+  meta_app_version: "v1" | "v2";
+  whatsapp: { callback_url: string; verify_token: string };
+  instagram: { callback_url: string; verify_token: string; oauth_redirect_uri: string; app_id: string };
+};
+
+type TenantRow = {
+  tenant_id: string;
   whatsapp_token: string | null;
   whatsapp_phone_number_id: string | null;
   whatsapp_waba_id: string | null;
-  whatsapp_verify_token: string;
   whatsapp_enabled: boolean;
-  // Meta / Instagram
-  meta_app_id: string | null;
-  meta_app_secret: string | null;
-  instagram_app_secret: string | null;
-  instagram_verify_token: string;
-  instagram_redirect_uri: string | null;
   instagram_enabled: boolean;
 };
 
-const empty: Partial<Row> = {
-  whatsapp_app_id: "",
-  whatsapp_app_secret: "",
+const empty: Partial<TenantRow> = {
   whatsapp_token: "",
   whatsapp_phone_number_id: "",
   whatsapp_waba_id: "",
   whatsapp_enabled: false,
-  meta_app_id: "",
-  meta_app_secret: "",
-  instagram_app_secret: "",
-  instagram_redirect_uri: "",
   instagram_enabled: false,
 };
 
@@ -74,61 +64,56 @@ function MaskedField({
 }
 
 export default function MetaAppCredentialsSection() {
-  const [tenantId, setTenantId] = useState<string | null>(null);
-  const [tenantSlug, setTenantSlug] = useState<string | null>(null);
-  const [row, setRow] = useState<Partial<Row>>(empty);
+  const [info, setInfo] = useState<MetaInfo | null>(null);
+  const [row, setRow] = useState<Partial<TenantRow>>(empty);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", (await supabase.auth.getUser()).data.user?.id || "")
-      .maybeSingle();
-    const tid = (profile as any)?.tenant_id || null;
-    setTenantId(tid);
-
-    if (tid) {
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("slug")
-        .eq("id", tid)
-        .maybeSingle();
-      setTenantSlug((tenant as any)?.slug || null);
-
-      let { data, error } = await (supabase as any)
-        .from("tenant_meta_credentials")
-        .select("*")
-        .eq("tenant_id", tid)
-        .maybeSingle();
-      if (error) console.warn("[meta-creds] load error", error);
-      if (!data) {
-        // Cria a linha para que os verify tokens sejam gerados pelos DEFAULTs do banco
-        const { data: inserted, error: insErr } = await (supabase as any)
-          .from("tenant_meta_credentials")
-          .insert({ tenant_id: tid })
-          .select("*")
-          .maybeSingle();
-        if (insErr) console.warn("[meta-creds] insert error", insErr);
-        data = inserted;
+    try {
+      const { data: infoRes, error: infoErr } = await supabase.functions.invoke("tenant-meta-info");
+      if (infoErr || !infoRes) {
+        console.warn("[meta-creds] info error", infoErr);
+        setInfo(null);
+        setLoading(false);
+        return;
       }
-      if (data) setRow(data as Row);
-      else setRow({ ...empty, tenant_id: tid });
+      const meta = infoRes as MetaInfo;
+      setInfo(meta);
+
+      let { data } = await (supabase as any)
+        .from("tenant_meta_credentials")
+        .select("tenant_id, whatsapp_token, whatsapp_phone_number_id, whatsapp_waba_id, whatsapp_enabled, instagram_enabled")
+        .eq("tenant_id", meta.tenant_id)
+        .maybeSingle();
+      if (!data) {
+        const ins = await (supabase as any)
+          .from("tenant_meta_credentials")
+          .insert({ tenant_id: meta.tenant_id })
+          .select("tenant_id, whatsapp_token, whatsapp_phone_number_id, whatsapp_waba_id, whatsapp_enabled, instagram_enabled")
+          .maybeSingle();
+        data = ins.data;
+      }
+      setRow((data as TenantRow) ?? { ...empty, tenant_id: meta.tenant_id });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
   const save = async () => {
-    if (!tenantId) {
-      toast.error("Tenant não identificado");
-      return;
-    }
+    if (!info) return;
     setSaving(true);
-    const payload = { ...row, tenant_id: tenantId };
+    const payload = {
+      tenant_id: info.tenant_id,
+      whatsapp_token: row.whatsapp_token || null,
+      whatsapp_phone_number_id: row.whatsapp_phone_number_id || null,
+      whatsapp_waba_id: row.whatsapp_waba_id || null,
+      whatsapp_enabled: !!row.whatsapp_enabled,
+      instagram_enabled: !!row.instagram_enabled,
+    };
     const { error } = await (supabase as any)
       .from("tenant_meta_credentials")
       .upsert(payload, { onConflict: "tenant_id" });
@@ -141,20 +126,17 @@ export default function MetaAppCredentialsSection() {
     load();
   };
 
-  const whatsappWebhookUrl = tenantSlug
-    ? `${SUPABASE_URL}/functions/v1/whatsapp-webhook/${tenantSlug}`
-    : `${SUPABASE_URL}/functions/v1/whatsapp-webhook`;
-  const instagramWebhookUrl = tenantSlug
-    ? `${SUPABASE_URL}/functions/v1/instagram-lite-webhook/${tenantSlug}`
-    : `${SUPABASE_URL}/functions/v1/instagram-lite-webhook`;
-  const instagramOauthUrl = tenantSlug
-    ? `${SUPABASE_URL}/functions/v1/instagram-oauth-callback/${tenantSlug}`
-    : `${SUPABASE_URL}/functions/v1/instagram-oauth-callback`;
-
   if (loading) {
     return (
       <Card className="mt-6"><CardContent className="p-5 text-sm text-muted-foreground">Carregando…</CardContent></Card>
     );
+  }
+
+  if (!info) return null;
+
+  // Rizodent (v1) usa o app legado e os secrets globais — não precisa configurar nada aqui.
+  if (info.meta_app_version === "v1") {
+    return null;
   }
 
   return (
@@ -162,11 +144,12 @@ export default function MetaAppCredentialsSection() {
       <div className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
         <Info size={14} className="mt-0.5 text-primary shrink-0" />
         <div>
-          <p className="font-medium text-foreground">Credenciais Meta App por cliente (multi-tenant)</p>
+          <p className="font-medium text-foreground">Conecte sua conta ao nosso Meta App</p>
           <p>
-            Configure aqui as credenciais do <strong>seu próprio app Meta</strong> para este cliente.
-            Os campos abaixo só passam a valer depois que você marcar como ativo. Enquanto desativados,
-            o sistema continua usando as credenciais globais (comportamento atual).
+            As URLs de Callback e os Verify Tokens abaixo já estão prontos —
+            eles são os mesmos para todos os clientes (já cadastrados no nosso Meta App).
+            Você só precisa preencher o <strong>token de acesso</strong> e o <strong>Phone Number ID</strong> do
+            seu próprio número WhatsApp Business, e conectar sua conta do Instagram via OAuth.
           </p>
         </div>
       </div>
@@ -176,10 +159,10 @@ export default function MetaAppCredentialsSection() {
         <CardContent className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold flex items-center gap-2">
-              WhatsApp Business — App próprio
+              WhatsApp Business
               {row.whatsapp_enabled
                 ? <Badge className="bg-green-600">Ativo</Badge>
-                : <Badge variant="outline">Usando credenciais globais</Badge>}
+                : <Badge variant="outline">Inativo</Badge>}
             </h3>
             <div className="flex items-center gap-2">
               <Label className="text-xs">Ativar</Label>
@@ -191,53 +174,61 @@ export default function MetaAppCredentialsSection() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Label>App ID</Label>
-              <Input value={row.whatsapp_app_id || ""} onChange={(e) => setRow({ ...row, whatsapp_app_id: e.target.value })} placeholder="123456789012345" />
-            </div>
-            <MaskedField label="App Secret" value={row.whatsapp_app_secret || ""} onChange={(v) => setRow({ ...row, whatsapp_app_secret: v })} />
-            <MaskedField label="Token (System User permanente)" value={row.whatsapp_token || ""} onChange={(v) => setRow({ ...row, whatsapp_token: v })} />
+            <MaskedField
+              label="Token de acesso (System User permanente)"
+              value={row.whatsapp_token || ""}
+              onChange={(v) => setRow({ ...row, whatsapp_token: v })}
+              placeholder="EAAG…"
+            />
             <div>
               <Label>Phone Number ID</Label>
-              <Input value={row.whatsapp_phone_number_id || ""} onChange={(e) => setRow({ ...row, whatsapp_phone_number_id: e.target.value })} placeholder="111122223333444" />
+              <Input
+                value={row.whatsapp_phone_number_id || ""}
+                onChange={(e) => setRow({ ...row, whatsapp_phone_number_id: e.target.value })}
+                placeholder="111122223333444"
+              />
             </div>
             <div>
-              <Label>WABA ID</Label>
-              <Input value={row.whatsapp_waba_id || ""} onChange={(e) => setRow({ ...row, whatsapp_waba_id: e.target.value })} placeholder="555566667777888" />
+              <Label>WABA ID (opcional)</Label>
+              <Input
+                value={row.whatsapp_waba_id || ""}
+                onChange={(e) => setRow({ ...row, whatsapp_waba_id: e.target.value })}
+                placeholder="555566667777888"
+              />
             </div>
           </div>
 
           <div className="border-t pt-4 space-y-3">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-              Para colar no Meta Developers (Webhooks → WhatsApp)
+              Para o nosso técnico cadastrar no Meta Developers (já feito uma vez por app)
             </Label>
             <div>
               <Label>Callback URL</Label>
               <div className="flex gap-2">
-                <Input readOnly value={whatsappWebhookUrl} className="font-mono text-xs" />
-                <Button variant="outline" size="icon" onClick={() => copy(whatsappWebhookUrl, "URL")}><Copy size={14} /></Button>
+                <Input readOnly value={info.whatsapp.callback_url} className="font-mono text-xs" />
+                <Button variant="outline" size="icon" onClick={() => copy(info.whatsapp.callback_url, "URL")}><Copy size={14} /></Button>
               </div>
             </div>
             <div>
-              <Label>Verify Token (gerado automaticamente)</Label>
+              <Label>Verify Token</Label>
               <div className="flex gap-2">
-                <Input readOnly value={row.whatsapp_verify_token || "—"} className="font-mono text-xs" />
-                <Button variant="outline" size="icon" onClick={() => copy(row.whatsapp_verify_token || "", "Verify token")}><Copy size={14} /></Button>
+                <Input readOnly value={info.whatsapp.verify_token || "—"} className="font-mono text-xs" />
+                <Button variant="outline" size="icon" onClick={() => copy(info.whatsapp.verify_token || "", "Verify token")}><Copy size={14} /></Button>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Instagram / Meta */}
+      {/* Instagram */}
       <Card>
         <CardContent className="p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold flex items-center gap-2">
-              Instagram / Meta — App próprio
+              Instagram
               {row.instagram_enabled
                 ? <Badge className="bg-green-600">Ativo</Badge>
-                : <Badge variant="outline">Usando credenciais globais</Badge>}
+                : <Badge variant="outline">Inativo</Badge>}
             </h3>
             <div className="flex items-center gap-2">
               <Label className="text-xs">Ativar</Label>
@@ -248,42 +239,34 @@ export default function MetaAppCredentialsSection() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Label>Meta App ID</Label>
-              <Input value={row.meta_app_id || ""} onChange={(e) => setRow({ ...row, meta_app_id: e.target.value })} placeholder="123456789012345" />
-            </div>
-            <MaskedField label="Meta App Secret" value={row.meta_app_secret || ""} onChange={(v) => setRow({ ...row, meta_app_secret: v })} />
-            <MaskedField label="Instagram App Secret (se diferente)" value={row.instagram_app_secret || ""} onChange={(v) => setRow({ ...row, instagram_app_secret: v })} />
-            <div className="md:col-span-2">
-              <Label>Redirect URI configurada no Meta App</Label>
-              <Input value={row.instagram_redirect_uri || instagramOauthUrl} onChange={(e) => setRow({ ...row, instagram_redirect_uri: e.target.value })} className="font-mono text-xs" />
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground">
+            A conexão da conta Instagram é feita pelo botão "Conectar Instagram" mais acima na página
+            (fluxo OAuth). Esta seção apenas habilita o canal e mostra as URLs do app.
+          </p>
 
           <div className="border-t pt-4 space-y-3">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-              Para colar no Meta Developers (Webhooks → Instagram)
+              URLs do app (uso interno)
             </Label>
             <div>
               <Label>Callback URL</Label>
               <div className="flex gap-2">
-                <Input readOnly value={instagramWebhookUrl} className="font-mono text-xs" />
-                <Button variant="outline" size="icon" onClick={() => copy(instagramWebhookUrl, "URL")}><Copy size={14} /></Button>
+                <Input readOnly value={info.instagram.callback_url} className="font-mono text-xs" />
+                <Button variant="outline" size="icon" onClick={() => copy(info.instagram.callback_url, "URL")}><Copy size={14} /></Button>
               </div>
             </div>
             <div>
-              <Label>Verify Token (gerado automaticamente)</Label>
+              <Label>Verify Token</Label>
               <div className="flex gap-2">
-                <Input readOnly value={row.instagram_verify_token || "—"} className="font-mono text-xs" />
-                <Button variant="outline" size="icon" onClick={() => copy(row.instagram_verify_token || "", "Verify token")}><Copy size={14} /></Button>
+                <Input readOnly value={info.instagram.verify_token || "—"} className="font-mono text-xs" />
+                <Button variant="outline" size="icon" onClick={() => copy(info.instagram.verify_token || "", "Verify token")}><Copy size={14} /></Button>
               </div>
             </div>
             <div>
-              <Label>Sugestão de Redirect URI (Instagram OAuth)</Label>
+              <Label>OAuth Redirect URI</Label>
               <div className="flex gap-2">
-                <Input readOnly value={instagramOauthUrl} className="font-mono text-xs" />
-                <Button variant="outline" size="icon" onClick={() => copy(instagramOauthUrl, "URL")}><Copy size={14} /></Button>
+                <Input readOnly value={info.instagram.oauth_redirect_uri} className="font-mono text-xs" />
+                <Button variant="outline" size="icon" onClick={() => copy(info.instagram.oauth_redirect_uri, "URL")}><Copy size={14} /></Button>
               </div>
             </div>
           </div>
