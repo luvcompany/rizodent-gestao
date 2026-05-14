@@ -2832,6 +2832,7 @@ export type Database = {
       recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
+      watchdog_reenqueue_missing_bots: { Args: never; Returns: number }
     }
     Enums: {
       app_role: "admin" | "gerente" | "crc" | "superadmin"
