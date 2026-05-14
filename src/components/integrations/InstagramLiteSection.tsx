@@ -24,6 +24,7 @@ import {
   XCircle,
   Settings,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 const IG_PURPLE = "#833AB4";
 
@@ -93,6 +94,7 @@ export default function InstagramLiteSection() {
   );
 
   const activeCount = accounts.filter((a) => {
+    if (!a.active) return false;
     if (!a.token_expires_at) return true;
     return new Date(a.token_expires_at).getTime() >= Date.now();
   }).length;
@@ -150,6 +152,20 @@ export default function InstagramLiteSection() {
       return;
     }
     toast.success("Conta desconectada");
+    load();
+  };
+
+  const handleToggleActive = async (acc: IgAccount) => {
+    const newActive = !acc.active;
+    const { error } = await (supabase as any)
+      .from("ig_accounts")
+      .update({ active: newActive })
+      .eq("id", acc.id);
+    if (error) {
+      toast.error("Erro ao atualizar status");
+      return;
+    }
+    toast.success(newActive ? "Conta ativada" : "Conta desativada");
     load();
   };
 
@@ -270,11 +286,20 @@ export default function InstagramLiteSection() {
                             <Badge className="bg-red-900/30 text-red-400 border-0">
                               <XCircle size={12} className="mr-1" /> Token expirado
                             </Badge>
-                          ) : (
+                          ) : acc.active ? (
                             <Badge className="bg-green-900/30 text-green-400 border-0">
                               <CheckCircle size={12} className="mr-1" /> Ativo
                             </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-muted-foreground">
+                              <XCircle size={12} className="mr-1" /> Inativo
+                            </Badge>
                           )}
+                          <Switch
+                            checked={acc.active}
+                            onCheckedChange={() => handleToggleActive(acc)}
+                            disabled={expired}
+                          />
                           <Button
                             size="sm"
                             variant="ghost"
