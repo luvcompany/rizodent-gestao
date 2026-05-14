@@ -354,6 +354,13 @@ Deno.serve(async (req: Request) => {
     const isComment = message_type === "comment";
     const msgType = isComment ? "comment" : (media_type ?? "text");
     const newCommentId = isComment ? (metaJson?.id ?? null) : null;
+    // Fetch lead's tenant_id so the message is correctly scoped (RLS / multi-tenant)
+    const { data: leadRow } = await supabase
+      .from("crm_leads")
+      .select("tenant_id")
+      .eq("id", leadId)
+      .maybeSingle();
+    const leadTenantId = (leadRow as any)?.tenant_id ?? null;
     await supabase.from("messages").insert({
       lead_id: leadId,
       direction: "outbound",
@@ -367,6 +374,7 @@ Deno.serve(async (req: Request) => {
       instagram_comment_id: isComment ? (newCommentId ?? comment_id ?? null) : null,
       instagram_post_id: isComment ? (post_id ?? null) : null,
       status: "sent",
+      ...(leadTenantId ? { tenant_id: leadTenantId } : {}),
     });
 
     await supabase
