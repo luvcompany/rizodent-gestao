@@ -60,7 +60,11 @@ Deno.serve(async (req) => {
   const version: "v1" | "v2" = ((tenant as any)?.meta_app_version === "v1") ? "v1" : "v2";
 
   const base = SUPABASE_URL.replace(/\/+$/, "");
-  const suffix = slug ? `/${slug}` : "";
+  // v2 tenants share a SINGLE global callback URL configured once in the Meta
+  // developer app. Tenant routing is resolved from the webhook payload itself
+  // (WhatsApp phone_number_id, Instagram ig_user_id). Only v1 (Rizodent legacy)
+  // still uses a slug-suffixed URL for backward compatibility.
+  const suffix = version === "v1" && slug ? `/${slug}` : "";
 
   const payload = {
     tenant_id: tenantId,
