@@ -370,6 +370,20 @@ export default function InstagramLiteSection() {
                           <Button
                             size="sm"
                             variant="ghost"
+                            className="h-8 w-8 p-0"
+                            title="Testar token na Meta"
+                            onClick={() => handleTestToken(acc)}
+                            disabled={testingId === acc.id}
+                          >
+                            {testingId === acc.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <ShieldCheck size={14} />
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             className="text-destructive hover:text-destructive h-8 w-8 p-0"
                             onClick={() => handleDelete(acc)}
                           >
