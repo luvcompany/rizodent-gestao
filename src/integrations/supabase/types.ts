@@ -2788,6 +2788,10 @@ export type Database = {
         }[]
       }
       current_tenant_id: { Args: never; Returns: string }
+      ensure_instagram_pipeline: {
+        Args: { _tenant_id: string }
+        Returns: string
+      }
       get_tenant_by_slug: {
         Args: { _slug: string }
         Returns: {
