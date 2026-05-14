@@ -261,7 +261,7 @@ export default function CrmAutomacoes() {
             status: "pending",
             layer_index: 0,
           }));
-          const { error } = await supabase.from("crm_automation_queue").insert(rows);
+          const { error } = await supabase.from("crm_automation_queue").insert(rows as any);
           if (error) throw error;
         }
         supabase.functions.invoke("automation-engine", { body: { pending_batch_limit: 500 } }).catch(e => console.error("[Automacoes] Queue kick error:", e));
