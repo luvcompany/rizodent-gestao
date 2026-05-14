@@ -23,9 +23,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  const auth = req.headers.get("authorization") || "";
-  const expected = `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
-  if (auth !== expected) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  const authHeader = req.headers.get("authorization") || "";
+  const apiKeyHeader = req.headers.get("apikey") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const anon = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  const pub = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+  const allowed = [service, anon, pub].filter(Boolean);
+  if (!allowed.includes(token) && !allowed.includes(apiKeyHeader)) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  }
 
 
   const supabase = createClient(
