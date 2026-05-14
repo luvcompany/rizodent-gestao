@@ -140,9 +140,10 @@ interface ConversationsViewProps {
   pipelineFilter?: string;          // include only this pipeline
   excludePipelines?: string[];      // exclude these pipelines
   channel?: "whatsapp" | "instagram";
+  channelFilter?: "whatsapp" | "instagram"; // filter leads by channel (instagram = has instagram_user_id)
 }
 
-function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp" }: ConversationsViewProps = {}) {
+function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp", channelFilter }: ConversationsViewProps = {}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [leads, setLeads] = useState<LeadConversation[]>(() => leadsListCache.leads || []);
