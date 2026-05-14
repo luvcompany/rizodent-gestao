@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 import InstagramLiteSection from "@/components/integrations/InstagramLiteSection";
 import MetaAppCredentialsSection from "@/components/integrations/MetaAppCredentialsSection";
+import { useTenant } from "@/contexts/TenantContext";
 
 
 type WhatsAppConfig = {
@@ -143,6 +144,7 @@ function WebhookSection() {
 }
 
 export default function CrmIntegracoes() {
+  const { tenant } = useTenant();
   const [whatsappEntries, setWhatsappEntries] = useState<WhatsAppEntry[]>([]);
   const [editEntry, setEditEntry] = useState<WhatsAppEntry | null>(null);
   const [showToken, setShowToken] = useState(false);
@@ -501,8 +503,8 @@ export default function CrmIntegracoes() {
           })}
         </div>
 
-        {/* Credenciais Meta App por tenant */}
-        <MetaAppCredentialsSection />
+        {/* Credenciais Meta App por tenant — oculto para Rizodent (continua usando secrets globais) */}
+        {tenant?.slug !== "rizodent" && <MetaAppCredentialsSection />}
 
         {/* Webhook Genérico */}
         <WebhookSection />
