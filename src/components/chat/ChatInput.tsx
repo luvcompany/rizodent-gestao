@@ -124,7 +124,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     return resolved;
   }, [isInstagram, igAccountId, leadId]);
 
-  // Resolve Instagram ig_account_id from latest instagram_messages for this lead
+  // Resolve Instagram ig_account_id from the LAST INBOUND message of this lead.
+  // Re-runs whenever a new inbound arrives (lastInboundAt changes), so the
+  // composer always defaults to the profile that received the most recent message.
   useEffect(() => {
     if (!isInstagram || !leadId) {
       setIgAccountId(null);
@@ -134,14 +136,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       .from("instagram_messages")
       .select("instagram_account_id")
       .eq("lead_id", leadId)
+      .eq("is_outbound", false)
       .not("instagram_account_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
-        setIgAccountId((data as { instagram_account_id?: string | null } | null)?.instagram_account_id ?? null);
+        const last = (data as { instagram_account_id?: string | null } | null)?.instagram_account_id ?? null;
+        if (last) setIgAccountId(last);
       });
-  }, [isInstagram, leadId]);
+  }, [isInstagram, leadId, lastInboundAt]);
 
   // Load all active Instagram accounts so the user can choose which one to send from
   useEffect(() => {
