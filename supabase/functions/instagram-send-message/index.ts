@@ -208,22 +208,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "comment_id is required for message_type=comment" }, 400);
   }
 
-  // If lead_id is provided, derive recipient_id and account from lead
   let leadId = lead_id ?? null;
-  if (leadId && !recipient_id) {
-    const { data: lead } = await supabase
-      .from("crm_leads")
-      .select("instagram_user_id")
-      .eq("id", leadId)
-      .maybeSingle();
-    if (lead?.instagram_user_id) {
-      recipient_id = lead.instagram_user_id;
-    }
-  }
+  const recipientExplicit = !!recipient_id;
 
-  if (message_type !== "comment" && !recipient_id) {
-    return jsonResponse({ error: "recipient_id (or lead with instagram_user_id) is required for Instagram DM/media" }, 400);
-  }
   if (MEDIA_MESSAGE_TYPES.has(message_type) && !media_url) {
     return jsonResponse({ error: "media_url is required for media messages" }, 400);
   }
@@ -238,6 +225,43 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Instagram account not found, inactive, or missing access token", debug: { instagram_account_id, leadId, comment_id, recipient_id } }, 404);
   }
   instagram_account_id = account.instagram_account_id;
+
+  // IGSIDs (sender_id) are SCOPED PER BUSINESS ACCOUNT. The same end user has a
+  // different IGSID for each Instagram business account that received their DMs.
+  // So when deriving recipient_id from a lead, we MUST scope by the account
+  // we're sending FROM. Falling back to crm_leads.instagram_user_id (which only
+  // stores the most recent IGSID) would silently use the wrong scoped id and
+  // make Meta return code 100 / subcode 2534014 ("user not found").
+  if (message_type !== "comment" && !recipientExplicit && leadId) {
+    const { data: scoped } = await supabase
+      .from("instagram_messages")
+      .select("sender_id, created_at")
+      .eq("lead_id", leadId)
+      .eq("is_outbound", false)
+      .eq("instagram_account_id", account.instagram_account_id)
+      .not("sender_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (scoped?.sender_id) {
+      recipient_id = scoped.sender_id as string;
+    } else {
+      // No inbound thread between this lead and the chosen account → cannot
+      // derive a valid scoped IGSID. Return a friendly message instead of
+      // letting Meta reject with a confusing 500.
+      return jsonResponse({
+        ok: false,
+        error_code: "no_thread_for_account",
+        error: "No inbound thread between this lead and the selected Instagram account",
+        user_message:
+          "Não há histórico de conversa deste lead com a conta selecionada. Selecione no seletor de contas a conta do Instagram que recebeu a última mensagem deste lead.",
+      }, 200);
+    }
+  }
+
+  if (message_type !== "comment" && !recipient_id) {
+    return jsonResponse({ error: "recipient_id (or lead with inbound thread on selected account) is required for Instagram DM/media" }, 400);
+  }
   const token = account.page_access_token;
 
   // Build Meta request
