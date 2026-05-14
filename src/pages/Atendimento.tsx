@@ -175,6 +175,15 @@ const Atendimento = () => {
     }
   }, [location.state, initialPatientLoaded]);
 
+  // Auto-pick clinic from cidade (prefer "Rizodent" clinic for that city)
+  useEffect(() => {
+    if (clinicaId || !cidade || clinicas.length === 0) return;
+    const matches = clinicas.filter((c) => c.cidade === cidade);
+    if (matches.length === 0) return;
+    const preferred = matches.find((c) => /rizodent/i.test(c.nome)) || matches[0];
+    setClinicaId(preferred.id);
+  }, [cidade, clinicas, clinicaId]);
+
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, "");
     if (digits.length <= 2) return `(${digits}`;
