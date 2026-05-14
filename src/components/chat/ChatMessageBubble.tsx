@@ -103,6 +103,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               onReply={onReply}
               onForward={onForward}
               onReact={onReact}
+              canReact={msg.channel !== "instagram"}
             />
           )}
           {msg.deleted_at ? (
