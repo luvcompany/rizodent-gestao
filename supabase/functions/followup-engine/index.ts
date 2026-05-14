@@ -9,9 +9,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  const auth = req.headers.get("authorization") || "";
-  const expected = `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
-  if (auth !== expected) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  // Internal cron-only function. The Supabase gateway validates the API key.
+  const authHeader = req.headers.get("authorization") || "";
+  const apiKeyHeader = req.headers.get("apikey") || "";
+  if (!authHeader.startsWith("Bearer ") && !apiKeyHeader) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  }
 
 
   const supabase = createClient(
