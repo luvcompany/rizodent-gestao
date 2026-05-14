@@ -146,6 +146,8 @@ export default function InstagramLiteSection() {
     setShowToken(false);
   };
 
+  const [testingId, setTestingId] = useState<string | null>(null);
+
   const handleAdd = async () => {
     const cleanUser = cleanUsername(username);
     const cleanId = igUserId.trim();
@@ -161,9 +163,24 @@ export default function InstagramLiteSection() {
     }
 
     setSaving(true);
+
+    // 1. Validar token na Meta antes de salvar — evita gravar credencial inválida
+    const v = await validateIgToken(cleanId, cleanToken);
+    if (!v.ok) {
+      toast.error(v.error || "Token rejeitado pela Meta");
+      setSaving(false);
+      return;
+    }
+
+    // Se a Meta retornou um username diferente, usar o oficial
+    const finalUser = v.username ? v.username.toLowerCase() : cleanUser;
+    if (v.username && v.username.toLowerCase() !== cleanUser) {
+      toast.message(`Username ajustado para @${v.username} (conforme retornado pela Meta)`);
+    }
+
     const { error } = await (supabase as any).from("ig_accounts").insert({
       ig_user_id: cleanId,
-      username: cleanUser,
+      username: finalUser,
       access_token: cleanToken,
       token_expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       active: true,
@@ -176,11 +193,22 @@ export default function InstagramLiteSection() {
         toast.error("Erro ao salvar conta: " + error.message);
       }
     } else {
-      toast.success("Conta Instagram conectada");
+      toast.success("Conta Instagram conectada e token validado");
       resetForm();
       load();
     }
     setSaving(false);
+  };
+
+  const handleTestToken = async (acc: IgAccount) => {
+    setTestingId(acc.id);
+    const v = await validateIgToken(acc.ig_user_id, acc.access_token);
+    setTestingId(null);
+    if (v.ok) {
+      toast.success(`Token de @${acc.username || acc.ig_user_id} está válido`);
+    } else {
+      toast.error(v.error || "Token rejeitado pela Meta");
+    }
   };
 
   const handleDelete = async (acc: IgAccount) => {
