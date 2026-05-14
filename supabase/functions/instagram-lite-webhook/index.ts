@@ -330,6 +330,7 @@ async function persistMessage(opts: {
     const isComment = opts.messageType === "comment";
     await supabase.from("messages").insert({
       lead_id: leadId,
+      tenant_id: opts.account.tenant_id,
       direction: "inbound",
       type: isComment ? "comment" : "text",
       content: opts.text,
