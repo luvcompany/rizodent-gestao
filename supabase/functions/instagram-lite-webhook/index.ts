@@ -19,8 +19,10 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VERIFY_TOKEN_V1 = Deno.env.get("INSTAGRAM_LITE_VERIFY_TOKEN") ?? Deno.env.get("INSTAGRAM_VERIFY_TOKEN") ?? "";
 const VERIFY_TOKEN_V2 = Deno.env.get("INSTAGRAM_VERIFY_TOKEN_V2") ?? "";
 
-// Pipeline padrão para leads vindos do Instagram Lite (mesmo do IG legado)
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+// Tenant padrão (Rizodent) para fallback caso a conta IG não tenha tenant_id
+const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
+// Pipeline Instagram da Rizodent (mantido para retro-compatibilidade)
+const RIZODENT_INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -31,6 +33,28 @@ interface IgAccountRow {
   access_token: string;
   active: boolean;
   token_expires_at: string | null;
+  tenant_id: string;
+}
+
+// Cache pipeline-id por tenant durante a invocação
+const pipelineCache = new Map<string, string>();
+
+async function resolveInstagramPipeline(tenantId: string): Promise<string | null> {
+  if (pipelineCache.has(tenantId)) return pipelineCache.get(tenantId)!;
+
+  // Rizodent mantém o pipeline legado fixo
+  if (tenantId === RIZODENT_TENANT_ID) {
+    pipelineCache.set(tenantId, RIZODENT_INSTAGRAM_PIPELINE_ID);
+    return RIZODENT_INSTAGRAM_PIPELINE_ID;
+  }
+
+  const { data, error } = await supabase.rpc("ensure_instagram_pipeline", { _tenant_id: tenantId });
+  if (error || !data) {
+    console.error("[ig-lite] ensure_instagram_pipeline failed", { tenantId, error });
+    return null;
+  }
+  pipelineCache.set(tenantId, data as string);
+  return data as string;
 }
 
 const profileCache = new Map<
