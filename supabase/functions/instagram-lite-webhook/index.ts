@@ -296,7 +296,8 @@ async function persistMessage(opts: {
     opts.senderId,
     { name: finalName, username: finalUsername, profile_pic: finalPic },
     opts.account.username,
-    opts.account.ig_user_id
+    opts.account.ig_user_id,
+    opts.account.tenant_id
   );
   if (leadId) {
     const { data: blockedCheck } = await supabase
