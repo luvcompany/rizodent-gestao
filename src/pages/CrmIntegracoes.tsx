@@ -20,7 +20,7 @@ import {
 import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 import InstagramLiteSection from "@/components/integrations/InstagramLiteSection";
-import MetaAppCredentialsSection from "@/components/integrations/MetaAppCredentialsSection";
+
 import { useTenant } from "@/contexts/TenantContext";
 
 
