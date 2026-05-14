@@ -704,6 +704,7 @@ Deno.serve(async (req) => {
         status: "failed",
         error_reason: friendlyError,
         reply_to_message_id: reply_to_message_id || null,
+        ...(leadTenantId ? { tenant_id: leadTenantId } : {}),
       }).select().single();
 
       return new Response(JSON.stringify({ ok: false, error: friendlyError, error_code: metaErrorCode, message: failedMsg }), {
