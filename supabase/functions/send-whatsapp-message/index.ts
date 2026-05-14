@@ -725,6 +725,7 @@ Deno.serve(async (req) => {
       status: initialStatus,
       whatsapp_message_id: sentWamid,
       reply_to_message_id: reply_to_message_id || null,
+      ...(leadTenantId ? { tenant_id: leadTenantId } : {}),
     }).select().single();
 
     if (insertError) {
