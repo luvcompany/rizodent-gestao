@@ -2,6 +2,7 @@ import { Suspense, lazy, useState, useEffect, useCallback, useMemo } from "react
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ type LeadConversation = {
 
 // Global cache for leads list — survives component remounts
 const leadsListCache = {
+  cacheKey: null as string | null,
   leads: null as LeadConversation[] | null,
   profiles: null as { id: string; nome: string }[] | null,
   pipelines: null as { id: string; name: string }[] | null,
@@ -118,12 +120,13 @@ const sortLeadsByLastActivity = (items: LeadConversation[]) =>
     return bTime - aTime;
   });
 
-const fetchAllConversationLeads = async () => {
+const fetchAllConversationLeads = async (tenantId: string) => {
   const all: LeadConversation[] = [];
   for (let from = 0; ; from += CONVERSATION_PAGE_SIZE) {
     const { data, error } = await supabase
       .from("crm_leads")
       .select(LEAD_SELECT_COLS)
+      .eq("tenant_id", tenantId)
       .eq("is_blocked", false)
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .range(from, from + CONVERSATION_PAGE_SIZE - 1);
@@ -145,10 +148,13 @@ interface ConversationsViewProps {
 
 function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp", channelFilter }: ConversationsViewProps = {}) {
   const { user } = useAuth();
+  const { tenant } = useTenant();
+  const cacheKey = tenant.id && user?.id ? `${tenant.id}:${user.id}` : null;
   const [searchParams, setSearchParams] = useSearchParams();
-  const [leads, setLeads] = useState<LeadConversation[]>(() => leadsListCache.leads || []);
+  const canUseInitialCache = !!cacheKey && leadsListCache.cacheKey === cacheKey && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL;
+  const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? leadsListCache.leads || [] : []);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(!leadsListCache.leads);
+  const [loading, setLoading] = useState(!canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
@@ -171,8 +177,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const urlAppointmentStatus = searchParams.get("appointment_status");
   const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
   const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
-  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => leadsListCache.profiles || []);
-  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(() => leadsListCache.pipelines || []);
+  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? leadsListCache.profiles || [] : []);
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(() => canUseInitialCache ? leadsListCache.pipelines || [] : []);
   const [activeExecution, setActiveExecution] = useState<{
     id: string; status: string; bot_name?: string;
   } | null>(null);
