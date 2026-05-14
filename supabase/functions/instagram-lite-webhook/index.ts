@@ -331,7 +331,8 @@ Deno.serve(async (req: Request) => {
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
-    if (mode === "subscribe" && token === VERIFY_TOKEN && challenge) {
+    const tokenOk = !!token && (token === VERIFY_TOKEN_V1 || token === VERIFY_TOKEN_V2);
+    if (mode === "subscribe" && tokenOk && challenge) {
       return new Response(challenge, { status: 200, headers: corsHeaders });
     }
     return new Response("Forbidden", { status: 403, headers: corsHeaders });
