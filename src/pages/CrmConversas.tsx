@@ -242,8 +242,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   // Fetch leads list with global cache
   useEffect(() => {
+    if (!tenant.id || !cacheKey) return;
     // If cache is fresh, skip network fetch entirely
-    if (leadsListCache.leads && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL) {
+    if (leadsListCache.cacheKey === cacheKey && leadsListCache.leads && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL) {
       setLeads(leadsListCache.leads);
       setProfiles(leadsListCache.profiles || []);
       setPipelines(leadsListCache.pipelines || []);
@@ -251,12 +252,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       // Still refresh in background
       (async () => {
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
-          fetchAllConversationLeads(),
-          supabase.from("profiles").select("id, nome"),
-          supabase.from("crm_pipelines").select("id, name").order("created_at"),
+          fetchAllConversationLeads(tenant.id),
+          supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
+          supabase.from("crm_pipelines").select("id, name").eq("tenant_id", tenant.id).order("created_at"),
         ]);
         const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
         const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
+        leadsListCache.cacheKey = cacheKey;
         leadsListCache.leads = rawLeads;
         leadsListCache.profiles = profs;
         leadsListCache.pipelines = pipes;
@@ -270,13 +272,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
     const fetchLeads = async () => {
       const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
-        fetchAllConversationLeads(),
-        supabase.from("profiles").select("id, nome"),
-        supabase.from("crm_pipelines").select("id, name").order("created_at"),
+        fetchAllConversationLeads(tenant.id),
+        supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
+        supabase.from("crm_pipelines").select("id, name").eq("tenant_id", tenant.id).order("created_at"),
       ]);
       const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
       const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
 
+      leadsListCache.cacheKey = cacheKey;
       leadsListCache.leads = rawLeads;
       leadsListCache.profiles = profs;
       leadsListCache.pipelines = pipes;
@@ -288,7 +291,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setLoading(false);
     };
     fetchLeads();
-  }, []);
+  }, [tenant.id, cacheKey]);
 
   // Server-side search: when user types, fetch matching leads beyond the initial 500-row cache
   // so older conversations (sorted lower by last_message_at) are still findable.
