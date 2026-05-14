@@ -98,12 +98,22 @@ export default function MetaAppCredentialsSection() {
         .maybeSingle();
       setTenantSlug((tenant as any)?.slug || null);
 
-      const { data, error } = await (supabase as any)
+      let { data, error } = await (supabase as any)
         .from("tenant_meta_credentials")
         .select("*")
         .eq("tenant_id", tid)
         .maybeSingle();
       if (error) console.warn("[meta-creds] load error", error);
+      if (!data) {
+        // Cria a linha para que os verify tokens sejam gerados pelos DEFAULTs do banco
+        const { data: inserted, error: insErr } = await (supabase as any)
+          .from("tenant_meta_credentials")
+          .insert({ tenant_id: tid })
+          .select("*")
+          .maybeSingle();
+        if (insErr) console.warn("[meta-creds] insert error", insErr);
+        data = inserted;
+      }
       if (data) setRow(data as Row);
       else setRow({ ...empty, tenant_id: tid });
     }
