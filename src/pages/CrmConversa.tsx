@@ -362,6 +362,7 @@ export default function CrmConversa() {
                   onReact={(m, emoji) => chat.handleReact(m, emoji, lead.phone, lead.instagram_user_id ? "instagram" : "whatsapp")}
                   onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                   onScrollToMessage={chat.scrollToMessage}
+                  igAccountsMap={igAccountsMap}
                 />
                 {convNotes.notesByMessageId(msg.id).map((note) => (
                   <ConversationInlineNote
