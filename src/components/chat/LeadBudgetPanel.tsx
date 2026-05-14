@@ -275,13 +275,21 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         pacienteId: data.id,
         pacienteNome: nomeFinal,
         pacienteTelefone: stripCountryCode(lead.phone || ""),
+        pacienteCidade: normalizedCity,
+        pacienteOrigem: origemFinal,
+        pacienteNomeAnuncio: nomeAnuncioFinal,
       },
     });
   };
 
   const goToAtendimentoForPaciente = (p: LinkedPaciente) => {
     navigate("/atendimento", {
-      state: { pacienteId: p.id, pacienteNome: p.nome, pacienteTelefone: p.telefone },
+      state: {
+        pacienteId: p.id,
+        pacienteNome: p.nome,
+        pacienteTelefone: p.telefone,
+        pacienteCidade: p.cidade || (cidade === EMPTY_CITY_VALUE ? null : cidade),
+      },
     });
   };
 
