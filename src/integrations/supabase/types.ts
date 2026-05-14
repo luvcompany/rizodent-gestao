@@ -1889,6 +1889,7 @@ export type Database = {
           sender_profile_pic: string | null
           sender_username: string | null
           status: string
+          tenant_id: string | null
         }
         Insert: {
           comment_id?: string | null
@@ -1909,6 +1910,7 @@ export type Database = {
           sender_profile_pic?: string | null
           sender_username?: string | null
           status?: string
+          tenant_id?: string | null
         }
         Update: {
           comment_id?: string | null
@@ -1929,6 +1931,7 @@ export type Database = {
           sender_profile_pic?: string | null
           sender_username?: string | null
           status?: string
+          tenant_id?: string | null
         }
         Relationships: [
           {
@@ -1936,6 +1939,13 @@ export type Database = {
             columns: ["instagram_account_config_id"]
             isOneToOne: false
             referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -2820,6 +2830,8 @@ export type Database = {
       }
       recalculate_all_lead_scores: { Args: never; Returns: undefined }
       recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
+      tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
+      tenant_of_message: { Args: { _message_id: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "gerente" | "crc" | "superadmin"

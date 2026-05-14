@@ -230,12 +230,22 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const leadTenantId: string | null = (leadData as any)?.tenant_id ?? null;
 
+    // ISOLAMENTO POR CLIENTE: as credenciais WhatsApp DEVEM pertencer
+    // ao mesmo tenant do lead. Sem fallback "qualquer canal ativo".
+    if (!leadTenantId) {
+      return new Response(JSON.stringify({ error: "Lead sem tenant_id; envio bloqueado" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let resolvedFromTenant = false;
     if (leadData?.pipeline_id) {
       const { data: funnelChannel } = await supabase
         .from("funnel_channels")
         .select("channel_config")
         .eq("channel_type", "whatsapp")
         .eq("pipeline_id", leadData.pipeline_id)
+        .eq("tenant_id", leadTenantId)
         .maybeSingle();
 
       if (funnelChannel?.channel_config) {
@@ -243,8 +253,9 @@ Deno.serve(async (req) => {
         if (integrationKey) {
           const { data: integration } = await supabase
             .from("integrations")
-            .select("config, status")
+            .select("config, status, tenant_id")
             .eq("key", integrationKey)
+            .eq("tenant_id", leadTenantId)
             .maybeSingle();
 
           if (integration?.status === "disabled") {
@@ -258,40 +269,39 @@ Deno.serve(async (req) => {
             const resolvedToken = cfg.access_token || cfg.token;
             if (resolvedToken) whatsappToken = resolvedToken;
             if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
-          }
-        }
-      } else {
-        // No funnel_channels for this pipeline — fall back to any active WhatsApp integration
-        const { data: fallbackChannel } = await supabase
-          .from("funnel_channels")
-          .select("channel_config")
-          .eq("channel_type", "whatsapp")
-          .limit(1)
-          .maybeSingle();
-
-        if (fallbackChannel?.channel_config) {
-          const integrationKey = (fallbackChannel.channel_config as any)?.integration_key;
-          if (integrationKey) {
-            const { data: integration } = await supabase
-              .from("integrations")
-              .select("config, status")
-              .eq("key", integrationKey)
-              .maybeSingle();
-
-            if (integration?.status !== "disabled" && integration?.config) {
-              const cfg = integration.config as any;
-              const resolvedToken = cfg.access_token || cfg.token;
-              if (resolvedToken) whatsappToken = resolvedToken;
-              if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
-            }
+            resolvedFromTenant = true;
           }
         }
       }
     }
 
-    if (!whatsappToken || !phoneNumberId) {
-      return new Response(JSON.stringify({ error: "WhatsApp credentials not found for this lead's pipeline" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Se não houver canal por pipeline, tentar QUALQUER integração WhatsApp
+    // ativa do MESMO tenant (e nunca de outro cliente).
+    if (!resolvedFromTenant) {
+      const { data: tenantIntegrations } = await supabase
+        .from("integrations")
+        .select("config, status")
+        .eq("tenant_id", leadTenantId)
+        .like("key", "whatsapp_%")
+        .neq("status", "disabled");
+      const intg = (tenantIntegrations || []).find((i: any) => {
+        const cfg = (i.config as any) || {};
+        return (cfg.access_token || cfg.token) && cfg.phone_number_id;
+      });
+      if (intg) {
+        const cfg = (intg.config as any) || {};
+        whatsappToken = cfg.access_token || cfg.token || whatsappToken;
+        phoneNumberId = cfg.phone_number_id || phoneNumberId;
+        resolvedFromTenant = true;
+      }
+    }
+
+    if (!resolvedFromTenant || !whatsappToken || !phoneNumberId) {
+      return new Response(JSON.stringify({
+        error: "Sem credenciais WhatsApp para o cliente deste lead",
+        tenant_id: leadTenantId,
+      }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 

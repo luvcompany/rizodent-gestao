@@ -185,11 +185,17 @@ async function executeOnEnterAutomations(supabase: any, leadId: string, stageId:
   return executeStageAutomationsForTriggers(supabase, leadId, stageId, phone, ["on_enter"]);
 }
 
-// Default assignment: all leads go to Rizodent user
-const DEFAULT_ASSIGNED_TO = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
+// Atribuição padrão: somente para o tenant Rizodent. Outros clientes
+// não recebem atribuição automática para um usuário fixo de outro cliente.
+const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
+const RIZODENT_DEFAULT_USER = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
 
-async function resolveAutoAssignment(_supabase: any, _pipelineId: string): Promise<string | null> {
-  return DEFAULT_ASSIGNED_TO;
+async function resolveAutoAssignment(supabase: any, _pipelineId: string, tenantId?: string | null): Promise<string | null> {
+  if (!tenantId) return null;
+  if (tenantId === RIZODENT_TENANT_ID) return RIZODENT_DEFAULT_USER;
+  // Para qualquer outro cliente, deixa null (sem dono) — o time do cliente
+  // assume manualmente. Nunca atribui a um usuário de outro tenant.
+  return null;
 }
 
 async function downloadAndStoreMedia(
@@ -736,8 +742,8 @@ Deno.serve(async (req) => {
                     if (inferredCidade) insertData.cidade = inferredCidade;
                   }
 
-                  // Round-robin / least-load assignment
-                  const assignedTo = await resolveAutoAssignment(supabase, pipelineId);
+                  // Atribuição padrão por cliente (somente Rizodent tem usuário fixo)
+                  const assignedTo = await resolveAutoAssignment(supabase, pipelineId, tenantId);
                   if (assignedTo) {
                     insertData.assigned_to = assignedTo;
                     console.log(`[WEBHOOK] Round-robin atribuiu lead a: ${assignedTo}`);

@@ -14,7 +14,10 @@ const APP_SECRET =
   Deno.env.get("META_APP_SECRET") ??
   "";
 
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+// Pipeline Instagram é resolvido por tenant via RPC ensure_instagram_pipeline.
+// Para retro-compatibilidade, o tenant Rizodent ainda usa o pipeline legado fixo.
+const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
+const RIZODENT_INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -124,28 +127,42 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
   return out;
 }
 
-// Find or create lead in Instagram pipeline based on IG user ID
+// Find or create lead in the Instagram pipeline of the GIVEN tenant.
 async function findOrCreateLead(
   igUserId: string,
   profile: { name: string | null; username: string | null; profile_pic: string | null },
-  accountName: string | null
+  accountName: string | null,
+  tenantId: string
 ): Promise<string | null> {
-  if (!igUserId) return null;
+  if (!igUserId || !tenantId) return null;
 
-  // 1. Try to find existing lead by instagram_user_id
+  // Resolve pipeline do tenant
+  let pipelineId: string | null = null;
+  if (tenantId === RIZODENT_TENANT_ID) {
+    pipelineId = RIZODENT_INSTAGRAM_PIPELINE_ID;
+  } else {
+    const { data, error } = await supabase.rpc("ensure_instagram_pipeline", { _tenant_id: tenantId });
+    if (error || !data) {
+      console.error("[instagram-webhook] ensure_instagram_pipeline failed", { tenantId, error });
+      return null;
+    }
+    pipelineId = data as string;
+  }
+
+  // Buscar lead existente DENTRO do tenant
   const { data: existing } = await supabase
     .from("crm_leads")
-    .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked")
+    .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked, tenant_id")
+    .eq("tenant_id", tenantId)
     .eq("instagram_user_id", igUserId)
     .maybeSingle();
 
   if (existing && (existing as any).is_blocked) {
-    console.log(`[instagram-webhook] Lead ${existing.id} (IG ${igUserId}) está BLOQUEADO — mensagem descartada.`);
+    console.log(`[instagram-webhook] Lead ${existing.id} (IG ${igUserId}) bloqueado — ignorado.`);
     return null;
   }
 
   if (existing) {
-    // Update profile cache fields if missing/stale
     const updates: Record<string, unknown> = {};
     if (profile.username && existing.instagram_username !== profile.username) {
       updates.instagram_username = profile.username;
@@ -153,7 +170,6 @@ async function findOrCreateLead(
     if (profile.profile_pic && existing.instagram_profile_pic_url !== profile.profile_pic) {
       updates.instagram_profile_pic_url = profile.profile_pic;
     }
-    // If lead name is the placeholder "IG xxxxxxxx", upgrade it to real name/username when we get one
     const placeholder = `IG ${igUserId.slice(0, 8)}`;
     if (existing.name === placeholder || existing.name?.startsWith("IG ")) {
       const better = profile.name || profile.username;
@@ -165,17 +181,16 @@ async function findOrCreateLead(
     return existing.id;
   }
 
-  // 2. Find first stage of Instagram pipeline
   const { data: firstStage } = await supabase
     .from("crm_stages")
     .select("id")
-    .eq("pipeline_id", INSTAGRAM_PIPELINE_ID)
+    .eq("pipeline_id", pipelineId)
     .order("position", { ascending: true })
     .limit(1)
     .maybeSingle();
 
   if (!firstStage) {
-    console.error("[instagram-webhook] No stages in Instagram pipeline");
+    console.error("[instagram-webhook] No stages in Instagram pipeline", { tenantId, pipelineId });
     return null;
   }
 
@@ -186,8 +201,9 @@ async function findOrCreateLead(
     .from("crm_leads")
     .insert({
       name: displayName,
-      pipeline_id: INSTAGRAM_PIPELINE_ID,
+      pipeline_id: pipelineId,
       stage_id: firstStage.id,
+      tenant_id: tenantId,
       source: sourceLabel,
       instagram_user_id: igUserId,
       instagram_username: profile.username,
@@ -200,7 +216,7 @@ async function findOrCreateLead(
     console.error("[instagram-webhook] Failed to create lead:", createErr);
     return null;
   }
-  console.log(`[instagram-webhook] Created IG lead ${created.id} for user ${igUserId}`);
+  console.log(`[instagram-webhook] Created IG lead ${created.id} for user ${igUserId} in tenant ${tenantId}`);
   return created.id;
 }
 
@@ -209,6 +225,7 @@ async function persistMessage(opts: {
   accountConfigId: string | null;
   accountName: string | null;
   accessToken: string | null;
+  tenantId: string;
   senderId: string;
   senderUsername: string | null;
   senderName: string | null;
@@ -218,29 +235,26 @@ async function persistMessage(opts: {
   commentId: string | null;
   igMessageId: string | null;
 }) {
-  // Enrich profile via Graph API if we have a token
   let profile = { name: opts.senderName, username: opts.senderUsername, profile_pic: null as string | null };
   if (opts.accessToken && opts.senderId) {
     profile = await fetchIgProfile(opts.senderId, opts.accessToken);
   }
 
-  // Find or create lead — ONLY for DMs. Comments stay in instagram_messages only.
   let leadId: string | null = null;
   if (opts.messageType === "dm") {
-    // Pre-check block status to fully drop messages from blocked leads
     const { data: blockedCheck } = await supabase
       .from("crm_leads")
       .select("id, is_blocked")
+      .eq("tenant_id", opts.tenantId)
       .eq("instagram_user_id", opts.senderId)
       .maybeSingle();
     if (blockedCheck && (blockedCheck as any).is_blocked) {
       console.log(`[instagram-webhook] DM de lead bloqueado ${blockedCheck.id} — descartado.`);
       return;
     }
-    leadId = await findOrCreateLead(opts.senderId, profile, opts.accountName);
+    leadId = await findOrCreateLead(opts.senderId, profile, opts.accountName, opts.tenantId);
   }
 
-  // Insert into instagram_messages (legacy table — used for both DMs & comments)
   await supabase.from("instagram_messages").insert({
     instagram_account_id: opts.accountId,
     instagram_account_config_id: opts.accountConfigId,
@@ -255,12 +269,13 @@ async function persistMessage(opts: {
     is_outbound: false,
     is_read: false,
     lead_id: leadId,
+    tenant_id: opts.tenantId,
   });
 
-  // Mirror into unified messages table for chat UI
   if (leadId) {
     await supabase.from("messages").insert({
       lead_id: leadId,
+      tenant_id: opts.tenantId,
       direction: "inbound",
       type: "text",
       content: opts.text,
@@ -270,7 +285,6 @@ async function persistMessage(opts: {
       status: "received",
     });
 
-    // Update lead last_message
     await supabase
       .from("crm_leads")
       .update({
@@ -333,13 +347,21 @@ Deno.serve(async (req: Request) => {
 
         const { data: accountConfig } = await supabase
           .from("instagram_accounts")
-          .select("id, name, page_access_token, is_active")
+          .select("id, name, page_access_token, is_active, tenant_id")
           .eq("instagram_account_id", accountId)
           .maybeSingle();
 
-        // Per-account kill-switch
-        if (accountConfig && accountConfig.is_active === false) {
+        if (!accountConfig) {
+          console.log(`[instagram-webhook] Account ${accountId} not registered. Skipping entry.`);
+          continue;
+        }
+        if (accountConfig.is_active === false) {
           console.log(`[instagram-webhook] Account ${accountId} is inactive. Skipping entry.`);
+          continue;
+        }
+        const tenantId = (accountConfig as any).tenant_id as string | null;
+        if (!tenantId) {
+          console.warn(`[instagram-webhook] Account ${accountId} sem tenant_id. Skipping entry.`);
           continue;
         }
 
@@ -361,6 +383,7 @@ Deno.serve(async (req: Request) => {
             accountConfigId,
             accountName,
             accessToken,
+            tenantId,
             senderId,
             senderUsername: null,
             senderName: null,
@@ -390,6 +413,7 @@ Deno.serve(async (req: Request) => {
               accountConfigId,
               accountName,
               accessToken,
+              tenantId,
               senderId,
               senderUsername,
               senderName: null,
@@ -413,6 +437,7 @@ Deno.serve(async (req: Request) => {
               accountConfigId,
               accountName,
               accessToken,
+              tenantId,
               senderId,
               senderUsername,
               senderName,
