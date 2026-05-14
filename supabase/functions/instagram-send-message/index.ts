@@ -293,7 +293,17 @@ Deno.serve(async (req: Request) => {
     if (permissionError) {
       return jsonResponse(permissionError, 200);
     }
-    return jsonResponse({ error: metaJson?.error?.message || "Meta API error", meta: metaJson }, 500);
+    const metaErr = metaJson?.error || {};
+    const isUserNotFound = metaErr.code === 100 && metaErr.error_subcode === 2534014;
+    return jsonResponse({
+      ok: false,
+      error_code: isUserNotFound ? "instagram_user_not_found" : "instagram_api_error",
+      error: metaErr.message || "Meta API error",
+      user_message: isUserNotFound
+        ? "Não foi possível enviar: o usuário do Instagram não está disponível (pode ter bloqueado, desativado a conta ou nunca interagido)."
+        : (metaErr.message || "Falha ao enviar mensagem pelo Instagram."),
+      meta: metaJson,
+    }, 200);
   }
 
   const igMessageId = metaJson?.message_id ?? null;
