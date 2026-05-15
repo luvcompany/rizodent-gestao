@@ -426,12 +426,43 @@ export default function CrmRelatorios() {
     });
   }, [cohort]);
 
+  // Resumo executivo: KPIs principais derivados das fontes já normalizadas
+  const resumo = useMemo(() => {
+    const totalLeads = cohort.length;
+    const taxaAgendamento = totalLeads > 0 ? (agenda.agendados / totalLeads) * 100 : 0;
+    const taxaContratacao = totalLeads > 0 ? (agenda.contratados / totalLeads) * 100 : 0;
+    return { totalLeads, taxaAgendamento, taxaContratacao };
+  }, [cohort, agenda]);
+
+  // Funil de conversão entre etapas consecutivas (% de quem passou para a próxima)
+  const stageConversion = useMemo(() => {
+    return funnelData.map((s, i) => {
+      const next = funnelData[i + 1];
+      const conv = next && s.value > 0 ? (next.value / s.value) * 100 : null;
+      return { name: s.name, value: s.value, fill: s.fill, conversion: conv };
+    });
+  }, [funnelData]);
+
+  // Ordenação da tabela de cidades
+  const [citySort, setCitySort] = useState<{ key: "cidade" | "agendamentos" | "comparecimentos" | "contratacoes"; dir: "asc" | "desc" }>({ key: "contratacoes", dir: "desc" });
+  const porCidadeSorted = useMemo(() => {
+    const arr = [...porCidade];
+    arr.sort((a, b) => {
+      const av = a[citySort.key] as any;
+      const bv = b[citySort.key] as any;
+      if (typeof av === "string") {
+        return citySort.dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      return citySort.dir === "asc" ? (av - bv) : (bv - av);
+    });
+    return arr;
+  }, [porCidade, citySort]);
+  const toggleCitySort = (key: typeof citySort.key) => {
+    setCitySort(prev => prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "cidade" ? "asc" : "desc" });
+  };
+
   if (loading && !leads.length) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <CrmRelatoriosSkeleton />;
   }
 
   return (
