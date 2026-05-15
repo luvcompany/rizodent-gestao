@@ -25,7 +25,7 @@ import ConversationInlineNote, { AddInlineNoteButton } from "@/components/chat/C
 import { useConversationNotes } from "@/hooks/useConversationNotes";
 import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
-import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban } from "lucide-react";
+import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
@@ -107,6 +107,19 @@ export default function CrmConversa() {
 
   // Fetch lead + profiles in parallel (with profile cache)
   const [leadLoading, setLeadLoading] = useState(true);
+  const [phoneCopied, setPhoneCopied] = useState(false);
+
+  const copyPhone = async () => {
+    if (!lead?.phone) return;
+    try {
+      await navigator.clipboard.writeText(lead.phone);
+      setPhoneCopied(true);
+      toast.success("Número copiado");
+      setTimeout(() => setPhoneCopied(false), 1500);
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  };
   useEffect(() => {
     if (!id) return;
     setLeadLoading(true);
@@ -264,10 +277,23 @@ export default function CrmConversa() {
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-foreground truncate">{lead.name}</div>
-            <div className="text-xs text-muted-foreground">
-              {lead.phone && <span>{lead.phone}</span>}
+            <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+              {lead.phone && (
+                <span className="inline-flex items-center gap-1">
+                  <span>{lead.phone}</span>
+                  <button
+                    type="button"
+                    onClick={copyPhone}
+                    title="Copiar número"
+                    aria-label="Copiar número"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {phoneCopied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                  </button>
+                </span>
+              )}
               {currentStage && (
-                <span className="ml-2 inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentStage.color }} />
                   {currentStage.name}
                 </span>
