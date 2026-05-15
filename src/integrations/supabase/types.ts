@@ -2828,7 +2828,9 @@ export type Database = {
         }
         Returns: boolean
       }
-      recalculate_all_lead_scores: { Args: never; Returns: undefined }
+      recalculate_all_lead_scores:
+        | { Args: never; Returns: undefined }
+        | { Args: { p_batch_size?: number }; Returns: number }
       recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }

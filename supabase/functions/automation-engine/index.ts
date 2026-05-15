@@ -38,11 +38,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  // Internal cron-only function. The Supabase gateway already validates the API key
-  // (anon/publishable/service). We require any Bearer token or apikey header to be present.
+  // Internal cron-only function. Require service_role bearer to prevent abuse via anon key.
   const authHeader = req.headers.get("authorization") || "";
-  const apiKeyHeader = req.headers.get("apikey") || "";
-  if (!authHeader.startsWith("Bearer ") && !apiKeyHeader) {
+  const serviceKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (!serviceKeyEnv || authHeader !== `Bearer ${serviceKeyEnv}`) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 

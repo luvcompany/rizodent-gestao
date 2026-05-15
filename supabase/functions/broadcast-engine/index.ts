@@ -29,56 +29,84 @@ Deno.serve(async (req) => {
     const template = (bc as any).crm_whatsapp_templates;
     if (!template) return new Response(JSON.stringify({ error: "Template not found" }), { status: 404, headers: corsHeaders });
 
-    // Get pending recipients with lead phone
-    const { data: recipients } = await supabase
-      .from("crm_broadcast_recipients")
-      .select("id, lead_id, crm_leads(phone, name)")
-      .eq("broadcast_id", broadcast_id)
-      .eq("status", "pending")
-      .limit(500);
-
+    // Process pending recipients in pages until none remain (or safety cap reached)
     let sentCount = 0;
-    for (const r of recipients || []) {
-      const lead = (r as any).crm_leads;
-      if (!lead?.phone) {
-        await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: "no phone" }).eq("id", r.id);
-        continue;
-      }
+    let failedCount = 0;
+    const PAGE = 200;
+    const MAX_TOTAL = 5000; // safety cap per invocation
+    let processed = 0;
 
-      try {
-        // Call send-whatsapp-message
-        const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
-          body: JSON.stringify({
-            lead_id: r.lead_id,
-            template_name: template.name,
-            language: template.language || "pt_BR",
-          }),
-        });
+    while (processed < MAX_TOTAL) {
+      const { data: recipients, error: fetchErr } = await supabase
+        .from("crm_broadcast_recipients")
+        .select("id, lead_id, crm_leads(phone, name)")
+        .eq("broadcast_id", broadcast_id)
+        .eq("status", "pending")
+        .limit(PAGE);
 
-        if (resp.ok) {
-          await supabase.from("crm_broadcast_recipients").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", r.id);
-          sentCount++;
-        } else {
-          const err = await resp.text();
-          await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: err.slice(0, 200) }).eq("id", r.id);
+      if (fetchErr) break;
+      if (!recipients || recipients.length === 0) break;
+
+      for (const r of recipients) {
+        const lead = (r as any).crm_leads;
+        if (!lead?.phone) {
+          await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: "no phone" }).eq("id", r.id);
+          failedCount++;
+          processed++;
+          continue;
         }
-      } catch (e: any) {
-        await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: e.message?.slice(0, 200) }).eq("id", r.id);
-      }
 
-      // Throttle ~50ms between sends
-      await new Promise(res => setTimeout(res, 50));
+        try {
+          const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+            body: JSON.stringify({
+              lead_id: r.lead_id,
+              template_name: template.name,
+              language: template.language || "pt_BR",
+            }),
+          });
+
+          if (resp.status === 429) {
+            // Rate-limited: back off and retry next pass
+            await new Promise(res => setTimeout(res, 2000));
+            continue;
+          }
+          if (resp.ok) {
+            await supabase.from("crm_broadcast_recipients").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", r.id);
+            sentCount++;
+          } else {
+            const err = await resp.text();
+            await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: err.slice(0, 200) }).eq("id", r.id);
+            failedCount++;
+          }
+        } catch (e: any) {
+          await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: e.message?.slice(0, 200) }).eq("id", r.id);
+          failedCount++;
+        }
+        processed++;
+        // Throttle ~80ms (~12 msg/s, well below WA limit)
+        await new Promise(res => setTimeout(res, 80));
+      }
     }
 
-    // Update broadcast
+    // Decide final status: only "completed" when nothing remains pending.
+    const { count: stillPending } = await supabase
+      .from("crm_broadcast_recipients")
+      .select("id", { count: "exact", head: true })
+      .eq("broadcast_id", broadcast_id)
+      .eq("status", "pending");
+
+    const finalStatus = (stillPending && stillPending > 0)
+      ? "running"
+      : (sentCount > 0 ? "completed" : "failed");
+
     await supabase.from("crm_broadcasts").update({
       sent_count: sentCount,
-      status: sentCount > 0 ? "completed" : "failed",
+      status: finalStatus,
     }).eq("id", broadcast_id);
 
-    return new Response(JSON.stringify({ sent: sentCount }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ sent: sentCount, failed: failedCount, pending: stillPending ?? 0, status: finalStatus }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
   }

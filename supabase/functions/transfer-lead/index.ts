@@ -36,14 +36,29 @@ Deno.serve(async (req) => {
       return json({ error: "leadId and newUserId are required" }, 400);
     }
 
-    const [{ data: lead }, { data: roleRow }] = await Promise.all([
-      supabase.from("crm_leads").select("id, assigned_to").eq("id", leadId).maybeSingle(),
+    const [{ data: lead }, { data: roleRow }, { data: requesterProfile }] = await Promise.all([
+      supabase.from("crm_leads").select("id, assigned_to, tenant_id").eq("id", leadId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
+      supabase.from("profiles").select("tenant_id").eq("id", user.id).maybeSingle(),
     ]);
 
     if (!lead) return json({ error: "Lead not found" }, 404);
 
-    const isPrivileged = roleRow?.role === "admin" || roleRow?.role === "gerente";
+    // Tenant cross-check: requester, lead, and target user must all belong to the same tenant.
+    const requesterTenant = (requesterProfile as any)?.tenant_id;
+    const isSuperadmin = roleRow?.role === "superadmin";
+    if (!isSuperadmin) {
+      if (!requesterTenant || requesterTenant !== (lead as any).tenant_id) {
+        return json({ error: "Forbidden: cross-tenant" }, 403);
+      }
+      const { data: targetProfile } = await supabase
+        .from("profiles").select("tenant_id").eq("id", newUserId).maybeSingle();
+      if (!targetProfile || (targetProfile as any).tenant_id !== requesterTenant) {
+        return json({ error: "Target user not in your tenant" }, 403);
+      }
+    }
+
+    const isPrivileged = roleRow?.role === "admin" || roleRow?.role === "gerente" || isSuperadmin;
     const canTransfer = isPrivileged || lead.assigned_to === user.id || lead.assigned_to === null;
     if (!canTransfer) return json({ error: "Forbidden" }, 403);
 
