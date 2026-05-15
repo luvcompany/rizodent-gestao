@@ -494,15 +494,19 @@ export default function CrmRelatorios() {
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <Calendar className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Agenda por Etapa do Funil</h2>
+          <h2 className="text-lg font-semibold">Agenda no Período</h2>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">Classificação pela etapa atual do lead. Faltou = "Não Compareceu", Remarcou = "Reagendado".</p>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatBox label="Total Agendados" value={agenda.agendados} />
+        <p className="text-sm text-muted-foreground mb-4">
+          Fonte: <strong>agendamentos</strong> (mesma do Dashboard) filtrados por <em>data marcada</em> no período.
+          Reagendados saem do total de Agendados; Compareceram = "Contratou" + "Não contratou".
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          <StatBox label="Agendados" value={agenda.agendados} />
           <StatBox label="Compareceram" value={agenda.compareceram} color="text-green-600" />
-          <StatBox label="Remarcaram" value={agenda.remarcaram} color="text-orange-500" />
+          <StatBox label="Contratados" value={agenda.contratados} color="text-primary" />
+          <StatBox label="Reagendados" value={agenda.remarcaram} color="text-orange-500" />
           <StatBox label="Faltaram" value={agenda.faltaram} color="text-red-500" />
-          <StatBox label="Taxa de Presença" value={`${agenda.presenca.toFixed(0)}%`} color="text-primary" />
+          <StatBox label="Presença" value={`${agenda.presenca.toFixed(0)}%`} color="text-primary" />
         </div>
       </Card>
 
