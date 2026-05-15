@@ -241,44 +241,32 @@ export default function CrmRelatorios() {
     }));
   }, [stages, cohort]);
 
-  // 2. Agenda por etapa — usa histórico no período (quem JÁ passou pela etapa)
+  // 2. Agenda no período — PADRONIZADO com Dashboard.tsx
+  // Fonte única: crm_appointments + status + is_rescheduled, filtrado por scheduled_date no período.
+  // (Antes: regex no nome das etapas — frágil quando renomeavam stages.)
   const agenda = useMemo(() => {
-    const agendados = new Set<string>();
-    const compareceram = new Set<string>();
-    const remarcaram = new Set<string>();
-    const faltaram = new Set<string>();
+    const inDateRange = (yyyymmdd: string) => {
+      if (!range) return true;
+      const startStr = format(range.start, "yyyy-MM-dd");
+      const endStr = format(range.end, "yyyy-MM-dd");
+      return yyyymmdd >= startStr && yyyymmdd <= endStr;
+    };
+    // Restringe ao pipeline corrente: só conta appointments cujo lead esteja no conjunto carregado
+    const leadsDoPipeline = new Set(leads.map(l => l.id));
+    const appsPeriodo = appointments.filter(a =>
+      leadsDoPipeline.has(a.lead_id) && inDateRange(a.scheduled_date)
+    );
 
-    history.forEach(h => {
-      if (!cohortIds.has(h.lead_id)) return;
-      if (!inRange(h.entered_at)) return;
-      const st = stageById.get(h.stage_id);
-      if (!st) return;
-      const n = st.name;
-      if (isAgendStage(n) || isReagendStage(n) || isComparStage(n) || isFaltouStage(n) || isContratStage(n)) {
-        agendados.add(h.lead_id);
-      }
-      if (isComparStage(n) || isContratStage(n)) compareceram.add(h.lead_id);
-      if (isReagendStage(n)) remarcaram.add(h.lead_id);
-      if (isFaltouStage(n)) faltaram.add(h.lead_id);
-    });
+    const naoReagendados = appsPeriodo.filter(a => !(a as any).is_rescheduled);
+    const agendados = naoReagendados.length;
+    const reagendados = appsPeriodo.filter(a => (a as any).is_rescheduled === true).length;
+    const compareceram = naoReagendados.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
+    const faltaram = naoReagendados.filter(a => a.status === "no_show").length;
+    const contratados = naoReagendados.filter(a => a.status === "contracted").length;
 
-    // Fallback: lead atual em etapa relevante mas sem registro de histórico no período
-    cohort.forEach(l => {
-      const st = stageById.get(l.stage_id);
-      if (!st) return;
-      const n = st.name;
-      if (isAgendStage(n) || isReagendStage(n) || isComparStage(n) || isFaltouStage(n) || isContratStage(n)) {
-        agendados.add(l.id);
-      }
-      if (isComparStage(n) || isContratStage(n)) compareceram.add(l.id);
-      if (isReagendStage(n)) remarcaram.add(l.id);
-      if (isFaltouStage(n)) faltaram.add(l.id);
-    });
-
-    const c = compareceram.size, f = faltaram.size;
-    const presenca = (c + f) > 0 ? (c / (c + f)) * 100 : 0;
-    return { agendados: agendados.size, compareceram: c, remarcaram: remarcaram.size, faltaram: f, presenca };
-  }, [cohort, cohortIds, stageById, history, range]);
+    const presenca = (compareceram + faltaram) > 0 ? (compareceram / (compareceram + faltaram)) * 100 : 0;
+    return { agendados, compareceram, remarcaram: reagendados, faltaram, contratados, presenca };
+  }, [appointments, leads, range]);
 
   // 3. Tempo até contratação (até entrar na etapa "Contratado")
   const tempoContratacao = useMemo(() => {
@@ -506,15 +494,19 @@ export default function CrmRelatorios() {
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <Calendar className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Agenda por Etapa do Funil</h2>
+          <h2 className="text-lg font-semibold">Agenda no Período</h2>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">Classificação pela etapa atual do lead. Faltou = "Não Compareceu", Remarcou = "Reagendado".</p>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatBox label="Total Agendados" value={agenda.agendados} />
+        <p className="text-sm text-muted-foreground mb-4">
+          Fonte: <strong>agendamentos</strong> (mesma do Dashboard) filtrados por <em>data marcada</em> no período.
+          Reagendados saem do total de Agendados; Compareceram = "Contratou" + "Não contratou".
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          <StatBox label="Agendados" value={agenda.agendados} />
           <StatBox label="Compareceram" value={agenda.compareceram} color="text-green-600" />
-          <StatBox label="Remarcaram" value={agenda.remarcaram} color="text-orange-500" />
+          <StatBox label="Contratados" value={agenda.contratados} color="text-primary" />
+          <StatBox label="Reagendados" value={agenda.remarcaram} color="text-orange-500" />
           <StatBox label="Faltaram" value={agenda.faltaram} color="text-red-500" />
-          <StatBox label="Taxa de Presença" value={`${agenda.presenca.toFixed(0)}%`} color="text-primary" />
+          <StatBox label="Presença" value={`${agenda.presenca.toFixed(0)}%`} color="text-primary" />
         </div>
       </Card>
 

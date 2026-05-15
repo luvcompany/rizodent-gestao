@@ -124,8 +124,17 @@ export default function CrmDashboard() {
     appointments.filter(a => a.scheduled_date === format(selectedDate, "yyyy-MM-dd")),
   [appointments, selectedDate]);
 
+  // Reagendados do MÊS CORRENTE (filtrado por scheduled_date)
+  // Padronizado com Dashboard.tsx: fonte = crm_appointments + is_rescheduled + scheduled_date no período
   const rescheduledCount = useMemo(() => {
-    return appointments.filter(a => (a as any).is_rescheduled === true).length;
+    const now = new Date();
+    const mStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+    const mEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+    return appointments.filter(a =>
+      (a as any).is_rescheduled === true &&
+      a.scheduled_date >= mStart &&
+      a.scheduled_date <= mEnd
+    ).length;
   }, [appointments]);
 
   const upcomingAppointments = useMemo(() => {
