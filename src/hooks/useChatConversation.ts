@@ -157,7 +157,7 @@ export function useChatConversation(leadId: string | null | undefined) {
             messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
             if (!applyMessages(nextMessages)) return;
             const mediaUrls = nextMessages.filter((m) => m.media_url?.startsWith("http")).map((m) => m.media_url!);
-            if (mediaUrls.length > 0) batchSignMediaUrls(mediaUrls).catch(() => {});
+            if (mediaUrls.length > 0) batchSignMediaUrls(mediaUrls).catch((err) => console.warn("[useChatConversation] batchSignMediaUrls error:", err));
           }
         });
         return;
@@ -173,7 +173,7 @@ export function useChatConversation(leadId: string | null | undefined) {
       // Pre-sign all media URLs in background so they're cached when rendering
       const mediaUrls = msgs.filter(m => m.media_url?.startsWith("http")).map(m => m.media_url!);
       if (mediaUrls.length > 0) {
-        batchSignMediaUrls(mediaUrls).catch(() => {});
+        batchSignMediaUrls(mediaUrls).catch((err) => console.warn("[useChatConversation] batchSignMediaUrls error:", err));
       }
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);

@@ -325,11 +325,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           }
 
           const url = await uploadFile(fileToUpload!, type);
-          if (!url) { onMessageError?.(tempId); return; }
+          if (!url) { URL.revokeObjectURL(blobUrl); onMessageError?.(tempId); return; }
 
           const body = await buildSendBody({ type, message: message || undefined, media_url: url, reply: currentReplyTo, replyMode: igReplyMode, commentTarget: igCommentTarget });
 
           const { data, error } = await supabase.functions.invoke(sendFnName, { body });
+          URL.revokeObjectURL(blobUrl);
           if (error || data?.error || data?.ok === false) {
             if (data?.message) {
               onMessageSuccess?.(tempId, data.message);
@@ -341,6 +342,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             onMessageSuccess?.(tempId, data?.message);
           }
         } catch (err: any) {
+          URL.revokeObjectURL(blobUrl);
           onMessageError?.(tempId);
           toast.error(`Erro inesperado: ${err.message}`);
         }

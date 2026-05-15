@@ -67,7 +67,7 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
   }, [variables]);
 
   const addMessage = useCallback((msg: Omit<SimMessage, "id">) => {
-    const newMsg = { ...msg, id: `sim-${Date.now()}-${Math.random()}` };
+    const newMsg = { ...msg, id: `sim-${Date.now()}-${crypto.randomUUID().slice(0, 8)}` };
     setMessages((prev) => [...prev, newMsg]);
     scrollToBottom();
     return newMsg;
