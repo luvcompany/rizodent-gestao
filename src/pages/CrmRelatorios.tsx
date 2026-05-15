@@ -14,7 +14,8 @@ import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
 import DashboardFunnel from "@/components/DashboardFunnel";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
-import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, RefreshCw, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox } from "lucide-react";
 
 // ---------- Tipos ----------
 type Pipeline = { id: string; name: string };
@@ -425,12 +426,43 @@ export default function CrmRelatorios() {
     });
   }, [cohort]);
 
+  // Resumo executivo: KPIs principais derivados das fontes já normalizadas
+  const resumo = useMemo(() => {
+    const totalLeads = cohort.length;
+    const taxaAgendamento = totalLeads > 0 ? (agenda.agendados / totalLeads) * 100 : 0;
+    const taxaContratacao = totalLeads > 0 ? (agenda.contratados / totalLeads) * 100 : 0;
+    return { totalLeads, taxaAgendamento, taxaContratacao };
+  }, [cohort, agenda]);
+
+  // Funil de conversão entre etapas consecutivas (% de quem passou para a próxima)
+  const stageConversion = useMemo(() => {
+    return funnelData.map((s, i) => {
+      const next = funnelData[i + 1];
+      const conv = next && s.value > 0 ? (next.value / s.value) * 100 : null;
+      return { name: s.name, value: s.value, fill: s.fill, conversion: conv };
+    });
+  }, [funnelData]);
+
+  // Ordenação da tabela de cidades
+  const [citySort, setCitySort] = useState<{ key: "cidade" | "agendamentos" | "comparecimentos" | "contratacoes"; dir: "asc" | "desc" }>({ key: "contratacoes", dir: "desc" });
+  const porCidadeSorted = useMemo(() => {
+    const arr = [...porCidade];
+    arr.sort((a, b) => {
+      const av = a[citySort.key] as any;
+      const bv = b[citySort.key] as any;
+      if (typeof av === "string") {
+        return citySort.dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      return citySort.dir === "asc" ? (av - bv) : (bv - av);
+    });
+    return arr;
+  }, [porCidade, citySort]);
+  const toggleCitySort = (key: typeof citySort.key) => {
+    setCitySort(prev => prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "cidade" ? "asc" : "desc" });
+  };
+
   if (loading && !leads.length) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <CrmRelatoriosSkeleton />;
   }
 
   return (
@@ -475,6 +507,15 @@ export default function CrmRelatorios() {
         </div>
       </Card>
 
+      {/* Resumo Executivo */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <KpiCard icon={Users} label="Total de Leads" value={resumo.totalLeads} accent="blue" hint="Coorte do período" />
+        <KpiCard icon={Calendar} label="Agendados" value={agenda.agendados} accent="indigo" />
+        <KpiCard icon={CheckCircle2} label="Compareceram" value={agenda.compareceram} accent="green" />
+        <KpiCard icon={Target} label="Contratados" value={agenda.contratados} accent="emerald" hint={`${resumo.taxaContratacao.toFixed(1)}% da coorte`} />
+        <KpiCard icon={XCircle} label="Faltaram" value={agenda.faltaram} accent="red" />
+      </div>
+
       {/* 1. Funil */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
@@ -483,11 +524,48 @@ export default function CrmRelatorios() {
         </div>
         <p className="text-sm text-muted-foreground mb-4">Onde estão os leads criados no período selecionado.</p>
         {funnelData.some(d => d.value > 0) ? (
-          <DashboardFunnel data={funnelData} />
+          <>
+            <DashboardFunnel data={funnelData} />
+            <div className="mt-6 border-t pt-4">
+              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Conversão entre etapas consecutivas</p>
+              <div className="space-y-2">
+                {stageConversion.map((s, i) => (
+                  <div key={s.name} className="flex items-center gap-3">
+                    <div className="w-2 h-8 rounded-sm" style={{ background: s.fill }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-medium truncate">{s.name}</span>
+                        <span className="text-sm tabular-nums text-muted-foreground">{s.value}</span>
+                      </div>
+                      {i < stageConversion.length - 1 && (
+                        <div className="flex items-center gap-2 mt-1 text-xs">
+                          <ArrowDown className="w-3 h-3 text-muted-foreground" />
+                          <span className={cn(
+                            "font-semibold tabular-nums",
+                            s.conversion === null ? "text-muted-foreground" :
+                            s.conversion >= 50 ? "text-green-600" :
+                            s.conversion >= 20 ? "text-amber-600" : "text-red-500"
+                          )}>
+                            {s.conversion === null ? "—" : `${s.conversion.toFixed(1)}%`}
+                          </span>
+                          <span className="text-muted-foreground">passam para "{stageConversion[i + 1].name}"</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         ) : (
-          <p className="text-sm text-muted-foreground text-center py-8">Sem leads no período.</p>
+          <EmptyState
+            icon={Inbox}
+            title="Sem leads no período"
+            description="Ajuste o período ou troque o funil para ver a distribuição por etapa."
+          />
         )}
       </Card>
+
 
 
       {/* 2. Agenda */}
@@ -563,19 +641,23 @@ export default function CrmRelatorios() {
         </div>
         <p className="text-sm text-muted-foreground mb-4">Agendamentos, comparecimentos e contratações por cidade do lead.</p>
         {porCidade.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">Sem dados de cidade.</p>
+          <EmptyState
+            icon={MapPin}
+            title="Sem dados de cidade"
+            description="Os leads carregados não possuem cidade preenchida. Revise o cadastro ou amplie o período."
+          />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Cidade</TableHead>
-                <TableHead className="text-right">Agendamentos</TableHead>
-                <TableHead className="text-right">Comparecimentos</TableHead>
-                <TableHead className="text-right">Contratações</TableHead>
+                <SortableHead label="Cidade" sortKey="cidade" current={citySort} onClick={toggleCitySort} />
+                <SortableHead label="Agendamentos" sortKey="agendamentos" current={citySort} onClick={toggleCitySort} align="right" />
+                <SortableHead label="Comparecimentos" sortKey="comparecimentos" current={citySort} onClick={toggleCitySort} align="right" />
+                <SortableHead label="Contratações" sortKey="contratacoes" current={citySort} onClick={toggleCitySort} align="right" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {porCidade.map(r => (
+              {porCidadeSorted.map(r => (
                 <TableRow key={r.cidade}>
                   <TableCell className="font-medium">{r.cidade}</TableCell>
                   <TableCell className="text-right">{r.agendamentos}</TableCell>
@@ -1082,6 +1164,116 @@ function StatBoxLite({ label, value, color = "text-foreground" }: { label: strin
     <div className="bg-secondary/40 rounded-lg p-4 text-center">
       <p className={`text-3xl font-bold ${color}`}>{value}</p>
       <p className="text-xs text-muted-foreground mt-1">{label}</p>
+    </div>
+  );
+}
+
+// ============================================================================
+// Componentes auxiliares de UI
+// ============================================================================
+
+const ACCENTS: Record<string, { icon: string; ring: string; value: string }> = {
+  blue:    { icon: "text-blue-500 bg-blue-500/10",       ring: "border-blue-500/30",    value: "text-blue-600" },
+  indigo:  { icon: "text-indigo-500 bg-indigo-500/10",   ring: "border-indigo-500/30",  value: "text-indigo-600" },
+  green:   { icon: "text-green-600 bg-green-600/10",     ring: "border-green-600/30",   value: "text-green-600" },
+  emerald: { icon: "text-emerald-600 bg-emerald-600/10", ring: "border-emerald-600/30", value: "text-emerald-600" },
+  red:     { icon: "text-red-500 bg-red-500/10",         ring: "border-red-500/30",     value: "text-red-500" },
+  amber:   { icon: "text-amber-500 bg-amber-500/10",     ring: "border-amber-500/30",   value: "text-amber-600" },
+};
+
+function KpiCard({
+  icon: Icon, label, value, accent = "blue", hint,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string | number;
+  accent?: keyof typeof ACCENTS;
+  hint?: string;
+}) {
+  const a = ACCENTS[accent] ?? ACCENTS.blue;
+  return (
+    <Card className={cn("p-4 border-l-4", a.ring)}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground uppercase truncate">{label}</p>
+          <p className={cn("text-3xl font-bold mt-1 tabular-nums", a.value)}>{value}</p>
+          {hint && <p className="text-xs text-muted-foreground mt-1 truncate">{hint}</p>}
+        </div>
+        <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", a.icon)}>
+          <Icon className="w-5 h-5" />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function EmptyState({
+  icon: Icon, title, description,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-10 px-4">
+      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+        <Icon className="w-6 h-6 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {description && <p className="text-xs text-muted-foreground mt-1 max-w-sm">{description}</p>}
+    </div>
+  );
+}
+
+function SortableHead({
+  label, sortKey, current, onClick, align = "left",
+}: {
+  label: string;
+  sortKey: string;
+  current: { key: string; dir: "asc" | "desc" };
+  onClick: (k: any) => void;
+  align?: "left" | "right";
+}) {
+  const active = current.key === sortKey;
+  const Icon = !active ? ArrowUpDown : current.dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <TableHead className={align === "right" ? "text-right" : ""}>
+      <button
+        type="button"
+        onClick={() => onClick(sortKey)}
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-foreground transition-colors",
+          align === "right" && "ml-auto",
+          active ? "text-foreground" : "text-muted-foreground"
+        )}
+      >
+        {label}
+        <Icon className="w-3 h-3" />
+      </button>
+    </TableHead>
+  );
+}
+
+function CrmRelatoriosSkeleton() {
+  return (
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-96" />
+      </div>
+      <Skeleton className="h-16 w-full" />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-24 w-full" />
+        ))}
+      </div>
+      <Skeleton className="h-72 w-full" />
+      <Skeleton className="h-48 w-full" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+      <Skeleton className="h-64 w-full" />
     </div>
   );
 }
