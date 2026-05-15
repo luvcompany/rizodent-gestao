@@ -38,42 +38,47 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Check duplicate
-    const { data: existing } = await supabase.from("crm_leads").select("id").eq("phone", normalizedPhone).limit(1);
+    // All leads assigned to the central Rizodent user — derive tenant from that profile.
+    const assignedTo = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
+    const { data: assignedProfile } = await supabase
+      .from("profiles").select("tenant_id").eq("id", assignedTo).maybeSingle();
+    const tenantId = (assignedProfile as any)?.tenant_id;
+    if (!tenantId) {
+      return new Response(JSON.stringify({ error: "assigned user has no tenant" }), { status: 500, headers: corsHeaders });
+    }
+
+    // Per-tenant duplicate check (avoids cross-tenant collisions on the same phone).
+    const { data: existing } = await supabase
+      .from("crm_leads").select("id").eq("phone", normalizedPhone).eq("tenant_id", tenantId).limit(1);
     if (existing && existing.length > 0) {
       return new Response(JSON.stringify({ status: "duplicate", lead_id: existing[0].id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Find pipeline
-    let pipelineId: string;
+    // Find pipeline within tenant
+    let pipelineId: string | undefined;
     if (pipeline) {
-      const { data: p } = await supabase.from("crm_pipelines").select("id").ilike("name", pipeline).limit(1);
-      if (p && p.length > 0) {
-        pipelineId = p[0].id;
-      } else {
-        const { data: first } = await supabase.from("crm_pipelines").select("id").limit(1);
-        pipelineId = first?.[0]?.id;
-      }
-    } else {
-      const { data: first } = await supabase.from("crm_pipelines").select("id").limit(1);
+      const { data: p } = await supabase
+        .from("crm_pipelines").select("id").eq("tenant_id", tenantId).ilike("name", pipeline).limit(1);
+      pipelineId = p?.[0]?.id;
+    }
+    if (!pipelineId) {
+      const { data: first } = await supabase
+        .from("crm_pipelines").select("id").eq("tenant_id", tenantId).order("created_at").limit(1);
       pipelineId = first?.[0]?.id;
     }
-
-    if (!pipelineId!) {
+    if (!pipelineId) {
       return new Response(JSON.stringify({ error: "no pipeline found" }), { status: 400, headers: corsHeaders });
     }
 
-    // Get first stage
-    const { data: stagesData } = await supabase.from("crm_stages").select("id").eq("pipeline_id", pipelineId).order("position").limit(1);
+    // Get first stage of that pipeline
+    const { data: stagesData } = await supabase
+      .from("crm_stages").select("id").eq("pipeline_id", pipelineId).order("position").limit(1);
     const stageId = stagesData?.[0]?.id;
     if (!stageId) {
       return new Response(JSON.stringify({ error: "no stage found" }), { status: 400, headers: corsHeaders });
     }
 
-    // All leads assigned to Rizodent user
-    const assignedTo = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
-
-    // Create lead
+    // Create lead with explicit tenant_id
     const { data: lead, error } = await supabase.from("crm_leads").insert({
       name,
       phone: normalizedPhone,
@@ -82,6 +87,7 @@ Deno.serve(async (req) => {
       tags: tags || [],
       source: source || "webhook",
       assigned_to: assignedTo,
+      tenant_id: tenantId,
     }).select("id").single();
 
     if (error) {

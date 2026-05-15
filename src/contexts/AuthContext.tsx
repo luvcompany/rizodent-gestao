@@ -33,12 +33,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
-    const [{ data: prof }, { data: role }] = await Promise.all([
-      supabase.from("profiles").select("nome, email, cargo, avatar_url, signature_enabled, must_change_password, is_blocked").eq("id", userId).maybeSingle(),
-      supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
-    ]);
-    setProfile(prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false, must_change_password: (prof as any).must_change_password ?? false, is_blocked: (prof as any).is_blocked ?? false } : null);
-    setUserRole(role?.role ?? null);
+    try {
+      const [{ data: prof, error: profErr }, { data: role, error: roleErr }] = await Promise.all([
+        supabase.from("profiles").select("nome, email, cargo, avatar_url, signature_enabled, must_change_password, is_blocked").eq("id", userId).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
+      ]);
+      if (profErr) console.warn("[AuthContext] fetch profile error:", profErr.message);
+      if (roleErr) console.warn("[AuthContext] fetch role error:", roleErr.message);
+      setProfile(prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false, must_change_password: (prof as any).must_change_password ?? false, is_blocked: (prof as any).is_blocked ?? false } : null);
+      setUserRole(role?.role ?? null);
+    } catch (e: any) {
+      console.error("[AuthContext] fetchProfile failed:", e?.message || e);
+      // Keep previous profile/role state on transient network errors.
+    }
   };
 
   const refreshProfile = async () => {
@@ -73,8 +80,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error: error.message };
+    // Block sign-in if profile is flagged as blocked.
+    if (data?.user) {
+      const { data: prof } = await supabase
+        .from("profiles").select("is_blocked").eq("id", data.user.id).maybeSingle();
+      if ((prof as any)?.is_blocked) {
+        await supabase.auth.signOut();
+        return { error: "Sua conta foi bloqueada pelo administrador." };
+      }
+    }
+    return { error: null };
   };
 
   const signOut = async () => {
