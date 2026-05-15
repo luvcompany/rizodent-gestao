@@ -1167,3 +1167,113 @@ function StatBoxLite({ label, value, color = "text-foreground" }: { label: strin
     </div>
   );
 }
+
+// ============================================================================
+// Componentes auxiliares de UI
+// ============================================================================
+
+const ACCENTS: Record<string, { icon: string; ring: string; value: string }> = {
+  blue:    { icon: "text-blue-500 bg-blue-500/10",       ring: "border-blue-500/30",    value: "text-blue-600" },
+  indigo:  { icon: "text-indigo-500 bg-indigo-500/10",   ring: "border-indigo-500/30",  value: "text-indigo-600" },
+  green:   { icon: "text-green-600 bg-green-600/10",     ring: "border-green-600/30",   value: "text-green-600" },
+  emerald: { icon: "text-emerald-600 bg-emerald-600/10", ring: "border-emerald-600/30", value: "text-emerald-600" },
+  red:     { icon: "text-red-500 bg-red-500/10",         ring: "border-red-500/30",     value: "text-red-500" },
+  amber:   { icon: "text-amber-500 bg-amber-500/10",     ring: "border-amber-500/30",   value: "text-amber-600" },
+};
+
+function KpiCard({
+  icon: Icon, label, value, accent = "blue", hint,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string | number;
+  accent?: keyof typeof ACCENTS;
+  hint?: string;
+}) {
+  const a = ACCENTS[accent] ?? ACCENTS.blue;
+  return (
+    <Card className={cn("p-4 border-l-4", a.ring)}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground uppercase truncate">{label}</p>
+          <p className={cn("text-3xl font-bold mt-1 tabular-nums", a.value)}>{value}</p>
+          {hint && <p className="text-xs text-muted-foreground mt-1 truncate">{hint}</p>}
+        </div>
+        <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", a.icon)}>
+          <Icon className="w-5 h-5" />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function EmptyState({
+  icon: Icon, title, description,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-10 px-4">
+      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+        <Icon className="w-6 h-6 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {description && <p className="text-xs text-muted-foreground mt-1 max-w-sm">{description}</p>}
+    </div>
+  );
+}
+
+function SortableHead({
+  label, sortKey, current, onClick, align = "left",
+}: {
+  label: string;
+  sortKey: string;
+  current: { key: string; dir: "asc" | "desc" };
+  onClick: (k: any) => void;
+  align?: "left" | "right";
+}) {
+  const active = current.key === sortKey;
+  const Icon = !active ? ArrowUpDown : current.dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <TableHead className={align === "right" ? "text-right" : ""}>
+      <button
+        type="button"
+        onClick={() => onClick(sortKey)}
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-foreground transition-colors",
+          align === "right" && "ml-auto",
+          active ? "text-foreground" : "text-muted-foreground"
+        )}
+      >
+        {label}
+        <Icon className="w-3 h-3" />
+      </button>
+    </TableHead>
+  );
+}
+
+function CrmRelatoriosSkeleton() {
+  return (
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-96" />
+      </div>
+      <Skeleton className="h-16 w-full" />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-24 w-full" />
+        ))}
+      </div>
+      <Skeleton className="h-72 w-full" />
+      <Skeleton className="h-48 w-full" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+      <Skeleton className="h-64 w-full" />
+    </div>
+  );
+}
