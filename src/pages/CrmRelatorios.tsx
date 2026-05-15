@@ -241,44 +241,32 @@ export default function CrmRelatorios() {
     }));
   }, [stages, cohort]);
 
-  // 2. Agenda por etapa — usa histórico no período (quem JÁ passou pela etapa)
+  // 2. Agenda no período — PADRONIZADO com Dashboard.tsx
+  // Fonte única: crm_appointments + status + is_rescheduled, filtrado por scheduled_date no período.
+  // (Antes: regex no nome das etapas — frágil quando renomeavam stages.)
   const agenda = useMemo(() => {
-    const agendados = new Set<string>();
-    const compareceram = new Set<string>();
-    const remarcaram = new Set<string>();
-    const faltaram = new Set<string>();
+    const inDateRange = (yyyymmdd: string) => {
+      if (!range) return true;
+      const startStr = format(range.start, "yyyy-MM-dd");
+      const endStr = format(range.end, "yyyy-MM-dd");
+      return yyyymmdd >= startStr && yyyymmdd <= endStr;
+    };
+    // Restringe ao pipeline corrente: só conta appointments cujo lead esteja no conjunto carregado
+    const leadsDoPipeline = new Set(leads.map(l => l.id));
+    const appsPeriodo = appointments.filter(a =>
+      leadsDoPipeline.has(a.lead_id) && inDateRange(a.scheduled_date)
+    );
 
-    history.forEach(h => {
-      if (!cohortIds.has(h.lead_id)) return;
-      if (!inRange(h.entered_at)) return;
-      const st = stageById.get(h.stage_id);
-      if (!st) return;
-      const n = st.name;
-      if (isAgendStage(n) || isReagendStage(n) || isComparStage(n) || isFaltouStage(n) || isContratStage(n)) {
-        agendados.add(h.lead_id);
-      }
-      if (isComparStage(n) || isContratStage(n)) compareceram.add(h.lead_id);
-      if (isReagendStage(n)) remarcaram.add(h.lead_id);
-      if (isFaltouStage(n)) faltaram.add(h.lead_id);
-    });
+    const naoReagendados = appsPeriodo.filter(a => !(a as any).is_rescheduled);
+    const agendados = naoReagendados.length;
+    const reagendados = appsPeriodo.filter(a => (a as any).is_rescheduled === true).length;
+    const compareceram = naoReagendados.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
+    const faltaram = naoReagendados.filter(a => a.status === "no_show").length;
+    const contratados = naoReagendados.filter(a => a.status === "contracted").length;
 
-    // Fallback: lead atual em etapa relevante mas sem registro de histórico no período
-    cohort.forEach(l => {
-      const st = stageById.get(l.stage_id);
-      if (!st) return;
-      const n = st.name;
-      if (isAgendStage(n) || isReagendStage(n) || isComparStage(n) || isFaltouStage(n) || isContratStage(n)) {
-        agendados.add(l.id);
-      }
-      if (isComparStage(n) || isContratStage(n)) compareceram.add(l.id);
-      if (isReagendStage(n)) remarcaram.add(l.id);
-      if (isFaltouStage(n)) faltaram.add(l.id);
-    });
-
-    const c = compareceram.size, f = faltaram.size;
-    const presenca = (c + f) > 0 ? (c / (c + f)) * 100 : 0;
-    return { agendados: agendados.size, compareceram: c, remarcaram: remarcaram.size, faltaram: f, presenca };
-  }, [cohort, cohortIds, stageById, history, range]);
+    const presenca = (compareceram + faltaram) > 0 ? (compareceram / (compareceram + faltaram)) * 100 : 0;
+    return { agendados, compareceram, remarcaram: reagendados, faltaram, contratados, presenca };
+  }, [appointments, leads, range]);
 
   // 3. Tempo até contratação (até entrar na etapa "Contratado")
   const tempoContratacao = useMemo(() => {
