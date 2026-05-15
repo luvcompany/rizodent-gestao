@@ -136,13 +136,26 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
   const loadAds = async () => {
     setLoadingAds(true);
     const seen = new Map<string, AdOption>();
+    // Only look at recent rows — the RLS already isolates by tenant, but old rows bloat the dedupe set.
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
-    // 1) From crm_leads
-    const { data: leadsData } = await supabase
-      .from("crm_leads")
-      .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio, ad_account_id, ad_account_name")
-      .not("ad_id", "is", null)
-      .limit(1000);
+    // Run both queries in parallel (cuts wall time roughly in half)
+    const [{ data: leadsData }, { data: msgData }] = await Promise.all([
+      supabase
+        .from("crm_leads")
+        .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio, ad_account_id, ad_account_name")
+        .not("ad_id", "is", null)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(500),
+      supabase
+        .from("messages")
+        .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name")
+        .not("ad_source_id", "is", null)
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(500),
+    ]);
 
     if (leadsData) {
       for (const row of leadsData) {
@@ -160,13 +173,6 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
         }
       }
     }
-
-    // 2) From messages (captures ads not yet linked to leads)
-    const { data: msgData } = await supabase
-      .from("messages")
-      .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name")
-      .not("ad_source_id", "is", null)
-      .limit(1000);
 
     if (msgData) {
       for (const row of msgData) {
