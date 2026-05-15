@@ -641,19 +641,23 @@ export default function CrmRelatorios() {
         </div>
         <p className="text-sm text-muted-foreground mb-4">Agendamentos, comparecimentos e contratações por cidade do lead.</p>
         {porCidade.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">Sem dados de cidade.</p>
+          <EmptyState
+            icon={MapPin}
+            title="Sem dados de cidade"
+            description="Os leads carregados não possuem cidade preenchida. Revise o cadastro ou amplie o período."
+          />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Cidade</TableHead>
-                <TableHead className="text-right">Agendamentos</TableHead>
-                <TableHead className="text-right">Comparecimentos</TableHead>
-                <TableHead className="text-right">Contratações</TableHead>
+                <SortableHead label="Cidade" sortKey="cidade" current={citySort} onClick={toggleCitySort} />
+                <SortableHead label="Agendamentos" sortKey="agendamentos" current={citySort} onClick={toggleCitySort} align="right" />
+                <SortableHead label="Comparecimentos" sortKey="comparecimentos" current={citySort} onClick={toggleCitySort} align="right" />
+                <SortableHead label="Contratações" sortKey="contratacoes" current={citySort} onClick={toggleCitySort} align="right" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {porCidade.map(r => (
+              {porCidadeSorted.map(r => (
                 <TableRow key={r.cidade}>
                   <TableCell className="font-medium">{r.cidade}</TableCell>
                   <TableCell className="text-right">{r.agendamentos}</TableCell>
