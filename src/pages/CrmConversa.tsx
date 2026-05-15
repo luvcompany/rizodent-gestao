@@ -277,10 +277,23 @@ export default function CrmConversa() {
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-foreground truncate">{lead.name}</div>
-            <div className="text-xs text-muted-foreground">
-              {lead.phone && <span>{lead.phone}</span>}
+            <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+              {lead.phone && (
+                <span className="inline-flex items-center gap-1">
+                  <span>{lead.phone}</span>
+                  <button
+                    type="button"
+                    onClick={copyPhone}
+                    title="Copiar número"
+                    aria-label="Copiar número"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {phoneCopied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                  </button>
+                </span>
+              )}
               {currentStage && (
-                <span className="ml-2 inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentStage.color }} />
                   {currentStage.name}
                 </span>
