@@ -507,6 +507,15 @@ export default function CrmRelatorios() {
         </div>
       </Card>
 
+      {/* Resumo Executivo */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <KpiCard icon={Users} label="Total de Leads" value={resumo.totalLeads} accent="blue" hint="Coorte do período" />
+        <KpiCard icon={Calendar} label="Agendados" value={agenda.agendados} accent="indigo" />
+        <KpiCard icon={CheckCircle2} label="Compareceram" value={agenda.compareceram} accent="green" />
+        <KpiCard icon={Target} label="Contratados" value={agenda.contratados} accent="emerald" hint={`${resumo.taxaContratacao.toFixed(1)}% da coorte`} />
+        <KpiCard icon={XCircle} label="Faltaram" value={agenda.faltaram} accent="red" />
+      </div>
+
       {/* 1. Funil */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
@@ -515,11 +524,48 @@ export default function CrmRelatorios() {
         </div>
         <p className="text-sm text-muted-foreground mb-4">Onde estão os leads criados no período selecionado.</p>
         {funnelData.some(d => d.value > 0) ? (
-          <DashboardFunnel data={funnelData} />
+          <>
+            <DashboardFunnel data={funnelData} />
+            <div className="mt-6 border-t pt-4">
+              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Conversão entre etapas consecutivas</p>
+              <div className="space-y-2">
+                {stageConversion.map((s, i) => (
+                  <div key={s.name} className="flex items-center gap-3">
+                    <div className="w-2 h-8 rounded-sm" style={{ background: s.fill }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-medium truncate">{s.name}</span>
+                        <span className="text-sm tabular-nums text-muted-foreground">{s.value}</span>
+                      </div>
+                      {i < stageConversion.length - 1 && (
+                        <div className="flex items-center gap-2 mt-1 text-xs">
+                          <ArrowDown className="w-3 h-3 text-muted-foreground" />
+                          <span className={cn(
+                            "font-semibold tabular-nums",
+                            s.conversion === null ? "text-muted-foreground" :
+                            s.conversion >= 50 ? "text-green-600" :
+                            s.conversion >= 20 ? "text-amber-600" : "text-red-500"
+                          )}>
+                            {s.conversion === null ? "—" : `${s.conversion.toFixed(1)}%`}
+                          </span>
+                          <span className="text-muted-foreground">passam para "{stageConversion[i + 1].name}"</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
         ) : (
-          <p className="text-sm text-muted-foreground text-center py-8">Sem leads no período.</p>
+          <EmptyState
+            icon={Inbox}
+            title="Sem leads no período"
+            description="Ajuste o período ou troque o funil para ver a distribuição por etapa."
+          />
         )}
       </Card>
+
 
 
       {/* 2. Agenda */}
