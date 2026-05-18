@@ -215,10 +215,12 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
         ) : (
           <div className="mt-4">
             <Tabs defaultValue="pipelines">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="pipelines">Funis</TabsTrigger>
                 <TabsTrigger value="pages">Páginas</TabsTrigger>
                 <TabsTrigger value="actions">Ações</TabsTrigger>
+                <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+                <TabsTrigger value="instagram">Instagram</TabsTrigger>
               </TabsList>
 
               <TabsContent value="pipelines" className="space-y-2 pt-4">
