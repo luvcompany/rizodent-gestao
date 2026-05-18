@@ -27,6 +27,8 @@ type WhatsappNumber = {
   is_active: boolean;
 };
 
+
+
 type IgAccount = {
   id: string;
   username: string | null;
@@ -56,6 +58,14 @@ const ACTIONS: { slug: string; label: string; defaultRoles: Role[] }[] = [
   { slug: "broadcast", label: "Disparar broadcast em massa", defaultRoles: ["admin", "gerente"] },
   { slug: "edit_bots", label: "Editar bots", defaultRoles: ["admin", "gerente"] },
   { slug: "view_financial", label: "Ver relatórios financeiros", defaultRoles: ["admin", "gerente"] },
+  { slug: "create_pipelines", label: "Criar/editar funis", defaultRoles: ["admin", "gerente"] },
+  { slug: "create_stages", label: "Criar/editar etapas de funil", defaultRoles: ["admin", "gerente"] },
+  { slug: "create_automations", label: "Criar/editar automações", defaultRoles: ["admin", "gerente"] },
+  { slug: "create_triggers", label: "Criar/editar gatilhos de bot", defaultRoles: ["admin", "gerente"] },
+  { slug: "create_followups", label: "Criar/editar follow-ups", defaultRoles: ["admin", "gerente"] },
+  { slug: "create_templates", label: "Criar/editar modelos (templates)", defaultRoles: ["admin", "gerente"] },
+  { slug: "manage_integrations", label: "Gerenciar integrações", defaultRoles: ["admin"] },
+  { slug: "manage_users", label: "Gerenciar usuários", defaultRoles: ["admin"] },
 ];
 
 interface Props {
@@ -81,14 +91,33 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     if (!open || !userId) return;
     (async () => {
       setLoading(true);
-      const [{ data: pls }, { data: ovs }, { data: was }, { data: igs }] = await Promise.all([
-        supabase.from("crm_pipelines").select("id,name,color,allowed_roles").order("position"),
+      const [{ data: pls }, { data: ovs }, { data: was }, { data: tmc }, { data: igs }] = await Promise.all([
+        supabase.from("crm_pipelines").select("id,name,color,allowed_roles").order("name"),
         supabase.from("user_permission_overrides").select("scope,resource_id,granted").eq("user_id", userId),
         supabase.from("whatsapp_numbers" as any).select("id,phone_number_id,display_name,phone_e164,is_active").order("display_name"),
+        supabase
+          .from("tenant_meta_credentials" as any)
+          .select("tenant_id,whatsapp_phone_number_id,whatsapp_waba_id,whatsapp_enabled")
+          .maybeSingle(),
         supabase.from("ig_accounts").select("id,username,ig_user_id").order("username"),
       ]);
       setPipelines((pls || []) as Pipeline[]);
-      setWaNumbers(((was as unknown) || []) as WhatsappNumber[]);
+      // Merge per-number rows (whatsapp_numbers) with the tenant-level config (tenant_meta_credentials)
+      const merged: WhatsappNumber[] = [...(((was as unknown) || []) as WhatsappNumber[])];
+      const t: any = tmc;
+      if (t && t.whatsapp_phone_number_id) {
+        const exists = merged.some(w => w.phone_number_id === t.whatsapp_phone_number_id);
+        if (!exists) {
+          merged.push({
+            id: `tmc:${t.tenant_id}`,
+            phone_number_id: t.whatsapp_phone_number_id,
+            display_name: "WhatsApp do tenant",
+            phone_e164: null,
+            is_active: !!t.whatsapp_enabled,
+          });
+        }
+      }
+      setWaNumbers(merged);
       setIgAccounts((igs || []) as IgAccount[]);
       const map: Record<string, boolean> = {};
       (ovs || []).forEach((o: any) => { map[`${o.scope}:${o.resource_id}`] = o.granted; });
