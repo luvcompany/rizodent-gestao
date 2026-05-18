@@ -19,8 +19,22 @@ type Pipeline = {
   allowed_roles: Role[] | null;
 };
 
+type WhatsappNumber = {
+  id: string;
+  phone_number_id: string;
+  display_name: string | null;
+  phone_e164: string | null;
+  is_active: boolean;
+};
+
+type IgAccount = {
+  id: string;
+  username: string | null;
+  ig_user_id: string;
+};
+
 type Override = {
-  scope: "pipeline" | "page" | "action";
+  scope: "pipeline" | "page" | "action" | "whatsapp_number" | "instagram_account";
   resource_id: string;
   granted: boolean;
 };
