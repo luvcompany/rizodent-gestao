@@ -91,14 +91,33 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     if (!open || !userId) return;
     (async () => {
       setLoading(true);
-      const [{ data: pls }, { data: ovs }, { data: was }, { data: igs }] = await Promise.all([
-        supabase.from("crm_pipelines").select("id,name,color,allowed_roles").order("position"),
+      const [{ data: pls }, { data: ovs }, { data: was }, { data: tmc }, { data: igs }] = await Promise.all([
+        supabase.from("crm_pipelines").select("id,name,color,allowed_roles").order("name"),
         supabase.from("user_permission_overrides").select("scope,resource_id,granted").eq("user_id", userId),
         supabase.from("whatsapp_numbers" as any).select("id,phone_number_id,display_name,phone_e164,is_active").order("display_name"),
+        supabase
+          .from("tenant_meta_credentials" as any)
+          .select("tenant_id,whatsapp_phone_number_id,whatsapp_waba_id,whatsapp_enabled")
+          .maybeSingle(),
         supabase.from("ig_accounts").select("id,username,ig_user_id").order("username"),
       ]);
       setPipelines((pls || []) as Pipeline[]);
-      setWaNumbers(((was as unknown) || []) as WhatsappNumber[]);
+      // Merge per-number rows (whatsapp_numbers) with the tenant-level config (tenant_meta_credentials)
+      const merged: WhatsappNumber[] = [...(((was as unknown) || []) as WhatsappNumber[])];
+      const t: any = tmc;
+      if (t && t.whatsapp_phone_number_id) {
+        const exists = merged.some(w => w.phone_number_id === t.whatsapp_phone_number_id);
+        if (!exists) {
+          merged.push({
+            id: `tmc:${t.tenant_id}`,
+            phone_number_id: t.whatsapp_phone_number_id,
+            display_name: "WhatsApp do tenant",
+            phone_e164: null,
+            is_active: !!t.whatsapp_enabled,
+          });
+        }
+      }
+      setWaNumbers(merged);
       setIgAccounts((igs || []) as IgAccount[]);
       const map: Record<string, boolean> = {};
       (ovs || []).forEach((o: any) => { map[`${o.scope}:${o.resource_id}`] = o.granted; });
