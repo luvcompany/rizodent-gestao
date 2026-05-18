@@ -74,6 +74,7 @@ function countActive(f: ConversationFilterValues): number {
   if (f.adAccountId) c++;
   if (f.adId) c++;
   if (f.instagramAccountId) c++;
+  if (f.labelIds?.length) c++;
   return c;
 }
 
