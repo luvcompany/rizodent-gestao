@@ -1,5 +1,5 @@
 import { forwardRef, useState, type ButtonHTMLAttributes } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,8 +48,8 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
   };
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
-      <PopoverTrigger asChild>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
+      <DialogTrigger asChild>
         {trigger || (
           <button
             type="button"
@@ -62,12 +62,14 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
             <Tag size={12} />
           </button>
         )}
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-72 p-0"
-        align="start"
+      </DialogTrigger>
+      <DialogContent
+        className="w-[340px] max-w-[calc(100vw-2rem)] p-0"
         onClick={(e) => e.stopPropagation()}
       >
+        <DialogHeader className="sr-only">
+          <DialogTitle>Configurar marcadores</DialogTitle>
+        </DialogHeader>
         <div className="p-3 border-b border-border">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Marcadores</span>
@@ -165,8 +167,8 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
             })}
           </div>
         )}
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
 
