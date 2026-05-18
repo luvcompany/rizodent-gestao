@@ -200,6 +200,16 @@ export default function CrmBots() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ShareRoleDialog
+        open={!!shareTarget}
+        onOpenChange={(v) => !v && setShareTarget(null)}
+        table="bots"
+        rowId={shareTarget?.id ?? null}
+        currentOwnerRole={((shareTarget as any)?.owner_role ?? null) as OwnerRole}
+        itemLabel="Bot"
+        onSaved={fetchBots}
+      />
     </div>
   );
 }
