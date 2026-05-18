@@ -25,19 +25,21 @@ type Profile = {
 
 type UserRole = {
   user_id: string;
-  role: "admin" | "gerente" | "crc";
+  role: "admin" | "gerente" | "crc" | "posvenda";
 };
 
 const roleLabels: Record<string, string> = {
   admin: "Administrador",
   gerente: "Gerente",
   crc: "CRC",
+  posvenda: "Pós-venda",
 };
 
 const roleBadgeClass: Record<string, string> = {
   admin: "bg-red-500/20 text-red-400 border-red-500/30",
   gerente: "bg-primary/20 text-primary border-primary/30",
   crc: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  posvenda: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
 };
 
 const Usuarios = () => {
@@ -174,6 +176,7 @@ const Usuarios = () => {
                     <SelectItem value="admin">Administrador</SelectItem>
                     <SelectItem value="gerente">Gerente</SelectItem>
                     <SelectItem value="crc">CRC</SelectItem>
+                    <SelectItem value="posvenda">Pós-venda</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -261,6 +264,7 @@ const Usuarios = () => {
                                         <SelectItem value="admin">Administrador</SelectItem>
                                         <SelectItem value="gerente">Gerente</SelectItem>
                                         <SelectItem value="crc">CRC</SelectItem>
+                                        <SelectItem value="posvenda">Pós-venda</SelectItem>
                                       </SelectContent>
                                     </Select>
                                     <Button onClick={handleAssignRole} className="w-full gradient-orange text-primary-foreground">Salvar</Button>

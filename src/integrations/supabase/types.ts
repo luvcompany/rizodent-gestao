@@ -1475,6 +1475,7 @@ export type Database = {
       }
       crm_pipelines: {
         Row: {
+          allowed_roles: Database["public"]["Enums"]["app_role"][] | null
           color: string | null
           created_at: string
           description: string | null
@@ -1483,6 +1484,7 @@ export type Database = {
           tenant_id: string | null
         }
         Insert: {
+          allowed_roles?: Database["public"]["Enums"]["app_role"][] | null
           color?: string | null
           created_at?: string
           description?: string | null
@@ -1491,6 +1493,7 @@ export type Database = {
           tenant_id?: string | null
         }
         Update: {
+          allowed_roles?: Database["public"]["Enums"]["app_role"][] | null
           color?: string | null
           created_at?: string
           description?: string | null
@@ -2789,6 +2792,7 @@ export type Database = {
     }
     Functions: {
       admin_tenant_metrics: { Args: { _tenant_id: string }; Returns: Json }
+      can_access_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
       check_duplicate_phone: {
         Args: { p_phone: string }
         Returns: {
@@ -2837,7 +2841,7 @@ export type Database = {
       watchdog_reenqueue_missing_bots: { Args: never; Returns: number }
     }
     Enums: {
-      app_role: "admin" | "gerente" | "crc" | "superadmin"
+      app_role: "admin" | "gerente" | "crc" | "superadmin" | "posvenda"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2965,7 +2969,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "gerente", "crc", "superadmin"],
+      app_role: ["admin", "gerente", "crc", "superadmin", "posvenda"],
     },
   },
 } as const
