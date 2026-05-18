@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Task = {
   id: string;
