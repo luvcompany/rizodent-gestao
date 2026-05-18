@@ -70,9 +70,52 @@ Deno.serve(async (req) => {
     const oldUserName = profiles?.find((p) => p.id === oldUserId)?.nome || "Não atribuído";
     const newUserName = profiles?.find((p) => p.id === newUserId)?.nome || "Responsável";
 
+    // If target user is posvenda, auto-move lead to first stage of a pipeline accessible to posvenda
+    const updatePayload: Record<string, unknown> = {
+      assigned_to: newUserId,
+      updated_at: new Date().toISOString(),
+    };
+    let movedPipelineName: string | null = null;
+    let movedStageName: string | null = null;
+
+    const { data: targetRoleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", newUserId)
+      .maybeSingle();
+
+    if (targetRoleRow?.role === "posvenda") {
+      // Find a pipeline that explicitly allows posvenda (within the lead's tenant when possible)
+      const { data: pipelines } = await supabase
+        .from("crm_pipelines")
+        .select("id, name, allowed_roles, tenant_id")
+        .contains("allowed_roles", ["posvenda"]);
+
+      const pipeline =
+        pipelines?.find((p: any) => p.tenant_id === (lead as any).tenant_id) ||
+        pipelines?.[0];
+
+      if (pipeline) {
+        const { data: firstStage } = await supabase
+          .from("crm_stages")
+          .select("id, name")
+          .eq("pipeline_id", pipeline.id)
+          .order("position", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (firstStage) {
+          updatePayload.pipeline_id = pipeline.id;
+          updatePayload.stage_id = firstStage.id;
+          movedPipelineName = (pipeline as any).name;
+          movedStageName = (firstStage as any).name;
+        }
+      }
+    }
+
     const { error: updateError } = await supabase
       .from("crm_leads")
-      .update({ assigned_to: newUserId, updated_at: new Date().toISOString() })
+      .update(updatePayload)
       .eq("id", leadId);
 
     if (updateError) return json({ error: updateError.message }, 500);
