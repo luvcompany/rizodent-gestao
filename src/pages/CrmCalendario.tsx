@@ -29,6 +29,7 @@ type Task = {
   notes: string | null;
   assigned_to: string | null;
   status: string;
+  owner_role?: string | null;
   lead_name?: string;
 };
 
