@@ -9,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Send, Users } from "lucide-react";
+import { Plus, Send, Users, Share2 } from "lucide-react";
 import { format } from "date-fns";
 import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
+import ShareRoleDialog, { OwnerRoleBadge, type OwnerRole } from "@/components/crm/ShareRoleDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmCampanhas() {
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
