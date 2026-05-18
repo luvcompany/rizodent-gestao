@@ -23,7 +23,7 @@ import {
 import { isWithinInterval } from "date-fns";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import LeadLabelsPopover, { LeadLabelChips } from "@/components/chat/LeadLabelsPopover";
+import LeadLabelsPopover, { LeadLabelChips, LeadLabelsTrigger } from "@/components/chat/LeadLabelsPopover";
 import { useLeadLabels } from "@/hooks/useLeadLabels";
 
 type Stage = {
@@ -756,7 +756,7 @@ export default function CrmKanban() {
                                          onMouseDown={(e) => e.stopPropagation()}
                                          onClick={(e) => e.stopPropagation()}
                                        >
-                                         <LeadLabelsPopover leadId={lead.id} />
+                                         <LeadLabelsPopover leadId={lead.id} trigger={<LeadLabelsTrigger leadId={lead.id} />} />
                                         <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Data de entrada do lead">
                                           {(() => {
                                             const d = new Date(lead.created_at);
