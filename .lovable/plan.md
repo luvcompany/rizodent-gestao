@@ -1,85 +1,60 @@
-## Objetivo
+## Parte 1 — Reajuste do lead Vitor Santos
 
-Trocar o role do usuário **Rizodent** (`d9b27aa3-049e-4ec9-9ae3-fb160a9544fa`) de `admin` para `posvenda`, e criar overrides em `user_permission_overrides` que preservem **exatamente os acessos atuais** ao Funil, Páginas, Ações e Instagram.
+O lead **Vitor Santos** (`0c04e03a-4670-4849-85cc-adc974294570`) já foi transferido para a Neiriane (pós-venda), mas continuou no **Funil Principal**. Vou:
 
-## Mudanças no banco (uma migration SQL)
+1. Atualizar o lead movendo para o funil **Pós-venda** (`c7fb4a30-…`) e etapa inicial **Contato inicial** (`122caeb7-…`).
+2. Inserir um registro em `crm_lead_stage_history` (saída da etapa atual + entrada na nova) para preservar o histórico.
+3. Postar uma mensagem de sistema na conversa: *"📂 Lead movido para Pós-venda • Contato inicial"*.
 
-### 1. Trocar o role
-```sql
-DELETE FROM public.user_roles
- WHERE user_id = 'd9b27aa3-049e-4ec9-9ae3-fb160a9544fa' AND role = 'admin';
+Toda a conversa, tags, anotações e mensagens permanecem intactas — só os campos `pipeline_id` e `stage_id` mudam.
 
-INSERT INTO public.user_roles (user_id, role, tenant_id)
-VALUES ('d9b27aa3-049e-4ec9-9ae3-fb160a9544fa', 'posvenda',
-        '00000000-0000-0000-0000-000000000010');
+---
+
+## Parte 2 — Recomendação: mover vs. duplicar para o Pós-venda
+
+**Minha sugestão é mover, não duplicar.** Abaixo o raciocínio e os trade-offs.
+
+### Por que mover (recomendado)
+
+- **Uma conversa, uma fonte da verdade.** O WhatsApp/Instagram do paciente é único. Duplicar o card cria duas caixas separadas com a mesma conversa — quando uma mensagem nova chegar, só uma vai atualizar, gerando dessincronia e confusão sobre "qual card é o verdadeiro".
+- **Sem mensagens duplicadas.** Mensagens são vinculadas por `lead_id`. Se duplicarmos o lead, teríamos que duplicar a tabela `messages` (cara, redundante) ou referenciar — e referenciar quebra o modelo atual.
+- **Sem automações/follow-ups conflitantes.** Bots, follow-ups, automações por etapa são disparados por `stage_id` do lead. Dois cards = dois bots disparando ao mesmo tempo para o mesmo paciente.
+- **Atribuição clara.** Um responsável por vez (CRC entrega → Pós-venda assume). Evita disputa de propriedade.
+- **Histórico preservado de graça.** A tabela `crm_lead_stage_history` já registra cada passagem de etapa, então o caminho "Funil Principal → Contratado → Pós-venda → Contato inicial" fica documentado no próprio lead.
+
+### Por que **não** duplicar
+
+- Mensagens, notas, tarefas, agendamentos, anexos, score, ad tracking — tudo é por `lead_id`. Duplicar significa escolher: copiar tudo (storage caro e tudo congelado no tempo) ou deixar metade vazio.
+- O Kanban do Funil Principal ficaria poluído com leads "concluídos" que na verdade já estão sob outra responsabilidade.
+- KPIs ficariam inflados (mesmo lead contado em dois funis).
+
+### Como implementar a regra "Contratado → Pós-venda" (Parte 3, futura)
+
+Quando você aprovar, posso criar uma **automação no estágio "Contratado"** do Funil Principal que automaticamente:
+
+1. Reatribui o lead para o usuário **Neiriane (Pós-venda)** (ou outro usuário pós-venda configurável).
+2. Move o lead para o funil **Pós-venda** → etapa **Contato inicial**.
+3. Registra mensagem de sistema na conversa.
+
+Isso reutiliza a mesma lógica que acabamos de adicionar no `transfer-lead`, mas disparada automaticamente pelo `automation-engine` quando o lead entra em "Contratado". O cartão **some** do Funil Principal e **aparece** no Pós-venda, com toda a conversa preservada.
+
+### Resumo visual
+
+```text
+ANTES (duplicar — ruim):
+  [Funil Principal: Contratado] ──┐
+                                  ├── mesma conversa WhatsApp ⚠️ duas caixas
+  [Pós-venda: Contato inicial] ───┘
+
+DEPOIS (mover — recomendado):
+  [Funil Principal: Contratado] ──► [Pós-venda: Contato inicial]
+       (histórico: saiu em 18/05 14:30)   (entrou em 18/05 14:30)
+       conversa única, responsável único
 ```
 
-### 2. Overrides de **pipelines** (7) — todos com `granted = true`
-Pipelines hoje visíveis ao admin (tenant Rizodent):
+---
 
-| Nome | ID |
-|---|---|
-| Funil Principal | `a1b2c3d4-0001-4000-8000-000000000001` |
-| Indicação | `93bed281-d907-423d-ab8b-f13fe10a3e4c` |
-| Instagram | `c2d3e4f5-0001-4000-8000-000000000002` |
-| Não Compareceu | `157ca05b-b454-47c3-bc13-9d15b518a46d` |
-| Não contratados | `6e91437d-081b-4026-947b-3ab6d28d6eb5` |
-| Nutrição | `a41aac6a-df13-480a-876f-0711dc093899` |
-| Pós-venda | `c7fb4a30-32d1-4ba0-a7a9-583a700d825a` |
+## O que vou fazer agora (se aprovar)
 
-### 3. Overrides de **páginas** (8) — `scope='page'`, `granted=true`
-`dashboard`, `crm`, `calendario`, `daily`, `relatorios`, `pacientes`, `usuarios`, `configuracoes`
-
-### 4. Overrides de **ações sensíveis** (5) — `scope='action'`, `granted=true`
-`delete_lead`, `transfer_lead`, `broadcast`, `edit_bot`, `view_finance`
-
-### 5. Overrides de **Instagram** (4) — `scope='instagram_account'`, `granted=true`
-| Username | ID |
-|---|---|
-| rizodentclinicas | `5677255e-e9ba-4a1d-992f-bc389d25097c` |
-| rizodentguanambi | `f77955c2-770a-4532-af95-ee1fcccd3115` |
-| rizodentipiau | `0d582a26-0fc1-422e-990a-ae1f20281e77` |
-| rizodentitabuna | `60afa9fd-991f-42e2-b438-40b8d167e357` |
-
-### 6. WhatsApp
-Tabela `whatsapp_numbers` está vazia hoje — **nenhum override necessário**. Quando números forem cadastrados, o default (`can_access_whatsapp_number` retorna `true` sem override) já libera para o Rizodent.
-
-Total: **24 linhas** em `user_permission_overrides` + 1 troca em `user_roles`.
-
-## O que será PERDIDO (avisado anteriormente)
-
-Estes recursos têm RLS hardcoded em `has_role(..., 'admin')` e **não são cobertos** pelo sistema de overrides atual. Após a troca, o Rizodent **não terá mais acesso a**:
-
-- Gerenciar **bots** (criar/editar/versionar/excluir)
-- Gerenciar **automações** (`crm_automations`)
-- Gerenciar **campos customizados** (`crm_custom_fields`)
-- Gerenciar **clínicas** e **tipos de procedimento**
-- Configurar **IA assistant** (`ai_assistant_config`)
-- Gerenciar **integrações META** (`tenant_meta_credentials`)
-- Gerenciar **outros usuários** (`profiles`, `user_roles`, `user_permission_overrides`)
-- Ver **`access_logs`**
-- **Hard delete** de leads (via funções `hard_delete_*`)
-- Configurar **follow-ups** (`crm_followup_configs`)
-- Gerenciar **quick replies**, **broadcasts**, **templates WA**
-- **Editar funis/etapas** (`crm_pipelines`, `crm_stages`)
-
-Visualizar dados desses módulos pode continuar funcionando se RLS de SELECT for por `tenant_id`, mas **escrita/criação/exclusão será bloqueada**.
-
-## Reversão
-
-Se algo der errado, reverter é trivial — uma migration espelho que faz o caminho inverso (`DELETE posvenda` + `INSERT admin` + `DELETE FROM user_permission_overrides WHERE user_id = ...`).
-
-## Detalhes técnicos
-
-- Único arquivo: nova migration em `supabase/migrations/` com o SQL acima.
-- Nenhum código frontend muda — `Usuarios.tsx` e `UserPermissionsSheet.tsx` já suportam `posvenda` e leem overrides via `usePermissions`.
-- Após aplicar, validar com:
-  ```sql
-  SELECT scope, count(*) FROM user_permission_overrides
-   WHERE user_id='d9b27aa3-049e-4ec9-9ae3-fb160a9544fa' GROUP BY scope;
-  ```
-  Esperado: `pipeline=7, page=8, action=5, instagram_account=4`.
-
-## Confirmação necessária
-
-Confirma que quer prosseguir aceitando a **perda dos acessos administrativos** listados acima? Se quiser preservar TAMBÉM bots/automações/usuários/etc., a abordagem correta seria expandir o sistema de overrides para cobrir esses scopes (trabalho bem maior) — não é o que este plano faz.
+- **Apenas a Parte 1**: ajustar o lead Vitor Santos manualmente (UPDATE + history + system message).
+- A Parte 3 (automação no "Contratado") fica para uma próxima etapa, quando você confirmar a regra.
