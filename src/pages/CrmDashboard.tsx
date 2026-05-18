@@ -52,6 +52,7 @@ const typeLabels: Record<string, string> = {
 
 export default function CrmDashboard() {
   const navigate = useNavigate();
+  const { user, userRole } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
