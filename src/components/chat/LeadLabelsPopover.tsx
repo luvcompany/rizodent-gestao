@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { forwardRef, useState, type ButtonHTMLAttributes } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -170,18 +170,23 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
   );
 }
 
-export function LeadLabelsTrigger({ leadId }: { leadId: string }) {
+type LeadLabelsTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> & { leadId: string };
+
+export const LeadLabelsTrigger = forwardRef<HTMLButtonElement, LeadLabelsTriggerProps>(
+  ({ leadId, onPointerDown, onMouseDown, onClick, className = "", ...props }, ref) => {
   const { labelsByLead } = useLeadLabels();
   const items = labelsByLead(leadId);
 
   return (
     <button
+      ref={ref}
       type="button"
-      className="inline-flex min-h-6 max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+      className={`inline-flex min-h-6 max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors ${className}`}
       title="Configurar marcadores"
-      onPointerDown={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => { e.stopPropagation(); onPointerDown?.(e); }}
+      onMouseDown={(e) => { e.stopPropagation(); onMouseDown?.(e); }}
+      onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
+      {...props}
     >
       {items.length === 0 ? (
         <>
@@ -201,7 +206,9 @@ export function LeadLabelsTrigger({ leadId }: { leadId: string }) {
       )}
     </button>
   );
-}
+  },
+);
+LeadLabelsTrigger.displayName = "LeadLabelsTrigger";
 
 /** Small read-only display of assigned label chips for a lead. */
 export function LeadLabelChips({ leadId, max = 4 }: { leadId: string; max?: number }) {
