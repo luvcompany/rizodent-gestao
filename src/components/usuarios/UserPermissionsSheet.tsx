@@ -127,7 +127,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     return key in overrides;
   };
 
-  const toggle = (scope: "pipeline" | "page" | "action", id: string, fallback: boolean, next: boolean) => {
+  const toggle = (scope: "pipeline" | "page" | "action" | "whatsapp_number" | "instagram_account", id: string, fallback: boolean, next: boolean) => {
     const key = `${scope}:${id}`;
     setDirty(d => {
       const copy = { ...d };
