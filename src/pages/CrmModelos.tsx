@@ -139,14 +139,14 @@ export default function CrmModelos() {
       const { data: roleRow } = await supabase.rpc("get_user_primary_role", { _user_id: user.id });
       ownerRole = (roleRow as string) || null;
     }
-    const { error } = await supabase.from("crm_whatsapp_templates").insert({
+    const { error } = await supabase.from("crm_whatsapp_templates").insert([{
       name: t.name + "_copia", category: t.category, language: t.language,
       header_type: t.header_type, header_content: t.header_content,
       body_text: t.body_text, footer_text: t.footer_text, buttons: t.buttons as any,
       status: "PENDING",
       created_by_user_id: user?.id || null,
-      owner_role: ownerRole,
-    });
+      owner_role: ownerRole as any,
+    }]);
     if (error) toast.error("Erro ao duplicar"); else { toast.success("Duplicado"); fetchTemplates(); }
   };
 
