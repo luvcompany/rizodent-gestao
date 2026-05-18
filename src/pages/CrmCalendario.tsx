@@ -204,12 +204,19 @@ export default function CrmCalendario() {
   };
 
   const filtered = useMemo(() => {
+    const isPrivileged = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
     return tasks.filter((t) => {
+      if (!isPrivileged && userRole) {
+        // Show only tasks owned by the user's role or assigned to them
+        const matchesRole = t.owner_role === userRole;
+        const matchesAssignee = t.assigned_to === user?.id;
+        if (!matchesRole && !matchesAssignee) return false;
+      }
       if (filterUser && t.assigned_to !== filterUser) return false;
       if (filterType && t.type !== filterType) return false;
       return true;
     });
-  }, [tasks, filterUser, filterType]);
+  }, [tasks, filterUser, filterType, userRole, user?.id]);
 
   const nav = (dir: number) => {
     setCurrentDate((prev) => {
