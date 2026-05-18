@@ -66,6 +66,7 @@ const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const CrmLayout = () => {
   const navigate = useNavigate();
+  const { userRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -73,6 +74,7 @@ const CrmLayout = () => {
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
   const unreadFetchSeq = useRef(0);
+  const crmNavItems = buildCrmNavItems(userRole);
 
   const toggleGroup = (label: string) => {
     setExpandedGroups(prev => {
