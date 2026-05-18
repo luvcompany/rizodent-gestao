@@ -47,27 +47,23 @@ Deno.serve(async (req) => {
     if (!email || !password || !nome) return json({ error: "Campos obrigatórios faltando" }, 400);
     const userRole = role || "crc";
 
-    // Se já existir um usuário com esse e-mail sem profile válido, limpa antes de recriar
-    try {
-      const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-      const existingUser = list?.users?.find(
+    // Procura usuário existente paginando (operação intencional do admin recria limpo)
+    let existingUser: any = null;
+    for (let page = 1; page <= 20; page++) {
+      const { data: list, error: lErr } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+      if (lErr) break;
+      const found = list?.users?.find(
         (u: any) => u.email?.toLowerCase() === String(email).toLowerCase()
       );
-      if (existingUser) {
-        const { data: existingProfile } = await admin
-          .from("profiles")
-          .select("id, tenant_id")
-          .eq("id", existingUser.id)
-          .maybeSingle();
-        if (existingProfile && existingProfile.tenant_id && existingProfile.tenant_id !== tenantId) {
-          return json({ error: "Este e-mail já está em uso em outro cliente." }, 400);
-        }
-        // Órfão ou mesmo tenant — remove para recriar limpo
-        await admin.from("user_roles").delete().eq("user_id", existingUser.id);
-        await admin.from("profiles").delete().eq("id", existingUser.id);
-        await admin.auth.admin.deleteUser(existingUser.id);
-      }
-    } catch (_) { /* ignore */ }
+      if (found) { existingUser = found; break; }
+      if (!list?.users || list.users.length < 1000) break;
+    }
+    if (existingUser) {
+      await admin.from("user_roles").delete().eq("user_id", existingUser.id);
+      await admin.from("profiles").delete().eq("id", existingUser.id);
+      const { error: dErr } = await admin.auth.admin.deleteUser(existingUser.id);
+      if (dErr) return json({ error: "Falha ao remover usuário existente: " + dErr.message }, 400);
+    }
 
     // Cria usuário já confirmado
     const { data: created, error: cErr } = await admin.auth.admin.createUser({
