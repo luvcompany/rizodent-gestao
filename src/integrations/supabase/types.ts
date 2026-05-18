@@ -1156,6 +1156,38 @@ export type Database = {
           },
         ]
       }
+      crm_lead_label_assignments: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          label_id: string
+          lead_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          label_id: string
+          lead_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          label_id?: string
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_lead_label_assignments_label_id_fkey"
+            columns: ["label_id"]
+            isOneToOne: false
+            referencedRelation: "crm_user_labels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_lead_pacientes: {
         Row: {
           created_at: string
@@ -1688,6 +1720,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      crm_user_labels: {
+        Row: {
+          color: string
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          tenant_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       crm_whatsapp_templates: {
         Row: {
