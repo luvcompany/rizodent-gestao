@@ -7,14 +7,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Trash2, Edit } from "lucide-react";
+import { Plus, Trash2, Edit, Users } from "lucide-react";
+import ShareRoleDialog, { OwnerRoleBadge, type OwnerRole } from "@/components/crm/ShareRoleDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmRespostasRapidas() {
+  const { userRole } = useAuth();
+  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
   const [replies, setReplies] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [shareTarget, setShareTarget] = useState<any | null>(null);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("crm_quick_replies").select("*").order("created_at", { ascending: false });
@@ -60,23 +65,37 @@ export default function CrmRespostasRapidas() {
         </Dialog>
       </div>
       <Table>
-        <TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Conteúdo</TableHead><TableHead className="w-24">Ações</TableHead></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Conteúdo</TableHead><TableHead>Visibilidade</TableHead><TableHead className="w-32">Ações</TableHead></TableRow></TableHeader>
         <TableBody>
           {replies.map((r) => (
             <TableRow key={r.id}>
               <TableCell className="font-medium">{r.title}</TableCell>
               <TableCell className="max-w-md truncate text-muted-foreground">{r.content}</TableCell>
+              <TableCell><OwnerRoleBadge ownerRole={(r.owner_role ?? null) as OwnerRole} /></TableCell>
               <TableCell>
                 <div className="flex gap-1">
                   <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setTitle(r.title); setContent(r.content); setOpen(true); }}><Edit size={14} /></Button>
+                  {canShare && (
+                    <Button size="icon" variant="ghost" title="Compartilhar com papel" onClick={() => setShareTarget(r)}><Users size={14} /></Button>
+                  )}
                   <Button size="icon" variant="ghost" onClick={() => remove(r.id)}><Trash2 size={14} /></Button>
                 </div>
               </TableCell>
             </TableRow>
           ))}
-          {replies.length === 0 && <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">Nenhuma resposta rápida cadastrada</TableCell></TableRow>}
+          {replies.length === 0 && <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhuma resposta rápida cadastrada</TableCell></TableRow>}
         </TableBody>
       </Table>
+
+      <ShareRoleDialog
+        open={!!shareTarget}
+        onOpenChange={(v) => !v && setShareTarget(null)}
+        table="crm_quick_replies"
+        rowId={shareTarget?.id ?? null}
+        currentOwnerRole={(shareTarget?.owner_role ?? null) as OwnerRole}
+        itemLabel="Resposta"
+        onSaved={load}
+      />
     </div>
   );
 }
