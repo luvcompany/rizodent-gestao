@@ -98,6 +98,7 @@ const CALENDAR_CACHE_TTL = 2 * 60_000;
 
 export default function CrmCalendario() {
   const navigate = useNavigate();
+  const { user, userRole } = useAuth();
   const [tasks, setTasks] = useState<Task[]>(calendarCache.tasks || []);
   const [profiles, setProfiles] = useState<Profile[]>(calendarCache.profiles || []);
   const [appointments, setAppointments] = useState<Appointment[]>(calendarCache.appointments || []);
