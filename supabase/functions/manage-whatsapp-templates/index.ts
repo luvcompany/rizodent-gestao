@@ -267,6 +267,8 @@ Deno.serve(async (req) => {
         buttons: buttons && buttons.length > 0 ? buttons : null,
         meta_template_id: metaData.id,
         status: metaData.status || "PENDING",
+        created_by_user_id: user.id,
+        owner_role: callerPrimaryRole,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
