@@ -159,6 +159,11 @@ export default function CrmBots() {
                     <DropdownMenuItem onClick={() => handleArchive(bot.id)}>
                       <Archive size={14} className="mr-2" /> Arquivar
                     </DropdownMenuItem>
+                    {canShare && (
+                      <DropdownMenuItem onClick={() => setShareTarget(bot)}>
+                        <Users size={14} className="mr-2" /> Compartilhar com papel
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(bot.id)}>
                       <Trash2 size={14} className="mr-2" /> Excluir
                     </DropdownMenuItem>
@@ -166,7 +171,10 @@ export default function CrmBots() {
                 </DropdownMenu>
               </div>
               <div className="flex items-center justify-between">
-                {statusBadge(bot.status)}
+                <div className="flex items-center gap-2">
+                  {statusBadge(bot.status)}
+                  <OwnerRoleBadge ownerRole={(bot as any).owner_role as OwnerRole} />
+                </div>
                 <span className="text-xs text-muted-foreground">
                   {new Date(bot.updated_at).toLocaleDateString("pt-BR")}
                 </span>
