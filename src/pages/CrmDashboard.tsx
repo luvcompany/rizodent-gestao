@@ -93,7 +93,11 @@ export default function CrmDashboard() {
     const leadsList = leadsAll;
     const nameMap = new Map(leadsList.map((l) => [l.id, l.name]));
 
-    const rawTasks = tasksAll as Task[];
+    const isPrivileged = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
+    const rawTasks = (tasksAll as Task[]).filter((t) => {
+      if (isPrivileged || !userRole) return true;
+      return t.owner_role === userRole || t.assigned_to === user?.id;
+    });
     rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
     setTasks(rawTasks);
 
