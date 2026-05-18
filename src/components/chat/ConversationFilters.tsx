@@ -107,7 +107,15 @@ export default function ConversationFilters({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConversationFilterValues>(filters);
   const [tagSearch, setTagSearch] = useState("");
+  const [userLabels, setUserLabels] = useState<{ id: string; name: string; color: string; description: string | null }[]>([]);
   const activeCount = countActive(filters);
+
+  useEffect(() => {
+    if (!open) return;
+    supabase.from("crm_user_labels").select("id, name, color, description").order("created_at").then(({ data }) => {
+      setUserLabels((data as any) || []);
+    });
+  }, [open]);
 
   const handleOpen = () => {
     setDraft(filters);
