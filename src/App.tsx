@@ -120,6 +120,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
             >
               <Route path="/crm" element={<CrmKanban />} />
               <Route path="/crm/dashboard" element={<CrmDashboard />} />
+              <Route path="/crm/posvenda" element={<CrmPosVendaDashboard />} />
               <Route path="/crm/conversas" element={<CrmConversas />} />
               <Route path="/crm/conversa/:id" element={<CrmConversa />} />
               <Route path="/crm/automacoes" element={<CrmAutomacoes />} />
