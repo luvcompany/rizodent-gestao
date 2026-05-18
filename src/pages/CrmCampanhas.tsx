@@ -16,6 +16,8 @@ import ShareRoleDialog, { OwnerRoleBadge, type OwnerRole } from "@/components/cr
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmCampanhas() {
+  const { userRole } = useAuth();
+  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [pipelines, setPipelines] = useState<any[]>([]);
@@ -23,6 +25,7 @@ export default function CrmCampanhas() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", template_id: "", pipeline_id: "", stage_id: "" });
   const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [shareTarget, setShareTarget] = useState<any | null>(null);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("crm_broadcasts").select("*").order("created_at", { ascending: false });
