@@ -1254,6 +1254,7 @@ export type Database = {
           follow_up_count: number | null
           has_task: boolean
           id: string
+          ig_account_uuid: string | null
           imagem_origem: string | null
           instagram_profile_pic_url: string | null
           instagram_user_id: string | null
@@ -1281,6 +1282,7 @@ export type Database = {
           titulo_anuncio: string | null
           updated_at: string
           value: number | null
+          whatsapp_number_id: string | null
         }
         Insert: {
           ad_account_id?: string | null
@@ -1297,6 +1299,7 @@ export type Database = {
           follow_up_count?: number | null
           has_task?: boolean
           id?: string
+          ig_account_uuid?: string | null
           imagem_origem?: string | null
           instagram_profile_pic_url?: string | null
           instagram_user_id?: string | null
@@ -1324,6 +1327,7 @@ export type Database = {
           titulo_anuncio?: string | null
           updated_at?: string
           value?: number | null
+          whatsapp_number_id?: string | null
         }
         Update: {
           ad_account_id?: string | null
@@ -1340,6 +1344,7 @@ export type Database = {
           follow_up_count?: number | null
           has_task?: boolean
           id?: string
+          ig_account_uuid?: string | null
           imagem_origem?: string | null
           instagram_profile_pic_url?: string | null
           instagram_user_id?: string | null
@@ -1367,8 +1372,16 @@ export type Database = {
           titulo_anuncio?: string | null
           updated_at?: string
           value?: number | null
+          whatsapp_number_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "crm_leads_ig_account_uuid_fkey"
+            columns: ["ig_account_uuid"]
+            isOneToOne: false
+            referencedRelation: "ig_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "crm_leads_paciente_id_fkey"
             columns: ["paciente_id"]
@@ -1395,6 +1408,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_leads_whatsapp_number_id_fkey"
+            columns: ["whatsapp_number_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_numbers"
             referencedColumns: ["id"]
           },
         ]
@@ -1877,6 +1897,7 @@ export type Database = {
           comment_id: string | null
           created_at: string
           id: string
+          ig_account_uuid: string | null
           instagram_account_config_id: string | null
           instagram_account_id: string | null
           is_outbound: boolean
@@ -1898,6 +1919,7 @@ export type Database = {
           comment_id?: string | null
           created_at?: string
           id?: string
+          ig_account_uuid?: string | null
           instagram_account_config_id?: string | null
           instagram_account_id?: string | null
           is_outbound?: boolean
@@ -1919,6 +1941,7 @@ export type Database = {
           comment_id?: string | null
           created_at?: string
           id?: string
+          ig_account_uuid?: string | null
           instagram_account_config_id?: string | null
           instagram_account_id?: string | null
           is_outbound?: boolean
@@ -1937,6 +1960,13 @@ export type Database = {
           tenant_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "instagram_messages_ig_account_uuid_fkey"
+            columns: ["ig_account_uuid"]
+            isOneToOne: false
+            referencedRelation: "ig_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "instagram_messages_instagram_account_config_id_fkey"
             columns: ["instagram_account_config_id"]
@@ -2078,6 +2108,7 @@ export type Database = {
           transcription: string | null
           type: string
           whatsapp_message_id: string | null
+          whatsapp_number_id: string | null
         }
         Insert: {
           ad_account_id?: string | null
@@ -2111,6 +2142,7 @@ export type Database = {
           transcription?: string | null
           type?: string
           whatsapp_message_id?: string | null
+          whatsapp_number_id?: string | null
         }
         Update: {
           ad_account_id?: string | null
@@ -2144,6 +2176,7 @@ export type Database = {
           transcription?: string | null
           type?: string
           whatsapp_message_id?: string | null
+          whatsapp_number_id?: string | null
         }
         Relationships: [
           {
@@ -2158,6 +2191,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_whatsapp_number_id_fkey"
+            columns: ["whatsapp_number_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_numbers"
             referencedColumns: ["id"]
           },
         ]
@@ -2816,13 +2856,72 @@ export type Database = {
           },
         ]
       }
+      whatsapp_numbers: {
+        Row: {
+          app_id: string | null
+          app_secret: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          phone_e164: string | null
+          phone_number_id: string
+          tenant_id: string
+          token: string | null
+          updated_at: string
+          verify_token: string | null
+          waba_id: string | null
+        }
+        Insert: {
+          app_id?: string | null
+          app_secret?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          phone_e164?: string | null
+          phone_number_id: string
+          tenant_id: string
+          token?: string | null
+          updated_at?: string
+          verify_token?: string | null
+          waba_id?: string | null
+        }
+        Update: {
+          app_id?: string | null
+          app_secret?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          phone_e164?: string | null
+          phone_number_id?: string
+          tenant_id?: string
+          token?: string | null
+          updated_at?: string
+          verify_token?: string | null
+          waba_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
       admin_tenant_metrics: { Args: { _tenant_id: string }; Returns: Json }
+      can_access_instagram_account: {
+        Args: { _account_id: string }
+        Returns: boolean
+      }
       can_access_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
+      can_access_whatsapp_number: {
+        Args: { _number_id: string }
+        Returns: boolean
+      }
       check_duplicate_phone: {
         Args: { p_phone: string }
         Returns: {
