@@ -2986,6 +2986,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      posvenda_dashboard_metrics: { Args: never; Returns: Json }
       recalculate_all_lead_scores:
         | { Args: never; Returns: undefined }
         | { Args: { p_batch_size?: number }; Returns: number }
