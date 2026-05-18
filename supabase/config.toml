@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.tenant-login]
 verify_jwt = false
+
+[functions.auto-transfer-contracted-to-posvenda]
+verify_jwt = false

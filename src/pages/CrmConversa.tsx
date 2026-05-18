@@ -25,6 +25,7 @@ import ConversationInlineNote, { AddInlineNoteButton } from "@/components/chat/C
 import { useConversationNotes } from "@/hooks/useConversationNotes";
 import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
+import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
 import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
@@ -512,7 +513,24 @@ export default function CrmConversa() {
               </SelectContent>
             </Select>
           </div>
+
+          <SendToPosvendaButton
+            leadId={lead.id}
+            stageId={lead.stage_id}
+            assignedTo={lead.assigned_to}
+            stages={chat.stages}
+            onTransferred={(payload) => {
+              setLead((prev) => prev ? {
+                ...prev,
+                assigned_to: payload.assigned_to,
+                pipeline_id: payload.pipeline_id || prev.pipeline_id,
+                stage_id: payload.stage_id || prev.stage_id,
+              } : prev);
+              chat.fetchMessages(true);
+            }}
+          />
         </div>
+
 
         {/* Inline Tags, Source & Ad Editor */}
         <InlineTagsEditor
