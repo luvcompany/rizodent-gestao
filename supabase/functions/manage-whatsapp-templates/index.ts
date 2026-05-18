@@ -293,6 +293,21 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Only the template's creator OR admin/gerente/superadmin may delete (Meta is shared)
+      if (!isPrivileged) {
+        const { data: ownerRow } = await supabase
+          .from("crm_whatsapp_templates")
+          .select("created_by_user_id")
+          .eq("name", template_name)
+          .maybeSingle();
+        if (!ownerRow || (ownerRow as any).created_by_user_id !== user.id) {
+          return new Response(
+            JSON.stringify({ error: "Forbidden: only the template owner or an admin can delete this template" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
       const metaRes = await fetch(
         `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?name=${encodeURIComponent(template_name)}`,
         {
