@@ -1,116 +1,85 @@
-# Acesso por usuário a canais (WhatsApp + Instagram)
-
 ## Objetivo
-Permitir que admin/superadmin escolha, em **Usuários → Permissões**, quais **números de WhatsApp** e **contas de Instagram** cada usuário pode acessar. Conversas, mensagens, leads originados nesses canais, métricas e o próprio card da integração ficam ocultos para quem não tiver permissão.
 
-## Etapa 1 — Refatorar WhatsApp para multi-número
+Trocar o role do usuário **Rizodent** (`d9b27aa3-049e-4ec9-9ae3-fb160a9544fa`) de `admin` para `posvenda`, e criar overrides em `user_permission_overrides` que preservem **exatamente os acessos atuais** ao Funil, Páginas, Ações e Instagram.
 
-Hoje `tenant_meta_credentials` tem `tenant_id` como PK (1 número por clínica). Vamos separar credenciais por número.
+## Mudanças no banco (uma migration SQL)
 
-Nova tabela **`whatsapp_numbers`**:
-- `id` (uuid PK), `tenant_id`, `phone_number_id` (único), `display_name`, `waba_id`, `token`, `app_id`, `app_secret`, `verify_token`, `is_active`, `is_default`.
-- Migração de dados: copiar a linha de `tenant_meta_credentials` (quando `whatsapp_enabled`) para `whatsapp_numbers` marcada como `is_default`.
-- `tenant_meta_credentials` continua existindo para Instagram/Meta App; campos `whatsapp_*` ficam como legado (não removidos agora pra não quebrar edge functions — substituição será gradual).
-- Atualizar `get_tenant_by_whatsapp_phone_number_id()` para consultar `whatsapp_numbers` primeiro (fallback na tabela antiga).
+### 1. Trocar o role
+```sql
+DELETE FROM public.user_roles
+ WHERE user_id = 'd9b27aa3-049e-4ec9-9ae3-fb160a9544fa' AND role = 'admin';
 
-## Etapa 2 — Modelo de acesso por usuário
+INSERT INTO public.user_roles (user_id, role, tenant_id)
+VALUES ('d9b27aa3-049e-4ec9-9ae3-fb160a9544fa', 'posvenda',
+        '00000000-0000-0000-0000-000000000010');
+```
 
-Reaproveitar `user_permission_overrides` adicionando dois novos `scope`:
-- `scope = 'whatsapp_number'`, `resource_id = whatsapp_numbers.id`
-- `scope = 'instagram_account'`, `resource_id = ig_accounts.id` (UUID interno, não o ig_user_id da Meta)
+### 2. Overrides de **pipelines** (7) — todos com `granted = true`
+Pipelines hoje visíveis ao admin (tenant Rizodent):
 
-**Padrão (sem override)**: usuário vê **todos** os canais do seu tenant (mantém comportamento atual). Override `granted = false` esconde; `granted = true` é redundante mas permite "whitelist explícita" no futuro.
+| Nome | ID |
+|---|---|
+| Funil Principal | `a1b2c3d4-0001-4000-8000-000000000001` |
+| Indicação | `93bed281-d907-423d-ab8b-f13fe10a3e4c` |
+| Instagram | `c2d3e4f5-0001-4000-8000-000000000002` |
+| Não Compareceu | `157ca05b-b454-47c3-bc13-9d15b518a46d` |
+| Não contratados | `6e91437d-081b-4026-947b-3ab6d28d6eb5` |
+| Nutrição | `a41aac6a-df13-480a-876f-0711dc093899` |
+| Pós-venda | `c7fb4a30-32d1-4ba0-a7a9-583a700d825a` |
 
-Novas funções SECURITY DEFINER:
-- `can_access_whatsapp_number(_number_id uuid) → boolean`
-- `can_access_instagram_account(_account_id uuid) → boolean`
-- Lógica: admin/superadmin/gerente sempre `true`; demais consultam `user_override`, default `true`.
+### 3. Overrides de **páginas** (8) — `scope='page'`, `granted=true`
+`dashboard`, `crm`, `calendario`, `daily`, `relatorios`, `pacientes`, `usuarios`, `configuracoes`
 
-## Etapa 3 — Aplicar filtros (RLS + queries)
+### 4. Overrides de **ações sensíveis** (5) — `scope='action'`, `granted=true`
+`delete_lead`, `transfer_lead`, `broadcast`, `edit_bot`, `view_finance`
 
-**Mensagens WhatsApp (`messages`)**: adicionar coluna `whatsapp_number_id` (nullable, backfill da default). Política RLS extra: SELECT exige `can_access_whatsapp_number(whatsapp_number_id)` quando não-nulo.
+### 5. Overrides de **Instagram** (4) — `scope='instagram_account'`, `granted=true`
+| Username | ID |
+|---|---|
+| rizodentclinicas | `5677255e-e9ba-4a1d-992f-bc389d25097c` |
+| rizodentguanambi | `f77955c2-770a-4532-af95-ee1fcccd3115` |
+| rizodentipiau | `0d582a26-0fc1-422e-990a-ae1f20281e77` |
+| rizodentitabuna | `60afa9fd-991f-42e2-b438-40b8d167e357` |
 
-**Mensagens Instagram (`instagram_messages`)**: já tem `instagram_account_id` (Meta ID). Adicionar coluna `ig_account_uuid` apontando para `ig_accounts.id` (backfill por join). Política RLS extra: SELECT exige `can_access_instagram_account(ig_account_uuid)`.
+### 6. WhatsApp
+Tabela `whatsapp_numbers` está vazia hoje — **nenhum override necessário**. Quando números forem cadastrados, o default (`can_access_whatsapp_number` retorna `true` sem override) já libera para o Rizodent.
 
-**Leads (`crm_leads`)**: já tem `source`/`channel`. Adicionar colunas `whatsapp_number_id` e `ig_account_uuid` (nullable), preenchidas no webhook (já sabemos qual número/conta recebeu). RLS extra filtra leads cujo canal o usuário não acessa.
+Total: **24 linhas** em `user_permission_overrides` + 1 troca em `user_roles`.
 
-**Telas afetadas (frontend)**:
-- CRM/Conversas: lista de chats já passa por RLS, então some automaticamente.
-- Configurações → Integrações: filtrar lista de `ig_accounts`/`whatsapp_numbers` por `can_access_*` antes de renderizar.
-- Dashboard/Relatórios: RLS já cobre, gráficos respeitam.
+## O que será PERDIDO (avisado anteriormente)
 
-## Etapa 4 — UI no `UserPermissionsSheet`
+Estes recursos têm RLS hardcoded em `has_role(..., 'admin')` e **não são cobertos** pelo sistema de overrides atual. Após a troca, o Rizodent **não terá mais acesso a**:
 
-Adicionar 2 abas novas ao Sheet (`src/components/usuarios/UserPermissionsSheet.tsx`):
+- Gerenciar **bots** (criar/editar/versionar/excluir)
+- Gerenciar **automações** (`crm_automations`)
+- Gerenciar **campos customizados** (`crm_custom_fields`)
+- Gerenciar **clínicas** e **tipos de procedimento**
+- Configurar **IA assistant** (`ai_assistant_config`)
+- Gerenciar **integrações META** (`tenant_meta_credentials`)
+- Gerenciar **outros usuários** (`profiles`, `user_roles`, `user_permission_overrides`)
+- Ver **`access_logs`**
+- **Hard delete** de leads (via funções `hard_delete_*`)
+- Configurar **follow-ups** (`crm_followup_configs`)
+- Gerenciar **quick replies**, **broadcasts**, **templates WA**
+- **Editar funis/etapas** (`crm_pipelines`, `crm_stages`)
 
-### Aba "WhatsApp"
-- Lista todos os `whatsapp_numbers` do tenant (display_name + phone_number_id mascarado).
-- Cada item: switch "Acesso liberado" + badge "Herdado (padrão: liberado)" ou "Personalizado: bloqueado".
-- Save → upsert/delete em `user_permission_overrides` (scope='whatsapp_number').
+Visualizar dados desses módulos pode continuar funcionando se RLS de SELECT for por `tenant_id`, mas **escrita/criação/exclusão será bloqueada**.
 
-### Aba "Instagram"
-- Lista todos os `ig_accounts` ativos do tenant (`@username` + avatar se houver).
-- Mesmo padrão de switches da aba WhatsApp.
+## Reversão
 
-Aproveita o mesmo hook de save/invalidate já existente.
-
-## Etapa 5 — Webhooks e envio
-
-- **Webhook WA**: usa `phone_number_id` para resolver `whatsapp_numbers.id` → grava em `messages.whatsapp_number_id` e `crm_leads.whatsapp_number_id`.
-- **Webhook IG**: já resolve `ig_accounts` → grava `ig_account_uuid` em mensagens/leads.
-- **Envio**: hoje só existe 1 número, então mantém. Quando o usuário tiver acesso a múltiplos, o front passa a expor um seletor de "responder por qual número" (fora do escopo desta entrega).
-
----
+Se algo der errado, reverter é trivial — uma migration espelho que faz o caminho inverso (`DELETE posvenda` + `INSERT admin` + `DELETE FROM user_permission_overrides WHERE user_id = ...`).
 
 ## Detalhes técnicos
 
-**Migração**:
-```sql
--- whatsapp_numbers
-CREATE TABLE public.whatsapp_numbers (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL,
-  phone_number_id text UNIQUE NOT NULL,
-  display_name text,
-  waba_id text, token text, app_id text, app_secret text, verify_token text,
-  is_active boolean DEFAULT true,
-  is_default boolean DEFAULT false,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-ALTER TABLE whatsapp_numbers ENABLE ROW LEVEL SECURITY;
--- RLS: tenant_id = current_tenant_id() AND can_access_whatsapp_number(id)
--- Admin/superadmin INSERT/UPDATE/DELETE
+- Único arquivo: nova migration em `supabase/migrations/` com o SQL acima.
+- Nenhum código frontend muda — `Usuarios.tsx` e `UserPermissionsSheet.tsx` já suportam `posvenda` e leem overrides via `usePermissions`.
+- Após aplicar, validar com:
+  ```sql
+  SELECT scope, count(*) FROM user_permission_overrides
+   WHERE user_id='d9b27aa3-049e-4ec9-9ae3-fb160a9544fa' GROUP BY scope;
+  ```
+  Esperado: `pipeline=7, page=8, action=5, instagram_account=4`.
 
--- Backfill
-INSERT INTO whatsapp_numbers (tenant_id, phone_number_id, ...)
-SELECT tenant_id, whatsapp_phone_number_id, ... FROM tenant_meta_credentials WHERE whatsapp_enabled;
+## Confirmação necessária
 
--- Novas colunas
-ALTER TABLE messages ADD COLUMN whatsapp_number_id uuid REFERENCES whatsapp_numbers(id);
-ALTER TABLE instagram_messages ADD COLUMN ig_account_uuid uuid REFERENCES ig_accounts(id);
-ALTER TABLE crm_leads ADD COLUMN whatsapp_number_id uuid, ADD COLUMN ig_account_uuid uuid;
-
--- Backfill via JOIN nos IDs Meta existentes
-
--- Funções
-CREATE FUNCTION can_access_whatsapp_number(_id uuid) RETURNS boolean ...;
-CREATE FUNCTION can_access_instagram_account(_id uuid) RETURNS boolean ...;
-
--- Políticas RLS adicionais nas tabelas filtradas
-```
-
-**Arquivos frontend**:
-- `src/components/usuarios/UserPermissionsSheet.tsx` (adicionar 2 TabsTrigger + TabsContent)
-- `src/hooks/usePermissions.ts` (já existe — adicionar `whatsapp_number` e `instagram_account` aos scopes)
-- `src/pages/Configuracoes.tsx` ou tela equivalente de Integrações: filtrar listagem por `can_access_*`
-
-**Edge functions a atualizar**:
-- `whatsapp-webhook` (ou nome equivalente): gravar `whatsapp_number_id`
-- `instagram-webhook`: gravar `ig_account_uuid`
-- `whatsapp-send`: aceitar `whatsapp_number_id` opcional (default = is_default do tenant)
-
-## Riscos / Notas
-- Migração de `tenant_meta_credentials` para `whatsapp_numbers` precisa cuidado para não quebrar edge functions em produção — manter ambos em paralelo por enquanto.
-- Backfill de `whatsapp_number_id`/`ig_account_uuid` em `messages` antigos: pra `messages`, todas as linhas existentes recebem o número default; pra `instagram_messages` faz join via `instagram_account_id` → `ig_accounts.instagram_account_id` (Meta ID) → `ig_accounts.id`.
-- Sem mudança no comportamento atual (todos veem tudo) até admin criar overrides.
+Confirma que quer prosseguir aceitando a **perda dos acessos administrativos** listados acima? Se quiser preservar TAMBÉM bots/automações/usuários/etc., a abordagem correta seria expandir o sistema de overrides para cobrir esses scopes (trabalho bem maior) — não é o que este plano faz.
