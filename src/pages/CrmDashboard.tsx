@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Task = {
   id: string;
@@ -26,6 +27,8 @@ type Task = {
   due_date: string;
   notes: string | null;
   status: string;
+  assigned_to?: string | null;
+  owner_role?: string | null;
   lead_name?: string;
 };
 
@@ -49,6 +52,7 @@ const typeLabels: Record<string, string> = {
 
 export default function CrmDashboard() {
   const navigate = useNavigate();
+  const { user, userRole } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -89,7 +93,11 @@ export default function CrmDashboard() {
     const leadsList = leadsAll;
     const nameMap = new Map(leadsList.map((l) => [l.id, l.name]));
 
-    const rawTasks = tasksAll as Task[];
+    const isPrivileged = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
+    const rawTasks = (tasksAll as Task[]).filter((t) => {
+      if (isPrivileged || !userRole) return true;
+      return t.owner_role === userRole || t.assigned_to === user?.id;
+    });
     rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
     setTasks(rawTasks);
 
@@ -104,7 +112,7 @@ export default function CrmDashboard() {
     setFaturamentoMes(totalFat);
 
     setLoading(false);
-  }, []);
+  }, [user?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

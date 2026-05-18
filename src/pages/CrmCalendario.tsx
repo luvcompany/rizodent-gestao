@@ -18,6 +18,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Task = {
   id: string;
@@ -28,6 +29,7 @@ type Task = {
   notes: string | null;
   assigned_to: string | null;
   status: string;
+  owner_role?: string | null;
   lead_name?: string;
 };
 
@@ -96,6 +98,7 @@ const CALENDAR_CACHE_TTL = 2 * 60_000;
 
 export default function CrmCalendario() {
   const navigate = useNavigate();
+  const { user, userRole } = useAuth();
   const [tasks, setTasks] = useState<Task[]>(calendarCache.tasks || []);
   const [profiles, setProfiles] = useState<Profile[]>(calendarCache.profiles || []);
   const [appointments, setAppointments] = useState<Appointment[]>(calendarCache.appointments || []);
@@ -140,7 +143,7 @@ export default function CrmCalendario() {
     }
 
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
-      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, crm_leads(name)").order("due_date"),
+      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role, crm_leads(name)").order("due_date"),
       supabase.from("profiles").select("id, nome"),
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, crm_leads(name, cidade)").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
@@ -201,12 +204,19 @@ export default function CrmCalendario() {
   };
 
   const filtered = useMemo(() => {
+    const isPrivileged = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
     return tasks.filter((t) => {
+      if (!isPrivileged && userRole) {
+        // Show only tasks owned by the user's role or assigned to them
+        const matchesRole = t.owner_role === userRole;
+        const matchesAssignee = t.assigned_to === user?.id;
+        if (!matchesRole && !matchesAssignee) return false;
+      }
       if (filterUser && t.assigned_to !== filterUser) return false;
       if (filterType && t.type !== filterType) return false;
       return true;
     });
-  }, [tasks, filterUser, filterType]);
+  }, [tasks, filterUser, filterType, userRole, user?.id]);
 
   const nav = (dir: number) => {
     setCurrentDate((prev) => {
