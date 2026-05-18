@@ -1,60 +1,82 @@
-## Parte 1 — Reajuste do lead Vitor Santos
 
-O lead **Vitor Santos** (`0c04e03a-4670-4849-85cc-adc974294570`) já foi transferido para a Neiriane (pós-venda), mas continuou no **Funil Principal**. Vou:
+## Contexto rápido
 
-1. Atualizar o lead movendo para o funil **Pós-venda** (`c7fb4a30-…`) e etapa inicial **Contato inicial** (`122caeb7-…`).
-2. Inserir um registro em `crm_lead_stage_history` (saída da etapa atual + entrada na nova) para preservar o histórico.
-3. Postar uma mensagem de sistema na conversa: *"📂 Lead movido para Pós-venda • Contato inicial"*.
-
-Toda a conversa, tags, anotações e mensagens permanecem intactas — só os campos `pipeline_id` e `stage_id` mudam.
+1. **Faturamento do mês** já é calculado a partir da tabela `pagamentos` (não da etapa Contratado). Mover o lead para o funil de Pós-venda **não altera nenhum KPI financeiro** — o histórico em `crm_lead_stage_history` preserva a passagem por "Contratado" no Funil Principal para qualquer relatório baseado em data de contratação.
+2. Templates hoje são compartilhados em todo o tenant (`crm_whatsapp_templates` só tem `tenant_id`). Precisa ter "dono" para filtrar por papel.
+3. Decisões aprovadas pelo usuário:
+   - Transferência para Pós-venda: **botão manual no card/chat** + **fallback automático no próximo dia útil às 7h** se ainda não tiver sido transferido. Pós-venda pode reverter a qualquer momento.
+   - Templates: **cada papel vê apenas os seus próprios** (admin/superadmin enxergam todos). **Aplica-se em `CrmConversa` e `CrmConversas`** (e em qualquer outro ponto que liste modelos: bots, automações, follow-ups, broadcasts).
 
 ---
 
-## Parte 2 — Recomendação: mover vs. duplicar para o Pós-venda
+## Parte 1 — Transferência Contratado → Pós-venda
 
-**Minha sugestão é mover, não duplicar.** Abaixo o raciocínio e os trade-offs.
+### 1.1 Botão manual
+- No header do chat (`CrmConversa`) e no card do Kanban: botão **"Enviar para Pós-venda"** visível apenas quando o lead está em etapa "Contratado" de um pipeline que não seja o de Pós-venda **e** ainda não está atribuído a usuário `posvenda`.
+- Ao clicar, chama a edge function `transfer-lead` já existente passando o usuário Pós-venda padrão. A função já move pipeline/stage para Pós-venda → primeira etapa quando o destinatário tem papel `posvenda` e registra mensagem de sistema.
 
-### Por que mover (recomendado)
+### 1.2 Fallback automático
+- Nova edge function **`auto-transfer-contracted-to-posvenda`** agendada via `pg_cron` todos os dias úteis às 07:00 BRT (10:00 UTC).
+- Busca leads cuja última entrada em uma etapa "Contratado" foi em dia útil anterior, que ainda não estão no pipeline Pós-venda nem atribuídos a usuário `posvenda`, e executa a mesma rotina de transferência. Pula sábados/domingos.
+- Mensagem de sistema: "Transferência automática para Pós-venda".
 
-- **Uma conversa, uma fonte da verdade.** O WhatsApp/Instagram do paciente é único. Duplicar o card cria duas caixas separadas com a mesma conversa — quando uma mensagem nova chegar, só uma vai atualizar, gerando dessincronia e confusão sobre "qual card é o verdadeiro".
-- **Sem mensagens duplicadas.** Mensagens são vinculadas por `lead_id`. Se duplicarmos o lead, teríamos que duplicar a tabela `messages` (cara, redundante) ou referenciar — e referenciar quebra o modelo atual.
-- **Sem automações/follow-ups conflitantes.** Bots, follow-ups, automações por etapa são disparados por `stage_id` do lead. Dois cards = dois bots disparando ao mesmo tempo para o mesmo paciente.
-- **Atribuição clara.** Um responsável por vez (CRC entrega → Pós-venda assume). Evita disputa de propriedade.
-- **Histórico preservado de graça.** A tabela `crm_lead_stage_history` já registra cada passagem de etapa, então o caminho "Funil Principal → Contratado → Pós-venda → Contato inicial" fica documentado no próprio lead.
+### 1.3 Reversão
+Pós-venda já consegue reatribuir via sidebar de transferência existente. Sem mudanças.
 
-### Por que **não** duplicar
+### 1.4 Faturamento
+Sem impacto — apenas adicionar nota na memória.
 
-- Mensagens, notas, tarefas, agendamentos, anexos, score, ad tracking — tudo é por `lead_id`. Duplicar significa escolher: copiar tudo (storage caro e tudo congelado no tempo) ou deixar metade vazio.
-- O Kanban do Funil Principal ficaria poluído com leads "concluídos" que na verdade já estão sob outra responsabilidade.
-- KPIs ficariam inflados (mesmo lead contado em dois funis).
+---
 
-### Como implementar a regra "Contratado → Pós-venda" (Parte 3, futura)
+## Parte 2 — Templates de mensagem filtrados por papel
 
-Quando você aprovar, posso criar uma **automação no estágio "Contratado"** do Funil Principal que automaticamente:
+### 2.1 Schema
+- Migration em `crm_whatsapp_templates`:
+  - `created_by_user_id uuid` (nullable)
+  - `owner_role app_role` (nullable)
+- Templates legados (`owner_role IS NULL`) continuam visíveis para todos para não quebrar nada.
 
-1. Reatribui o lead para o usuário **Neiriane (Pós-venda)** (ou outro usuário pós-venda configurável).
-2. Move o lead para o funil **Pós-venda** → etapa **Contato inicial**.
-3. Registra mensagem de sistema na conversa.
+### 2.2 RLS
+SELECT visível quando:
+- `tenant_id = current_tenant_id()` **E**
+- ( `owner_role IS NULL` **OU** usuário possui o papel `owner_role` **OU** usuário é `admin` / `gerente` / `superadmin` ).
 
-Isso reutiliza a mesma lógica que acabamos de adicionar no `transfer-lead`, mas disparada automaticamente pelo `automation-engine` quando o lead entra em "Contratado". O cartão **some** do Funil Principal e **aparece** no Pós-venda, com toda a conversa preservada.
+### 2.3 Frontend
+- `CrmModelos.tsx`: no INSERT, gravar `created_by_user_id = auth.user.id` e `owner_role = papel principal` (lido de `user_roles`).
+- **Sem alterações necessárias** em `CrmConversa.tsx`, `CrmConversas.tsx`, `useChatConversation.ts`, `ChatInput.tsx`, automações, follow-ups, bots e broadcasts — a RLS já filtra automaticamente nos dois lados (lista de envio de template no chat individual **e** no envio em massa/conversa pela tela de conversas).
+- Opcional em `CrmModelos.tsx`: badge indicando o papel dono do template.
 
-### Resumo visual
+### 2.4 Comportamento esperado
+| Usuário               | Vê templates                                          |
+|-----------------------|--------------------------------------------------------|
+| `rizodent` (admin)    | Todos (próprios, dos outros papéis e legados)         |
+| `gerente`             | Todos                                                  |
+| `crc`                 | Apenas criados por CRCs + legados                     |
+| `posvenda` (Neiriane) | Apenas criados por Pós-venda + legados                |
+| `superadmin`          | Todos                                                  |
+
+Em `CrmConversa` (chat individual) e em `CrmConversas` (lista geral de conversas), ao clicar em **Enviar template**, a lista exibida respeita exatamente essa tabela.
+
+---
+
+## Arquivos afetados
 
 ```text
-ANTES (duplicar — ruim):
-  [Funil Principal: Contratado] ──┐
-                                  ├── mesma conversa WhatsApp ⚠️ duas caixas
-  [Pós-venda: Contato inicial] ───┘
+supabase/migrations/<new>.sql
+  - ALTER TABLE crm_whatsapp_templates ADD created_by_user_id, owner_role
+  - DROP/CREATE POLICY SELECT com filtro por papel
+  - cron.schedule diário 10:00 UTC
 
-DEPOIS (mover — recomendado):
-  [Funil Principal: Contratado] ──► [Pós-venda: Contato inicial]
-       (histórico: saiu em 18/05 14:30)   (entrou em 18/05 14:30)
-       conversa única, responsável único
+supabase/functions/auto-transfer-contracted-to-posvenda/index.ts   (novo)
+
+src/pages/CrmModelos.tsx               (gravar owner_role + created_by_user_id no insert; badge opcional)
+src/pages/CrmConversa.tsx              (botão "Enviar para Pós-venda" no header)
+src/components/.../KanbanCard.tsx      (mesmo botão no card quando stage = Contratado)
 ```
 
 ---
 
-## O que vou fazer agora (se aprovar)
+## Fora de escopo
 
-- **Apenas a Parte 1**: ajustar o lead Vitor Santos manualmente (UPDATE + history + system message).
-- A Parte 3 (automação no "Contratado") fica para uma próxima etapa, quando você confirmar a regra.
+- Marcar template como "compartilhado" explicitamente (admin pode forçar visível a todos) — pode ser adicionado depois.
+- Migrar templates legados para um dono específico — permanecem visíveis a todos.
