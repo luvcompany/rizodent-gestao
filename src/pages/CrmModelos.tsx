@@ -43,6 +43,9 @@ type Integration = {
 const PAGE_SIZE = 10;
 
 export default function CrmModelos() {
+  const { userRole } = useAuth();
+  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
+
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("todos");
@@ -55,6 +58,8 @@ export default function CrmModelos() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedIntegration, setSelectedIntegration] = useState<string>("");
   const [syncing, setSyncing] = useState(false);
+  const [shareTarget, setShareTarget] = useState<WhatsAppTemplate | null>(null);
+  const [shareRole, setShareRole] = useState<string>("__all__");
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
