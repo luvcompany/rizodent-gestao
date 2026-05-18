@@ -49,12 +49,15 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
-      <PopoverTrigger asChild onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+      <PopoverTrigger asChild>
         {trigger || (
           <button
             type="button"
             className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             title="Marcadores"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <Tag size={12} />
           </button>
