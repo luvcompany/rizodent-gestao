@@ -2757,6 +2757,36 @@ export type Database = {
           },
         ]
       }
+      user_permission_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          granted: boolean
+          id: string
+          resource_id: string
+          scope: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          granted: boolean
+          id?: string
+          resource_id: string
+          scope: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          granted?: boolean
+          id?: string
+          resource_id?: string
+          scope?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -2838,6 +2868,19 @@ export type Database = {
       recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
+      user_can: {
+        Args: {
+          _default: boolean
+          _resource_id: string
+          _scope: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      user_override: {
+        Args: { _resource_id: string; _scope: string; _user_id: string }
+        Returns: boolean
+      }
       watchdog_reenqueue_missing_bots: { Args: never; Returns: number }
     }
     Enums: {
