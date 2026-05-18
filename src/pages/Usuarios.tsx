@@ -53,6 +53,8 @@ const Usuarios = () => {
   const [selectedRole, setSelectedRole] = useState("");
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [permsOpen, setPermsOpen] = useState(false);
+  const [permsUser, setPermsUser] = useState<Profile | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [newNome, setNewNome] = useState("");
   const [newCargo, setNewCargo] = useState("");
