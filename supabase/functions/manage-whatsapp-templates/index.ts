@@ -55,18 +55,20 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Verify admin role server-side
-    const { data: roleRow } = await supabase
+    // Resolve caller's primary role (used for owner_role tagging and authorization)
+    const { data: callerRoles } = await supabase
       .from("user_roles")
       .select("role")
-      .eq("user_id", user.id)
-      .in("role", ["admin", "gerente"])
-      .maybeSingle();
-    if (!roleRow) {
-      return new Response(JSON.stringify({ error: "Forbidden: admin or manager role required" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+      .eq("user_id", user.id);
+    const rolesSet = new Set((callerRoles || []).map((r: any) => r.role));
+    const rolePriority = ["superadmin", "admin", "gerente", "posvenda", "crc"];
+    const callerPrimaryRole = rolePriority.find((r) => rolesSet.has(r)) || null;
+
+    // Any authenticated tenant user can list/create/delete their own templates.
+    // Only admin/gerente/superadmin can hit destructive Meta actions like global delete.
+    const isPrivileged =
+      rolesSet.has("admin") || rolesSet.has("gerente") || rolesSet.has("superadmin");
+
 
     const body = await req.json();
     const { action, integration_key } = body;
