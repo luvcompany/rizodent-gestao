@@ -103,17 +103,18 @@ const Usuarios = () => {
     if (!newEmail || !newNome || !newPassword) { toast.error("Preencha todos os campos"); return; }
     setCreating(true);
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: newEmail,
-        password: newPassword,
-        options: { data: { nome: newNome } },
+      const { data, error } = await supabase.functions.invoke("tenant-create-user", {
+        body: {
+          email: newEmail,
+          password: newPassword,
+          nome: newNome,
+          cargo: newCargo || null,
+          role: newRole,
+        },
       });
       if (error) throw error;
-      if (data.user) {
-        await supabase.from("profiles").update({ cargo: newCargo || null }).eq("id", data.user.id);
-        await supabase.from("user_roles").insert({ user_id: data.user.id, role: newRole as any });
-      }
-      toast.success("Usuário criado! O e-mail de confirmação foi enviado.");
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success("Usuário criado com sucesso! Já pode acessar o sistema.");
       setNewEmail(""); setNewNome(""); setNewCargo(""); setNewPassword(""); setNewRole("crc");
       fetchData();
     } catch (err: any) {
