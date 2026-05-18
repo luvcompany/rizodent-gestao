@@ -19,10 +19,13 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmBots() {
   const navigate = useNavigate();
+  const { userRole } = useAuth();
+  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
   const [bots, setBots] = useState<BotType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [shareTarget, setShareTarget] = useState<BotType | null>(null);
 
   const fetchBots = async () => {
     const { data, error } = await supabase
