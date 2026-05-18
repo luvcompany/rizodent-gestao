@@ -9,11 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Send, Users } from "lucide-react";
+import { Plus, Send, Users, Share2 } from "lucide-react";
 import { format } from "date-fns";
 import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
+import ShareRoleDialog, { OwnerRoleBadge, type OwnerRole } from "@/components/crm/ShareRoleDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmCampanhas() {
+  const { userRole } = useAuth();
+  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [pipelines, setPipelines] = useState<any[]>([]);
@@ -21,6 +25,7 @@ export default function CrmCampanhas() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", template_id: "", pipeline_id: "", stage_id: "" });
   const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [shareTarget, setShareTarget] = useState<any | null>(null);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("crm_broadcasts").select("*").order("created_at", { ascending: false });
@@ -125,21 +130,37 @@ export default function CrmCampanhas() {
         </Dialog>
       </div>
       <Table>
-        <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Status</TableHead><TableHead>Total</TableHead><TableHead>Enviados</TableHead><TableHead>Data</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Status</TableHead><TableHead>Visibilidade</TableHead><TableHead>Total</TableHead><TableHead>Enviados</TableHead><TableHead>Data</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
         <TableBody>
           {broadcasts.map(b => (
             <TableRow key={b.id}>
               <TableCell className="font-medium">{b.name}</TableCell>
               <TableCell><Badge variant={statusColor[b.status] as any || "outline"}>{b.status}</Badge></TableCell>
+              <TableCell><OwnerRoleBadge ownerRole={(b.owner_role ?? null) as OwnerRole} /></TableCell>
               <TableCell>{b.total_leads}</TableCell>
               <TableCell>{b.sent_count}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{format(new Date(b.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
-              <TableCell>{b.status === "draft" && <Button size="sm" variant="outline" onClick={() => send(b.id)}><Send size={14} /> Enviar</Button>}</TableCell>
+              <TableCell>
+                <div className="flex gap-1">
+                  {b.status === "draft" && <Button size="sm" variant="outline" onClick={() => send(b.id)}><Send size={14} /> Enviar</Button>}
+                  {canShare && <Button size="icon" variant="ghost" title="Compartilhar com papel" onClick={() => setShareTarget(b)}><Share2 size={14} /></Button>}
+                </div>
+              </TableCell>
             </TableRow>
           ))}
-          {broadcasts.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhuma campanha</TableCell></TableRow>}
+          {broadcasts.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Nenhuma campanha</TableCell></TableRow>}
         </TableBody>
       </Table>
+
+      <ShareRoleDialog
+        open={!!shareTarget}
+        onOpenChange={(v) => !v && setShareTarget(null)}
+        table="crm_broadcasts"
+        rowId={shareTarget?.id ?? null}
+        currentOwnerRole={(shareTarget?.owner_role ?? null) as OwnerRole}
+        itemLabel="Campanha"
+        onSaved={load}
+      />
     </div>
   );
 }

@@ -390,6 +390,7 @@ export type Database = {
           id: string
           mark_as_read: boolean
           name: string
+          owner_role: Database["public"]["Enums"]["app_role"] | null
           status: string
           tenant_id: string | null
           updated_at: string
@@ -403,6 +404,7 @@ export type Database = {
           id?: string
           mark_as_read?: boolean
           name: string
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -416,6 +418,7 @@ export type Database = {
           id?: string
           mark_as_read?: boolean
           name?: string
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -730,6 +733,7 @@ export type Database = {
           filter_tags: string[] | null
           id: string
           name: string
+          owner_role: Database["public"]["Enums"]["app_role"] | null
           scheduled_at: string | null
           sent_count: number
           status: string
@@ -745,6 +749,7 @@ export type Database = {
           filter_tags?: string[] | null
           id?: string
           name: string
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           scheduled_at?: string | null
           sent_count?: number
           status?: string
@@ -760,6 +765,7 @@ export type Database = {
           filter_tags?: string[] | null
           id?: string
           name?: string
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           scheduled_at?: string | null
           sent_count?: number
           status?: string
@@ -1539,6 +1545,7 @@ export type Database = {
           id: string
           media_type: string | null
           media_url: string | null
+          owner_role: Database["public"]["Enums"]["app_role"] | null
           tenant_id: string | null
           title: string
         }
@@ -1549,6 +1556,7 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           tenant_id?: string | null
           title: string
         }
@@ -1559,6 +1567,7 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           tenant_id?: string | null
           title?: string
         }

@@ -9,18 +9,23 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Search, Bot, MoreHorizontal, Pencil, Copy, Archive, Trash2 } from "lucide-react";
+import { Plus, Search, Bot, MoreHorizontal, Pencil, Copy, Archive, Trash2, Users } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Bot as BotType, BotStatus } from "@/types/bot";
+import ShareRoleDialog, { OwnerRoleBadge, type OwnerRole } from "@/components/crm/ShareRoleDialog";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmBots() {
   const navigate = useNavigate();
+  const { userRole } = useAuth();
+  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
   const [bots, setBots] = useState<BotType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [shareTarget, setShareTarget] = useState<BotType | null>(null);
 
   const fetchBots = async () => {
     const { data, error } = await supabase
@@ -154,6 +159,11 @@ export default function CrmBots() {
                     <DropdownMenuItem onClick={() => handleArchive(bot.id)}>
                       <Archive size={14} className="mr-2" /> Arquivar
                     </DropdownMenuItem>
+                    {canShare && (
+                      <DropdownMenuItem onClick={() => setShareTarget(bot)}>
+                        <Users size={14} className="mr-2" /> Compartilhar com papel
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(bot.id)}>
                       <Trash2 size={14} className="mr-2" /> Excluir
                     </DropdownMenuItem>
@@ -161,7 +171,10 @@ export default function CrmBots() {
                 </DropdownMenu>
               </div>
               <div className="flex items-center justify-between">
-                {statusBadge(bot.status)}
+                <div className="flex items-center gap-2">
+                  {statusBadge(bot.status)}
+                  <OwnerRoleBadge ownerRole={(bot as any).owner_role as OwnerRole} />
+                </div>
                 <span className="text-xs text-muted-foreground">
                   {new Date(bot.updated_at).toLocaleDateString("pt-BR")}
                 </span>
@@ -187,6 +200,16 @@ export default function CrmBots() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ShareRoleDialog
+        open={!!shareTarget}
+        onOpenChange={(v) => !v && setShareTarget(null)}
+        table="bots"
+        rowId={shareTarget?.id ?? null}
+        currentOwnerRole={((shareTarget as any)?.owner_role ?? null) as OwnerRole}
+        itemLabel="Bot"
+        onSaved={fetchBots}
+      />
     </div>
   );
 }
