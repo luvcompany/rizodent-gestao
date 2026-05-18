@@ -32,6 +32,7 @@ import CrmFollowUps from "./pages/CrmFollowUps";
 import CrmBots from "./pages/CrmBots";
 import CrmBotEditor from "./pages/CrmBotEditor";
 import CrmDashboard from "./pages/CrmDashboard";
+import CrmPosVendaDashboard from "./pages/CrmPosVendaDashboard";
 import CrmExtras from "./pages/CrmExtras";
 import CrmConfiguracoes from "./pages/CrmConfiguracoes";
 import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
