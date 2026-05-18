@@ -129,9 +129,29 @@ Deno.serve(async (req) => {
       sender_id: user.id,
     });
 
+    const transferMsg = movedPipelineName && movedStageName
+      ? `🔄 Lead transferido: ${oldUserName} → ${newUserName}\n📂 Movido para: ${movedPipelineName} • ${movedStageName}`
+      : `🔄 Lead transferido: ${oldUserName} → ${newUserName}`;
+
+    const { error: messageError } = await supabase.from("messages").insert({
+      lead_id: leadId,
+      direction: "outbound",
+      type: "system",
+      content: transferMsg,
+      status: "system",
+      sender_id: user.id,
+    });
+
     if (messageError) return json({ error: messageError.message }, 500);
 
-    return json({ success: true, oldUserName, newUserName, assigned_to: newUserId });
+    return json({
+      success: true,
+      oldUserName,
+      newUserName,
+      assigned_to: newUserId,
+      moved_pipeline: movedPipelineName,
+      moved_stage: movedStageName,
+    });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
   }
