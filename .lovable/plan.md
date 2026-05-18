@@ -1,75 +1,76 @@
-## Pipeline "Pós-venda" com role dedicada
+## Objetivo
 
-Hoje qualquer usuário autenticado do tenant lê todos os pipelines/stages — não existe restrição por role. Vamos introduzir o conceito de **pipeline restrito a uma role** sem quebrar o modelo atual.
+Adicionar uma tela admin de **Opções por Usuário** que permita configurar, individualmente para cada usuário, quais funis (pipelines), páginas e ações ele pode acessar — **sem precisar mexer na role**. A role continua sendo o padrão; este painel é um conjunto de *overrides* opcionais (grants extras e denies pontuais).
 
-### 1. Banco — Migração
+Caso de uso direto: dar a um CRC específico acesso ao funil **Pós-venda**, ou tirar o acesso à página **Relatórios** de um gerente, sem criar uma role nova para cada combinação.
 
-**1.1. Nova role no enum `app_role`**
-- Adicionar valor `'posvenda'` (mantém `admin`, `gerente`, `crc`, `superadmin`).
+## Onde encaixa na UI
 
-**1.2. Coluna de restrição em `crm_pipelines`**
-- `allowed_roles app_role[] NULL` — quando `NULL`, comportamento atual (todos veem). Quando preenchido, só `admin`/`gerente`/`superadmin` + usuários cuja role esteja no array veem o pipeline.
+Novo botão **"Permissões"** na linha de cada usuário em `/rizodent/usuarios` (já existe a tabela em `src/pages/Usuarios.tsx`). Abre um modal lateral (`Sheet`) com 3 abas:
 
-**1.3. Helper `can_access_pipeline(_pipeline_id uuid)` (SECURITY DEFINER, STABLE)**
-- Retorna `true` se: `superadmin`, `admin`, `gerente`, `allowed_roles IS NULL`, ou `EXISTS user_roles do usuário com role ∈ allowed_roles`.
+1. **Funis** — checkboxes de todos os pipelines do tenant. Marcação herda do `allowed_roles` do pipeline + role do usuário; usuário pode marcar/desmarcar para override.
+2. **Páginas** — checkboxes das seções do menu (Dashboard, CRM, Calendário, Daily, Relatórios, Pacientes, Usuários, Configurações). Herda da role; pode override.
+3. **Ações sensíveis** — toggles para: excluir leads, transferir leads, broadcast em massa, editar bots, ver relatórios financeiros.
 
-**1.4. Ajuste de RLS**
-- `crm_pipelines.SELECT`: substituir `USING true` por `can_access_pipeline(id)`.
-- `crm_stages.SELECT`: adicionar `can_access_pipeline(pipeline_id)`.
-- `crm_leads.SELECT`: combinar a regra existente (admin/gerente/dono/sem dono) com `can_access_pipeline(pipeline_id)` — usuário precisa atender as duas condições.
-- Mesma checagem em INSERT/UPDATE/DELETE para impedir mover lead para pipeline ao qual a role não tem acesso.
+Visual: badge "Herdado da role" cinza ao lado dos itens não-override; quando o admin altera, vira "Personalizado" laranja. Botão **"Voltar ao padrão da role"** limpa todos os overrides daquele usuário.
 
-**1.5. Seed (via insert tool, não migration)**
-- Pipeline `Pós-venda` no tenant Rizodent com `allowed_roles = ARRAY['posvenda']::app_role[]`.
-- Stage `Contato inicial`, position 0, cor a definir (sugestão `#10b981`).
+## Modelo de dados
 
-### 2. Frontend
-
-**2.1. `AuthContext`**
-- Já carrega `userRole`. Nada muda; só passa a entender o valor `'posvenda'`.
-
-**2.2. `Usuarios.tsx`**
-- Adicionar opção "Pós-venda" no seletor de role ao criar/editar usuário.
-
-**2.3. CRM Kanban / seletor de pipelines**
-- A query atual de pipelines (`crm_pipelines select`) passará a já filtrar via RLS — usuário Pós-venda só vê esse pipeline.
-- Garantir que o default `localStorage.lastPipelineId` faz fallback para o primeiro pipeline retornado quando o salvo não está mais visível.
-
-**2.4. Menu/rotas**
-- Usuário Pós-venda continua acessando a rota `/rizodent/crm` normalmente. Telas que ele não precisa (Dashboard, Relatórios, Configurações, Calendário, Daily, Usuários) **não são** bloqueadas nesta entrega — apenas o pipeline é restrito. Se quiser esconder essas telas para essa role, faz parte de uma matriz de permissões formal (proposta anterior, fora deste escopo).
-
-### 3. Validações e edge cases
-
-- Triggers existentes (`enforce_lead_tenant_consistency`, `sync_lead_pipeline_with_stage`, etc.) continuam funcionando — não dependem de role.
-- `hard_delete_tenant` já remove `crm_pipelines`/`crm_stages` por tenant — nada a alterar.
-- Broadcasts, automations, follow-ups e bots do tenant que filtrarem por `pipeline_id`/`stage_id` específicos do Pós-venda continuam funcionando; ninguém configurou nada para esse pipeline ainda.
-- Como a regra exige `assigned_to = auth.uid() OR NULL` para CRC, um lead Pós-venda precisa ser atribuído ao usuário Pós-venda (ou ficar sem dono) para ele ver. Isso é o comportamento atual de CRC; aceitável.
-
-### 4. Detalhes técnicos
+Uma única tabela genérica `user_permission_overrides`:
 
 ```text
-app_role
-  + 'posvenda'
-
-crm_pipelines
-  + allowed_roles app_role[] NULL
-
-functions
-  + can_access_pipeline(_pipeline_id uuid) returns boolean
-      SECURITY DEFINER, STABLE, search_path = public
-      true se: has_role(uid,'superadmin'|'admin'|'gerente')
-              OR (SELECT allowed_roles FROM crm_pipelines WHERE id=_pipeline_id) IS NULL
-              OR EXISTS (SELECT 1 FROM user_roles ur
-                          WHERE ur.user_id = auth.uid()
-                            AND ur.role = ANY(
-                              (SELECT allowed_roles FROM crm_pipelines WHERE id=_pipeline_id)
-                            ))
-
-RLS atualizadas (mantém tenant_isolation):
-  crm_pipelines.SELECT  USING can_access_pipeline(id)
-  crm_stages.SELECT     USING can_access_pipeline(pipeline_id)
-  crm_leads.SELECT      USING (regra atual AND can_access_pipeline(pipeline_id))
-  crm_leads.INSERT/UPDATE WITH CHECK (... AND can_access_pipeline(pipeline_id))
+user_permission_overrides
+  id            uuid pk
+  user_id       uuid not null   (auth.users)
+  scope         text not null   ('pipeline' | 'page' | 'action')
+  resource_id   text not null   (uuid do pipeline, slug da página, ou nome da ação)
+  granted       boolean not null (true = grant, false = deny)
+  created_by    uuid
+  created_at    timestamptz
+  unique (user_id, scope, resource_id)
 ```
 
-Confirma o nome da role como `posvenda` (sem acento/espaço, padrão do enum) e a cor da etapa para eu seguir com a implementação?
+- `granted = true` → libera mesmo se a role base negaria.
+- `granted = false` → bloqueia mesmo se a role base liberaria.
+- Ausência de linha → segue a regra padrão da role.
+
+Helper SQL `user_can(_user_id, _scope, _resource_id) returns boolean` que consulta a tabela e cai pra `has_role()`/`can_access_pipeline()` quando não há override.
+
+`can_access_pipeline()` é atualizada para consultar `user_can(auth.uid(), 'pipeline', _pipeline_id::text)` antes da regra atual de `allowed_roles`.
+
+## Permissões da própria tela
+
+Só `admin` e `superadmin` podem ler/escrever em `user_permission_overrides` (RLS via `has_role`). Gerente não edita permissões.
+
+## Frontend
+
+- **Novo componente** `src/components/usuarios/UserPermissionsSheet.tsx` — abre via botão "Permissões".
+- **Novo hook** `usePermissions()` em `src/hooks/usePermissions.ts` — carrega overrides do usuário logado + role, expõe `can(scope, resourceId)` e cacheia no React Query.
+- **Refator suave** nas guardas atuais (`AuthContext.userRole`, rotas com `requiresRole`) para consultar `can()` em vez de checar role direta — só nas páginas/ações que entrarem no escopo da aba "Páginas/Ações".
+- **Aba "Funis"** reaproveita `crm_pipelines` (já filtrado por tenant) e mostra cor + nome.
+
+## Fora do escopo desta entrega
+
+- Não cria role nova nem altera `app_role` enum.
+- Não mexe em segregação de **agendamentos/tasks** por role — fica para uma próxima entrega (já discutido em mensagem anterior).
+- Não cria "grupos de permissão" reutilizáveis (cada usuário é configurado isoladamente). Se a operação crescer, pode virar `permission_templates` no futuro.
+
+## Detalhes técnicos
+
+- Migração:
+  - Cria `user_permission_overrides` com índice `(user_id, scope)`.
+  - RLS: SELECT/INSERT/UPDATE/DELETE só para `admin`/`superadmin`.
+  - Função `user_can(_user_id uuid, _scope text, _resource_id text) returns boolean security definer`.
+  - Atualiza `can_access_pipeline()` para consultar `user_can` primeiro.
+- Frontend:
+  - `UserPermissionsSheet.tsx` (~250 linhas) com 3 `<Tabs>` e estado controlado.
+  - `usePermissions.ts` (~80 linhas) com React Query + invalidate ao salvar.
+  - `Usuarios.tsx`: adiciona botão "Permissões" na coluna de ações.
+- Sem mudança em edge functions.
+- Sem migração de dados (overrides começam vazios — todo mundo continua com permissão atual via role).
+
+## Pontos a confirmar antes de implementar
+
+1. **Lista de páginas controláveis** na aba "Páginas": confirmar se inclui só as 8 que listei ou se quer granularidade maior (ex.: "ver tabela X dentro de Relatórios").
+2. **Lista de ações sensíveis**: as 5 que listei são suficientes ou tem outras (ex.: "enviar template fora do horário", "editar valor de lead")?
+3. **Modal vs. página dedicada**: prefere o `Sheet` lateral (proposto) ou uma sub-rota `/usuarios/:id/permissoes` em página cheia?
