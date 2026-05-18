@@ -49,12 +49,15 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
-      <PopoverTrigger asChild onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+      <PopoverTrigger asChild>
         {trigger || (
           <button
             type="button"
             className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             title="Marcadores"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <Tag size={12} />
           </button>
@@ -164,6 +167,39 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+export function LeadLabelsTrigger({ leadId }: { leadId: string }) {
+  const { labelsByLead } = useLeadLabels();
+  const items = labelsByLead(leadId);
+
+  return (
+    <button
+      type="button"
+      className="inline-flex min-h-6 max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+      title="Configurar marcadores"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {items.length === 0 ? (
+        <>
+          <Tag size={12} />
+          <span>Marcadores</span>
+        </>
+      ) : (
+        <>
+          <Tag size={12} className="shrink-0" />
+          <span className="flex min-w-0 flex-wrap gap-1">
+            {items.slice(0, 3).map(l => (
+              <span key={l.id} className="h-2 w-5 rounded-full" style={{ backgroundColor: l.color }} />
+            ))}
+            {items.length > 3 && <span className="leading-none">+{items.length - 3}</span>}
+          </span>
+        </>
+      )}
+    </button>
   );
 }
 

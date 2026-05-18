@@ -23,7 +23,7 @@ import {
 import { isWithinInterval } from "date-fns";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import LeadLabelsPopover, { LeadLabelChips } from "@/components/chat/LeadLabelsPopover";
+import LeadLabelsPopover, { LeadLabelChips, LeadLabelsTrigger } from "@/components/chat/LeadLabelsPopover";
 import { useLeadLabels } from "@/hooks/useLeadLabels";
 
 type Stage = {
@@ -706,11 +706,19 @@ export default function CrmKanban() {
                             {stageLeads.map((lead, lIdx) => (
                               <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
                                 {(prov, snap) => (
-                                  <Link
-                                    to={`/crm/conversa/${lead.id}`}
+                                  <div
                                     ref={prov.innerRef}
                                     {...prov.draggableProps}
                                     {...prov.dragHandleProps}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => navigate(`/crm/conversa/${lead.id}`)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        navigate(`/crm/conversa/${lead.id}`);
+                                      }
+                                    }}
                                     className={`block bg-card rounded-lg shadow-card border border-border mb-2 cursor-pointer hover:border-primary/30 transition-all overflow-hidden ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
                                   >
                                     {/* Color stripe from labels */}
@@ -746,9 +754,9 @@ export default function CrmKanban() {
                                          className="flex items-center gap-1 ml-2"
                                          onPointerDown={(e) => e.stopPropagation()}
                                          onMouseDown={(e) => e.stopPropagation()}
-                                         onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                         onClick={(e) => e.stopPropagation()}
                                        >
-                                         <LeadLabelsPopover leadId={lead.id} />
+                                         <LeadLabelsPopover leadId={lead.id} trigger={<LeadLabelsTrigger leadId={lead.id} />} />
                                         <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Data de entrada do lead">
                                           {(() => {
                                             const d = new Date(lead.created_at);
@@ -780,7 +788,7 @@ export default function CrmKanban() {
                                       </span>
                                     </div>
                                     </div>
-                                  </Link>
+                                  </div>
                                 )}
                               </Draggable>
                             ))}
