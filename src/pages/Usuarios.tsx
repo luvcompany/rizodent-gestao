@@ -275,6 +275,16 @@ const Usuarios = () => {
                                 </DialogContent>
                               </Dialog>
                             )}
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-primary hover:text-primary"
+                                onClick={() => { setPermsUser(p); setPermsOpen(true); }}
+                              >
+                                <KeyRound size={14} className="mr-1" /> Permissões
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
