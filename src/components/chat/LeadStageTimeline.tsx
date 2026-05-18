@@ -40,6 +40,7 @@ function formatRelativeTime(dateStr: string): string {
 
 export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Props) {
   const [history, setHistory] = useState<StageHistory[]>([]);
+  const [extraStages, setExtraStages] = useState<Record<string, Stage>>({});
 
   useEffect(() => {
     const fetch = async () => {
@@ -65,8 +66,33 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
     return () => { supabase.removeChannel(channel); };
   }, [leadId]);
 
-  const getStageName = (stageId: string) => stages.find((s) => s.id === stageId)?.name || "Desconhecida";
-  const getStageColor = (stageId: string) => stages.find((s) => s.id === stageId)?.color || "#6366f1";
+  // Fetch names for any stage_id not present in the current pipeline's stages prop
+  // (happens when the lead was moved across pipelines, e.g. to Pós-venda).
+  useEffect(() => {
+    const knownIds = new Set(stages.map((s) => s.id));
+    const missing = Array.from(
+      new Set(history.map((h) => h.stage_id).filter((id) => id && !knownIds.has(id) && !extraStages[id]))
+    );
+    if (missing.length === 0) return;
+    (async () => {
+      const { data } = await supabase
+        .from("crm_stages")
+        .select("id,name,color")
+        .in("id", missing);
+      if (data) {
+        setExtraStages((prev) => {
+          const next = { ...prev };
+          for (const s of data as Stage[]) next[s.id] = s;
+          return next;
+        });
+      }
+    })();
+  }, [history, stages, extraStages]);
+
+  const resolveStage = (stageId: string): Stage | undefined =>
+    stages.find((s) => s.id === stageId) || extraStages[stageId];
+  const getStageName = (stageId: string) => resolveStage(stageId)?.name || "Desconhecida";
+  const getStageColor = (stageId: string) => resolveStage(stageId)?.color || "#6366f1";
 
   return (
     <div className="p-4 border-b border-border">
