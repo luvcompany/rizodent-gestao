@@ -24,6 +24,7 @@ export type ConversationFilterValues = {
   adAccountId: string;
   adId: string;
   instagramAccountId: string;
+  labelIds: string[];
 };
 
 const emptyFilters: ConversationFilterValues = {
@@ -39,6 +40,7 @@ const emptyFilters: ConversationFilterValues = {
   adAccountId: "",
   adId: "",
   instagramAccountId: "",
+  labelIds: [],
 };
 
 export type AdAccountOption = { id: string; name: string };
