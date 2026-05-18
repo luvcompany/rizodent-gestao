@@ -143,7 +143,7 @@ export default function CrmCalendario() {
     }
 
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
-      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, crm_leads(name)").order("due_date"),
+      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role, crm_leads(name)").order("due_date"),
       supabase.from("profiles").select("id, nome"),
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, crm_leads(name, cidade)").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
