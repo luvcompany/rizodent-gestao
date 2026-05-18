@@ -23,6 +23,8 @@ import {
 import { isWithinInterval } from "date-fns";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import LeadLabelsPopover, { LeadLabelChips } from "@/components/chat/LeadLabelsPopover";
+import { useLeadLabels } from "@/hooks/useLeadLabels";
 
 type Stage = {
   id: string;
@@ -127,6 +129,7 @@ export default function CrmKanban() {
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
   const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
+  const { labelsByLead } = useLeadLabels();
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
@@ -418,9 +421,13 @@ export default function CrmKanban() {
         if (kanbanFilters.hasPagamento === "yes" && !hasPag) return false;
         if (kanbanFilters.hasPagamento === "no" && hasPag) return false;
       }
+      if (kanbanFilters.labelIds && kanbanFilters.labelIds.length) {
+        const leadLabelIds = labelsByLead(l.id).map(x => x.id);
+        if (!kanbanFilters.labelIds.some(id => leadLabelIds.includes(id))) return false;
+      }
       return true;
     });
-  }, [searchTerm, kanbanFilters, user?.id, leadsWithPagamento]);
+  }, [searchTerm, kanbanFilters, user?.id, leadsWithPagamento, labelsByLead]);
 
   const getLeadsForStage = (stageId: string) => {
     const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
@@ -683,8 +690,21 @@ export default function CrmKanban() {
                                     ref={prov.innerRef}
                                     {...prov.draggableProps}
                                     {...prov.dragHandleProps}
-                                    className={`block bg-card rounded-lg shadow-card border border-border p-3 mb-2 cursor-pointer hover:border-primary/30 transition-all ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
+                                    className={`block bg-card rounded-lg shadow-card border border-border mb-2 cursor-pointer hover:border-primary/30 transition-all overflow-hidden ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
                                   >
+                                    {/* Color stripe from labels */}
+                                    {(() => {
+                                      const ll = labelsByLead(lead.id);
+                                      if (ll.length === 0) return null;
+                                      return (
+                                        <div className="flex h-1 w-full">
+                                          {ll.map(l => (
+                                            <div key={l.id} className="flex-1" style={{ backgroundColor: l.color }} title={l.description ? `${l.name} — ${l.description}` : l.name} />
+                                          ))}
+                                        </div>
+                                      );
+                                    })()}
+                                    <div className="p-3">
                                     <div className="flex items-start justify-between mb-1">
                                       <div className="flex items-center gap-1">
                                         <span className="font-medium text-sm text-foreground leading-tight">{lead.name}</span>
@@ -701,33 +721,38 @@ export default function CrmKanban() {
                                           </TooltipProvider>
                                         )}
                                       </div>
-                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2" title="Data de entrada do lead">
-                                        {(() => {
-                                          const d = new Date(lead.created_at);
-                                          const today = new Date();
-                                          const yest = new Date(Date.now() - 86400000);
-                                          if (d.toDateString() === today.toDateString())
-                                            return `Hoje ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
-                                          if (d.toDateString() === yest.toDateString()) return "Ontem";
-                                          return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-                                        })()}
-                                      </span>
+                                      <div className="flex items-center gap-1 ml-2">
+                                        <LeadLabelsPopover leadId={lead.id} />
+                                        <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Data de entrada do lead">
+                                          {(() => {
+                                            const d = new Date(lead.created_at);
+                                            const today = new Date();
+                                            const yest = new Date(Date.now() - 86400000);
+                                            if (d.toDateString() === today.toDateString())
+                                              return `Hoje ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+                                            if (d.toDateString() === yest.toDateString()) return "Ontem";
+                                            return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                          })()}
+                                        </span>
+                                      </div>
                                     </div>
                                     <div className="text-xs text-primary mb-0.5 cursor-pointer hover:underline">
                                       Lead #{lead.id.slice(0, 8)}
                                     </div>
+                                    <LeadLabelChips leadId={lead.id} />
                                     {lead.tags && lead.tags.length > 0 && (
-                                      <div className="flex flex-wrap gap-1 mb-2">
+                                      <div className="flex flex-wrap gap-1 mb-2 mt-1">
                                         {lead.tags.map(tag => (
                                           <span key={tag} className="text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded-full">#{tag}</span>
                                         ))}
                                       </div>
                                     )}
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between mt-1">
                                       {lead.value ? <span className="text-xs font-medium text-primary">{formatCurrency(lead.value)}</span> : <span />}
                                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
                                         {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
                                       </span>
+                                    </div>
                                     </div>
                                   </Link>
                                 )}
