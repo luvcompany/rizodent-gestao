@@ -19,8 +19,22 @@ type Pipeline = {
   allowed_roles: Role[] | null;
 };
 
+type WhatsappNumber = {
+  id: string;
+  phone_number_id: string;
+  display_name: string | null;
+  phone_e164: string | null;
+  is_active: boolean;
+};
+
+type IgAccount = {
+  id: string;
+  username: string | null;
+  ig_user_id: string;
+};
+
 type Override = {
-  scope: "pipeline" | "page" | "action";
+  scope: "pipeline" | "page" | "action" | "whatsapp_number" | "instagram_account";
   resource_id: string;
   granted: boolean;
 };
@@ -56,6 +70,8 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [waNumbers, setWaNumbers] = useState<WhatsappNumber[]>([]);
+  const [igAccounts, setIgAccounts] = useState<IgAccount[]>([]);
   // overrides keyed by `${scope}:${resource_id}` → granted
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   // dirty: same key set → new desired value or null to clear
@@ -65,11 +81,15 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     if (!open || !userId) return;
     (async () => {
       setLoading(true);
-      const [{ data: pls }, { data: ovs }] = await Promise.all([
+      const [{ data: pls }, { data: ovs }, { data: was }, { data: igs }] = await Promise.all([
         supabase.from("crm_pipelines").select("id,name,color,allowed_roles").order("position"),
         supabase.from("user_permission_overrides").select("scope,resource_id,granted").eq("user_id", userId),
+        supabase.from("whatsapp_numbers" as any).select("id,phone_number_id,display_name,phone_e164,is_active").order("display_name"),
+        supabase.from("ig_accounts").select("id,username,ig_user_id").order("username"),
       ]);
       setPipelines((pls || []) as Pipeline[]);
+      setWaNumbers(((was as unknown) || []) as WhatsappNumber[]);
+      setIgAccounts((igs || []) as IgAccount[]);
       const map: Record<string, boolean> = {};
       (ovs || []).forEach((o: any) => { map[`${o.scope}:${o.resource_id}`] = o.granted; });
       setOverrides(map);
@@ -85,6 +105,9 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     if (isSuper || userRole === "gerente") return true;
     return !p.allowed_roles || p.allowed_roles.includes(userRole);
   };
+
+  // WA numbers / IG accounts: default is "liberado para todos do tenant"
+  const defaultForChannel = () => true;
 
   const defaultForRole = (allowed: Role[]) => userRole ? allowed.includes(userRole) : false;
 
@@ -104,7 +127,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     return key in overrides;
   };
 
-  const toggle = (scope: "pipeline" | "page" | "action", id: string, fallback: boolean, next: boolean) => {
+  const toggle = (scope: "pipeline" | "page" | "action" | "whatsapp_number" | "instagram_account", id: string, fallback: boolean, next: boolean) => {
     const key = `${scope}:${id}`;
     setDirty(d => {
       const copy = { ...d };
@@ -192,10 +215,12 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
         ) : (
           <div className="mt-4">
             <Tabs defaultValue="pipelines">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="pipelines">Funis</TabsTrigger>
                 <TabsTrigger value="pages">Páginas</TabsTrigger>
                 <TabsTrigger value="actions">Ações</TabsTrigger>
+                <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+                <TabsTrigger value="instagram">Instagram</TabsTrigger>
               </TabsList>
 
               <TabsContent value="pipelines" className="space-y-2 pt-4">
@@ -261,6 +286,59 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
                         <Label className="cursor-pointer">{a.label}</Label>
                       </div>
                       <RowBadge scope="action" id={a.slug} />
+                    </div>
+                  );
+                })}
+              </TabsContent>
+
+              <TabsContent value="whatsapp" className="space-y-2 pt-4">
+                {waNumbers.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum número de WhatsApp cadastrado. Adicione números em Configurações &gt; Integrações.
+                  </p>
+                )}
+                {waNumbers.map(w => {
+                  const fallback = defaultForChannel();
+                  const val = currentValue("whatsapp_number", w.id, fallback);
+                  const label = w.display_name || w.phone_e164 || w.phone_number_id;
+                  return (
+                    <div key={w.id} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Switch
+                          checked={val}
+                          onCheckedChange={(c) => toggle("whatsapp_number", w.id, fallback, c)}
+                        />
+                        <div className="min-w-0">
+                          <Label className="cursor-pointer truncate block">{label}</Label>
+                          <span className="text-xs text-muted-foreground">ID: {w.phone_number_id}</span>
+                        </div>
+                      </div>
+                      <RowBadge scope="whatsapp_number" id={w.id} />
+                    </div>
+                  );
+                })}
+              </TabsContent>
+
+              <TabsContent value="instagram" className="space-y-2 pt-4">
+                {igAccounts.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Nenhuma conta de Instagram conectada.</p>
+                )}
+                {igAccounts.map(ig => {
+                  const fallback = defaultForChannel();
+                  const val = currentValue("instagram_account", ig.id, fallback);
+                  return (
+                    <div key={ig.id} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Switch
+                          checked={val}
+                          onCheckedChange={(c) => toggle("instagram_account", ig.id, fallback, c)}
+                        />
+                        <div className="min-w-0">
+                          <Label className="cursor-pointer truncate block">@{ig.username || ig.ig_user_id}</Label>
+                          <span className="text-xs text-muted-foreground">ID: {ig.ig_user_id}</span>
+                        </div>
+                      </div>
+                      <RowBadge scope="instagram_account" id={ig.id} />
                     </div>
                   );
                 })}
