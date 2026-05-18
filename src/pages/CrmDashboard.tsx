@@ -112,7 +112,7 @@ export default function CrmDashboard() {
     setFaturamentoMes(totalFat);
 
     setLoading(false);
-  }, []);
+  }, [user?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
