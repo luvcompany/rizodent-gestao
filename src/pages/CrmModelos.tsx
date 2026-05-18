@@ -419,13 +419,22 @@ export default function CrmModelos() {
                   <div className="font-semibold text-sm text-foreground break-all" title={t.name}>{cleanTemplateName(t.name)}</div>
                   <div className="flex items-center gap-1">{headerIcon(t.header_type)}</div>
                 </div>
-                <div className="flex items-center gap-2 mb-2">{categoryBadge(t.category)} {statusBadge(t.status)}</div>
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  {categoryBadge(t.category)}
+                  {statusBadge(t.status)}
+                  {t.owner_role
+                    ? <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ROLE_BADGE_COLOR[t.owner_role] || "bg-secondary text-muted-foreground"}`}>{ROLE_LABEL[t.owner_role]}</span>
+                    : <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-secondary text-muted-foreground">Compartilhado</span>}
+                </div>
                 <p className="text-xs text-muted-foreground line-clamp-3 mb-3">{t.body_text || "Sem corpo"}</p>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-muted-foreground">{new Date(t.created_at).toLocaleDateString("pt-BR")}</span>
                   <div className="flex items-center gap-1">
                     <button onClick={() => openEdit(t)} className="p-1 hover:bg-secondary rounded transition-colors"><Pencil size={14} className="text-muted-foreground" /></button>
                     <button onClick={() => handleDuplicate(t)} className="p-1 hover:bg-secondary rounded transition-colors"><Copy size={14} className="text-muted-foreground" /></button>
+                    {canShare && (
+                      <button onClick={() => openShare(t)} title="Compartilhar com papel" className="p-1 hover:bg-secondary rounded transition-colors"><Users size={14} className="text-muted-foreground" /></button>
+                    )}
                     <button onClick={() => setDeleteId(t.id)} className="p-1 hover:bg-destructive/20 rounded transition-colors"><Trash2 size={14} className="text-destructive" /></button>
                   </div>
                 </div>
