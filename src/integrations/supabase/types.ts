@@ -2837,7 +2837,7 @@ export type Database = {
       watchdog_reenqueue_missing_bots: { Args: never; Returns: number }
     }
     Enums: {
-      app_role: "admin" | "gerente" | "crc" | "superadmin"
+      app_role: "admin" | "gerente" | "crc" | "superadmin" | "posvenda"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2965,7 +2965,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "gerente", "crc", "superadmin"],
+      app_role: ["admin", "gerente", "crc", "superadmin", "posvenda"],
     },
   },
 } as const

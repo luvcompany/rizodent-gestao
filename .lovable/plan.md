@@ -1,100 +1,75 @@
-## Problema
+## Pipeline "Pós-venda" com role dedicada
 
-O bot de follow-up (e todas as automações por tempo) parou de disparar porque os crons internos do banco estão recebendo **401 Unauthorized** ao chamar as Edge Functions:
+Hoje qualquer usuário autenticado do tenant lê todos os pipelines/stages — não existe restrição por role. Vamos introduzir o conceito de **pipeline restrito a uma role** sem quebrar o modelo atual.
 
-- Cron `invoke-automation-engine-every-minute` → chama `automation-engine` com a **anon key**, mas a função só aceita `SERVICE_ROLE_KEY` (`supabase/functions/automation-engine/index.ts`, linhas 26‑28).
-- Cron `followup-engine-cron` (a cada 5 min) → mesma falha em `supabase/functions/followup-engine/index.ts` (linhas 14‑15).
-- Cron `bot-engine-check-timeouts` → envia `trigger: "check_timeouts"`, que **não existe** no `bot-engine`. Esse cron é redundante (a lógica de timeout vive no `automation-engine`).
+### 1. Banco — Migração
 
-Consequências observadas no banco agora:
-- 271 execuções do bot "Follow ‑ UP" em `waiting_reply`, **143 com `timeout_at` já vencido** (parado em `msg1`).
-- Fila `crm_followup_queue` sem processamento.
+**1.1. Nova role no enum `app_role`**
+- Adicionar valor `'posvenda'` (mantém `admin`, `gerente`, `crc`, `superadmin`).
 
-## Correção
+**1.2. Coluna de restrição em `crm_pipelines`**
+- `allowed_roles app_role[] NULL` — quando `NULL`, comportamento atual (todos veem). Quando preenchido, só `admin`/`gerente`/`superadmin` + usuários cuja role esteja no array veem o pipeline.
 
-### 1. Liberar a checagem de auth nas duas Edge Functions internas
+**1.3. Helper `can_access_pipeline(_pipeline_id uuid)` (SECURITY DEFINER, STABLE)**
+- Retorna `true` se: `superadmin`, `admin`, `gerente`, `allowed_roles IS NULL`, ou `EXISTS user_roles do usuário com role ∈ allowed_roles`.
 
-Aceitar qualquer um dos seguintes na header `Authorization` ou `apikey`:
-- `SERVICE_ROLE_KEY` (chamadas server-to-server)
-- `SUPABASE_ANON_KEY` / `SUPABASE_PUBLISHABLE_KEY` (cron via `pg_net`)
+**1.4. Ajuste de RLS**
+- `crm_pipelines.SELECT`: substituir `USING true` por `can_access_pipeline(id)`.
+- `crm_stages.SELECT`: adicionar `can_access_pipeline(pipeline_id)`.
+- `crm_leads.SELECT`: combinar a regra existente (admin/gerente/dono/sem dono) com `can_access_pipeline(pipeline_id)` — usuário precisa atender as duas condições.
+- Mesma checagem em INSERT/UPDATE/DELETE para impedir mover lead para pipeline ao qual a role não tem acesso.
 
-Aplicar em:
-- `supabase/functions/automation-engine/index.ts`
-- `supabase/functions/followup-engine/index.ts`
+**1.5. Seed (via insert tool, não migration)**
+- Pipeline `Pós-venda` no tenant Rizodent com `allowed_roles = ARRAY['posvenda']::app_role[]`.
+- Stage `Contato inicial`, position 0, cor a definir (sugestão `#10b981`).
 
-Padrão (idêntico ao já usado em `bot-engine`):
+### 2. Frontend
 
-```ts
-const auth = req.headers.get("authorization") || "";
-const apiKey = req.headers.get("apikey") || "";
-const token = auth.replace("Bearer ", "");
-const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const anon = Deno.env.get("SUPABASE_ANON_KEY") || "";
-const pub = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
-const allowed = [service, anon, pub].filter(Boolean);
-if (!allowed.includes(token) && !allowed.includes(apiKey)) {
-  return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-}
+**2.1. `AuthContext`**
+- Já carrega `userRole`. Nada muda; só passa a entender o valor `'posvenda'`.
+
+**2.2. `Usuarios.tsx`**
+- Adicionar opção "Pós-venda" no seletor de role ao criar/editar usuário.
+
+**2.3. CRM Kanban / seletor de pipelines**
+- A query atual de pipelines (`crm_pipelines select`) passará a já filtrar via RLS — usuário Pós-venda só vê esse pipeline.
+- Garantir que o default `localStorage.lastPipelineId` faz fallback para o primeiro pipeline retornado quando o salvo não está mais visível.
+
+**2.4. Menu/rotas**
+- Usuário Pós-venda continua acessando a rota `/rizodent/crm` normalmente. Telas que ele não precisa (Dashboard, Relatórios, Configurações, Calendário, Daily, Usuários) **não são** bloqueadas nesta entrega — apenas o pipeline é restrito. Se quiser esconder essas telas para essa role, faz parte de uma matriz de permissões formal (proposta anterior, fora deste escopo).
+
+### 3. Validações e edge cases
+
+- Triggers existentes (`enforce_lead_tenant_consistency`, `sync_lead_pipeline_with_stage`, etc.) continuam funcionando — não dependem de role.
+- `hard_delete_tenant` já remove `crm_pipelines`/`crm_stages` por tenant — nada a alterar.
+- Broadcasts, automations, follow-ups e bots do tenant que filtrarem por `pipeline_id`/`stage_id` específicos do Pós-venda continuam funcionando; ninguém configurou nada para esse pipeline ainda.
+- Como a regra exige `assigned_to = auth.uid() OR NULL` para CRC, um lead Pós-venda precisa ser atribuído ao usuário Pós-venda (ou ficar sem dono) para ele ver. Isso é o comportamento atual de CRC; aceitável.
+
+### 4. Detalhes técnicos
+
+```text
+app_role
+  + 'posvenda'
+
+crm_pipelines
+  + allowed_roles app_role[] NULL
+
+functions
+  + can_access_pipeline(_pipeline_id uuid) returns boolean
+      SECURITY DEFINER, STABLE, search_path = public
+      true se: has_role(uid,'superadmin'|'admin'|'gerente')
+              OR (SELECT allowed_roles FROM crm_pipelines WHERE id=_pipeline_id) IS NULL
+              OR EXISTS (SELECT 1 FROM user_roles ur
+                          WHERE ur.user_id = auth.uid()
+                            AND ur.role = ANY(
+                              (SELECT allowed_roles FROM crm_pipelines WHERE id=_pipeline_id)
+                            ))
+
+RLS atualizadas (mantém tenant_isolation):
+  crm_pipelines.SELECT  USING can_access_pipeline(id)
+  crm_stages.SELECT     USING can_access_pipeline(pipeline_id)
+  crm_leads.SELECT      USING (regra atual AND can_access_pipeline(pipeline_id))
+  crm_leads.INSERT/UPDATE WITH CHECK (... AND can_access_pipeline(pipeline_id))
 ```
 
-Risco mínimo: as funções não recebem dados sensíveis do cliente; só varrem filas/timeouts internos.
-
-### 2. Migração: limpar cron órfão e reagendar com service role
-
-```sql
--- remove cron sem handler
-SELECT cron.unschedule('bot-engine-check-timeouts');
-
--- recria automation-engine e followup-engine usando SERVICE_ROLE
--- (defesa em profundidade, mesmo após correção do step 1)
-SELECT cron.unschedule('invoke-automation-engine-every-minute');
-SELECT cron.schedule(
-  'invoke-automation-engine-every-minute', '* * * * *',
-  $$ SELECT net.http_post(
-       url := 'https://oybroifaleftwrhnlhqc.supabase.co/functions/v1/automation-engine',
-       headers := jsonb_build_object(
-         'Content-Type','application/json',
-         'Authorization','Bearer ' || current_setting('app.settings.service_role_key', true)
-       ),
-       body := '{}'::jsonb
-     ); $$
-);
-```
-
-Como `current_setting('app.settings.service_role_key')` exige configuração extra no Postgres, o caminho prático é manter o anon key no cron e confiar na correção do step 1. **Recomendado: aplicar apenas o step 1 + remover o cron órfão.**
-
-Migração final (mínima):
-```sql
-SELECT cron.unschedule('bot-engine-check-timeouts');
-```
-
-### 3. Reanimar as 143 execuções já travadas
-
-Forçar `timeout_at = now()` para que o próximo tick do `automation-engine` (a cada 1 min, processa 10 por vez) avance todas:
-
-```sql
-UPDATE bot_executions
-   SET timeout_at = now()
- WHERE status = 'waiting_reply'
-   AND timeout_at IS NOT NULL
-   AND timeout_at < now() + interval '5 minutes';
-```
-
-## Validação
-
-Após aplicar:
-1. Aguardar 1‑2 minutos e checar `supabase--edge_function_logs` em `automation-engine` — devem aparecer linhas `[AUTOMATION-ENGINE] Bot timeout fired ...`.
-2. Conferir queda de `bot_executions` em `waiting_reply` com `timeout_at < now()`.
-3. Verificar novos `bot_execution_logs` para a "Follow ‑ UP" avançando para `msg2`/etapas seguintes e `move_stage` para Nutrição.
-
-## Detalhes técnicos
-
-**Arquivos editados:**
-- `supabase/functions/automation-engine/index.ts` — substituir checagem de auth (linhas 26‑28).
-- `supabase/functions/followup-engine/index.ts` — substituir checagem de auth (linhas 13‑15).
-
-**Migração SQL:**
-- `cron.unschedule('bot-engine-check-timeouts')`.
-- `UPDATE bot_executions ...` para destravar a fila atual (executar **uma vez** após o deploy das funções).
-
-Sem mudanças de schema, sem mudanças no front-end, sem alteração nos fluxos dos bots.
+Confirma o nome da role como `posvenda` (sem acento/espaço, padrão do enum) e a cor da etapa para eu seguir com a implementação?
