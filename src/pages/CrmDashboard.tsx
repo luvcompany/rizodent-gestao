@@ -27,6 +27,8 @@ type Task = {
   due_date: string;
   notes: string | null;
   status: string;
+  assigned_to?: string | null;
+  owner_role?: string | null;
   lead_name?: string;
 };
 
