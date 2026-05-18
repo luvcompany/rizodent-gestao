@@ -721,8 +721,13 @@ export default function CrmKanban() {
                                           </TooltipProvider>
                                         )}
                                       </div>
-                                      <div className="flex items-center gap-1 ml-2">
-                                        <LeadLabelsPopover leadId={lead.id} />
+                                       <div
+                                         className="flex items-center gap-1 ml-2"
+                                         onPointerDown={(e) => e.stopPropagation()}
+                                         onMouseDown={(e) => e.stopPropagation()}
+                                         onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                       >
+                                         <LeadLabelsPopover leadId={lead.id} />
                                         <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Data de entrada do lead">
                                           {(() => {
                                             const d = new Date(lead.created_at);
