@@ -23,6 +23,8 @@ import {
 import { isWithinInterval } from "date-fns";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import LeadLabelsPopover, { LeadLabelChips } from "@/components/chat/LeadLabelsPopover";
+import { useLeadLabels } from "@/hooks/useLeadLabels";
 
 type Stage = {
   id: string;
