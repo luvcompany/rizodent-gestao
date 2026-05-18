@@ -39,7 +39,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
     { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
     { to: "/crm/calendario", icon: CalendarDays, label: "Calendário", badgeKey: "tasks" },
   ];
-  if (role && ["posvenda", "admin", "gerente", "superadmin"].includes(role)) {
+  if (role === "posvenda") {
     items.push({ to: "/crm/posvenda", icon: Heart, label: "Pós-Venda" });
   }
   items.push(
