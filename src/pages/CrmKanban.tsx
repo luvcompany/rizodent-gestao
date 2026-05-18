@@ -240,7 +240,7 @@ export default function CrmKanban() {
       setFollowUpLeads(fqMap);
     }
     setLoading(false);
-  }, [pipeline?.id]);
+  }, [pipeline?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
