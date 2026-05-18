@@ -108,7 +108,8 @@ export function useLeadLabels() {
       .select("id, user_id, name, color, description")
       .single();
     if (!error && data) {
-      setLabels(prev => [...prev, data as LeadLabel]);
+      labelsCache = [...labelsCache, data as LeadLabel];
+      notifySubscribers();
       return data as LeadLabel;
     }
     return null;
@@ -116,14 +117,18 @@ export function useLeadLabels() {
 
   const updateLabel = useCallback(async (id: string, patch: Partial<Pick<LeadLabel, "name" | "color" | "description">>) => {
     const { error } = await supabase.from("crm_user_labels").update(patch).eq("id", id);
-    if (!error) setLabels(prev => prev.map(l => l.id === id ? { ...l, ...patch } as LeadLabel : l));
+    if (!error) {
+      labelsCache = labelsCache.map(l => l.id === id ? { ...l, ...patch } as LeadLabel : l);
+      notifySubscribers();
+    }
   }, []);
 
   const deleteLabel = useCallback(async (id: string) => {
     const { error } = await supabase.from("crm_user_labels").delete().eq("id", id);
     if (!error) {
-      setLabels(prev => prev.filter(l => l.id !== id));
-      setAssignments(prev => prev.filter(a => a.label_id !== id));
+      labelsCache = labelsCache.filter(l => l.id !== id);
+      assignmentsCache = assignmentsCache.filter(a => a.label_id !== id);
+      notifySubscribers();
     }
   }, []);
 
@@ -132,14 +137,20 @@ export function useLeadLabels() {
     const existing = assignments.find(a => a.lead_id === leadId && a.label_id === labelId);
     if (existing) {
       const { error } = await supabase.from("crm_lead_label_assignments").delete().eq("id", existing.id);
-      if (!error) setAssignments(prev => prev.filter(a => a.id !== existing.id));
+      if (!error) {
+        assignmentsCache = assignmentsCache.filter(a => a.id !== existing.id);
+        notifySubscribers();
+      }
     } else {
       const { data, error } = await supabase
         .from("crm_lead_label_assignments")
         .insert({ lead_id: leadId, label_id: labelId, created_by: user.id })
         .select("id, lead_id, label_id")
         .single();
-      if (!error && data) setAssignments(prev => [...prev, data as LeadLabelAssignment]);
+      if (!error && data) {
+        assignmentsCache = [...assignmentsCache, data as LeadLabelAssignment];
+        notifySubscribers();
+      }
     }
   }, [user, assignments]);
 
