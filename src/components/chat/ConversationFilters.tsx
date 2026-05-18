@@ -271,6 +271,31 @@ export default function ConversationFilters({
               </Select>
             </div>
 
+            {/* Marcadores de cor (pessoais) */}
+            {userLabels.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Marcadores</label>
+                <div className="flex flex-wrap gap-1">
+                  {userLabels.map((l) => {
+                    const on = draft.labelIds.includes(l.id);
+                    return (
+                      <button
+                        key={l.id}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, labelIds: on ? draft.labelIds.filter(x => x !== l.id) : [...draft.labelIds, l.id] })}
+                        className={`text-[10px] font-medium px-2 py-1 rounded transition-all text-white ${on ? "ring-2 ring-offset-1 ring-offset-background ring-foreground" : "opacity-70 hover:opacity-100"}`}
+                        style={{ backgroundColor: l.color }}
+                        title={l.description || l.name}
+                      >
+                        {l.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Filtra leads que tenham qualquer um dos marcadores selecionados.</p>
+              </div>
+            )}
+
             {/* Tags - autocomplete */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Tags</label>
