@@ -747,11 +747,12 @@ export default function CrmKanban() {
                                         ))}
                                       </div>
                                     )}
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between mt-1">
                                       {lead.value ? <span className="text-xs font-medium text-primary">{formatCurrency(lead.value)}</span> : <span />}
                                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
                                         {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
                                       </span>
+                                    </div>
                                     </div>
                                   </Link>
                                 )}
