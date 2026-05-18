@@ -252,6 +252,12 @@ export default function CrmModelos() {
       setSubmitting(false);
     } else {
       // Save as draft locally only
+      const { data: { user } } = await supabase.auth.getUser();
+      let ownerRole: string | null = null;
+      if (user) {
+        const { data: roleRow } = await supabase.rpc("get_user_primary_role", { _user_id: user.id });
+        ownerRole = (roleRow as string) || null;
+      }
       const payload = {
         name: form.name, category: form.category, language: form.language,
         header_type: form.hasHeader ? form.header_type : null,
@@ -259,9 +265,11 @@ export default function CrmModelos() {
         body_text: form.body_text, footer_text: form.footer_text || null,
         buttons: form.buttons.length > 0 ? form.buttons : null,
         status: "DRAFT",
+        created_by_user_id: user?.id || null,
+        owner_role: ownerRole as any,
         updated_at: new Date().toISOString(),
       };
-      const { error } = await supabase.from("crm_whatsapp_templates").insert(payload);
+      const { error } = await supabase.from("crm_whatsapp_templates").insert([payload]);
       if (error) { toast.error("Erro ao salvar rascunho"); return; }
       toast.success("Rascunho salvo");
     }
