@@ -290,7 +290,6 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
                   );
                 })}
               </TabsContent>
-              </TabsContent>
 
               <TabsContent value="whatsapp" className="space-y-2 pt-4">
                 {waNumbers.length === 0 && (
