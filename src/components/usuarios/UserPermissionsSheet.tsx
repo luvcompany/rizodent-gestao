@@ -290,6 +290,60 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
                   );
                 })}
               </TabsContent>
+              </TabsContent>
+
+              <TabsContent value="whatsapp" className="space-y-2 pt-4">
+                {waNumbers.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum número de WhatsApp cadastrado. Adicione números em Configurações &gt; Integrações.
+                  </p>
+                )}
+                {waNumbers.map(w => {
+                  const fallback = defaultForChannel();
+                  const val = currentValue("whatsapp_number", w.id, fallback);
+                  const label = w.display_name || w.phone_e164 || w.phone_number_id;
+                  return (
+                    <div key={w.id} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Switch
+                          checked={val}
+                          onCheckedChange={(c) => toggle("whatsapp_number", w.id, fallback, c)}
+                        />
+                        <div className="min-w-0">
+                          <Label className="cursor-pointer truncate block">{label}</Label>
+                          <span className="text-xs text-muted-foreground">ID: {w.phone_number_id}</span>
+                        </div>
+                      </div>
+                      <RowBadge scope="whatsapp_number" id={w.id} />
+                    </div>
+                  );
+                })}
+              </TabsContent>
+
+              <TabsContent value="instagram" className="space-y-2 pt-4">
+                {igAccounts.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Nenhuma conta de Instagram conectada.</p>
+                )}
+                {igAccounts.map(ig => {
+                  const fallback = defaultForChannel();
+                  const val = currentValue("instagram_account", ig.id, fallback);
+                  return (
+                    <div key={ig.id} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Switch
+                          checked={val}
+                          onCheckedChange={(c) => toggle("instagram_account", ig.id, fallback, c)}
+                        />
+                        <div className="min-w-0">
+                          <Label className="cursor-pointer truncate block">@{ig.username || ig.ig_user_id}</Label>
+                          <span className="text-xs text-muted-foreground">ID: {ig.ig_user_id}</span>
+                        </div>
+                      </div>
+                      <RowBadge scope="instagram_account" id={ig.id} />
+                    </div>
+                  );
+                })}
+              </TabsContent>
             </Tabs>
 
             <div className="mt-6 flex items-center justify-between gap-2">
