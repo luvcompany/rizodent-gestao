@@ -1,76 +1,116 @@
+# Acesso por usuário a canais (WhatsApp + Instagram)
+
 ## Objetivo
+Permitir que admin/superadmin escolha, em **Usuários → Permissões**, quais **números de WhatsApp** e **contas de Instagram** cada usuário pode acessar. Conversas, mensagens, leads originados nesses canais, métricas e o próprio card da integração ficam ocultos para quem não tiver permissão.
 
-Adicionar uma tela admin de **Opções por Usuário** que permita configurar, individualmente para cada usuário, quais funis (pipelines), páginas e ações ele pode acessar — **sem precisar mexer na role**. A role continua sendo o padrão; este painel é um conjunto de *overrides* opcionais (grants extras e denies pontuais).
+## Etapa 1 — Refatorar WhatsApp para multi-número
 
-Caso de uso direto: dar a um CRC específico acesso ao funil **Pós-venda**, ou tirar o acesso à página **Relatórios** de um gerente, sem criar uma role nova para cada combinação.
+Hoje `tenant_meta_credentials` tem `tenant_id` como PK (1 número por clínica). Vamos separar credenciais por número.
 
-## Onde encaixa na UI
+Nova tabela **`whatsapp_numbers`**:
+- `id` (uuid PK), `tenant_id`, `phone_number_id` (único), `display_name`, `waba_id`, `token`, `app_id`, `app_secret`, `verify_token`, `is_active`, `is_default`.
+- Migração de dados: copiar a linha de `tenant_meta_credentials` (quando `whatsapp_enabled`) para `whatsapp_numbers` marcada como `is_default`.
+- `tenant_meta_credentials` continua existindo para Instagram/Meta App; campos `whatsapp_*` ficam como legado (não removidos agora pra não quebrar edge functions — substituição será gradual).
+- Atualizar `get_tenant_by_whatsapp_phone_number_id()` para consultar `whatsapp_numbers` primeiro (fallback na tabela antiga).
 
-Novo botão **"Permissões"** na linha de cada usuário em `/rizodent/usuarios` (já existe a tabela em `src/pages/Usuarios.tsx`). Abre um modal lateral (`Sheet`) com 3 abas:
+## Etapa 2 — Modelo de acesso por usuário
 
-1. **Funis** — checkboxes de todos os pipelines do tenant. Marcação herda do `allowed_roles` do pipeline + role do usuário; usuário pode marcar/desmarcar para override.
-2. **Páginas** — checkboxes das seções do menu (Dashboard, CRM, Calendário, Daily, Relatórios, Pacientes, Usuários, Configurações). Herda da role; pode override.
-3. **Ações sensíveis** — toggles para: excluir leads, transferir leads, broadcast em massa, editar bots, ver relatórios financeiros.
+Reaproveitar `user_permission_overrides` adicionando dois novos `scope`:
+- `scope = 'whatsapp_number'`, `resource_id = whatsapp_numbers.id`
+- `scope = 'instagram_account'`, `resource_id = ig_accounts.id` (UUID interno, não o ig_user_id da Meta)
 
-Visual: badge "Herdado da role" cinza ao lado dos itens não-override; quando o admin altera, vira "Personalizado" laranja. Botão **"Voltar ao padrão da role"** limpa todos os overrides daquele usuário.
+**Padrão (sem override)**: usuário vê **todos** os canais do seu tenant (mantém comportamento atual). Override `granted = false` esconde; `granted = true` é redundante mas permite "whitelist explícita" no futuro.
 
-## Modelo de dados
+Novas funções SECURITY DEFINER:
+- `can_access_whatsapp_number(_number_id uuid) → boolean`
+- `can_access_instagram_account(_account_id uuid) → boolean`
+- Lógica: admin/superadmin/gerente sempre `true`; demais consultam `user_override`, default `true`.
 
-Uma única tabela genérica `user_permission_overrides`:
+## Etapa 3 — Aplicar filtros (RLS + queries)
 
-```text
-user_permission_overrides
-  id            uuid pk
-  user_id       uuid not null   (auth.users)
-  scope         text not null   ('pipeline' | 'page' | 'action')
-  resource_id   text not null   (uuid do pipeline, slug da página, ou nome da ação)
-  granted       boolean not null (true = grant, false = deny)
-  created_by    uuid
-  created_at    timestamptz
-  unique (user_id, scope, resource_id)
-```
+**Mensagens WhatsApp (`messages`)**: adicionar coluna `whatsapp_number_id` (nullable, backfill da default). Política RLS extra: SELECT exige `can_access_whatsapp_number(whatsapp_number_id)` quando não-nulo.
 
-- `granted = true` → libera mesmo se a role base negaria.
-- `granted = false` → bloqueia mesmo se a role base liberaria.
-- Ausência de linha → segue a regra padrão da role.
+**Mensagens Instagram (`instagram_messages`)**: já tem `instagram_account_id` (Meta ID). Adicionar coluna `ig_account_uuid` apontando para `ig_accounts.id` (backfill por join). Política RLS extra: SELECT exige `can_access_instagram_account(ig_account_uuid)`.
 
-Helper SQL `user_can(_user_id, _scope, _resource_id) returns boolean` que consulta a tabela e cai pra `has_role()`/`can_access_pipeline()` quando não há override.
+**Leads (`crm_leads`)**: já tem `source`/`channel`. Adicionar colunas `whatsapp_number_id` e `ig_account_uuid` (nullable), preenchidas no webhook (já sabemos qual número/conta recebeu). RLS extra filtra leads cujo canal o usuário não acessa.
 
-`can_access_pipeline()` é atualizada para consultar `user_can(auth.uid(), 'pipeline', _pipeline_id::text)` antes da regra atual de `allowed_roles`.
+**Telas afetadas (frontend)**:
+- CRM/Conversas: lista de chats já passa por RLS, então some automaticamente.
+- Configurações → Integrações: filtrar lista de `ig_accounts`/`whatsapp_numbers` por `can_access_*` antes de renderizar.
+- Dashboard/Relatórios: RLS já cobre, gráficos respeitam.
 
-## Permissões da própria tela
+## Etapa 4 — UI no `UserPermissionsSheet`
 
-Só `admin` e `superadmin` podem ler/escrever em `user_permission_overrides` (RLS via `has_role`). Gerente não edita permissões.
+Adicionar 2 abas novas ao Sheet (`src/components/usuarios/UserPermissionsSheet.tsx`):
 
-## Frontend
+### Aba "WhatsApp"
+- Lista todos os `whatsapp_numbers` do tenant (display_name + phone_number_id mascarado).
+- Cada item: switch "Acesso liberado" + badge "Herdado (padrão: liberado)" ou "Personalizado: bloqueado".
+- Save → upsert/delete em `user_permission_overrides` (scope='whatsapp_number').
 
-- **Novo componente** `src/components/usuarios/UserPermissionsSheet.tsx` — abre via botão "Permissões".
-- **Novo hook** `usePermissions()` em `src/hooks/usePermissions.ts` — carrega overrides do usuário logado + role, expõe `can(scope, resourceId)` e cacheia no React Query.
-- **Refator suave** nas guardas atuais (`AuthContext.userRole`, rotas com `requiresRole`) para consultar `can()` em vez de checar role direta — só nas páginas/ações que entrarem no escopo da aba "Páginas/Ações".
-- **Aba "Funis"** reaproveita `crm_pipelines` (já filtrado por tenant) e mostra cor + nome.
+### Aba "Instagram"
+- Lista todos os `ig_accounts` ativos do tenant (`@username` + avatar se houver).
+- Mesmo padrão de switches da aba WhatsApp.
 
-## Fora do escopo desta entrega
+Aproveita o mesmo hook de save/invalidate já existente.
 
-- Não cria role nova nem altera `app_role` enum.
-- Não mexe em segregação de **agendamentos/tasks** por role — fica para uma próxima entrega (já discutido em mensagem anterior).
-- Não cria "grupos de permissão" reutilizáveis (cada usuário é configurado isoladamente). Se a operação crescer, pode virar `permission_templates` no futuro.
+## Etapa 5 — Webhooks e envio
+
+- **Webhook WA**: usa `phone_number_id` para resolver `whatsapp_numbers.id` → grava em `messages.whatsapp_number_id` e `crm_leads.whatsapp_number_id`.
+- **Webhook IG**: já resolve `ig_accounts` → grava `ig_account_uuid` em mensagens/leads.
+- **Envio**: hoje só existe 1 número, então mantém. Quando o usuário tiver acesso a múltiplos, o front passa a expor um seletor de "responder por qual número" (fora do escopo desta entrega).
+
+---
 
 ## Detalhes técnicos
 
-- Migração:
-  - Cria `user_permission_overrides` com índice `(user_id, scope)`.
-  - RLS: SELECT/INSERT/UPDATE/DELETE só para `admin`/`superadmin`.
-  - Função `user_can(_user_id uuid, _scope text, _resource_id text) returns boolean security definer`.
-  - Atualiza `can_access_pipeline()` para consultar `user_can` primeiro.
-- Frontend:
-  - `UserPermissionsSheet.tsx` (~250 linhas) com 3 `<Tabs>` e estado controlado.
-  - `usePermissions.ts` (~80 linhas) com React Query + invalidate ao salvar.
-  - `Usuarios.tsx`: adiciona botão "Permissões" na coluna de ações.
-- Sem mudança em edge functions.
-- Sem migração de dados (overrides começam vazios — todo mundo continua com permissão atual via role).
+**Migração**:
+```sql
+-- whatsapp_numbers
+CREATE TABLE public.whatsapp_numbers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  phone_number_id text UNIQUE NOT NULL,
+  display_name text,
+  waba_id text, token text, app_id text, app_secret text, verify_token text,
+  is_active boolean DEFAULT true,
+  is_default boolean DEFAULT false,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE whatsapp_numbers ENABLE ROW LEVEL SECURITY;
+-- RLS: tenant_id = current_tenant_id() AND can_access_whatsapp_number(id)
+-- Admin/superadmin INSERT/UPDATE/DELETE
 
-## Pontos a confirmar antes de implementar
+-- Backfill
+INSERT INTO whatsapp_numbers (tenant_id, phone_number_id, ...)
+SELECT tenant_id, whatsapp_phone_number_id, ... FROM tenant_meta_credentials WHERE whatsapp_enabled;
 
-1. **Lista de páginas controláveis** na aba "Páginas": confirmar se inclui só as 8 que listei ou se quer granularidade maior (ex.: "ver tabela X dentro de Relatórios").
-2. **Lista de ações sensíveis**: as 5 que listei são suficientes ou tem outras (ex.: "enviar template fora do horário", "editar valor de lead")?
-3. **Modal vs. página dedicada**: prefere o `Sheet` lateral (proposto) ou uma sub-rota `/usuarios/:id/permissoes` em página cheia?
+-- Novas colunas
+ALTER TABLE messages ADD COLUMN whatsapp_number_id uuid REFERENCES whatsapp_numbers(id);
+ALTER TABLE instagram_messages ADD COLUMN ig_account_uuid uuid REFERENCES ig_accounts(id);
+ALTER TABLE crm_leads ADD COLUMN whatsapp_number_id uuid, ADD COLUMN ig_account_uuid uuid;
+
+-- Backfill via JOIN nos IDs Meta existentes
+
+-- Funções
+CREATE FUNCTION can_access_whatsapp_number(_id uuid) RETURNS boolean ...;
+CREATE FUNCTION can_access_instagram_account(_id uuid) RETURNS boolean ...;
+
+-- Políticas RLS adicionais nas tabelas filtradas
+```
+
+**Arquivos frontend**:
+- `src/components/usuarios/UserPermissionsSheet.tsx` (adicionar 2 TabsTrigger + TabsContent)
+- `src/hooks/usePermissions.ts` (já existe — adicionar `whatsapp_number` e `instagram_account` aos scopes)
+- `src/pages/Configuracoes.tsx` ou tela equivalente de Integrações: filtrar listagem por `can_access_*`
+
+**Edge functions a atualizar**:
+- `whatsapp-webhook` (ou nome equivalente): gravar `whatsapp_number_id`
+- `instagram-webhook`: gravar `ig_account_uuid`
+- `whatsapp-send`: aceitar `whatsapp_number_id` opcional (default = is_default do tenant)
+
+## Riscos / Notas
+- Migração de `tenant_meta_credentials` para `whatsapp_numbers` precisa cuidado para não quebrar edge functions em produção — manter ambos em paralelo por enquanto.
+- Backfill de `whatsapp_number_id`/`ig_account_uuid` em `messages` antigos: pra `messages`, todas as linhas existentes recebem o número default; pra `instagram_messages` faz join via `instagram_account_id` → `ig_accounts.instagram_account_id` (Meta ID) → `ig_accounts.id`.
+- Sem mudança no comportamento atual (todos veem tudo) até admin criar overrides.
