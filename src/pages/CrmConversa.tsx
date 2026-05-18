@@ -512,7 +512,24 @@ export default function CrmConversa() {
               </SelectContent>
             </Select>
           </div>
+
+          <SendToPosvendaButton
+            leadId={lead.id}
+            stageId={lead.stage_id}
+            assignedTo={lead.assigned_to}
+            stages={chat.stages}
+            onTransferred={(payload) => {
+              setLead((prev) => prev ? {
+                ...prev,
+                assigned_to: payload.assigned_to,
+                pipeline_id: payload.pipeline_id || prev.pipeline_id,
+                stage_id: payload.stage_id || prev.stage_id,
+              } : prev);
+              chat.fetchMessages(true);
+            }}
+          />
         </div>
+
 
         {/* Inline Tags, Source & Ad Editor */}
         <InlineTagsEditor
