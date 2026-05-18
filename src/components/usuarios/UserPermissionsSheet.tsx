@@ -88,7 +88,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
         supabase.from("ig_accounts").select("id,username,ig_user_id").order("username"),
       ]);
       setPipelines((pls || []) as Pipeline[]);
-      setWaNumbers((was || []) as WhatsappNumber[]);
+      setWaNumbers(((was as unknown) || []) as WhatsappNumber[]);
       setIgAccounts((igs || []) as IgAccount[]);
       const map: Record<string, boolean> = {};
       (ovs || []).forEach((o: any) => { map[`${o.scope}:${o.resource_id}`] = o.granted; });
