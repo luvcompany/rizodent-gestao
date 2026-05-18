@@ -483,6 +483,7 @@ export type Database = {
           is_rescheduled: boolean
           lead_id: string
           notes: string | null
+          owner_role: Database["public"]["Enums"]["app_role"] | null
           scheduled_date: string
           scheduled_time: string
           status: string
@@ -498,6 +499,7 @@ export type Database = {
           is_rescheduled?: boolean
           lead_id: string
           notes?: string | null
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           scheduled_date: string
           scheduled_time: string
           status?: string
@@ -513,6 +515,7 @@ export type Database = {
           is_rescheduled?: boolean
           lead_id?: string
           notes?: string | null
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           scheduled_date?: string
           scheduled_time?: string
           status?: string
@@ -1634,6 +1637,7 @@ export type Database = {
           id: string
           lead_id: string
           notes: string | null
+          owner_role: Database["public"]["Enums"]["app_role"] | null
           status: string
           tenant_id: string | null
           title: string
@@ -1647,6 +1651,7 @@ export type Database = {
           id?: string
           lead_id: string
           notes?: string | null
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           status?: string
           tenant_id?: string | null
           title: string
@@ -1660,6 +1665,7 @@ export type Database = {
           id?: string
           lead_id?: string
           notes?: string | null
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           status?: string
           tenant_id?: string | null
           title?: string
