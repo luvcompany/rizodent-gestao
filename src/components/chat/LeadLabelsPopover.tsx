@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { forwardRef, useState, type ButtonHTMLAttributes } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,8 +48,8 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
   };
 
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
-      <PopoverTrigger asChild>
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
+      <DialogTrigger asChild>
         {trigger || (
           <button
             type="button"
@@ -62,12 +62,14 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
             <Tag size={12} />
           </button>
         )}
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-72 p-0"
-        align="start"
+      </DialogTrigger>
+      <DialogContent
+        className="w-[340px] max-w-[calc(100vw-2rem)] p-0"
         onClick={(e) => e.stopPropagation()}
       >
+        <DialogHeader className="sr-only">
+          <DialogTitle>Configurar marcadores</DialogTitle>
+        </DialogHeader>
         <div className="p-3 border-b border-border">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Marcadores</span>
@@ -165,23 +167,28 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
             })}
           </div>
         )}
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-export function LeadLabelsTrigger({ leadId }: { leadId: string }) {
+type LeadLabelsTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> & { leadId: string };
+
+export const LeadLabelsTrigger = forwardRef<HTMLButtonElement, LeadLabelsTriggerProps>(
+  ({ leadId, onPointerDown, onMouseDown, onClick, className = "", ...props }, ref) => {
   const { labelsByLead } = useLeadLabels();
   const items = labelsByLead(leadId);
 
   return (
     <button
+      ref={ref}
       type="button"
-      className="inline-flex min-h-6 max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+      className={`inline-flex min-h-6 max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors ${className}`}
       title="Configurar marcadores"
-      onPointerDown={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => { e.stopPropagation(); onPointerDown?.(e); }}
+      onMouseDown={(e) => { e.stopPropagation(); onMouseDown?.(e); }}
+      onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
+      {...props}
     >
       {items.length === 0 ? (
         <>
@@ -201,7 +208,9 @@ export function LeadLabelsTrigger({ leadId }: { leadId: string }) {
       )}
     </button>
   );
-}
+  },
+);
+LeadLabelsTrigger.displayName = "LeadLabelsTrigger";
 
 /** Small read-only display of assigned label chips for a lead. */
 export function LeadLabelChips({ leadId, max = 4 }: { leadId: string; max?: number }) {

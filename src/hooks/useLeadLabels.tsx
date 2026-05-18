@@ -23,22 +23,72 @@ export const LABEL_COLORS = [
   "#64748b", "#0ea5e9", "#14b8a6", "#dc2626", "#000000",
 ];
 
+let labelsCache: LeadLabel[] = [];
+let assignmentsCache: LeadLabelAssignment[] = [];
+let loadedForUserId: string | null = null;
+let inFlight: Promise<void> | null = null;
+const subscribers = new Set<() => void>();
+
+const notifySubscribers = () => subscribers.forEach((fn) => fn());
+
 export function useLeadLabels() {
-  const { user } = useAuth();
-  const [labels, setLabels] = useState<LeadLabel[]>([]);
-  const [assignments, setAssignments] = useState<LeadLabelAssignment[]>([]);
+  const { user, loading: authLoading } = useAuth();
+  const [labels, setLabels] = useState<LeadLabel[]>(labelsCache);
+  const [assignments, setAssignments] = useState<LeadLabelAssignment[]>(assignmentsCache);
   const [loading, setLoading] = useState(true);
 
-  const reload = useCallback(async () => {
-    if (!user) return;
-    const [lblRes, asgRes] = await Promise.all([
-      supabase.from("crm_user_labels").select("id, user_id, name, color, description").order("created_at"),
-      supabase.from("crm_lead_label_assignments").select("id, lead_id, label_id"),
-    ]);
-    setLabels((lblRes.data as LeadLabel[]) || []);
-    setAssignments((asgRes.data as LeadLabelAssignment[]) || []);
+  const syncFromCache = useCallback(() => {
+    setLabels(labelsCache);
+    setAssignments(assignmentsCache);
+  }, []);
+
+  useEffect(() => {
+    subscribers.add(syncFromCache);
+    syncFromCache();
+    return () => { subscribers.delete(syncFromCache); };
+  }, [syncFromCache]);
+
+  const reload = useCallback(async (force = false) => {
+    if (authLoading) return;
+    if (!user) {
+      labelsCache = [];
+      assignmentsCache = [];
+      loadedForUserId = null;
+      notifySubscribers();
+      setLoading(false);
+      return;
+    }
+
+    if (!force && loadedForUserId === user.id) {
+      setLoading(false);
+      return;
+    }
+
+    if (loadedForUserId && loadedForUserId !== user.id) {
+      labelsCache = [];
+      assignmentsCache = [];
+      loadedForUserId = null;
+      notifySubscribers();
+    }
+
+    setLoading(true);
+    if (!inFlight) {
+      inFlight = (async () => {
+        const [lblRes, asgRes] = await Promise.all([
+          supabase.from("crm_user_labels").select("id, user_id, name, color, description").order("created_at"),
+          supabase.from("crm_lead_label_assignments").select("id, lead_id, label_id"),
+        ]);
+        if (lblRes.error) console.warn("[useLeadLabels] labels:", lblRes.error.message);
+        if (asgRes.error) console.warn("[useLeadLabels] assignments:", asgRes.error.message);
+        labelsCache = (lblRes.data as LeadLabel[]) || [];
+        assignmentsCache = (asgRes.data as LeadLabelAssignment[]) || [];
+        loadedForUserId = user.id;
+        notifySubscribers();
+      })().finally(() => { inFlight = null; });
+    }
+    await inFlight;
     setLoading(false);
-  }, [user]);
+  }, [authLoading, user]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -58,7 +108,8 @@ export function useLeadLabels() {
       .select("id, user_id, name, color, description")
       .single();
     if (!error && data) {
-      setLabels(prev => [...prev, data as LeadLabel]);
+      labelsCache = [...labelsCache, data as LeadLabel];
+      notifySubscribers();
       return data as LeadLabel;
     }
     return null;
@@ -66,14 +117,18 @@ export function useLeadLabels() {
 
   const updateLabel = useCallback(async (id: string, patch: Partial<Pick<LeadLabel, "name" | "color" | "description">>) => {
     const { error } = await supabase.from("crm_user_labels").update(patch).eq("id", id);
-    if (!error) setLabels(prev => prev.map(l => l.id === id ? { ...l, ...patch } as LeadLabel : l));
+    if (!error) {
+      labelsCache = labelsCache.map(l => l.id === id ? { ...l, ...patch } as LeadLabel : l);
+      notifySubscribers();
+    }
   }, []);
 
   const deleteLabel = useCallback(async (id: string) => {
     const { error } = await supabase.from("crm_user_labels").delete().eq("id", id);
     if (!error) {
-      setLabels(prev => prev.filter(l => l.id !== id));
-      setAssignments(prev => prev.filter(a => a.label_id !== id));
+      labelsCache = labelsCache.filter(l => l.id !== id);
+      assignmentsCache = assignmentsCache.filter(a => a.label_id !== id);
+      notifySubscribers();
     }
   }, []);
 
@@ -82,14 +137,20 @@ export function useLeadLabels() {
     const existing = assignments.find(a => a.lead_id === leadId && a.label_id === labelId);
     if (existing) {
       const { error } = await supabase.from("crm_lead_label_assignments").delete().eq("id", existing.id);
-      if (!error) setAssignments(prev => prev.filter(a => a.id !== existing.id));
+      if (!error) {
+        assignmentsCache = assignmentsCache.filter(a => a.id !== existing.id);
+        notifySubscribers();
+      }
     } else {
       const { data, error } = await supabase
         .from("crm_lead_label_assignments")
         .insert({ lead_id: leadId, label_id: labelId, created_by: user.id })
         .select("id, lead_id, label_id")
         .single();
-      if (!error && data) setAssignments(prev => [...prev, data as LeadLabelAssignment]);
+      if (!error && data) {
+        assignmentsCache = [...assignmentsCache, data as LeadLabelAssignment];
+        notifySubscribers();
+      }
     }
   }, [user, assignments]);
 
