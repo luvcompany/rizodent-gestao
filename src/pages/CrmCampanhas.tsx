@@ -130,21 +130,37 @@ export default function CrmCampanhas() {
         </Dialog>
       </div>
       <Table>
-        <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Status</TableHead><TableHead>Total</TableHead><TableHead>Enviados</TableHead><TableHead>Data</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Status</TableHead><TableHead>Visibilidade</TableHead><TableHead>Total</TableHead><TableHead>Enviados</TableHead><TableHead>Data</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
         <TableBody>
           {broadcasts.map(b => (
             <TableRow key={b.id}>
               <TableCell className="font-medium">{b.name}</TableCell>
               <TableCell><Badge variant={statusColor[b.status] as any || "outline"}>{b.status}</Badge></TableCell>
+              <TableCell><OwnerRoleBadge ownerRole={(b.owner_role ?? null) as OwnerRole} /></TableCell>
               <TableCell>{b.total_leads}</TableCell>
               <TableCell>{b.sent_count}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{format(new Date(b.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
-              <TableCell>{b.status === "draft" && <Button size="sm" variant="outline" onClick={() => send(b.id)}><Send size={14} /> Enviar</Button>}</TableCell>
+              <TableCell>
+                <div className="flex gap-1">
+                  {b.status === "draft" && <Button size="sm" variant="outline" onClick={() => send(b.id)}><Send size={14} /> Enviar</Button>}
+                  {canShare && <Button size="icon" variant="ghost" title="Compartilhar com papel" onClick={() => setShareTarget(b)}><Share2 size={14} /></Button>}
+                </div>
+              </TableCell>
             </TableRow>
           ))}
-          {broadcasts.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhuma campanha</TableCell></TableRow>}
+          {broadcasts.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Nenhuma campanha</TableCell></TableRow>}
         </TableBody>
       </Table>
+
+      <ShareRoleDialog
+        open={!!shareTarget}
+        onOpenChange={(v) => !v && setShareTarget(null)}
+        table="crm_broadcasts"
+        rowId={shareTarget?.id ?? null}
+        currentOwnerRole={(shareTarget?.owner_role ?? null) as OwnerRole}
+        itemLabel="Campanha"
+        onSaved={load}
+      />
     </div>
   );
 }
