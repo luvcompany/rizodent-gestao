@@ -8,11 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, Shield, Users, Pencil } from "lucide-react";
+import { UserPlus, Shield, Users, Pencil, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import EditProfileDialog from "@/components/EditProfileDialog";
+import UserPermissionsSheet from "@/components/usuarios/UserPermissionsSheet";
 
 type Profile = {
   id: string;
@@ -52,6 +53,8 @@ const Usuarios = () => {
   const [selectedRole, setSelectedRole] = useState("");
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [permsOpen, setPermsOpen] = useState(false);
+  const [permsUser, setPermsUser] = useState<Profile | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [newNome, setNewNome] = useState("");
   const [newCargo, setNewCargo] = useState("");
@@ -272,6 +275,16 @@ const Usuarios = () => {
                                 </DialogContent>
                               </Dialog>
                             )}
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-primary hover:text-primary"
+                                onClick={() => { setPermsUser(p); setPermsOpen(true); }}
+                              >
+                                <KeyRound size={14} className="mr-1" /> Permissões
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -295,6 +308,17 @@ const Usuarios = () => {
           currentAvatarUrl={editingUser.avatar_url}
           currentEmail={editingUser.email}
           onSaved={handleProfileSaved}
+        />
+      )}
+
+      {/* Permissions sheet */}
+      {permsUser && (
+        <UserPermissionsSheet
+          open={permsOpen}
+          onOpenChange={(o) => { setPermsOpen(o); if (!o) setPermsUser(null); }}
+          userId={permsUser.id}
+          userName={permsUser.nome}
+          userRole={(getUserRole(permsUser.id)?.role as any) || null}
         />
       )}
     </div>
