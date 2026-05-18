@@ -120,18 +120,10 @@ Deno.serve(async (req) => {
 
     if (updateError) return json({ error: updateError.message }, 500);
 
-    const { error: messageError } = await supabase.from("messages").insert({
-      lead_id: leadId,
-      direction: "outbound",
-      type: "system",
-      content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`,
-      status: "system",
-      sender_id: user.id,
-    });
-
     const transferMsg = movedPipelineName && movedStageName
       ? `🔄 Lead transferido: ${oldUserName} → ${newUserName}\n📂 Movido para: ${movedPipelineName} • ${movedStageName}`
       : `🔄 Lead transferido: ${oldUserName} → ${newUserName}`;
+
 
     const { error: messageError } = await supabase.from("messages").insert({
       lead_id: leadId,
