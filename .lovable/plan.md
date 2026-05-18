@@ -1,91 +1,124 @@
-## Diagnóstico
+# CRM Pós-Venda — Fase 1
 
-### Bug 1 — Pós-venda voltou a ver modelos do Rizodent/Admin
-
-A migração mais recente de `owner_role` (18/05 15:12) recriou a política de RLS de `crm_whatsapp_templates` com a regra:
-
-```
-owner_role IS NULL
-OR owner_role IN ('admin', 'superadmin')   ← isso libera para TODO MUNDO
-OR has_role(auth.uid(), owner_role)
-```
-
-Ou seja, qualquer usuário (inclusive pós-venda) enxerga modelos cujo dono é `admin` ou `superadmin`. Foi exatamente isso que reabriu o vazamento. A regra correta é: usuário só vê modelos **compartilhados** (`owner_role IS NULL`) ou da **própria role**.
-
-### Bug 2 — Página de Modelos abre lenta no Rizodent
-
-O `fetchTemplates` em `src/pages/CrmModelos.tsx` faz, em sequência, em toda visita à página:
-
-1. Carrega do banco local (rápido) ✅
-2. **Sempre** chama o edge function `manage-whatsapp-templates` action `list` (que vai na API da Meta) ❌
-3. Refaz o `select` do banco
-
-Mesmo com o "local-first", a chamada à Meta dispara em background a cada navegação para `/crm/modelos` (e em cada troca de integração), o que deixa a tela travada/piscando em rede ruim, consome ciclo de CPU/RAM da instância do Cloud e ainda dispara re-renders. Já existe um botão **"Sincronizar"** manual no header — o auto-sync é redundante.
+Reaproveita 100% da estrutura existente (pipelines, automações, follow-up, templates, tags). Não cria pipeline novo — adiciona duas camadas em cima do que já roda: um **Health Score automático** e um **Dashboard de Risco** dedicado ao role `posvenda`. A reativação é totalmente automatizada via templates WA já aprovados.
 
 ---
 
-## Plano de correção
+## 1. Health Score automático v1
 
-### 1. Migração — corrigir a política RLS de `crm_whatsapp_templates`
+### Regras de pontuação (recálculo via cron)
 
-```sql
-DROP POLICY IF EXISTS "Templates visible by role" ON public.crm_whatsapp_templates;
+| Sinal | Pontos |
+|---|---|
+| Cada mensagem inbound respondida | +10 |
+| Mudança de estágio (engajamento) | +15 |
+| Agendamento confirmado | +30 |
+| Avaliação/feedback positivo (tag `feedback_positivo`) | +20 |
+| Tarefa concluída pelo paciente | +5 |
+| Cancelou consulta (status `cancelled`/`no_show`) | -40 |
+| Sem resposta há 30+ dias | -20 |
+| Sem voltar à clínica há 180+ dias | -25 |
+| Tag `reclamacao` | -15 |
 
-CREATE POLICY "Templates visible by role"
-ON public.crm_whatsapp_templates FOR SELECT
-USING (
-  has_role(auth.uid(), 'admin'::app_role)
-  OR has_role(auth.uid(), 'gerente'::app_role)
-  OR has_role(auth.uid(), 'superadmin'::app_role)
-  OR owner_role IS NULL
-  OR has_role(auth.uid(), owner_role)
-);
-```
+Score final clampado em 0–100. Faixas:
 
-(Removi o trecho `OR owner_role IN ('admin','superadmin')`. Admin/gerente/superadmin continuam vendo tudo pelas três primeiras linhas; demais roles só veem o que é deles ou compartilhado.)
+- **0–29 — Frio** (badge cinza)
+- **30–59 — Morno** (badge amarelo)
+- **60–79 — Quente** (badge laranja)
+- **80–100 — VIP / Engajado** (badge verde)
 
-### 2. Migração — trigger para marcar `owner_role` automaticamente em novos modelos
+### Onde aparece
 
-Já existe a função `set_owner_role_from_user()`. Falta o trigger nesta tabela:
+- Badge colorido na lista de conversas e no Kanban (somente para `posvenda`, `admin`, `superadmin`)
+- Painel lateral do lead com breakdown ("Por que esse score?")
+- Filtro "Faixa de score" na lista
 
-```sql
-CREATE TRIGGER trg_set_owner_role
-BEFORE INSERT ON public.crm_whatsapp_templates
-FOR EACH ROW EXECUTE FUNCTION public.set_owner_role_from_user();
-```
+### Backend
 
-### 3. Decisão de dados — backfill dos 91 modelos existentes
-
-Hoje todos os 91 modelos estão com `owner_role = NULL` (= compartilhados com todo mundo). Se o objetivo é **isolar de pós-venda**, precisamos backfillar. Opções:
-
-- **(A)** Definir `owner_role = 'admin'` para todos os 91 → pós-venda não vê nenhum.
-- **(B)** Deixar como está (compartilhados) e cada novo modelo passa a ser por-role via trigger. Para limpar, o admin usa o botão "Compartilhar" um a um.
-
-Preciso confirmar essa decisão com você (pergunta abaixo).
-
-### 4. Código — `src/pages/CrmModelos.tsx`
-
-Remover o auto-sync com a Meta dentro do `fetchTemplates`. A função passa a apenas ler do banco local (instantâneo). A sincronização com a Meta continua disponível pelo botão **"Sincronizar"** existente no header.
-
-```ts
-const fetchTemplates = useCallback(async () => {
-  setLoading(true);
-  const { data } = await supabase
-    .from("crm_whatsapp_templates")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (data) setTemplates(data as WhatsAppTemplate[]);
-  setLoading(false);
-}, []);
-```
-
-(remove o bloco `try { ... supabase.functions.invoke("manage-whatsapp-templates", ...) }` de dentro do fetch)
+- Evoluir `recalculate_lead_score()` para usar a nova fórmula (hoje é só msg+stage+inativo)
+- Cron a cada 30min chamando `recalculate_all_lead_scores(500)` por batch
+- Trigger em `crm_appointments` (cancelado/no_show) e em `messages` (inbound) para recalcular sob demanda os afetados
 
 ---
 
-## Resultado esperado
+## 2. Dashboard Pós-Venda
 
-- Pós-venda deixa de ver modelos do admin (correção real, sem hack no client).
-- Página `/crm/modelos` abre instantânea em toda navegação — sem esperar a API da Meta.
-- Botão **"Sincronizar"** segue funcional para puxar atualizações da Meta sob demanda.
-- Novos modelos criados já nascem com `owner_role` da role de quem criou.
+Nova rota `/rizodent/crm/posvenda` visível para `posvenda` e `admin`. Layout idêntico ao Dashboard CRM atual (3 colunas, design system existente).
+
+### 4 cards principais (clicáveis → lista filtrada)
+
+1. **Em risco** — leads que atendem qualquer um:
+   - sem resposta há 30+ dias **OU**
+   - última consulta cancelada/no_show **OU**
+   - score abaixo de 30
+2. **Sumidos** — sem voltar à clínica há 180+ dias (cruza com `pacientes` via `crm_lead_pacientes`)
+3. **VIPs** — score ≥ 80 ou ticket acumulado acima do percentil 80 da clínica
+4. **Aniversariantes da semana** — usa `pacientes.data_nascimento` quando disponível
+
+### Cards secundários
+
+- Total de pacientes ativos (com lead vinculado)
+- Reativações automáticas disparadas nos últimos 30d
+- Taxa de resposta dos disparos automáticos
+- Top 5 leads com maior queda de score nos últimos 7d
+
+### Drilldown
+
+Cada card abre `/rizodent/crm/conversas` com filtro pré-aplicado, igual ao padrão dos Relatórios.
+
+---
+
+## 3. Reativação 100% automática
+
+Reusa `crm_followup_configs` (já existente) com config nova específica para pós-venda:
+
+- **Gatilho:** lead entra num estado de risco (cron diário identifica e move/marca via automação `on_enter` no estágio "Reativação")
+- **Sequência:**
+  1. Dia 0 — template WA `reativacao_inicial` ("Faz um tempo que não vemos seu sorriso 😊")
+  2. Dia +3 — template `reativacao_oferta` (avaliação preventiva)
+  3. Dia +7 — template `reativacao_final` (última chance, condição especial)
+- Resposta do paciente pausa a sequência e marca status `responded` (já é o comportamento atual do followup-engine)
+- Se score voltar a subir após resposta, sai automaticamente do estágio Reativação
+
+Configuração feita 100% pela tela `/crm/followups` existente — sem código novo no engine.
+
+---
+
+## Detalhes técnicos
+
+### Migrations
+1. Atualizar função `recalculate_lead_score(p_lead_id uuid)` com a nova fórmula (inclui appointments cancelados, dias sem visita via `pacientes`).
+2. Criar função `posvenda_dashboard_metrics()` (SECURITY DEFINER) retornando JSONB com os 4 contadores + listas top-N. Restringir a `posvenda`/`admin`/`superadmin`.
+3. Criar índices: `crm_leads(last_inbound_at)`, `crm_leads(score)`, `pacientes(data_nascimento)`.
+4. Cron `pg_cron` a cada 30min → `recalculate_all_lead_scores(500)`.
+5. Cron diário 08:00 → identifica leads em risco e move para estágio "Reativação" (criar estágio se não existir no pipeline padrão do tenant).
+
+### Frontend
+- `src/pages/CrmPosVendaDashboard.tsx` — nova página (copia layout de `CrmDashboard.tsx`)
+- `src/components/chat/LeadScoreBadge.tsx` — badge reusável com breakdown em tooltip
+- Adicionar item "Pós-Venda" no `CrmLayout.tsx` visível só para `posvenda`/`admin`
+- Filtro "Score" no `ConversationFilters.tsx`
+- Renderizar badge em `CrmConversas` e `CrmKanban` condicionado ao role
+
+### RLS
+- `posvenda_dashboard_metrics()` retorna `forbidden` se o usuário não for `posvenda`/`admin`/`superadmin`
+- Nenhuma alteração em policies existentes (continua respeitando `owner_role` e `tenant_isolation`)
+
+### Não-objetivos da Fase 1
+- Eventos clínicos (fez implante → fluxo) — fica para Fase 2
+- Memória emocional estruturada — Fase 2
+- CRM Familiar — Fase 2
+- NPS / LTV detalhado nos relatórios — Fase 2
+
+---
+
+## Entregáveis
+
+- 1 migration (função `recalculate_lead_score` v2 + `posvenda_dashboard_metrics` + índices)
+- 1 SQL via insert tool (jobs pg_cron, contém URL/anon key do tenant)
+- 1 página nova (`CrmPosVendaDashboard.tsx`)
+- 1 componente badge + integração em 2 telas
+- 1 estágio "Reativação" criado no pipeline padrão + 1 config de follow-up modelo
+- 3 templates WhatsApp a serem aprovados manualmente no Meta (nomes acima)
+
+Pronto pra implementar quando você aprovar.

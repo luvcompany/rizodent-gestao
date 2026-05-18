@@ -4,8 +4,9 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
-  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles,
+  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
@@ -31,33 +32,41 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
   return "children" in entry;
 }
 
-const crmNavItems: SidebarEntry[] = [
-  { to: "/crm/dashboard", icon: Home, label: "Dashboard" },
-  { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
-  { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
-  { to: "/crm/calendario", icon: CalendarDays, label: "Calendário", badgeKey: "tasks" },
-  {
-    label: "Automações",
-    icon: Bot,
-    children: [
-      { to: "/crm/bots", icon: Bot, label: "Bots" },
-      { to: "/crm/modelos", icon: FileText, label: "Modelos" },
-      { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
-      { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
-    ],
-  },
-  
-  { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
-  { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
-  { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
-  { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
-  { to: "/crm/configuracoes", icon: Settings, label: "Configurações" },
-];
+const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
+  const items: SidebarEntry[] = [
+    { to: "/crm/dashboard", icon: Home, label: "Dashboard" },
+    { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
+    { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
+    { to: "/crm/calendario", icon: CalendarDays, label: "Calendário", badgeKey: "tasks" },
+  ];
+  if (role && ["posvenda", "admin", "gerente", "superadmin"].includes(role)) {
+    items.push({ to: "/crm/posvenda", icon: Heart, label: "Pós-Venda" });
+  }
+  items.push(
+    {
+      label: "Automações",
+      icon: Bot,
+      children: [
+        { to: "/crm/bots", icon: Bot, label: "Bots" },
+        { to: "/crm/modelos", icon: FileText, label: "Modelos" },
+        { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
+        { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
+      ],
+    },
+    { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
+    { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
+    { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
+    { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
+    { to: "/crm/configuracoes", icon: Settings, label: "Configurações" },
+  );
+  return items;
+};
 
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const CrmLayout = () => {
   const navigate = useNavigate();
+  const { userRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -65,6 +74,7 @@ const CrmLayout = () => {
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
   const unreadFetchSeq = useRef(0);
+  const crmNavItems = buildCrmNavItems(userRole);
 
   const toggleGroup = (label: string) => {
     setExpandedGroups(prev => {

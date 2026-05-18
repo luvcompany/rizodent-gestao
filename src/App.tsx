@@ -32,6 +32,7 @@ import CrmFollowUps from "./pages/CrmFollowUps";
 import CrmBots from "./pages/CrmBots";
 import CrmBotEditor from "./pages/CrmBotEditor";
 import CrmDashboard from "./pages/CrmDashboard";
+import CrmPosVendaDashboard from "./pages/CrmPosVendaDashboard";
 import CrmExtras from "./pages/CrmExtras";
 import CrmConfiguracoes from "./pages/CrmConfiguracoes";
 import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
@@ -119,6 +120,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
             >
               <Route path="/crm" element={<CrmKanban />} />
               <Route path="/crm/dashboard" element={<CrmDashboard />} />
+              <Route path="/crm/posvenda" element={<CrmPosVendaDashboard />} />
               <Route path="/crm/conversas" element={<CrmConversas />} />
               <Route path="/crm/conversa/:id" element={<CrmConversa />} />
               <Route path="/crm/automacoes" element={<CrmAutomacoes />} />
