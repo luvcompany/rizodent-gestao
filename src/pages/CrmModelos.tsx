@@ -464,6 +464,36 @@ export default function CrmModelos() {
         </DialogContent>
       </Dialog>
 
+      {/* Share with role */}
+      <Dialog open={!!shareTarget} onOpenChange={(v) => !v && setShareTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Compartilhar modelo</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Defina quais usuários verão este modelo na lista de envio de template.
+          </p>
+          <div className="space-y-2 mt-2">
+            <Label>Visível para</Label>
+            <Select value={shareRole} onValueChange={setShareRole}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todos os papéis (compartilhado)</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="gerente">Gerente</SelectItem>
+                <SelectItem value="crc">CRC</SelectItem>
+                <SelectItem value="posvenda">Pós-venda</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              Admin, Gerente e Superadmin sempre veem todos os modelos.
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end mt-4">
+            <Button variant="outline" onClick={() => setShareTarget(null)}>Cancelar</Button>
+            <Button onClick={handleShareSave}>Salvar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Create/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
