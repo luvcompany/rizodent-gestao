@@ -563,9 +563,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       // Channel-based filtering (tenant-agnostic): IG leads have instagram_user_id
       if (channelFilter === "instagram" && !l.instagram_user_id) return false;
       if (channelFilter === "whatsapp" && l.instagram_user_id) return false;
-      // Filter by assigned user - skip when drill-down filter is active
-      const hasUrlFilters = urlGhost || urlAppointmentStatus || urlInactiveDays || searchParams.get("assigned_to") || searchParams.get("stage_id") || searchParams.get("pipeline");
-      if (!hasUrlFilters && user?.id && l.assigned_to && l.assigned_to !== user.id) return false;
       const normalizedSearch = search.trim().toLowerCase();
       if (normalizedSearch) {
         const searchDigits = normalizedSearch.replace(/\D/g, "");
