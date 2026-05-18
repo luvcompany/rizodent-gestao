@@ -8,14 +8,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
+import { useAuth } from "@/contexts/AuthContext";
+
+type OwnerRole = "admin" | "gerente" | "crc" | "posvenda" | "superadmin" | null;
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
   header_type: string | null; header_content: string | null; body_text: string | null;
   footer_text: string | null; buttons: unknown; meta_template_id: string | null;
   created_at: string; updated_at: string;
+  owner_role?: OwnerRole;
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Admin", gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
+};
+const ROLE_BADGE_COLOR: Record<string, string> = {
+  admin: "bg-orange-900/30 text-orange-400",
+  gerente: "bg-blue-900/30 text-blue-400",
+  crc: "bg-purple-900/30 text-purple-400",
+  posvenda: "bg-green-900/30 text-green-400",
+  superadmin: "bg-red-900/30 text-red-400",
 };
 
 type Integration = {
@@ -28,6 +43,9 @@ type Integration = {
 const PAGE_SIZE = 10;
 
 export default function CrmModelos() {
+  const { userRole } = useAuth();
+  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
+
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("todos");
@@ -40,6 +58,8 @@ export default function CrmModelos() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedIntegration, setSelectedIntegration] = useState<string>("");
   const [syncing, setSyncing] = useState(false);
+  const [shareTarget, setShareTarget] = useState<WhatsAppTemplate | null>(null);
+  const [shareRole, setShareRole] = useState<string>("__all__");
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
@@ -150,6 +170,26 @@ export default function CrmModelos() {
     if (error) toast.error("Erro ao duplicar"); else { toast.success("Duplicado"); fetchTemplates(); }
   };
 
+  const openShare = (t: WhatsAppTemplate) => {
+    setShareTarget(t);
+    setShareRole(t.owner_role ?? "__all__");
+  };
+
+  const handleShareSave = async () => {
+    if (!shareTarget) return;
+    const newRole = shareRole === "__all__" ? null : shareRole;
+    const { error } = await supabase
+      .from("crm_whatsapp_templates")
+      .update({ owner_role: newRole as any, updated_at: new Date().toISOString() })
+      .eq("id", shareTarget.id);
+    if (error) {
+      toast.error("Erro ao atualizar compartilhamento");
+      return;
+    }
+    toast.success(newRole ? `Modelo restrito a ${ROLE_LABEL[newRole]}` : "Modelo compartilhado com todos");
+    setShareTarget(null);
+    fetchTemplates();
+  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -379,13 +419,22 @@ export default function CrmModelos() {
                   <div className="font-semibold text-sm text-foreground break-all" title={t.name}>{cleanTemplateName(t.name)}</div>
                   <div className="flex items-center gap-1">{headerIcon(t.header_type)}</div>
                 </div>
-                <div className="flex items-center gap-2 mb-2">{categoryBadge(t.category)} {statusBadge(t.status)}</div>
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  {categoryBadge(t.category)}
+                  {statusBadge(t.status)}
+                  {t.owner_role
+                    ? <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ROLE_BADGE_COLOR[t.owner_role] || "bg-secondary text-muted-foreground"}`}>{ROLE_LABEL[t.owner_role]}</span>
+                    : <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-secondary text-muted-foreground">Compartilhado</span>}
+                </div>
                 <p className="text-xs text-muted-foreground line-clamp-3 mb-3">{t.body_text || "Sem corpo"}</p>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-muted-foreground">{new Date(t.created_at).toLocaleDateString("pt-BR")}</span>
                   <div className="flex items-center gap-1">
                     <button onClick={() => openEdit(t)} className="p-1 hover:bg-secondary rounded transition-colors"><Pencil size={14} className="text-muted-foreground" /></button>
                     <button onClick={() => handleDuplicate(t)} className="p-1 hover:bg-secondary rounded transition-colors"><Copy size={14} className="text-muted-foreground" /></button>
+                    {canShare && (
+                      <button onClick={() => openShare(t)} title="Compartilhar com papel" className="p-1 hover:bg-secondary rounded transition-colors"><Users size={14} className="text-muted-foreground" /></button>
+                    )}
                     <button onClick={() => setDeleteId(t.id)} className="p-1 hover:bg-destructive/20 rounded transition-colors"><Trash2 size={14} className="text-destructive" /></button>
                   </div>
                 </div>
@@ -411,6 +460,36 @@ export default function CrmModelos() {
           <div className="flex gap-2 justify-end mt-4">
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
             <Button variant="destructive" onClick={handleDelete}>Excluir</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share with role */}
+      <Dialog open={!!shareTarget} onOpenChange={(v) => !v && setShareTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Compartilhar modelo</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Defina quais usuários verão este modelo na lista de envio de template.
+          </p>
+          <div className="space-y-2 mt-2">
+            <Label>Visível para</Label>
+            <Select value={shareRole} onValueChange={setShareRole}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todos os papéis (compartilhado)</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="gerente">Gerente</SelectItem>
+                <SelectItem value="crc">CRC</SelectItem>
+                <SelectItem value="posvenda">Pós-venda</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              Admin, Gerente e Superadmin sempre veem todos os modelos.
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end mt-4">
+            <Button variant="outline" onClick={() => setShareTarget(null)}>Cancelar</Button>
+            <Button onClick={handleShareSave}>Salvar</Button>
           </div>
         </DialogContent>
       </Dialog>
