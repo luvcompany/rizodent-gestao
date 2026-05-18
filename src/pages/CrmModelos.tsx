@@ -8,14 +8,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
+import { useAuth } from "@/contexts/AuthContext";
+
+type OwnerRole = "admin" | "gerente" | "crc" | "posvenda" | "superadmin" | null;
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
   header_type: string | null; header_content: string | null; body_text: string | null;
   footer_text: string | null; buttons: unknown; meta_template_id: string | null;
   created_at: string; updated_at: string;
+  owner_role?: OwnerRole;
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  admin: "Admin", gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
+};
+const ROLE_BADGE_COLOR: Record<string, string> = {
+  admin: "bg-orange-900/30 text-orange-400",
+  gerente: "bg-blue-900/30 text-blue-400",
+  crc: "bg-purple-900/30 text-purple-400",
+  posvenda: "bg-green-900/30 text-green-400",
+  superadmin: "bg-red-900/30 text-red-400",
 };
 
 type Integration = {
