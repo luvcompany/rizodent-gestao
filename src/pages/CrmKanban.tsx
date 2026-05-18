@@ -194,9 +194,30 @@ export default function CrmKanban() {
     setPipelines(pList);
     setProfiles((profilesRes.data as { id: string; nome: string }[]) || []);
 
-    const p = targetPipelineId
-      ? pList.find(pp => pp.id === targetPipelineId) || pList[0]
-      : pList[0];
+    // Default pipeline preference: for non-posvenda users, always prefer "Funil Principal"
+    // over any other pipeline (including Pós-venda) when no explicit selection is made.
+    const isPosvendaOnly = userRole === "posvenda";
+    const principal = pList.find(pp => /funil principal/i.test(pp.name)) || pList[0];
+    const defaultPipeline = isPosvendaOnly
+      ? (pList.find(pp => /p[óo]s.?venda/i.test(pp.name)) || pList[0])
+      : principal;
+
+    let p: Pipeline | undefined;
+    if (selectedPipelineId) {
+      p = pList.find(pp => pp.id === selectedPipelineId) || defaultPipeline;
+    } else if (pipeline?.id) {
+      p = pList.find(pp => pp.id === pipeline.id) || defaultPipeline;
+    } else if (stored && pList.find(pp => pp.id === stored)) {
+      const storedPipeline = pList.find(pp => pp.id === stored)!;
+      // Ignore stored Pós-venda for non-posvenda users — they should land on Funil Principal.
+      if (!isPosvendaOnly && /p[óo]s.?venda/i.test(storedPipeline.name)) {
+        p = defaultPipeline;
+      } else {
+        p = storedPipeline;
+      }
+    } else {
+      p = defaultPipeline;
+    }
 
     if (p) {
       setPipeline(p);
