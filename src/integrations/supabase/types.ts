@@ -1680,6 +1680,7 @@ export type Database = {
           buttons: Json | null
           category: string
           created_at: string
+          created_by_user_id: string | null
           footer_text: string | null
           header_content: string | null
           header_type: string | null
@@ -1687,6 +1688,7 @@ export type Database = {
           language: string
           meta_template_id: string | null
           name: string
+          owner_role: Database["public"]["Enums"]["app_role"] | null
           status: string
           tenant_id: string | null
           updated_at: string
@@ -1696,6 +1698,7 @@ export type Database = {
           buttons?: Json | null
           category?: string
           created_at?: string
+          created_by_user_id?: string | null
           footer_text?: string | null
           header_content?: string | null
           header_type?: string | null
@@ -1703,6 +1706,7 @@ export type Database = {
           language?: string
           meta_template_id?: string | null
           name: string
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -1712,6 +1716,7 @@ export type Database = {
           buttons?: Json | null
           category?: string
           created_at?: string
+          created_by_user_id?: string | null
           footer_text?: string | null
           header_content?: string | null
           header_type?: string | null
@@ -1719,6 +1724,7 @@ export type Database = {
           language?: string
           meta_template_id?: string | null
           name?: string
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -2952,6 +2958,10 @@ export type Database = {
       get_tenant_meta_app_version: {
         Args: { _tenant_id: string }
         Returns: string
+      }
+      get_user_primary_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
       }
       hard_delete_tenant: { Args: { _tenant_id: string }; Returns: Json }
       has_role: {
