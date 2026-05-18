@@ -310,6 +310,17 @@ const Usuarios = () => {
           onSaved={handleProfileSaved}
         />
       )}
+
+      {/* Permissions sheet */}
+      {permsUser && (
+        <UserPermissionsSheet
+          open={permsOpen}
+          onOpenChange={(o) => { setPermsOpen(o); if (!o) setPermsUser(null); }}
+          userId={permsUser.id}
+          userName={permsUser.nome}
+          userRole={(getUserRole(permsUser.id)?.role as any) || null}
+        />
+      )}
     </div>
   );
 };
