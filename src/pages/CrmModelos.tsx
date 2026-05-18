@@ -82,27 +82,15 @@ export default function CrmModelos() {
   }, []);
 
   const fetchTemplates = useCallback(async () => {
-    if (!selectedIntegration) return;
     setLoading(true);
-    // Load from local DB first (instant)
-    const { data, error } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
+    // Load from local DB only — Meta sync moved to manual "Sincronizar" button
+    const { data, error } = await supabase
+      .from("crm_whatsapp_templates")
+      .select("*")
+      .order("created_at", { ascending: false });
     if (!error) setTemplates((data as WhatsAppTemplate[]) || []);
     setLoading(false);
-
-    // Then sync from Meta API in background (non-blocking)
-    try {
-      const { data: syncData } = await supabase.functions.invoke("manage-whatsapp-templates", {
-        body: { action: "list", integration_key: selectedIntegration },
-      });
-      // Reload if sync brought changes
-      if (syncData) {
-        const { data: refreshed } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
-        if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
-      }
-    } catch (e) {
-      console.log("[Templates] Meta sync skipped:", e);
-    }
-  }, [selectedIntegration]);
+  }, []);
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
