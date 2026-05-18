@@ -70,6 +70,8 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [waNumbers, setWaNumbers] = useState<WhatsappNumber[]>([]);
+  const [igAccounts, setIgAccounts] = useState<IgAccount[]>([]);
   // overrides keyed by `${scope}:${resource_id}` → granted
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   // dirty: same key set → new desired value or null to clear
@@ -79,11 +81,15 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     if (!open || !userId) return;
     (async () => {
       setLoading(true);
-      const [{ data: pls }, { data: ovs }] = await Promise.all([
+      const [{ data: pls }, { data: ovs }, { data: was }, { data: igs }] = await Promise.all([
         supabase.from("crm_pipelines").select("id,name,color,allowed_roles").order("position"),
         supabase.from("user_permission_overrides").select("scope,resource_id,granted").eq("user_id", userId),
+        supabase.from("whatsapp_numbers" as any).select("id,phone_number_id,display_name,phone_e164,is_active").order("display_name"),
+        supabase.from("ig_accounts").select("id,username,ig_user_id").order("username"),
       ]);
       setPipelines((pls || []) as Pipeline[]);
+      setWaNumbers((was || []) as WhatsappNumber[]);
+      setIgAccounts((igs || []) as IgAccount[]);
       const map: Record<string, boolean> = {};
       (ovs || []).forEach((o: any) => { map[`${o.scope}:${o.resource_id}`] = o.granted; });
       setOverrides(map);
@@ -99,6 +105,9 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     if (isSuper || userRole === "gerente") return true;
     return !p.allowed_roles || p.allowed_roles.includes(userRole);
   };
+
+  // WA numbers / IG accounts: default is "liberado para todos do tenant"
+  const defaultForChannel = () => true;
 
   const defaultForRole = (allowed: Role[]) => userRole ? allowed.includes(userRole) : false;
 
