@@ -27,7 +27,7 @@ type WhatsappNumber = {
   is_active: boolean;
 };
 
-// Tenant-level WhatsApp config from tenant_meta_credentials
+
 
 type IgAccount = {
   id: string;
