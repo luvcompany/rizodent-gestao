@@ -129,7 +129,7 @@ export default function CrmKanban() {
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
   const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
-  const { labels: userLabels, labelsByLead } = useLeadLabels();
+  const { labelsByLead } = useLeadLabels();
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
