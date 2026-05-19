@@ -341,6 +341,19 @@ const CrmLayout = () => {
           <Outlet />
         </main>
       </div>
+
+      {user && profile && (
+        <EditProfileDialog
+          open={editProfileOpen}
+          onOpenChange={setEditProfileOpen}
+          userId={user.id}
+          currentNome={profile.nome}
+          currentCargo={profile.cargo}
+          currentAvatarUrl={profile.avatar_url}
+          currentEmail={profile.email}
+          onSaved={refreshProfile}
+        />
+      )}
     </div>
   );
 };
