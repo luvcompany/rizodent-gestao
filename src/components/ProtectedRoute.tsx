@@ -57,6 +57,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/change-password" replace />;
   }
 
+  // Pós-venda só acessa o CRM
+  if (
+    userRole === "posvenda" &&
+    !location.pathname.startsWith("/crm") &&
+    location.pathname !== "/change-password"
+  ) {
+    return <Navigate to="/crm" replace />;
+  }
+
   return <>{children}</>;
 };
 
