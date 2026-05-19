@@ -62,8 +62,6 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
   return items;
 };
 
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
-
 const CrmLayout = () => {
   const navigate = useNavigate();
   const { userRole } = useAuth();
