@@ -106,10 +106,10 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/leads" element={<CadastroLeads />} />
-              <Route path="/usuarios" element={<Usuarios />} />
+              <Route path="/usuarios" element={<Navigate to="/crm/usuarios" replace />} />
               <Route path="/procedimentos" element={<TiposProcedimento />} />
               <Route path="/registro-diario" element={<RegistroDiario />} />
-              <Route path="/configuracoes" element={<Configuracoes />} />
+              <Route path="/configuracoes" element={<Navigate to="/crm/configuracoes" replace />} />
             </Route>
             <Route
               element={
