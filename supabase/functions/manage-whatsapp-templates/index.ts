@@ -91,7 +91,16 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action, integration_key } = body;
 
-    const { token: WHATSAPP_TOKEN, wabaId: WABA_ID } = await resolveCredentials(supabase, integration_key);
+    // Resolve caller's tenant so we can fall back to the tenant's WhatsApp integration
+    // when integration_key isn't supplied (e.g. non-crc users can't read integrations on the client).
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .maybeSingle();
+    const callerTenantId = profile?.tenant_id || null;
+
+    const { token: WHATSAPP_TOKEN, wabaId: WABA_ID } = await resolveCredentials(supabase, integration_key, callerTenantId);
 
     if (!WHATSAPP_TOKEN || !WABA_ID) {
       return new Response(
