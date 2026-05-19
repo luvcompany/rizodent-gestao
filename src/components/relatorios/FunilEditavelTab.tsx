@@ -281,6 +281,12 @@ export default function FunilEditavelTab({ pipelineId, pipelines, setPipelineId 
             Valores auto-preenchidos do CRM • edite livremente
           </span>
         </div>
+        {calc.hasInvalid && (
+          <div className="mb-3 p-2 rounded border border-red-500/40 bg-red-500/5 text-xs text-red-700 dark:text-red-400 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            Há etapas com quantidade maior do que a etapa anterior. Conversões e perdas estão limitadas ao valor de entrada.
+          </div>
+        )}
         <Table>
           <TableHeader>
             <TableRow>
