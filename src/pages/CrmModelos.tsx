@@ -439,7 +439,11 @@ export default function CrmModelos() {
           return;
         }
 
-        toast.success(`Template submetido! Status: ${data?.status || "PENDING"}`);
+        toast.success(
+          `Template enviado à Meta (WABA ${data?.waba_id || "?"}). Status: ${data?.status || "PENDING"}. Sincronizando em 5s…`,
+          { duration: 6000 }
+        );
+        setTimeout(() => { handleSync(true); }, 5000);
       } catch (e: any) {
         toast.error("Erro ao enviar: " + (e?.message || String(e)));
         setSubmitting(false);
