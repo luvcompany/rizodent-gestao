@@ -159,24 +159,8 @@ export default function CrmModelos() {
 
   const openShare = (t: WhatsAppTemplate) => {
     setShareTarget(t);
-    setShareRole(t.owner_role ?? "__all__");
   };
 
-  const handleShareSave = async () => {
-    if (!shareTarget) return;
-    const newRole = shareRole === "__all__" ? null : shareRole;
-    const { error } = await supabase
-      .from("crm_whatsapp_templates")
-      .update({ owner_role: newRole as any, updated_at: new Date().toISOString() })
-      .eq("id", shareTarget.id);
-    if (error) {
-      toast.error("Erro ao atualizar compartilhamento");
-      return;
-    }
-    toast.success(newRole ? `Modelo restrito a ${ROLE_LABEL[newRole]}` : "Modelo compartilhado com todos");
-    setShareTarget(null);
-    fetchTemplates();
-  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
