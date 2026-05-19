@@ -12,7 +12,7 @@ import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, Chevron
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
-type OwnerRole = "gerente" | "crc" | "posvenda" | "superadmin" | null;
+import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialog";
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
@@ -20,6 +20,7 @@ type WhatsAppTemplate = {
   footer_text: string | null; buttons: unknown; meta_template_id: string | null;
   created_at: string; updated_at: string;
   owner_role?: OwnerRole;
+  shared_roles?: string[] | null;
 };
 
 const ROLE_LABEL: Record<string, string> = {
@@ -58,7 +59,6 @@ export default function CrmModelos() {
   const [selectedIntegration, setSelectedIntegration] = useState<string>("");
   const [syncing, setSyncing] = useState(false);
   const [shareTarget, setShareTarget] = useState<WhatsAppTemplate | null>(null);
-  const [shareRole, setShareRole] = useState<string>("__all__");
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
@@ -159,24 +159,8 @@ export default function CrmModelos() {
 
   const openShare = (t: WhatsAppTemplate) => {
     setShareTarget(t);
-    setShareRole(t.owner_role ?? "__all__");
   };
 
-  const handleShareSave = async () => {
-    if (!shareTarget) return;
-    const newRole = shareRole === "__all__" ? null : shareRole;
-    const { error } = await supabase
-      .from("crm_whatsapp_templates")
-      .update({ owner_role: newRole as any, updated_at: new Date().toISOString() })
-      .eq("id", shareTarget.id);
-    if (error) {
-      toast.error("Erro ao atualizar compartilhamento");
-      return;
-    }
-    toast.success(newRole ? `Modelo restrito a ${ROLE_LABEL[newRole]}` : "Modelo compartilhado com todos");
-    setShareTarget(null);
-    fetchTemplates();
-  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -452,33 +436,17 @@ export default function CrmModelos() {
       </Dialog>
 
       {/* Share with role */}
-      <Dialog open={!!shareTarget} onOpenChange={(v) => !v && setShareTarget(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Compartilhar modelo</DialogTitle></DialogHeader>
-          <p className="text-xs text-muted-foreground -mt-2">
-            Defina quais usuários verão este modelo na lista de envio de template.
-          </p>
-          <div className="space-y-2 mt-2">
-            <Label>Visível para</Label>
-            <Select value={shareRole} onValueChange={setShareRole}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Todos os papéis (compartilhado)</SelectItem>
-                <SelectItem value="crc">CRC</SelectItem>
-                <SelectItem value="gerente">Gerente</SelectItem>
-                <SelectItem value="posvenda">Pós-venda</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-muted-foreground">
-              Gerente e Superadmin sempre veem todos os modelos.
-            </p>
-          </div>
-          <div className="flex gap-2 justify-end mt-4">
-            <Button variant="outline" onClick={() => setShareTarget(null)}>Cancelar</Button>
-            <Button onClick={handleShareSave}>Salvar</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ShareRoleDialog
+        open={!!shareTarget}
+        onOpenChange={(v) => !v && setShareTarget(null)}
+        table="crm_whatsapp_templates"
+        rowId={shareTarget?.id ?? null}
+        currentOwnerRole={(shareTarget?.owner_role ?? null) as OwnerRole}
+        currentSharedRoles={(shareTarget?.shared_roles ?? []) as string[]}
+        itemLabel="Modelo"
+        onSaved={fetchTemplates}
+      />
+
 
       {/* Create/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

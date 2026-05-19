@@ -391,6 +391,7 @@ export type Database = {
           mark_as_read: boolean
           name: string
           owner_role: Database["public"]["Enums"]["app_role"] | null
+          shared_roles: Database["public"]["Enums"]["app_role"][]
           status: string
           tenant_id: string | null
           updated_at: string
@@ -405,6 +406,7 @@ export type Database = {
           mark_as_read?: boolean
           name: string
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          shared_roles?: Database["public"]["Enums"]["app_role"][]
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -419,6 +421,7 @@ export type Database = {
           mark_as_read?: boolean
           name?: string
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          shared_roles?: Database["public"]["Enums"]["app_role"][]
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -739,6 +742,7 @@ export type Database = {
           owner_role: Database["public"]["Enums"]["app_role"] | null
           scheduled_at: string | null
           sent_count: number
+          shared_roles: Database["public"]["Enums"]["app_role"][]
           status: string
           template_id: string | null
           tenant_id: string | null
@@ -755,6 +759,7 @@ export type Database = {
           owner_role?: Database["public"]["Enums"]["app_role"] | null
           scheduled_at?: string | null
           sent_count?: number
+          shared_roles?: Database["public"]["Enums"]["app_role"][]
           status?: string
           template_id?: string | null
           tenant_id?: string | null
@@ -771,6 +776,7 @@ export type Database = {
           owner_role?: Database["public"]["Enums"]["app_role"] | null
           scheduled_at?: string | null
           sent_count?: number
+          shared_roles?: Database["public"]["Enums"]["app_role"][]
           status?: string
           template_id?: string | null
           tenant_id?: string | null
@@ -1664,6 +1670,7 @@ export type Database = {
           media_type: string | null
           media_url: string | null
           owner_role: Database["public"]["Enums"]["app_role"] | null
+          shared_roles: Database["public"]["Enums"]["app_role"][]
           tenant_id: string | null
           title: string
         }
@@ -1675,6 +1682,7 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          shared_roles?: Database["public"]["Enums"]["app_role"][]
           tenant_id?: string | null
           title: string
         }
@@ -1686,6 +1694,7 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          shared_roles?: Database["public"]["Enums"]["app_role"][]
           tenant_id?: string | null
           title?: string
         }
@@ -1852,6 +1861,7 @@ export type Database = {
           meta_template_id: string | null
           name: string
           owner_role: Database["public"]["Enums"]["app_role"] | null
+          shared_roles: Database["public"]["Enums"]["app_role"][]
           status: string
           tenant_id: string | null
           updated_at: string
@@ -1870,6 +1880,7 @@ export type Database = {
           meta_template_id?: string | null
           name: string
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          shared_roles?: Database["public"]["Enums"]["app_role"][]
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -1888,6 +1899,7 @@ export type Database = {
           meta_template_id?: string | null
           name?: string
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          shared_roles?: Database["public"]["Enums"]["app_role"][]
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -3156,6 +3168,13 @@ export type Database = {
           _default: boolean
           _resource_id: string
           _scope: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      user_has_any_role: {
+        Args: {
+          _roles: Database["public"]["Enums"]["app_role"][]
           _user_id: string
         }
         Returns: boolean

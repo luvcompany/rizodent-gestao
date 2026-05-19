@@ -93,6 +93,7 @@ export default function CrmRespostasRapidas() {
         table="crm_quick_replies"
         rowId={shareTarget?.id ?? null}
         currentOwnerRole={(shareTarget?.owner_role ?? null) as OwnerRole}
+        currentSharedRoles={(shareTarget?.shared_roles ?? []) as string[]}
         itemLabel="Resposta"
         onSaved={load}
       />
