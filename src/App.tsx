@@ -10,7 +10,23 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
 
-const TenantLogin = lazy(() => import("./pages/TenantLogin"));
+// Eager-load CRM core pages and the tenant login so tab switches inside the CRM
+// are instantaneous (no white screen / no Suspense fallback flash).
+import TenantLogin from "./pages/TenantLogin";
+import CrmKanban from "./pages/CrmKanban";
+import CrmConversas from "./pages/CrmConversas";
+import CrmConversa from "./pages/CrmConversa";
+import CrmDashboard from "./pages/CrmDashboard";
+import CrmCalendario from "./pages/CrmCalendario";
+import CrmFollowUps from "./pages/CrmFollowUps";
+import CrmRelatorios from "./pages/CrmRelatorios";
+import CrmConfiguracoes from "./pages/CrmConfiguracoes";
+import CrmPosVendaDashboard from "./pages/CrmPosVendaDashboard";
+import CrmModelos from "./pages/CrmModelos";
+import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
+import CrmIntegracoes from "./pages/CrmIntegracoes";
+
+// Keep lazy loading for heavier / less-frequent screens.
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Atendimento = lazy(() => import("./pages/Atendimento"));
 const Pacientes = lazy(() => import("./pages/Pacientes"));
@@ -22,22 +38,10 @@ const Usuarios = lazy(() => import("./pages/Usuarios"));
 const TiposProcedimento = lazy(() => import("./pages/TiposProcedimento"));
 const RegistroDiario = lazy(() => import("./pages/RegistroDiario"));
 const Configuracoes = lazy(() => import("./pages/Configuracoes"));
-const CrmKanban = lazy(() => import("./pages/CrmKanban"));
 const CrmAutomacoes = lazy(() => import("./pages/CrmAutomacoes"));
-const CrmModelos = lazy(() => import("./pages/CrmModelos"));
-const CrmConversa = lazy(() => import("./pages/CrmConversa"));
-const CrmIntegracoes = lazy(() => import("./pages/CrmIntegracoes"));
-const CrmRelatorios = lazy(() => import("./pages/CrmRelatorios"));
-const CrmConversas = lazy(() => import("./pages/CrmConversas"));
-const CrmCalendario = lazy(() => import("./pages/CrmCalendario"));
-const CrmFollowUps = lazy(() => import("./pages/CrmFollowUps"));
 const CrmBots = lazy(() => import("./pages/CrmBots"));
 const CrmBotEditor = lazy(() => import("./pages/CrmBotEditor"));
-const CrmDashboard = lazy(() => import("./pages/CrmDashboard"));
-const CrmPosVendaDashboard = lazy(() => import("./pages/CrmPosVendaDashboard"));
 const CrmExtras = lazy(() => import("./pages/CrmExtras"));
-const CrmConfiguracoes = lazy(() => import("./pages/CrmConfiguracoes"));
-const CrmRespostasRapidas = lazy(() => import("./pages/CrmRespostasRapidas"));
 const CrmCampanhas = lazy(() => import("./pages/CrmCampanhas"));
 const CrmIaConfig = lazy(() => import("./pages/CrmIaConfig"));
 const CrclinLanding = lazy(() => import("./pages/CrclinLanding"));
