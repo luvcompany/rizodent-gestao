@@ -3105,6 +3105,15 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: string
       }
+      get_lead_stage_history_names: {
+        Args: { _lead_id: string }
+        Returns: {
+          color: string
+          id: string
+          name: string
+          pipeline_id: string
+        }[]
+      }
       get_tenant_by_slug: {
         Args: { _slug: string }
         Returns: {
