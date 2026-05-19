@@ -4,13 +4,15 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
-  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield,
+  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
+import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
 import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
+import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
 type NavItem = {
   to: string;
