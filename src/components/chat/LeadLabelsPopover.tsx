@@ -70,7 +70,7 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
         <DialogHeader className="sr-only">
           <DialogTitle>Configurar marcadores</DialogTitle>
         </DialogHeader>
-        <div className="p-3 border-b border-border">
+        <div className="p-3 pr-14 border-b border-border">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Marcadores</span>
             {!creating && !editing && (

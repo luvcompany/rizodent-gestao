@@ -1085,6 +1085,89 @@ export type Database = {
           },
         ]
       }
+      crm_funnel_custom_reports: {
+        Row: {
+          agendados: number
+          atendidos: number
+          avaliados: number
+          compareceram: number
+          created_at: string
+          fecharam: number
+          id: string
+          meta_agendados: number | null
+          meta_atendidos: number | null
+          meta_avaliados: number | null
+          meta_compareceram: number | null
+          meta_fecharam: number | null
+          notes: string | null
+          period_end: string
+          period_label: string
+          period_start: string
+          period_type: string
+          pipeline_id: string | null
+          tenant_id: string
+          total_leads: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agendados?: number
+          atendidos?: number
+          avaliados?: number
+          compareceram?: number
+          created_at?: string
+          fecharam?: number
+          id?: string
+          meta_agendados?: number | null
+          meta_atendidos?: number | null
+          meta_avaliados?: number | null
+          meta_compareceram?: number | null
+          meta_fecharam?: number | null
+          notes?: string | null
+          period_end: string
+          period_label: string
+          period_start: string
+          period_type?: string
+          pipeline_id?: string | null
+          tenant_id?: string
+          total_leads?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          agendados?: number
+          atendidos?: number
+          avaliados?: number
+          compareceram?: number
+          created_at?: string
+          fecharam?: number
+          id?: string
+          meta_agendados?: number | null
+          meta_atendidos?: number | null
+          meta_avaliados?: number | null
+          meta_compareceram?: number | null
+          meta_fecharam?: number | null
+          notes?: string | null
+          period_end?: string
+          period_label?: string
+          period_start?: string
+          period_type?: string
+          pipeline_id?: string | null
+          tenant_id?: string
+          total_leads?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_funnel_custom_reports_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "crm_pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_lead_custom_values: {
         Row: {
           field_id: string
@@ -3016,6 +3099,7 @@ export type Database = {
           lead_name: string
         }[]
       }
+      crm_unread_leads_count: { Args: never; Returns: number }
       current_tenant_id: { Args: never; Returns: string }
       ensure_instagram_pipeline: {
         Args: { _tenant_id: string }
