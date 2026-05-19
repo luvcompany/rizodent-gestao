@@ -60,7 +60,7 @@ const Usuarios = () => {
   const [newPassword, setNewPassword] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const isAdmin = userRole === "crc";
+  const isAdmin = userRole === "superadmin";
 
   const fetchData = async () => {
     setLoading(true);
