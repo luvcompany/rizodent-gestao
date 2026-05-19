@@ -884,7 +884,15 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         )}
 
         {/* CENTER PANEL - Chat */}
-        <ResizablePanel defaultSize={rightPanelVisible ? 46 : 76} minSize={38} className="min-w-0 overflow-hidden">
+        {(() => {
+          const rightRendered = rightPanelVisible && !!selectedLeadId && !!selectedLead && selectedLead.id === selectedLeadId;
+          const centerSize = leftPanelVisible
+            ? (rightRendered ? 46 : 76)
+            : (rightRendered ? 70 : 100);
+          return (
+        <ResizablePanel defaultSize={centerSize} minSize={38} className="min-w-0 overflow-hidden">
+          );
+        })() && null}
           {selectedLeadId && selectedLead && selectedLead.id === selectedLeadId ? (
             <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden relative">
               {/* Chat header */}
