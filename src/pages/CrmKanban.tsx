@@ -196,7 +196,7 @@ export default function CrmKanban() {
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       targetPipelineId ? fetchLeadPage(targetPipelineId) : Promise.resolve(null),
-      supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
+      supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]).limit(5000),
     ]);
 
     const pList = (pipelinesRes.data as Pipeline[]) || [];
@@ -507,14 +507,33 @@ export default function CrmKanban() {
   const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
   const newYesterday = myLeads.filter(l => l.created_at.startsWith(yesterday)).length;
 
-  // Mapa lead_id -> total pago no mês (somando TODOS os pacientes vinculados via crm_lead_pacientes)
-  // Usado tanto no card "Vendas concluídas (mês)" quanto no total exibido em cada etapa.
+  // Faturamento total do mês: soma TODOS os pagamentos do tenant no mês corrente,
+  // independente do funil. Leads movidos para Pós-venda continuam contando aqui.
   const [vendasConcluidas, setVendasConcluidas] = useState(0);
   const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    const now = new Date();
+    const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    const monthEnd = toLocalDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("pagamentos")
+        .select("valor")
+        .gte("data_pagamento", monthStart)
+        .lte("data_pagamento", monthEnd);
+      if (cancelled) return;
+      const total = (data || []).reduce((sum: number, p: any) => sum + Number(p.valor || 0), 0);
+      setVendasConcluidas(total);
+    })();
+    return () => { cancelled = true; };
+  }, [pipeline?.id]);
+
+  // Mapa por lead visível (totais por etapa) + set de leads pagos (todos os tempos)
   useEffect(() => {
     const leadIds = leads.map(l => l.id);
     if (!leadIds.length) {
-      setVendasConcluidas(0);
       setLeadMonthValueMap(new Map());
       setLeadsWithPagamento(new Set());
       return;
@@ -530,6 +549,11 @@ export default function CrmKanban() {
       );
       const links = linkRows.flatMap(r => r.data || []);
       const pacienteIds = Array.from(new Set(links.map((l: any) => l.paciente_id).filter(Boolean)));
+      if (!pacienteIds.length) {
+        setLeadMonthValueMap(new Map());
+        setLeadsWithPagamento(new Set());
+        return;
+      }
       const pacienteChunks = Array.from({ length: Math.ceil(pacienteIds.length / 400) }, (_, i) => pacienteIds.slice(i * 400, i * 400 + 400));
       const [monthRows, allRows] = await Promise.all([
         Promise.all(pacienteChunks.map(ids => supabase.from("pagamentos").select("valor, paciente_id").in("paciente_id", ids).gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd))),
@@ -538,9 +562,6 @@ export default function CrmKanban() {
       const pags = monthRows.flatMap(r => r.data || []);
       const allPags = allRows.flatMap(r => r.data || []);
 
-      // Selecionar UM único lead por paciente para evitar contagem duplicada
-      // quando um paciente está vinculado a múltiplos leads.
-      // Prioriza o vínculo primário; senão, mantém o primeiro encontrado.
       const pacienteToLead = new Map<string, string>();
       (links || []).forEach((l: any) => {
         const existing = pacienteToLead.get(l.paciente_id);
@@ -548,16 +569,12 @@ export default function CrmKanban() {
       });
 
       const map = new Map<string, number>();
-      let total = 0;
       (pags || []).forEach((p: any) => {
         const v = Number(p.valor || 0);
-        total += v;
         const leadId = pacienteToLead.get(p.paciente_id);
         if (leadId) map.set(leadId, (map.get(leadId) || 0) + v);
       });
 
-      // Set de leads com QUALQUER pagamento vinculado (todos os tempos),
-      // considerando todos os leads ligados ao paciente que pagou.
       const pacienteToAllLeads = new Map<string, string[]>();
       (links || []).forEach((l: any) => {
         const arr = pacienteToAllLeads.get(l.paciente_id) || [];
@@ -570,7 +587,6 @@ export default function CrmKanban() {
         ids.forEach((id) => paidLeadIds.add(id));
       });
 
-      setVendasConcluidas(total);
       setLeadMonthValueMap(map);
       setLeadsWithPagamento(paidLeadIds);
     })();

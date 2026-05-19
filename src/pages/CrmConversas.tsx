@@ -96,7 +96,7 @@ const SidePanelFallback = () => (
   </div>
 );
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
-const CONVERSATION_INITIAL_LIMIT = 500;
+const CONVERSATION_INITIAL_LIMIT = 2000;
 const LEAD_SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
 
 const getLastDirection = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => {
