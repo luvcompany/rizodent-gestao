@@ -246,7 +246,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       // Still refresh in background
       (async () => {
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
-          fetchAllConversationLeads(tenant.id),
+          fetchRecentConversationLeads(tenant.id),
           supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
           supabase.from("crm_pipelines").select("id, name").eq("tenant_id", tenant.id).order("created_at"),
         ]);
@@ -266,7 +266,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
     const fetchLeads = async () => {
       const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
-        fetchAllConversationLeads(tenant.id),
+        fetchRecentConversationLeads(tenant.id),
         supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
         supabase.from("crm_pipelines").select("id, name").eq("tenant_id", tenant.id).order("created_at"),
       ]);
