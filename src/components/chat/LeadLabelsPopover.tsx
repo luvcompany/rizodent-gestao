@@ -66,6 +66,11 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
       <DialogContent
         className="w-[340px] max-w-[calc(100vw-2rem)] p-0"
         onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        onKeyUp={(e) => e.stopPropagation()}
+        onKeyPress={(e) => e.stopPropagation()}
       >
         <DialogHeader className="sr-only">
           <DialogTitle>Configurar marcadores</DialogTitle>
