@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmCampanhas() {
   const { userRole } = useAuth();
-  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
+  const canShare = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   const [broadcasts, setBroadcasts] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [pipelines, setPipelines] = useState<any[]>([]);

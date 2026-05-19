@@ -10,7 +10,7 @@ import { Loader2, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-type Role = "admin" | "gerente" | "crc" | "posvenda" | "superadmin";
+type Role = "gerente" | "crc" | "posvenda" | "superadmin";
 
 type Pipeline = {
   id: string;
@@ -42,30 +42,30 @@ type Override = {
 };
 
 const PAGES: { slug: string; label: string; defaultRoles: Role[] }[] = [
-  { slug: "dashboard", label: "Dashboard", defaultRoles: ["admin", "gerente", "crc", "posvenda"] },
-  { slug: "crm", label: "CRM (Conversas)", defaultRoles: ["admin", "gerente", "crc", "posvenda"] },
-  { slug: "calendario", label: "Calendário", defaultRoles: ["admin", "gerente", "crc", "posvenda"] },
-  { slug: "daily", label: "Daily", defaultRoles: ["admin", "gerente", "crc"] },
-  { slug: "relatorios", label: "Relatórios", defaultRoles: ["admin", "gerente"] },
-  { slug: "pacientes", label: "Pacientes", defaultRoles: ["admin", "gerente", "crc", "posvenda"] },
-  { slug: "usuarios", label: "Usuários", defaultRoles: ["admin"] },
-  { slug: "configuracoes", label: "Configurações", defaultRoles: ["admin", "gerente"] },
+  { slug: "dashboard", label: "Dashboard", defaultRoles: ["crc", "gerente", "posvenda"] },
+  { slug: "crm", label: "CRM (Conversas)", defaultRoles: ["crc", "gerente", "posvenda"] },
+  { slug: "calendario", label: "Calendário", defaultRoles: ["crc", "gerente", "posvenda"] },
+  { slug: "daily", label: "Daily", defaultRoles: ["crc", "gerente"] },
+  { slug: "relatorios", label: "Relatórios", defaultRoles: ["crc", "gerente"] },
+  { slug: "pacientes", label: "Pacientes", defaultRoles: ["crc", "gerente", "posvenda"] },
+  { slug: "usuarios", label: "Usuários", defaultRoles: ["crc"] },
+  { slug: "configuracoes", label: "Configurações", defaultRoles: ["crc", "gerente"] },
 ];
 
 const ACTIONS: { slug: string; label: string; defaultRoles: Role[] }[] = [
-  { slug: "delete_leads", label: "Excluir leads", defaultRoles: ["admin", "gerente"] },
-  { slug: "transfer_leads", label: "Transferir leads", defaultRoles: ["admin", "gerente"] },
-  { slug: "broadcast", label: "Disparar broadcast em massa", defaultRoles: ["admin", "gerente"] },
-  { slug: "edit_bots", label: "Editar bots", defaultRoles: ["admin", "gerente"] },
-  { slug: "view_financial", label: "Ver relatórios financeiros", defaultRoles: ["admin", "gerente"] },
-  { slug: "create_pipelines", label: "Criar/editar funis", defaultRoles: ["admin", "gerente"] },
-  { slug: "create_stages", label: "Criar/editar etapas de funil", defaultRoles: ["admin", "gerente"] },
-  { slug: "create_automations", label: "Criar/editar automações", defaultRoles: ["admin", "gerente"] },
-  { slug: "create_triggers", label: "Criar/editar gatilhos de bot", defaultRoles: ["admin", "gerente"] },
-  { slug: "create_followups", label: "Criar/editar follow-ups", defaultRoles: ["admin", "gerente"] },
-  { slug: "create_templates", label: "Criar/editar modelos (templates)", defaultRoles: ["admin", "gerente"] },
-  { slug: "manage_integrations", label: "Gerenciar integrações", defaultRoles: ["admin"] },
-  { slug: "manage_users", label: "Gerenciar usuários", defaultRoles: ["admin"] },
+  { slug: "delete_leads", label: "Excluir leads", defaultRoles: ["crc", "gerente"] },
+  { slug: "transfer_leads", label: "Transferir leads", defaultRoles: ["crc", "gerente"] },
+  { slug: "broadcast", label: "Disparar broadcast em massa", defaultRoles: ["crc", "gerente"] },
+  { slug: "edit_bots", label: "Editar bots", defaultRoles: ["crc", "gerente"] },
+  { slug: "view_financial", label: "Ver relatórios financeiros", defaultRoles: ["crc", "gerente"] },
+  { slug: "create_pipelines", label: "Criar/editar funis", defaultRoles: ["crc", "gerente"] },
+  { slug: "create_stages", label: "Criar/editar etapas de funil", defaultRoles: ["crc", "gerente"] },
+  { slug: "create_automations", label: "Criar/editar automações", defaultRoles: ["crc", "gerente"] },
+  { slug: "create_triggers", label: "Criar/editar gatilhos de bot", defaultRoles: ["crc", "gerente"] },
+  { slug: "create_followups", label: "Criar/editar follow-ups", defaultRoles: ["crc", "gerente"] },
+  { slug: "create_templates", label: "Criar/editar modelos (templates)", defaultRoles: ["crc", "gerente"] },
+  { slug: "manage_integrations", label: "Gerenciar integrações", defaultRoles: ["crc"] },
+  { slug: "manage_users", label: "Gerenciar usuários", defaultRoles: ["crc"] },
 ];
 
 interface Props {
@@ -127,7 +127,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     })();
   }, [open, userId]);
 
-  const isSuper = userRole === "admin" || userRole === "superadmin";
+  const isSuper = userRole === "crc" || userRole === "superadmin";
 
   const defaultForPipeline = (p: Pipeline) => {
     if (!userRole) return false;

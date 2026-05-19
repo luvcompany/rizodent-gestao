@@ -32,7 +32,7 @@ type Metrics = {
   leads_score_medio: number;
 };
 
-const ALLOWED_ROLES = ["posvenda", "admin", "gerente", "superadmin"];
+const ALLOWED_ROLES = ["posvenda", "crc", "gerente", "superadmin"];
 
 export default function CrmPosVendaDashboard() {
   const navigate = useNavigate();

@@ -12,7 +12,7 @@ import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, Chevron
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
-type OwnerRole = "admin" | "gerente" | "crc" | "posvenda" | "superadmin" | null;
+type OwnerRole = "gerente" | "crc" | "posvenda" | "superadmin" | null;
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
@@ -23,10 +23,9 @@ type WhatsAppTemplate = {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  admin: "Admin", gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
+  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
 };
 const ROLE_BADGE_COLOR: Record<string, string> = {
-  admin: "bg-orange-900/30 text-orange-400",
   gerente: "bg-blue-900/30 text-blue-400",
   crc: "bg-purple-900/30 text-purple-400",
   posvenda: "bg-green-900/30 text-green-400",
@@ -44,7 +43,7 @@ const PAGE_SIZE = 10;
 
 export default function CrmModelos() {
   const { userRole } = useAuth();
-  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
+  const canShare = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
 
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -465,14 +464,13 @@ export default function CrmModelos() {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">Todos os papéis (compartilhado)</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="gerente">Gerente</SelectItem>
                 <SelectItem value="crc">CRC</SelectItem>
+                <SelectItem value="gerente">Gerente</SelectItem>
                 <SelectItem value="posvenda">Pós-venda</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-muted-foreground">
-              Admin, Gerente e Superadmin sempre veem todos os modelos.
+              Gerente e Superadmin sempre veem todos os modelos.
             </p>
           </div>
           <div className="flex gap-2 justify-end mt-4">

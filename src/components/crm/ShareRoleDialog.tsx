@@ -6,13 +6,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export type OwnerRole = "admin" | "gerente" | "crc" | "posvenda" | "superadmin" | null;
+export type OwnerRole = "gerente" | "crc" | "posvenda" | "superadmin" | null;
 
 export const ROLE_LABEL: Record<string, string> = {
-  admin: "Admin", gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
+  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
 };
 export const ROLE_BADGE_COLOR: Record<string, string> = {
-  admin: "bg-orange-900/30 text-orange-400",
   gerente: "bg-blue-900/30 text-blue-400",
   crc: "bg-purple-900/30 text-purple-400",
   posvenda: "bg-green-900/30 text-green-400",
@@ -71,14 +70,13 @@ export default function ShareRoleDialog({ open, onOpenChange, table, rowId, curr
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Todos os papéis (compartilhado)</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="gerente">Gerente</SelectItem>
               <SelectItem value="crc">CRC</SelectItem>
+              <SelectItem value="gerente">Gerente</SelectItem>
               <SelectItem value="posvenda">Pós-venda</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-muted-foreground">
-            Admin, Gerente e Superadmin sempre visualizam tudo.
+            Gerente e Superadmin sempre visualizam tudo.
           </p>
         </div>
         <div className="flex gap-2 justify-end mt-4">
