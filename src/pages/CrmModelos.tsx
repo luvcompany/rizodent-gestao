@@ -68,6 +68,7 @@ export default function CrmModelos() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedIntegration, setSelectedIntegration] = useState<string>("");
   const [syncing, setSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [migrating, setMigrating] = useState(false);
   const [shareTarget, setShareTarget] = useState<WhatsAppTemplate | null>(null);
 
@@ -104,7 +105,7 @@ export default function CrmModelos() {
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
-  const handleSync = async () => {
+  const handleSync = useCallback(async (silent = false) => {
     if (!selectedIntegration || syncing) return;
     setSyncing(true);
     try {
@@ -114,13 +115,14 @@ export default function CrmModelos() {
       if (error) throw error;
       const { data: refreshed } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
       if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
-      toast.success(`Sincronizado! ${data?.count || 0} modelos encontrados na Meta.`);
+      setLastSyncAt(new Date());
+      if (!silent) toast.success(`Sincronizado! ${data?.count || 0} modelos encontrados na Meta.`);
     } catch (e: any) {
-      toast.error("Erro ao sincronizar: " + (e?.message || String(e)));
+      if (!silent) toast.error("Erro ao sincronizar: " + (e?.message || String(e)));
     } finally {
       setSyncing(false);
     }
-  };
+  }, [selectedIntegration, syncing]);
 
   // Mapeamento dos 5 modelos antigos (com [colchete]) → novos com {{1}}/{{2}}
   const LEGACY_MIGRATION_MAP: {
@@ -437,7 +439,11 @@ export default function CrmModelos() {
           return;
         }
 
-        toast.success(`Template submetido! Status: ${data?.status || "PENDING"}`);
+        toast.success(
+          `Template enviado à Meta (WABA ${data?.waba_id || "?"}). Status: ${data?.status || "PENDING"}. Sincronizando em 5s…`,
+          { duration: 6000 }
+        );
+        setTimeout(() => { handleSync(true); }, 5000);
       } catch (e: any) {
         toast.error("Erro ao enviar: " + (e?.message || String(e)));
         setSubmitting(false);
@@ -516,9 +522,10 @@ export default function CrmModelos() {
 
 
   const statusBadge = (s: string) => {
-    if (s === "APPROVED") return <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium">Aprovado</span>;
-    if (s === "PENDING") return <span className="text-[10px] bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full font-medium">Pendente</span>;
-    return <span className="text-[10px] bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-medium">Rejeitado</span>;
+    if (s === "APPROVED") return <span title="Aprovado pela Meta — pronto para uso" className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium cursor-help">Aprovado</span>;
+    if (s === "PENDING") return <span title="Em análise pela Meta (pode levar até 24h). Clique em 'Sincronizar com Meta' para atualizar." className="text-[10px] bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full font-medium cursor-help">Pendente</span>;
+    if (s === "DRAFT") return <span title="Rascunho local — ainda não enviado à Meta" className="text-[10px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full font-medium cursor-help">Rascunho</span>;
+    return <span title="Rejeitado pela Meta — edite ou recrie o modelo" className="text-[10px] bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-medium cursor-help">Rejeitado</span>;
   };
 
   const categoryBadge = (c: string) => {
@@ -559,9 +566,14 @@ export default function CrmModelos() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing}>
+          {lastSyncAt && (
+            <span className="text-[11px] text-muted-foreground" title={lastSyncAt.toLocaleString("pt-BR")}>
+              Última sinc: {lastSyncAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          <Button size="sm" variant="outline" onClick={() => handleSync(false)} disabled={syncing}>
             <RefreshCw size={14} className={`mr-1 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Sincronizar"}
+            {syncing ? "Sincronizando..." : "Sincronizar com Meta"}
           </Button>
           <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
             <Plus size={14} className="mr-1" /> Novo Modelo

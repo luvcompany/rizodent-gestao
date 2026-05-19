@@ -232,26 +232,69 @@ Deno.serve(async (req) => {
 
       const metaPayload = { name, language, category, components };
 
-      console.log("[CREATE] Sending to Meta:", JSON.stringify(metaPayload));
+      console.log("[CREATE] Sending to Meta (WABA " + WABA_ID + "):", JSON.stringify(metaPayload));
 
-      const metaRes = await fetch(
-        `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(metaPayload),
-        }
-      );
+      // Resolve tenant for logging
+      const { data: profile } = await supabase
+        .from("profiles").select("tenant_id").eq("id", user.id).maybeSingle();
+      const tenantId = (profile as any)?.tenant_id || null;
 
-      const metaData = await metaRes.json();
-      console.log("[CREATE] Meta response:", JSON.stringify(metaData));
+      // Log REQUEST before fetch
+      await supabase.from("whatsapp_template_logs").insert({
+        tenant_id: tenantId,
+        action: "create_request",
+        template_name: name,
+        waba_id: WABA_ID,
+        request_payload: metaPayload,
+        user_id: user.id,
+      });
+
+      let metaRes: Response;
+      let metaData: any;
+      try {
+        metaRes = await fetch(
+          `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(metaPayload),
+          }
+        );
+        metaData = await metaRes.json();
+      } catch (fetchErr) {
+        await supabase.from("whatsapp_template_logs").insert({
+          tenant_id: tenantId,
+          action: "create_fetch_error",
+          template_name: name,
+          waba_id: WABA_ID,
+          response_body: { error: String(fetchErr) },
+          user_id: user.id,
+        });
+        return new Response(
+          JSON.stringify({ error: "Falha de rede ao contatar Meta", details: String(fetchErr) }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log("[CREATE] Meta response (" + metaRes.status + "):", JSON.stringify(metaData));
+
+      // Log RESPONSE
+      await supabase.from("whatsapp_template_logs").insert({
+        tenant_id: tenantId,
+        action: "create_response",
+        template_name: name,
+        waba_id: WABA_ID,
+        response_body: metaData,
+        http_status: metaRes.status,
+        user_id: user.id,
+      });
 
       if (!metaRes.ok) {
         return new Response(
-          JSON.stringify({ error: "Erro na API da Meta", details: metaData }),
+          JSON.stringify({ error: "Erro na API da Meta", details: metaData, waba_id: WABA_ID }),
           { status: metaRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -278,7 +321,12 @@ Deno.serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ success: true, meta_template_id: metaData.id, status: metaData.status || "PENDING" }),
+        JSON.stringify({
+          success: true,
+          meta_template_id: metaData.id,
+          status: metaData.status || "PENDING",
+          waba_id: WABA_ID,
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
