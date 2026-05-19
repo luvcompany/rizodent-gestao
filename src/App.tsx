@@ -136,6 +136,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/respostas-rapidas" element={<CrmRespostasRapidas />} />
               <Route path="/crm/campanhas" element={<CrmCampanhas />} />
               <Route path="/crm/ia-config" element={<CrmIaConfig />} />
+              <Route path="/crm/usuarios" element={<Usuarios />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
