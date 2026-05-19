@@ -25,23 +25,11 @@ export const LABEL_COLORS = [
 
 let labelsCache: LeadLabel[] = [];
 let assignmentsCache: LeadLabelAssignment[] = [];
-let labelByIdCache = new Map<string, LeadLabel>();
-let assignmentsByLeadCache = new Map<string, LeadLabelAssignment[]>();
 let loadedForUserId: string | null = null;
 let inFlight: Promise<void> | null = null;
 const subscribers = new Set<() => void>();
 
 const notifySubscribers = () => subscribers.forEach((fn) => fn());
-
-const rebuildIndexes = () => {
-  labelByIdCache = new Map(labelsCache.map((label) => [label.id, label]));
-  assignmentsByLeadCache = new Map();
-  assignmentsCache.forEach((assignment) => {
-    const items = assignmentsByLeadCache.get(assignment.lead_id) || [];
-    items.push(assignment);
-    assignmentsByLeadCache.set(assignment.lead_id, items);
-  });
-};
 
 export function useLeadLabels() {
   const { user, loading: authLoading } = useAuth();
@@ -65,7 +53,6 @@ export function useLeadLabels() {
     if (!user) {
       labelsCache = [];
       assignmentsCache = [];
-      rebuildIndexes();
       loadedForUserId = null;
       notifySubscribers();
       setLoading(false);
@@ -80,7 +67,6 @@ export function useLeadLabels() {
     if (loadedForUserId && loadedForUserId !== user.id) {
       labelsCache = [];
       assignmentsCache = [];
-      rebuildIndexes();
       loadedForUserId = null;
       notifySubscribers();
     }
@@ -96,7 +82,6 @@ export function useLeadLabels() {
         if (asgRes.error) console.warn("[useLeadLabels] assignments:", asgRes.error.message);
         labelsCache = (lblRes.data as LeadLabel[]) || [];
         assignmentsCache = (asgRes.data as LeadLabelAssignment[]) || [];
-        rebuildIndexes();
         loadedForUserId = user.id;
         notifySubscribers();
       })().finally(() => { inFlight = null; });
@@ -108,9 +93,9 @@ export function useLeadLabels() {
   useEffect(() => { reload(); }, [reload]);
 
   const labelsByLead = useCallback((leadId: string): LeadLabel[] => {
-    const lblMap = labels.length === labelsCache.length ? labelByIdCache : new Map(labels.map(l => [l.id, l]));
-    const leadAssignments = assignments.length === assignmentsCache.length ? assignmentsByLeadCache.get(leadId) || [] : assignments.filter(a => a.lead_id === leadId);
-    return leadAssignments
+    const lblMap = new Map(labels.map(l => [l.id, l]));
+    return assignments
+      .filter(a => a.lead_id === leadId)
       .map(a => lblMap.get(a.label_id))
       .filter((l): l is LeadLabel => !!l);
   }, [labels, assignments]);
@@ -124,7 +109,6 @@ export function useLeadLabels() {
       .single();
     if (!error && data) {
       labelsCache = [...labelsCache, data as LeadLabel];
-      rebuildIndexes();
       notifySubscribers();
       return data as LeadLabel;
     }
@@ -135,7 +119,6 @@ export function useLeadLabels() {
     const { error } = await supabase.from("crm_user_labels").update(patch).eq("id", id);
     if (!error) {
       labelsCache = labelsCache.map(l => l.id === id ? { ...l, ...patch } as LeadLabel : l);
-      rebuildIndexes();
       notifySubscribers();
     }
   }, []);
@@ -145,7 +128,6 @@ export function useLeadLabels() {
     if (!error) {
       labelsCache = labelsCache.filter(l => l.id !== id);
       assignmentsCache = assignmentsCache.filter(a => a.label_id !== id);
-      rebuildIndexes();
       notifySubscribers();
     }
   }, []);
@@ -157,7 +139,6 @@ export function useLeadLabels() {
       const { error } = await supabase.from("crm_lead_label_assignments").delete().eq("id", existing.id);
       if (!error) {
         assignmentsCache = assignmentsCache.filter(a => a.id !== existing.id);
-        rebuildIndexes();
         notifySubscribers();
       }
     } else {
@@ -168,7 +149,6 @@ export function useLeadLabels() {
         .single();
       if (!error && data) {
         assignmentsCache = [...assignmentsCache, data as LeadLabelAssignment];
-        rebuildIndexes();
         notifySubscribers();
       }
     }

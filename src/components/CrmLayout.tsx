@@ -62,9 +62,11 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
   return items;
 };
 
+const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+
 const CrmLayout = () => {
   const navigate = useNavigate();
-  const { userRole, user } = useAuth();
+  const { userRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -84,32 +86,40 @@ const CrmLayout = () => {
   };
 
   useEffect(() => {
-    if (!user) return;
-    let debounceTimer: number | undefined;
     const fetchUnread = async () => {
       const seq = ++unreadFetchSeq.current;
-      const { data, error } = await supabase.rpc("crm_unread_leads_count" as any);
-      const unreadTotal = error ? 0 : Number(data || 0);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || seq !== unreadFetchSeq.current) return;
+      const PAGE_SIZE = 1000;
+      let unreadTotal = 0;
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: unreadCandidates, error } = await supabase
+          .from("crm_leads")
+          .select("id, last_inbound_at, last_outbound_at")
+          .eq("is_blocked", false)
+          .neq("pipeline_id", INSTAGRAM_PIPELINE_ID)
+          .not("last_inbound_at", "is", null)
+          .order("id", { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (seq !== unreadFetchSeq.current || error || !unreadCandidates?.length) break;
+        unreadTotal += unreadCandidates.filter(
+          (l: any) => !l.last_outbound_at || new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
+        ).length;
+        if (unreadCandidates.length < PAGE_SIZE) break;
+      }
       if (seq === unreadFetchSeq.current) {
         setUnreadCount(unreadTotal);
       }
     };
-    const debouncedFetch = () => {
-      if (debounceTimer) window.clearTimeout(debounceTimer);
-      debounceTimer = window.setTimeout(fetchUnread, 8000);
-    };
     fetchUnread();
     const ch = supabase.channel("unread-badge")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, debouncedFetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, fetchUnread)
       .subscribe();
-    return () => {
-      if (debounceTimer) window.clearTimeout(debounceTimer);
-      supabase.removeChannel(ch);
-    };
-  }, [user?.id]);
+    return () => { supabase.removeChannel(ch); };
+  }, []);
 
   useEffect(() => {
-    let debounceTimer: number | undefined;
     const fetchTodayTasks = async () => {
       const today = toLocalDateISO();
       const { count } = await supabase
@@ -119,20 +129,12 @@ const CrmLayout = () => {
         .lte("due_date", `${today}T23:59:59`);
       setTodayTaskCount(count || 0);
     };
-    const debouncedFetch = () => {
-      if (debounceTimer) window.clearTimeout(debounceTimer);
-      debounceTimer = window.setTimeout(fetchTodayTasks, 5000);
-    };
     fetchTodayTasks();
     const ch = supabase.channel("task-badge")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, debouncedFetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, fetchTodayTasks)
       .subscribe();
-    return () => {
-      if (debounceTimer) window.clearTimeout(debounceTimer);
-      supabase.removeChannel(ch);
-    };
+    return () => { supabase.removeChannel(ch); };
   }, []);
-
 
   const renderNavItem = (item: NavItem) => (
     <NavLink

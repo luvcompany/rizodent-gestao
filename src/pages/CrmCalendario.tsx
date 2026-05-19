@@ -204,7 +204,7 @@ export default function CrmCalendario() {
   };
 
   const filtered = useMemo(() => {
-    const isPrivileged = userRole === "admin" || userRole === "gerente" || userRole === "superadmin" || userRole === "crc";
+    const isPrivileged = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
     return tasks.filter((t) => {
       if (!isPrivileged && userRole) {
         // Show only tasks owned by the user's role or assigned to them
