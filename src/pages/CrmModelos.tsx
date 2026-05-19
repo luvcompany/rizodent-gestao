@@ -23,10 +23,9 @@ type WhatsAppTemplate = {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  admin: "Admin", gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
+  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
 };
 const ROLE_BADGE_COLOR: Record<string, string> = {
-  admin: "bg-orange-900/30 text-orange-400",
   gerente: "bg-blue-900/30 text-blue-400",
   crc: "bg-purple-900/30 text-purple-400",
   posvenda: "bg-green-900/30 text-green-400",
