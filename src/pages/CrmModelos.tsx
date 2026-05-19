@@ -640,7 +640,7 @@ export default function CrmModelos() {
                       {form.header_type === "TEXT" ? form.header_content : null}
                     </div>
                   )}
-                  <p className="text-foreground text-xs whitespace-pre-wrap">{form.body_text || "Corpo da mensagem..."}</p>
+                  <p className="text-foreground text-xs whitespace-pre-wrap">{renderPreviewBody(form.body_text)}</p>
                   {form.footer_text && <p className="text-[10px] text-muted-foreground mt-1">{form.footer_text}</p>}
                 </div>
                 {form.buttons.length > 0 && (
