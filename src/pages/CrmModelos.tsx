@@ -549,10 +549,48 @@ export default function CrmModelos() {
               <div>
                 <div className="flex items-center justify-between">
                   <Label>Corpo da mensagem</Label>
-                  <button onClick={insertVariable} className="text-xs text-primary hover:underline">+ Variável</button>
+                  <Popover open={variablePopoverOpen} onOpenChange={setVariablePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="text-xs text-primary hover:underline">+ Variável</button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-72 p-1">
+                      <div className="px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Inserir variável dinâmica
+                      </div>
+                      {TEMPLATE_VARIABLES.map(v => (
+                        <button
+                          key={v.index}
+                          type="button"
+                          onClick={() => insertVariableAt(v.index)}
+                          className="w-full text-left px-2 py-1.5 rounded hover:bg-secondary transition-colors group"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-foreground">{v.label}</span>
+                            <code className="text-[10px] bg-secondary group-hover:bg-background px-1.5 py-0.5 rounded text-primary font-mono">{`{{${v.index}}}`}</code>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Exemplo: {v.sample}</p>
+                        </button>
+                      ))}
+                      <div className="px-2 py-1.5 mt-1 border-t border-border text-[10px] text-muted-foreground">
+                        A Meta só substitui <code className="font-mono">{`{{N}}`}</code>. Texto como <code className="font-mono">[nome]</code> é enviado literal.
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
-                <Textarea rows={5} placeholder="Olá {{1}}, tudo bem?" value={form.body_text} onChange={e => setForm(p => ({ ...p, body_text: e.target.value }))} />
+                <Textarea
+                  ref={bodyTextareaRef}
+                  rows={5}
+                  placeholder="Olá {{1}}, tudo bem?"
+                  value={form.body_text}
+                  onChange={e => setForm(p => ({ ...p, body_text: e.target.value }))}
+                />
+                {hasInvalidPlaceholders(form.body_text) && (
+                  <p className="text-[11px] text-destructive mt-1">
+                    ⚠ Detectamos texto entre colchetes (ex: <code className="font-mono">[nome]</code>). Isso será enviado literalmente ao paciente. Use o botão <strong>+ Variável</strong> e troque por <code className="font-mono">{`{{1}}`}</code>, <code className="font-mono">{`{{2}}`}</code>, etc.
+                  </p>
+                )}
               </div>
+
 
               {/* Footer */}
               <div>
