@@ -239,13 +239,15 @@ const CrmLayout = () => {
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground hover:text-primary transition-colors"
-          >
-            <ArrowLeft size={16} />
-            Voltar ao Sistema
-          </button>
+          {userRole !== "posvenda" && (
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground hover:text-primary transition-colors"
+            >
+              <ArrowLeft size={16} />
+              Voltar ao Sistema
+            </button>
+          )}
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}
