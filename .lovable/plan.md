@@ -1,56 +1,101 @@
-## Diagnóstico (importante)
+# Refazer os 5 modelos WhatsApp na Meta
 
-O WhatsApp da Meta **só substitui placeholders no formato `{{1}}`, `{{2}}`, `{{3}}`** — qualquer outra coisa (como `[nome]`, `[lead.nome]`, `{nome}`) vai **literalmente** no texto enviado ao paciente.
+## Contexto
 
-Hoje no sistema:
-- `send-whatsapp-message` reconhece somente `{{N}}` (regex `/\{\{\s*(\d+)\s*\}\}/g`)
-- A posição é **fixa**:
-  - `{{1}}` → Nome do lead (fallback "cliente")
-  - `{{2}}` → Data e hora do próximo agendamento (dd/mm/aaaa às HH:mm)
-  - `{{3}}` → Serviço de interesse
-  - `{{4}}` → Telefone (fallback extra)
-  - `{{5}}` → Origem (fallback extra)
-- O botão atual "+ Variável" só insere `{{1}}`, `{{2}}`… numerados sequenciais, sem mostrar o que cada número significa.
+Os 5 modelos abaixo estão `APPROVED` na Meta, mas têm `[Primeiro nome]` e `[Data e Horário]` como texto literal — ou seja, o paciente recebe a palavra `[Primeiro nome]` em vez do nome real. Precisam ser refeitos com placeholders válidos `{{1}}` e `{{2}}`.
 
-**Verificação dos modelos antigos do CRC:** Se algum modelo aprovado contém `[nome]`, `[lead.nome]`, `{nome}` ou qualquer texto fora do padrão `{{N}}`, ele está sendo enviado **literalmente** (o lead recebe a palavra `[nome]` no lugar do nome). Vamos rodar uma checagem na tabela `crm_whatsapp_templates` e listar quais modelos têm esse problema, para você decidir quais reescrever/reenviar para aprovação.
+| Modelo antigo | Cidade | Header atual |
+|---|---|---|
+| `agendamento_guanambi_w9yunp` | Guanambi | IMAGEM da clínica |
+| `agendamento_itabuna_997814` | Itabuna | IMAGEM da clínica |
+| `agendamento_vca_1_ld18jz` | VCA (R. Francisco Andrade) | IMAGEM da clínica |
+| `agendamento_vca_2_im8new` | VCA (R. Monsenhor Olímpio) | IMAGEM da clínica |
+| `confirmacao_de_agenda_segunda_hw8nan` | Confirmação seg. | Sem header |
 
-> Observação adicional: a Meta normalmente rejeita templates com placeholders fora do padrão `{{N}}` no momento da submissão, mas se o template foi aprovado com texto solto entre colchetes, ele passa como texto comum — sem substituição.
+Decisões já confirmadas:
+- "Serviço: Check-up odontológico" fica **fixo** (sem variável).
+- Submissão para Meta **automática** (sem revisão prévia).
 
-## O que vamos construir
+## Ponto importante sobre as imagens das clínicas
 
-### 1. Seletor de variáveis no editor de Modelos (`src/pages/CrmModelos.tsx`)
-Substituir o botão "+ Variável" por um **Popover** com a lista das variáveis disponíveis. Cada item insere o `{{N}}` correto na posição do cursor:
+A submissão de header tipo `IMAGE` na Meta exige um `header_handle` recém-gerado por sessão de Resumable Upload — a URL `scontent.whatsapp.net` que está salva hoje **não funciona** numa nova submissão. Reimplementar o fluxo de upload resumível só para isso é um esforço grande, então proponho:
 
-| Rótulo na lista              | Insere | O que o CRM preenche no envio                         |
-|------------------------------|--------|--------------------------------------------------------|
-| Nome do lead                 | `{{1}}` | `lead.name` (ou "cliente")                            |
-| Data e hora do agendamento   | `{{2}}` | próximo agendamento confirmado/pendente               |
-| Serviço de interesse         | `{{3}}` | `lead.servico_interesse` (ou "consulta")              |
-| Telefone do lead             | `{{4}}` | `lead.phone`                                          |
-| Origem do lead               | `{{5}}` | `lead.source`                                          |
+→ **Converter o header das 4 ag*endamento* para TEXT** com `📍 Agendamento Realizado` (que hoje está no corpo). A informação de localização permanece no corpo do texto. Isso permite submissão 100% automática, sem upload manual.
 
-Regras do seletor:
-- Insere na posição do cursor (não só no final).
-- Mostra um aviso curto abaixo do campo: *"Use o botão Variável; a Meta só reconhece `{{N}}`. Evite escrever `[nome]` manualmente."*
-- Bloqueia repetição da mesma variável (Meta exige `{{1}}` antes de `{{2}}`, etc.) — se o usuário inserir fora de ordem, mostramos um toast pedindo para reorganizar.
+Se preferir manter as fotos, o caminho alternativo é eu deixar os rascunhos prontos e você reenviar a imagem pela tela Modelos antes de submeter — me avise e eu sigo por aí.
 
-### 2. Preview com nomes reais (não números)
-No painel "Preview" à direita, renderizar `{{1}}` como `Maria Silva`, `{{2}}` como `20/05 às 14:00`, `{{3}}` como `Implante`, etc. — assim você vê exatamente como o lead vai receber. Hoje o preview mostra o texto cru com `{{1}}`.
+## Conteúdo final dos 5 modelos
 
-### 3. Auditoria dos modelos atuais
-Consultar `crm_whatsapp_templates` (somente leitura) e listar os modelos cujo `body_text` contém:
-- `[nome]`, `[Nome]`, `{nome}`, `[lead.*]`, `[paciente]`
-- ou qualquer texto entre `[...]` que não seja `{{N}}`
+Todos `language=pt_BR`, `category=UTILITY` (mais adequado que MARKETING para confirmação de agendamento, evita rejeição), nomes novos com sufixo `_v2`.
 
-Vamos te mostrar a lista no chat para você decidir quais reescrever e reenviar para aprovação na Meta (os já aprovados precisarão de um novo submit, pois texto aprovado não pode ser editado).
+### 1. `agendamento_guanambi_v2`
+- Header TEXT: `📍 Agendamento Realizado`
+- Body:
+  ```
+  Olá {{1}}! Seu agendamento foi realizado.
+  
+  Data e horário: {{2}}
+  Serviço: Check-up odontológico
+  
+  Estamos localizados na Rua dos Expedicionários, 71 - Centro, ao lado do banco Santander.
+  
+  Estaremos te esperando 🧡
+  ```
+- Footer: `Rizodent`
+- Botão URL: `Ver localização` → `https://maps.app.goo.gl/E8MHDBPVp4Mxr4gr6`
 
-## Arquivos alterados
+### 2. `agendamento_itabuna_v2`
+Mesma estrutura, endereço: `Av. Cinquentenário, 375, ao lado da Jan e Ju, em frente ao banco Bradesco`. Botão URL para o mapa de Itabuna.
 
-- `src/pages/CrmModelos.tsx` — substituir botão "+ Variável" por Popover com lista, inserção na posição do cursor, preview com valores de exemplo, aviso visual.
+### 3. `agendamento_vca_1_v2`
+Endereço: `R. Francisco Andrade, próximo ao Bigode de Pedral e acima do Ceasa (antiga Meira Gás)`. Botão URL do mapa correspondente.
 
-## Fora do escopo deste plano
-- Nenhuma mudança em Edge Functions (a resolução `{{N}}` já funciona corretamente).
-- Nenhuma mudança no banco.
-- A correção dos modelos antigos será feita por você (re-submit na Meta) depois que listarmos os afetados.
+### 4. `agendamento_vca_2_v2`
+Endereço: `R. Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens`. Botão URL correspondente.
 
-Posso aprovar para implementar?
+### 5. `confirmacao_de_agenda_segunda_v2`
+- Sem header
+- Body:
+  ```
+  Olá {{1}}! Aqui é da Rizodent 🧡✨
+  
+  Estamos confirmando sua consulta agendada para segunda-feira, {{2}}.
+  
+  Por favor, responda "Sim" para confirmar ou "Quero reagendar" se precisar de outra data.
+  
+  Aguardamos você 😊
+  ```
+- Botões Quick Reply: `Sim!` e `Quero reagendar.`
+
+## Mapeamento dos placeholders
+
+Já existe em `send-whatsapp-message`:
+- `{{1}}` → `lead.name` (primeiro nome)
+- `{{2}}` → próxima data/hora do agendamento
+
+Nada precisa mudar no backend de envio.
+
+## Passos de execução
+
+1. **Migração** insere as 5 novas linhas em `crm_whatsapp_templates` (status `DRAFT`, tenant Rizodent).
+2. **Submeter à Meta**: invocar a edge function `submit-whatsapp-template` 5 vezes (uma para cada). Cada chamada cria o modelo na Meta e atualiza `status=PENDING` + `meta_template_id`.
+3. **Aguardar aprovação** (geralmente minutos). A sincronização automática já existente vai mover para `APPROVED`.
+4. **Excluir os 5 antigos** chamando `manage-whatsapp-templates` com `action: "delete"` para cada um — apaga da Meta e do banco local.
+
+Os passos 2–4 ficam num botão único "Migrar para placeholders" na tela Modelos (UI temporária), porque as edge functions exigem sessão autenticada de admin/gerente — não dá para rodar 100% no backend sem expor service role. Você clica uma vez e o frontend executa as 9 chamadas em sequência.
+
+## Arquivos a alterar
+
+- `supabase/migrations/...` — inserir 5 novos modelos DRAFT.
+- `src/pages/CrmModelos.tsx` — adicionar botão "Migrar 5 modelos antigos" (one-shot), que:
+  1. chama `submit-whatsapp-template` para cada `*_v2`;
+  2. chama `manage-whatsapp-templates` action `delete` para cada modelo antigo;
+  3. mostra progresso por modelo (toast).
+
+Após uso, o botão pode ser removido na próxima limpeza — fica visível só enquanto algum modelo com `[colchete]` existir.
+
+## Riscos / observações
+
+- Se a Meta rejeitar algum modelo (texto fora de política), o antigo correspondente **não** é excluído — o botão só apaga após sucesso da criação.
+- Categoria `UTILITY` cobra menos que `MARKETING` por mensagem e tem aprovação mais rápida. Confirma se topa.
+- O nome `_v2` é definitivo; a Meta bloqueia o nome antigo por ~30 dias após delete.
