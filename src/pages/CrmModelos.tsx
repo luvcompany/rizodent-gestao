@@ -561,9 +561,14 @@ export default function CrmModelos() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing}>
+          {lastSyncAt && (
+            <span className="text-[11px] text-muted-foreground" title={lastSyncAt.toLocaleString("pt-BR")}>
+              Última sinc: {lastSyncAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          <Button size="sm" variant="outline" onClick={() => handleSync(false)} disabled={syncing}>
             <RefreshCw size={14} className={`mr-1 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Sincronizar"}
+            {syncing ? "Sincronizando..." : "Sincronizar com Meta"}
           </Button>
           <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
             <Plus size={14} className="mr-1" /> Novo Modelo
