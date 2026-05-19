@@ -158,6 +158,7 @@ export default function CrmCampanhas() {
         table="crm_broadcasts"
         rowId={shareTarget?.id ?? null}
         currentOwnerRole={(shareTarget?.owner_role ?? null) as OwnerRole}
+        currentSharedRoles={(shareTarget?.shared_roles ?? []) as string[]}
         itemLabel="Campanha"
         onSaved={load}
       />
