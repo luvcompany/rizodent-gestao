@@ -3202,6 +3202,38 @@ export type Database = {
       recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
+      update_whatsapp_template_sharing: {
+        Args: {
+          _owner_role: Database["public"]["Enums"]["app_role"]
+          _shared_roles?: Database["public"]["Enums"]["app_role"][]
+          _template_id: string
+        }
+        Returns: {
+          body_text: string | null
+          buttons: Json | null
+          category: string
+          created_at: string
+          created_by_user_id: string | null
+          footer_text: string | null
+          header_content: string | null
+          header_type: string | null
+          id: string
+          language: string
+          meta_template_id: string | null
+          name: string
+          owner_role: Database["public"]["Enums"]["app_role"] | null
+          shared_roles: Database["public"]["Enums"]["app_role"][]
+          status: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "crm_whatsapp_templates"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       user_can: {
         Args: {
           _default: boolean

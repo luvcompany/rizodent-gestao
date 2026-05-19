@@ -54,7 +54,7 @@ const PAGE_SIZE = 10;
 
 export default function CrmModelos() {
   const { userRole } = useAuth();
-  const canShare = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+  const canShare = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin";
 
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState(true);
