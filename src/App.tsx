@@ -52,11 +52,7 @@ const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
 const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const RouteFallback = () => (
-  <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
-    Carregando...
-  </div>
-);
+const RouteFallback = () => null;
 
 const queryClient = new QueryClient();
 
