@@ -262,9 +262,8 @@ const Usuarios = () => {
                                     <Select value={selectedRole} onValueChange={setSelectedRole}>
                                       <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="admin">Administrador</SelectItem>
-                                        <SelectItem value="gerente">Gerente</SelectItem>
                                         <SelectItem value="crc">CRC</SelectItem>
+                                        <SelectItem value="gerente">Gerente</SelectItem>
                                         <SelectItem value="posvenda">Pós-venda</SelectItem>
                                       </SelectContent>
                                     </Select>
