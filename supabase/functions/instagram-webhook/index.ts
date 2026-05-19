@@ -220,6 +220,56 @@ async function findOrCreateLead(
   return created.id;
 }
 
+type Attachment = { type?: string; payload?: { url?: string; sticker_id?: string | number } };
+
+function describeAttachments(
+  attachments: Attachment[],
+  replyToStoryUrl: string | null,
+  fallbackText: string | null,
+): { content: string; mediaUrl: string | null; msgType: string } {
+  if (replyToStoryUrl && !attachments.length) {
+    const txt = fallbackText?.trim() ? `\n💬 ${fallbackText.trim()}` : "";
+    return { content: `📖 Resposta a story${txt}`, mediaUrl: replyToStoryUrl, msgType: "text" };
+  }
+
+  if (!attachments.length) {
+    return { content: fallbackText ?? "", mediaUrl: null, msgType: "text" };
+  }
+
+  const att = attachments[0];
+  const type = (att?.type ?? "").toLowerCase();
+  const url = att?.payload?.url ?? null;
+  const caption = fallbackText?.trim() ? `\n💬 ${fallbackText.trim()}` : "";
+  const storyPrefix = replyToStoryUrl ? "📖 Resposta a story\n" : "";
+
+  switch (type) {
+    case "ig_reel":
+    case "reel":
+      return { content: `${storyPrefix}🎬 Reels compartilhado${url ? `\n${url}` : ""}${caption}`, mediaUrl: url, msgType: "video" };
+    case "share":
+      return { content: `${storyPrefix}🔗 Publicação compartilhada${url ? `\n${url}` : ""}${caption}`, mediaUrl: url, msgType: "text" };
+    case "story_mention":
+      return { content: `📖 Menção em story${url ? `\n${url}` : ""}${caption}`, mediaUrl: url, msgType: "image" };
+    case "story_reply":
+      return { content: `📖 Resposta a story${caption}`, mediaUrl: url, msgType: "text" };
+    case "image":
+      return { content: `${storyPrefix}${fallbackText ?? ""}`, mediaUrl: url, msgType: "image" };
+    case "video":
+      return { content: `${storyPrefix}${fallbackText ?? ""}`, mediaUrl: url, msgType: "video" };
+    case "audio":
+      return { content: fallbackText ?? "", mediaUrl: url, msgType: "audio" };
+    case "file":
+      return { content: fallbackText ?? "Arquivo", mediaUrl: url, msgType: "document" };
+    case "like_heart":
+      return { content: "❤️", mediaUrl: null, msgType: "text" };
+    default:
+      if (type.includes("sticker") || att?.payload?.sticker_id) {
+        return { content: `🩷 Figurinha${caption}`, mediaUrl: url, msgType: url ? "image" : "text" };
+      }
+      return { content: fallbackText ?? `📎 Anexo (${type || "desconhecido"})${url ? `\n${url}` : ""}`, mediaUrl: url, msgType: "text" };
+  }
+}
+
 async function persistMessage(opts: {
   accountId: string;
   accountConfigId: string | null;
@@ -234,11 +284,20 @@ async function persistMessage(opts: {
   postId: string | null;
   commentId: string | null;
   igMessageId: string | null;
+  attachments?: Attachment[];
+  replyToStoryUrl?: string | null;
 }) {
   let profile = { name: opts.senderName, username: opts.senderUsername, profile_pic: null as string | null };
   if (opts.accessToken && opts.senderId) {
     profile = await fetchIgProfile(opts.senderId, opts.accessToken);
   }
+
+  const { content: describedText, mediaUrl, msgType } = describeAttachments(
+    opts.attachments ?? [],
+    opts.replyToStoryUrl ?? null,
+    opts.text,
+  );
+  const finalText = describedText || opts.text || "";
 
   let leadId: string | null = null;
   if (opts.messageType === "dm") {
@@ -262,7 +321,7 @@ async function persistMessage(opts: {
     sender_name: profile.name ?? opts.senderName,
     sender_username: profile.username ?? opts.senderUsername,
     sender_profile_pic: profile.profile_pic,
-    message_text: opts.text,
+    message_text: finalText,
     message_type: opts.messageType,
     post_id: opts.postId,
     comment_id: opts.commentId,
@@ -277,8 +336,9 @@ async function persistMessage(opts: {
       lead_id: leadId,
       tenant_id: opts.tenantId,
       direction: "inbound",
-      type: "text",
-      content: opts.text,
+      type: msgType,
+      content: finalText,
+      media_url: mediaUrl,
       channel: "instagram",
       instagram_message_id: opts.igMessageId,
       instagram_sender_id: opts.senderId,
@@ -288,7 +348,7 @@ async function persistMessage(opts: {
     await supabase
       .from("crm_leads")
       .update({
-        last_message: opts.text,
+        last_message: finalText,
         last_message_at: new Date().toISOString(),
         last_inbound_at: new Date().toISOString(),
       })
