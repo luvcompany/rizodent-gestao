@@ -12,6 +12,8 @@ import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
 import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
+import EditProfileDialog from "@/components/EditProfileDialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
 type NavItem = {
@@ -71,10 +73,11 @@ const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const CrmLayout = () => {
   const navigate = useNavigate();
-  const { userRole, signOut } = useAuth();
+  const { userRole, signOut, profile, user, refreshProfile } = useAuth();
   const { tenant } = useTenant();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
   const logo = isDefaultLogo
@@ -84,6 +87,7 @@ const CrmLayout = () => {
     await signOut();
     navigate("/");
   };
+  const initials = profile?.nome?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
   const [unreadCount, setUnreadCount] = useState(0);
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
@@ -285,6 +289,22 @@ const CrmLayout = () => {
         </nav>
 
         <div className="border-t border-sidebar-border p-4 space-y-1">
+          {profile && (
+            <button
+              onClick={() => setEditProfileOpen(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 mb-1 hover:bg-sidebar-accent transition-colors group"
+            >
+              <Avatar className="h-9 w-9 border border-border">
+                <AvatarImage src={profile.avatar_url || undefined} />
+                <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-sidebar-foreground truncate">{profile.nome}</p>
+                <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
+              </div>
+              <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+          )}
           <button
             onClick={toggleTheme}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
@@ -321,6 +341,19 @@ const CrmLayout = () => {
           <Outlet />
         </main>
       </div>
+
+      {user && profile && (
+        <EditProfileDialog
+          open={editProfileOpen}
+          onOpenChange={setEditProfileOpen}
+          userId={user.id}
+          currentNome={profile.nome}
+          currentCargo={profile.cargo}
+          currentAvatarUrl={profile.avatar_url}
+          currentEmail={profile.email}
+          onSaved={refreshProfile}
+        />
+      )}
     </div>
   );
 };
