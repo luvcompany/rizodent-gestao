@@ -522,9 +522,10 @@ export default function CrmModelos() {
 
 
   const statusBadge = (s: string) => {
-    if (s === "APPROVED") return <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium">Aprovado</span>;
-    if (s === "PENDING") return <span className="text-[10px] bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full font-medium">Pendente</span>;
-    return <span className="text-[10px] bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-medium">Rejeitado</span>;
+    if (s === "APPROVED") return <span title="Aprovado pela Meta — pronto para uso" className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium cursor-help">Aprovado</span>;
+    if (s === "PENDING") return <span title="Em análise pela Meta (pode levar até 24h). Clique em 'Sincronizar com Meta' para atualizar." className="text-[10px] bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full font-medium cursor-help">Pendente</span>;
+    if (s === "DRAFT") return <span title="Rascunho local — ainda não enviado à Meta" className="text-[10px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full font-medium cursor-help">Rascunho</span>;
+    return <span title="Rejeitado pela Meta — edite ou recrie o modelo" className="text-[10px] bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-medium cursor-help">Rejeitado</span>;
   };
 
   const categoryBadge = (c: string) => {
