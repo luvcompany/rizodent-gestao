@@ -324,11 +324,16 @@ export default function FunilEditavelTab({ pipelineId, pipelines, setPipelineId 
                   </TableCell>
                   <TableCell className="text-right">
                     <Input
-                      type="number" min={0}
+                      type="number" min={0} max={row.from}
                       value={values[stage.key]}
                       onChange={(e) => setValues(v => ({ ...v, [stage.key]: Number(e.target.value) || 0 }))}
-                      className="h-8 text-right w-24 ml-auto"
+                      className={`h-8 text-right w-24 ml-auto ${row.invalid ? "border-red-500 ring-1 ring-red-500" : ""}`}
                     />
+                    {row.invalid && (
+                      <div className="text-[10px] text-red-600 mt-1">
+                        &gt; {stage.fromLabel} ({row.from})
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <span className={`font-bold ${aboveGoal ? "text-emerald-600" : "text-red-600"}`}>
