@@ -1,9 +1,20 @@
 /**
  * Strips the random suffix Meta appends to template names.
+ * Only strips suffixes that look like random hashes (mix of letters AND digits),
+ * preserving real words like "boas_vindas".
  * e.g. "agendamento_itabuna_k9jfzi" → "agendamento_itabuna"
+ *      "boas_vindas" → "boas_vindas" (preserved)
  */
-export const cleanTemplateName = (name: string): string =>
-  name.replace(/_[a-z0-9]{4,10}$/, '');
+export const cleanTemplateName = (name: string): string => {
+  const match = name.match(/^(.+)_([a-z0-9]{4,10})$/);
+  if (!match) return name;
+  const suffix = match[2];
+  // Only strip if suffix contains both letters and digits (random hash pattern)
+  const hasLetter = /[a-z]/.test(suffix);
+  const hasDigit = /[0-9]/.test(suffix);
+  if (hasLetter && hasDigit) return match[1];
+  return name;
+};
 
 /**
  * Deduplicates templates by base name, keeping the most recently updated one.
