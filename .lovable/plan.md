@@ -1,38 +1,56 @@
-## Objetivo
-Tornar o CRM o painel principal. Usuários "Pós-venda" só veem o CRM. Mover **Configurações** e **Usuários** para dentro do CRM (e remover da sidebar do sistema antigo).
+## Diagnóstico (importante)
 
-## Mudanças
+O WhatsApp da Meta **só substitui placeholders no formato `{{1}}`, `{{2}}`, `{{3}}`** — qualquer outra coisa (como `[nome]`, `[lead.nome]`, `{nome}`) vai **literalmente** no texto enviado ao paciente.
 
-### 1. `src/components/CrmLayout.tsx`
-- Adicionar **Usuários** ao menu lateral do CRM (rota `/crm/usuarios`), visível só para `superadmin` (já existe gate).
-- **Configurações** já está no CRM — apenas garantir que esteja no fim do menu.
-- Esconder o botão **"Voltar ao Sistema"** quando `userRole === "posvenda"`. Para os demais (crc, gerente, superadmin), o botão continua existindo (já que o sistema antigo continua acessível para eles).
+Hoje no sistema:
+- `send-whatsapp-message` reconhece somente `{{N}}` (regex `/\{\{\s*(\d+)\s*\}\}/g`)
+- A posição é **fixa**:
+  - `{{1}}` → Nome do lead (fallback "cliente")
+  - `{{2}}` → Data e hora do próximo agendamento (dd/mm/aaaa às HH:mm)
+  - `{{3}}` → Serviço de interesse
+  - `{{4}}` → Telefone (fallback extra)
+  - `{{5}}` → Origem (fallback extra)
+- O botão atual "+ Variável" só insere `{{1}}`, `{{2}}`… numerados sequenciais, sem mostrar o que cada número significa.
 
-### 2. `src/App.tsx`
-- Adicionar rotas no bloco `CrmLayout`:
-  - `/crm/usuarios` → `<Usuarios />`
-  - `/crm/configuracoes` já existe
-- Remover (ou manter, ver "Observação" abaixo) as rotas `/usuarios` e `/configuracoes` do `AppLayout`. Decisão: **manter** as rotas antigas redirecionando para as novas (`<Navigate to="/crm/usuarios" replace />` e `/crm/configuracoes`) para não quebrar bookmarks.
+**Verificação dos modelos antigos do CRC:** Se algum modelo aprovado contém `[nome]`, `[lead.nome]`, `{nome}` ou qualquer texto fora do padrão `{{N}}`, ele está sendo enviado **literalmente** (o lead recebe a palavra `[nome]` no lugar do nome). Vamos rodar uma checagem na tabela `crm_whatsapp_templates` e listar quais modelos têm esse problema, para você decidir quais reescrever/reenviar para aprovação.
 
-### 3. `src/components/AppLayout.tsx`
-- Remover **Configurações** e **Usuários** dos `navItems` (mover para o CRM).
-- Manter os demais itens visíveis para CRC/Gerente/Superadmin.
+> Observação adicional: a Meta normalmente rejeita templates com placeholders fora do padrão `{{N}}` no momento da submissão, mas se o template foi aprovado com texto solto entre colchetes, ele passa como texto comum — sem substituição.
 
-### 4. Redirecionamento por papel (posvenda)
-- Em `src/pages/TenantLogin.tsx`: após login bem-sucedido, ler o `user_role` recém carregado e redirecionar:
-  - `posvenda` → `/crm`
-  - outros → `/dashboard` (comportamento atual)
-- Em `src/components/ProtectedRoute.tsx`: se `userRole === "posvenda"` e a URL atual está fora de `/crm` (`/dashboard`, `/pacientes`, `/relatorios`, `/marketing`, `/leads`, `/atendimento`, `/procedimentos`, `/registro-diario`), redirecionar para `/crm`. Isso garante isolamento mesmo via URL direta ou impersonation.
+## O que vamos construir
 
-### 5. Botão "Voltar ao Sistema"
-- Ocultado para `posvenda` (esses usuários só têm CRM).
+### 1. Seletor de variáveis no editor de Modelos (`src/pages/CrmModelos.tsx`)
+Substituir o botão "+ Variável" por um **Popover** com a lista das variáveis disponíveis. Cada item insere o `{{N}}` correto na posição do cursor:
 
-## Observação
-Como Configurações e Usuários estão sendo movidos, os links antigos (`/configuracoes`, `/usuarios`) passam a redirecionar para os novos dentro do CRM — assim a navegação fica unificada para todos os papéis.
+| Rótulo na lista              | Insere | O que o CRM preenche no envio                         |
+|------------------------------|--------|--------------------------------------------------------|
+| Nome do lead                 | `{{1}}` | `lead.name` (ou "cliente")                            |
+| Data e hora do agendamento   | `{{2}}` | próximo agendamento confirmado/pendente               |
+| Serviço de interesse         | `{{3}}` | `lead.servico_interesse` (ou "consulta")              |
+| Telefone do lead             | `{{4}}` | `lead.phone`                                          |
+| Origem do lead               | `{{5}}` | `lead.source`                                          |
+
+Regras do seletor:
+- Insere na posição do cursor (não só no final).
+- Mostra um aviso curto abaixo do campo: *"Use o botão Variável; a Meta só reconhece `{{N}}`. Evite escrever `[nome]` manualmente."*
+- Bloqueia repetição da mesma variável (Meta exige `{{1}}` antes de `{{2}}`, etc.) — se o usuário inserir fora de ordem, mostramos um toast pedindo para reorganizar.
+
+### 2. Preview com nomes reais (não números)
+No painel "Preview" à direita, renderizar `{{1}}` como `Maria Silva`, `{{2}}` como `20/05 às 14:00`, `{{3}}` como `Implante`, etc. — assim você vê exatamente como o lead vai receber. Hoje o preview mostra o texto cru com `{{1}}`.
+
+### 3. Auditoria dos modelos atuais
+Consultar `crm_whatsapp_templates` (somente leitura) e listar os modelos cujo `body_text` contém:
+- `[nome]`, `[Nome]`, `{nome}`, `[lead.*]`, `[paciente]`
+- ou qualquer texto entre `[...]` que não seja `{{N}}`
+
+Vamos te mostrar a lista no chat para você decidir quais reescrever e reenviar para aprovação na Meta (os já aprovados precisarão de um novo submit, pois texto aprovado não pode ser editado).
 
 ## Arquivos alterados
-- `src/App.tsx`
-- `src/components/AppLayout.tsx`
-- `src/components/CrmLayout.tsx`
-- `src/components/ProtectedRoute.tsx`
-- `src/pages/TenantLogin.tsx`
+
+- `src/pages/CrmModelos.tsx` — substituir botão "+ Variável" por Popover com lista, inserção na posição do cursor, preview com valores de exemplo, aviso visual.
+
+## Fora do escopo deste plano
+- Nenhuma mudança em Edge Functions (a resolução `{{N}}` já funciona corretamente).
+- Nenhuma mudança no banco.
+- A correção dos modelos antigos será feita por você (re-submit na Meta) depois que listarmos os afetados.
+
+Posso aprovar para implementar?
