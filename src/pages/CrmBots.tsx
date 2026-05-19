@@ -20,7 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function CrmBots() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
-  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
+  const canShare = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   const [bots, setBots] = useState<BotType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
