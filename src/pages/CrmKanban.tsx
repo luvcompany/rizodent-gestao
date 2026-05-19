@@ -512,17 +512,31 @@ export default function CrmKanban() {
   const [vendasConcluidas, setVendasConcluidas] = useState(0);
   const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
   useEffect(() => {
+    const leadIds = leads.map(l => l.id);
+    if (!leadIds.length) {
+      setVendasConcluidas(0);
+      setLeadMonthValueMap(new Map());
+      setLeadsWithPagamento(new Set());
+      return;
+    }
     const now = new Date();
     const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
     const monthEnd = toLocalDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
     (async () => {
-      const [{ data: pags }, { data: links }, { data: allPags }] = await Promise.all([
-        supabase.from("pagamentos").select("valor, paciente_id")
-          .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
-        supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
-        supabase.from("pagamentos").select("paciente_id"),
+      const chunks = Array.from({ length: Math.ceil(leadIds.length / 400) }, (_, i) => leadIds.slice(i * 400, i * 400 + 400));
+      const linkRows = await Promise.all(
+        chunks.map(ids => supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary").in("lead_id", ids))
+      );
+      const links = linkRows.flatMap(r => r.data || []);
+      const pacienteIds = Array.from(new Set(links.map((l: any) => l.paciente_id).filter(Boolean)));
+      const pacienteChunks = Array.from({ length: Math.ceil(pacienteIds.length / 400) }, (_, i) => pacienteIds.slice(i * 400, i * 400 + 400));
+      const [monthRows, allRows] = await Promise.all([
+        Promise.all(pacienteChunks.map(ids => supabase.from("pagamentos").select("valor, paciente_id").in("paciente_id", ids).gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd))),
+        Promise.all(pacienteChunks.map(ids => supabase.from("pagamentos").select("paciente_id").in("paciente_id", ids))),
       ]);
+      const pags = monthRows.flatMap(r => r.data || []);
+      const allPags = allRows.flatMap(r => r.data || []);
 
       // Selecionar UM único lead por paciente para evitar contagem duplicada
       // quando um paciente está vinculado a múltiplos leads.
