@@ -305,10 +305,42 @@ export default function CrmModelos() {
     setForm(p => ({ ...p, buttons: [...p.buttons, { type: "QUICK_REPLY", text: "" }] }));
   };
 
-  const insertVariable = () => {
-    const varNum = (form.body_text.match(/\{\{\d+\}\}/g) || []).length + 1;
-    setForm(p => ({ ...p, body_text: p.body_text + `{{${varNum}}}` }));
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [variablePopoverOpen, setVariablePopoverOpen] = useState(false);
+
+  const insertVariableAt = (index: number) => {
+    const placeholder = `{{${index}}}`;
+    const el = bodyTextareaRef.current;
+    if (!el) {
+      setForm(p => ({ ...p, body_text: (p.body_text || "") + placeholder }));
+      setVariablePopoverOpen(false);
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const current = form.body_text || "";
+    const next = current.slice(0, start) + placeholder + current.slice(end);
+    setForm(p => ({ ...p, body_text: next }));
+    setVariablePopoverOpen(false);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + placeholder.length;
+      el.setSelectionRange(pos, pos);
+    });
   };
+
+  // Render preview substituindo {{N}} pelos valores de exemplo
+  const renderPreviewBody = (text: string) => {
+    if (!text) return "Corpo da mensagem...";
+    return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => {
+      const v = TEMPLATE_VARIABLES.find(v => v.index === Number(n));
+      return v ? v.sample : `{{${n}}}`;
+    });
+  };
+
+  // Detecta placeholders inválidos digitados manualmente (ex: [nome])
+  const hasInvalidPlaceholders = (text: string) => /\[[^\]]+\]/.test(text || "");
+
 
   const statusBadge = (s: string) => {
     if (s === "APPROVED") return <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium">Aprovado</span>;
