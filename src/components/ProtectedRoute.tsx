@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading, profile, signOut, user } = useAuth();
+  const { session, loading, profile, signOut, user, userRole } = useAuth();
   const { tenant, loading: tenantLoading } = useTenant();
   const location = useLocation();
 
