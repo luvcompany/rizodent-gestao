@@ -106,12 +106,12 @@ export default function CrmModelos() {
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
   const handleSync = useCallback(async (silent = false) => {
-    if (!selectedIntegration || syncing) return;
+    if (syncing) return;
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", {
-        body: { action: "list", integration_key: selectedIntegration },
-      });
+      const body: Record<string, unknown> = { action: "list" };
+      if (selectedIntegration) body.integration_key = selectedIntegration;
+      const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", { body });
       if (error) throw error;
       const { data: refreshed } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
       if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
