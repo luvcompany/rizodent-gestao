@@ -676,6 +676,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
+  const rightPanelRendered = rightPanelVisible && !!selectedLeadId && !!selectedLead && selectedLead.id === selectedLeadId;
+  const centerPanelSize = leftPanelVisible
+    ? (rightPanelRendered ? 46 : 76)
+    : (rightPanelRendered ? 70 : 100);
+
   return (
     <div className="flex h-full w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
       <ResizablePanelGroup direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
