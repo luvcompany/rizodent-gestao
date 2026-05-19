@@ -105,7 +105,7 @@ export default function CrmModelos() {
 
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
-  const handleSync = async () => {
+  const handleSync = useCallback(async (silent = false) => {
     if (!selectedIntegration || syncing) return;
     setSyncing(true);
     try {
@@ -115,13 +115,14 @@ export default function CrmModelos() {
       if (error) throw error;
       const { data: refreshed } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
       if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
-      toast.success(`Sincronizado! ${data?.count || 0} modelos encontrados na Meta.`);
+      setLastSyncAt(new Date());
+      if (!silent) toast.success(`Sincronizado! ${data?.count || 0} modelos encontrados na Meta.`);
     } catch (e: any) {
-      toast.error("Erro ao sincronizar: " + (e?.message || String(e)));
+      if (!silent) toast.error("Erro ao sincronizar: " + (e?.message || String(e)));
     } finally {
       setSyncing(false);
     }
-  };
+  }, [selectedIntegration, syncing]);
 
   // Mapeamento dos 5 modelos antigos (com [colchete]) → novos com {{1}}/{{2}}
   const LEGACY_MIGRATION_MAP: {
