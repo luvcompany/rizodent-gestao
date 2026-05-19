@@ -165,7 +165,7 @@ export default function FunilEditavelTab({ pipelineId, pipelines, setPipelineId 
       meta_compareceram: Number(rep.meta_compareceram), meta_avaliados: Number(rep.meta_avaliados),
       meta_fecharam: Number(rep.meta_fecharam),
     });
-    setPeriod({ preset: "custom", from: new Date(rep.period_start), to: new Date(rep.period_end) });
+    setPeriod({ preset: "custom", customFrom: new Date(rep.period_start), customTo: new Date(rep.period_end) });
     toast.success("Relatório carregado: " + rep.period_label);
   };
 
@@ -206,8 +206,8 @@ export default function FunilEditavelTab({ pipelineId, pipelines, setPipelineId 
           <Select value={periodType} onValueChange={(v: any) => {
             setPeriodType(v);
             const today = new Date();
-            if (v === "month") setPeriod({ preset: "custom", from: startOfMonth(today), to: endOfMonth(today) });
-            else if (v === "week") setPeriod({ preset: "custom", from: startOfWeek(today, { weekStartsOn: 1 }), to: endOfWeek(today, { weekStartsOn: 1 }) });
+            if (v === "month") setPeriod({ preset: "custom", customFrom: startOfMonth(today), customTo: endOfMonth(today) });
+            else if (v === "week") setPeriod({ preset: "custom", customFrom: startOfWeek(today, { weekStartsOn: 1 }), customTo: endOfWeek(today, { weekStartsOn: 1 }) });
           }}>
             <SelectTrigger className="w-[120px] h-9"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -478,7 +478,7 @@ function buildPeriodLabel(period: DateRangeFilterValue, range: { start: Date; en
   return `${format(range.start, "dd/MM/yy")} → ${format(range.end, "dd/MM/yy")}`;
 }
 
-async function fetchAllPages<T>(build: (from: number, to: number) => any): Promise<T[]> {
+async function fetchAllPages<T>(build: (from: number, customTo: number) => any): Promise<T[]> {
   const PAGE = 1000;
   const out: T[] = [];
   let from = 0;
