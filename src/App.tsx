@@ -76,19 +76,21 @@ export const PublicApp = ({ basename }: { basename: string }) => (
     <BrowserRouter basename={basename}>
       <TenantProvider slugOverride={null}>
         <AuthProvider>
-          <Routes>
-            <Route path="/" element={<CrclinLanding />} />
-            <Route path="/admin/login" element={<AdminLogin />} />
-            <Route element={<AdminLayout />}>
-              <Route path="/admin" element={<AdminClientes />} />
-              <Route path="/admin/clientes/:id" element={<AdminClienteDetalhe />} />
-              <Route path="/admin/planos" element={<AdminPlanos />} />
-              <Route path="/admin/metricas" element={<AdminMetricas />} />
-              <Route path="/admin/cobranca" element={<AdminCobranca />} />
-              <Route path="/admin/logs" element={<AdminLogs />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<CrclinLanding />} />
+              <Route path="/admin/login" element={<AdminLogin />} />
+              <Route element={<AdminLayout />}>
+                <Route path="/admin" element={<AdminClientes />} />
+                <Route path="/admin/clientes/:id" element={<AdminClienteDetalhe />} />
+                <Route path="/admin/planos" element={<AdminPlanos />} />
+                <Route path="/admin/metricas" element={<AdminMetricas />} />
+                <Route path="/admin/cobranca" element={<AdminCobranca />} />
+                <Route path="/admin/logs" element={<AdminLogs />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </AuthProvider>
       </TenantProvider>
     </BrowserRouter>
@@ -101,56 +103,58 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
     <BrowserRouter basename={basename}>
       <TenantProvider slugOverride={slug}>
         <AuthProvider>
-          <Routes>
-            <Route path="/" element={<TenantLogin />} />
-            <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
-            <Route
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/atendimento" element={<Atendimento />} />
-              <Route path="/pacientes" element={<Pacientes />} />
-              <Route path="/pacientes/:id" element={<PacienteDetalhe />} />
-              <Route path="/relatorios" element={<Relatorios />} />
-              <Route path="/marketing" element={<Marketing />} />
-              <Route path="/leads" element={<CadastroLeads />} />
-              <Route path="/usuarios" element={<Usuarios />} />
-              <Route path="/procedimentos" element={<TiposProcedimento />} />
-              <Route path="/registro-diario" element={<RegistroDiario />} />
-              <Route path="/configuracoes" element={<Configuracoes />} />
-            </Route>
-            <Route
-              element={
-                <ProtectedRoute>
-                  <CrmLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/crm" element={<CrmKanban />} />
-              <Route path="/crm/dashboard" element={<CrmDashboard />} />
-              <Route path="/crm/posvenda" element={<CrmPosVendaDashboard />} />
-              <Route path="/crm/conversas" element={<CrmConversas />} />
-              <Route path="/crm/conversa/:id" element={<CrmConversa />} />
-              <Route path="/crm/automacoes" element={<CrmAutomacoes />} />
-              <Route path="/crm/modelos" element={<CrmModelos />} />
-              <Route path="/crm/integracoes" element={<CrmIntegracoes />} />
-              <Route path="/crm/relatorios" element={<CrmRelatorios />} />
-              <Route path="/crm/calendario" element={<CrmCalendario />} />
-              <Route path="/crm/followups" element={<CrmFollowUps />} />
-              <Route path="/crm/bots" element={<CrmBots />} />
-              <Route path="/crm/bots/:id" element={<CrmBotEditor />} />
-              <Route path="/crm/extras" element={<CrmExtras />} />
-              <Route path="/crm/configuracoes" element={<CrmConfiguracoes />} />
-              <Route path="/crm/respostas-rapidas" element={<CrmRespostasRapidas />} />
-              <Route path="/crm/campanhas" element={<CrmCampanhas />} />
-              <Route path="/crm/ia-config" element={<CrmIaConfig />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<TenantLogin />} />
+              <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/atendimento" element={<Atendimento />} />
+                <Route path="/pacientes" element={<Pacientes />} />
+                <Route path="/pacientes/:id" element={<PacienteDetalhe />} />
+                <Route path="/relatorios" element={<Relatorios />} />
+                <Route path="/marketing" element={<Marketing />} />
+                <Route path="/leads" element={<CadastroLeads />} />
+                <Route path="/usuarios" element={<Usuarios />} />
+                <Route path="/procedimentos" element={<TiposProcedimento />} />
+                <Route path="/registro-diario" element={<RegistroDiario />} />
+                <Route path="/configuracoes" element={<Configuracoes />} />
+              </Route>
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <CrmLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="/crm" element={<CrmKanban />} />
+                <Route path="/crm/dashboard" element={<CrmDashboard />} />
+                <Route path="/crm/posvenda" element={<CrmPosVendaDashboard />} />
+                <Route path="/crm/conversas" element={<CrmConversas />} />
+                <Route path="/crm/conversa/:id" element={<CrmConversa />} />
+                <Route path="/crm/automacoes" element={<CrmAutomacoes />} />
+                <Route path="/crm/modelos" element={<CrmModelos />} />
+                <Route path="/crm/integracoes" element={<CrmIntegracoes />} />
+                <Route path="/crm/relatorios" element={<CrmRelatorios />} />
+                <Route path="/crm/calendario" element={<CrmCalendario />} />
+                <Route path="/crm/followups" element={<CrmFollowUps />} />
+                <Route path="/crm/bots" element={<CrmBots />} />
+                <Route path="/crm/bots/:id" element={<CrmBotEditor />} />
+                <Route path="/crm/extras" element={<CrmExtras />} />
+                <Route path="/crm/configuracoes" element={<CrmConfiguracoes />} />
+                <Route path="/crm/respostas-rapidas" element={<CrmRespostasRapidas />} />
+                <Route path="/crm/campanhas" element={<CrmCampanhas />} />
+                <Route path="/crm/ia-config" element={<CrmIaConfig />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </AuthProvider>
       </TenantProvider>
     </BrowserRouter>
