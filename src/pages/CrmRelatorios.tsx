@@ -14,6 +14,7 @@ import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
 import DashboardFunnel from "@/components/DashboardFunnel";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
+import FunilEditavelTab from "@/components/relatorios/FunilEditavelTab";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, RefreshCw, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox } from "lucide-react";
 
