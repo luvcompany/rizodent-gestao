@@ -76,9 +76,15 @@ export default function ShareRoleDialog({ open, onOpenChange, table, rowId, curr
       newOwner = roles[0];
     }
     const sharedRoles = roles.filter(r => r !== newOwner);
-    const { error } = await (supabase.from(table) as any)
-      .update({ owner_role: newOwner, shared_roles: sharedRoles })
-      .eq("id", rowId);
+    const { error } = table === "crm_whatsapp_templates"
+      ? await supabase.rpc("update_whatsapp_template_sharing" as any, {
+        _template_id: rowId,
+        _owner_role: newOwner,
+        _shared_roles: sharedRoles,
+      })
+      : await (supabase.from(table) as any)
+        .update({ owner_role: newOwner, shared_roles: sharedRoles })
+        .eq("id", rowId);
     setSaving(false);
     if (error) {
       console.error("[ShareRoleDialog] update failed", error);
