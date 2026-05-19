@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users, Wand2 } from "lucide-react";
+import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -559,19 +559,6 @@ export default function CrmModelos() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {legacyBroken.length > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleLegacyMigration}
-              disabled={migrating}
-              className="border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
-              title={`Refazer ${legacyBroken.length} modelo(s) que estão com [colchetes] em vez de {{1}}/{{2}}`}
-            >
-              <Wand2 size={14} className={`mr-1 ${migrating ? "animate-spin" : ""}`} />
-              {migrating ? "Migrando..." : `Refazer ${legacyBroken.length} antigos`}
-            </Button>
-          )}
           <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing}>
             <RefreshCw size={14} className={`mr-1 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? "Sincronizando..." : "Sincronizar"}
