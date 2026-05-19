@@ -59,7 +59,6 @@ export default function CrmModelos() {
   const [selectedIntegration, setSelectedIntegration] = useState<string>("");
   const [syncing, setSyncing] = useState(false);
   const [shareTarget, setShareTarget] = useState<WhatsAppTemplate | null>(null);
-  const [shareRole, setShareRole] = useState<string>("__all__");
 
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
