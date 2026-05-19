@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,12 +7,22 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
 import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialog";
+
+const TEMPLATE_VARIABLES: { index: number; label: string; sample: string; hint: string }[] = [
+  { index: 1, label: "Nome do lead", sample: "Maria Silva", hint: "lead.name (fallback: cliente)" },
+  { index: 2, label: "Data e hora do agendamento", sample: "20/05/2026 às 14:00", hint: "próximo agendamento (fallback: data a confirmar)" },
+  { index: 3, label: "Serviço de interesse", sample: "Implante dentário", hint: "lead.servico_interesse (fallback: consulta)" },
+  { index: 4, label: "Telefone do lead", sample: "(11) 99999-9999", hint: "lead.phone" },
+  { index: 5, label: "Origem do lead", sample: "Anúncio", hint: "lead.source" },
+];
+
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
