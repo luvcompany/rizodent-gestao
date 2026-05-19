@@ -71,10 +71,19 @@ const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const CrmLayout = () => {
   const navigate = useNavigate();
-  const { userRole } = useAuth();
+  const { userRole, signOut } = useAuth();
+  const { tenant } = useTenant();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
+  const logo = isDefaultLogo
+    ? (theme === "light" ? crclinLogoLight : CRCLIN_DEFAULT_LOGO)
+    : tenant.logo_url!;
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/");
+  };
   const [unreadCount, setUnreadCount] = useState(0);
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
