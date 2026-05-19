@@ -62,10 +62,9 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
     { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
     { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
   );
-  if (role === "superadmin") {
-    items.push({ to: "/crm/usuarios", icon: Shield, label: "Usuários" });
+  if (role === "posvenda") {
+    items.push({ to: "/crm/configuracoes", icon: Settings, label: "Configurações" });
   }
-  items.push({ to: "/crm/configuracoes", icon: Settings, label: "Configurações" });
   return items;
 };
 
