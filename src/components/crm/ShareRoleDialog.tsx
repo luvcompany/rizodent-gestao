@@ -70,14 +70,13 @@ export default function ShareRoleDialog({ open, onOpenChange, table, rowId, curr
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Todos os papéis (compartilhado)</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="gerente">Gerente</SelectItem>
               <SelectItem value="crc">CRC</SelectItem>
+              <SelectItem value="gerente">Gerente</SelectItem>
               <SelectItem value="posvenda">Pós-venda</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-muted-foreground">
-            Admin, Gerente e Superadmin sempre visualizam tudo.
+            Gerente e Superadmin sempre visualizam tudo.
           </p>
         </div>
         <div className="flex gap-2 justify-end mt-4">
