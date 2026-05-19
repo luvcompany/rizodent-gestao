@@ -12,6 +12,8 @@ import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
 import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
+import EditProfileDialog from "@/components/EditProfileDialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
 type NavItem = {
