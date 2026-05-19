@@ -207,6 +207,7 @@ export default function CrmBots() {
         table="bots"
         rowId={shareTarget?.id ?? null}
         currentOwnerRole={((shareTarget as any)?.owner_role ?? null) as OwnerRole}
+        currentSharedRoles={(((shareTarget as any)?.shared_roles) ?? []) as string[]}
         itemLabel="Bot"
         onSaved={fetchBots}
       />
