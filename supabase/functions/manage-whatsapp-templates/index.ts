@@ -6,7 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-async function resolveCredentials(supabase: any, integrationKey?: string) {
+async function resolveCredentials(supabase: any, integrationKey?: string, tenantId?: string | null) {
   // If an integration_key is provided, resolve from integrations table
   if (integrationKey) {
     const { data: intg } = await supabase
@@ -21,6 +21,24 @@ async function resolveCredentials(supabase: any, integrationKey?: string) {
       if (token && wabaId) {
         return { token, wabaId };
       }
+    }
+  }
+  // No key (or key didn't resolve) — fall back to the tenant's connected WhatsApp integration.
+  // This lets non-crc users (gerente, posvenda) send templates even though RLS hides the
+  // integrations table from them on the client.
+  if (tenantId) {
+    const { data: list } = await supabase
+      .from("integrations")
+      .select("config")
+      .eq("tenant_id", tenantId)
+      .eq("status", "connected")
+      .like("key", "whatsapp_%")
+      .limit(1);
+    const cfg = (list && list[0]?.config) as any;
+    if (cfg) {
+      const token = cfg.access_token || cfg.token;
+      const wabaId = cfg.waba_id;
+      if (token && wabaId) return { token, wabaId };
     }
   }
   // Fallback to env vars
