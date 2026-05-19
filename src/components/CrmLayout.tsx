@@ -4,13 +4,15 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
-  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield,
+  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
+import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
 import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
+import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
 type NavItem = {
   to: string;
@@ -69,10 +71,19 @@ const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const CrmLayout = () => {
   const navigate = useNavigate();
-  const { userRole } = useAuth();
+  const { userRole, signOut } = useAuth();
+  const { tenant } = useTenant();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
+  const logo = isDefaultLogo
+    ? (theme === "light" ? crclinLogoLight : CRCLIN_DEFAULT_LOGO)
+    : tenant.logo_url!;
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/");
+  };
   const [unreadCount, setUnreadCount] = useState(0);
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
@@ -238,16 +249,10 @@ const CrmLayout = () => {
           sidebarCollapsed ? "-translate-x-full" : "lg:translate-x-0"
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
-          {userRole !== "posvenda" && (
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground hover:text-primary transition-colors"
-            >
-              <ArrowLeft size={16} />
-              Voltar ao Sistema
-            </button>
-          )}
+        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-3">
+          <div className="flex flex-1 items-center justify-center">
+            <img src={logo} alt={tenant.name} className="h-7 max-w-full object-contain" />
+          </div>
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}
@@ -256,9 +261,21 @@ const CrmLayout = () => {
           </button>
         </div>
 
-        <div className="px-4 py-3 border-b border-sidebar-border">
-          <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
-          <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
+        <div className="px-4 py-3 border-b border-sidebar-border flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
+            <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
+          </div>
+          {userRole !== "posvenda" && (
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+              title="Voltar ao Sistema"
+            >
+              <ArrowLeft size={14} />
+              Sistema
+            </button>
+          )}
         </div>
 
         <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
@@ -267,13 +284,20 @@ const CrmLayout = () => {
           )}
         </nav>
 
-        <div className="border-t border-sidebar-border p-4">
+        <div className="border-t border-sidebar-border p-4 space-y-1">
           <button
             onClick={toggleTheme}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             {theme === "dark" ? "Modo Claro" : "Modo Escuro"}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            <LogOut size={18} />
+            Sair
           </button>
         </div>
       </aside>
