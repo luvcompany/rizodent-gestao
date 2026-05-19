@@ -62,8 +62,6 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
   return items;
 };
 
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
-
 const CrmLayout = () => {
   const navigate = useNavigate();
   const { userRole } = useAuth();
@@ -91,28 +89,8 @@ const CrmLayout = () => {
       const seq = ++unreadFetchSeq.current;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || seq !== unreadFetchSeq.current) return;
-      // Only look at leads with recent inbound activity (last 60 days) — older "unreads" are not actionable
-      const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-      const PAGE_SIZE = 1000;
-      const MAX_PAGES = 3; // hard cap at 3000 leads to avoid runaway pagination
-      let unreadTotal = 0;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const from = page * PAGE_SIZE;
-        const { data: unreadCandidates, error } = await supabase
-          .from("crm_leads")
-          .select("id, last_inbound_at, last_outbound_at")
-          .eq("is_blocked", false)
-          .neq("pipeline_id", INSTAGRAM_PIPELINE_ID)
-          .gte("last_inbound_at", cutoff)
-          .order("id", { ascending: true })
-          .range(from, from + PAGE_SIZE - 1);
-
-        if (seq !== unreadFetchSeq.current || error || !unreadCandidates?.length) break;
-        unreadTotal += unreadCandidates.filter(
-          (l: any) => !l.last_outbound_at || new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
-        ).length;
-        if (unreadCandidates.length < PAGE_SIZE) break;
-      }
+      const { data, error } = await supabase.rpc("crm_unread_leads_count" as any);
+      const unreadTotal = error ? 0 : Number(data || 0);
       if (seq === unreadFetchSeq.current) {
         setUnreadCount(unreadTotal);
       }

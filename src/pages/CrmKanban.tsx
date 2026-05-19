@@ -160,24 +160,33 @@ export default function CrmKanban() {
     const targetPipelineId = selectedPipelineId || pipeline?.id || stored || undefined;
     
     const LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio";
-    const fetchAllLeads = async (pipelineId: string): Promise<Lead[]> => {
-      const PAGE = 1000;
+    const PAGE = 500;
+    const fetchLeadPage = async (pipelineId: string, from = 0): Promise<Lead[]> => {
+      const { data, error } = await supabase
+        .from("crm_leads")
+        .select(LEAD_COLS)
+        .eq("pipeline_id", pipelineId)
+        .eq("is_blocked", false)
+        .order("position")
+        .range(from, from + PAGE - 1);
+      if (error || !data) return [];
+      return data as Lead[];
+    };
+    const fetchRemainingLeads = async (pipelineId: string, startFrom: number) => {
+      if (startFrom < PAGE) return;
       const out: Lead[] = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("crm_leads")
-          .select(LEAD_COLS)
-          .eq("pipeline_id", pipelineId)
-          .eq("is_blocked", false)
-          .order("position")
-          .range(from, from + PAGE - 1);
-        if (error || !data || data.length === 0) break;
-        out.push(...(data as Lead[]));
-        if (data.length < PAGE) break;
-        from += PAGE;
+      for (let from = startFrom; ; from += PAGE) {
+        const page = await fetchLeadPage(pipelineId, from);
+        if (!page.length) break;
+        out.push(...page);
+        if (page.length < PAGE) break;
       }
-      return out;
+      if (!out.length) return;
+      setLeads(prev => {
+        if (prev.length && prev[0].pipeline_id !== pipelineId) return prev;
+        const seen = new Set(prev.map(l => l.id));
+        return [...prev, ...out.filter(l => !seen.has(l.id))];
+      });
     };
 
     const [pipelinesRes, profilesRes, stagesRes, leadsAll, fqRes] = await Promise.all([
@@ -186,7 +195,7 @@ export default function CrmKanban() {
       targetPipelineId
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
-      targetPipelineId ? fetchAllLeads(targetPipelineId) : Promise.resolve(null),
+      targetPipelineId ? fetchLeadPage(targetPipelineId) : Promise.resolve(null),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
 
@@ -226,13 +235,15 @@ export default function CrmKanban() {
       if (targetPipelineId === p.id && stagesRes.data && leadsAll) {
         setStages((stagesRes.data as Stage[]) || []);
         setLeads(leadsAll);
+        fetchRemainingLeads(p.id, leadsAll.length);
       } else {
         const [s2, l2] = await Promise.all([
           supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
-          fetchAllLeads(p.id),
+          fetchLeadPage(p.id),
         ]);
         setStages((s2.data as Stage[]) || []);
         setLeads(l2);
+        fetchRemainingLeads(p.id, l2.length);
       }
 
       const fqMap: Record<string, string> = {};
@@ -501,17 +512,31 @@ export default function CrmKanban() {
   const [vendasConcluidas, setVendasConcluidas] = useState(0);
   const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
   useEffect(() => {
+    const leadIds = leads.map(l => l.id);
+    if (!leadIds.length) {
+      setVendasConcluidas(0);
+      setLeadMonthValueMap(new Map());
+      setLeadsWithPagamento(new Set());
+      return;
+    }
     const now = new Date();
     const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
     const monthEnd = toLocalDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
     (async () => {
-      const [{ data: pags }, { data: links }, { data: allPags }] = await Promise.all([
-        supabase.from("pagamentos").select("valor, paciente_id")
-          .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
-        supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
-        supabase.from("pagamentos").select("paciente_id"),
+      const chunks = Array.from({ length: Math.ceil(leadIds.length / 400) }, (_, i) => leadIds.slice(i * 400, i * 400 + 400));
+      const linkRows = await Promise.all(
+        chunks.map(ids => supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary").in("lead_id", ids))
+      );
+      const links = linkRows.flatMap(r => r.data || []);
+      const pacienteIds = Array.from(new Set(links.map((l: any) => l.paciente_id).filter(Boolean)));
+      const pacienteChunks = Array.from({ length: Math.ceil(pacienteIds.length / 400) }, (_, i) => pacienteIds.slice(i * 400, i * 400 + 400));
+      const [monthRows, allRows] = await Promise.all([
+        Promise.all(pacienteChunks.map(ids => supabase.from("pagamentos").select("valor, paciente_id").in("paciente_id", ids).gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd))),
+        Promise.all(pacienteChunks.map(ids => supabase.from("pagamentos").select("paciente_id").in("paciente_id", ids))),
       ]);
+      const pags = monthRows.flatMap(r => r.data || []);
+      const allPags = allRows.flatMap(r => r.data || []);
 
       // Selecionar UM único lead por paciente para evitar contagem duplicada
       // quando um paciente está vinculado a múltiplos leads.
