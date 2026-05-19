@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users, Wand2 } from "lucide-react";
+import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
