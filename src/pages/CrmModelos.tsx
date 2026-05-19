@@ -12,7 +12,7 @@ import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, Chevron
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
-type OwnerRole = "gerente" | "crc" | "posvenda" | "superadmin" | null;
+import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialog";
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
@@ -20,6 +20,7 @@ type WhatsAppTemplate = {
   footer_text: string | null; buttons: unknown; meta_template_id: string | null;
   created_at: string; updated_at: string;
   owner_role?: OwnerRole;
+  shared_roles?: string[] | null;
 };
 
 const ROLE_LABEL: Record<string, string> = {
