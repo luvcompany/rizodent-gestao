@@ -68,6 +68,7 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
 
   // Fetch names for any stage_id not present in the current pipeline's stages prop
   // (happens when the lead was moved across pipelines, e.g. to Pós-venda).
+  // Uses an RPC that bypasses pipeline-access RLS so stages from other funnels resolve correctly.
   useEffect(() => {
     const knownIds = new Set(stages.map((s) => s.id));
     const missing = Array.from(
@@ -75,10 +76,7 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
     );
     if (missing.length === 0) return;
     (async () => {
-      const { data } = await supabase
-        .from("crm_stages")
-        .select("id,name,color")
-        .in("id", missing);
+      const { data } = await supabase.rpc("get_lead_stage_history_names", { _lead_id: leadId });
       if (data) {
         setExtraStages((prev) => {
           const next = { ...prev };
@@ -87,7 +85,8 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
         });
       }
     })();
-  }, [history, stages, extraStages]);
+  }, [history, stages, extraStages, leadId]);
+
 
   const resolveStage = (stageId: string): Stage | undefined =>
     stages.find((s) => s.id === stageId) || extraStages[stageId];
