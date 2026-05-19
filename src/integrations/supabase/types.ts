@@ -3099,6 +3099,7 @@ export type Database = {
           lead_name: string
         }[]
       }
+      crm_unread_leads_count: { Args: never; Returns: number }
       current_tenant_id: { Args: never; Returns: string }
       ensure_instagram_pipeline: {
         Args: { _tenant_id: string }
