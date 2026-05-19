@@ -18,6 +18,8 @@ const navItems = [
   { to: "/marketing", icon: Megaphone, label: "Marketing" },
   { to: "/crm", icon: Users, label: "CRM" },
   { to: "/procedimentos", icon: Stethoscope, label: "Procedimentos" },
+  { to: "/usuarios", icon: Shield, label: "Usuários" },
+  { to: "/configuracoes", icon: Settings, label: "Configurações" },
 ];
 
 const AppLayout = () => {
