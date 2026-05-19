@@ -432,11 +432,27 @@ Deno.serve(async (req: Request) => {
         // entry.messaging — Direct Messages
         const messagingArr = Array.isArray(entry?.messaging) ? entry.messaging : [];
         for (const m of messagingArr) {
-          if (!m?.message || m?.message?.is_echo) continue;
           const senderId = String(m?.sender?.id ?? "");
           if (!senderId) continue;
+
+          // Reaction event (heart sticker etc.)
+          if (m?.reaction && !m?.message) {
+            const emoji = m.reaction?.emoji ?? "❤️";
+            await persistMessage({
+              accountId, accountConfigId, accountName, accessToken, tenantId,
+              senderId, senderUsername: null, senderName: null,
+              text: `${emoji} (reação)`,
+              messageType: "dm", postId: null, commentId: null,
+              igMessageId: m.reaction?.mid ?? null,
+            });
+            continue;
+          }
+
+          if (!m?.message || m?.message?.is_echo) continue;
           const text = m?.message?.text ?? null;
           const igMessageId = m?.message?.mid ?? null;
+          const attachments = Array.isArray(m?.message?.attachments) ? m.message.attachments : [];
+          const replyToStoryUrl = m?.message?.reply_to?.story?.url ?? null;
 
           await persistMessage({
             accountId,
@@ -452,6 +468,8 @@ Deno.serve(async (req: Request) => {
             postId: null,
             commentId: null,
             igMessageId,
+            attachments,
+            replyToStoryUrl,
           });
         }
 
@@ -467,6 +485,10 @@ Deno.serve(async (req: Request) => {
             const senderUsername = value?.sender?.username ?? value?.from?.username ?? null;
             const text = value?.message?.text ?? value?.text ?? null;
             const igMessageId = value?.message?.mid ?? value?.mid ?? null;
+            const attachments = Array.isArray(value?.message?.attachments)
+              ? value.message.attachments
+              : Array.isArray(value?.attachments) ? value.attachments : [];
+            const replyToStoryUrl = value?.message?.reply_to?.story?.url ?? value?.reply_to?.story?.url ?? null;
 
             await persistMessage({
               accountId,
@@ -482,6 +504,8 @@ Deno.serve(async (req: Request) => {
               postId: null,
               commentId: null,
               igMessageId,
+              attachments,
+              replyToStoryUrl,
             });
           } else if (field === "comments") {
             const senderId = String(value?.from?.id ?? "");
