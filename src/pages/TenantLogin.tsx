@@ -53,7 +53,15 @@ const TenantLogin = () => {
         return;
       }
       await refreshProfile();
-      navigate("/dashboard");
+      // Check role to redirect posvenda directly to CRM
+      const { data: { user } } = await supabase.auth.getUser();
+      let target = "/dashboard";
+      if (user) {
+        const { data: roleRow } = await supabase
+          .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
+        if ((roleRow as any)?.role === "posvenda") target = "/crm";
+      }
+      navigate(target);
     } catch (err: any) {
       toast.error(err?.message || "Erro inesperado.");
       setLoading(false);
@@ -76,7 +84,14 @@ const TenantLogin = () => {
           url.searchParams.delete("impersonate_rt");
           window.history.replaceState({}, "", url.toString());
           await refreshProfile();
-          navigate("/dashboard");
+          const { data: { user } } = await supabase.auth.getUser();
+          let target = "/dashboard";
+          if (user) {
+            const { data: roleRow } = await supabase
+              .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
+            if ((roleRow as any)?.role === "posvenda") target = "/crm";
+          }
+          navigate(target);
         }
       })();
     }

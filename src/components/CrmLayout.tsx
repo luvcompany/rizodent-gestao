@@ -4,7 +4,7 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
-  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart,
+  Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
@@ -57,8 +57,11 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
     { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
     { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
     { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
-    { to: "/crm/configuracoes", icon: Settings, label: "Configurações" },
   );
+  if (role === "superadmin") {
+    items.push({ to: "/crm/usuarios", icon: Shield, label: "Usuários" });
+  }
+  items.push({ to: "/crm/configuracoes", icon: Settings, label: "Configurações" });
   return items;
 };
 
@@ -236,13 +239,15 @@ const CrmLayout = () => {
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground hover:text-primary transition-colors"
-          >
-            <ArrowLeft size={16} />
-            Voltar ao Sistema
-          </button>
+          {userRole !== "posvenda" && (
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center gap-2 text-sm font-medium text-sidebar-foreground hover:text-primary transition-colors"
+            >
+              <ArrowLeft size={16} />
+              Voltar ao Sistema
+            </button>
+          )}
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -106,10 +106,10 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/marketing" element={<Marketing />} />
               <Route path="/leads" element={<CadastroLeads />} />
-              <Route path="/usuarios" element={<Usuarios />} />
+              <Route path="/usuarios" element={<Navigate to="/crm/usuarios" replace />} />
               <Route path="/procedimentos" element={<TiposProcedimento />} />
               <Route path="/registro-diario" element={<RegistroDiario />} />
-              <Route path="/configuracoes" element={<Configuracoes />} />
+              <Route path="/configuracoes" element={<Navigate to="/crm/configuracoes" replace />} />
             </Route>
             <Route
               element={
@@ -136,6 +136,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/respostas-rapidas" element={<CrmRespostasRapidas />} />
               <Route path="/crm/campanhas" element={<CrmCampanhas />} />
               <Route path="/crm/ia-config" element={<CrmIaConfig />} />
+              <Route path="/crm/usuarios" element={<Usuarios />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,23 +1,38 @@
-# Desativar automação de envio ao Pós-venda
+## Objetivo
+Tornar o CRM o painel principal. Usuários "Pós-venda" só veem o CRM. Mover **Configurações** e **Usuários** para dentro do CRM (e remover da sidebar do sistema antigo).
 
-Hoje existe uma rotina automática (cron diário seg–sex 10:00 UTC) que move leads em etapa "Contratado" para o pipeline de Pós-venda. Você quer manter **apenas o fluxo manual** via botão "Enviar para Pós-venda" (componente `SendToPosvendaButton`) que já aparece quando o lead está em Contratado.
+## Mudanças
 
-## O que será feito
+### 1. `src/components/CrmLayout.tsx`
+- Adicionar **Usuários** ao menu lateral do CRM (rota `/crm/usuarios`), visível só para `superadmin` (já existe gate).
+- **Configurações** já está no CRM — apenas garantir que esteja no fim do menu.
+- Esconder o botão **"Voltar ao Sistema"** quando `userRole === "posvenda"`. Para os demais (crc, gerente, superadmin), o botão continua existindo (já que o sistema antigo continua acessível para eles).
 
-1. **Desagendar o cron job** `auto-transfer-contracted-posvenda` no Postgres (via `cron.unschedule`).
-2. **Excluir a edge function** `auto-transfer-contracted-to-posvenda` (não será mais invocada).
-3. **Remover a seção** `[functions.auto-transfer-contracted-to-posvenda]` do `supabase/config.toml`.
-4. **Preservar intacto** o botão manual `SendToPosvendaButton` e a edge function `transfer-lead` que ele usa — esse é o único caminho que sobra para mover um lead ao Pós-venda.
+### 2. `src/App.tsx`
+- Adicionar rotas no bloco `CrmLayout`:
+  - `/crm/usuarios` → `<Usuarios />`
+  - `/crm/configuracoes` já existe
+- Remover (ou manter, ver "Observação" abaixo) as rotas `/usuarios` e `/configuracoes` do `AppLayout`. Decisão: **manter** as rotas antigas redirecionando para as novas (`<Navigate to="/crm/usuarios" replace />` e `/crm/configuracoes`) para não quebrar bookmarks.
 
-## O que NÃO muda
+### 3. `src/components/AppLayout.tsx`
+- Remover **Configurações** e **Usuários** dos `navItems` (mover para o CRM).
+- Manter os demais itens visíveis para CRC/Gerente/Superadmin.
 
-- Botão "Enviar para Pós-venda" no chat/kanban quando o lead está em Contratado.
-- Atribuição do lead transferido manualmente continua indo para o usuário pós-venda (Neiriane).
-- Histórico de etapas e regras de retenção (sem status "Perdido") permanecem.
-- Os 245 leads já existentes no Pós-venda ficam onde estão.
+### 4. Redirecionamento por papel (posvenda)
+- Em `src/pages/TenantLogin.tsx`: após login bem-sucedido, ler o `user_role` recém carregado e redirecionar:
+  - `posvenda` → `/crm`
+  - outros → `/dashboard` (comportamento atual)
+- Em `src/components/ProtectedRoute.tsx`: se `userRole === "posvenda"` e a URL atual está fora de `/crm` (`/dashboard`, `/pacientes`, `/relatorios`, `/marketing`, `/leads`, `/atendimento`, `/procedimentos`, `/registro-diario`), redirecionar para `/crm`. Isso garante isolamento mesmo via URL direta ou impersonation.
 
-## Verificação após implementar
+### 5. Botão "Voltar ao Sistema"
+- Ocultado para `posvenda` (esses usuários só têm CRM).
 
-- Confirmar que `cron.job` não contém mais `auto-transfer-contracted-posvenda`.
-- Confirmar que a função deixou de aparecer no painel de edge functions.
-- Testar manualmente o botão "Enviar para Pós-venda" em um lead Contratado para garantir que o fluxo manual segue funcionando.
+## Observação
+Como Configurações e Usuários estão sendo movidos, os links antigos (`/configuracoes`, `/usuarios`) passam a redirecionar para os novos dentro do CRM — assim a navegação fica unificada para todos os papéis.
+
+## Arquivos alterados
+- `src/App.tsx`
+- `src/components/AppLayout.tsx`
+- `src/components/CrmLayout.tsx`
+- `src/components/ProtectedRoute.tsx`
+- `src/pages/TenantLogin.tsx`
