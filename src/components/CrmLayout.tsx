@@ -289,6 +289,22 @@ const CrmLayout = () => {
         </nav>
 
         <div className="border-t border-sidebar-border p-4 space-y-1">
+          {profile && (
+            <button
+              onClick={() => setEditProfileOpen(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 mb-1 hover:bg-sidebar-accent transition-colors group"
+            >
+              <Avatar className="h-9 w-9 border border-border">
+                <AvatarImage src={profile.avatar_url || undefined} />
+                <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-sidebar-foreground truncate">{profile.nome}</p>
+                <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
+              </div>
+              <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+          )}
           <button
             onClick={toggleTheme}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
