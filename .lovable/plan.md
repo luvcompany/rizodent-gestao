@@ -1,101 +1,44 @@
-# Refazer os 5 modelos WhatsApp na Meta
+## Diagnóstico do template "boas_vindas"
 
-## Contexto
+### O que já confirmamos
+- O template foi gravado no banco com `meta_template_id = 1766592678081514` e `status = PENDING`.
+- A WABA conectada na integração é `893372606594069`.
+- A Meta só retorna `meta_template_id` quando aceita a submissão; se ela tivesse rejeitado, voltaria erro e nada seria salvo.
+- Logs recentes da função `manage-whatsapp-templates` já rotacionaram (não temos mais o request/response detalhado dessa criação específica).
 
-Os 5 modelos abaixo estão `APPROVED` na Meta, mas têm `[Primeiro nome]` e `[Data e Horário]` como texto literal — ou seja, o paciente recebe a palavra `[Primeiro nome]` em vez do nome real. Precisam ser refeitos com placeholders válidos `{{1}}` e `{{2}}`.
+### Hipóteses para o template "não aparecer" na Meta
+1. Você está olhando uma WABA diferente no Business Manager (não a `893372606594069`).
+2. Está filtrando apenas "Aprovados" — pendentes ficam em outra aba.
+3. A Meta aceitou mas rejeitou logo em seguida por política (acontece em UTILITY mal-categorizado), e nosso banco ficou desatualizado porque ninguém clicou em "Sincronizar".
+4. O token usado pertence a outra WABA que apenas tem `permissão` sobre a `893372606594069` — o template então aparece sob a WABA "dona" do token.
 
-| Modelo antigo | Cidade | Header atual |
-|---|---|---|
-| `agendamento_guanambi_w9yunp` | Guanambi | IMAGEM da clínica |
-| `agendamento_itabuna_997814` | Itabuna | IMAGEM da clínica |
-| `agendamento_vca_1_ld18jz` | VCA (R. Francisco Andrade) | IMAGEM da clínica |
-| `agendamento_vca_2_im8new` | VCA (R. Monsenhor Olímpio) | IMAGEM da clínica |
-| `confirmacao_de_agenda_segunda_hw8nan` | Confirmação seg. | Sem header |
+### Plano de execução
 
-Decisões já confirmadas:
-- "Serviço: Check-up odontológico" fica **fixo** (sem variável).
-- Submissão para Meta **automática** (sem revisão prévia).
+**Passo 1 — Validar com a Meta (read-only)**
+- Disparar o `action: "list"` da edge function `manage-whatsapp-templates` e verificar se `boas_vindas` consta na resposta da Meta.
+- Comparar `waba_id` retornado nos templates vs. o `893372606594069` da integração.
 
-## Ponto importante sobre as imagens das clínicas
+**Passo 2 — Sincronizar banco com Meta**
+- O "list" já faz isso automaticamente: atualiza status (PENDING → APPROVED/REJECTED) e remove do banco templates que sumiram na Meta.
+- Após sincronizar, a UI vai refletir a verdade da Meta.
 
-A submissão de header tipo `IMAGE` na Meta exige um `header_handle` recém-gerado por sessão de Resumable Upload — a URL `scontent.whatsapp.net` que está salva hoje **não funciona** numa nova submissão. Reimplementar o fluxo de upload resumível só para isso é um esforço grande, então proponho:
+**Passo 3 — Melhorar a edge function `manage-whatsapp-templates`**
+- Adicionar logs persistentes em uma tabela `whatsapp_template_logs` (request payload, response Meta, http status, timestamp) toda vez que um `create` for executado, para não depender de logs voláteis da edge function.
+- Retornar no response do `create` o `waba_id` usado, para a UI exibir junto do toast de sucesso ("Template enviado à WABA xxx").
 
-→ **Converter o header das 4 ag*endamento* para TEXT** com `📍 Agendamento Realizado` (que hoje está no corpo). A informação de localização permanece no corpo do texto. Isso permite submissão 100% automática, sem upload manual.
+**Passo 4 — Melhorias de UX em `CrmModelos.tsx`**
+- Exibir tooltip claro nos status: `PENDING = "Em análise pela Meta (pode levar até 24h)"`, `REJECTED = motivo da Meta`.
+- Botão "Sincronizar com Meta" mais visível e com indicação de última sincronização.
+- Após criar um template, disparar `list` automaticamente em 5s para já refletir possíveis rejeições rápidas.
 
-Se preferir manter as fotos, o caminho alternativo é eu deixar os rascunhos prontos e você reenviar a imagem pela tela Modelos antes de submeter — me avise e eu sigo por aí.
+**Passo 5 — Recriar `boas_vindas` se a Meta confirmar que não existe**
+- Se o "list" do Passo 1 retornar que o template não está na WABA: deletar localmente e refazer o `create`, agora com os logs persistentes do Passo 3 capturando exatamente o que aconteceu.
 
-## Conteúdo final dos 5 modelos
+### Arquivos afetados
+- `supabase/functions/manage-whatsapp-templates/index.ts` — adicionar logs persistentes + retornar `waba_id` no response.
+- `src/pages/CrmModelos.tsx` — tooltip de status, botão sincronizar destacado, auto-resync pós-create.
+- Nova migration: tabela `whatsapp_template_logs` (id, action, payload, response, http_status, user_id, created_at, RLS por tenant).
 
-Todos `language=pt_BR`, `category=UTILITY` (mais adequado que MARKETING para confirmação de agendamento, evita rejeição), nomes novos com sufixo `_v2`.
-
-### 1. `agendamento_guanambi_v2`
-- Header TEXT: `📍 Agendamento Realizado`
-- Body:
-  ```
-  Olá {{1}}! Seu agendamento foi realizado.
-  
-  Data e horário: {{2}}
-  Serviço: Check-up odontológico
-  
-  Estamos localizados na Rua dos Expedicionários, 71 - Centro, ao lado do banco Santander.
-  
-  Estaremos te esperando 🧡
-  ```
-- Footer: `Rizodent`
-- Botão URL: `Ver localização` → `https://maps.app.goo.gl/E8MHDBPVp4Mxr4gr6`
-
-### 2. `agendamento_itabuna_v2`
-Mesma estrutura, endereço: `Av. Cinquentenário, 375, ao lado da Jan e Ju, em frente ao banco Bradesco`. Botão URL para o mapa de Itabuna.
-
-### 3. `agendamento_vca_1_v2`
-Endereço: `R. Francisco Andrade, próximo ao Bigode de Pedral e acima do Ceasa (antiga Meira Gás)`. Botão URL do mapa correspondente.
-
-### 4. `agendamento_vca_2_v2`
-Endereço: `R. Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens`. Botão URL correspondente.
-
-### 5. `confirmacao_de_agenda_segunda_v2`
-- Sem header
-- Body:
-  ```
-  Olá {{1}}! Aqui é da Rizodent 🧡✨
-  
-  Estamos confirmando sua consulta agendada para segunda-feira, {{2}}.
-  
-  Por favor, responda "Sim" para confirmar ou "Quero reagendar" se precisar de outra data.
-  
-  Aguardamos você 😊
-  ```
-- Botões Quick Reply: `Sim!` e `Quero reagendar.`
-
-## Mapeamento dos placeholders
-
-Já existe em `send-whatsapp-message`:
-- `{{1}}` → `lead.name` (primeiro nome)
-- `{{2}}` → próxima data/hora do agendamento
-
-Nada precisa mudar no backend de envio.
-
-## Passos de execução
-
-1. **Migração** insere as 5 novas linhas em `crm_whatsapp_templates` (status `DRAFT`, tenant Rizodent).
-2. **Submeter à Meta**: invocar a edge function `submit-whatsapp-template` 5 vezes (uma para cada). Cada chamada cria o modelo na Meta e atualiza `status=PENDING` + `meta_template_id`.
-3. **Aguardar aprovação** (geralmente minutos). A sincronização automática já existente vai mover para `APPROVED`.
-4. **Excluir os 5 antigos** chamando `manage-whatsapp-templates` com `action: "delete"` para cada um — apaga da Meta e do banco local.
-
-Os passos 2–4 ficam num botão único "Migrar para placeholders" na tela Modelos (UI temporária), porque as edge functions exigem sessão autenticada de admin/gerente — não dá para rodar 100% no backend sem expor service role. Você clica uma vez e o frontend executa as 9 chamadas em sequência.
-
-## Arquivos a alterar
-
-- `supabase/migrations/...` — inserir 5 novos modelos DRAFT.
-- `src/pages/CrmModelos.tsx` — adicionar botão "Migrar 5 modelos antigos" (one-shot), que:
-  1. chama `submit-whatsapp-template` para cada `*_v2`;
-  2. chama `manage-whatsapp-templates` action `delete` para cada modelo antigo;
-  3. mostra progresso por modelo (toast).
-
-Após uso, o botão pode ser removido na próxima limpeza — fica visível só enquanto algum modelo com `[colchete]` existir.
-
-## Riscos / observações
-
-- Se a Meta rejeitar algum modelo (texto fora de política), o antigo correspondente **não** é excluído — o botão só apaga após sucesso da criação.
-- Categoria `UTILITY` cobra menos que `MARKETING` por mensagem e tem aprovação mais rápida. Confirma se topa.
-- O nome `_v2` é definitivo; a Meta bloqueia o nome antigo por ~30 dias após delete.
+### Detalhes técnicos
+- Tabela `whatsapp_template_logs`: usar `gen_random_uuid()`, `tenant_id` herdado via `set_tenant_id_default()` trigger, RLS permitindo SELECT a crc/gerente/superadmin do mesmo tenant.
+- A função vai gravar 2 linhas por `create`: uma `request` (antes do fetch) e uma `response` (depois), garantindo trace mesmo se o fetch falhar.
