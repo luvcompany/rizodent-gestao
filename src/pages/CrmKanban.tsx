@@ -196,7 +196,7 @@ export default function CrmKanban() {
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       targetPipelineId ? fetchLeadPage(targetPipelineId) : Promise.resolve(null),
-      supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
+      supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]).limit(5000),
     ]);
 
     const pList = (pipelinesRes.data as Pipeline[]) || [];
