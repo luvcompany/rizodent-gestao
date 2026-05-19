@@ -3088,6 +3088,45 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_template_logs: {
+        Row: {
+          action: string
+          created_at: string
+          http_status: number | null
+          id: string
+          request_payload: Json | null
+          response_body: Json | null
+          template_name: string | null
+          tenant_id: string | null
+          user_id: string | null
+          waba_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          http_status?: number | null
+          id?: string
+          request_payload?: Json | null
+          response_body?: Json | null
+          template_name?: string | null
+          tenant_id?: string | null
+          user_id?: string | null
+          waba_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          http_status?: number | null
+          id?: string
+          request_payload?: Json | null
+          response_body?: Json | null
+          template_name?: string | null
+          tenant_id?: string | null
+          user_id?: string | null
+          waba_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
