@@ -12,7 +12,7 @@ import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, Chevron
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
-type OwnerRole = "admin" | "gerente" | "crc" | "posvenda" | "superadmin" | null;
+type OwnerRole = "gerente" | "crc" | "posvenda" | "superadmin" | null;
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
