@@ -14,6 +14,7 @@ import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
 import DashboardFunnel from "@/components/DashboardFunnel";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
+import FunilEditavelTab from "@/components/relatorios/FunilEditavelTab";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, RefreshCw, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox } from "lucide-react";
 
@@ -475,10 +476,15 @@ export default function CrmRelatorios() {
       <Tabs defaultValue="overview" className="w-full">
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="funil-editavel">Funil de Conversão</TabsTrigger>
           <TabsTrigger value="origem-conversao">Origem & Conversão</TabsTrigger>
           <TabsTrigger value="acoes-dia">Ações por Dia</TabsTrigger>
           <TabsTrigger value="antecedencia">Antecedência de Agendamento</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="funil-editavel" className="mt-4">
+          <FunilEditavelTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
+        </TabsContent>
 
         <TabsContent value="origem-conversao" className="mt-4">
           <OrigemConversaoTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
