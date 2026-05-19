@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", requesterId);
-    const isAdmin = (roles || []).some((r: any) => r.role === "admin" || r.role === "superadmin");
+    const isAdmin = (roles || []).some((r: any) => r.role === "crc" || r.role === "superadmin");
     if (!isAdmin) return json({ error: "Forbidden — admin only" }, 403);
 
     // Pega o tenant do solicitante

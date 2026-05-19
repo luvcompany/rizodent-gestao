@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
-      .in("role", ["admin", "gerente"])
+      .in("role", ["crc", "gerente"])
       .maybeSingle();
     if (!roleRow) {
       return new Response(JSON.stringify({ error: "Forbidden: admin or manager role required" }), {
