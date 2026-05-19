@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmRespostasRapidas() {
   const { userRole } = useAuth();
-  const canShare = userRole === "admin" || userRole === "gerente" || userRole === "superadmin";
+  const canShare = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   const [replies, setReplies] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
