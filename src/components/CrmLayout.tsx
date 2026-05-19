@@ -64,7 +64,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
 
 const CrmLayout = () => {
   const navigate = useNavigate();
-  const { userRole } = useAuth();
+  const { userRole, user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
