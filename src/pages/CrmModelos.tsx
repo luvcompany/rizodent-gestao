@@ -122,6 +122,178 @@ export default function CrmModelos() {
     }
   };
 
+  // Mapeamento dos 5 modelos antigos (com [colchete]) → novos com {{1}}/{{2}}
+  const LEGACY_MIGRATION_MAP: {
+    oldNamePrefix: string;
+    newName: string;
+    payload: {
+      name: string;
+      language: string;
+      category: string;
+      header_type: string | null;
+      header_content: string | null;
+      body_text: string;
+      footer_text: string | null;
+      buttons: { type: string; text: string; url?: string }[] | null;
+    };
+  }[] = [
+    {
+      oldNamePrefix: "agendamento_guanambi",
+      newName: "agendamento_guanambi_v2",
+      payload: {
+        name: "agendamento_guanambi_v2",
+        language: "pt_BR",
+        category: "UTILITY",
+        header_type: "TEXT",
+        header_content: "📍 Agendamento Realizado",
+        body_text:
+          "Olá {{1}}! Seu agendamento foi realizado.\n\nData e horário: {{2}}\nServiço: Check-up odontológico\n\nEstamos localizados na Rua dos Expedicionários, 71 - Centro, ao lado do banco Santander.\n\nEstaremos te esperando 🧡",
+        footer_text: "Rizodent",
+        buttons: [{ type: "URL", text: "Ver localização", url: "https://maps.app.goo.gl/E8MHDBPVp4Mxr4gr6" }],
+      },
+    },
+    {
+      oldNamePrefix: "agendamento_itabuna",
+      newName: "agendamento_itabuna_v2",
+      payload: {
+        name: "agendamento_itabuna_v2",
+        language: "pt_BR",
+        category: "UTILITY",
+        header_type: "TEXT",
+        header_content: "📍 Agendamento Realizado",
+        body_text:
+          "Olá {{1}}! Seu agendamento foi realizado.\n\nData e horário: {{2}}\nServiço: Check-up odontológico\n\nEstamos localizados na Avenida Cinquentenário, 375, ao lado da Jan e Ju e em frente ao banco Bradesco.\n\nEstaremos te esperando 🧡",
+        footer_text: "Rizodent",
+        buttons: [{ type: "URL", text: "Ver localização", url: "https://maps.app.goo.gl/iAmAiejknxwGLFa86" }],
+      },
+    },
+    {
+      oldNamePrefix: "agendamento_vca_1",
+      newName: "agendamento_vca_1_v2",
+      payload: {
+        name: "agendamento_vca_1_v2",
+        language: "pt_BR",
+        category: "UTILITY",
+        header_type: "TEXT",
+        header_content: "📍 Agendamento Realizado",
+        body_text:
+          "Olá {{1}}! Seu agendamento foi realizado.\n\nData e horário: {{2}}\nServiço: Check-up odontológico\n\nEstamos localizados na Rua Francisco Andrade, próximo ao Bigode de Pedral e acima do Ceasa (antiga Meira Gás).\n\nEstaremos te esperando 🧡",
+        footer_text: "Rizodent",
+        buttons: [{ type: "URL", text: "Ver localização", url: "https://maps.app.goo.gl/R72pSBsKWrRo3F6S8" }],
+      },
+    },
+    {
+      oldNamePrefix: "agendamento_vca_2",
+      newName: "agendamento_vca_2_v2",
+      payload: {
+        name: "agendamento_vca_2_v2",
+        language: "pt_BR",
+        category: "UTILITY",
+        header_type: "TEXT",
+        header_content: "📍 Agendamento Realizado",
+        body_text:
+          "Olá {{1}}! Seu agendamento foi realizado.\n\nData e horário: {{2}}\nServiço: Check-up odontológico\n\nEstamos localizados na Rua Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens.\n\nEstaremos te esperando 🧡",
+        footer_text: "Rizodent",
+        buttons: [{ type: "URL", text: "Ver localização", url: "https://maps.app.goo.gl/bsDRGmCrgaMkSYB3A" }],
+      },
+    },
+    {
+      oldNamePrefix: "confirmacao_de_agenda_segunda",
+      newName: "confirmacao_de_agenda_segunda_v2",
+      payload: {
+        name: "confirmacao_de_agenda_segunda_v2",
+        language: "pt_BR",
+        category: "UTILITY",
+        header_type: null,
+        header_content: null,
+        body_text:
+          "Olá {{1}}! Aqui é da Rizodent 🧡✨\n\nEstamos confirmando sua consulta agendada para segunda-feira, {{2}}.\n\nPor favor, responda \"Sim\" para confirmar ou \"Quero reagendar\" se precisar de outra data.\n\nAguardamos você 😊",
+        footer_text: null,
+        buttons: [
+          { type: "QUICK_REPLY", text: "Sim!" },
+          { type: "QUICK_REPLY", text: "Quero reagendar." },
+        ],
+      },
+    },
+  ];
+
+  // Detect legacy templates with [bracket] placeholders
+  const legacyBroken = templates.filter((t) =>
+    LEGACY_MIGRATION_MAP.some((m) => t.name.startsWith(m.oldNamePrefix) && /\[.*\]/.test(t.body_text || ""))
+  );
+
+  const handleLegacyMigration = async () => {
+    if (migrating) return;
+    if (!selectedIntegration) {
+      toast.error("Selecione uma integração WhatsApp no topo da página.");
+      return;
+    }
+    const confirm = window.confirm(
+      `Vou criar ${LEGACY_MIGRATION_MAP.length} modelos novos na Meta (com placeholders {{1}}/{{2}}) e excluir os ${legacyBroken.length} antigos que estão com colchetes literais. Deseja continuar?`
+    );
+    if (!confirm) return;
+
+    setMigrating(true);
+    const createdNames: string[] = [];
+    let createdCount = 0;
+    let deletedCount = 0;
+
+    try {
+      // 1. Criar os novos modelos
+      for (const item of LEGACY_MIGRATION_MAP) {
+        // Skip se já existe localmente
+        if (templates.some((t) => t.name === item.newName)) {
+          toast.info(`${item.newName} já existe, pulando criação.`);
+          createdNames.push(item.newName);
+          continue;
+        }
+        try {
+          const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", {
+            body: {
+              action: "create",
+              integration_key: selectedIntegration,
+              ...item.payload,
+            },
+          });
+          if (error || data?.error) {
+            const msg = data?.details ? JSON.stringify(data.details) : error?.message || "erro desconhecido";
+            toast.error(`Falha ao criar ${item.newName}: ${msg}`);
+            continue;
+          }
+          createdCount++;
+          createdNames.push(item.newName);
+          toast.success(`Criado ${item.newName} (status: ${data?.status || "PENDING"})`);
+        } catch (e: any) {
+          toast.error(`Erro ao criar ${item.newName}: ${e?.message || String(e)}`);
+        }
+      }
+
+      // 2. Excluir os antigos correspondentes (apenas os que foram substituídos com sucesso)
+      for (const old of legacyBroken) {
+        const match = LEGACY_MIGRATION_MAP.find((m) => old.name.startsWith(m.oldNamePrefix));
+        if (!match || !createdNames.includes(match.newName)) continue;
+        try {
+          const { error } = await supabase.functions.invoke("manage-whatsapp-templates", {
+            body: { action: "delete", template_name: old.name, integration_key: selectedIntegration },
+          });
+          if (error) {
+            toast.warning(`Falha ao excluir ${old.name} na Meta, removendo apenas local.`);
+          }
+          await supabase.from("crm_whatsapp_templates").delete().eq("id", old.id);
+          deletedCount++;
+        } catch (e: any) {
+          toast.error(`Erro ao excluir ${old.name}: ${e?.message || String(e)}`);
+        }
+      }
+
+      toast.success(`Migração concluída: ${createdCount} criados, ${deletedCount} antigos excluídos.`);
+      fetchTemplates();
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+
   const filtered = deduplicateTemplates(templates).filter(t => {
     if (tab === "aprovados" && t.status !== "APPROVED") return false;
     if (tab === "pendentes" && t.status !== "PENDING" && t.status !== "REJECTED") return false;
