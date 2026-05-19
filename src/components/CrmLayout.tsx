@@ -86,19 +86,24 @@ const CrmLayout = () => {
   };
 
   useEffect(() => {
+    let debounceTimer: number | undefined;
     const fetchUnread = async () => {
       const seq = ++unreadFetchSeq.current;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || seq !== unreadFetchSeq.current) return;
+      // Only look at leads with recent inbound activity (last 60 days) — older "unreads" are not actionable
+      const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
       const PAGE_SIZE = 1000;
+      const MAX_PAGES = 3; // hard cap at 3000 leads to avoid runaway pagination
       let unreadTotal = 0;
-      for (let from = 0; ; from += PAGE_SIZE) {
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const from = page * PAGE_SIZE;
         const { data: unreadCandidates, error } = await supabase
           .from("crm_leads")
           .select("id, last_inbound_at, last_outbound_at")
           .eq("is_blocked", false)
           .neq("pipeline_id", INSTAGRAM_PIPELINE_ID)
-          .not("last_inbound_at", "is", null)
+          .gte("last_inbound_at", cutoff)
           .order("id", { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
 
@@ -112,14 +117,22 @@ const CrmLayout = () => {
         setUnreadCount(unreadTotal);
       }
     };
+    const debouncedFetch = () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(fetchUnread, 8000);
+    };
     fetchUnread();
     const ch = supabase.channel("unread-badge")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, fetchUnread)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, debouncedFetch)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      supabase.removeChannel(ch);
+    };
   }, []);
 
   useEffect(() => {
+    let debounceTimer: number | undefined;
     const fetchTodayTasks = async () => {
       const today = toLocalDateISO();
       const { count } = await supabase
@@ -129,12 +142,20 @@ const CrmLayout = () => {
         .lte("due_date", `${today}T23:59:59`);
       setTodayTaskCount(count || 0);
     };
+    const debouncedFetch = () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(fetchTodayTasks, 5000);
+    };
     fetchTodayTasks();
     const ch = supabase.channel("task-badge")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, fetchTodayTasks)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, debouncedFetch)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      supabase.removeChannel(ch);
+    };
   }, []);
+
 
   const renderNavItem = (item: NavItem) => (
     <NavLink
