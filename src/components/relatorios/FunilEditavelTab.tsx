@@ -461,15 +461,19 @@ export default function FunilEditavelTab({ pipelineId, pipelines, setPipelineId 
 function computeMetrics(v: FunnelValues, goals: Goals) {
   const rows = STAGES.map(stage => {
     const from = v[stage.from];
-    const cur = v[stage.key];
+    const curRaw = v[stage.key];
+    const invalid = curRaw > from;
+    const cur = Math.min(curRaw, from);
     const conv = from > 0 ? (cur / from) * 100 : 0;
     const lossAbs = Math.max(0, from - cur);
-    const lossPct = 100 - conv;
-    return { label: stage.label, conv, lossAbs, lossPct, from, cur };
+    const lossPct = from > 0 ? (lossAbs / from) * 100 : 0;
+    return { label: stage.label, conv, lossAbs, lossPct, from, cur, curRaw, invalid };
   });
   const totalLoss = rows.reduce((s, r) => s + r.lossAbs, 0);
-  const totalConv = v.total_leads > 0 ? (v.fecharam / v.total_leads) * 100 : 0;
-  return { rows, totalLoss, totalConv };
+  const fecharamSafe = Math.min(v.fecharam, v.avaliados, v.compareceram, v.agendados, v.atendidos, v.total_leads);
+  const totalConv = v.total_leads > 0 ? (fecharamSafe / v.total_leads) * 100 : 0;
+  const hasInvalid = rows.some(r => r.invalid);
+  return { rows, totalLoss, totalConv, hasInvalid };
 }
 
 function buildPeriodLabel(period: DateRangeFilterValue, range: { start: Date; end: Date }, type: string): string {
@@ -493,16 +497,19 @@ async function fetchAllPages<T>(build: (from: number, customTo: number) => any):
 }
 
 /**
- * Calcula valores reais do funil a partir do CRM:
- * - total_leads = leads criados no período
- * - atendidos = leads que receberam ao menos uma resposta (outbound após inbound)
- * - agendados = leads únicos com appointment cuja data marcada está no período
- * - compareceram = appointments com status contracted OU not_contracted
- * - avaliados = mesma definição de compareceram (proxy: quem compareceu fez avaliação)
- * - fecharam = appointments com status='contracted'
+ * Calcula valores reais do funil a partir do CRM, garantindo coerência entre etapas.
+ * Todas as etapas referem-se à MESMA COORTE: leads criados no período.
+ * Cada etapa é contada por LEADS ÚNICOS (não por appointments), restritos à coorte,
+ * e propagada para etapas anteriores (fecharam ⊆ compareceram ⊆ agendados ⊆ atendidos ⊆ leads).
+ *
+ * - total_leads   = leads criados no período (coorte)
+ * - atendidos     = leads da coorte com outbound após o 1º inbound OU que agendaram
+ * - agendados     = leads da coorte com ≥1 appointment não-reagendado
+ * - compareceram  = leads da coorte com ≥1 appointment status contracted|not_contracted
+ * - avaliados     = proxy = compareceram
+ * - fecharam      = leads da coorte com ≥1 appointment status='contracted'
  */
 async function computeFunnel(pipelineId: string, startISO: string, endISO: string): Promise<FunnelValues> {
-  // Leads da coorte
   const cohort = await fetchAllPages<{ id: string; created_at: string; first_inbound_at: string | null }>((f, t) =>
     supabase
       .from("crm_leads")
@@ -515,8 +522,12 @@ async function computeFunnel(pipelineId: string, startISO: string, endISO: strin
   );
   const total_leads = cohort.length;
   const leadIds = cohort.map(l => l.id);
+  const leadIdSet = new Set(leadIds);
 
-  // Mensagens para calcular atendidos
+  if (total_leads === 0) {
+    return { total_leads: 0, atendidos: 0, agendados: 0, compareceram: 0, avaliados: 0, fecharam: 0 };
+  }
+
   let allMsgs: { lead_id: string; direction: string; created_at: string }[] = [];
   let allAppts: { lead_id: string; scheduled_date: string; status: string; is_rescheduled?: boolean }[] = [];
   const CHUNK = 300;
@@ -537,7 +548,6 @@ async function computeFunnel(pipelineId: string, startISO: string, endISO: strin
     allAppts = allAppts.concat(apps);
   }
 
-  // Atendidos = leads com ao menos um outbound após o primeiro inbound
   const firstInbound = new Map<string, number>();
   const outboundsByLead = new Map<string, number[]>();
   allMsgs.forEach(m => {
@@ -550,26 +560,36 @@ async function computeFunnel(pipelineId: string, startISO: string, endISO: strin
       outboundsByLead.get(m.lead_id)!.push(t);
     }
   });
-  let atendidos = 0;
+
+  const atendidosSet = new Set<string>();
   cohort.forEach(l => {
     const ib = firstInbound.get(l.id) ?? (l.first_inbound_at ? new Date(l.first_inbound_at).getTime() : null);
     if (ib === null) return;
     const obs = outboundsByLead.get(l.id) || [];
-    if (obs.some(t => t > ib)) atendidos++;
+    if (obs.some(t => t > ib)) atendidosSet.add(l.id);
   });
 
-  // Appointments filtrados por data marcada no período
-  const startDateStr = startISO.slice(0, 10);
-  const endDateStr = endISO.slice(0, 10);
-  const apptsPeriodo = allAppts.filter(a =>
-    a.scheduled_date >= startDateStr && a.scheduled_date <= endDateStr && !a.is_rescheduled
-  );
-  const agendadosLeads = new Set(apptsPeriodo.map(a => a.lead_id));
-  const agendados = agendadosLeads.size;
-  const compareceram = apptsPeriodo.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
-  const fecharam = apptsPeriodo.filter(a => a.status === "contracted").length;
-  // Avaliados: proxy = compareceram (todos que compareceram fizeram avaliação)
-  const avaliados = compareceram;
+  const apptsCoorte = allAppts.filter(a => leadIdSet.has(a.lead_id));
+  const agendadosSet = new Set<string>();
+  const compareceramSet = new Set<string>();
+  const fecharamSet = new Set<string>();
+  apptsCoorte.forEach(a => {
+    if (!a.is_rescheduled) agendadosSet.add(a.lead_id);
+    if (a.status === "contracted" || a.status === "not_contracted") compareceramSet.add(a.lead_id);
+    if (a.status === "contracted") fecharamSet.add(a.lead_id);
+  });
 
-  return { total_leads, atendidos, agendados, compareceram, avaliados, fecharam };
+  // Propagação para garantir funil monotônico (cada etapa ⊆ etapa anterior)
+  agendadosSet.forEach(id => atendidosSet.add(id));         // quem agendou foi atendido
+  compareceramSet.forEach(id => agendadosSet.add(id));      // quem compareceu foi agendado
+  fecharamSet.forEach(id => compareceramSet.add(id));       // quem fechou compareceu
+
+  return {
+    total_leads,
+    atendidos: Math.min(atendidosSet.size, total_leads),
+    agendados: Math.min(agendadosSet.size, atendidosSet.size),
+    compareceram: Math.min(compareceramSet.size, agendadosSet.size),
+    avaliados: Math.min(compareceramSet.size, agendadosSet.size),
+    fecharam: Math.min(fecharamSet.size, compareceramSet.size),
+  };
 }
