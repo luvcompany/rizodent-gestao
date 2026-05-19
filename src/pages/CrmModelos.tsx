@@ -559,19 +559,6 @@ export default function CrmModelos() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {legacyBroken.length > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleLegacyMigration}
-              disabled={migrating}
-              className="border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
-              title={`Refazer ${legacyBroken.length} modelo(s) que estão com [colchetes] em vez de {{1}}/{{2}}`}
-            >
-              <Wand2 size={14} className={`mr-1 ${migrating ? "animate-spin" : ""}`} />
-              {migrating ? "Migrando..." : `Refazer ${legacyBroken.length} antigos`}
-            </Button>
-          )}
           <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing}>
             <RefreshCw size={14} className={`mr-1 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? "Sincronizando..." : "Sincronizar"}
