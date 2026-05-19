@@ -80,7 +80,11 @@ export default function ShareRoleDialog({ open, onOpenChange, table, rowId, curr
       .update({ owner_role: newOwner, shared_roles: sharedRoles })
       .eq("id", rowId);
     setSaving(false);
-    if (error) { toast.error("Erro ao atualizar compartilhamento"); return; }
+    if (error) {
+      console.error("[ShareRoleDialog] update failed", error);
+      toast.error(`Erro ao atualizar compartilhamento: ${error.message || error.code || "desconhecido"}`);
+      return;
+    }
     toast.success(roles.length === 0 ? `${itemLabel} compartilhado com todos` : `${itemLabel} visível para: ${roles.map(r => ROLE_LABEL[r]).join(", ")}`);
     onOpenChange(false);
     onSaved?.();
