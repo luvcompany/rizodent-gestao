@@ -26,24 +26,27 @@ import CrmModelos from "./pages/CrmModelos";
 import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
 import CrmIntegracoes from "./pages/CrmIntegracoes";
 
-// Keep lazy loading for heavier / less-frequent screens.
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Atendimento = lazy(() => import("./pages/Atendimento"));
-const Pacientes = lazy(() => import("./pages/Pacientes"));
-const PacienteDetalhe = lazy(() => import("./pages/PacienteDetalhe"));
-const Relatorios = lazy(() => import("./pages/Relatorios"));
-const Marketing = lazy(() => import("./pages/Marketing"));
-const CadastroLeads = lazy(() => import("./pages/CadastroLeads"));
-const Usuarios = lazy(() => import("./pages/Usuarios"));
-const TiposProcedimento = lazy(() => import("./pages/TiposProcedimento"));
-const RegistroDiario = lazy(() => import("./pages/RegistroDiario"));
-const Configuracoes = lazy(() => import("./pages/Configuracoes"));
-const CrmAutomacoes = lazy(() => import("./pages/CrmAutomacoes"));
-const CrmBots = lazy(() => import("./pages/CrmBots"));
+// Eager-load main app (Dashboard) pages too — same reasoning as CRM pages: avoids
+// the white Suspense flash when switching tabs.
+import Dashboard from "./pages/Dashboard";
+import Atendimento from "./pages/Atendimento";
+import Pacientes from "./pages/Pacientes";
+import PacienteDetalhe from "./pages/PacienteDetalhe";
+import Relatorios from "./pages/Relatorios";
+import Marketing from "./pages/Marketing";
+import CadastroLeads from "./pages/CadastroLeads";
+import Usuarios from "./pages/Usuarios";
+import TiposProcedimento from "./pages/TiposProcedimento";
+import RegistroDiario from "./pages/RegistroDiario";
+import Configuracoes from "./pages/Configuracoes";
+import CrmAutomacoes from "./pages/CrmAutomacoes";
+import CrmBots from "./pages/CrmBots";
+import CrmExtras from "./pages/CrmExtras";
+import CrmCampanhas from "./pages/CrmCampanhas";
+import CrmIaConfig from "./pages/CrmIaConfig";
+
+// Keep lazy loading only for heavier / less-frequent screens.
 const CrmBotEditor = lazy(() => import("./pages/CrmBotEditor"));
-const CrmExtras = lazy(() => import("./pages/CrmExtras"));
-const CrmCampanhas = lazy(() => import("./pages/CrmCampanhas"));
-const CrmIaConfig = lazy(() => import("./pages/CrmIaConfig"));
 const CrclinLanding = lazy(() => import("./pages/CrclinLanding"));
 const ChangePassword = lazy(() => import("./pages/ChangePassword"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminLayout })));
