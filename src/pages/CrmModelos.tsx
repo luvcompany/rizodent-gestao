@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -7,12 +7,22 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
 import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialog";
+
+const TEMPLATE_VARIABLES: { index: number; label: string; sample: string; hint: string }[] = [
+  { index: 1, label: "Nome do lead", sample: "Maria Silva", hint: "lead.name (fallback: cliente)" },
+  { index: 2, label: "Data e hora do agendamento", sample: "20/05/2026 às 14:00", hint: "próximo agendamento (fallback: data a confirmar)" },
+  { index: 3, label: "Serviço de interesse", sample: "Implante dentário", hint: "lead.servico_interesse (fallback: consulta)" },
+  { index: 4, label: "Telefone do lead", sample: "(11) 99999-9999", hint: "lead.phone" },
+  { index: 5, label: "Origem do lead", sample: "Anúncio", hint: "lead.source" },
+];
+
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
@@ -295,10 +305,42 @@ export default function CrmModelos() {
     setForm(p => ({ ...p, buttons: [...p.buttons, { type: "QUICK_REPLY", text: "" }] }));
   };
 
-  const insertVariable = () => {
-    const varNum = (form.body_text.match(/\{\{\d+\}\}/g) || []).length + 1;
-    setForm(p => ({ ...p, body_text: p.body_text + `{{${varNum}}}` }));
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [variablePopoverOpen, setVariablePopoverOpen] = useState(false);
+
+  const insertVariableAt = (index: number) => {
+    const placeholder = `{{${index}}}`;
+    const el = bodyTextareaRef.current;
+    if (!el) {
+      setForm(p => ({ ...p, body_text: (p.body_text || "") + placeholder }));
+      setVariablePopoverOpen(false);
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const current = form.body_text || "";
+    const next = current.slice(0, start) + placeholder + current.slice(end);
+    setForm(p => ({ ...p, body_text: next }));
+    setVariablePopoverOpen(false);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + placeholder.length;
+      el.setSelectionRange(pos, pos);
+    });
   };
+
+  // Render preview substituindo {{N}} pelos valores de exemplo
+  const renderPreviewBody = (text: string) => {
+    if (!text) return "Corpo da mensagem...";
+    return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => {
+      const v = TEMPLATE_VARIABLES.find(v => v.index === Number(n));
+      return v ? v.sample : `{{${n}}}`;
+    });
+  };
+
+  // Detecta placeholders inválidos digitados manualmente (ex: [nome])
+  const hasInvalidPlaceholders = (text: string) => /\[[^\]]+\]/.test(text || "");
+
 
   const statusBadge = (s: string) => {
     if (s === "APPROVED") return <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium">Aprovado</span>;
@@ -507,10 +549,48 @@ export default function CrmModelos() {
               <div>
                 <div className="flex items-center justify-between">
                   <Label>Corpo da mensagem</Label>
-                  <button onClick={insertVariable} className="text-xs text-primary hover:underline">+ Variável</button>
+                  <Popover open={variablePopoverOpen} onOpenChange={setVariablePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="text-xs text-primary hover:underline">+ Variável</button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-72 p-1">
+                      <div className="px-2 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Inserir variável dinâmica
+                      </div>
+                      {TEMPLATE_VARIABLES.map(v => (
+                        <button
+                          key={v.index}
+                          type="button"
+                          onClick={() => insertVariableAt(v.index)}
+                          className="w-full text-left px-2 py-1.5 rounded hover:bg-secondary transition-colors group"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-foreground">{v.label}</span>
+                            <code className="text-[10px] bg-secondary group-hover:bg-background px-1.5 py-0.5 rounded text-primary font-mono">{`{{${v.index}}}`}</code>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Exemplo: {v.sample}</p>
+                        </button>
+                      ))}
+                      <div className="px-2 py-1.5 mt-1 border-t border-border text-[10px] text-muted-foreground">
+                        A Meta só substitui <code className="font-mono">{`{{N}}`}</code>. Texto como <code className="font-mono">[nome]</code> é enviado literal.
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
-                <Textarea rows={5} placeholder="Olá {{1}}, tudo bem?" value={form.body_text} onChange={e => setForm(p => ({ ...p, body_text: e.target.value }))} />
+                <Textarea
+                  ref={bodyTextareaRef}
+                  rows={5}
+                  placeholder="Olá {{1}}, tudo bem?"
+                  value={form.body_text}
+                  onChange={e => setForm(p => ({ ...p, body_text: e.target.value }))}
+                />
+                {hasInvalidPlaceholders(form.body_text) && (
+                  <p className="text-[11px] text-destructive mt-1">
+                    ⚠ Detectamos texto entre colchetes (ex: <code className="font-mono">[nome]</code>). Isso será enviado literalmente ao paciente. Use o botão <strong>+ Variável</strong> e troque por <code className="font-mono">{`{{1}}`}</code>, <code className="font-mono">{`{{2}}`}</code>, etc.
+                  </p>
+                )}
               </div>
+
 
               {/* Footer */}
               <div>
@@ -560,7 +640,7 @@ export default function CrmModelos() {
                       {form.header_type === "TEXT" ? form.header_content : null}
                     </div>
                   )}
-                  <p className="text-foreground text-xs whitespace-pre-wrap">{form.body_text || "Corpo da mensagem..."}</p>
+                  <p className="text-foreground text-xs whitespace-pre-wrap">{renderPreviewBody(form.body_text)}</p>
                   {form.footer_text && <p className="text-[10px] text-muted-foreground mt-1">{form.footer_text}</p>}
                 </div>
                 {form.buttons.length > 0 && (
