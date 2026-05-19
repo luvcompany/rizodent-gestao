@@ -127,7 +127,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     })();
   }, [open, userId]);
 
-  const isSuper = userRole === "admin" || userRole === "superadmin";
+  const isSuper = userRole === "crc" || userRole === "superadmin";
 
   const defaultForPipeline = (p: Pipeline) => {
     if (!userRole) return false;
