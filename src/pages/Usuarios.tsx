@@ -26,18 +26,16 @@ type Profile = {
 
 type UserRole = {
   user_id: string;
-  role: "admin" | "gerente" | "crc" | "posvenda";
+  role: "gerente" | "crc" | "posvenda";
 };
 
 const roleLabels: Record<string, string> = {
-  admin: "Administrador",
   gerente: "Gerente",
   crc: "CRC",
   posvenda: "Pós-venda",
 };
 
 const roleBadgeClass: Record<string, string> = {
-  admin: "bg-red-500/20 text-red-400 border-red-500/30",
   gerente: "bg-primary/20 text-primary border-primary/30",
   crc: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   posvenda: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
