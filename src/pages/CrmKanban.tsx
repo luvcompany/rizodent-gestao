@@ -636,7 +636,11 @@ export default function CrmKanban() {
     }
 
     // ── Fase 3: métricas de tarefas com dados reais de crm_tasks ─────────────
+    // due_date é um datetime — usar range de dia inteiro para "hoje"
+    // Status concluída = "done" (não "completed")
     const todayISO = toLocalDateISO();
+    const todayStart = `${todayISO}T00:00:00`;
+    const todayEnd   = `${todayISO}T23:59:59`;
     const taskTodayIds = new Set<string>();
     const taskOverdueIds = new Set<string>();
     const taskAnyIds = new Set<string>();
@@ -645,23 +649,24 @@ export default function CrmKanban() {
       // Tarefas vencendo HOJE
       supabase.from("crm_tasks")
         .select("lead_id")
-        .eq("due_date", todayISO)
-        .neq("status", "completed"),
+        .gte("due_date", todayStart)
+        .lte("due_date", todayEnd)
+        .neq("status", "done"),
       // Tarefas ATRASADAS (vencidas antes de hoje)
       supabase.from("crm_tasks")
         .select("lead_id")
-        .lt("due_date", todayISO)
-        .neq("status", "completed"),
-      // Tarefas com qualquer tarefa pendente
+        .lt("due_date", todayStart)
+        .neq("status", "done"),
+      // Qualquer tarefa pendente
       supabase.from("crm_tasks")
         .select("lead_id")
-        .neq("status", "completed"),
+        .neq("status", "done"),
     ]);
 
-    const pipelineLeadSet = new Set(finalLeads.map(l => l.id));
-    (tasksTodayData || []).forEach((t: any) => { if (pipelineLeadSet.has(t.lead_id)) taskTodayIds.add(t.lead_id); });
-    (tasksOverdueData || []).forEach((t: any) => { if (pipelineLeadSet.has(t.lead_id)) taskOverdueIds.add(t.lead_id); });
-    (tasksAnyData || []).forEach((t: any) => { if (pipelineLeadSet.has(t.lead_id)) taskAnyIds.add(t.lead_id); });
+    // Sem filtro por pipeline — as métricas devem bater com o calendário de tarefas
+    (tasksTodayData || []).forEach((t: any) => taskTodayIds.add(t.lead_id));
+    (tasksOverdueData || []).forEach((t: any) => taskOverdueIds.add(t.lead_id));
+    (tasksAnyData || []).forEach((t: any) => taskAnyIds.add(t.lead_id));
 
     setTaskTodayLeadIds(taskTodayIds);
     setTaskOverdueLeadIds(taskOverdueIds);
