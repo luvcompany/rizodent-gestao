@@ -146,7 +146,7 @@ function TemplateMessageBubble({
             buttons: data.buttons as TemplateData["buttons"],
           });
 
-          if (data.header_type === "IMAGE" && data.header_content) {
+          if ((data.header_type === "IMAGE" || data.header_type === "VIDEO") && data.header_content) {
             const storagePath = extractStoragePath(data.header_content);
             if (storagePath) {
               getSignedMediaUrl(data.header_content).then(setHeaderSignedUrl);
@@ -189,6 +189,18 @@ function TemplateMessageBubble({
             ) : (
               <div className="bg-muted rounded-t-lg h-[120px] flex items-center justify-center">
                 <Image size={32} className="text-muted-foreground" />
+              </div>
+            )
+          ) : template.header_type === "VIDEO" ? (
+            headerSignedUrl ? (
+              <video
+                src={headerSignedUrl}
+                controls
+                className="rounded-t-lg max-h-[200px] w-full"
+              />
+            ) : (
+              <div className="bg-muted rounded-t-lg h-[120px] flex items-center justify-center">
+                <span className="text-3xl">🎬</span>
               </div>
             )
           ) : (
