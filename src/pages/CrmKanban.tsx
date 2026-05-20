@@ -167,12 +167,19 @@ export default function CrmKanban() {
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [searchTerm, setSearchTerm] = useState(() => {
-    try { return localStorage.getItem("crm:kanbanSearch") || ""; } catch { return ""; }
+    try {
+      const fromConversa = sessionStorage.getItem("crm:fromConversa") === "true";
+      return fromConversa ? (localStorage.getItem("crm:kanbanSearch") || "") : "";
+    } catch { return ""; }
   });
   const [kanbanFilters, setKanbanFilters] = useState<ConversationFilterValues>(() => {
     try {
-      const saved = localStorage.getItem("crm:kanbanFilters");
-      return saved ? JSON.parse(saved) : emptyFilters;
+      const fromConversa = sessionStorage.getItem("crm:fromConversa") === "true";
+      if (fromConversa) {
+        const saved = localStorage.getItem("crm:kanbanFilters");
+        return saved ? JSON.parse(saved) : emptyFilters;
+      }
+      return emptyFilters;
     } catch { return emptyFilters; }
   });
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
@@ -323,6 +330,9 @@ export default function CrmKanban() {
     const finalProfiles = (profilesRes.data as { id: string; nome: string }[]) || [];
     setProfiles(finalProfiles);
 
+    // Mostra o board imediatamente — pagamentos carregam em background
+    setLoading(false);
+
     // ── Fase 2: vínculos paciente↔lead filtrados pelos leads do pipeline ────
     // Busca apenas os vínculos dos leads já carregados — evita trazer o tenant inteiro.
     const leadIds = finalLeads.map(l => l.id);
@@ -379,7 +389,7 @@ export default function CrmKanban() {
     setLeadAllTimeValueMap(allTimeMap);
     setLeadsWithPagamento(paidLeadIds);
 
-    // ── Salva no cache ───────────────────────────────────────────────────────
+    // ── Salva no cache (depois dos pagamentos para ter dados completos) ──────
     kanbanDataCache.pipelineId = p.id;
     kanbanDataCache.timestamp = Date.now();
     kanbanDataCache.entry = {
@@ -393,14 +403,23 @@ export default function CrmKanban() {
       leadAllTimeValueMap: allTimeMap,
       leadsWithPagamento: paidLeadIds,
     };
-
-    setLoading(false);
   }, [pipeline?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Consome a flag de "voltou de uma conversa" — só vale uma vez por montagem
+  useEffect(() => {
+    try { sessionStorage.removeItem("crm:fromConversa"); } catch {}
+  }, []);
+
   // Reseta contadores de visibilidade ao trocar de pipeline
   useEffect(() => { setStageVisibleCounts({}); }, [pipeline?.id]);
+
+  // Navega para uma conversa de lead e sinaliza que voltará ao kanban
+  const navigateToLead = useCallback((leadId: string) => {
+    try { sessionStorage.setItem("crm:fromConversa", "true"); } catch {}
+    navigate(`/crm/conversa/${leadId}`);
+  }, [navigate]);
 
   // Persiste filtros e busca no localStorage para sobreviver à navegação
   useEffect(() => {
@@ -754,7 +773,7 @@ export default function CrmKanban() {
                   {allFilteredLeads.slice(0, 6).map((lead) => (
                     <button
                       key={lead.id}
-                      onClick={() => { navigate(`/crm/conversa/${lead.id}`); setSearchTerm(""); }}
+                      onClick={() => { navigateToLead(lead.id); setSearchTerm(""); }}
                       className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/50 transition-colors border-b border-border last:border-b-0"
                     >
                       <div className="flex-1 min-w-0">
@@ -838,11 +857,11 @@ export default function CrmKanban() {
                                     {...prov.dragHandleProps}
                                     role="button"
                                     tabIndex={0}
-                                    onClick={() => navigate(`/crm/conversa/${lead.id}`)}
+                                    onClick={() => navigateToLead(lead.id)}
                                     onKeyDown={(event) => {
                                       if (event.key === "Enter" || event.key === " ") {
                                         event.preventDefault();
-                                        navigate(`/crm/conversa/${lead.id}`);
+                                        navigateToLead(lead.id);
                                       }
                                     }}
                                     className={`block bg-card rounded-lg shadow-card border border-border mb-2 cursor-pointer hover:border-primary/30 transition-all overflow-hidden ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
