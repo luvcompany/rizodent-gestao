@@ -534,11 +534,18 @@ export default function CrmKanban() {
 
       const links = (linksData || []) as { lead_id: string; paciente_id: string; is_primary: boolean }[];
       const pacienteToLead = new Map<string, string>();
+      // Inclui vínculo direto via crm_leads.paciente_id (tem precedência menor que is_primary)
+      finalLeads.forEach(l => {
+        if (l.paciente_id) pacienteToLead.set(l.paciente_id, l.id);
+      });
       links.forEach(l => {
         const existing = pacienteToLead.get(l.paciente_id);
         if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
       });
-      const pacienteIds = [...new Set(links.map(l => l.paciente_id))];
+      const pacienteIds = [...new Set([
+        ...links.map(l => l.paciente_id),
+        ...finalLeads.filter(l => l.paciente_id).map(l => l.paciente_id as string),
+      ])];
 
       if (pacienteIds.length > 0) {
       // Busca em paralelo: pagamentos do mês e de todos os tempos,
