@@ -373,8 +373,27 @@ export default function ChatMessageContent({
     return <p className="text-sm text-muted-foreground italic">[{message.type}]</p>;
   }
 
-  if (message.content?.trim()) {
-    return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
+  if (message.content?.trim() || hasResolvedMedia) {
+    return (
+      <div>
+        {hasResolvedMedia && (
+          imgError ? (
+            <p className="text-sm text-muted-foreground italic">🖼️ Mídia expirada</p>
+          ) : (
+            <img
+              src={resolvedUrl!}
+              alt="Mídia"
+              className="rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"
+              onError={handleImgError}
+              onClick={() => onMediaClick?.(resolvedUrl!, "image")}
+            />
+          )
+        )}
+        {message.content?.trim() && (
+          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        )}
+      </div>
+    );
   }
 
   if (message.media_url && !hasResolvedMedia) {
