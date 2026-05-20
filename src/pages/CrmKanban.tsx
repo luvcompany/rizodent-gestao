@@ -137,6 +137,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
   const [duplicateInfo, setDuplicateInfo] = useState<{
     existingLeadId: string; existingLeadName: string;
     ownerName: string; ownerId: string | null; phone: string;
+    pipelineName: string; stageName: string;
   } | null>(null);
   const [transferring, setTransferring] = useState(false);
 
@@ -189,6 +190,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
         setDuplicateInfo({
           existingLeadId: dup.lead_id, existingLeadName: dup.lead_name,
           ownerName: owner?.nome || "Sem responsável", ownerId: dup.assigned_to, phone: normalizedPhone,
+          pipelineName: dup.pipeline_name || "", stageName: dup.stage_name || "",
         });
         return;
       }
@@ -262,7 +264,11 @@ const NewLeadDialog = memo(function NewLeadDialog({
 
       <Dialog open={!!duplicateInfo} onOpenChange={(v) => { if (!v) setDuplicateInfo(null); }}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle size={18} className="text-yellow-500" /> Lead Já Existente</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-yellow-500" /> Lead já cadastrado
+            </DialogTitle>
+          </DialogHeader>
           {duplicateInfo && (
             <div className="space-y-4">
               <div className="bg-secondary rounded-lg p-4 space-y-2">
@@ -271,11 +277,19 @@ const NewLeadDialog = memo(function NewLeadDialog({
                   <Users size={14} className="text-primary" />
                   <span className="text-sm font-medium">{duplicateInfo.existingLeadName}</span>
                 </div>
+                {(duplicateInfo.pipelineName || duplicateInfo.stageName) && (
+                  <p className="text-xs text-muted-foreground">
+                    Funil: <strong>{duplicateInfo.pipelineName}</strong>
+                    {duplicateInfo.stageName && <> · Etapa: <strong>{duplicateInfo.stageName}</strong></>}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">Responsável: <strong>{duplicateInfo.ownerName}</strong></p>
               </div>
               {duplicateInfo.ownerId !== userId ? (
                 <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">Deseja solicitar a transferência deste lead para você? Todo o histórico será mantido.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Deseja transferir este lead para você? Todo o histórico de conversas será mantido.
+                  </p>
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1" onClick={() => setDuplicateInfo(null)}>Cancelar</Button>
                     <Button className="flex-1" onClick={handleTransfer} disabled={transferring}>
