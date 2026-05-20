@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -92,13 +92,26 @@ export function useLeadLabels() {
 
   useEffect(() => { reload(); }, [reload]);
 
-  const labelsByLead = useCallback((leadId: string): LeadLabel[] => {
+  // Pré-computa o índice lead_id → labels[] uma única vez quando os dados mudam.
+  // Sem isso, cada chamada criava um new Map(labels) — com 800 cards no kanban
+  // isso bloqueava a thread principal a cada re-render.
+  const labelsByLeadMap = useMemo(() => {
     const lblMap = new Map(labels.map(l => [l.id, l]));
-    return assignments
-      .filter(a => a.lead_id === leadId)
-      .map(a => lblMap.get(a.label_id))
-      .filter((l): l is LeadLabel => !!l);
+    const result = new Map<string, LeadLabel[]>();
+    for (const a of assignments) {
+      const label = lblMap.get(a.label_id);
+      if (!label) continue;
+      const arr = result.get(a.lead_id);
+      if (arr) arr.push(label);
+      else result.set(a.lead_id, [label]);
+    }
+    return result;
   }, [labels, assignments]);
+
+  const labelsByLead = useCallback(
+    (leadId: string): LeadLabel[] => labelsByLeadMap.get(leadId) ?? [],
+    [labelsByLeadMap]
+  );
 
   const createLabel = useCallback(async (payload: { name: string; color: string; description?: string }) => {
     if (!user) return null;

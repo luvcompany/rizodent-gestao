@@ -113,7 +113,7 @@ function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, current
   );
 }
 
-const PAGE_SIZE = 100; // leads por coluna no carregamento inicial
+const PAGE_SIZE = 50; // leads por coluna no carregamento inicial
 
 type NewLeadDialogProps = {
   open: boolean;
