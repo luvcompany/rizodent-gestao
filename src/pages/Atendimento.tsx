@@ -236,6 +236,64 @@ const Atendimento = () => {
     setEntries((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   };
 
+  // Após registrar pagamento, move leads vinculados ao paciente para etapa "contratado"
+  const moveLinkedLeadsToContratado = async (pacienteId: string) => {
+    try {
+      // Busca leads vinculados a este paciente
+      const { data: links } = await supabase
+        .from("crm_lead_pacientes")
+        .select("lead_id")
+        .eq("paciente_id", pacienteId);
+
+      if (!links || links.length === 0) return;
+
+      const leadIds = links.map((l: any) => l.lead_id);
+
+      // Busca stage e pipeline de cada lead
+      const { data: leadsData } = await supabase
+        .from("crm_leads")
+        .select("id, stage_id, pipeline_id")
+        .in("id", leadIds);
+
+      if (!leadsData || leadsData.length === 0) return;
+
+      // Agrupa leads por pipeline para minimizar queries
+      const pipelineMap = new Map<string, { leadId: string; stageId: string | null }[]>();
+      for (const l of leadsData as any[]) {
+        if (!l.pipeline_id) continue;
+        const arr = pipelineMap.get(l.pipeline_id) || [];
+        arr.push({ leadId: l.id, stageId: l.stage_id });
+        pipelineMap.set(l.pipeline_id, arr);
+      }
+
+      for (const [pipelineId, leads] of pipelineMap.entries()) {
+        const { data: stages } = await supabase
+          .from("crm_stages")
+          .select("id, name, position")
+          .eq("pipeline_id", pipelineId)
+          .order("position");
+
+        if (!stages || stages.length === 0) continue;
+
+        const contratadoStage = (stages as any[]).find((s) => /contrat/i.test(s.name));
+        if (!contratadoStage) continue;
+
+        for (const lead of leads) {
+          const currentStage = (stages as any[]).find((s) => s.id === lead.stageId);
+          const currentPos = currentStage?.position ?? -1;
+          if (currentPos >= contratadoStage.position) continue; // já está em etapa igual ou posterior
+
+          await supabase
+            .from("crm_leads")
+            .update({ stage_id: contratadoStage.id, updated_at: new Date().toISOString() })
+            .eq("id", lead.leadId);
+        }
+      }
+    } catch {
+      // Silencia erros — o pagamento já foi salvo com sucesso
+    }
+  };
+
   const resetForm = () => {
     setTelefone("");
     setNome("");
@@ -325,6 +383,9 @@ const Atendimento = () => {
         });
         if (pagError) throw pagError;
       }
+
+      // Move leads vinculados ao paciente para etapa "contratado" automaticamente
+      await moveLinkedLeadsToContratado(pacienteId!);
 
       toast.success(
         entries.length > 1

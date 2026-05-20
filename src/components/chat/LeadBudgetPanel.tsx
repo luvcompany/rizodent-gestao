@@ -21,6 +21,8 @@ type Lead = {
   paciente_id: string | null;
   value: number | null;
   cidade?: string | null;
+  stage_id?: string | null;
+  pipeline_id?: string | null;
 };
 
 type Paciente = {
@@ -124,6 +126,50 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     if (paid !== (lead.value || 0)) {
       await supabase.from("crm_leads").update({ value: paid }).eq("id", lead.id);
       onLeadUpdated({ value: paid });
+    }
+
+    // Mover lead para etapa "contratado" automaticamente quando há pagamento
+    if (paid > 0) {
+      await autoMoveToContratado();
+    }
+  };
+
+  const autoMoveToContratado = async () => {
+    // Busca pipeline e stage atuais do lead
+    const { data: leadData } = await supabase
+      .from("crm_leads")
+      .select("stage_id, pipeline_id")
+      .eq("id", lead.id)
+      .single();
+
+    if (!leadData?.pipeline_id) return;
+
+    // Busca todas as etapas do pipeline, ordenadas por posição
+    const { data: stages } = await supabase
+      .from("crm_stages")
+      .select("id, name, position")
+      .eq("pipeline_id", leadData.pipeline_id)
+      .order("position");
+
+    if (!stages || stages.length === 0) return;
+
+    const contratadoStage = stages.find((s: any) => /contrat/i.test(s.name));
+    if (!contratadoStage) return;
+
+    const currentStage = stages.find((s: any) => s.id === leadData.stage_id);
+    const currentPos = currentStage?.position ?? -1;
+
+    // Só avança — não regride se já estiver em etapa igual ou posterior
+    if (currentPos >= contratadoStage.position) return;
+
+    const { error } = await supabase
+      .from("crm_leads")
+      .update({ stage_id: contratadoStage.id, updated_at: new Date().toISOString() })
+      .eq("id", lead.id);
+
+    if (!error) {
+      onLeadUpdated({ stage_id: contratadoStage.id } as any);
+      toast.success("Lead movido para Contratado 🎉");
     }
   };
 
