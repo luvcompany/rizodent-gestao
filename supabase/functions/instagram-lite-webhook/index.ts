@@ -253,6 +253,28 @@ async function findOrCreateLead(
 
 type Attachment = { type?: string; payload?: { url?: string; sticker_id?: string | number } };
 
+async function downloadAndStoreIgMedia(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const mimeType = (res.headers.get("content-type") || blob.type || "image/jpeg").split(";")[0].trim();
+    const extMap: Record<string, string> = {
+      "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+      "image/gif": "gif", "video/mp4": "mp4",
+    };
+    const ext = extMap[mimeType] || "jpg";
+    const path = `instagram/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage
+      .from("chat-media")
+      .upload(path, blob, { contentType: mimeType, upsert: false });
+    if (error) return null;
+    return supabase.storage.from("chat-media").getPublicUrl(path).data.publicUrl;
+  } catch {
+    return null;
+  }
+}
+
 function describeAttachments(
   attachments: Attachment[],
   replyToStoryUrl: string | null,
@@ -316,12 +338,19 @@ async function persistMessage(opts: {
   const finalUsername = profile.username ?? opts.senderUsername;
   const finalPic = profile.profile_pic;
 
-  const { content: describedContent, mediaUrl, msgType } = describeAttachments(
+  const { content: describedContent, mediaUrl: rawMediaUrl, msgType } = describeAttachments(
     opts.attachments ?? [],
     opts.replyToStoryUrl ?? null,
     opts.text,
   );
   const finalContent = describedContent || opts.text || "";
+
+  // Download Instagram CDN media immediately — CDN URLs expire; story URLs especially.
+  let mediaUrl = rawMediaUrl;
+  if (rawMediaUrl && (msgType === "image" || msgType === "video") && !rawMediaUrl.includes("supabase.co")) {
+    const stored = await downloadAndStoreIgMedia(rawMediaUrl);
+    if (stored) mediaUrl = stored;
+  }
 
   // Para comentários, buscar miniatura + permalink do post
   let postThumbnail: string | null = null;
