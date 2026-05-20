@@ -525,6 +525,16 @@ export default function CrmKanban() {
     const allTimeMap = new Map<string, number>();
     const paidLeadIds = new Set<string>();
 
+    // Total de vendas do mês: soma TODOS os pagamentos da clínica no período,
+    // independente do pipeline atual. Leads movidos para pós-venda continuam
+    // sendo contabilizados. O RLS garante o escopo da clínica.
+    const { data: allMonthPags } = await supabase
+      .from("pagamentos")
+      .select("valor")
+      .gte("data_pagamento", monthStart)
+      .lte("data_pagamento", monthEnd);
+    vendasConcluidasVal = (allMonthPags || []).reduce((sum: number, pg: any) => sum + Number(pg.valor || 0), 0);
+
     if (leadIds.length > 0) {
       // Monta mapa paciente→lead usando o campo direto dos leads (não precisa de .in() grande)
       const pacienteToLead = new Map<string, string>();
@@ -557,7 +567,7 @@ export default function CrmKanban() {
       finalLeads.forEach(l => { if (paidSet.has(l.id)) paidLeadIds.add(l.id); });
 
       if (pacienteIds.length > 0) {
-        // Busca pagamentos do mês em lotes para o cálculo de vendas
+        // Busca pagamentos por lead (para monthMap e allTimeMap do pipeline atual)
         const PAC_BATCH = 200;
         for (let i = 0; i < pacienteIds.length; i += PAC_BATCH) {
           const batch = pacienteIds.slice(i, i + PAC_BATCH);
@@ -570,17 +580,14 @@ export default function CrmKanban() {
           ]);
 
           (pags || []).forEach((pg: any) => {
-            const v = Number(pg.valor || 0);
-            vendasConcluidasVal += v;
             const leadId = pacienteToLead.get(pg.paciente_id);
-            if (leadId) monthMap.set(leadId, (monthMap.get(leadId) || 0) + v);
+            if (leadId) monthMap.set(leadId, (monthMap.get(leadId) || 0) + Number(pg.valor || 0));
           });
 
           (allPags || []).forEach((pg: any) => {
             const leadId = pacienteToLead.get(pg.paciente_id);
             if (leadId) {
-              const v = Number(pg.valor || 0);
-              allTimeMap.set(leadId, (allTimeMap.get(leadId) || 0) + v);
+              allTimeMap.set(leadId, (allTimeMap.get(leadId) || 0) + Number(pg.valor || 0));
             }
           });
         }
