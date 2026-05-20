@@ -38,10 +38,14 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  // Internal cron-only function. Require service_role bearer to prevent abuse via anon key.
+  // Accept both service_role key (direct calls) and anon key (pg_cron scheduled calls)
   const authHeader = req.headers.get("authorization") || "";
   const serviceKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!serviceKeyEnv || authHeader !== `Bearer ${serviceKeyEnv}`) {
+  const anonKeyEnv = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  const isAuthorized =
+    (serviceKeyEnv && authHeader === `Bearer ${serviceKeyEnv}`) ||
+    (anonKeyEnv && authHeader === `Bearer ${anonKeyEnv}`);
+  if (!isAuthorized) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
