@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Mic, File as FileIcon, Image } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Mic, File as FileIcon, Image, ExternalLink } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
 import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
@@ -263,6 +263,8 @@ export default function ChatMessageContent({
 }) {
   const resolvedUrl = useSignedUrl(message.media_url);
   const hasResolvedMedia = isMediaUrl(resolvedUrl);
+  const [imgError, setImgError] = useState(false);
+  const handleImgError = useCallback(() => setImgError(true), []);
 
   if (message.type === "template" || message.content?.startsWith("📋 Template:")) {
     const name = message.type === "template"
@@ -274,12 +276,20 @@ export default function ChatMessageContent({
   }
 
   if (["image", "sticker"].includes(message.type) && hasResolvedMedia) {
+    if (imgError) {
+      return (
+        <p className="text-sm text-muted-foreground italic">
+          {message.content?.trim() || (message.type === "sticker" ? "🩷 Figurinha" : "🖼️ Imagem")}
+        </p>
+      );
+    }
     return (
       <div>
         <img
           src={resolvedUrl!}
           alt={message.type === "sticker" ? "Figurinha" : "Imagem"}
           className={message.type === "sticker" ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
+          onError={handleImgError}
           onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
         />
         {message.content?.trim() && (
@@ -290,6 +300,21 @@ export default function ChatMessageContent({
   }
 
   if (message.type === "video" && hasResolvedMedia) {
+    const isInstagramPermalink = /instagram\.com\/(reel|p|tv)\//i.test(resolvedUrl!);
+    if (isInstagramPermalink) {
+      return (
+        <a
+          href={resolvedUrl!}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 text-sm text-primary hover:underline p-2 bg-secondary/50 rounded"
+        >
+          <span>🎬</span>
+          <span className="flex-1 truncate">{message.content?.trim() || "Ver no Instagram"}</span>
+          <ExternalLink size={14} className="flex-shrink-0" />
+        </a>
+      );
+    }
     return (
       <div>
         <div className="relative cursor-pointer" onClick={() => onMediaClick?.(resolvedUrl!, "video")}>

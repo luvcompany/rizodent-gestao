@@ -229,7 +229,7 @@ function describeAttachments(
 ): { content: string; mediaUrl: string | null; msgType: string } {
   if (replyToStoryUrl && !attachments.length) {
     const txt = fallbackText?.trim() ? `\n💬 ${fallbackText.trim()}` : "";
-    return { content: `📖 Resposta a story${txt}`, mediaUrl: replyToStoryUrl, msgType: "text" };
+    return { content: `📖 Resposta a story${txt}`, mediaUrl: replyToStoryUrl, msgType: "image" };
   }
 
   if (!attachments.length) {
@@ -251,7 +251,7 @@ function describeAttachments(
     case "story_mention":
       return { content: `📖 Menção em story${url ? `\n${url}` : ""}${caption}`, mediaUrl: url, msgType: "image" };
     case "story_reply":
-      return { content: `📖 Resposta a story${caption}`, mediaUrl: url, msgType: "text" };
+      return { content: `📖 Resposta a story${caption}`, mediaUrl: url, msgType: url ? "image" : "text" };
     case "image":
       return { content: `${storyPrefix}${fallbackText ?? ""}`, mediaUrl: url, msgType: "image" };
     case "video":

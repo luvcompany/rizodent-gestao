@@ -251,6 +251,53 @@ async function findOrCreateLead(
   return created.id;
 }
 
+type Attachment = { type?: string; payload?: { url?: string; sticker_id?: string | number } };
+
+function describeAttachments(
+  attachments: Attachment[],
+  replyToStoryUrl: string | null,
+  fallbackText: string | null,
+): { content: string; mediaUrl: string | null; msgType: string } {
+  if (replyToStoryUrl && !attachments.length) {
+    const txt = fallbackText?.trim() ? `\n💬 ${fallbackText.trim()}` : "";
+    return { content: `📖 Resposta a story${txt}`, mediaUrl: replyToStoryUrl, msgType: "image" };
+  }
+  if (!attachments.length) {
+    return { content: fallbackText ?? "", mediaUrl: null, msgType: "text" };
+  }
+  const att = attachments[0];
+  const type = (att?.type ?? "").toLowerCase();
+  const url = att?.payload?.url ?? null;
+  const caption = fallbackText?.trim() ? `\n💬 ${fallbackText.trim()}` : "";
+  const storyPrefix = replyToStoryUrl ? "📖 Resposta a story\n" : "";
+  switch (type) {
+    case "ig_reel":
+    case "reel":
+      return { content: `${storyPrefix}🎬 Reel compartilhado${caption}`, mediaUrl: url, msgType: "video" };
+    case "share":
+      return { content: `${storyPrefix}🔗 Publicação compartilhada${url ? `\n${url}` : ""}${caption}`, mediaUrl: url, msgType: "text" };
+    case "story_mention":
+      return { content: `📖 Menção em story${caption}`, mediaUrl: url, msgType: "image" };
+    case "story_reply":
+      return { content: `📖 Resposta a story${caption}`, mediaUrl: url, msgType: url ? "image" : "text" };
+    case "image":
+      return { content: `${storyPrefix}${fallbackText ?? ""}`, mediaUrl: url, msgType: "image" };
+    case "video":
+      return { content: `${storyPrefix}${fallbackText ?? ""}`, mediaUrl: url, msgType: "video" };
+    case "audio":
+      return { content: fallbackText ?? "", mediaUrl: url, msgType: "audio" };
+    case "file":
+      return { content: fallbackText ?? "Arquivo", mediaUrl: url, msgType: "document" };
+    case "like_heart":
+      return { content: "❤️", mediaUrl: null, msgType: "text" };
+    default:
+      if (type.includes("sticker") || att?.payload?.sticker_id) {
+        return { content: `🩷 Figurinha${caption}`, mediaUrl: url, msgType: url ? "image" : "text" };
+      }
+      return { content: fallbackText ?? `📎 Anexo (${type || "desconhecido"})${url ? `\n${url}` : ""}`, mediaUrl: url, msgType: "text" };
+  }
+}
+
 async function persistMessage(opts: {
   account: IgAccountRow;
   senderId: string;
@@ -261,11 +308,20 @@ async function persistMessage(opts: {
   postId: string | null;
   commentId: string | null;
   igMessageId: string | null;
+  attachments?: Attachment[];
+  replyToStoryUrl?: string | null;
 }) {
   const profile = await fetchIgProfile(opts.senderId, opts.account.access_token);
   const finalName = profile.name ?? opts.senderName;
   const finalUsername = profile.username ?? opts.senderUsername;
   const finalPic = profile.profile_pic;
+
+  const { content: describedContent, mediaUrl, msgType } = describeAttachments(
+    opts.attachments ?? [],
+    opts.replyToStoryUrl ?? null,
+    opts.text,
+  );
+  const finalContent = describedContent || opts.text || "";
 
   // Para comentários, buscar miniatura + permalink do post
   let postThumbnail: string | null = null;
@@ -316,7 +372,7 @@ async function persistMessage(opts: {
     sender_name: finalName,
     sender_username: finalUsername,
     sender_profile_pic: finalPic,
-    message_text: opts.text,
+    message_text: finalContent,
     message_type: opts.messageType,
     post_id: opts.postId,
     comment_id: opts.commentId,
@@ -332,8 +388,9 @@ async function persistMessage(opts: {
       lead_id: leadId,
       tenant_id: opts.account.tenant_id,
       direction: "inbound",
-      type: isComment ? "comment" : "text",
-      content: opts.text,
+      type: isComment ? "comment" : msgType,
+      content: finalContent,
+      media_url: isComment ? null : (mediaUrl ?? null),
       channel: "instagram",
       instagram_message_id: isComment ? opts.commentId : opts.igMessageId,
       instagram_sender_id: opts.senderId,
@@ -347,7 +404,7 @@ async function persistMessage(opts: {
     await supabase
       .from("crm_leads")
       .update({
-        last_message: isComment ? `[Comentário] ${opts.text ?? ""}` : opts.text,
+        last_message: isComment ? `[Comentário] ${finalContent}` : finalContent,
         last_message_at: new Date().toISOString(),
         last_inbound_at: new Date().toISOString(),
       })
@@ -423,6 +480,8 @@ Deno.serve(async (req: Request) => {
             postId: null,
             commentId: null,
             igMessageId: m?.message?.mid ?? null,
+            attachments: Array.isArray(m?.message?.attachments) ? m.message.attachments : [],
+            replyToStoryUrl: m?.message?.reply_to?.story?.url ?? null,
           });
         }
 
@@ -445,6 +504,8 @@ Deno.serve(async (req: Request) => {
               postId: null,
               commentId: null,
               igMessageId: value?.message?.mid ?? value?.mid ?? null,
+              attachments: Array.isArray(value?.message?.attachments) ? value.message.attachments : Array.isArray(value?.attachments) ? value.attachments : [],
+              replyToStoryUrl: value?.message?.reply_to?.story?.url ?? value?.reply_to?.story?.url ?? null,
             });
           } else if (field === "comments") {
             const senderId = String(value?.from?.id ?? "");
