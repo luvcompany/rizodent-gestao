@@ -16,6 +16,7 @@ import ChatInput from "@/components/chat/ChatInput";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
 import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
+import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
 import LeadAiAssistPanel from "@/components/chat/LeadAiAssistPanel";
@@ -1127,6 +1128,28 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <SendToPosvendaButton
+                    leadId={selectedLead.id}
+                    stageId={selectedLead.stage_id}
+                    assignedTo={selectedLead.assigned_to}
+                    stages={chat.stages}
+                    onTransferred={(payload) => {
+                      setSelectedLead((prev) => prev ? {
+                        ...prev,
+                        assigned_to: payload.assigned_to,
+                        pipeline_id: payload.pipeline_id || prev.pipeline_id,
+                        stage_id: payload.stage_id || prev.stage_id,
+                      } : prev);
+                      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? {
+                        ...l,
+                        assigned_to: payload.assigned_to,
+                        pipeline_id: payload.pipeline_id || l.pipeline_id,
+                        stage_id: payload.stage_id || l.stage_id,
+                      } : l));
+                      chat.fetchMessages(true);
+                    }}
+                  />
                 </div>
 
                 <InlineTagsEditor
