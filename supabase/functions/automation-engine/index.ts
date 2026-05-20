@@ -7,7 +7,9 @@ async function passesConditions(supabase: any, leadId: string, config: Record<st
   if (!conditions || !Array.isArray(conditions.rules) || conditions.rules.length === 0) return true;
   const { data: lead } = await supabase
     .from("crm_leads")
-    .select("tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+    .select(
+      "tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value",
+    )
     .eq("id", leadId)
     .maybeSingle();
   if (!lead) return true;
@@ -49,11 +51,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -99,9 +97,13 @@ Deno.serve(async (req) => {
       const evalWeekly = (cfg: any) => {
         const startDay = Number(cfg.start_day);
         const endDay = Number(cfg.end_day);
-        const [sh, sm] = String(cfg.start_time || "00:00").split(":").map(Number);
-        const [eh, em] = String(cfg.end_time || "23:59").split(":").map(Number);
-        if ([startDay, endDay, sh, sm, eh, em].some(v => Number.isNaN(v))) return null;
+        const [sh, sm] = String(cfg.start_time || "00:00")
+          .split(":")
+          .map(Number);
+        const [eh, em] = String(cfg.end_time || "23:59")
+          .split(":")
+          .map(Number);
+        if ([startDay, endDay, sh, sm, eh, em].some((v) => Number.isNaN(v))) return null;
         const brNow = new Date(nowMs - 3 * 3600 * 1000);
         const brDay = brNow.getUTCDay();
         const brMin = brNow.getUTCHours() * 60 + brNow.getUTCMinutes();
@@ -120,7 +122,7 @@ Deno.serve(async (req) => {
           minSinceEnd = nowWeekMin - endWeekMin;
         } else {
           // For wrap-around, simulate: if nowWeekMin past end and before start
-          minSinceEnd = (nowWeekMin >= endWeekMin && nowWeekMin < startWeekMin) ? nowWeekMin - endWeekMin : -1;
+          minSinceEnd = nowWeekMin >= endWeekMin && nowWeekMin < startWeekMin ? nowWeekMin - endWeekMin : -1;
         }
         const justClosed = !isOpen && minSinceEnd >= 0 && minSinceEnd <= 6;
         return { isOpen, justClosed };
@@ -175,16 +177,15 @@ Deno.serve(async (req) => {
           if (cancelErr) {
             console.error(`[AUTOMATION-ENGINE] time_window stop-bot error (auto ${auto.id}):`, cancelErr.message);
           } else {
-            console.log(`[AUTOMATION-ENGINE] time_window closed (auto ${auto.id}, mode=${mode}): cancelled ${cancelled?.length || 0} bot executions`);
+            console.log(
+              `[AUTOMATION-ENGINE] time_window closed (auto ${auto.id}, mode=${mode}): cancelled ${cancelled?.length || 0} bot executions`,
+            );
           }
         }
 
         // For weekly: clear executions only on the close edge so next occurrence opens fresh
         if (mode === "weekly" && resetExecutions) {
-          await supabase
-            .from("crm_automation_executions")
-            .delete()
-            .eq("automation_id", auto.id);
+          await supabase.from("crm_automation_executions").delete().eq("automation_id", auto.id);
           console.log(`[AUTOMATION-ENGINE] time_window weekly auto ${auto.id}: executions reset for next occurrence`);
         }
       }
@@ -210,7 +211,10 @@ Deno.serve(async (req) => {
       await supabase
         .from("bot_executions")
         .update({ timeout_at: reserveUntil })
-        .in("id", expiredExecutions.map((e) => e.id));
+        .in(
+          "id",
+          expiredExecutions.map((e) => e.id),
+        );
     }
 
     const callBotTimeout = async (exec: { id: string; lead_id: string }) => {
@@ -229,7 +233,9 @@ Deno.serve(async (req) => {
           signal: ctrl.signal,
         }).finally(() => clearTimeout(t));
         const respText = await resp.text();
-        console.log(`[AUTOMATION-ENGINE] Bot timeout response for ${exec.id}: ${resp.status} ${respText.substring(0, 200)}`);
+        console.log(
+          `[AUTOMATION-ENGINE] Bot timeout response for ${exec.id}: ${resp.status} ${respText.substring(0, 200)}`,
+        );
         if (resp.status === 429) {
           // Rate-limited: release reservation so the next tick can retry once gateway cools down
           await supabase
@@ -270,15 +276,21 @@ Deno.serve(async (req) => {
 
     for (const auto of reengagementAutomations || []) {
       const config = (auto.action_config || {}) as Record<string, any>;
-      const layers = (config.layers || []) as Array<{ delay_minutes: number; action_type: string; action_config: Record<string, any> }>;
+      const layers = (config.layers || []) as Array<{
+        delay_minutes: number;
+        action_type: string;
+        action_config: Record<string, any>;
+      }>;
       if (!layers.length) continue;
 
-      const leads = await fetchAllRows(() => supabase
-        .from("crm_leads")
-        .select("id, phone, last_inbound_at, last_outbound_at")
-        .eq("stage_id", auto.stage_id)
-        .not("automation_paused", "is", true)
-        .order("id"));
+      const leads = await fetchAllRows(() =>
+        supabase
+          .from("crm_leads")
+          .select("id, phone, last_inbound_at, last_outbound_at")
+          .eq("stage_id", auto.stage_id)
+          .not("automation_paused", "is", true)
+          .order("id"),
+      );
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -341,13 +353,15 @@ Deno.serve(async (req) => {
       const staleDays = config.stale_days || 7;
       const cutoff = new Date(Date.now() - staleDays * 86400000).toISOString();
 
-      const leads = await fetchAllRows(() => supabase
-        .from("crm_leads")
-        .select("id, phone, updated_at, last_message_at")
-        .eq("stage_id", auto.stage_id)
-        .not("automation_paused", "is", true)
-        .lt("updated_at", cutoff)
-        .order("id"));
+      const leads = await fetchAllRows(() =>
+        supabase
+          .from("crm_leads")
+          .select("id, phone, updated_at, last_message_at")
+          .eq("stage_id", auto.stage_id)
+          .not("automation_paused", "is", true)
+          .lt("updated_at", cutoff)
+          .order("id"),
+      );
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -394,12 +408,14 @@ Deno.serve(async (req) => {
       const hoursAfter = config.hours_after || 2;
       const cutoffTime = new Date(Date.now() - hoursAfter * 3600000).toISOString();
 
-      const appointments = await fetchAllRows(() => supabase
-        .from("crm_appointments")
-        .select("id, lead_id, scheduled_date, scheduled_time, status")
-        .eq("status", "confirmed")
-        .lt("scheduled_date", new Date().toISOString().split("T")[0])
-        .order("id"));
+      const appointments = await fetchAllRows(() =>
+        supabase
+          .from("crm_appointments")
+          .select("id, lead_id, scheduled_date, scheduled_time, status")
+          .eq("status", "confirmed")
+          .lt("scheduled_date", new Date().toISOString().split("T")[0])
+          .order("id"),
+      );
 
       for (const appt of appointments || []) {
         const { data: lead } = await supabase
@@ -422,7 +438,11 @@ Deno.serve(async (req) => {
 
         if (existing && existing.length > 0) continue;
 
-        const steps = (config.steps || []) as Array<{ delay_minutes: number; action_type: string; action_config: Record<string, any> }>;
+        const steps = (config.steps || []) as Array<{
+          delay_minutes: number;
+          action_type: string;
+          action_config: Record<string, any>;
+        }>;
         if (steps.length > 0) {
           for (let i = 0; i < steps.length; i++) {
             const step = steps[i];
@@ -475,10 +495,18 @@ Deno.serve(async (req) => {
       // Convert before_amount to milliseconds
       let beforeMs = 0;
       switch (beforeUnit) {
-        case "seconds": beforeMs = beforeAmount * 1000; break;
-        case "minutes": beforeMs = beforeAmount * 60000; break;
-        case "hours": beforeMs = beforeAmount * 3600000; break;
-        case "days": beforeMs = beforeAmount * 86400000; break;
+        case "seconds":
+          beforeMs = beforeAmount * 1000;
+          break;
+        case "minutes":
+          beforeMs = beforeAmount * 60000;
+          break;
+        case "hours":
+          beforeMs = beforeAmount * 3600000;
+          break;
+        case "days":
+          beforeMs = beforeAmount * 86400000;
+          break;
       }
 
       const now = Date.now();
@@ -489,13 +517,17 @@ Deno.serve(async (req) => {
       // Pending appointments (e.g. pre-scheduled by bot, awaiting human confirmation)
       // must NOT trigger this automation until a CRC confirms them.
       if (scheduledType === "appointment" || scheduledType === "both") {
-        const appointments = await fetchAllRows(() => supabase
-          .from("crm_appointments")
-          .select("id, lead_id, scheduled_date, scheduled_time")
-          .eq("status", "confirmed")
-          .order("id"));
+        const appointments = await fetchAllRows(() =>
+          supabase
+            .from("crm_appointments")
+            .select("id, lead_id, scheduled_date, scheduled_time")
+            .eq("status", "confirmed")
+            .order("id"),
+        );
 
-        console.log(`[BEFORE_SCHEDULED] Checking ${appointments?.length || 0} appointments, beforeMs=${beforeMs}, now=${new Date(now).toISOString()}`);
+        console.log(
+          `[BEFORE_SCHEDULED] Checking ${appointments?.length || 0} appointments, beforeMs=${beforeMs}, now=${new Date(now).toISOString()}`,
+        );
 
         for (const appt of appointments || []) {
           const { data: lead } = await supabase
@@ -512,7 +544,9 @@ Deno.serve(async (req) => {
           const fireAt = scheduledAt - beforeMs;
           const withinWindow = now >= fireAt && now <= scheduledAt + CRON_GRACE_MS;
 
-          console.log(`[BEFORE_SCHEDULED] Appt ${appt.id}: scheduledAt=${new Date(scheduledAt).toISOString()}, fireAt=${new Date(fireAt).toISOString()}, now=${new Date(now).toISOString()}, withinWindow=${withinWindow}`);
+          console.log(
+            `[BEFORE_SCHEDULED] Appt ${appt.id}: scheduledAt=${new Date(scheduledAt).toISOString()}, fireAt=${new Date(fireAt).toISOString()}, now=${new Date(now).toISOString()}, withinWindow=${withinWindow}`,
+          );
 
           if (!withinWindow) continue;
 
@@ -543,11 +577,9 @@ Deno.serve(async (req) => {
 
       // Check tasks
       if (scheduledType === "task" || scheduledType === "both") {
-        const tasks = await fetchAllRows(() => supabase
-          .from("crm_tasks")
-          .select("id, lead_id, due_date, title")
-          .eq("status", "pending")
-          .order("id"));
+        const tasks = await fetchAllRows(() =>
+          supabase.from("crm_tasks").select("id, lead_id, due_date, title").eq("status", "pending").order("id"),
+        );
 
         console.log(`[BEFORE_SCHEDULED] Checking ${tasks?.length || 0} pending tasks, beforeMs=${beforeMs}`);
 
@@ -615,12 +647,14 @@ Deno.serve(async (req) => {
       const thresholdMs = amount * (noResponseUnitsMs[unit] || 3600000);
       const nowMs = Date.now();
 
-      const leads = await fetchAllRows(() => supabase
-        .from("crm_leads")
-        .select("id, phone, last_inbound_at, created_at, updated_at")
-        .eq("stage_id", auto.stage_id)
-        .not("automation_paused", "is", true)
-        .order("id"));
+      const leads = await fetchAllRows(() =>
+        supabase
+          .from("crm_leads")
+          .select("id, phone, last_inbound_at, created_at, updated_at")
+          .eq("stage_id", auto.stage_id)
+          .not("automation_paused", "is", true)
+          .order("id"),
+      );
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -674,13 +708,15 @@ Deno.serve(async (req) => {
 
           if (alreadyProcessedCurrentStageCycle && !leadRepliedAfterLastSend) {
             console.log(
-              `[AUTOMATION-ENGINE] no_response skipping lead ${lead.id}, automation ${auto.id}, sentAt=${existing[0].created_at}, stageEnteredAt=${currentStageEntry?.entered_at || "n/a"}, referenceTime=${new Date(referenceTime).toISOString()}`
+              `[AUTOMATION-ENGINE] no_response skipping lead ${lead.id}, automation ${auto.id}, sentAt=${existing[0].created_at}, stageEnteredAt=${currentStageEntry?.entered_at || "n/a"}, referenceTime=${new Date(referenceTime).toISOString()}`,
             );
             continue;
           }
         }
 
-        console.log(`[AUTOMATION-ENGINE] no_response FIRING for lead ${lead.id}, automation ${auto.id}, elapsed=${Math.round(elapsed/1000)}s, threshold=${Math.round(thresholdMs/1000)}s`);
+        console.log(
+          `[AUTOMATION-ENGINE] no_response FIRING for lead ${lead.id}, automation ${auto.id}, elapsed=${Math.round(elapsed / 1000)}s, threshold=${Math.round(thresholdMs / 1000)}s`,
+        );
 
         await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
 
@@ -715,7 +751,10 @@ Deno.serve(async (req) => {
       const triggerType = (item as any).crm_automations?.trigger_type;
       // Honor optional conditions on queued items
       if (!(await passesConditions(supabase, item.lead_id, autoConfig))) {
-        await supabase.from("crm_automation_queue").update({ status: "skipped", updated_at: new Date().toISOString() }).eq("id", item.id);
+        await supabase
+          .from("crm_automation_queue")
+          .update({ status: "skipped", updated_at: new Date().toISOString() })
+          .eq("id", item.id);
         continue;
       }
 
@@ -731,22 +770,28 @@ Deno.serve(async (req) => {
 
         if (!allowedDays.includes(currentDay) || currentHour < startHour || currentHour >= endHour) {
           const nextDate = getNextValidWindow(startHour, allowedDays);
-          await supabase.from("crm_automation_queue")
+          await supabase
+            .from("crm_automation_queue")
             .update({ scheduled_at: nextDate.toISOString() })
             .eq("id", item.id);
           continue;
         }
       }
 
-      const { data: lead } = await supabase
-        .from("crm_leads")
-        .select("phone")
-        .eq("id", item.lead_id)
-        .single();
+      const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", item.lead_id).single();
 
-      await sendAction(supabase, supabaseUrl, serviceKey, item.action_type, item.action_config as Record<string, any>, item.lead_id, lead?.phone);
+      await sendAction(
+        supabase,
+        supabaseUrl,
+        serviceKey,
+        item.action_type,
+        item.action_config as Record<string, any>,
+        item.lead_id,
+        lead?.phone,
+      );
 
-      await supabase.from("crm_automation_queue")
+      await supabase
+        .from("crm_automation_queue")
         .update({ status: "sent", updated_at: new Date().toISOString() })
         .eq("id", item.id);
 
@@ -796,7 +841,7 @@ async function sendAction(
   actionType: string,
   config: Record<string, any>,
   leadId: string,
-  phone: string | null
+  phone: string | null,
 ) {
   try {
     switch (actionType) {
@@ -810,9 +855,19 @@ async function sendAction(
           if (tpl) {
             await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-              body: JSON.stringify({ lead_id: leadId, to: phone, type: "template", template_name: tpl.name, template_language: tpl.language }),
-            }).then(r => r.text());
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${serviceKey}`,
+                apikey: serviceKey,
+              },
+              body: JSON.stringify({
+                lead_id: leadId,
+                to: phone,
+                type: "template",
+                template_name: tpl.name,
+                template_language: tpl.language,
+              }),
+            }).then((r) => r.text());
           }
         }
         break;
@@ -823,7 +878,7 @@ async function sendAction(
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
             body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation" }),
-          }).then(r => r.text());
+          }).then((r) => r.text());
         }
         break;
 
@@ -833,7 +888,7 @@ async function sendAction(
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
             body: JSON.stringify({ lead_id: leadId, to: phone, type: "audio", media_url: config.audio_url }),
-          }).then(r => r.text());
+          }).then((r) => r.text());
         }
         break;
 
@@ -842,8 +897,14 @@ async function sendAction(
           await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-            body: JSON.stringify({ lead_id: leadId, to: phone, type: "document", media_url: config.file_url, filename: config.filename || "arquivo" }),
-          }).then(r => r.text());
+            body: JSON.stringify({
+              lead_id: leadId,
+              to: phone,
+              type: "document",
+              media_url: config.file_url,
+              filename: config.filename || "arquivo",
+            }),
+          }).then((r) => r.text());
         }
         break;
 
@@ -853,7 +914,10 @@ async function sendAction(
           const { data: lead } = await supabase.from("crm_leads").select("tags").eq("id", leadId).single();
           const existing = (lead?.tags || []) as string[];
           if (!existing.includes(tag)) {
-            await supabase.from("crm_leads").update({ tags: [...existing, tag] }).eq("id", leadId);
+            await supabase
+              .from("crm_leads")
+              .update({ tags: [...existing, tag] })
+              .eq("id", leadId);
           }
         }
         break;
@@ -878,25 +942,34 @@ async function sendAction(
           // Get current stage before moving
           const { data: currentLead } = await supabase.from("crm_leads").select("stage_id").eq("id", leadId).single();
           const previousStageId = currentLead?.stage_id;
-          
+
           if (previousStageId === config.target_stage_id) {
             console.log(`[AUTOMATION-ENGINE] move_stage: lead ${leadId} already in target stage, skipping`);
             break;
           }
 
-          console.log(`[AUTOMATION-ENGINE] move_stage: moving lead ${leadId} from ${previousStageId} to ${config.target_stage_id}`);
-          const { error: moveErr } = await supabase.from("crm_leads").update({ 
-            stage_id: config.target_stage_id,
-            updated_at: new Date().toISOString(),
-          }).eq("id", leadId);
-          
+          console.log(
+            `[AUTOMATION-ENGINE] move_stage: moving lead ${leadId} from ${previousStageId} to ${config.target_stage_id}`,
+          );
+          const { error: moveErr } = await supabase
+            .from("crm_leads")
+            .update({
+              stage_id: config.target_stage_id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", leadId);
+
           if (moveErr) {
             console.error(`[AUTOMATION-ENGINE] move_stage error:`, moveErr);
           } else {
             // Close previous stage history entry
             if (previousStageId) {
-              await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
-                .eq("lead_id", leadId).eq("stage_id", previousStageId).is("exited_at", null);
+              await supabase
+                .from("crm_lead_stage_history")
+                .update({ exited_at: new Date().toISOString() })
+                .eq("lead_id", leadId)
+                .eq("stage_id", previousStageId)
+                .is("exited_at", null);
             }
             // Insert new stage history with from_stage_id
             await supabase.from("crm_lead_stage_history").insert({
@@ -907,7 +980,10 @@ async function sendAction(
             });
 
             // System message for stage change
-            const { data: stages } = await supabase.from("crm_stages").select("id, name").in("id", [previousStageId, config.target_stage_id].filter(Boolean));
+            const { data: stages } = await supabase
+              .from("crm_stages")
+              .select("id, name")
+              .in("id", [previousStageId, config.target_stage_id].filter(Boolean));
             const fromName = stages?.find((s: any) => s.id === previousStageId)?.name || "?";
             const toName = stages?.find((s: any) => s.id === config.target_stage_id)?.name || "?";
             await supabase.from("messages").insert({
@@ -932,7 +1008,9 @@ async function sendAction(
                 continue;
               }
               const targetConfig = (targetAuto.action_config || {}) as Record<string, any>;
-              console.log(`[AUTOMATION-ENGINE] Chained trigger ${targetAuto.trigger_type} -> ${targetAuto.action_type} for lead ${leadId} on stage ${config.target_stage_id}`);
+              console.log(
+                `[AUTOMATION-ENGINE] Chained trigger ${targetAuto.trigger_type} -> ${targetAuto.action_type} for lead ${leadId} on stage ${config.target_stage_id}`,
+              );
               await sendAction(supabase, supabaseUrl, serviceKey, targetAuto.action_type, targetConfig, leadId, phone);
             }
           }
