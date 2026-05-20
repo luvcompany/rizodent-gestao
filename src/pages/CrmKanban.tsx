@@ -343,6 +343,9 @@ type KanbanCacheEntry = {
   leadMonthValueMap: Map<string, number>;
   leadAllTimeValueMap: Map<string, number>;
   leadsWithPagamento: Set<string>;
+  taskTodayLeadIds: Set<string>;
+  taskOverdueLeadIds: Set<string>;
+  taskAnyLeadIds: Set<string>;
 };
 const kanbanDataCache: {
   pipelineId: string | null;
@@ -382,6 +385,9 @@ export default function CrmKanban() {
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
   const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
+  const [taskTodayLeadIds, setTaskTodayLeadIds] = useState<Set<string>>(new Set());
+  const [taskOverdueLeadIds, setTaskOverdueLeadIds] = useState<Set<string>>(new Set());
+  const [taskAnyLeadIds, setTaskAnyLeadIds] = useState<Set<string>>(new Set());
   const { labelsByLead } = useLeadLabels();
 
   // Quantos leads cada coluna exibe (scroll infinito)
@@ -422,6 +428,9 @@ export default function CrmKanban() {
       setLeadMonthValueMap(e.leadMonthValueMap);
       setLeadAllTimeValueMap(e.leadAllTimeValueMap);
       setLeadsWithPagamento(e.leadsWithPagamento);
+      setTaskTodayLeadIds(e.taskTodayLeadIds ?? new Set());
+      setTaskOverdueLeadIds(e.taskOverdueLeadIds ?? new Set());
+      setTaskAnyLeadIds(e.taskAnyLeadIds ?? new Set());
       setLoading(false);
       return;
     }
@@ -626,6 +635,38 @@ export default function CrmKanban() {
       }
     }
 
+    // ── Fase 3: métricas de tarefas com dados reais de crm_tasks ─────────────
+    const todayISO = toLocalDateISO();
+    const taskTodayIds = new Set<string>();
+    const taskOverdueIds = new Set<string>();
+    const taskAnyIds = new Set<string>();
+
+    const [{ data: tasksTodayData }, { data: tasksOverdueData }, { data: tasksAnyData }] = await Promise.all([
+      // Tarefas vencendo HOJE
+      supabase.from("crm_tasks")
+        .select("lead_id")
+        .eq("due_date", todayISO)
+        .neq("status", "completed"),
+      // Tarefas ATRASADAS (vencidas antes de hoje)
+      supabase.from("crm_tasks")
+        .select("lead_id")
+        .lt("due_date", todayISO)
+        .neq("status", "completed"),
+      // Tarefas com qualquer tarefa pendente
+      supabase.from("crm_tasks")
+        .select("lead_id")
+        .neq("status", "completed"),
+    ]);
+
+    const pipelineLeadSet = new Set(finalLeads.map(l => l.id));
+    (tasksTodayData || []).forEach((t: any) => { if (pipelineLeadSet.has(t.lead_id)) taskTodayIds.add(t.lead_id); });
+    (tasksOverdueData || []).forEach((t: any) => { if (pipelineLeadSet.has(t.lead_id)) taskOverdueIds.add(t.lead_id); });
+    (tasksAnyData || []).forEach((t: any) => { if (pipelineLeadSet.has(t.lead_id)) taskAnyIds.add(t.lead_id); });
+
+    setTaskTodayLeadIds(taskTodayIds);
+    setTaskOverdueLeadIds(taskOverdueIds);
+    setTaskAnyLeadIds(taskAnyIds);
+
     // ── Salva no cache (depois dos pagamentos para ter dados completos) ──────
     kanbanDataCache.pipelineId = p.id;
     kanbanDataCache.timestamp = Date.now();
@@ -639,6 +680,9 @@ export default function CrmKanban() {
       leadMonthValueMap: monthMap,
       leadAllTimeValueMap: allTimeMap,
       leadsWithPagamento: paidLeadIds,
+      taskTodayLeadIds: taskTodayIds,
+      taskOverdueLeadIds: taskOverdueIds,
+      taskAnyLeadIds: taskAnyIds,
     };
   }, [pipeline?.id, userRole]);
 
@@ -872,9 +916,10 @@ export default function CrmKanban() {
     };
   }, [leads]);
   const myLeads = allFilteredLeads;
-  const withTaskToday = myLeads.filter(l => l.has_task && !l.task_overdue).length;
-  const noTasks = myLeads.filter(l => !l.has_task).length;
-  const overdue = myLeads.filter(l => l.task_overdue).length;
+  // Métricas baseadas em dados reais de crm_tasks (não nos campos denormalizados)
+  const withTaskToday = myLeads.filter(l => taskTodayLeadIds.has(l.id)).length;
+  const noTasks = myLeads.filter(l => !taskAnyLeadIds.has(l.id)).length;
+  const overdue = myLeads.filter(l => taskOverdueLeadIds.has(l.id)).length;
   const today = toLocalDateISO();
   const yesterday = toLocalDateISO(new Date(Date.now() - 86400000));
   const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
