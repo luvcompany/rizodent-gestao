@@ -592,6 +592,33 @@ export default function CrmKanban() {
     setLeadAllTimeValueMap(allTimeMap);
     setLeadsWithPagamento(paidLeadIds);
 
+    // ── Auto-move: leads com pagamento que ainda estão antes de "Contratado" ─
+    if (paidLeadIds.size > 0) {
+      const contratadoStage = finalStages.find((s: any) => /contrat/i.test(s.name) && !/n[aã]o/i.test(s.name));
+      if (contratadoStage) {
+        const leadsToMove = finalLeads.filter(l => {
+          if (!paidLeadIds.has(l.id)) return false;
+          const currentStage = finalStages.find((s: any) => s.id === l.stage_id);
+          return (currentStage?.position ?? -1) < contratadoStage.position;
+        });
+        if (leadsToMove.length > 0) {
+          const now = new Date().toISOString();
+          // Atualiza estado local imediatamente
+          setLeads(prev => prev.map(l =>
+            leadsToMove.some(m => m.id === l.id)
+              ? { ...l, stage_id: contratadoStage.id }
+              : l
+          ));
+          // Persiste no banco em paralelo
+          await Promise.all(leadsToMove.map(l =>
+            supabase.from("crm_leads")
+              .update({ stage_id: contratadoStage.id, updated_at: now })
+              .eq("id", l.id)
+          ));
+        }
+      }
+    }
+
     // ── Salva no cache (depois dos pagamentos para ter dados completos) ──────
     kanbanDataCache.pipelineId = p.id;
     kanbanDataCache.timestamp = Date.now();
@@ -609,6 +636,38 @@ export default function CrmKanban() {
   }, [pipeline?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Real-time: atualiza leads no kanban sem recarregar a página ────────────
+  useEffect(() => {
+    const channel = supabase
+      .channel("kanban-leads-realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "crm_leads" },
+        (payload) => {
+          const updated = payload.new as any;
+          setLeads(prev => {
+            const exists = prev.some(l => l.id === updated.id);
+            if (!exists) return prev;
+            return prev.map(l => l.id === updated.id ? { ...l, ...updated } : l);
+          });
+          // Invalida cache para próxima visita buscar dados frescos
+          invalidateKanbanCache();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "crm_leads" },
+        () => {
+          // Novo lead criado: invalida cache e recarrega
+          invalidateKanbanCache();
+          fetchData();
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchData]);
 
   // Consome a flag de "voltou de uma conversa" — só vale uma vez por montagem
   useEffect(() => {
