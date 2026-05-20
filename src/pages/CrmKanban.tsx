@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -115,6 +115,189 @@ function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, current
 
 const PAGE_SIZE = 100; // leads por coluna no carregamento inicial
 
+type NewLeadDialogProps = {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  pipelines: Pipeline[];
+  stages: Stage[];
+  defaultPipelineId: string;
+  defaultStageId: string;
+  profiles: { id: string; nome: string }[];
+  userId: string | undefined;
+  leadCountByStage: Record<string, number>;
+  onCreated: () => void;
+};
+
+const NewLeadDialog = memo(function NewLeadDialog({
+  open, onOpenChange, pipelines, stages, defaultPipelineId, defaultStageId,
+  profiles, userId, leadCountByStage, onCreated,
+}: NewLeadDialogProps) {
+  const emptyForm = { name: "", phone: "", stage_id: defaultStageId, source: "", tags: "", value: "", notes: "", pipeline_id: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [duplicateInfo, setDuplicateInfo] = useState<{
+    existingLeadId: string; existingLeadName: string;
+    ownerName: string; ownerId: string | null; phone: string;
+  } | null>(null);
+  const [transferring, setTransferring] = useState(false);
+
+  // Sync default stage when opened
+  useEffect(() => {
+    if (open) setForm(f => ({ ...f, stage_id: defaultStageId, pipeline_id: "" }));
+  }, [open, defaultStageId]);
+
+  const handleClose = () => { onOpenChange(false); setForm(emptyForm); setDuplicateInfo(null); };
+
+  const insertLead = async (normalizedPhone: string | null, currentForm: typeof form) => {
+    const targetPipeline = currentForm.pipeline_id
+      ? pipelines.find(p => p.id === currentForm.pipeline_id)
+      : pipelines.find(p => p.id === defaultPipelineId) || pipelines[0];
+    if (!targetPipeline) return;
+    const tagsArray = currentForm.tags ? currentForm.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+    const { data: inserted, error } = await supabase.from("crm_leads").insert({
+      name: currentForm.name,
+      phone: normalizedPhone,
+      stage_id: currentForm.stage_id,
+      pipeline_id: targetPipeline.id,
+      source: currentForm.source || null,
+      tags: tagsArray,
+      value: currentForm.value ? parseFloat(currentForm.value) : 0,
+      notes: currentForm.notes || null,
+      position: leadCountByStage[currentForm.stage_id] || 0,
+      assigned_to: userId || null,
+    }).select("id").single();
+    if (error) { toast.error("Erro ao criar lead"); return; }
+    toast.success("Lead criado com sucesso");
+    invalidateKanbanCache();
+    if (inserted?.id) {
+      executeStageAutomations({
+        leadId: inserted.id, stageId: currentForm.stage_id,
+        leadPhone: normalizedPhone, triggerTypes: ["on_create", "on_create_or_enter"],
+      });
+    }
+    handleClose();
+    onCreated();
+  };
+
+  const handleSave = async () => {
+    if (!form.name || !form.stage_id) { toast.error("Nome e etapa são obrigatórios"); return; }
+    const normalizedPhone = form.phone ? normalizePhone(form.phone) : null;
+    if (normalizedPhone) {
+      const { data: existing } = await supabase.rpc("check_duplicate_phone", { p_phone: normalizedPhone });
+      if (existing && existing.length > 0) {
+        const dup = existing[0];
+        const owner = profiles.find(p => p.id === dup.assigned_to);
+        setDuplicateInfo({
+          existingLeadId: dup.lead_id, existingLeadName: dup.lead_name,
+          ownerName: owner?.nome || "Sem responsável", ownerId: dup.assigned_to, phone: normalizedPhone,
+        });
+        return;
+      }
+    }
+    await insertLead(normalizedPhone, form);
+  };
+
+  const handleTransfer = async () => {
+    if (!duplicateInfo || !userId) return;
+    setTransferring(true);
+    try {
+      const { error } = await supabase.functions.invoke("transfer-lead", {
+        body: { leadId: duplicateInfo.existingLeadId, newUserId: userId },
+      });
+      if (error) throw error;
+      toast.success(`Lead "${duplicateInfo.existingLeadName}" transferido para você!`);
+      invalidateKanbanCache();
+      handleClose();
+      onCreated();
+    } catch (err: any) {
+      toast.error("Erro ao transferir: " + (err.message || "Erro desconhecido"));
+    } finally { setTransferring(false); }
+  };
+
+  const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }));
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Novo Lead</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Nome *</Label><Input value={form.name} onChange={e => set("name", e.target.value)} /></div>
+            <div><Label>Telefone</Label><Input value={form.phone} onChange={e => set("phone", e.target.value)} /></div>
+            <div>
+              <Label>Funil *</Label>
+              <Select value={form.pipeline_id || defaultPipelineId} onValueChange={v => setForm(f => ({ ...f, pipeline_id: v, stage_id: "" }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione o funil" /></SelectTrigger>
+                <SelectContent>{pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Etapa Inicial *</Label>
+              <NewLeadStageSelector
+                pipelineId={form.pipeline_id || defaultPipelineId}
+                allPipelines={pipelines}
+                currentStages={stages}
+                currentPipelineId={defaultPipelineId}
+                value={form.stage_id}
+                onChange={v => set("stage_id", v)}
+              />
+            </div>
+            <div>
+              <Label>Origem</Label>
+              <Select value={form.source} onValueChange={v => set("source", v)}>
+                <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                <SelectContent>
+                  {["instagram","whatsapp","facebook","facebook_ad","instagram_ad","manual","indicação","google"].map(s =>
+                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Tags (separadas por vírgula)</Label><Input placeholder="implante, clareamento" value={form.tags} onChange={e => set("tags", e.target.value)} /></div>
+            <div><Label>Valor (R$)</Label><Input type="number" value={form.value} onChange={e => set("value", e.target.value)} /></div>
+            <div><Label>Observações</Label><Textarea rows={3} value={form.notes} onChange={e => set("notes", e.target.value)} /></div>
+            <Button className="w-full" onClick={handleSave}>Salvar Lead</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!duplicateInfo} onOpenChange={(v) => { if (!v) setDuplicateInfo(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle size={18} className="text-yellow-500" /> Lead Já Existente</DialogTitle></DialogHeader>
+          {duplicateInfo && (
+            <div className="space-y-4">
+              <div className="bg-secondary rounded-lg p-4 space-y-2">
+                <p className="text-sm">Já existe um lead com o telefone <strong>{duplicateInfo.phone}</strong>:</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Users size={14} className="text-primary" />
+                  <span className="text-sm font-medium">{duplicateInfo.existingLeadName}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Responsável: <strong>{duplicateInfo.ownerName}</strong></p>
+              </div>
+              {duplicateInfo.ownerId !== userId ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Deseja solicitar a transferência deste lead para você? Todo o histórico será mantido.</p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setDuplicateInfo(null)}>Cancelar</Button>
+                    <Button className="flex-1" onClick={handleTransfer} disabled={transferring}>
+                      <RefreshCw size={14} className={`mr-2 ${transferring ? "animate-spin" : ""}`} />
+                      {transferring ? "Transferindo..." : "Transferir para mim"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Este lead já está atribuído a você.</p>
+                  <Button variant="outline" className="w-full" onClick={() => setDuplicateInfo(null)}>Fechar</Button>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+});
+
 // Sentinel invisível no fim de cada coluna — dispara loadMore ao entrar na viewport
 function SentinelLoader({ onVisible }: { onVisible: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -200,19 +383,7 @@ export default function CrmKanban() {
   const [newStageColor, setNewStageColor] = useState("#6366f1");
   const [useCustomColor, setUseCustomColor] = useState(false);
 
-  const [newLead, setNewLead] = useState({
-    name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "", pipeline_id: ""
-  });
-
-  // Duplicate lead detection state
-  const [duplicateInfo, setDuplicateInfo] = useState<{
-    existingLeadId: string;
-    existingLeadName: string;
-    ownerName: string;
-    ownerId: string | null;
-    phone: string;
-  } | null>(null);
-  const [transferring, setTransferring] = useState(false);
+  const [newLeadDefaultStageId, setNewLeadDefaultStageId] = useState("");
 
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("crm:lastPipelineId") : null;
@@ -489,89 +660,11 @@ export default function CrmKanban() {
 
   };
 
-  const handleCreateLead = async () => {
-    const targetPipeline = newLead.pipeline_id ? pipelines.find(p => p.id === newLead.pipeline_id) : pipeline;
-    if (!newLead.name || !newLead.stage_id || !targetPipeline) {
-      toast.error("Nome e etapa são obrigatórios");
-      return;
-    }
-    const normalizedPhone = newLead.phone ? normalizePhone(newLead.phone) : null;
-
-    // Check for duplicate phone using security definer function (bypasses RLS)
-    if (normalizedPhone) {
-      const { data: existing } = await supabase
-        .rpc("check_duplicate_phone", { p_phone: normalizedPhone });
-
-      if (existing && existing.length > 0) {
-        const dup = existing[0];
-        const ownerProfile = profiles.find(p => p.id === dup.assigned_to);
-        setDuplicateInfo({
-          existingLeadId: dup.lead_id,
-          existingLeadName: dup.lead_name,
-          ownerName: ownerProfile?.nome || "Sem responsável",
-          ownerId: dup.assigned_to,
-          phone: normalizedPhone,
-        });
-        return;
-      }
-    }
-
-    await insertNewLead(normalizedPhone);
-  };
-
-  const insertNewLead = async (normalizedPhone: string | null) => {
-    const targetPipeline = newLead.pipeline_id ? pipelines.find(p => p.id === newLead.pipeline_id) : pipeline;
-    if (!targetPipeline) return;
-    const tagsArray = newLead.tags ? newLead.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-    const { data: insertedLead, error } = await supabase.from("crm_leads").insert({
-      name: newLead.name,
-      phone: normalizedPhone,
-      stage_id: newLead.stage_id,
-      pipeline_id: targetPipeline.id,
-      source: newLead.source || null,
-      tags: tagsArray,
-      value: newLead.value ? parseFloat(newLead.value) : 0,
-      notes: newLead.notes || null,
-      position: leads.filter(l => l.stage_id === newLead.stage_id).length,
-      assigned_to: user?.id || null,
-    }).select("id").single();
-    if (error) { toast.error("Erro ao criar lead"); return; }
-    toast.success("Lead criado com sucesso");
-    invalidateKanbanCache();
-    // Execute automations for lead creation (on_create + on_create_or_enter)
-    if (insertedLead?.id) {
-      executeStageAutomations({
-        leadId: insertedLead.id,
-        stageId: newLead.stage_id,
-        leadPhone: normalizedPhone,
-        triggerTypes: ["on_create", "on_create_or_enter"],
-      });
-    }
-    setNewLeadOpen(false);
-    setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "", pipeline_id: "" });
-    fetchData();
-  };
-
-  const handleTransferDuplicate = async () => {
-    if (!duplicateInfo || !user) return;
-    setTransferring(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("transfer-lead", {
-        body: { leadId: duplicateInfo.existingLeadId, newUserId: user.id },
-      });
-      if (error) throw error;
-      toast.success(`Lead "${duplicateInfo.existingLeadName}" transferido para você com todo o histórico!`);
-      invalidateKanbanCache();
-      setDuplicateInfo(null);
-      setNewLeadOpen(false);
-      setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "", pipeline_id: "" });
-      fetchData();
-    } catch (err: any) {
-      toast.error("Erro ao transferir: " + (err.message || "Erro desconhecido"));
-    } finally {
-      setTransferring(false);
-    }
-  };
+  const leadCountByStage = useMemo(() => {
+    const m: Record<string, number> = {};
+    leads.forEach(l => { m[l.stage_id] = (m[l.stage_id] || 0) + 1; });
+    return m;
+  }, [leads]);
 
   const handleAddStage = async () => {
     if (!newStageName || !pipeline) return;
@@ -792,7 +885,7 @@ export default function CrmKanban() {
           <Button variant="outline" size="sm" onClick={() => navigate("/crm/automacoes")}>
             <Zap size={14} className="mr-1" /> AUTOMATIZE
           </Button>
-          <Button size="sm" onClick={() => { if (stages.length) { setNewLead(p => ({ ...p, stage_id: stages[0].id })); } setNewLeadOpen(true); }}>
+          <Button size="sm" onClick={() => { setNewLeadDefaultStageId(stages[0]?.id || ""); setNewLeadOpen(true); }}>
             <Plus size={14} className="mr-1" /> NOVO LEAD
           </Button>
         </div>
@@ -833,7 +926,7 @@ export default function CrmKanban() {
                       {idx === 0 && (
                         <div className="px-2 pb-1 flex-shrink-0">
                           <button
-                            onClick={() => { setNewLead(p => ({ ...p, stage_id: stage.id })); setNewLeadOpen(true); }}
+                            onClick={() => { setNewLeadDefaultStageId(stage.id); setNewLeadOpen(true); }}
                             className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1 flex items-center justify-center gap-1 transition-colors"
                           >
                             <Plus size={12} /> Adição rápida
@@ -1047,98 +1140,19 @@ export default function CrmKanban() {
         </div>
       )}
 
-      {/* New Lead Modal */}
-      <Dialog open={newLeadOpen} onOpenChange={setNewLeadOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Novo Lead</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Nome *</Label><Input value={newLead.name} onChange={e => setNewLead(p => ({ ...p, name: e.target.value }))} /></div>
-            <div><Label>Telefone</Label><Input value={newLead.phone} onChange={e => setNewLead(p => ({ ...p, phone: e.target.value }))} /></div>
-            <div>
-              <Label>Funil *</Label>
-              <Select value={newLead.pipeline_id || pipeline?.id || ""} onValueChange={v => setNewLead(p => ({ ...p, pipeline_id: v, stage_id: "" }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione o funil" /></SelectTrigger>
-                <SelectContent>
-                  {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Etapa Inicial *</Label>
-              <NewLeadStageSelector
-                pipelineId={newLead.pipeline_id || pipeline?.id || ""}
-                allPipelines={pipelines}
-                currentStages={stages}
-                currentPipelineId={pipeline?.id || ""}
-                value={newLead.stage_id}
-                onChange={v => setNewLead(p => ({ ...p, stage_id: v }))}
-              />
-            </div>
-            <div>
-              <Label>Origem</Label>
-              <Select value={newLead.source} onValueChange={v => setNewLead(p => ({ ...p, source: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
-                <SelectContent>
-                  {["instagram", "whatsapp", "facebook", "facebook_ad", "instagram_ad", "manual", "indicação", "google"].map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div><Label>Tags (separadas por vírgula)</Label><Input placeholder="implante, clareamento" value={newLead.tags} onChange={e => setNewLead(p => ({ ...p, tags: e.target.value }))} /></div>
-            <div><Label>Valor (R$)</Label><Input type="number" value={newLead.value} onChange={e => setNewLead(p => ({ ...p, value: e.target.value }))} /></div>
-            <div><Label>Observações</Label><Textarea rows={3} value={newLead.notes} onChange={e => setNewLead(p => ({ ...p, notes: e.target.value }))} /></div>
-            <Button className="w-full" onClick={handleCreateLead}>Salvar Lead</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Duplicate Lead Modal */}
-      <Dialog open={!!duplicateInfo} onOpenChange={(open) => { if (!open) setDuplicateInfo(null); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><AlertTriangle size={18} className="text-yellow-500" /> Lead Já Existente</DialogTitle></DialogHeader>
-          {duplicateInfo && (
-            <div className="space-y-4">
-              <div className="bg-secondary rounded-lg p-4 space-y-2">
-                <p className="text-sm">
-                  Já existe um lead com o telefone <strong>{duplicateInfo.phone}</strong>:
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <Users size={14} className="text-primary" />
-                  <span className="text-sm font-medium">{duplicateInfo.existingLeadName}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Responsável: <strong>{duplicateInfo.ownerName}</strong>
-                </p>
-              </div>
-
-              {duplicateInfo.ownerId !== user?.id ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Deseja solicitar a transferência deste lead para você? Todo o histórico de conversas será mantido.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={() => setDuplicateInfo(null)}>
-                      Cancelar
-                    </Button>
-                    <Button className="flex-1" onClick={handleTransferDuplicate} disabled={transferring}>
-                      <RefreshCw size={14} className={`mr-2 ${transferring ? "animate-spin" : ""}`} />
-                      {transferring ? "Transferindo..." : "Transferir para mim"}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Este lead já está atribuído a você.
-                  </p>
-                  <Button variant="outline" className="w-full" onClick={() => setDuplicateInfo(null)}>
-                    Fechar
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* New Lead Modal — componente isolado para evitar re-render do kanban ao digitar */}
+      <NewLeadDialog
+        open={newLeadOpen}
+        onOpenChange={setNewLeadOpen}
+        pipelines={pipelines}
+        stages={stages}
+        defaultPipelineId={pipeline?.id || ""}
+        defaultStageId={newLeadDefaultStageId}
+        profiles={profiles}
+        userId={user?.id}
+        leadCountByStage={leadCountByStage}
+        onCreated={fetchData}
+      />
 
 
       <Dialog open={newStageOpen} onOpenChange={(open) => { setNewStageOpen(open); if (!open) { setNewStageInsertIdx(null); setUseCustomColor(false); } }}>
