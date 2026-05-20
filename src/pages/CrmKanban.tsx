@@ -113,6 +113,26 @@ function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, current
   );
 }
 
+// Cache de módulo: sobrevive à navegação entre páginas, TTL de 2 minutos.
+type KanbanCacheEntry = {
+  pipelines: Pipeline[];
+  stages: Stage[];
+  leads: Lead[];
+  profiles: { id: string; nome: string }[];
+  followUpLeads: Record<string, string>;
+  vendasConcluidas: number;
+  leadMonthValueMap: Map<string, number>;
+  leadAllTimeValueMap: Map<string, number>;
+  leadsWithPagamento: Set<string>;
+};
+const kanbanDataCache: {
+  pipelineId: string | null;
+  entry: KanbanCacheEntry | null;
+  timestamp: number;
+} = { pipelineId: null, entry: null, timestamp: 0 };
+const KANBAN_CACHE_TTL = 2 * 60_000;
+export const invalidateKanbanCache = () => { kanbanDataCache.timestamp = 0; };
+
 export default function CrmKanban() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
@@ -160,12 +180,38 @@ export default function CrmKanban() {
   const [transferring, setTransferring] = useState(false);
 
   const fetchData = useCallback(async (selectedPipelineId?: string) => {
-    setLoading(true);
-    // Fetch everything in a single parallel round when we know the pipeline
-    // Persist last selected pipeline so the user doesn't lose it on navigation
     const stored = typeof window !== "undefined" ? localStorage.getItem("crm:lastPipelineId") : null;
     const targetPipelineId = selectedPipelineId || pipeline?.id || stored || undefined;
-    
+    const isPosvendaOnly = userRole === "posvenda";
+
+    // ── Cache hit: serve os dados instantaneamente ──────────────────────────
+    if (
+      kanbanDataCache.entry &&
+      kanbanDataCache.pipelineId === (targetPipelineId ?? null) &&
+      Date.now() - kanbanDataCache.timestamp < KANBAN_CACHE_TTL
+    ) {
+      const e = kanbanDataCache.entry;
+      setPipelines(e.pipelines);
+      const p = e.pipelines.find(pp => pp.id === targetPipelineId) || e.pipelines[0];
+      if (p) setPipeline(p);
+      setStages(e.stages);
+      setLeads(e.leads);
+      setProfiles(e.profiles);
+      setFollowUpLeads(e.followUpLeads);
+      setVendasConcluidas(e.vendasConcluidas);
+      setLeadMonthValueMap(e.leadMonthValueMap);
+      setLeadAllTimeValueMap(e.leadAllTimeValueMap);
+      setLeadsWithPagamento(e.leadsWithPagamento);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    const now = new Date();
+    const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    const monthEnd = toLocalDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
     const LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio";
     const fetchAllLeads = async (pipelineId: string): Promise<Lead[]> => {
       const PAGE = 1000;
@@ -187,23 +233,19 @@ export default function CrmKanban() {
       return out;
     };
 
-    const [pipelinesRes, profilesRes, stagesRes, leadsAll, fqRes] = await Promise.all([
+    // ── Fase 1: tudo em paralelo, incluindo vínculos paciente↔lead ──────────
+    const [pipelinesRes, profilesRes, stagesRes, leadsAll, fqRes, linksRes] = await Promise.all([
       supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
       supabase.from("profiles").select("id, nome"),
       targetPipelineId
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
-      targetPipelineId ? fetchAllLeads(targetPipelineId) : Promise.resolve(null),
+      targetPipelineId ? fetchAllLeads(targetPipelineId) : Promise.resolve([] as Lead[]),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
+      supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
     ]);
 
     const pList = (pipelinesRes.data as Pipeline[]) || [];
-    setPipelines(pList);
-    setProfiles((profilesRes.data as { id: string; nome: string }[]) || []);
-
-    // Default pipeline preference: for non-posvenda users, always prefer "Funil Principal"
-    // over any other pipeline (including Pós-venda) when no explicit selection is made.
-    const isPosvendaOnly = userRole === "posvenda";
     const principal = pList.find(pp => /funil principal/i.test(pp.name)) || pList[0];
     const defaultPipeline = isPosvendaOnly
       ? (pList.find(pp => /p[óo]s.?venda/i.test(pp.name)) || pList[0])
@@ -216,7 +258,6 @@ export default function CrmKanban() {
       p = pList.find(pp => pp.id === pipeline.id) || defaultPipeline;
     } else if (stored && pList.find(pp => pp.id === stored)) {
       const storedPipeline = pList.find(pp => pp.id === stored)!;
-      // Ignore stored Pós-venda for non-posvenda users — they should land on Funil Principal.
       if (!isPosvendaOnly && /p[óo]s.?venda/i.test(storedPipeline.name)) {
         p = defaultPipeline;
       } else {
@@ -226,26 +267,99 @@ export default function CrmKanban() {
       p = defaultPipeline;
     }
 
-    if (p) {
-      setPipeline(p);
-      try { localStorage.setItem("crm:lastPipelineId", p.id); } catch {}
+    if (!p) { setLoading(false); return; }
 
-      if (targetPipelineId === p.id && stagesRes.data && leadsAll) {
-        setStages((stagesRes.data as Stage[]) || []);
-        setLeads(leadsAll);
-      } else {
-        const [s2, l2] = await Promise.all([
-          supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
-          fetchAllLeads(p.id),
-        ]);
-        setStages((s2.data as Stage[]) || []);
-        setLeads(l2);
-      }
+    setPipelines(pList);
+    setPipeline(p);
+    try { localStorage.setItem("crm:lastPipelineId", p.id); } catch {}
 
-      const fqMap: Record<string, string> = {};
-      (fqRes.data || []).forEach((fq: any) => { fqMap[fq.lead_id] = fq.status; });
-      setFollowUpLeads(fqMap);
+    let finalStages: Stage[];
+    let finalLeads: Lead[];
+    if (targetPipelineId === p.id && stagesRes.data && leadsAll) {
+      finalStages = (stagesRes.data as Stage[]) || [];
+      finalLeads = leadsAll as Lead[];
+    } else {
+      const [s2, l2] = await Promise.all([
+        supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
+        fetchAllLeads(p.id),
+      ]);
+      finalStages = (s2.data as Stage[]) || [];
+      finalLeads = l2;
     }
+
+    setStages(finalStages);
+    setLeads(finalLeads);
+
+    const fqMap: Record<string, string> = {};
+    (fqRes.data || []).forEach((fq: any) => { fqMap[fq.lead_id] = fq.status; });
+    setFollowUpLeads(fqMap);
+    const finalProfiles = (profilesRes.data as { id: string; nome: string }[]) || [];
+    setProfiles(finalProfiles);
+
+    // ── Fase 2: pagamentos — filtrados pelos pacientes do tenant ────────────
+    // crm_lead_pacientes já carregado na fase 1 (linksRes).
+    // Extraímos os paciente_ids únicos e buscamos só os pagamentos relevantes.
+    const links = (linksRes.data || []) as { lead_id: string; paciente_id: string; is_primary: boolean }[];
+    const pacienteToLead = new Map<string, string>();
+    links.forEach(l => {
+      const existing = pacienteToLead.get(l.paciente_id);
+      if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
+    });
+    const pacienteIds = [...new Set(links.map(l => l.paciente_id))];
+
+    let vendasConcluidasVal = 0;
+    const monthMap = new Map<string, number>();
+    const allTimeMap = new Map<string, number>();
+    const paidLeadIds = new Set<string>();
+
+    if (pacienteIds.length > 0) {
+      // Busca em paralelo: pagamentos do mês e de todos os tempos,
+      // ambos filtrados pelos pacienteIds conhecidos (muito mais rápido).
+      const [{ data: pags }, { data: allPags }] = await Promise.all([
+        supabase.from("pagamentos").select("valor, paciente_id")
+          .in("paciente_id", pacienteIds)
+          .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
+        supabase.from("pagamentos").select("paciente_id, valor")
+          .in("paciente_id", pacienteIds),
+      ]);
+
+      (pags || []).forEach((pg: any) => {
+        const v = Number(pg.valor || 0);
+        vendasConcluidasVal += v;
+        const leadId = pacienteToLead.get(pg.paciente_id);
+        if (leadId) monthMap.set(leadId, (monthMap.get(leadId) || 0) + v);
+      });
+
+      (allPags || []).forEach((pg: any) => {
+        const leadId = pacienteToLead.get(pg.paciente_id);
+        if (leadId) {
+          const v = Number(pg.valor || 0);
+          allTimeMap.set(leadId, (allTimeMap.get(leadId) || 0) + v);
+          paidLeadIds.add(leadId);
+        }
+      });
+    }
+
+    setVendasConcluidas(vendasConcluidasVal);
+    setLeadMonthValueMap(monthMap);
+    setLeadAllTimeValueMap(allTimeMap);
+    setLeadsWithPagamento(paidLeadIds);
+
+    // ── Salva no cache ───────────────────────────────────────────────────────
+    kanbanDataCache.pipelineId = p.id;
+    kanbanDataCache.timestamp = Date.now();
+    kanbanDataCache.entry = {
+      pipelines: pList,
+      stages: finalStages,
+      leads: finalLeads,
+      profiles: finalProfiles,
+      followUpLeads: fqMap,
+      vendasConcluidas: vendasConcluidasVal,
+      leadMonthValueMap: monthMap,
+      leadAllTimeValueMap: allTimeMap,
+      leadsWithPagamento: paidLeadIds,
+    };
+
     setLoading(false);
   }, [pipeline?.id, userRole]);
 
@@ -367,6 +481,7 @@ export default function CrmKanban() {
     }).select("id").single();
     if (error) { toast.error("Erro ao criar lead"); return; }
     toast.success("Lead criado com sucesso");
+    invalidateKanbanCache();
     // Execute automations for lead creation (on_create + on_create_or_enter)
     if (insertedLead?.id) {
       executeStageAutomations({
@@ -390,6 +505,7 @@ export default function CrmKanban() {
       });
       if (error) throw error;
       toast.success(`Lead "${duplicateInfo.existingLeadName}" transferido para você com todo o histórico!`);
+      invalidateKanbanCache();
       setDuplicateInfo(null);
       setNewLeadOpen(false);
       setNewLead({ name: "", phone: "", stage_id: "", source: "", tags: "", value: "", notes: "", pipeline_id: "" });
@@ -418,6 +534,7 @@ export default function CrmKanban() {
     });
     if (error) { toast.error("Erro ao criar etapa"); return; }
     toast.success("Etapa criada");
+    invalidateKanbanCache();
     setNewStageOpen(false);
     setNewStageName("");
     setNewStageColor("#6366f1");
@@ -512,64 +629,10 @@ export default function CrmKanban() {
   const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
   const newYesterday = myLeads.filter(l => l.created_at.startsWith(yesterday)).length;
 
-  // Mapa lead_id -> total pago no mês (somando TODOS os pacientes vinculados via crm_lead_pacientes)
-  // Usado tanto no card "Vendas concluídas (mês)" quanto no total exibido em cada etapa.
+  // Estados de pagamento — preenchidos dentro do fetchData (sem useEffect separado)
   const [vendasConcluidas, setVendasConcluidas] = useState(0);
   const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
-  // Mapa lead_id → total pago em todos os tempos (exibido no cartão do kanban)
   const [leadAllTimeValueMap, setLeadAllTimeValueMap] = useState<Map<string, number>>(new Map());
-  useEffect(() => {
-    const now = new Date();
-    const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
-    const monthEnd = toLocalDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-
-    (async () => {
-      const [{ data: pags }, { data: links }, { data: allPags }] = await Promise.all([
-        supabase.from("pagamentos").select("valor, paciente_id")
-          .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
-        supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
-        // Busca valor também para montar o mapa all-time do cartão
-        supabase.from("pagamentos").select("paciente_id, valor"),
-      ]);
-
-      // Um único lead por paciente (prioriza vínculo primário).
-      // Evita duplicar valor quando o mesmo paciente está em múltiplos leads.
-      const pacienteToLead = new Map<string, string>();
-      (links || []).forEach((l: any) => {
-        const existing = pacienteToLead.get(l.paciente_id);
-        if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
-      });
-
-      // Mapa do mês: lead_id → total pago no mês corrente
-      const map = new Map<string, number>();
-      let total = 0;
-      (pags || []).forEach((p: any) => {
-        const v = Number(p.valor || 0);
-        total += v;
-        const leadId = pacienteToLead.get(p.paciente_id);
-        if (leadId) map.set(leadId, (map.get(leadId) || 0) + v);
-      });
-
-      // Mapa all-time: lead_id → total pago em todos os tempos (para o cartão)
-      // Set de leads com pagamento: usa APENAS o lead primário do paciente,
-      // evitando marcar leads sem pagamento real quando o paciente tem múltiplos leads.
-      const allTimeMap = new Map<string, number>();
-      const paidLeadIds = new Set<string>();
-      (allPags || []).forEach((p: any) => {
-        const leadId = pacienteToLead.get(p.paciente_id);
-        if (leadId) {
-          const v = Number(p.valor || 0);
-          allTimeMap.set(leadId, (allTimeMap.get(leadId) || 0) + v);
-          paidLeadIds.add(leadId);
-        }
-      });
-
-      setVendasConcluidas(total);
-      setLeadMonthValueMap(map);
-      setLeadAllTimeValueMap(allTimeMap);
-      setLeadsWithPagamento(paidLeadIds);
-    })();
-  }, [leads]);
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
