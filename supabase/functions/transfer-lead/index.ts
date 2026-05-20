@@ -111,6 +111,86 @@ Deno.serve(async (req) => {
           movedStageName = (firstStage as any).name;
         }
       }
+    } else if (targetRoleRow?.role === "crc" || targetRoleRow?.role === "gerente") {
+      // Reverse flow: if lead is currently in a pipeline restricted to posvenda,
+      // restore it to the last stage it occupied in a CRC-accessible pipeline.
+      const { data: currentPipeline } = await supabase
+        .from("crm_pipelines")
+        .select("id, allowed_roles")
+        .eq("id", (lead as any).pipeline_id)
+        .maybeSingle();
+
+      const isPosvendaOnly =
+        Array.isArray((currentPipeline as any)?.allowed_roles) &&
+        (currentPipeline as any).allowed_roles.length > 0 &&
+        (currentPipeline as any).allowed_roles.every((r: string) => r === "posvenda");
+
+      if (isPosvendaOnly) {
+        const { data: crcPipelines } = await supabase
+          .from("crm_pipelines")
+          .select("id, name, allowed_roles, tenant_id")
+          .eq("tenant_id", (lead as any).tenant_id);
+
+        const allowedIds = (crcPipelines || [])
+          .filter((p: any) => {
+            const ar = p.allowed_roles;
+            return !ar || ar.length === 0 || ar.includes("crc") || ar.includes("gerente");
+          })
+          .map((p: any) => p.id);
+
+        let targetPipelineId: string | null = null;
+        let targetStageId: string | null = null;
+        let targetPipelineName: string | null = null;
+        let targetStageName: string | null = null;
+
+        if (allowedIds.length) {
+          const { data: history } = await supabase
+            .from("crm_lead_stage_history")
+            .select("stage_id, entered_at, crm_stages!inner(id, name, pipeline_id)")
+            .eq("lead_id", leadId)
+            .in("crm_stages.pipeline_id", allowedIds)
+            .order("entered_at", { ascending: false })
+            .limit(1);
+
+          const last = (history as any[])?.[0];
+          if (last) {
+            targetStageId = last.stage_id;
+            targetStageName = last.crm_stages?.name || null;
+            targetPipelineId = last.crm_stages?.pipeline_id || null;
+            const pip = (crcPipelines || []).find((p: any) => p.id === targetPipelineId);
+            targetPipelineName = pip?.name || null;
+          }
+        }
+
+        // Fallback: Funil Principal → first stage
+        if (!targetStageId) {
+          const fallbackPipeline =
+            (crcPipelines || []).find((p: any) => /funil principal/i.test(p.name)) ||
+            (crcPipelines || []).find((p: any) => allowedIds.includes(p.id));
+          if (fallbackPipeline) {
+            const { data: firstStage } = await supabase
+              .from("crm_stages")
+              .select("id, name")
+              .eq("pipeline_id", fallbackPipeline.id)
+              .order("position", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            if (firstStage) {
+              targetPipelineId = fallbackPipeline.id;
+              targetStageId = (firstStage as any).id;
+              targetPipelineName = (fallbackPipeline as any).name;
+              targetStageName = (firstStage as any).name;
+            }
+          }
+        }
+
+        if (targetPipelineId && targetStageId) {
+          updatePayload.pipeline_id = targetPipelineId;
+          updatePayload.stage_id = targetStageId;
+          movedPipelineName = targetPipelineName;
+          movedStageName = targetStageName;
+        }
+      }
     }
 
     const { error: updateError } = await supabase

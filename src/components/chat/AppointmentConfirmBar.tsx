@@ -151,42 +151,71 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   const moveLeadToScheduledStage = useCallback(async () => {
     const { data: leadData } = await supabase
       .from("crm_leads")
-      .select("stage_id, pipeline_id")
+      .select("stage_id, pipeline_id, tenant_id")
       .eq("id", leadId)
       .single();
 
     if (!leadData) return null;
 
-    const { data: allStages } = await supabase
+    const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const isPreOrRe = (n: string) =>
+      n.includes("pre") || n.includes("pré") || n.startsWith("reagend") ||
+      n.includes("nao compareceu") || n.includes("não compareceu");
+
+    const pickStage = (stages: { id: string; name: string; pipeline_id: string }[] | null | undefined) => {
+      if (!stages) return undefined;
+      let found;
+      if (isRescheduleMode) {
+        found = stages.find((s) => normalize(s.name).startsWith("reagend"));
+        if (found) return found;
+      }
+      found = stages.find((s) => {
+        const n = normalize(s.name);
+        return (n === "agendado" || n === "agendados" || n === "agendamento" || n === "agendamentos");
+      });
+      if (found) return found;
+      return stages.find((s) => {
+        const n = normalize(s.name);
+        return (n.includes("agendad") || n.includes("agendamento")) && !isPreOrRe(n);
+      });
+    };
+
+    // 1) Tenta no pipeline atual
+    const { data: currentStages } = await supabase
       .from("crm_stages")
       .select("id, name, pipeline_id")
       .eq("pipeline_id", leadData.pipeline_id)
       .order("position");
 
     const currentStageId = leadData.stage_id;
-    const currentStage = allStages?.find((stage) => stage.id === currentStageId);
+    const currentStage = currentStages?.find((s) => s.id === currentStageId);
 
-    // Prefer exact "Agendado" stage, excluding "Pré-agendado", "Reagendado", etc.
-    const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    const isPreOrRe = (n: string) => n.includes("pre") || n.includes("pré") || n.startsWith("reagend") || n.includes("nao compareceu") || n.includes("não compareceu");
+    let scheduledStage = pickStage(currentStages as any);
+    let targetPipelineName: string | null = null;
 
-    let scheduledStage;
-    if (isRescheduleMode) {
-      // Lead vindo de "Não compareceu" ou "Reagendado" → vai para "Reagendado"
-      scheduledStage = allStages?.find((stage) => normalize(stage.name).startsWith("reagend"));
-    }
+    // 2) Fallback cross-pipeline: Funil Principal do mesmo tenant
     if (!scheduledStage) {
-      scheduledStage = allStages?.find((stage) => {
-        const n = normalize(stage.name);
-        return (n === "agendado" || n === "agendados" || n === "agendamento" || n === "agendamentos");
-      });
-    }
-    // Fallback: any stage containing "agendad"/"agendamento" but NOT pre/re/no-show
-    if (!scheduledStage) {
-      scheduledStage = allStages?.find((stage) => {
-        const n = normalize(stage.name);
-        return (n.includes("agendad") || n.includes("agendamento")) && !isPreOrRe(n);
-      });
+      const { data: pipelines } = await supabase
+        .from("crm_pipelines")
+        .select("id, name, allowed_roles")
+        .eq("tenant_id", leadData.tenant_id);
+
+      const funilPrincipal =
+        (pipelines || []).find((p: any) => /funil principal/i.test(p.name)) ||
+        (pipelines || []).find((p: any) => {
+          const ar = p.allowed_roles;
+          return !ar || ar.length === 0;
+        });
+
+      if (funilPrincipal) {
+        const { data: fpStages } = await supabase
+          .from("crm_stages")
+          .select("id, name, pipeline_id")
+          .eq("pipeline_id", (funilPrincipal as any).id)
+          .order("position");
+        scheduledStage = pickStage(fpStages as any);
+        if (scheduledStage) targetPipelineName = (funilPrincipal as any).name;
+      }
     }
 
     if (!scheduledStage || scheduledStage.id === currentStageId) {
@@ -194,10 +223,17 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     }
 
     const nowIso = new Date().toISOString();
+    const crossPipeline = scheduledStage.pipeline_id !== leadData.pipeline_id;
+
+    const updatePayload: { stage_id: string; updated_at: string; pipeline_id?: string } = {
+      stage_id: scheduledStage.id,
+      updated_at: nowIso,
+    };
+    if (crossPipeline) updatePayload.pipeline_id = scheduledStage.pipeline_id;
 
     const { error: moveError } = await supabase
       .from("crm_leads")
-      .update({ stage_id: scheduledStage.id, updated_at: nowIso })
+      .update(updatePayload)
       .eq("id", leadId);
 
     if (moveError) throw moveError;
@@ -224,11 +260,15 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       entered_at: nowIso,
     } as any);
 
+    const sysContent = crossPipeline && targetPipelineName
+      ? `📋 Etapa alterada: ${currentStage?.name || "Etapa anterior"} → ${targetPipelineName} • ${scheduledStage.name}`
+      : `📋 Etapa alterada: ${currentStage?.name || "Etapa anterior"} → ${scheduledStage.name}`;
+
     await supabase.from("messages").insert({
       lead_id: leadId,
       direction: "outbound",
       type: "system",
-      content: `📋 Etapa alterada: ${currentStage?.name || "Etapa anterior"} → ${scheduledStage.name}`,
+      content: sysContent,
       status: "system",
     });
 
