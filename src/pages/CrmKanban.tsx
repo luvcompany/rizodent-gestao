@@ -518,8 +518,7 @@ export default function CrmKanban() {
     // Mostra o board imediatamente — pagamentos carregam em background
     setLoading(false);
 
-    // ── Fase 2: vínculos paciente↔lead filtrados pelos leads do pipeline ────
-    // Busca apenas os vínculos dos leads já carregados — evita trazer o tenant inteiro.
+    // ── Fase 2: pagamentos via view server-side (evita arrays .in() grandes) ──
     const leadIds = finalLeads.map(l => l.id);
     let vendasConcluidasVal = 0;
     const monthMap = new Map<string, number>();
@@ -527,53 +526,65 @@ export default function CrmKanban() {
     const paidLeadIds = new Set<string>();
 
     if (leadIds.length > 0) {
-      const { data: linksData } = await supabase
-        .from("crm_lead_pacientes")
-        .select("lead_id, paciente_id, is_primary")
-        .in("lead_id", leadIds);
-
-      const links = (linksData || []) as { lead_id: string; paciente_id: string; is_primary: boolean }[];
+      // Monta mapa paciente→lead usando o campo direto dos leads (não precisa de .in() grande)
       const pacienteToLead = new Map<string, string>();
-      // Inclui vínculo direto via crm_leads.paciente_id (tem precedência menor que is_primary)
       finalLeads.forEach(l => {
         if (l.paciente_id) pacienteToLead.set(l.paciente_id, l.id);
       });
-      links.forEach(l => {
-        const existing = pacienteToLead.get(l.paciente_id);
-        if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
-      });
-      const pacienteIds = [...new Set([
-        ...links.map(l => l.paciente_id),
-        ...finalLeads.filter(l => l.paciente_id).map(l => l.paciente_id as string),
-      ])];
+
+      // Vínculos adicionais via crm_lead_pacientes (em lotes para evitar URL longa)
+      const BATCH = 200;
+      for (let i = 0; i < leadIds.length; i += BATCH) {
+        const batch = leadIds.slice(i, i + BATCH);
+        const { data: linksData } = await supabase
+          .from("crm_lead_pacientes")
+          .select("lead_id, paciente_id, is_primary")
+          .in("lead_id", batch);
+        (linksData || []).forEach((l: any) => {
+          const existing = pacienteToLead.get(l.paciente_id);
+          if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
+        });
+      }
+
+      const pacienteIds = [...pacienteToLead.keys()];
+
+      // Consulta a view server-side para saber quais leads têm pagamentos
+      // (não usa .in() com leadIds — é filtrado por RLS no banco)
+      const { data: paidRows } = await supabase
+        .from("crm_leads_com_pagamento")
+        .select("lead_id");
+      const paidSet = new Set((paidRows || []).map((r: any) => r.lead_id));
+      finalLeads.forEach(l => { if (paidSet.has(l.id)) paidLeadIds.add(l.id); });
 
       if (pacienteIds.length > 0) {
-      // Busca em paralelo: pagamentos do mês e de todos os tempos,
-      // ambos filtrados pelos pacienteIds conhecidos (muito mais rápido).
-      const [{ data: pags }, { data: allPags }] = await Promise.all([
-        supabase.from("pagamentos").select("valor, paciente_id")
-          .in("paciente_id", pacienteIds)
-          .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
-        supabase.from("pagamentos").select("paciente_id, valor")
-          .in("paciente_id", pacienteIds),
-      ]);
+        // Busca pagamentos do mês em lotes para o cálculo de vendas
+        const PAC_BATCH = 200;
+        for (let i = 0; i < pacienteIds.length; i += PAC_BATCH) {
+          const batch = pacienteIds.slice(i, i + PAC_BATCH);
+          const [{ data: pags }, { data: allPags }] = await Promise.all([
+            supabase.from("pagamentos").select("valor, paciente_id")
+              .in("paciente_id", batch)
+              .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
+            supabase.from("pagamentos").select("paciente_id, valor")
+              .in("paciente_id", batch),
+          ]);
 
-      (pags || []).forEach((pg: any) => {
-        const v = Number(pg.valor || 0);
-        vendasConcluidasVal += v;
-        const leadId = pacienteToLead.get(pg.paciente_id);
-        if (leadId) monthMap.set(leadId, (monthMap.get(leadId) || 0) + v);
-      });
+          (pags || []).forEach((pg: any) => {
+            const v = Number(pg.valor || 0);
+            vendasConcluidasVal += v;
+            const leadId = pacienteToLead.get(pg.paciente_id);
+            if (leadId) monthMap.set(leadId, (monthMap.get(leadId) || 0) + v);
+          });
 
-      (allPags || []).forEach((pg: any) => {
-        const leadId = pacienteToLead.get(pg.paciente_id);
-        if (leadId) {
-          const v = Number(pg.valor || 0);
-          allTimeMap.set(leadId, (allTimeMap.get(leadId) || 0) + v);
-          paidLeadIds.add(leadId);
+          (allPags || []).forEach((pg: any) => {
+            const leadId = pacienteToLead.get(pg.paciente_id);
+            if (leadId) {
+              const v = Number(pg.valor || 0);
+              allTimeMap.set(leadId, (allTimeMap.get(leadId) || 0) + v);
+            }
+          });
         }
-      });
-      } // fecha if (pacienteIds.length > 0)
+      }
     } // fecha if (leadIds.length > 0)
 
     setVendasConcluidas(vendasConcluidasVal);
