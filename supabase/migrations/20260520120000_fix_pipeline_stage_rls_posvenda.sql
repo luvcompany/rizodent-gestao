@@ -13,7 +13,6 @@ FOR INSERT
 TO authenticated
 WITH CHECK (
   public.has_role(auth.uid(), 'superadmin'::app_role)
-  OR public.has_role(auth.uid(), 'admin'::app_role)
   OR public.has_role(auth.uid(), 'gerente'::app_role)
   OR public.has_role(auth.uid(), 'crc'::app_role)
   OR public.has_role(auth.uid(), 'posvenda'::app_role)
@@ -25,14 +24,12 @@ FOR UPDATE
 TO authenticated
 USING (
   public.has_role(auth.uid(), 'superadmin'::app_role)
-  OR public.has_role(auth.uid(), 'admin'::app_role)
   OR public.has_role(auth.uid(), 'gerente'::app_role)
   OR public.has_role(auth.uid(), 'crc'::app_role)
   OR public.has_role(auth.uid(), 'posvenda'::app_role)
 )
 WITH CHECK (
   public.has_role(auth.uid(), 'superadmin'::app_role)
-  OR public.has_role(auth.uid(), 'admin'::app_role)
   OR public.has_role(auth.uid(), 'gerente'::app_role)
   OR public.has_role(auth.uid(), 'crc'::app_role)
   OR public.has_role(auth.uid(), 'posvenda'::app_role)
@@ -44,7 +41,6 @@ FOR DELETE
 TO authenticated
 USING (
   public.has_role(auth.uid(), 'superadmin'::app_role)
-  OR public.has_role(auth.uid(), 'admin'::app_role)
   OR public.has_role(auth.uid(), 'gerente'::app_role)
   OR public.has_role(auth.uid(), 'crc'::app_role)
   OR public.has_role(auth.uid(), 'posvenda'::app_role)
@@ -61,7 +57,6 @@ FOR INSERT
 TO authenticated
 WITH CHECK (
   public.has_role(auth.uid(), 'superadmin'::app_role)
-  OR public.has_role(auth.uid(), 'admin'::app_role)
   OR public.has_role(auth.uid(), 'gerente'::app_role)
   OR public.has_role(auth.uid(), 'crc'::app_role)
   OR public.has_role(auth.uid(), 'posvenda'::app_role)
@@ -73,14 +68,12 @@ FOR UPDATE
 TO authenticated
 USING (
   public.has_role(auth.uid(), 'superadmin'::app_role)
-  OR public.has_role(auth.uid(), 'admin'::app_role)
   OR public.has_role(auth.uid(), 'gerente'::app_role)
   OR public.has_role(auth.uid(), 'crc'::app_role)
   OR public.has_role(auth.uid(), 'posvenda'::app_role)
 )
 WITH CHECK (
   public.has_role(auth.uid(), 'superadmin'::app_role)
-  OR public.has_role(auth.uid(), 'admin'::app_role)
   OR public.has_role(auth.uid(), 'gerente'::app_role)
   OR public.has_role(auth.uid(), 'crc'::app_role)
   OR public.has_role(auth.uid(), 'posvenda'::app_role)
@@ -92,7 +85,6 @@ FOR DELETE
 TO authenticated
 USING (
   public.has_role(auth.uid(), 'superadmin'::app_role)
-  OR public.has_role(auth.uid(), 'admin'::app_role)
   OR public.has_role(auth.uid(), 'gerente'::app_role)
   OR public.has_role(auth.uid(), 'crc'::app_role)
   OR public.has_role(auth.uid(), 'posvenda'::app_role)
