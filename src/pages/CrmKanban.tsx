@@ -930,6 +930,13 @@ export default function CrmKanban() {
   const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
   const newYesterday = myLeads.filter(l => l.created_at.startsWith(yesterday)).length;
 
+  // Modal de métrica
+  const [metricModal, setMetricModal] = useState<{ title: string; leads: Lead[] } | null>(null);
+
+  const openMetricModal = (title: string, filterFn: (l: Lead) => boolean) => {
+    setMetricModal({ title, leads: myLeads.filter(filterFn) });
+  };
+
   // Estados de pagamento — preenchidos dentro do fetchData (sem useEffect separado)
   const [vendasConcluidas, setVendasConcluidas] = useState(0);
   const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
@@ -1041,11 +1048,18 @@ export default function CrmKanban() {
 
       {/* Metrics bar - FIXED, no horizontal scroll */}
       <div style={{ flexShrink: 0, width: "100%", overflowX: "hidden" }} className="bg-card border-b border-border px-6 py-2 flex items-center gap-6 text-sm flex-wrap">
-        <MetricBadge icon={<Calendar size={14} />} label="Com tarefas para hoje" value={withTaskToday} variant="info" />
-        <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} variant="muted" />
-        <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} variant="destructive" />
-        <MetricBadge icon={<Clock size={14} />} label="Novo hoje / ontem" value={`${newToday} / ${newYesterday}`} variant="success" />
-        <MetricBadge icon={<TrendingUp size={14} />} label="Vendas concluídas (mês)" value={formatCurrency(vendasConcluidas)} variant="primary" />
+        <MetricBadge icon={<Calendar size={14} />} label="Com tarefas para hoje" value={withTaskToday} variant="info"
+          onClick={() => openMetricModal("Com tarefas para hoje", l => taskTodayLeadIds.has(l.id))} />
+        <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} variant="muted"
+          onClick={() => openMetricModal("Sem tarefas atribuídas", l => !taskAnyLeadIds.has(l.id))} />
+        <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} variant="destructive"
+          onClick={() => openMetricModal("Com tarefas atrasadas", l => taskOverdueLeadIds.has(l.id))} />
+        <MetricBadge icon={<Clock size={14} />} label="Novo hoje" value={newToday} variant="success"
+          onClick={() => openMetricModal("Novos leads hoje", l => l.created_at.startsWith(today))} />
+        <MetricBadge icon={<Clock size={14} />} label="Ontem" value={newYesterday} variant="success"
+          onClick={() => openMetricModal("Novos leads ontem", l => l.created_at.startsWith(yesterday))} />
+        <MetricBadge icon={<TrendingUp size={14} />} label="Vendas concluídas (mês)" value={formatCurrency(vendasConcluidas)} variant="primary"
+          onClick={() => openMetricModal("Leads com vendas no mês", l => leadsWithPagamento.has(l.id))} />
       </div>
 
       {/* Kanban area - SCROLLABLE horizontally */}
@@ -1335,6 +1349,41 @@ export default function CrmKanban() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal de métrica */}
+      <Dialog open={!!metricModal} onOpenChange={() => setMetricModal(null)}>
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{metricModal?.title} <span className="text-muted-foreground font-normal text-sm">({metricModal?.leads.length})</span></DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto space-y-1 pr-1">
+            {metricModal?.leads.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead encontrado.</p>
+            )}
+            {metricModal?.leads.map(l => {
+              const stage = stages.find(s => s.id === l.stage_id);
+              return (
+                <button
+                  key={l.id}
+                  className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted transition-colors"
+                  onClick={() => { setMetricModal(null); navigateToLead(l.id); }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{l.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{l.phone || "—"}</p>
+                  </div>
+                  {stage && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"
+                      style={{ backgroundColor: stage.color + "33", color: stage.color }}>
+                      {stage.name}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Lead Detail Sheet */}
       <Sheet open={!!detailLead} onOpenChange={() => setDetailLead(null)}>
         <SheetContent className="w-[400px]">
@@ -1376,7 +1425,7 @@ export default function CrmKanban() {
   );
 }
 
-function MetricBadge({ icon, label, value, variant }: { icon: React.ReactNode; label: string; value: string | number; variant: "info" | "muted" | "destructive" | "success" | "primary" }) {
+function MetricBadge({ icon, label, value, variant, onClick }: { icon: React.ReactNode; label: string; value: string | number; variant: "info" | "muted" | "destructive" | "success" | "primary"; onClick?: () => void }) {
   const colorMap = {
     info: "text-blue-400",
     muted: "text-muted-foreground",
@@ -1386,10 +1435,13 @@ function MetricBadge({ icon, label, value, variant }: { icon: React.ReactNode; l
   };
   const color = colorMap[variant];
   return (
-    <div className="flex items-center gap-2 whitespace-nowrap">
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 whitespace-nowrap ${onClick ? "hover:opacity-70 cursor-pointer transition-opacity" : "cursor-default"}`}
+    >
       <span className={color}>{icon}</span>
       <span className="text-muted-foreground">{label}:</span>
       <span className={`font-semibold ${color}`}>{value}</span>
-    </div>
+    </button>
   );
 }
