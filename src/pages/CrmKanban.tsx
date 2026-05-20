@@ -124,8 +124,15 @@ export default function CrmKanban() {
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [kanbanFilters, setKanbanFilters] = useState<ConversationFilterValues>(emptyFilters);
+  const [searchTerm, setSearchTerm] = useState(() => {
+    try { return localStorage.getItem("crm:kanbanSearch") || ""; } catch { return ""; }
+  });
+  const [kanbanFilters, setKanbanFilters] = useState<ConversationFilterValues>(() => {
+    try {
+      const saved = localStorage.getItem("crm:kanbanFilters");
+      return saved ? JSON.parse(saved) : emptyFilters;
+    } catch { return emptyFilters; }
+  });
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
   const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
@@ -243,6 +250,15 @@ export default function CrmKanban() {
   }, [pipeline?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Persiste filtros e busca no localStorage para sobreviver à navegação
+  useEffect(() => {
+    try { localStorage.setItem("crm:kanbanFilters", JSON.stringify(kanbanFilters)); } catch {}
+  }, [kanbanFilters]);
+
+  useEffect(() => {
+    try { localStorage.setItem("crm:kanbanSearch", searchTerm); } catch {}
+  }, [searchTerm]);
 
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
@@ -500,6 +516,8 @@ export default function CrmKanban() {
   // Usado tanto no card "Vendas concluídas (mês)" quanto no total exibido em cada etapa.
   const [vendasConcluidas, setVendasConcluidas] = useState(0);
   const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
+  // Mapa lead_id → total pago em todos os tempos (exibido no cartão do kanban)
+  const [leadAllTimeValueMap, setLeadAllTimeValueMap] = useState<Map<string, number>>(new Map());
   useEffect(() => {
     const now = new Date();
     const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -510,18 +528,19 @@ export default function CrmKanban() {
         supabase.from("pagamentos").select("valor, paciente_id")
           .gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
         supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
-        supabase.from("pagamentos").select("paciente_id"),
+        // Busca valor também para montar o mapa all-time do cartão
+        supabase.from("pagamentos").select("paciente_id, valor"),
       ]);
 
-      // Selecionar UM único lead por paciente para evitar contagem duplicada
-      // quando um paciente está vinculado a múltiplos leads.
-      // Prioriza o vínculo primário; senão, mantém o primeiro encontrado.
+      // Um único lead por paciente (prioriza vínculo primário).
+      // Evita duplicar valor quando o mesmo paciente está em múltiplos leads.
       const pacienteToLead = new Map<string, string>();
       (links || []).forEach((l: any) => {
         const existing = pacienteToLead.get(l.paciente_id);
         if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
       });
 
+      // Mapa do mês: lead_id → total pago no mês corrente
       const map = new Map<string, number>();
       let total = 0;
       (pags || []).forEach((p: any) => {
@@ -531,22 +550,23 @@ export default function CrmKanban() {
         if (leadId) map.set(leadId, (map.get(leadId) || 0) + v);
       });
 
-      // Set de leads com QUALQUER pagamento vinculado (todos os tempos),
-      // considerando todos os leads ligados ao paciente que pagou.
-      const pacienteToAllLeads = new Map<string, string[]>();
-      (links || []).forEach((l: any) => {
-        const arr = pacienteToAllLeads.get(l.paciente_id) || [];
-        arr.push(l.lead_id);
-        pacienteToAllLeads.set(l.paciente_id, arr);
-      });
+      // Mapa all-time: lead_id → total pago em todos os tempos (para o cartão)
+      // Set de leads com pagamento: usa APENAS o lead primário do paciente,
+      // evitando marcar leads sem pagamento real quando o paciente tem múltiplos leads.
+      const allTimeMap = new Map<string, number>();
       const paidLeadIds = new Set<string>();
       (allPags || []).forEach((p: any) => {
-        const ids = pacienteToAllLeads.get(p.paciente_id) || [];
-        ids.forEach((id) => paidLeadIds.add(id));
+        const leadId = pacienteToLead.get(p.paciente_id);
+        if (leadId) {
+          const v = Number(p.valor || 0);
+          allTimeMap.set(leadId, (allTimeMap.get(leadId) || 0) + v);
+          paidLeadIds.add(leadId);
+        }
       });
 
       setVendasConcluidas(total);
       setLeadMonthValueMap(map);
+      setLeadAllTimeValueMap(allTimeMap);
       setLeadsWithPagamento(paidLeadIds);
     })();
   }, [leads]);
@@ -782,7 +802,15 @@ export default function CrmKanban() {
                                       </div>
                                     )}
                                     <div className="flex items-center justify-between mt-1">
-                                      {lead.value ? <span className="text-xs font-medium text-primary">{formatCurrency(lead.value)}</span> : <span />}
+                                      {(() => {
+                                        // Prioriza valor de pagamento real vinculado (all-time);
+                                        // se não houver, cai no valor manual do lead.
+                                        const paidValue = leadAllTimeValueMap.get(lead.id);
+                                        const displayValue = paidValue ?? (lead.value || null);
+                                        return displayValue
+                                          ? <span className="text-xs font-medium text-primary">{formatCurrency(displayValue)}</span>
+                                          : <span />;
+                                      })()}
                                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${lead.task_overdue ? "bg-destructive/20 text-destructive" : lead.has_task ? "bg-green-900/30 text-green-400" : "bg-primary/10 text-primary"}`}>
                                         {lead.task_overdue ? "Atrasada" : lead.has_task ? "Com tarefa" : "Sem Tarefas"}
                                       </span>
