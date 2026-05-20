@@ -636,11 +636,11 @@ export default function CrmKanban() {
     }
 
     // ── Fase 3: métricas de tarefas com dados reais de crm_tasks ─────────────
-    // due_date é um datetime — usar range de dia inteiro para "hoje"
+    // due_date é um datetime — usar range de dia inteiro no fuso de Brasília (UTC-3)
     // Status concluída = "done" (não "completed")
     const todayISO = toLocalDateISO();
-    const todayStart = `${todayISO}T00:00:00`;
-    const todayEnd   = `${todayISO}T23:59:59`;
+    const todayStart = `${todayISO}T00:00:00-03:00`;
+    const todayEnd   = `${todayISO}T23:59:59-03:00`;
     const taskTodayIds = new Set<string>();
     const taskOverdueIds = new Set<string>();
     const taskAnyIds = new Set<string>();
