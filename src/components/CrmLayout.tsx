@@ -114,7 +114,6 @@ const CrmLayout = () => {
           .from("crm_leads")
           .select("id, last_inbound_at, last_outbound_at")
           .eq("is_blocked", false)
-          .neq("pipeline_id", INSTAGRAM_PIPELINE_ID)
           .not("last_inbound_at", "is", null)
           .order("id", { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
