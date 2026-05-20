@@ -1,44 +1,40 @@
-## Diagnóstico do template "boas_vindas"
+## Problemas a resolver
 
-### O que já confirmamos
-- O template foi gravado no banco com `meta_template_id = 1766592678081514` e `status = PENDING`.
-- A WABA conectada na integração é `893372606594069`.
-- A Meta só retorna `meta_template_id` quando aceita a submissão; se ela tivesse rejeitado, voltaria erro e nada seria salvo.
-- Logs recentes da função `manage-whatsapp-templates` já rotacionaram (não temos mais o request/response detalhado dessa criação específica).
+### 1) Transferência de lead Pós-venda → CRC não restaura pipeline/etapa anterior
 
-### Hipóteses para o template "não aparecer" na Meta
-1. Você está olhando uma WABA diferente no Business Manager (não a `893372606594069`).
-2. Está filtrando apenas "Aprovados" — pendentes ficam em outra aba.
-3. A Meta aceitou mas rejeitou logo em seguida por política (acontece em UTILITY mal-categorizado), e nosso banco ficou desatualizado porque ninguém clicou em "Sincronizar".
-4. O token usado pertence a outra WABA que apenas tem `permissão` sobre a `893372606594069` — o template então aparece sob a WABA "dona" do token.
+Hoje a função `transfer-lead` só faz auto-move quando o destino é `posvenda` (move para o pipeline da pós-venda). No caminho contrário (pós-venda → crc/gerente), o lead fica preso no pipeline da Pós-venda, e o usuário CRC não consegue vê-lo no Kanban (a pós-venda tem `allowed_roles=['posvenda']`, então o CRC perde acesso).
 
-### Plano de execução
+**Correção:** quando o destino for `crc` ou `gerente` e o lead estiver hoje em um pipeline restrito a `posvenda`, buscar no `crm_lead_stage_history` a última etapa do lead em um pipeline acessível ao CRC (ou seja, em pipeline cujo `allowed_roles` contenha `crc`, ou seja NULL). Se encontrada, mover o lead de volta para esse `pipeline_id`/`stage_id` (fechando entrada atual do histórico e abrindo nova). Se não houver histórico em pipeline de CRC, fallback: Funil Principal → primeira etapa.
 
-**Passo 1 — Validar com a Meta (read-only)**
-- Disparar o `action: "list"` da edge function `manage-whatsapp-templates` e verificar se `boas_vindas` consta na resposta da Meta.
-- Comparar `waba_id` retornado nos templates vs. o `893372606594069` da integração.
+### 2) Agendamento manual não move o lead em algumas etapas/pipelines
 
-**Passo 2 — Sincronizar banco com Meta**
-- O "list" já faz isso automaticamente: atualiza status (PENDING → APPROVED/REJECTED) e remove do banco templates que sumiram na Meta.
-- Após sincronizar, a UI vai refletir a verdade da Meta.
+Em `src/components/chat/AppointmentConfirmBar.tsx` (`moveLeadToScheduledStage`), a busca da etapa "Agendado" é feita **apenas dentro do pipeline atual do lead**. Pipelines como **Nutrição**, **Pós-venda**, **Não Compareceu** e **Não contratados** não possuem etapa "Agendado", então o lead não se move.
 
-**Passo 3 — Melhorar a edge function `manage-whatsapp-templates`**
-- Adicionar logs persistentes em uma tabela `whatsapp_template_logs` (request payload, response Meta, http status, timestamp) toda vez que um `create` for executado, para não depender de logs voláteis da edge function.
-- Retornar no response do `create` o `waba_id` usado, para a UI exibir junto do toast de sucesso ("Template enviado à WABA xxx").
+**Correção:** quando o pipeline atual não tiver etapa de "Agendado" (nem "Reagendado" no modo reagendar), mover o lead para o **Funil Principal** do mesmo tenant, etapa **Agendado** (ou **Reagendado** no modo reagendar). Fazer cross-pipeline move: atualizar `pipeline_id`+`stage_id`, fechar histórico, inserir novo, e postar a mensagem de sistema.
 
-**Passo 4 — Melhorias de UX em `CrmModelos.tsx`**
-- Exibir tooltip claro nos status: `PENDING = "Em análise pela Meta (pode levar até 24h)"`, `REJECTED = motivo da Meta`.
-- Botão "Sincronizar com Meta" mais visível e com indicação de última sincronização.
-- Após criar um template, disparar `list` automaticamente em 5s para já refletir possíveis rejeições rápidas.
+### 3) Lead `557398534691` (e similares)
 
-**Passo 5 — Recriar `boas_vindas` se a Meta confirmar que não existe**
-- Se o "list" do Passo 1 retornar que o template não está na WABA: deletar localmente e refazer o `create`, agora com os logs persistentes do Passo 3 capturando exatamente o que aconteceu.
+Esse telefone exato não está mais no banco (provavelmente já foi movido para Pós-venda e/ou sumiu da visão do CRC por causa de RLS do pipeline Pós-venda). Vou:
+- Rodar uma query que identifica **todos** os leads atualmente em pipelines com `allowed_roles=['posvenda']` que **nunca passaram pela etapa "Contratado"** (consultando `crm_lead_stage_history`).
+- Para esses leads, mover para a última etapa registrada no Funil Principal (se houver histórico), ou para a primeira etapa do Funil Principal como fallback. Reatribuir ao usuário `rizodent`.
+- Registrar uma mensagem de sistema em cada lead explicando o movimento.
 
-### Arquivos afetados
-- `supabase/functions/manage-whatsapp-templates/index.ts` — adicionar logs persistentes + retornar `waba_id` no response.
-- `src/pages/CrmModelos.tsx` — tooltip de status, botão sincronizar destacado, auto-resync pós-create.
-- Nova migration: tabela `whatsapp_template_logs` (id, action, payload, response, http_status, user_id, created_at, RLS por tenant).
+## Detalhes técnicos
 
-### Detalhes técnicos
-- Tabela `whatsapp_template_logs`: usar `gen_random_uuid()`, `tenant_id` herdado via `set_tenant_id_default()` trigger, RLS permitindo SELECT a crc/gerente/superadmin do mesmo tenant.
-- A função vai gravar 2 linhas por `create`: uma `request` (antes do fetch) e uma `response` (depois), garantindo trace mesmo se o fetch falhar.
+**Arquivos a alterar:**
+- `supabase/functions/transfer-lead/index.ts` — adicionar bloco "reverse posvenda → CRC" usando `crm_lead_stage_history` + `crm_pipelines.allowed_roles`.
+- `src/components/chat/AppointmentConfirmBar.tsx` — em `moveLeadToScheduledStage`, fallback cross-pipeline para Funil Principal quando o pipeline atual não tem etapa Agendado/Reagendado. Atualizar `pipeline_id` no UPDATE e mensagem de sistema "Movido para Funil Principal • Agendado".
+
+**Migração de dados (one-off, via insert tool):**
+```sql
+-- Para cada lead em pipeline Pós-venda que nunca entrou em "Contratado":
+UPDATE crm_leads SET pipeline_id=<funil principal>, stage_id=<última etapa CRC ou Novo Lead>,
+  assigned_to='<rizodent user_id>', updated_at=now()
+WHERE id IN (...);
+-- + fechar/abrir crm_lead_stage_history + insert messages system
+```
+
+## Perguntas
+
+1. Confirmar: quando o pipeline atual não tem "Agendado" (ex.: Nutrição, Pós-venda), o agendamento manual deve mover o lead para **Funil Principal → Agendado**? (alternativa: não mover e apenas registrar o agendamento.)
+2. Para o item 3, devo aplicar a varredura retroativa **a todos** os leads de Pós-venda sem passagem por "Contratado", ou somente ao `557398534691`?
