@@ -1,3 +1,10 @@
+// Instagram Lite Webhook — independente da integração Meta API antiga.
+// Lê contas da tabela `ig_accounts` (manuais) e processa DMs/comments
+// usando o access_token salvo por conta.
+//
+// Mensagens são gravadas em `instagram_messages` para aparecerem na aba
+// Conversas → Instagram → (Direct | Comentários), igual ao webhook oficial.
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 const corsHeaders = {
@@ -8,33 +15,39 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const VERIFY_TOKEN = Deno.env.get("INSTAGRAM_VERIFY_TOKEN") ?? "";
-const APP_SECRET = Deno.env.get("INSTAGRAM_APP_SECRET") ?? Deno.env.get("META_APP_SECRET") ?? "";
+const VERIFY_TOKEN_V1 = Deno.env.get("INSTAGRAM_LITE_VERIFY_TOKEN") ?? Deno.env.get("INSTAGRAM_VERIFY_TOKEN") ?? "";
+const VERIFY_TOKEN_V2 = Deno.env.get("INSTAGRAM_VERIFY_TOKEN_V2") ?? "";
 
 const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
 const RIZODENT_INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-async function verifySignature(rawBody: string, signature: string | null): Promise<boolean> {
-  if (!signature || !APP_SECRET) return false;
-  const expectedPrefix = "sha256=";
-  if (!signature.startsWith(expectedPrefix)) return false;
-  const sigHex = signature.slice(expectedPrefix.length);
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, [
-    "sign",
-  ]);
-  const sigBuf = await crypto.subtle.sign("HMAC", key, enc.encode(rawBody));
-  const computed = Array.from(new Uint8Array(sigBuf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  if (computed.length !== sigHex.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < computed.length; i++) {
-    mismatch |= computed.charCodeAt(i) ^ sigHex.charCodeAt(i);
+interface IgAccountRow {
+  id: string;
+  ig_user_id: string;
+  username: string | null;
+  access_token: string;
+  active: boolean;
+  token_expires_at: string | null;
+  tenant_id: string;
+}
+
+const pipelineCache = new Map<string, string>();
+
+async function resolveInstagramPipeline(tenantId: string): Promise<string | null> {
+  if (pipelineCache.has(tenantId)) return pipelineCache.get(tenantId)!;
+  if (tenantId === RIZODENT_TENANT_ID) {
+    pipelineCache.set(tenantId, RIZODENT_INSTAGRAM_PIPELINE_ID);
+    return RIZODENT_INSTAGRAM_PIPELINE_ID;
   }
-  return mismatch === 0;
+  const { data, error } = await supabase.rpc("ensure_instagram_pipeline", { _tenant_id: tenantId });
+  if (error || !data) {
+    console.error("[ig-lite] ensure_instagram_pipeline failed", { tenantId, error });
+    return null;
+  }
+  pipelineCache.set(tenantId, data as string);
+  return data as string;
 }
 
 const profileCache = new Map<string, { name: string | null; username: string | null; profile_pic: string | null }>();
@@ -44,30 +57,31 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
   let out = { name: null as string | null, username: null as string | null, profile_pic: null as string | null };
   const isIgLite = accessToken.startsWith("IGAA");
   const base = isIgLite ? "https://graph.instagram.com/v21.0" : "https://graph.facebook.com/v25.0";
-  try {
-    const r = await fetch(
-      `${base}/${igUserId}?fields=name,username,profile_pic&access_token=${encodeURIComponent(accessToken)}`,
-    );
-    const j = await r.json().catch(() => ({}));
-    if (r.ok) {
-      out = { name: j?.name ?? null, username: j?.username ?? null, profile_pic: j?.profile_pic ?? null };
+  const tryFetch = async (fields: string) => {
+    try {
+      const r = await fetch(`${base}/${igUserId}?fields=${fields}&access_token=${encodeURIComponent(accessToken)}`);
+      const j = await r.json().catch(() => ({}) as any);
+      if (!r.ok) {
+        console.warn("[ig-lite] profile fetch failed", { igUserId, fields, status: r.status });
+        return null;
+      }
+      return j as any;
+    } catch (e) {
+      console.warn("[ig-lite] fetchIgProfile error", igUserId, e);
+      return null;
     }
-  } catch (e) {
-    console.warn("[instagram-webhook] fetchIgProfile attempt1 error", igUserId, e);
+  };
+  const j1 = await tryFetch("name,username,profile_pic");
+  if (j1) {
+    out.name = j1?.name ?? null;
+    out.username = j1?.username ?? null;
+    out.profile_pic = j1?.profile_pic ?? null;
   }
   if (!out.username || !out.profile_pic) {
-    try {
-      const r2 = await fetch(
-        `${base}/${igUserId}?fields=username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`,
-      );
-      const j2 = await r2.json().catch(() => ({}));
-      if (r2.ok) {
-        out.username = out.username || j2?.username || null;
-        out.profile_pic = out.profile_pic || j2?.profile_picture_url || null;
-        out.name = out.name || j2?.name || null;
-      }
-    } catch (e) {
-      console.warn("[instagram-webhook] fetchIgProfile attempt2 error", igUserId, e);
+    const j2 = await tryFetch("username,profile_picture_url");
+    if (j2) {
+      out.username = out.username || j2?.username || null;
+      out.profile_pic = out.profile_pic || j2?.profile_picture_url || null;
     }
   }
   profileCache.set(igUserId, out);
@@ -77,41 +91,84 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
 async function findOrCreateLead(
   igUserId: string,
   profile: { name: string | null; username: string | null; profile_pic: string | null },
-  accountName: string | null,
+  accountUsername: string | null,
+  igAccountId: string,
   tenantId: string,
 ): Promise<string | null> {
-  if (!igUserId || !tenantId) return null;
-  let pipelineId: string | null = null;
-  if (tenantId === RIZODENT_TENANT_ID) {
-    pipelineId = RIZODENT_INSTAGRAM_PIPELINE_ID;
-  } else {
-    const { data, error } = await supabase.rpc("ensure_instagram_pipeline", { _tenant_id: tenantId });
-    if (error || !data) {
-      console.error("[instagram-webhook] ensure_instagram_pipeline failed", { tenantId, error });
-      return null;
-    }
-    pipelineId = data as string;
+  if (!igUserId) return null;
+  const pipelineId = await resolveInstagramPipeline(tenantId);
+  if (!pipelineId) {
+    console.error("[ig-lite] No pipeline for tenant", tenantId);
+    return null;
   }
-  const { data: existing } = await supabase
-    .from("crm_leads")
-    .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked, tenant_id")
-    .eq("tenant_id", tenantId)
-    .eq("instagram_user_id", igUserId)
-    .maybeSingle();
-  if (existing && (existing as any).is_blocked) return null;
-  if (existing) {
-    const updates: Record<string, unknown> = {};
-    if (profile.username && existing.instagram_username !== profile.username)
-      updates.instagram_username = profile.username;
-    if (profile.profile_pic && existing.instagram_profile_pic_url !== profile.profile_pic)
-      updates.instagram_profile_pic_url = profile.profile_pic;
-    if (existing.name?.startsWith("IG ")) {
-      const better = profile.name || profile.username;
-      if (better) updates.name = better;
+
+  const { data: identityRows } = await supabase
+    .from("crm_lead_instagram_identities")
+    .select("lead_id, crm_leads!inner(id, tenant_id)")
+    .eq("ig_account_id", igAccountId)
+    .eq("ig_scoped_user_id", igUserId);
+
+  let existingId: string | null = null;
+  if (Array.isArray(identityRows)) {
+    for (const row of identityRows as any[]) {
+      if (row?.crm_leads?.tenant_id === tenantId) {
+        existingId = row.lead_id;
+        break;
+      }
     }
-    if (Object.keys(updates).length > 0) await supabase.from("crm_leads").update(updates).eq("id", existing.id);
-    return existing.id;
   }
+
+  if (!existingId && profile.username) {
+    const { data: byUsernameLead } = await supabase
+      .from("crm_leads")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .ilike("instagram_username", profile.username)
+      .limit(1)
+      .maybeSingle();
+    existingId = byUsernameLead?.id ?? null;
+  }
+
+  if (!existingId) {
+    const { data: legacy } = await supabase
+      .from("crm_leads")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("instagram_user_id", igUserId)
+      .maybeSingle();
+    existingId = legacy?.id ?? null;
+  }
+
+  if (existingId) {
+    const { data: existing } = await supabase
+      .from("crm_leads")
+      .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked, tenant_id")
+      .eq("id", existingId)
+      .maybeSingle();
+    if (existing && (existing as any).is_blocked) return null;
+    if (existing && (existing as any).tenant_id !== tenantId) {
+      existingId = null;
+    } else if (existing) {
+      const updates: Record<string, unknown> = {};
+      if (profile.username && existing.instagram_username !== profile.username)
+        updates.instagram_username = profile.username;
+      if (profile.profile_pic && existing.instagram_profile_pic_url !== profile.profile_pic)
+        updates.instagram_profile_pic_url = profile.profile_pic;
+      if (existing.name?.startsWith("IG ")) {
+        const better = profile.name || profile.username;
+        if (better) updates.name = better;
+      }
+      if (Object.keys(updates).length > 0) await supabase.from("crm_leads").update(updates).eq("id", existing.id);
+      await supabase
+        .from("crm_lead_instagram_identities")
+        .upsert(
+          { lead_id: existing.id, ig_account_id: igAccountId, ig_scoped_user_id: igUserId, username: profile.username },
+          { onConflict: "ig_account_id,ig_scoped_user_id" },
+        );
+      return existing.id;
+    }
+  }
+
   const { data: firstStage } = await supabase
     .from("crm_stages")
     .select("id")
@@ -120,9 +177,10 @@ async function findOrCreateLead(
     .limit(1)
     .maybeSingle();
   if (!firstStage) {
-    console.error("[instagram-webhook] No stages in Instagram pipeline", { tenantId, pipelineId });
+    console.error("[ig-lite] No stages in Instagram pipeline", { tenantId, pipelineId });
     return null;
   }
+
   const { data: created, error: createErr } = await supabase
     .from("crm_leads")
     .insert({
@@ -130,17 +188,25 @@ async function findOrCreateLead(
       pipeline_id: pipelineId,
       stage_id: firstStage.id,
       tenant_id: tenantId,
-      source: accountName ? `Instagram (${accountName})` : "Instagram",
+      source: accountUsername ? `Instagram Lite (@${accountUsername})` : "Instagram Lite",
       instagram_user_id: igUserId,
       instagram_username: profile.username,
       instagram_profile_pic_url: profile.profile_pic,
     })
     .select("id")
     .single();
+
   if (createErr) {
-    console.error("[instagram-webhook] Failed to create lead:", createErr);
+    console.error("[ig-lite] Failed to create lead:", createErr);
     return null;
   }
+
+  await supabase
+    .from("crm_lead_instagram_identities")
+    .upsert(
+      { lead_id: created.id, ig_account_id: igAccountId, ig_scoped_user_id: igUserId, username: profile.username },
+      { onConflict: "ig_account_id,ig_scoped_user_id" },
+    );
   return created.id;
 }
 
@@ -189,11 +255,7 @@ function describeAttachments(
   switch (type) {
     case "ig_reel":
     case "reel":
-      return {
-        content: `${storyPrefix}🎬 Reels compartilhado${url ? `\n${url}` : ""}${caption}`,
-        mediaUrl: url,
-        msgType: "video",
-      };
+      return { content: `${storyPrefix}🎬 Reel compartilhado${caption}`, mediaUrl: url, msgType: "video" };
     case "share":
       return {
         content: `${storyPrefix}🔗 Publicação compartilhada${url ? `\n${url}` : ""}${caption}`,
@@ -201,7 +263,7 @@ function describeAttachments(
         msgType: "text",
       };
     case "story_mention":
-      return { content: `📖 Menção em story${url ? `\n${url}` : ""}${caption}`, mediaUrl: url, msgType: "image" };
+      return { content: `📖 Menção em story${caption}`, mediaUrl: url, msgType: "image" };
     case "story_reply":
       return { content: `📖 Resposta a story${caption}`, mediaUrl: url, msgType: url ? "image" : "text" };
     case "image":
@@ -215,8 +277,9 @@ function describeAttachments(
     case "like_heart":
       return { content: "❤️", mediaUrl: null, msgType: "text" };
     default:
-      if (type.includes("sticker") || att?.payload?.sticker_id)
+      if (type.includes("sticker") || att?.payload?.sticker_id) {
         return { content: `🩷 Figurinha${caption}`, mediaUrl: url, msgType: url ? "image" : "text" };
+      }
       return {
         content: fallbackText ?? `📎 Anexo (${type || "desconhecido"})${url ? `\n${url}` : ""}`,
         mediaUrl: url,
@@ -226,11 +289,7 @@ function describeAttachments(
 }
 
 async function persistMessage(opts: {
-  accountId: string;
-  accountConfigId: string | null;
-  accountName: string | null;
-  accessToken: string | null;
-  tenantId: string;
+  account: IgAccountRow;
   senderId: string;
   senderUsername: string | null;
   senderName: string | null;
@@ -242,67 +301,95 @@ async function persistMessage(opts: {
   attachments?: Attachment[];
   replyToStoryUrl?: string | null;
 }) {
-  let profile = { name: opts.senderName, username: opts.senderUsername, profile_pic: null as string | null };
-  if (opts.accessToken && opts.senderId) profile = await fetchIgProfile(opts.senderId, opts.accessToken);
+  const profile = await fetchIgProfile(opts.senderId, opts.account.access_token);
+  const finalName = profile.name ?? opts.senderName;
+  const finalUsername = profile.username ?? opts.senderUsername;
+  const finalPic = profile.profile_pic;
+
   const {
-    content: describedText,
+    content: describedContent,
     mediaUrl: rawMediaUrl,
     msgType,
   } = describeAttachments(opts.attachments ?? [], opts.replyToStoryUrl ?? null, opts.text);
-  const finalText = describedText || opts.text || "";
+  const finalContent = describedContent || opts.text || "";
+
   let mediaUrl = rawMediaUrl;
   if (rawMediaUrl && (msgType === "image" || msgType === "video") && !rawMediaUrl.includes("supabase.co")) {
     const stored = await downloadAndStoreIgMedia(rawMediaUrl);
     if (stored) mediaUrl = stored;
   }
-  let leadId: string | null = null;
-  if (opts.messageType === "dm") {
-    const { data: blockedCheck } = await supabase
-      .from("crm_leads")
-      .select("id, is_blocked")
-      .eq("tenant_id", opts.tenantId)
-      .eq("instagram_user_id", opts.senderId)
-      .maybeSingle();
-    if (blockedCheck && (blockedCheck as any).is_blocked) return;
-    leadId = await findOrCreateLead(opts.senderId, profile, opts.accountName, opts.tenantId);
+
+  let postThumbnail: string | null = null;
+  let postPermalink: string | null = null;
+  if (opts.messageType === "comment" && opts.postId) {
+    try {
+      const isIgLite = opts.account.access_token.startsWith("IGAA");
+      const base = isIgLite ? "https://graph.instagram.com/v21.0" : "https://graph.facebook.com/v25.0";
+      const r = await fetch(
+        `${base}/${opts.postId}?fields=media_type,media_url,thumbnail_url,permalink&access_token=${encodeURIComponent(opts.account.access_token)}`,
+      );
+      const j = await r.json().catch(() => ({}) as any);
+      if (r.ok) {
+        postThumbnail = j?.thumbnail_url || j?.media_url || null;
+        postPermalink = j?.permalink || null;
+      }
+    } catch (e) {
+      console.warn("[ig-lite] post fetch error", opts.postId, e);
+    }
   }
-  await supabase
-    .from("instagram_messages")
-    .insert({
-      instagram_account_id: opts.accountId,
-      instagram_account_config_id: opts.accountConfigId,
-      sender_id: opts.senderId,
-      sender_name: profile.name ?? opts.senderName,
-      sender_username: profile.username ?? opts.senderUsername,
-      sender_profile_pic: profile.profile_pic,
-      message_text: finalText,
-      message_type: opts.messageType,
-      post_id: opts.postId,
-      comment_id: opts.commentId,
-      is_outbound: false,
-      is_read: false,
-      lead_id: leadId,
-      tenant_id: opts.tenantId,
-    });
+
+  let leadId: string | null = null;
+  leadId = await findOrCreateLead(
+    opts.senderId,
+    { name: finalName, username: finalUsername, profile_pic: finalPic },
+    opts.account.username,
+    opts.account.ig_user_id,
+    opts.account.tenant_id,
+  );
   if (leadId) {
-    await supabase
-      .from("messages")
-      .insert({
-        lead_id: leadId,
-        tenant_id: opts.tenantId,
-        direction: "inbound",
-        type: msgType,
-        content: finalText,
-        media_url: mediaUrl,
-        channel: "instagram",
-        instagram_message_id: opts.igMessageId,
-        instagram_sender_id: opts.senderId,
-        status: "received",
-      });
+    const { data: blockedCheck } = await supabase.from("crm_leads").select("is_blocked").eq("id", leadId).maybeSingle();
+    if (blockedCheck && (blockedCheck as any).is_blocked) return;
+  }
+
+  await supabase.from("instagram_messages").insert({
+    instagram_account_id: opts.account.ig_user_id,
+    instagram_account_config_id: null,
+    sender_id: opts.senderId,
+    sender_name: finalName,
+    sender_username: finalUsername,
+    sender_profile_pic: finalPic,
+    message_text: finalContent,
+    message_type: opts.messageType,
+    post_id: opts.postId,
+    comment_id: opts.commentId,
+    is_outbound: false,
+    is_read: false,
+    lead_id: leadId,
+  });
+
+  if (leadId) {
+    const isComment = opts.messageType === "comment";
+    await supabase.from("messages").insert({
+      lead_id: leadId,
+      tenant_id: opts.account.tenant_id,
+      direction: "inbound",
+      type: isComment ? "comment" : msgType,
+      content: finalContent,
+      media_url: isComment ? null : (mediaUrl ?? null),
+      channel: "instagram",
+      instagram_message_id: isComment ? opts.commentId : opts.igMessageId,
+      instagram_sender_id: opts.senderId,
+      instagram_account_id: opts.account.ig_user_id,
+      instagram_comment_id: isComment ? opts.commentId : null,
+      instagram_post_id: isComment ? opts.postId : null,
+      instagram_post_thumbnail: isComment ? postThumbnail : null,
+      instagram_post_permalink: isComment ? postPermalink : null,
+      status: "received",
+    });
     await supabase
       .from("crm_leads")
       .update({
-        last_message: finalText,
+        last_message: isComment ? `[Comentário] ${finalContent}` : finalContent,
         last_message_at: new Date().toISOString(),
         last_inbound_at: new Date().toISOString(),
       })
@@ -312,74 +399,49 @@ async function persistMessage(opts: {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
   const url = new URL(req.url);
+
   if (req.method === "GET") {
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
-    if (mode === "subscribe" && token === VERIFY_TOKEN && challenge)
+    const tokenOk = !!token && (token === VERIFY_TOKEN_V1 || token === VERIFY_TOKEN_V2);
+    if (mode === "subscribe" && tokenOk && challenge)
       return new Response(challenge, { status: 200, headers: corsHeaders });
     return new Response("Forbidden", { status: 403, headers: corsHeaders });
   }
+
   if (req.method === "POST") {
     const rawBody = await req.text();
-    const signature = req.headers.get("x-hub-signature-256");
-    const valid = await verifySignature(rawBody, signature);
-    if (!valid) {
-      console.warn("[instagram-webhook] Invalid signature");
-      return new Response("OK", { status: 200, headers: corsHeaders });
-    }
     try {
       const payload = JSON.parse(rawBody);
+      console.log("[ig-lite] payload:", JSON.stringify(payload));
       const entries = Array.isArray(payload?.entry) ? payload.entry : [];
-      const { data: globalIntegration } = await supabase
-        .from("integrations")
-        .select("status")
-        .eq("key", "instagram_global")
-        .maybeSingle();
-      if (globalIntegration?.status === "disabled") return new Response("OK", { status: 200, headers: corsHeaders });
+
       for (const entry of entries) {
         const accountId: string = String(entry?.id ?? "");
-        const { data: accountConfig } = await supabase
-          .from("instagram_accounts")
-          .select("id, name, page_access_token, is_active, tenant_id")
-          .eq("instagram_account_id", accountId)
+        if (!accountId) continue;
+
+        const { data: account } = await supabase
+          .from("ig_accounts")
+          .select("id, ig_user_id, username, access_token, active, token_expires_at, tenant_id")
+          .eq("ig_user_id", accountId)
           .maybeSingle();
-        if (!accountConfig || accountConfig.is_active === false) continue;
-        const tenantId = (accountConfig as any).tenant_id as string | null;
-        if (!tenantId) continue;
-        const accessToken = accountConfig?.page_access_token ?? null;
-        const accountName = accountConfig?.name ?? null;
-        const accountConfigId = accountConfig?.id ?? null;
+
+        if (!account) continue;
+        if (!account.active) continue;
+        if (account.token_expires_at && new Date(account.token_expires_at).getTime() < Date.now()) continue;
+
+        const acc = account as IgAccountRow;
+
         const messagingArr = Array.isArray(entry?.messaging) ? entry.messaging : [];
         for (const m of messagingArr) {
-          const senderId = String(m?.sender?.id ?? "");
-          if (!senderId) continue;
-          if (m?.reaction && !m?.message) {
-            await persistMessage({
-              accountId,
-              accountConfigId,
-              accountName,
-              accessToken,
-              tenantId,
-              senderId,
-              senderUsername: null,
-              senderName: null,
-              text: `${m.reaction?.emoji ?? "❤️"} (reação)`,
-              messageType: "dm",
-              postId: null,
-              commentId: null,
-              igMessageId: m.reaction?.mid ?? null,
-            });
-            continue;
-          }
           if (!m?.message || m?.message?.is_echo) continue;
+          const senderId = String(m?.sender?.id ?? "");
+          if (!senderId || senderId === accountId) continue;
           await persistMessage({
-            accountId,
-            accountConfigId,
-            accountName,
-            accessToken,
-            tenantId,
+            account: acc,
             senderId,
             senderUsername: null,
             senderName: null,
@@ -392,19 +454,16 @@ Deno.serve(async (req: Request) => {
             replyToStoryUrl: m?.message?.reply_to?.story?.url ?? null,
           });
         }
+
         const changes = Array.isArray(entry?.changes) ? entry.changes : [];
         for (const change of changes) {
           const field = change?.field;
           const value = change?.value ?? {};
           if (field === "messages") {
             const senderId = String(value?.sender?.id ?? value?.from?.id ?? "");
-            if (!senderId) continue;
+            if (!senderId || senderId === accountId) continue;
             await persistMessage({
-              accountId,
-              accountConfigId,
-              accountName,
-              accessToken,
-              tenantId,
+              account: acc,
               senderId,
               senderUsername: value?.sender?.username ?? value?.from?.username ?? null,
               senderName: null,
@@ -422,13 +481,9 @@ Deno.serve(async (req: Request) => {
             });
           } else if (field === "comments") {
             const senderId = String(value?.from?.id ?? "");
-            if (!senderId) continue;
+            if (!senderId || senderId === accountId) continue;
             await persistMessage({
-              accountId,
-              accountConfigId,
-              accountName,
-              accessToken,
-              tenantId,
+              account: acc,
               senderId,
               senderUsername: value?.from?.username ?? null,
               senderName: value?.from?.name ?? null,
@@ -442,9 +497,11 @@ Deno.serve(async (req: Request) => {
         }
       }
     } catch (err) {
-      console.error("[instagram-webhook] error processing payload:", err);
+      console.error("[ig-lite] error:", err);
     }
+
     return new Response("OK", { status: 200, headers: corsHeaders });
   }
+
   return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
 });
