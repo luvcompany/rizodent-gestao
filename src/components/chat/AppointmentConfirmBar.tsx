@@ -225,7 +225,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     const nowIso = new Date().toISOString();
     const crossPipeline = scheduledStage.pipeline_id !== leadData.pipeline_id;
 
-    const updatePayload: Record<string, unknown> = {
+    const updatePayload: { stage_id: string; updated_at: string; pipeline_id?: string } = {
       stage_id: scheduledStage.id,
       updated_at: nowIso,
     };
