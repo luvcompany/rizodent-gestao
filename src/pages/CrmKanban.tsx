@@ -355,14 +355,61 @@ const kanbanDataCache: {
 const KANBAN_CACHE_TTL = 2 * 60_000;
 export const invalidateKanbanCache = () => { kanbanDataCache.timestamp = 0; };
 
+// ── localStorage: persiste o cache entre reloads de página ──────────────────
+const KANBAN_LS_KEY = "crm:kanban_cache_v1";
+const KANBAN_LS_TTL = 15 * 60_000;
+
+function loadKanbanCacheFromLS(pipelineId: string): KanbanCacheEntry | null {
+  try {
+    const raw = localStorage.getItem(`${KANBAN_LS_KEY}:${pipelineId}`);
+    if (!raw) return null;
+    const { entry, ts } = JSON.parse(raw);
+    if (Date.now() - ts > KANBAN_LS_TTL) return null;
+    return {
+      ...entry,
+      leadMonthValueMap: new Map<string, number>(entry.leadMonthValueMap),
+      leadAllTimeValueMap: new Map<string, number>(entry.leadAllTimeValueMap),
+      leadsWithPagamento: new Set<string>(entry.leadsWithPagamento),
+      taskTodayLeadIds: new Set<string>(entry.taskTodayLeadIds),
+      taskOverdueLeadIds: new Set<string>(entry.taskOverdueLeadIds),
+      taskAnyLeadIds: new Set<string>(entry.taskAnyLeadIds),
+    };
+  } catch { return null; }
+}
+
+function saveKanbanCacheToLS(pipelineId: string, entry: KanbanCacheEntry): void {
+  try {
+    const serializable = {
+      ...entry,
+      leadMonthValueMap: Array.from(entry.leadMonthValueMap.entries()),
+      leadAllTimeValueMap: Array.from(entry.leadAllTimeValueMap.entries()),
+      leadsWithPagamento: Array.from(entry.leadsWithPagamento),
+      taskTodayLeadIds: Array.from(entry.taskTodayLeadIds),
+      taskOverdueLeadIds: Array.from(entry.taskOverdueLeadIds),
+      taskAnyLeadIds: Array.from(entry.taskAnyLeadIds),
+    };
+    localStorage.setItem(`${KANBAN_LS_KEY}:${pipelineId}`, JSON.stringify({ entry: serializable, ts: Date.now() }));
+  } catch {} // QuotaExceededError silenciado
+}
+
 export default function CrmKanban() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [pipeline, setPipeline] = useState<Pipeline | null>(null);
-  const [stages, setStages] = useState<Stage[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Lê o cache do localStorage uma única vez no primeiro render para evitar spinner
+  const [_lsInit] = useState<KanbanCacheEntry | null>(() => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("crm:lastPipelineId") : null;
+    if (!stored) return null;
+    return loadKanbanCacheFromLS(stored);
+  });
+  const [pipelines, setPipelines] = useState<Pipeline[]>(_lsInit?.pipelines || []);
+  const [pipeline, setPipeline] = useState<Pipeline | null>(() => {
+    if (!_lsInit) return null;
+    const stored = typeof window !== "undefined" ? localStorage.getItem("crm:lastPipelineId") : null;
+    return _lsInit.pipelines.find(p => p.id === stored) || _lsInit.pipelines[0] || null;
+  });
+  const [stages, setStages] = useState<Stage[]>(_lsInit?.stages || []);
+  const [leads, setLeads] = useState<Lead[]>(_lsInit?.leads || []);
+  const [loading, setLoading] = useState(!_lsInit);
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
@@ -382,12 +429,12 @@ export default function CrmKanban() {
       return emptyFilters;
     } catch { return emptyFilters; }
   });
-  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>([]);
-  const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
-  const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
-  const [taskTodayLeadIds, setTaskTodayLeadIds] = useState<Set<string>>(new Set());
-  const [taskOverdueLeadIds, setTaskOverdueLeadIds] = useState<Set<string>>(new Set());
-  const [taskAnyLeadIds, setTaskAnyLeadIds] = useState<Set<string>>(new Set());
+  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(_lsInit?.profiles || []);
+  const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>(_lsInit?.followUpLeads || {});
+  const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(_lsInit?.leadsWithPagamento || new Set());
+  const [taskTodayLeadIds, setTaskTodayLeadIds] = useState<Set<string>>(_lsInit?.taskTodayLeadIds || new Set());
+  const [taskOverdueLeadIds, setTaskOverdueLeadIds] = useState<Set<string>>(_lsInit?.taskOverdueLeadIds || new Set());
+  const [taskAnyLeadIds, setTaskAnyLeadIds] = useState<Set<string>>(_lsInit?.taskAnyLeadIds || new Set());
   const { labelsByLead } = useLeadLabels();
 
   // Quantos leads cada coluna exibe (scroll infinito)
@@ -689,6 +736,7 @@ export default function CrmKanban() {
       taskOverdueLeadIds: taskOverdueIds,
       taskAnyLeadIds: taskAnyIds,
     };
+    saveKanbanCacheToLS(p.id, kanbanDataCache.entry);
   }, [pipeline?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -938,9 +986,9 @@ export default function CrmKanban() {
   };
 
   // Estados de pagamento — preenchidos dentro do fetchData (sem useEffect separado)
-  const [vendasConcluidas, setVendasConcluidas] = useState(0);
-  const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(new Map());
-  const [leadAllTimeValueMap, setLeadAllTimeValueMap] = useState<Map<string, number>>(new Map());
+  const [vendasConcluidas, setVendasConcluidas] = useState(_lsInit?.vendasConcluidas || 0);
+  const [leadMonthValueMap, setLeadMonthValueMap] = useState<Map<string, number>>(_lsInit?.leadMonthValueMap || new Map());
+  const [leadAllTimeValueMap, setLeadAllTimeValueMap] = useState<Map<string, number>>(_lsInit?.leadAllTimeValueMap || new Map());
 
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 

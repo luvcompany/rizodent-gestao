@@ -78,6 +78,27 @@ const leadsListCache = {
   timestamp: 0,
 };
 const LEADS_CACHE_TTL = 2 * 60_000; // 2 minutes
+
+// ── localStorage: persiste entre reloads ────────────────────────────────────
+const CONV_LS_KEY = "crm:conversas_cache_v1";
+const CONV_LS_TTL = 10 * 60_000;
+type ConversasLSData = {
+  leads: LeadConversation[];
+  profiles: { id: string; nome: string }[];
+  pipelines: { id: string; name: string }[];
+};
+function readConversasLS(cacheKey: string): ConversasLSData | null {
+  try {
+    const raw = localStorage.getItem(`${CONV_LS_KEY}:${cacheKey}`);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CONV_LS_TTL) return null;
+    return data as ConversasLSData;
+  } catch { return null; }
+}
+function writeConversasLS(cacheKey: string, data: ConversasLSData): void {
+  try { localStorage.setItem(`${CONV_LS_KEY}:${cacheKey}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
+}
 const LeadEditPanel = lazy(() => import("@/components/chat/LeadEditPanel"));
 const LeadCustomFields = lazy(() => import("@/components/chat/LeadCustomFields"));
 const LeadExtraFields = lazy(() => import("@/components/chat/LeadExtraFields"));
@@ -153,9 +174,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const cacheKey = tenant.id && user?.id ? `${tenant.id}:${user.id}` : null;
   const [searchParams, setSearchParams] = useSearchParams();
   const canUseInitialCache = !!cacheKey && leadsListCache.cacheKey === cacheKey && Date.now() - leadsListCache.timestamp < LEADS_CACHE_TTL;
-  const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? leadsListCache.leads || [] : []);
+  // Lê localStorage uma vez no primeiro render — fallback quando módulo cache está frio (reload)
+  const [_lsData] = useState<ConversasLSData | null>(() => canUseInitialCache || !cacheKey ? null : readConversasLS(cacheKey));
+  const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(!canUseInitialCache);
+  const [loading, setLoading] = useState(!canUseInitialCache && !_lsData);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
@@ -178,8 +201,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const urlAppointmentStatus = searchParams.get("appointment_status");
   const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
   const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
-  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? leadsListCache.profiles || [] : []);
-  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(() => canUseInitialCache ? leadsListCache.pipelines || [] : []);
+  const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? (leadsListCache.profiles || []) : (_lsData?.profiles || []));
+  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(() => canUseInitialCache ? (leadsListCache.pipelines || []) : (_lsData?.pipelines || []));
   const [activeExecution, setActiveExecution] = useState<{
     id: string; status: string; bot_name?: string;
   } | null>(null);
@@ -264,6 +287,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         leadsListCache.profiles = profs;
         leadsListCache.pipelines = pipes;
         leadsListCache.timestamp = Date.now();
+        writeConversasLS(cacheKey, { leads: rawLeads, profiles: profs, pipelines: pipes });
         setLeads(rawLeads);
         setProfiles(profs);
         setPipelines(pipes);
@@ -285,6 +309,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       leadsListCache.profiles = profs;
       leadsListCache.pipelines = pipes;
       leadsListCache.timestamp = Date.now();
+      writeConversasLS(cacheKey, { leads: rawLeads, profiles: profs, pipelines: pipes });
 
       setLeads(rawLeads);
       setProfiles(profs);

@@ -50,19 +50,50 @@ const typeLabels: Record<string, string> = {
   personalizado: "Personalizado",
 };
 
+// ── Cache stale-while-revalidate ─────────────────────────────────────────────
+type DashboardCacheData = {
+  tasks: Task[];
+  appointments: Appointment[];
+  leadsToday: number;
+  faturamentoMes: number;
+};
+const _dashCache: { data: DashboardCacheData | null; ts: number } = { data: null, ts: 0 };
+const DASH_CACHE_TTL = 2 * 60_000;
+const DASH_LS_KEY = "crm:dashboard_cache_v1";
+const DASH_LS_TTL = 15 * 60_000;
+
+function readDashCache(): DashboardCacheData | null {
+  if (_dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return _dashCache.data;
+  try {
+    const raw = localStorage.getItem(DASH_LS_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > DASH_LS_TTL) return null;
+    return data as DashboardCacheData;
+  } catch { return null; }
+}
+
+function writeDashCache(data: DashboardCacheData): void {
+  _dashCache.data = data;
+  _dashCache.ts = Date.now();
+  try { localStorage.setItem(DASH_LS_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+}
+
 export default function CrmDashboard() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  // Inicialização lazy: lê cache uma vez, evitando spinner quando há dados
+  const [tasks, setTasks] = useState<Task[]>(() => readDashCache()?.tasks || []);
+  const [appointments, setAppointments] = useState<Appointment[]>(() => readDashCache()?.appointments || []);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !readDashCache());
   const [upcomingDays, setUpcomingDays] = useState("7");
-  const [leadsToday, setLeadsToday] = useState(0);
-  const [faturamentoMes, setFaturamentoMes] = useState(0);
+  const [leadsToday, setLeadsToday] = useState(() => readDashCache()?.leadsToday || 0);
+  const [faturamentoMes, setFaturamentoMes] = useState(() => readDashCache()?.faturamentoMes || 0);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
+    // Cache de módulo quente (navegação SPA) → pula fetch
+    if (_dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return;
     const todayStr = format(new Date(), "yyyy-MM-dd");
     const now = new Date();
     const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
@@ -105,12 +136,12 @@ export default function CrmDashboard() {
     rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
     setAppointments(rawAppts);
 
-    setLeadsToday(leadsCountRes.count || 0);
-
     // Faturamento do mês = soma direta de TODOS os pagamentos (mesma fonte do Dashboard principal)
     const totalFat = pagamentosAll.reduce((s: number, p: any) => s + Number(p.valor || 0), 0);
-    setFaturamentoMes(totalFat);
 
+    writeDashCache({ tasks: rawTasks, appointments: rawAppts, leadsToday: leadsCountRes.count || 0, faturamentoMes: totalFat });
+    setLeadsToday(leadsCountRes.count || 0);
+    setFaturamentoMes(totalFat);
     setLoading(false);
   }, [user?.id, userRole]);
 
