@@ -233,8 +233,8 @@ export default function CrmKanban() {
       return out;
     };
 
-    // ── Fase 1: tudo em paralelo, incluindo vínculos paciente↔lead ──────────
-    const [pipelinesRes, profilesRes, stagesRes, leadsAll, fqRes, linksRes] = await Promise.all([
+    // ── Fase 1: pipelines, perfis, etapas, leads e followups em paralelo ────
+    const [pipelinesRes, profilesRes, stagesRes, leadsAll, fqRes] = await Promise.all([
       supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
       supabase.from("profiles").select("id, nome"),
       targetPipelineId
@@ -242,7 +242,6 @@ export default function CrmKanban() {
         : Promise.resolve({ data: null }),
       targetPipelineId ? fetchAllLeads(targetPipelineId) : Promise.resolve([] as Lead[]),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
-      supabase.from("crm_lead_pacientes").select("lead_id, paciente_id, is_primary"),
     ]);
 
     const pList = (pipelinesRes.data as Pipeline[]) || [];
@@ -296,23 +295,29 @@ export default function CrmKanban() {
     const finalProfiles = (profilesRes.data as { id: string; nome: string }[]) || [];
     setProfiles(finalProfiles);
 
-    // ── Fase 2: pagamentos — filtrados pelos pacientes do tenant ────────────
-    // crm_lead_pacientes já carregado na fase 1 (linksRes).
-    // Extraímos os paciente_ids únicos e buscamos só os pagamentos relevantes.
-    const links = (linksRes.data || []) as { lead_id: string; paciente_id: string; is_primary: boolean }[];
-    const pacienteToLead = new Map<string, string>();
-    links.forEach(l => {
-      const existing = pacienteToLead.get(l.paciente_id);
-      if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
-    });
-    const pacienteIds = [...new Set(links.map(l => l.paciente_id))];
-
+    // ── Fase 2: vínculos paciente↔lead filtrados pelos leads do pipeline ────
+    // Busca apenas os vínculos dos leads já carregados — evita trazer o tenant inteiro.
+    const leadIds = finalLeads.map(l => l.id);
     let vendasConcluidasVal = 0;
     const monthMap = new Map<string, number>();
     const allTimeMap = new Map<string, number>();
     const paidLeadIds = new Set<string>();
 
-    if (pacienteIds.length > 0) {
+    if (leadIds.length > 0) {
+      const { data: linksData } = await supabase
+        .from("crm_lead_pacientes")
+        .select("lead_id, paciente_id, is_primary")
+        .in("lead_id", leadIds);
+
+      const links = (linksData || []) as { lead_id: string; paciente_id: string; is_primary: boolean }[];
+      const pacienteToLead = new Map<string, string>();
+      links.forEach(l => {
+        const existing = pacienteToLead.get(l.paciente_id);
+        if (!existing || l.is_primary) pacienteToLead.set(l.paciente_id, l.lead_id);
+      });
+      const pacienteIds = [...new Set(links.map(l => l.paciente_id))];
+
+      if (pacienteIds.length > 0) {
       // Busca em paralelo: pagamentos do mês e de todos os tempos,
       // ambos filtrados pelos pacienteIds conhecidos (muito mais rápido).
       const [{ data: pags }, { data: allPags }] = await Promise.all([
@@ -338,7 +343,8 @@ export default function CrmKanban() {
           paidLeadIds.add(leadId);
         }
       });
-    }
+      } // fecha if (pacienteIds.length > 0)
+    } // fecha if (leadIds.length > 0)
 
     setVendasConcluidas(vendasConcluidasVal);
     setLeadMonthValueMap(monthMap);
@@ -583,16 +589,20 @@ export default function CrmKanban() {
     });
   }, [searchTerm, kanbanFilters, user?.id, leadsWithPagamento, labelsByLead]);
 
-  const getLeadsForStage = (stageId: string) => {
-    const filtered = applyFilters(leads.filter(l => l.stage_id === stageId));
-    return filtered.sort((a, b) => {
-      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return bTime - aTime; // leads mais recentes primeiro
-    });
-  };
-
   const allFilteredLeads = useMemo(() => applyFilters(leads), [leads, applyFilters]);
+
+  // Pré-computa os leads de cada etapa UMA vez — não re-executa ao digitar no modal
+  const stageLeadsMap = useMemo(() => {
+    const map = new Map<string, Lead[]>();
+    for (const stage of stages) {
+      const filtered = applyFilters(leads.filter(l => l.stage_id === stage.id));
+      filtered.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      map.set(stage.id, filtered);
+    }
+    return map;
+  }, [stages, leads, applyFilters]);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -708,10 +718,9 @@ export default function CrmKanban() {
               onChange={e => setSearchTerm(e.target.value)}
             />
             {searchTerm.replace(/\D/g, "").length >= 3 && (() => {
-              const allFiltered = applyFilters(leads);
-              return allFiltered.length > 0 && allFiltered.length <= 10 ? (
+              return allFilteredLeads.length > 0 && allFilteredLeads.length <= 10 ? (
                 <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto min-w-[240px]">
-                  {allFiltered.slice(0, 6).map((lead) => (
+                  {allFilteredLeads.slice(0, 6).map((lead) => (
                     <button
                       key={lead.id}
                       onClick={() => { navigate(`/crm/conversa/${lead.id}`); setSearchTerm(""); }}
@@ -757,7 +766,7 @@ export default function CrmKanban() {
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-3 h-full min-w-max">
               {stages.map((stage, idx) => {
-                const stageLeads = getLeadsForStage(stage.id);
+                const stageLeads = stageLeadsMap.get(stage.id) || [];
                 const stageValue = stageLeads.reduce((a, l) => a + (leadMonthValueMap.get(l.id) || 0), 0);
                 return (
                   <div key={stage.id} className="flex items-start gap-1">
