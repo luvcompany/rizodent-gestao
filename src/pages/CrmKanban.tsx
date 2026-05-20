@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -113,6 +113,28 @@ function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, current
   );
 }
 
+const PAGE_SIZE = 100; // leads por coluna no carregamento inicial
+
+// Sentinel invisível no fim de cada coluna — dispara loadMore ao entrar na viewport
+function SentinelLoader({ onVisible }: { onVisible: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const cb = useRef(onVisible);
+  cb.current = onVisible;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) cb.current(); },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []); // monta/desmonta com a coluna
+
+  return <div ref={ref} className="h-2 flex-shrink-0" />;
+}
+
 // Cache de módulo: sobrevive à navegação entre páginas, TTL de 2 minutos.
 type KanbanCacheEntry = {
   pipelines: Pipeline[];
@@ -157,6 +179,12 @@ export default function CrmKanban() {
   const [followUpLeads, setFollowUpLeads] = useState<Record<string, string>>({});
   const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
   const { labelsByLead } = useLeadLabels();
+
+  // Quantos leads cada coluna exibe (scroll infinito)
+  const [stageVisibleCounts, setStageVisibleCounts] = useState<Record<string, number>>({});
+  const loadMoreForStage = useCallback((stageId: string) => {
+    setStageVisibleCounts(prev => ({ ...prev, [stageId]: (prev[stageId] || PAGE_SIZE) + PAGE_SIZE }));
+  }, []);
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
@@ -370,6 +398,9 @@ export default function CrmKanban() {
   }, [pipeline?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Reseta contadores de visibilidade ao trocar de pipeline
+  useEffect(() => { setStageVisibleCounts({}); }, [pipeline?.id]);
 
   // Persiste filtros e busca no localStorage para sobreviver à navegação
   useEffect(() => {
@@ -767,6 +798,9 @@ export default function CrmKanban() {
             <div className="flex gap-3 h-full min-w-max">
               {stages.map((stage, idx) => {
                 const stageLeads = stageLeadsMap.get(stage.id) || [];
+                const visibleCount = stageVisibleCounts[stage.id] || PAGE_SIZE;
+                const visibleLeads = stageLeads.slice(0, visibleCount);
+                const hasMore = stageLeads.length > visibleCount;
                 const stageValue = stageLeads.reduce((a, l) => a + (leadMonthValueMap.get(l.id) || 0), 0);
                 return (
                   <div key={stage.id} className="flex items-start gap-1">
@@ -795,7 +829,7 @@ export default function CrmKanban() {
                             {...provided.droppableProps}
                             className={`flex-1 overflow-y-auto px-2 pb-2 min-h-[100px] ${snapshot.isDraggingOver ? "bg-primary/5" : ""}`}
                           >
-                            {stageLeads.map((lead, lIdx) => (
+                            {visibleLeads.map((lead, lIdx) => (
                               <Draggable key={lead.id} draggableId={lead.id} index={lIdx}>
                                 {(prov, snap) => (
                                   <div
@@ -893,6 +927,17 @@ export default function CrmKanban() {
                               </Draggable>
                             ))}
                             {provided.placeholder}
+                            {hasMore && (
+                              <SentinelLoader
+                                key={`${stage.id}-${visibleCount}`}
+                                onVisible={() => loadMoreForStage(stage.id)}
+                              />
+                            )}
+                            {hasMore && (
+                              <p className="text-center text-[10px] text-muted-foreground pb-2">
+                                {visibleCount} de {stageLeads.length} leads
+                              </p>
+                            )}
                           </div>
                         )}
                       </Droppable>
