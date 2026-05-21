@@ -667,12 +667,14 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            let { data: lead } = await supabase
+            let { data: leadRows } = await supabase
               .from("crm_leads")
               .select("id, name, source, is_blocked")
               .eq("tenant_id", tenantId)
               .eq("phone", from)
-              .maybeSingle();
+              .order("created_at", { ascending: true })
+              .limit(1);
+            let lead: any = leadRows?.[0] || null;
 
             // 🚫 Blocked lead: drop the inbound message entirely
             if (lead && (lead as any).is_blocked) {
