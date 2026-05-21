@@ -185,7 +185,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
     if (normalizedPhone) {
       const { data: existing } = await supabase.rpc("check_duplicate_phone", { p_phone: normalizedPhone });
       if (existing && existing.length > 0) {
-        const dup = existing[0];
+        const dup = existing[0] as any;
         const owner = profiles.find(p => p.id === dup.assigned_to);
         setDuplicateInfo({
           existingLeadId: dup.lead_id, existingLeadName: dup.lead_name,
