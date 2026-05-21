@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "no stage found" }), { status: 400, headers: corsHeaders });
     }
 
-    // Create lead with explicit tenant_id
+    // Create lead with explicit tenant_id (race-safe: re-select on unique violation)
     const { data: lead, error } = await supabase.from("crm_leads").insert({
       name,
       phone: normalizedPhone,
@@ -91,6 +91,17 @@ Deno.serve(async (req) => {
     }).select("id").single();
 
     if (error) {
+      // Unique violation on (tenant_id, phone) — another concurrent insert won the race
+      if ((error as any).code === "23505") {
+        const { data: dup } = await supabase
+          .from("crm_leads").select("id")
+          .eq("tenant_id", tenantId).eq("phone", normalizedPhone).limit(1).maybeSingle();
+        if (dup?.id) {
+          return new Response(JSON.stringify({ status: "duplicate", lead_id: dup.id }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
       return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
     }
 
