@@ -751,14 +751,25 @@ Deno.serve(async (req) => {
                     console.log(`[WEBHOOK] Round-robin atribuiu lead a: ${assignedTo}`);
                   }
 
-                  const { data: newLead } = await supabase
+                  const { data: newLead, error: insertLeadErr } = await supabase
                     .from("crm_leads")
                     .insert(insertData)
                     .select("id, name, source")
                     .single();
 
-                  lead = newLead;
-                  console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, assigned: ${assignedTo || 'none'}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
+                  if (insertLeadErr && (insertLeadErr as any).code === "23505") {
+                    // Race: another webhook just created this lead. Reuse it.
+                    const { data: existing } = await supabase
+                      .from("crm_leads")
+                      .select("id, name, source")
+                      .eq("tenant_id", tenantId).eq("phone", from)
+                      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+                    lead = existing as any;
+                    console.log(`[WEBHOOK] Race avoided — reusing existing lead ${existing?.id} for ${from}`);
+                  } else {
+                    lead = newLead;
+                    console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, assigned: ${assignedTo || 'none'}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
+                  }
 
                   // Execute on_create + on_enter + on_create_or_enter automations for the new lead's first stage
                   if (newLead?.id) {
