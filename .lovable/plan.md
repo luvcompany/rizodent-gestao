@@ -1,40 +1,79 @@
-## Problemas a resolver
+## Causa raiz
 
-### 1) Transferência de lead Pós-venda → CRC não restaura pipeline/etapa anterior
+A tabela `crm_leads` não tem nenhum índice único em `(tenant_id, phone)`. O `whatsapp-webhook` (e o `generic-lead-webhook`) procura o lead por `tenant_id + phone` com `.maybeSingle()`. Quando esse SELECT retorna mais de uma linha, o `maybeSingle()` **falha** e devolve `lead = null` → o webhook cria mais um lead. A partir do momento em que existem 2 duplicatas, cada nova mensagem cria mais uma, formando o efeito cascata observado.
 
-Hoje a função `transfer-lead` só faz auto-move quando o destino é `posvenda` (move para o pipeline da pós-venda). No caminho contrário (pós-venda → crc/gerente), o lead fica preso no pipeline da Pós-venda, e o usuário CRC não consegue vê-lo no Kanban (a pós-venda tem `allowed_roles=['posvenda']`, então o CRC perde acesso).
+Como surgiu a primeira duplicata: corrida entre dois webhooks chegando quase simultaneamente (ou um lead já existir no banco vindo de importação/cadastro manual e o webhook não conseguir achar exatamente o mesmo `phone` — confirmado pela duplicata `(77) 99155-201` com formato diferente). Sem unique index, nada impede a segunda inserção.
 
-**Correção:** quando o destino for `crc` ou `gerente` e o lead estiver hoje em um pipeline restrito a `posvenda`, buscar no `crm_lead_stage_history` a última etapa do lead em um pipeline acessível ao CRC (ou seja, em pipeline cujo `allowed_roles` contenha `crc`, ou seja NULL). Se encontrada, mover o lead de volta para esse `pipeline_id`/`stage_id` (fechando entrada atual do histórico e abrindo nova). Se não houver histórico em pipeline de CRC, fallback: Funil Principal → primeira etapa.
+Caso `557381751038` (tenant Rizodent): 17 leads duplicados. Existem também 11 outros telefones com 2–6 duplicatas no mesmo tenant.
 
-### 2) Agendamento manual não move o lead em algumas etapas/pipelines
+## O que vai ser feito
 
-Em `src/components/chat/AppointmentConfirmBar.tsx` (`moveLeadToScheduledStage`), a busca da etapa "Agendado" é feita **apenas dentro do pipeline atual do lead**. Pipelines como **Nutrição**, **Pós-venda**, **Não Compareceu** e **Não contratados** não possuem etapa "Agendado", então o lead não se move.
+### 1) Mesclar duplicatas existentes (one-off, via migration)
 
-**Correção:** quando o pipeline atual não tiver etapa de "Agendado" (nem "Reagendado" no modo reagendar), mover o lead para o **Funil Principal** do mesmo tenant, etapa **Agendado** (ou **Reagendado** no modo reagendar). Fazer cross-pipeline move: atualizar `pipeline_id`+`stage_id`, fechar histórico, inserir novo, e postar a mensagem de sistema.
+Para cada grupo `(tenant_id, phone)` com mais de um lead:
 
-### 3) Lead `557398534691` (e similares)
+- Eleger o lead "canônico" = o mais antigo (`MIN(created_at)`).
+- Reapontar todas as FKs `lead_id` das tabelas dependentes para o canônico: `messages`, `crm_appointments`, `crm_tasks`, `crm_lead_stage_history`, `crm_followup_queue`, `crm_automation_queue`, `crm_automation_executions`, `crm_broadcast_recipients`, `crm_conversation_notes`, `crm_notifications`, `crm_lead_custom_values`, `crm_lead_label_assignments`, `crm_lead_pacientes`, `crm_lead_instagram_identities`, `bot_executions`, `ai_conversation_analysis`, `instagram_messages`, `crm_leads_com_pagamento`.
+- Atualizar no canônico: `name` (preferir o mais informativo, não `.....` nem "Lead WhatsApp"), `last_message`, `last_message_at`, `last_inbound_at`, `first_inbound_at` (mínimo entre todos), `assigned_to` (preservar do canônico se existir, senão pegar do mais recente), e copiar para o canônico campos não-nulos do mais recente quando o canônico estiver vazio (`cidade`, `servico_interesse`, `email`, `ad_*`, etc.).
+- Deletar os leads duplicados restantes.
+- Inserir uma `messages` system explicando a mesclagem no canônico.
 
-Esse telefone exato não está mais no banco (provavelmente já foi movido para Pós-venda e/ou sumiu da visão do CRC por causa de RLS do pipeline Pós-venda). Vou:
-- Rodar uma query que identifica **todos** os leads atualmente em pipelines com `allowed_roles=['posvenda']` que **nunca passaram pela etapa "Contratado"** (consultando `crm_lead_stage_history`).
-- Para esses leads, mover para a última etapa registrada no Funil Principal (se houver histórico), ou para a primeira etapa do Funil Principal como fallback. Reatribuir ao usuário `rizodent`.
-- Registrar uma mensagem de sistema em cada lead explicando o movimento.
+### 2) Normalizar telefones antes do unique
+
+Rodar `normalizePhone` equivalente no SQL para os ~3 registros com formato divergente, depois mesclar de novo se gerar novas colisões.
+
+### 3) Criar índice único e prevenir futuras duplicatas
+
+```sql
+CREATE UNIQUE INDEX crm_leads_tenant_phone_uniq
+  ON public.crm_leads (tenant_id, phone)
+  WHERE phone IS NOT NULL AND phone <> '';
+```
+
+### 4) Tornar a criação de lead idempotente/race-safe
+
+Em `supabase/functions/whatsapp-webhook/index.ts` (bloco "Find or create lead by phone", linhas ~670–760) e em `supabase/functions/generic-lead-webhook/index.ts`:
+
+- Manter o SELECT inicial.
+- No INSERT, tratar erro de violação de unique (`code === '23505'`): re-SELECT pelo `tenant_id + phone` e seguir com o lead existente (sem criar nem duplicar mensagem).
+- Trocar `.maybeSingle()` por `.limit(1).maybeSingle()` na busca, para tolerar (até a deduplicação rodar) qualquer remanescente sem quebrar.
+
+Não mexer em mais nada do fluxo do webhook (sem mudanças de UI/comportamento).
 
 ## Detalhes técnicos
 
-**Arquivos a alterar:**
-- `supabase/functions/transfer-lead/index.ts` — adicionar bloco "reverse posvenda → CRC" usando `crm_lead_stage_history` + `crm_pipelines.allowed_roles`.
-- `src/components/chat/AppointmentConfirmBar.tsx` — em `moveLeadToScheduledStage`, fallback cross-pipeline para Funil Principal quando o pipeline atual não tem etapa Agendado/Reagendado. Atualizar `pipeline_id` no UPDATE e mensagem de sistema "Movido para Funil Principal • Agendado".
+**Arquivos**
+- Migration (uma migration consolidada): merge dos duplicados + `CREATE UNIQUE INDEX` em `(tenant_id, phone)`.
+- `supabase/functions/whatsapp-webhook/index.ts`: hardening de race (try/catch 23505 + re-select).
+- `supabase/functions/generic-lead-webhook/index.ts`: mesmo hardening.
 
-**Migração de dados (one-off, via insert tool):**
-```sql
--- Para cada lead em pipeline Pós-venda que nunca entrou em "Contratado":
-UPDATE crm_leads SET pipeline_id=<funil principal>, stage_id=<última etapa CRC ou Novo Lead>,
-  assigned_to='<rizodent user_id>', updated_at=now()
-WHERE id IN (...);
--- + fechar/abrir crm_lead_stage_history + insert messages system
+**Estratégia da migration (resumo)**
+```text
+WITH dup AS (
+  SELECT tenant_id, phone, MIN(created_at) AS keep_ts
+  FROM crm_leads
+  WHERE phone IS NOT NULL AND phone <> ''
+  GROUP BY 1,2 HAVING COUNT(*) > 1
+),
+canon AS (
+  SELECT l.id AS keep_id, l.tenant_id, l.phone
+  FROM crm_leads l JOIN dup d
+    ON l.tenant_id = d.tenant_id AND l.phone = d.phone AND l.created_at = d.keep_ts
+),
+victims AS (
+  SELECT l.id AS old_id, c.keep_id
+  FROM crm_leads l JOIN canon c
+    ON l.tenant_id = c.tenant_id AND l.phone = c.phone
+  WHERE l.id <> c.keep_id
+)
+-- UPDATE em cada tabela dependente: SET lead_id = keep_id FROM victims WHERE lead_id = old_id
+-- UPDATE crm_leads canônico com merge de campos (COALESCE do mais recente)
+-- DELETE FROM crm_leads WHERE id IN (SELECT old_id FROM victims)
+-- INSERT messages (system) no canônico explicando a mesclagem
+-- CREATE UNIQUE INDEX ...
 ```
 
 ## Perguntas
 
-1. Confirmar: quando o pipeline atual não tem "Agendado" (ex.: Nutrição, Pós-venda), o agendamento manual deve mover o lead para **Funil Principal → Agendado**? (alternativa: não mover e apenas registrar o agendamento.)
-2. Para o item 3, devo aplicar a varredura retroativa **a todos** os leads de Pós-venda sem passagem por "Contratado", ou somente ao `557398534691`?
+1. Confirma que para escolher o lead canônico devo usar **o mais antigo** (`MIN(created_at)`)? Alternativa: o que tem mais mensagens / dados preenchidos.
+2. Devo mesclar **todos** os 12 grupos duplicados detectados, ou apenas o `557381751038`?
