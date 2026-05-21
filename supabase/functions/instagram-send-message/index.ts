@@ -209,12 +209,17 @@ Deno.serve(async (req: Request) => {
   // stores the most recent IGSID) would silently use the wrong scoped id and
   // make Meta return code 100 / subcode 2534014 ("user not found").
   if (message_type !== "comment" && !recipientExplicit && leadId) {
+    // IMPORTANT: Only look at DM messages (not comments) for the recipient IGSID.
+    // Comment sender_ids are public Instagram user IDs, which are different from
+    // the scoped IGSIDs used in the Messaging API. Using a comment sender_id as
+    // recipient would cause Meta to reject with a 24h window / user-not-found error.
     const { data: scoped } = await supabase
       .from("instagram_messages")
       .select("sender_id, created_at")
       .eq("lead_id", leadId)
       .eq("is_outbound", false)
       .eq("instagram_account_id", account.instagram_account_id)
+      .eq("message_type", "dm")
       .not("sender_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -222,15 +227,15 @@ Deno.serve(async (req: Request) => {
     if (scoped?.sender_id) {
       recipient_id = scoped.sender_id as string;
     } else {
-      // No inbound thread between this lead and the chosen account → cannot
+      // No inbound DM thread between this lead and the chosen account → cannot
       // derive a valid scoped IGSID. Return a friendly message instead of
-      // letting Meta reject with a confusing 500.
+      // letting Meta reject with a confusing error.
       return jsonResponse({
         ok: false,
         error_code: "no_thread_for_account",
-        error: "No inbound thread between this lead and the selected Instagram account",
+        error: "No inbound DM thread between this lead and the selected Instagram account",
         user_message:
-          "Não há histórico de conversa deste lead com a conta selecionada. Selecione no seletor de contas a conta do Instagram que recebeu a última mensagem deste lead.",
+          "Este lead não possui histórico de Direct Message com a conta selecionada. Para enviar um Direct, o usuário precisa ter iniciado uma conversa via DM primeiro. Você pode responder via comentário usando a aba 'Comentário'.",
       }, 200);
     }
   }
