@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     }
 
     const [{ data: lead }, { data: roleRow }, { data: requesterProfile }] = await Promise.all([
-      supabase.from("crm_leads").select("id, assigned_to, tenant_id").eq("id", leadId).maybeSingle(),
+      supabase.from("crm_leads").select("id, name, assigned_to, tenant_id, pipeline_id, stage_id").eq("id", leadId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
       supabase.from("profiles").select("tenant_id").eq("id", user.id).maybeSingle(),
     ]);
@@ -204,23 +204,34 @@ Deno.serve(async (req) => {
       ? `🔄 Lead transferido: ${oldUserName} → ${newUserName}\n📂 Movido para: ${movedPipelineName} • ${movedStageName}`
       : `🔄 Lead transferido: ${oldUserName} → ${newUserName}`;
 
-
-    const { error: messageError } = await supabase.from("messages").insert({
-      lead_id: leadId,
-      direction: "outbound",
-      type: "system",
-      content: transferMsg,
-      status: "system",
-      sender_id: user.id,
-    });
-
-    if (messageError) return json({ error: messageError.message }, 500);
+    // Send system message + notification in parallel (non-blocking errors)
+    await Promise.all([
+      supabase.from("messages").insert({
+        lead_id: leadId,
+        direction: "outbound",
+        type: "system",
+        content: transferMsg,
+        status: "system",
+        sender_id: user.id,
+        ...(lead as any).tenant_id ? { tenant_id: (lead as any).tenant_id } : {},
+      }),
+      supabase.from("crm_notifications").insert({
+        user_id: newUserId,
+        type: "transfer",
+        title: "Lead transferido para você",
+        body: `${(lead as any).name || "Lead"} foi transferido por ${profiles?.find((p) => p.id === user.id)?.nome || "alguém"}`,
+        lead_id: leadId,
+      }),
+    ]);
 
     return json({
       success: true,
       oldUserName,
       newUserName,
       assigned_to: newUserId,
+      // Return IDs so the frontend can update lead state immediately
+      pipeline_id: (updatePayload.pipeline_id as string) ?? null,
+      stage_id: (updatePayload.stage_id as string) ?? null,
       moved_pipeline: movedPipelineName,
       moved_stage: movedStageName,
     });

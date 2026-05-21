@@ -147,30 +147,45 @@ export default function CrmConversa() {
     });
   }, [id]);
 
-  // Transfer lead to another user
+  // Transfer lead to another user — uses the transfer-lead edge function which
+  // automatically moves the lead back to the correct pipeline/stage (e.g. when
+  // returning a lead from Pós-Venda to a CRC user it restores the last CRC stage).
   const handleTransferLead = useCallback(async (newUserId: string) => {
     if (!lead || !id) return;
     const oldUserId = lead.assigned_to;
     if (newUserId === oldUserId) return;
 
-    const oldUserName = profiles.find(p => p.id === oldUserId)?.nome || "Não atribuído";
     const newUserName = profiles.find(p => p.id === newUserId)?.nome || "?";
 
-    // Optimistic update for instant feedback
+    // Optimistic: update assigned_to immediately for instant feedback
     setLead(prev => prev ? { ...prev, assigned_to: newUserId } : prev);
     chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
     toast.success(`Lead transferido para ${newUserName}`);
 
-    const updatePromise = supabase.from("crm_leads").update({ assigned_to: newUserId, updated_at: new Date().toISOString() }).eq("id", id);
-    const msgPromise = supabase.from("messages").insert({ lead_id: id, direction: "outbound", type: "system", content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`, status: "system", sender_id: user?.id || null });
-    const notifPromise = supabase.from("crm_notifications").insert({ user_id: newUserId, type: "transfer", title: `Lead transferido para você`, body: `${lead.name} foi transferido por ${profiles.find(p => p.id === user?.id)?.nome || "alguém"}`, lead_id: id });
+    const { data, error } = await supabase.functions.invoke("transfer-lead", {
+      body: { leadId: id, newUserId },
+    });
 
-    const [updateRes] = await Promise.all([updatePromise, msgPromise, notifPromise]);
-    if (updateRes.error) {
+    if (error || data?.error) {
+      // Rollback optimistic update
       setLead(prev => prev ? { ...prev, assigned_to: oldUserId } : prev);
       toast.error("Erro ao transferir lead");
+      return;
     }
-  }, [lead, id, profiles, chat, user]);
+
+    // If the function moved the lead to another pipeline/stage, update local state
+    if (data?.pipeline_id || data?.stage_id) {
+      setLead(prev => prev ? {
+        ...prev,
+        assigned_to: newUserId,
+        ...(data.pipeline_id ? { pipeline_id: data.pipeline_id } : {}),
+        ...(data.stage_id ? { stage_id: data.stage_id } : {}),
+      } : prev);
+      if (data.moved_pipeline && data.moved_stage) {
+        chat.showActivityToast(`📂 Movido para: ${data.moved_pipeline} • ${data.moved_stage}`);
+      }
+    }
+  }, [lead, id, profiles, chat]);
 
   const handleStageChange = useCallback(async (stageId: string, pipelineId: string) => {
     if (!lead) return;

@@ -483,7 +483,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     const oldUserId = selectedLead.assigned_to;
     if (newUserId === oldUserId) return;
 
-    const oldUserName = profiles.find(p => p.id === oldUserId)?.nome || "Não atribuído";
     const newUserName = profiles.find(p => p.id === newUserId)?.nome || "?";
 
     // Optimistic update first for instant UI feedback
@@ -500,19 +499,38 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setSelectedLead(prev => prev?.id === capturedLeadId ? null : prev);
     }, 10000);
 
-    // Fire DB update + system message + notification in parallel
-    const updatePromise = supabase.from("crm_leads").update({ assigned_to: newUserId, updated_at: new Date().toISOString() }).eq("id", selectedLeadId);
-    const msgPromise = supabase.from("messages").insert({ lead_id: selectedLeadId, direction: "outbound", type: "system", content: `🔄 Lead transferido: ${oldUserName} → ${newUserName}`, status: "system", sender_id: user?.id || null });
-    const notifPromise = supabase.from("crm_notifications").insert({ user_id: newUserId, type: "transfer", title: `Lead transferido para você`, body: `${selectedLead.name} foi transferido por ${profiles.find(p => p.id === user?.id)?.nome || "alguém"}`, lead_id: selectedLeadId });
+    // Call edge function — it handles automatic pipeline/stage restoration
+    const { data, error } = await supabase.functions.invoke("transfer-lead", {
+      body: { leadId: selectedLeadId, newUserId },
+    });
 
-    const [updateRes] = await Promise.all([updatePromise, msgPromise, notifPromise]);
-    if (updateRes.error) {
+    if (error || data?.error) {
       // Rollback on failure
       setSelectedLead(prev => prev ? { ...prev, assigned_to: oldUserId } : prev);
       setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, assigned_to: oldUserId ?? null } : l));
       toast.error("Erro ao transferir lead");
+      return;
     }
-  }, [selectedLead, selectedLeadId, profiles, chat, user]);
+
+    // If the function moved the lead to another pipeline/stage, update local state
+    if (data?.pipeline_id || data?.stage_id) {
+      setSelectedLead(prev => prev ? {
+        ...prev,
+        assigned_to: newUserId,
+        ...(data.pipeline_id ? { pipeline_id: data.pipeline_id } : {}),
+        ...(data.stage_id ? { stage_id: data.stage_id } : {}),
+      } : prev);
+      setLeads(prev => prev.map(l => l.id === selectedLeadId ? {
+        ...l,
+        assigned_to: newUserId,
+        ...(data.pipeline_id ? { pipeline_id: data.pipeline_id } : {}),
+        ...(data.stage_id ? { stage_id: data.stage_id } : {}),
+      } : l));
+      if (data.moved_pipeline && data.moved_stage) {
+        chat.showActivityToast(`📂 Movido para: ${data.moved_pipeline} • ${data.moved_stage}`);
+      }
+    }
+  }, [selectedLead, selectedLeadId, profiles, chat]);
 
   // Collect all tags for filters
   const allTags = useMemo(() => {
