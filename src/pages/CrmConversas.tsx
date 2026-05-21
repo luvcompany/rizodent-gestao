@@ -1057,6 +1057,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 replyTo={chat.replyTo}
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
+                lastInboundDmAt={chat.lastInboundDmAt}
                 channel={channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp"}
               />
 

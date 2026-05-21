@@ -226,6 +226,22 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (scoped?.sender_id) {
       recipient_id = scoped.sender_id as string;
+
+      // Proactively check the 24h window. Instagram DMs only allow replies within
+      // 24 hours of the user's last inbound DM (comments don't count).
+      const lastDmAt = scoped.created_at ? new Date(scoped.created_at).getTime() : 0;
+      const windowMs = 24 * 60 * 60 * 1000;
+      if (lastDmAt && Date.now() - lastDmAt > windowMs) {
+        return jsonResponse({
+          ok: false,
+          error_code: "instagram_dm_window_expired",
+          error: "Instagram 24h DM window expired",
+          user_message:
+            "A janela de 24h para Direct Messages expirou. O Instagram só permite enviar DMs enquanto o usuário interagiu via DM nas últimas 24h. Aguarde o usuário enviar uma nova mensagem ou responda via comentário.",
+          window_expired_at: new Date(lastDmAt + windowMs).toISOString(),
+          last_dm_at: scoped.created_at,
+        }, 200);
+      }
     } else {
       // No inbound DM thread between this lead and the chosen account → cannot
       // derive a valid scoped IGSID. Return a friendly message instead of

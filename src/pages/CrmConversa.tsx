@@ -442,6 +442,7 @@ export default function CrmConversa() {
             onMessageError={chat.handleMessageError}
             onMessageSuccess={chat.handleMessageSuccess}
             lastInboundAt={chat.lastInboundAt}
+            lastInboundDmAt={chat.lastInboundDmAt}
             channel={lead.instagram_user_id ? "instagram" : "whatsapp"}
           />
         )}

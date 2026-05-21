@@ -52,10 +52,12 @@ type ChatInputProps = {
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
+  /** For Instagram: timestamp of the last inbound DM specifically (comments don't open the 24h window). */
+  lastInboundDmAt?: string | null;
   channel?: "whatsapp" | "instagram";
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt, channel = "whatsapp" }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt, lastInboundDmAt, channel = "whatsapp" }: ChatInputProps) {
   const isInstagram = channel === "instagram";
   const sendFnName = isInstagram ? "instagram-send-message" : "send-whatsapp-message";
 
@@ -458,6 +460,19 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     return { expired: false, remaining: `${hours}h ${mins.toString().padStart(2, "0")}m` };
   }, [lastInboundAt, now]);
 
+  // Instagram DM window: only actual DMs (not comments) keep the 24h window open.
+  const igDmWindowInfo = useMemo(() => {
+    if (!isInstagram) return { expired: false, remaining: "" };
+    if (!lastInboundDmAt) return { expired: true, remaining: "" };
+    const dmTime = new Date(lastInboundDmAt).getTime();
+    const expiresAt = dmTime + 24 * 60 * 60 * 1000;
+    const diff = expiresAt - now;
+    if (diff <= 0) return { expired: true, remaining: "" };
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return { expired: false, remaining: `${hours}h ${mins.toString().padStart(2, "0")}m` };
+  }, [isInstagram, lastInboundDmAt, now]);
+
   const isWindowExpired = windowInfo.expired;
 
   const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
@@ -669,6 +684,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 </button>
               </div>
             )}
+          </div>
+        )}
+        {/* Instagram DM 24h window warning */}
+        {isInstagram && igReplyMode === "direct" && igDmWindowInfo.expired && (
+          <div className="flex items-start gap-2 mb-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+            <span>
+              <strong>Janela de DM expirada.</strong> O Instagram só permite enviar Direct enquanto o usuário enviou um DM nas últimas 24h.
+              {igCommentTarget ? " Use a aba Comentário para responder." : " Aguarde o usuário enviar uma nova mensagem."}
+            </span>
           </div>
         )}
         <div className="flex items-end gap-2">

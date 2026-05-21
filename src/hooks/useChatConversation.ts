@@ -89,9 +89,18 @@ export function useChatConversation(leadId: string | null | undefined) {
     return templates.filter(t => t.name.toLowerCase().includes(q) || (t.body_text || "").toLowerCase().includes(q));
   }, [templates, templateSearch]);
 
-  // Last inbound message time
+  // Last inbound message time (any type)
   const lastInboundAt = useMemo(() => {
     return [...messages].reverse().find((m) => m.direction === "inbound")?.created_at || null;
+  }, [messages]);
+
+  // Last inbound DM time (non-comment) for Instagram 24h window check.
+  // Comments do NOT count for the Instagram DM window — only actual DMs do.
+  const lastInboundDmAt = useMemo(() => {
+    return [...messages]
+      .reverse()
+      .find((m) => m.direction === "inbound" && m.type !== "comment")
+      ?.created_at || null;
   }, [messages]);
 
   // ─── Cache stages globally ───
@@ -565,6 +574,7 @@ export function useChatConversation(leadId: string | null | undefined) {
     filteredTemplates,
     activityToasts,
     lastInboundAt,
+    lastInboundDmAt,
 
     // Refs
     messagesEndRef,
