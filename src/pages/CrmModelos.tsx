@@ -722,6 +722,7 @@ export default function CrmModelos() {
                     <SelectContent>
                       <SelectItem value="TEXT">Texto</SelectItem>
                       <SelectItem value="IMAGE">Imagem</SelectItem>
+                      <SelectItem value="VIDEO">Vídeo</SelectItem>
                       <SelectItem value="DOCUMENT">Documento</SelectItem>
                       <SelectItem value="AUDIO">Áudio</SelectItem>
                     </SelectContent>
@@ -822,6 +823,7 @@ export default function CrmModelos() {
                   {form.hasHeader && form.header_content && (
                     <div className="font-semibold text-foreground mb-1 text-xs">
                       {form.header_type === "IMAGE" ? <div className="bg-secondary rounded h-20 flex items-center justify-center text-muted-foreground mb-1"><Image size={24} /></div> : null}
+                      {form.header_type === "VIDEO" ? <div className="bg-secondary rounded h-20 flex items-center justify-center text-muted-foreground mb-1"><span className="text-2xl">🎬</span></div> : null}
                       {form.header_type === "TEXT" ? form.header_content : null}
                     </div>
                   )}

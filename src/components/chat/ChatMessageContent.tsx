@@ -146,7 +146,8 @@ function TemplateMessageBubble({
             buttons: data.buttons as TemplateData["buttons"],
           });
 
-          if ((data.header_type === "IMAGE" || data.header_type === "VIDEO") && data.header_content) {
+          // Busca URL para qualquer header que seja uma URL (IMAGE, VIDEO, ou type incorreto)
+          if (data.header_content?.startsWith("http")) {
             const storagePath = extractStoragePath(data.header_content);
             if (storagePath) {
               getSignedMediaUrl(data.header_content).then(setHeaderSignedUrl);
@@ -175,11 +176,21 @@ function TemplateMessageBubble({
       })
     : null;
 
+  // Detecta tipo do header de forma robusta:
+  // – compara header_type case-insensitivo
+  // – usa extensão da URL como fallback (caso header_type esteja errado no banco)
+  const hType = (template.header_type || "").toUpperCase();
+  const hUrl = headerSignedUrl || "";
+  const isVideoByUrl = /\.(mp4|mov|webm|3gpp?)(\?|#|$)/i.test(hUrl);
+  const isHeaderVideo = hType === "VIDEO" || (hType === "IMAGE" && isVideoByUrl);
+  const isHeaderImage = hType === "IMAGE" && !isVideoByUrl;
+  const isHeaderText = hType === "TEXT";
+
   return (
     <div className="min-w-[220px]">
       {template.header_type && template.header_content && (
         <div className="mb-1">
-          {template.header_type === "IMAGE" ? (
+          {isHeaderImage ? (
             headerSignedUrl ? (
               <img
                 src={headerSignedUrl}
@@ -191,7 +202,7 @@ function TemplateMessageBubble({
                 <Image size={32} className="text-muted-foreground" />
               </div>
             )
-          ) : template.header_type === "VIDEO" ? (
+          ) : isHeaderVideo ? (
             headerSignedUrl ? (
               <video
                 src={headerSignedUrl}
@@ -203,9 +214,9 @@ function TemplateMessageBubble({
                 <span className="text-3xl">🎬</span>
               </div>
             )
-          ) : (
+          ) : isHeaderText ? (
             <p className="text-sm font-bold text-foreground">{template.header_content}</p>
-          )}
+          ) : null}
         </div>
       )}
       {resolvedBodyText && (
