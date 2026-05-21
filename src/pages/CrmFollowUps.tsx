@@ -49,17 +49,46 @@ const emptyConfig = (): FollowUpConfig => ({
   max_attempts: 10,
 });
 
+// ── Cache ──────────────────────────────────────────────────────────────────
+type FollowUpsCache = {
+  configs: (FollowUpConfig & { id: string })[];
+  pipelines: Pipeline[];
+  stages: Stage[];
+};
+const _fuCache: { data: FollowUpsCache | null; ts: number } = { data: null, ts: 0 };
+const FU_MODULE_TTL = 2 * 60_000;
+const FU_LS_KEY = "crm:followups_cache_v1";
+const FU_LS_TTL = 15 * 60_000;
+
+function readFuCache(): FollowUpsCache | null {
+  if (_fuCache.data && Date.now() - _fuCache.ts < FU_MODULE_TTL) return _fuCache.data;
+  try {
+    const raw = localStorage.getItem(FU_LS_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw) as { data: FollowUpsCache; ts: number };
+    if (Date.now() - ts > FU_LS_TTL) return null;
+    _fuCache.data = data; _fuCache.ts = ts;
+    return data;
+  } catch { return null; }
+}
+
+function writeFuCache(data: FollowUpsCache) {
+  _fuCache.data = data; _fuCache.ts = Date.now();
+  try { localStorage.setItem(FU_LS_KEY, JSON.stringify({ data, ts: _fuCache.ts })); } catch {}
+}
+// ──────────────────────────────────────────────────────────────────────────
+
 export default function CrmFollowUps() {
-  const [configs, setConfigs] = useState<(FollowUpConfig & { id: string })[]>([]);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [stages, setStages] = useState<Stage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [_lsInit] = useState<FollowUpsCache | null>(() => readFuCache());
+  const [configs, setConfigs] = useState<(FollowUpConfig & { id: string })[]>(() => readFuCache()?.configs || []);
+  const [pipelines, setPipelines] = useState<Pipeline[]>(() => readFuCache()?.pipelines || []);
+  const [stages, setStages] = useState<Stage[]>(() => readFuCache()?.stages || []);
+  const [loading, setLoading] = useState(!_lsInit);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FollowUpConfig>(emptyConfig());
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
     const [cfgRes, pipeRes, stgRes] = await Promise.all([
       supabase.from("crm_followup_configs").select("*").order("created_at", { ascending: false }),
       supabase.from("crm_pipelines").select("id, name").order("created_at"),
@@ -94,9 +123,12 @@ export default function CrmFollowUps() {
       };
     });
 
+    const pipes = (pipeRes.data as Pipeline[]) || [];
+    const stgs = (stgRes.data as Stage[]) || [];
     setConfigs(mapped);
-    setPipelines((pipeRes.data as Pipeline[]) || []);
-    setStages((stgRes.data as Stage[]) || []);
+    setPipelines(pipes);
+    setStages(stgs);
+    writeFuCache({ configs: mapped, pipelines: pipes, stages: stgs });
     setLoading(false);
   }, []);
 
@@ -178,7 +210,8 @@ export default function CrmFollowUps() {
   const moveStages = form.move_to_pipeline_id ? stages.filter(s => s.pipeline_id === form.move_to_pipeline_id) : [];
   const returnStages = form.return_to_pipeline_id ? stages.filter(s => s.pipeline_id === form.return_to_pipeline_id) : [];
 
-  if (loading) return <div className="flex items-center justify-center h-96"><span className="text-muted-foreground">Carregando...</span></div>;
+  // Mostrar spinner completo apenas na primeira visita (sem cache nenhum)
+  if (loading && configs.length === 0 && pipelines.length === 0) return <div className="flex items-center justify-center h-96"><span className="text-muted-foreground">Carregando...</span></div>;
 
   return (
     <div className="flex flex-col gap-6 -m-6 p-6 bg-background min-h-[calc(100vh-4rem)]">

@@ -96,12 +96,38 @@ const calendarCache = {
 };
 const CALENDAR_CACHE_TTL = 2 * 60_000;
 
+// localStorage persistence (tasks + profiles + stages + pipelines are week-independent)
+const CAL_LS_KEY = "crm:calendar_cache_v1";
+const CAL_LS_TTL = 15 * 60_000;
+
+type CalendarLS = {
+  tasks: Task[];
+  profiles: Profile[];
+  stages: Stage[];
+  pipelines: Pipeline[];
+};
+
+function readCalendarLS(): CalendarLS | null {
+  try {
+    const raw = localStorage.getItem(CAL_LS_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw) as { data: CalendarLS; ts: number };
+    if (Date.now() - ts > CAL_LS_TTL) return null;
+    return data;
+  } catch { return null; }
+}
+
+function writeCalendarLS(data: CalendarLS) {
+  try { localStorage.setItem(CAL_LS_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+}
+
 export default function CrmCalendario() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>(calendarCache.tasks || []);
-  const [profiles, setProfiles] = useState<Profile[]>(calendarCache.profiles || []);
-  const [appointments, setAppointments] = useState<Appointment[]>(calendarCache.appointments || []);
+  const [_lsInit] = useState<CalendarLS | null>(() => calendarCache.tasks ? null : readCalendarLS());
+  const [tasks, setTasks] = useState<Task[]>(() => calendarCache.tasks || _lsInit?.tasks || []);
+  const [profiles, setProfiles] = useState<Profile[]>(() => calendarCache.profiles || _lsInit?.profiles || []);
+  const [appointments, setAppointments] = useState<Appointment[]>(() => calendarCache.appointments || []);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [mainView, setMainView] = useState<MainView>("agendamentos");
   const [taskView, setTaskView] = useState<TaskViewMode>("events");
@@ -114,8 +140,8 @@ export default function CrmCalendario() {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [apptResultStatus, setApptResultStatus] = useState("");
   const [apptMoveStageId, setApptMoveStageId] = useState("");
-  const [crmStages, setCrmStages] = useState<Stage[]>(calendarCache.stages || []);
-  const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>(calendarCache.pipelines || []);
+  const [crmStages, setCrmStages] = useState<Stage[]>(() => calendarCache.stages || _lsInit?.stages || []);
+  const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>(() => calendarCache.pipelines || _lsInit?.pipelines || []);
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
   const [tenantCities, setTenantCities] = useState<string[]>([]);
 
@@ -163,13 +189,16 @@ export default function CrmCalendario() {
     const stgs = (stagesRes.data as Stage[]) || [];
     const pipes = (pipelinesRes.data as Pipeline[]) || [];
 
-    // Update cache
+    // Update module cache
     calendarCache.tasks = rawTasks;
     calendarCache.profiles = profs;
     calendarCache.appointments = rawAppts;
     calendarCache.stages = stgs;
     calendarCache.pipelines = pipes;
     calendarCache.timestamp = Date.now();
+
+    // Persist week-independent data to localStorage
+    writeCalendarLS({ tasks: rawTasks, profiles: profs, stages: stgs, pipelines: pipes });
 
     setTasks(rawTasks);
     setProfiles(profs);

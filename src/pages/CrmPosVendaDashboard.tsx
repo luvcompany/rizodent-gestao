@@ -34,23 +34,48 @@ type Metrics = {
 
 const ALLOWED_ROLES = ["posvenda", "crc", "gerente", "superadmin"];
 
+// ── Cache ──────────────────────────────────────────────────────────────────
+const _pvCache: { data: Metrics | null; ts: number } = { data: null, ts: 0 };
+const PV_MODULE_TTL = 2 * 60_000;
+const PV_LS_KEY = "crm:posvenda_cache_v1";
+const PV_LS_TTL = 15 * 60_000;
+
+function readPvCache(): Metrics | null {
+  if (_pvCache.data && Date.now() - _pvCache.ts < PV_MODULE_TTL) return _pvCache.data;
+  try {
+    const raw = localStorage.getItem(PV_LS_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw) as { data: Metrics; ts: number };
+    if (Date.now() - ts > PV_LS_TTL) return null;
+    _pvCache.data = data; _pvCache.ts = ts;
+    return data;
+  } catch { return null; }
+}
+
+function writePvCache(data: Metrics) {
+  _pvCache.data = data; _pvCache.ts = Date.now();
+  try { localStorage.setItem(PV_LS_KEY, JSON.stringify({ data, ts: _pvCache.ts })); } catch {}
+}
+// ──────────────────────────────────────────────────────────────────────────
+
 export default function CrmPosVendaDashboard() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<Metrics | null>(() => readPvCache());
+  const [loading, setLoading] = useState(!readPvCache());
   const [recalculating, setRecalculating] = useState(false);
 
   const canAccess = userRole && ALLOWED_ROLES.includes(userRole);
 
   const fetchMetrics = useCallback(async () => {
-    setLoading(true);
     const { data, error } = await supabase.rpc("posvenda_dashboard_metrics");
     if (error) {
       console.error("[Pós-Venda] erro:", error);
       toast.error("Erro ao carregar métricas: " + error.message);
     } else {
-      setMetrics(data as unknown as Metrics);
+      const m = data as unknown as Metrics;
+      writePvCache(m);
+      setMetrics(m);
     }
     setLoading(false);
   }, []);
