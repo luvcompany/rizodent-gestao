@@ -231,17 +231,47 @@ Deno.serve(async (req) => {
       // multi-step follow-up gets cancelled at msg1 every time the lead's stage
       // re-fires the automation, and only the first message ever gets sent.
       // Manual starts (user clicked) keep the previous "restart" behaviour.
+      //
+      // BUT: if an execution looks STUCK (active for > 10min, or waiting_reply
+      // without a timeout, or with timeout long expired and never picked up by
+      // the cron), we cancel it and restart fresh. Without this watchdog, a
+      // single failure leaves the lead unable to ever receive this bot again.
       if (trigger === "automation" || trigger === "automation_bulk") {
         const { data: existingForBot } = await supabase
           .from("bot_executions")
-          .select("id")
+          .select("id, status, started_at, timeout_at, updated_at")
           .eq("lead_id", leadId)
           .eq("bot_id", botId)
           .in("status", ["active", "waiting_reply"])
+          .order("started_at", { ascending: false })
           .limit(1);
+
         if (existingForBot && existingForBot.length > 0) {
-          console.log(`[bot-engine] Skipping automation start: bot ${botId} already running for lead ${leadId} (execution ${existingForBot[0].id})`);
-          return json({ success: true, skipped: true, reason: "already_running", executionId: existingForBot[0].id });
+          const exec: any = existingForBot[0];
+          const now = Date.now();
+          const startedMs = new Date(exec.started_at).getTime();
+          const updatedMs = exec.updated_at ? new Date(exec.updated_at).getTime() : startedMs;
+          const ageMin = (now - startedMs) / 60000;
+          const idleMin = (now - updatedMs) / 60000;
+          const timeoutExpiredHoursAgo = exec.timeout_at
+            ? (now - new Date(exec.timeout_at).getTime()) / 3600000
+            : 0;
+
+          const isStuck =
+            (exec.status === "active" && idleMin > 10) ||
+            (exec.status === "waiting_reply" && !exec.timeout_at && ageMin > 60 * 24 * 7) ||
+            (exec.status === "waiting_reply" && exec.timeout_at && timeoutExpiredHoursAgo > 1);
+
+          if (!isStuck) {
+            console.log(`[bot-engine] Skipping automation start: bot ${botId} already running for lead ${leadId} (execution ${exec.id}, status=${exec.status}, ageMin=${ageMin.toFixed(1)})`);
+            return json({ success: true, skipped: true, reason: "already_running", executionId: exec.id });
+          }
+
+          console.log(`[bot-engine] Detected STUCK execution ${exec.id} for lead ${leadId} bot ${botId} (status=${exec.status}, ageMin=${ageMin.toFixed(1)}, idleMin=${idleMin.toFixed(1)}, timeoutExpiredHoursAgo=${timeoutExpiredHoursAgo.toFixed(1)}). Cancelling and starting fresh.`);
+          await supabase
+            .from("bot_executions")
+            .update({ status: "error", completed_at: new Date().toISOString(), timeout_at: null })
+            .eq("id", exec.id);
         }
       }
 

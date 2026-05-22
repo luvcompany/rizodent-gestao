@@ -194,7 +194,51 @@ Deno.serve(async (req) => {
     }
 
     // =========================================================
+    // 0b. WATCHDOG — recover stuck bot_executions so the dedup check
+    //     in bot-engine doesn't permanently block this lead+bot pair.
+    //     Conditions for "stuck":
+    //       - status=active for > 15 min with no progress
+    //       - status=waiting_reply without timeout_at, older than 7 days
+    //       - status=waiting_reply with timeout_at expired > 6h ago
+    // =========================================================
+    try {
+      const nowIso = new Date().toISOString();
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60_000).toISOString();
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+      const sixHoursAgo = new Date(Date.now() - 6 * 3600_000).toISOString();
+
+      const { data: stuck1 } = await supabase
+        .from("bot_executions")
+        .update({ status: "error", completed_at: nowIso, timeout_at: null })
+        .eq("status", "active")
+        .lt("updated_at", fifteenMinAgo)
+        .select("id");
+      if (stuck1?.length) console.log(`[AUTOMATION-ENGINE] Watchdog: cleared ${stuck1.length} stuck "active" executions`);
+
+      const { data: stuck2 } = await supabase
+        .from("bot_executions")
+        .update({ status: "completed", completed_at: nowIso, timeout_at: null })
+        .eq("status", "waiting_reply")
+        .is("timeout_at", null)
+        .lt("started_at", sevenDaysAgo)
+        .select("id");
+      if (stuck2?.length) console.log(`[AUTOMATION-ENGINE] Watchdog: completed ${stuck2.length} ancient waiting_reply executions (no timeout)`);
+
+      const { data: stuck3 } = await supabase
+        .from("bot_executions")
+        .update({ status: "error", completed_at: nowIso, timeout_at: null })
+        .eq("status", "waiting_reply")
+        .not("timeout_at", "is", null)
+        .lt("timeout_at", sixHoursAgo)
+        .select("id");
+      if (stuck3?.length) console.log(`[AUTOMATION-ENGINE] Watchdog: cleared ${stuck3.length} executions with timeout expired > 6h ago`);
+    } catch (e: any) {
+      console.error("[AUTOMATION-ENGINE] Watchdog error:", e.message);
+    }
+
+    // =========================================================
     // 0. BOT TIMEOUT — check waiting_reply executions with expired timeout_at
+    // Increased limit from 10 → 100 so big follow-up flows don't bottleneck
     // =========================================================
     const { data: expiredExecutions } = await supabase
       .from("bot_executions")
@@ -202,7 +246,7 @@ Deno.serve(async (req) => {
       .eq("status", "waiting_reply")
       .not("timeout_at", "is", null)
       .lte("timeout_at", new Date().toISOString())
-      .limit(10);
+      .limit(100);
 
     // Reserve these executions immediately so the next cron tick doesn't pick them up
     // while we're still processing this batch (push timeout_at +5min into the future).
