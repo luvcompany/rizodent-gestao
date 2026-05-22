@@ -171,15 +171,20 @@ export default function CrmCalendario() {
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
       supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role").order("due_date"),
       supabase.from("profiles").select("id, nome"),
-      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),
+      // crm_appointments has denormalized lead_name/lead_cidade columns (populated by triggers)
+      // — no join needed, immune to RLS restrictions on crm_leads
+      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, lead_name, lead_cidade").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
     ]);
 
-    // Fetch lead data via SECURITY DEFINER RPC to bypass crm_leads RLS
-    // (which restricts CRC users from reading leads in the Pós-Venda pipeline).
-    // Without this, contracted leads appeared as "Lead" / "Sem cidade".
-    const apptLeadIds = (apptsRes.data || []).map((a: any) => a.lead_id).filter(Boolean);
+    // Build a fallback leads map for any appointment/task missing denormalized data
+    // (e.g. legacy rows before the migration ran, or tasks which don't have snapshot columns yet).
+    // Tries RPC first (bypasses RLS), then falls back to direct query.
+    const apptLeadIds = (apptsRes.data || [])
+      .filter((a: any) => !a.lead_name || !a.lead_cidade)
+      .map((a: any) => a.lead_id)
+      .filter(Boolean);
     const taskLeadIds = (tasksRes.data || []).map((t: any) => t.lead_id).filter(Boolean);
     const allLeadIds = [...new Set([...apptLeadIds, ...taskLeadIds])];
     let leadsData: any[] = [];
@@ -188,7 +193,6 @@ export default function CrmCalendario() {
       if (!rpcError && rpcData) {
         leadsData = rpcData;
       } else {
-        // Fallback to direct select if RPC isn't deployed yet
         const { data } = await supabase.from("crm_leads").select("id, name, cidade").in("id", allLeadIds);
         leadsData = data || [];
       }
@@ -202,8 +206,9 @@ export default function CrmCalendario() {
     const profs = (profilesRes.data as Profile[]) || [];
     const rawAppts = (apptsRes.data || []).map((a: any) => ({
       ...a,
-      lead_name: leadsMap.get(a.lead_id)?.name || "Lead",
-      lead_cidade: leadsMap.get(a.lead_id)?.cidade || null,
+      // Prefer denormalized snapshot, fallback to leadsMap, then "Lead" / null
+      lead_name: a.lead_name || leadsMap.get(a.lead_id)?.name || "Lead",
+      lead_cidade: a.lead_cidade || leadsMap.get(a.lead_id)?.cidade || null,
       is_rescheduled: a.is_rescheduled || false,
     })) as Appointment[];
     const stgs = (stagesRes.data as Stage[]) || [];

@@ -129,14 +129,22 @@ export default function CrmConversa() {
       ? Promise.resolve({ data: profilesCacheConv.data })
       : supabase.from("profiles").select("id, nome");
 
-    Promise.all([
-      supabase
-        .from("crm_leads")
-        .select("id, name, phone, instagram_user_id, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
-        .eq("id", id)
-        .single(),
-      profilesPromise,
-    ]).then(([leadRes, profilesRes]) => {
+    // Use SECURITY DEFINER RPC to bypass crm_leads RLS for leads in restricted
+    // pipelines (e.g. Pós-Venda). Falls back to direct query if RPC unavailable.
+    const leadPromise = supabase
+      .rpc("get_lead_for_conversation", { _lead_id: id })
+      .then(async (res: any) => {
+        if (!res.error && res.data && res.data.length > 0) {
+          return { data: res.data[0] };
+        }
+        return await supabase
+          .from("crm_leads")
+          .select("id, name, phone, instagram_user_id, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
+          .eq("id", id)
+          .single();
+      });
+
+    Promise.all([leadPromise, profilesPromise]).then(([leadRes, profilesRes]) => {
       if (leadRes.data) setLead(leadRes.data as Lead);
       if (profilesRes.data) {
         profilesCacheConv.data = profilesRes.data as any;
