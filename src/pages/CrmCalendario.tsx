@@ -176,15 +176,24 @@ export default function CrmCalendario() {
       supabase.from("crm_pipelines").select("id, name"),
     ]);
 
-    // Fetch lead data separately to avoid RLS join issues (leads in Pós-Venda
-    // pipeline were invisible via join even when the appointment was accessible).
+    // Fetch lead data via SECURITY DEFINER RPC to bypass crm_leads RLS
+    // (which restricts CRC users from reading leads in the Pós-Venda pipeline).
+    // Without this, contracted leads appeared as "Lead" / "Sem cidade".
     const apptLeadIds = (apptsRes.data || []).map((a: any) => a.lead_id).filter(Boolean);
     const taskLeadIds = (tasksRes.data || []).map((t: any) => t.lead_id).filter(Boolean);
     const allLeadIds = [...new Set([...apptLeadIds, ...taskLeadIds])];
-    const leadsRes = allLeadIds.length
-      ? await supabase.from("crm_leads").select("id, name, cidade").in("id", allLeadIds)
-      : { data: [] };
-    const leadsMap = new Map((leadsRes.data || []).map((l: any) => [l.id, l]));
+    let leadsData: any[] = [];
+    if (allLeadIds.length) {
+      const { data: rpcData, error: rpcError } = await supabase.rpc("get_leads_for_calendar", { _lead_ids: allLeadIds });
+      if (!rpcError && rpcData) {
+        leadsData = rpcData;
+      } else {
+        // Fallback to direct select if RPC isn't deployed yet
+        const { data } = await supabase.from("crm_leads").select("id, name, cidade").in("id", allLeadIds);
+        leadsData = data || [];
+      }
+    }
+    const leadsMap = new Map(leadsData.map((l: any) => [l.id, l]));
 
     const rawTasks = (tasksRes.data || []).map((t: any) => ({
       ...t,
