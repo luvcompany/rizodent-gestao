@@ -85,6 +85,15 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (targetRoleRow?.role === "posvenda") {
+      // Hard rule: only leads in a "Contratado" stage can be sent to Pós-venda.
+      const { data: currentStage } = await supabase
+        .from("crm_stages").select("name").eq("id", (lead as any).stage_id).maybeSingle();
+      const stageName = (currentStage as any)?.name || "";
+      const isContracted = /contrat/i.test(stageName) && !/n[ãa]o\s*contrat/i.test(stageName);
+      if (!isContracted) {
+        return json({ error: "Apenas leads na etapa 'Contratado' podem ser enviados para o Pós-venda." }, 400);
+      }
+
       // Find a pipeline that explicitly allows posvenda (within the lead's tenant when possible)
       const { data: pipelines } = await supabase
         .from("crm_pipelines")
