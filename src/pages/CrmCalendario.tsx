@@ -169,21 +169,32 @@ export default function CrmCalendario() {
     }
 
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
-      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role, crm_leads(name)").order("due_date"),
+      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role").order("due_date"),
       supabase.from("profiles").select("id, nome"),
-      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, crm_leads(name, cidade)").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),
+      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
     ]);
+
+    // Fetch lead data separately to avoid RLS join issues (leads in Pós-Venda
+    // pipeline were invisible via join even when the appointment was accessible).
+    const apptLeadIds = (apptsRes.data || []).map((a: any) => a.lead_id).filter(Boolean);
+    const taskLeadIds = (tasksRes.data || []).map((t: any) => t.lead_id).filter(Boolean);
+    const allLeadIds = [...new Set([...apptLeadIds, ...taskLeadIds])];
+    const leadsRes = allLeadIds.length
+      ? await supabase.from("crm_leads").select("id, name, cidade").in("id", allLeadIds)
+      : { data: [] };
+    const leadsMap = new Map((leadsRes.data || []).map((l: any) => [l.id, l]));
+
     const rawTasks = (tasksRes.data || []).map((t: any) => ({
       ...t,
-      lead_name: t.crm_leads?.name || "Lead",
+      lead_name: leadsMap.get(t.lead_id)?.name || "Lead",
     })) as Task[];
     const profs = (profilesRes.data as Profile[]) || [];
     const rawAppts = (apptsRes.data || []).map((a: any) => ({
       ...a,
-      lead_name: a.crm_leads?.name || "Lead",
-      lead_cidade: a.crm_leads?.cidade || null,
+      lead_name: leadsMap.get(a.lead_id)?.name || "Lead",
+      lead_cidade: leadsMap.get(a.lead_id)?.cidade || null,
       is_rescheduled: a.is_rescheduled || false,
     })) as Appointment[];
     const stgs = (stagesRes.data as Stage[]) || [];
