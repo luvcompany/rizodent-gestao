@@ -226,7 +226,26 @@ Deno.serve(async (req) => {
     if (trigger === "manual_start" || trigger === "automation" || trigger === "automation_bulk") {
       if (!botId) return json({ error: "Missing botId" }, 400);
 
-      // Cancel any active executions for this lead
+      // For automation triggers (stage on_enter/on_create_or_enter, etc.), do NOT
+      // restart a bot that is already mid-flow for this same lead+bot. Otherwise a
+      // multi-step follow-up gets cancelled at msg1 every time the lead's stage
+      // re-fires the automation, and only the first message ever gets sent.
+      // Manual starts (user clicked) keep the previous "restart" behaviour.
+      if (trigger === "automation" || trigger === "automation_bulk") {
+        const { data: existingForBot } = await supabase
+          .from("bot_executions")
+          .select("id")
+          .eq("lead_id", leadId)
+          .eq("bot_id", botId)
+          .in("status", ["active", "waiting_reply"])
+          .limit(1);
+        if (existingForBot && existingForBot.length > 0) {
+          console.log(`[bot-engine] Skipping automation start: bot ${botId} already running for lead ${leadId} (execution ${existingForBot[0].id})`);
+          return json({ success: true, skipped: true, reason: "already_running", executionId: existingForBot[0].id });
+        }
+      }
+
+      // Cancel any active executions for this lead (different bots, or manual restart)
       await supabase
         .from("bot_executions")
         .update({ status: "cancelled", completed_at: new Date().toISOString() })
