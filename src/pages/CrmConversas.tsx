@@ -69,23 +69,26 @@ type LeadConversation = {
   instagram_profile_pic_url?: string | null;
 };
 
+type PipelineWithRoles = { id: string; name: string; allowed_roles: string[] | null };
+
 // Global cache for leads list — survives component remounts
 const leadsListCache = {
   cacheKey: null as string | null,
   leads: null as LeadConversation[] | null,
   profiles: null as { id: string; nome: string }[] | null,
-  pipelines: null as { id: string; name: string }[] | null,
+  pipelines: null as PipelineWithRoles[] | null,
   timestamp: 0,
 };
 const LEADS_CACHE_TTL = 2 * 60_000; // 2 minutes
 
 // ── localStorage: persiste entre reloads ────────────────────────────────────
-const CONV_LS_KEY = "crm:conversas_cache_v1";
+// v2: invalidate previous cache after RLS revert (Pós-Venda leak fix)
+const CONV_LS_KEY = "crm:conversas_cache_v2";
 const CONV_LS_TTL = 10 * 60_000;
 type ConversasLSData = {
   leads: LeadConversation[];
   profiles: { id: string; nome: string }[];
-  pipelines: { id: string; name: string }[];
+  pipelines: PipelineWithRoles[];
 };
 function readConversasLS(cacheKey: string): ConversasLSData | null {
   try {
@@ -169,7 +172,7 @@ interface ConversationsViewProps {
 }
 
 function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp", channelFilter }: ConversationsViewProps = {}) {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const { tenant } = useTenant();
   const cacheKey = tenant.id && user?.id ? `${tenant.id}:${user.id}` : null;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -202,7 +205,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
   const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? (leadsListCache.profiles || []) : (_lsData?.profiles || []));
-  const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>(() => canUseInitialCache ? (leadsListCache.pipelines || []) : (_lsData?.pipelines || []));
+  const [pipelines, setPipelines] = useState<PipelineWithRoles[]>(() => canUseInitialCache ? (leadsListCache.pipelines || []) : (_lsData?.pipelines || []));
   const [activeExecution, setActiveExecution] = useState<{
     id: string; status: string; bot_name?: string;
   } | null>(null);
@@ -278,10 +281,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
           fetchAllConversationLeads(tenant.id),
           supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
-          supabase.from("crm_pipelines").select("id, name").eq("tenant_id", tenant.id).order("created_at"),
+          supabase.from("crm_pipelines").select("id, name, allowed_roles").eq("tenant_id", tenant.id).order("created_at"),
         ]);
         const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
-        const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
+        const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
         leadsListCache.cacheKey = cacheKey;
         leadsListCache.leads = rawLeads;
         leadsListCache.profiles = profs;
@@ -299,10 +302,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
         fetchAllConversationLeads(tenant.id),
         supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
-        supabase.from("crm_pipelines").select("id, name").eq("tenant_id", tenant.id).order("created_at"),
+        supabase.from("crm_pipelines").select("id, name, allowed_roles").eq("tenant_id", tenant.id).order("created_at"),
       ]);
       const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
-      const pipes = (pipelinesRes.data as { id: string; name: string }[]) || [];
+      const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
 
       leadsListCache.cacheKey = cacheKey;
       leadsListCache.leads = rawLeads;
@@ -598,9 +601,33 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     };
   }, [leads]);
 
+  // Defensive: compute pipelines that this user's role should NOT see.
+  // Mirrors backend can_access_pipeline() so the UI never leaks Pós-Venda leads
+  // into CRC's Conversas list even if RLS is misconfigured or cache is stale.
+  // Rule: pipeline is accessible if
+  //   - user is superadmin, OR
+  //   - pipeline.allowed_roles is NULL/empty AND user is crc/gerente, OR
+  //   - user's role is in pipeline.allowed_roles
+  const inaccessiblePipelineIds = useMemo(() => {
+    const role = userRole;
+    if (!role || role === "superadmin") return new Set<string>();
+    const blocked = new Set<string>();
+    for (const p of pipelines) {
+      const roles = p.allowed_roles;
+      const isOpen = !roles || roles.length === 0;
+      const userInRoles = roles?.includes(role);
+      const crcDefaults = isOpen && (role === "crc" || role === "gerente");
+      const accessible = crcDefaults || userInRoles;
+      if (!accessible) blocked.add(p.id);
+    }
+    return blocked;
+  }, [pipelines, userRole]);
+
   // Apply filters
   const filtered = useMemo(() => {
     return leads.filter((l) => {
+      // Defensive: hide leads from pipelines this role can't access
+      if (l.pipeline_id && inaccessiblePipelineIds.has(l.pipeline_id)) return false;
       // Tab-level pipeline scoping (WhatsApp vs Instagram)
       if (pipelineFilter && l.pipeline_id !== pipelineFilter) return false;
       if (excludePipelines && excludePipelines.includes(l.pipeline_id)) return false;
@@ -698,7 +725,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       }
       return true;
     });
-  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap, inaccessiblePipelineIds]);
 
   // Sorting
   const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
