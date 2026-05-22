@@ -348,8 +348,17 @@ export default function CrmCalendario() {
     return all.filter(d => d.getDay() !== 0); // Exclude Sunday
   }, [currentDate]);
 
-  // City rows from tenant's clinicas table (empty for new tenants)
-  const apptCities = tenantCities;
+  // City rows: start with known cities from clinicas, then add any cities
+  // found in this week's appointments (including "Sem cidade" for leads
+  // with no cidade set). This prevents appointments from disappearing when
+  // a lead's cidade is null or doesn't match a clinica city.
+  const apptCities = useMemo(() => {
+    const known = new Set(tenantCities);
+    const fromAppts = appointments.map(a => a.lead_cidade || "Sem cidade");
+    const extra = fromAppts.filter(c => !known.has(c));
+    const uniqueExtra = [...new Set(extra)];
+    return [...tenantCities, ...uniqueExtra];
+  }, [tenantCities, appointments]);
 
   return (
     <div className="flex flex-col h-full -m-6 p-4" style={{ height: "calc(100vh - 4rem)" }}>

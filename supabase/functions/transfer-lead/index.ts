@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const isPrivileged = roleRow?.role === "crc" || roleRow?.role === "gerente" || isSuperadmin;
+    const isPrivileged = roleRow?.role === "crc" || roleRow?.role === "gerente" || roleRow?.role === "posvenda" || isSuperadmin;
     const canTransfer = isPrivileged || lead.assigned_to === user.id || lead.assigned_to === null;
     if (!canTransfer) return json({ error: "Forbidden" }, 403);
 
