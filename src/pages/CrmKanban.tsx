@@ -166,7 +166,13 @@ const NewLeadDialog = memo(function NewLeadDialog({
       position: leadCountByStage[currentForm.stage_id] || 0,
       assigned_to: userId || null,
     }).select("id").single();
-    if (error) { toast.error("Erro ao criar lead"); return; }
+    if (error) {
+      console.error("[Kanban] Erro ao criar lead:", error);
+      const detail = (error as any).message || (error as any).details || "Erro desconhecido";
+      const code = (error as any).code ? ` [${(error as any).code}]` : "";
+      toast.error(`Erro ao criar lead${code}: ${detail}`, { duration: 10000 });
+      return;
+    }
     toast.success("Lead criado com sucesso");
     invalidateKanbanCache();
     if (inserted?.id) {
