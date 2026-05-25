@@ -491,7 +491,9 @@ export type Database = {
           created_at: string
           id: string
           is_rescheduled: boolean
+          lead_cidade: string | null
           lead_id: string
+          lead_name: string | null
           notes: string | null
           owner_role: Database["public"]["Enums"]["app_role"] | null
           scheduled_date: string
@@ -507,7 +509,9 @@ export type Database = {
           created_at?: string
           id?: string
           is_rescheduled?: boolean
+          lead_cidade?: string | null
           lead_id: string
+          lead_name?: string | null
           notes?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
           scheduled_date: string
@@ -523,7 +527,9 @@ export type Database = {
           created_at?: string
           id?: string
           is_rescheduled?: boolean
+          lead_cidade?: string | null
           lead_id?: string
+          lead_name?: string | null
           notes?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
           scheduled_date?: string
@@ -3259,6 +3265,60 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: string
       }
+      get_lead_for_conversation: {
+        Args: { _lead_id: string }
+        Returns: {
+          ad_account_id: string | null
+          ad_account_name: string | null
+          ad_id: string | null
+          assigned_to: string | null
+          automation_paused: boolean | null
+          blocked_at: string | null
+          blocked_by: string | null
+          cidade: string | null
+          created_at: string
+          descricao_anuncio: string | null
+          first_inbound_at: string | null
+          follow_up_count: number | null
+          has_task: boolean
+          id: string
+          ig_account_uuid: string | null
+          imagem_origem: string | null
+          instagram_profile_pic_url: string | null
+          instagram_user_id: string | null
+          instagram_username: string | null
+          is_blocked: boolean
+          last_inbound_at: string | null
+          last_message: string | null
+          last_message_at: string | null
+          last_outbound_at: string | null
+          link_anuncio: string | null
+          name: string
+          nome_anuncio: string | null
+          notes: string | null
+          paciente_id: string | null
+          phone: string | null
+          pipeline_id: string
+          position: number
+          score: number
+          servico_interesse: string | null
+          source: string | null
+          stage_id: string
+          tags: string[] | null
+          task_overdue: boolean
+          tenant_id: string | null
+          titulo_anuncio: string | null
+          updated_at: string
+          value: number | null
+          whatsapp_number_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "crm_leads"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_lead_stage_history_names: {
         Args: { _lead_id: string }
         Returns: {
@@ -3266,6 +3326,14 @@ export type Database = {
           id: string
           name: string
           pipeline_id: string
+        }[]
+      }
+      get_leads_for_calendar: {
+        Args: { _lead_ids: string[] }
+        Returns: {
+          cidade: string
+          id: string
+          name: string
         }[]
       }
       get_tenant_by_slug: {
@@ -3303,6 +3371,14 @@ export type Database = {
         | { Args: never; Returns: undefined }
         | { Args: { p_batch_size?: number }; Returns: number }
       recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
+      recover_stuck_bot_executions: {
+        Args: never
+        Returns: {
+          cleared_active: number
+          cleared_expired: number
+          completed_orphans: number
+        }[]
+      }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
       update_whatsapp_template_sharing: {
