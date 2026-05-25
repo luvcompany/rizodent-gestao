@@ -1,0 +1,1 @@
+SELECT cron.unschedule('auto-transfer-contracted-to-posvenda');
