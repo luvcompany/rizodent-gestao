@@ -153,23 +153,41 @@ Deno.serve(async (req) => {
         let targetStageName: string | null = null;
 
         if (allowedIds.length) {
-          const { data: history } = await supabase
-            .from("crm_lead_stage_history")
-            .select("stage_id, entered_at, crm_stages!inner(id, name, pipeline_id)")
-            .eq("lead_id", leadId)
-            .in("crm_stages.pipeline_id", allowedIds)
-            .order("entered_at", { ascending: false })
-            .limit(1);
+          // Get all stages belonging to CRC-accessible pipelines, then find the
+          // most recent stage_history entry whose stage_id is in that set.
+          // (Avoid !inner FK syntax which can silently return 0 rows and force
+          // the fallback to "Novo Lead".)
+          const { data: allowedStages } = await supabase
+            .from("crm_stages")
+            .select("id, name, pipeline_id")
+            .in("pipeline_id", allowedIds);
+          const stageMap = new Map<string, { name: string; pipeline_id: string }>();
+          (allowedStages || []).forEach((s: any) => stageMap.set(s.id, { name: s.name, pipeline_id: s.pipeline_id }));
+          const allowedStageIds = Array.from(stageMap.keys());
 
-          const last = (history as any[])?.[0];
-          if (last) {
-            targetStageId = last.stage_id;
-            targetStageName = last.crm_stages?.name || null;
-            targetPipelineId = last.crm_stages?.pipeline_id || null;
-            const pip = (crcPipelines || []).find((p: any) => p.id === targetPipelineId);
-            targetPipelineName = pip?.name || null;
+          if (allowedStageIds.length) {
+            const { data: history } = await supabase
+              .from("crm_lead_stage_history")
+              .select("stage_id, entered_at")
+              .eq("lead_id", leadId)
+              .in("stage_id", allowedStageIds)
+              .order("entered_at", { ascending: false })
+              .limit(1);
+
+            const last = (history as any[])?.[0];
+            if (last) {
+              const info = stageMap.get(last.stage_id);
+              if (info) {
+                targetStageId = last.stage_id;
+                targetStageName = info.name;
+                targetPipelineId = info.pipeline_id;
+                const pip = (crcPipelines || []).find((p: any) => p.id === targetPipelineId);
+                targetPipelineName = pip?.name || null;
+              }
+            }
           }
         }
+
 
         // Fallback: Funil Principal → first stage
         if (!targetStageId) {
