@@ -95,6 +95,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
+    // Limpa TODOS os caches e preferências do CRM no localStorage antes de
+    // sair, para evitar que o próximo usuário (login no mesmo navegador)
+    // veja dados, filtros ou estado de UX do usuário anterior.
+    try {
+      const toRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("crm:")) toRemove.push(key);
+      }
+      toRemove.forEach(k => localStorage.removeItem(k));
+    } catch {
+      // localStorage indisponível em alguns contextos (private mode, SSR) — ignora
+    }
     await supabase.auth.signOut();
   };
 

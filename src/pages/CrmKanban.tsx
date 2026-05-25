@@ -348,20 +348,27 @@ type KanbanCacheEntry = {
   taskAnyLeadIds: Set<string>;
 };
 const kanbanDataCache: {
+  userId: string | null;
   pipelineId: string | null;
   entry: KanbanCacheEntry | null;
   timestamp: number;
-} = { pipelineId: null, entry: null, timestamp: 0 };
+} = { userId: null, pipelineId: null, entry: null, timestamp: 0 };
 const KANBAN_CACHE_TTL = 2 * 60_000;
-export const invalidateKanbanCache = () => { kanbanDataCache.timestamp = 0; };
+export const invalidateKanbanCache = () => {
+  kanbanDataCache.timestamp = 0;
+  kanbanDataCache.entry = null;
+  kanbanDataCache.userId = null;
+  kanbanDataCache.pipelineId = null;
+};
 
 // ── localStorage: persiste o cache entre reloads de página ──────────────────
-const KANBAN_LS_KEY = "crm:kanban_cache_v1";
+// v2: chave passa a incluir o user.id para evitar vazamento entre usuários
+const KANBAN_LS_KEY = "crm:kanban_cache_v2";
 const KANBAN_LS_TTL = 15 * 60_000;
 
-function loadKanbanCacheFromLS(pipelineId: string): KanbanCacheEntry | null {
+function loadKanbanCacheFromLS(userId: string, pipelineId: string): KanbanCacheEntry | null {
   try {
-    const raw = localStorage.getItem(`${KANBAN_LS_KEY}:${pipelineId}`);
+    const raw = localStorage.getItem(`${KANBAN_LS_KEY}:${userId}:${pipelineId}`);
     if (!raw) return null;
     const { entry, ts } = JSON.parse(raw);
     if (Date.now() - ts > KANBAN_LS_TTL) return null;
@@ -377,7 +384,7 @@ function loadKanbanCacheFromLS(pipelineId: string): KanbanCacheEntry | null {
   } catch { return null; }
 }
 
-function saveKanbanCacheToLS(pipelineId: string, entry: KanbanCacheEntry): void {
+function saveKanbanCacheToLS(userId: string, pipelineId: string, entry: KanbanCacheEntry): void {
   try {
     const serializable = {
       ...entry,
@@ -388,18 +395,21 @@ function saveKanbanCacheToLS(pipelineId: string, entry: KanbanCacheEntry): void 
       taskOverdueLeadIds: Array.from(entry.taskOverdueLeadIds),
       taskAnyLeadIds: Array.from(entry.taskAnyLeadIds),
     };
-    localStorage.setItem(`${KANBAN_LS_KEY}:${pipelineId}`, JSON.stringify({ entry: serializable, ts: Date.now() }));
+    localStorage.setItem(`${KANBAN_LS_KEY}:${userId}:${pipelineId}`, JSON.stringify({ entry: serializable, ts: Date.now() }));
   } catch {} // QuotaExceededError silenciado
 }
 
 export default function CrmKanban() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
-  // Lê o cache do localStorage uma única vez no primeiro render para evitar spinner
+  // Lê o cache do localStorage uma única vez no primeiro render para evitar spinner.
+  // CRÍTICO: chave inclui user.id para não vazar dados entre usuários quando
+  // troca de sessão no mesmo navegador (CRC ↔ Pós-Venda).
   const [_lsInit] = useState<KanbanCacheEntry | null>(() => {
+    if (!user?.id) return null;
     const stored = typeof window !== "undefined" ? localStorage.getItem("crm:lastPipelineId") : null;
     if (!stored) return null;
-    return loadKanbanCacheFromLS(stored);
+    return loadKanbanCacheFromLS(user.id, stored);
   });
   const [pipelines, setPipelines] = useState<Pipeline[]>(_lsInit?.pipelines || []);
   const [pipeline, setPipeline] = useState<Pipeline | null>(() => {
@@ -458,8 +468,10 @@ export default function CrmKanban() {
     const isPosvendaOnly = userRole === "posvenda";
 
     // ── Cache hit: serve os dados instantaneamente ──────────────────────────
+    // Inclui userId no check para invalidar quando trocar de usuário.
     if (
       kanbanDataCache.entry &&
+      kanbanDataCache.userId === (user?.id ?? null) &&
       kanbanDataCache.pipelineId === (targetPipelineId ?? null) &&
       Date.now() - kanbanDataCache.timestamp < KANBAN_CACHE_TTL
     ) {
@@ -720,6 +732,7 @@ export default function CrmKanban() {
     setTaskAnyLeadIds(taskAnyIds);
 
     // ── Salva no cache (depois dos pagamentos para ter dados completos) ──────
+    kanbanDataCache.userId = user?.id ?? null;
     kanbanDataCache.pipelineId = p.id;
     kanbanDataCache.timestamp = Date.now();
     kanbanDataCache.entry = {
@@ -736,8 +749,8 @@ export default function CrmKanban() {
       taskOverdueLeadIds: taskOverdueIds,
       taskAnyLeadIds: taskAnyIds,
     };
-    saveKanbanCacheToLS(p.id, kanbanDataCache.entry);
-  }, [pipeline?.id, userRole]);
+    if (user?.id) saveKanbanCacheToLS(user.id, p.id, kanbanDataCache.entry);
+  }, [pipeline?.id, userRole, user?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

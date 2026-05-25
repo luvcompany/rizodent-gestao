@@ -35,34 +35,45 @@ type Metrics = {
 const ALLOWED_ROLES = ["posvenda", "crc", "gerente", "superadmin"];
 
 // ── Cache ──────────────────────────────────────────────────────────────────
-const _pvCache: { data: Metrics | null; ts: number } = { data: null, ts: 0 };
+// v2: inclui user.id para isolar caches entre usuários no mesmo navegador
+const _pvCache: { userId: string | null; data: Metrics | null; ts: number } = {
+  userId: null, data: null, ts: 0,
+};
 const PV_MODULE_TTL = 2 * 60_000;
-const PV_LS_KEY = "crm:posvenda_cache_v1";
+const PV_LS_KEY = "crm:posvenda_cache_v2";
 const PV_LS_TTL = 15 * 60_000;
 
-function readPvCache(): Metrics | null {
-  if (_pvCache.data && Date.now() - _pvCache.ts < PV_MODULE_TTL) return _pvCache.data;
+export const invalidatePosVendaCache = () => {
+  _pvCache.userId = null; _pvCache.data = null; _pvCache.ts = 0;
+};
+
+function readPvCache(userId: string | null | undefined): Metrics | null {
+  if (!userId) return null;
+  if (_pvCache.userId === userId && _pvCache.data && Date.now() - _pvCache.ts < PV_MODULE_TTL) {
+    return _pvCache.data;
+  }
   try {
-    const raw = localStorage.getItem(PV_LS_KEY);
+    const raw = localStorage.getItem(`${PV_LS_KEY}:${userId}`);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw) as { data: Metrics; ts: number };
     if (Date.now() - ts > PV_LS_TTL) return null;
-    _pvCache.data = data; _pvCache.ts = ts;
+    _pvCache.userId = userId; _pvCache.data = data; _pvCache.ts = ts;
     return data;
   } catch { return null; }
 }
 
-function writePvCache(data: Metrics) {
-  _pvCache.data = data; _pvCache.ts = Date.now();
-  try { localStorage.setItem(PV_LS_KEY, JSON.stringify({ data, ts: _pvCache.ts })); } catch {}
+function writePvCache(userId: string | null | undefined, data: Metrics) {
+  if (!userId) return;
+  _pvCache.userId = userId; _pvCache.data = data; _pvCache.ts = Date.now();
+  try { localStorage.setItem(`${PV_LS_KEY}:${userId}`, JSON.stringify({ data, ts: _pvCache.ts })); } catch {}
 }
 // ──────────────────────────────────────────────────────────────────────────
 
 export default function CrmPosVendaDashboard() {
   const navigate = useNavigate();
-  const { userRole } = useAuth();
-  const [metrics, setMetrics] = useState<Metrics | null>(() => readPvCache());
-  const [loading, setLoading] = useState(!readPvCache());
+  const { user, userRole } = useAuth();
+  const [metrics, setMetrics] = useState<Metrics | null>(() => readPvCache(user?.id));
+  const [loading, setLoading] = useState(!readPvCache(user?.id));
   const [recalculating, setRecalculating] = useState(false);
 
   const canAccess = userRole && ALLOWED_ROLES.includes(userRole);
@@ -74,11 +85,11 @@ export default function CrmPosVendaDashboard() {
       toast.error("Erro ao carregar métricas: " + error.message);
     } else {
       const m = data as unknown as Metrics;
-      writePvCache(m);
+      writePvCache(user?.id, m);
       setMetrics(m);
     }
     setLoading(false);
-  }, []);
+  }, [user?.id]);
 
   const recalculateScores = async () => {
     setRecalculating(true);

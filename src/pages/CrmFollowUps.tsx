@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,34 +56,46 @@ type FollowUpsCache = {
   pipelines: Pipeline[];
   stages: Stage[];
 };
-const _fuCache: { data: FollowUpsCache | null; ts: number } = { data: null, ts: 0 };
+// v2: chave inclui user.id para não vazar entre usuários no mesmo navegador
+const _fuCache: { userId: string | null; data: FollowUpsCache | null; ts: number } = {
+  userId: null, data: null, ts: 0,
+};
 const FU_MODULE_TTL = 2 * 60_000;
-const FU_LS_KEY = "crm:followups_cache_v1";
+const FU_LS_KEY = "crm:followups_cache_v2";
 const FU_LS_TTL = 15 * 60_000;
 
-function readFuCache(): FollowUpsCache | null {
-  if (_fuCache.data && Date.now() - _fuCache.ts < FU_MODULE_TTL) return _fuCache.data;
+export const invalidateFollowUpsCache = () => {
+  _fuCache.userId = null; _fuCache.data = null; _fuCache.ts = 0;
+};
+
+function readFuCache(userId: string | null | undefined): FollowUpsCache | null {
+  if (!userId) return null;
+  if (_fuCache.userId === userId && _fuCache.data && Date.now() - _fuCache.ts < FU_MODULE_TTL) {
+    return _fuCache.data;
+  }
   try {
-    const raw = localStorage.getItem(FU_LS_KEY);
+    const raw = localStorage.getItem(`${FU_LS_KEY}:${userId}`);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw) as { data: FollowUpsCache; ts: number };
     if (Date.now() - ts > FU_LS_TTL) return null;
-    _fuCache.data = data; _fuCache.ts = ts;
+    _fuCache.userId = userId; _fuCache.data = data; _fuCache.ts = ts;
     return data;
   } catch { return null; }
 }
 
-function writeFuCache(data: FollowUpsCache) {
-  _fuCache.data = data; _fuCache.ts = Date.now();
-  try { localStorage.setItem(FU_LS_KEY, JSON.stringify({ data, ts: _fuCache.ts })); } catch {}
+function writeFuCache(userId: string | null | undefined, data: FollowUpsCache) {
+  if (!userId) return;
+  _fuCache.userId = userId; _fuCache.data = data; _fuCache.ts = Date.now();
+  try { localStorage.setItem(`${FU_LS_KEY}:${userId}`, JSON.stringify({ data, ts: _fuCache.ts })); } catch {}
 }
 // ──────────────────────────────────────────────────────────────────────────
 
 export default function CrmFollowUps() {
-  const [_lsInit] = useState<FollowUpsCache | null>(() => readFuCache());
-  const [configs, setConfigs] = useState<(FollowUpConfig & { id: string })[]>(() => readFuCache()?.configs || []);
-  const [pipelines, setPipelines] = useState<Pipeline[]>(() => readFuCache()?.pipelines || []);
-  const [stages, setStages] = useState<Stage[]>(() => readFuCache()?.stages || []);
+  const { user } = useAuth();
+  const [_lsInit] = useState<FollowUpsCache | null>(() => readFuCache(user?.id));
+  const [configs, setConfigs] = useState<(FollowUpConfig & { id: string })[]>(() => readFuCache(user?.id)?.configs || []);
+  const [pipelines, setPipelines] = useState<Pipeline[]>(() => readFuCache(user?.id)?.pipelines || []);
+  const [stages, setStages] = useState<Stage[]>(() => readFuCache(user?.id)?.stages || []);
   const [loading, setLoading] = useState(!_lsInit);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FollowUpConfig>(emptyConfig());
@@ -128,9 +141,9 @@ export default function CrmFollowUps() {
     setConfigs(mapped);
     setPipelines(pipes);
     setStages(stgs);
-    writeFuCache({ configs: mapped, pipelines: pipes, stages: stgs });
+    writeFuCache(user?.id, { configs: mapped, pipelines: pipes, stages: stgs });
     setLoading(false);
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

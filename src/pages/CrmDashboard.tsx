@@ -57,15 +57,25 @@ type DashboardCacheData = {
   leadsToday: number;
   faturamentoMes: number;
 };
-const _dashCache: { data: DashboardCacheData | null; ts: number } = { data: null, ts: 0 };
+// v2: chave inclui user.id para isolar caches entre usuários
+const _dashCache: { userId: string | null; data: DashboardCacheData | null; ts: number } = {
+  userId: null, data: null, ts: 0,
+};
 const DASH_CACHE_TTL = 2 * 60_000;
-const DASH_LS_KEY = "crm:dashboard_cache_v1";
+const DASH_LS_KEY = "crm:dashboard_cache_v2";
 const DASH_LS_TTL = 15 * 60_000;
 
-function readDashCache(): DashboardCacheData | null {
-  if (_dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return _dashCache.data;
+export const invalidateDashboardCache = () => {
+  _dashCache.userId = null; _dashCache.data = null; _dashCache.ts = 0;
+};
+
+function readDashCache(userId: string | null | undefined): DashboardCacheData | null {
+  if (!userId) return null;
+  if (_dashCache.userId === userId && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) {
+    return _dashCache.data;
+  }
   try {
-    const raw = localStorage.getItem(DASH_LS_KEY);
+    const raw = localStorage.getItem(`${DASH_LS_KEY}:${userId}`);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw);
     if (Date.now() - ts > DASH_LS_TTL) return null;
@@ -73,27 +83,29 @@ function readDashCache(): DashboardCacheData | null {
   } catch { return null; }
 }
 
-function writeDashCache(data: DashboardCacheData): void {
+function writeDashCache(userId: string | null | undefined, data: DashboardCacheData): void {
+  if (!userId) return;
+  _dashCache.userId = userId;
   _dashCache.data = data;
   _dashCache.ts = Date.now();
-  try { localStorage.setItem(DASH_LS_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+  try { localStorage.setItem(`${DASH_LS_KEY}:${userId}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
 }
 
 export default function CrmDashboard() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
   // Inicialização lazy: lê cache uma vez, evitando spinner quando há dados
-  const [tasks, setTasks] = useState<Task[]>(() => readDashCache()?.tasks || []);
-  const [appointments, setAppointments] = useState<Appointment[]>(() => readDashCache()?.appointments || []);
+  const [tasks, setTasks] = useState<Task[]>(() => readDashCache(user?.id)?.tasks || []);
+  const [appointments, setAppointments] = useState<Appointment[]>(() => readDashCache(user?.id)?.appointments || []);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [loading, setLoading] = useState(() => !readDashCache());
+  const [loading, setLoading] = useState(() => !readDashCache(user?.id));
   const [upcomingDays, setUpcomingDays] = useState("7");
-  const [leadsToday, setLeadsToday] = useState(() => readDashCache()?.leadsToday || 0);
-  const [faturamentoMes, setFaturamentoMes] = useState(() => readDashCache()?.faturamentoMes || 0);
+  const [leadsToday, setLeadsToday] = useState(() => readDashCache(user?.id)?.leadsToday || 0);
+  const [faturamentoMes, setFaturamentoMes] = useState(() => readDashCache(user?.id)?.faturamentoMes || 0);
 
   const fetchData = useCallback(async () => {
-    // Cache de módulo quente (navegação SPA) → pula fetch
-    if (_dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return;
+    // Cache de módulo quente (navegação SPA) → pula fetch (só se for do mesmo usuário)
+    if (_dashCache.userId === user?.id && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return;
     const todayStr = format(new Date(), "yyyy-MM-dd");
     const now = new Date();
     const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
@@ -139,7 +151,7 @@ export default function CrmDashboard() {
     // Faturamento do mês = soma direta de TODOS os pagamentos (mesma fonte do Dashboard principal)
     const totalFat = pagamentosAll.reduce((s: number, p: any) => s + Number(p.valor || 0), 0);
 
-    writeDashCache({ tasks: rawTasks, appointments: rawAppts, leadsToday: leadsCountRes.count || 0, faturamentoMes: totalFat });
+    writeDashCache(user?.id, { tasks: rawTasks, appointments: rawAppts, leadsToday: leadsCountRes.count || 0, faturamentoMes: totalFat });
     setLeadsToday(leadsCountRes.count || 0);
     setFaturamentoMes(totalFat);
     setLoading(false);
