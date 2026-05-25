@@ -168,9 +168,15 @@ const NewLeadDialog = memo(function NewLeadDialog({
     }).select("id").single();
     if (error) {
       console.error("[Kanban] Erro ao criar lead:", error);
+      const code = (error as any).code;
+      // 23505 = unique violation. Quase certo que é o phone já existente.
+      if (code === "23505" && /tenant_phone_uniq/i.test((error as any).message || "")) {
+        toast.error("Já existe um lead com esse telefone neste tenant. Procure pelo telefone no CRM para abrir a conversa existente.", { duration: 10000 });
+        return;
+      }
       const detail = (error as any).message || (error as any).details || "Erro desconhecido";
-      const code = (error as any).code ? ` [${(error as any).code}]` : "";
-      toast.error(`Erro ao criar lead${code}: ${detail}`, { duration: 10000 });
+      const codeStr = code ? ` [${code}]` : "";
+      toast.error(`Erro ao criar lead${codeStr}: ${detail}`, { duration: 10000 });
       return;
     }
     toast.success("Lead criado com sucesso");
@@ -189,7 +195,12 @@ const NewLeadDialog = memo(function NewLeadDialog({
     if (!form.name || !form.stage_id) { toast.error("Nome e etapa são obrigatórios"); return; }
     const normalizedPhone = form.phone ? normalizePhone(form.phone) : null;
     if (normalizedPhone) {
-      const { data: existing } = await supabase.rpc("check_duplicate_phone", { p_phone: normalizedPhone });
+      const { data: existing, error: dupErr } = await supabase.rpc("check_duplicate_phone", { p_phone: normalizedPhone });
+      if (dupErr) {
+        // Loga mas não bloqueia. Se a função estiver inacessível, deixa o
+        // UNIQUE constraint do banco proteger contra duplicação.
+        console.error("[Kanban] check_duplicate_phone falhou:", dupErr);
+      }
       if (existing && existing.length > 0) {
         const dup = existing[0] as any;
         const owner = profiles.find(p => p.id === dup.assigned_to);
