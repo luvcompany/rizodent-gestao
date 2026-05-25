@@ -232,6 +232,51 @@ const NewLeadDialog = memo(function NewLeadDialog({
     } finally { setTransferring(false); }
   };
 
+  // Move o lead EXISTENTE para a etapa/funil que o usuário estava criando.
+  // Útil quando o lead já existe mas em outra etapa (ex: voltar do Pós-Venda
+  // para o Funil Principal sem criar duplicata).
+  const handleMoveExisting = async () => {
+    if (!duplicateInfo) return;
+    const targetPipeline = form.pipeline_id
+      ? pipelines.find(p => p.id === form.pipeline_id)
+      : pipelines.find(p => p.id === defaultPipelineId) || pipelines[0];
+    if (!targetPipeline || !form.stage_id) {
+      toast.error("Selecione funil e etapa antes de mover");
+      return;
+    }
+    setTransferring(true);
+    try {
+      const { error } = await supabase.from("crm_leads")
+        .update({
+          stage_id: form.stage_id,
+          pipeline_id: targetPipeline.id,
+          assigned_to: userId || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", duplicateInfo.existingLeadId);
+      if (error) throw error;
+      toast.success(`Lead "${duplicateInfo.existingLeadName}" movido para a etapa atual`);
+      invalidateKanbanCache();
+      handleClose();
+      onCreated();
+    } catch (err: any) {
+      toast.error("Erro ao mover lead: " + (err.message || "Erro desconhecido"));
+    } finally { setTransferring(false); }
+  };
+
+  // Cria a duplicata mesmo sabendo que já existe. O usuário escolheu
+  // explicitamente. A constraint UNIQUE foi removida via migration.
+  const handleForceDuplicate = async () => {
+    if (!duplicateInfo) return;
+    setTransferring(true);
+    try {
+      await insertLead(duplicateInfo.phone, form);
+    } finally {
+      setTransferring(false);
+      setDuplicateInfo(null);
+    }
+  };
+
   const set = (field: string, value: string) => setForm(f => ({ ...f, [field]: value }));
 
   return (
@@ -302,25 +347,43 @@ const NewLeadDialog = memo(function NewLeadDialog({
                 )}
                 <p className="text-xs text-muted-foreground">Responsável: <strong>{duplicateInfo.ownerName}</strong></p>
               </div>
-              {duplicateInfo.ownerId !== userId ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Deseja transferir este lead para você? Todo o histórico de conversas será mantido.
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Escolha o que deseja fazer com este lead:
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  <Button
+                    className="w-full justify-start"
+                    onClick={handleMoveExisting}
+                    disabled={transferring}
+                  >
+                    <RefreshCw size={14} className={`mr-2 ${transferring ? "animate-spin" : ""}`} />
+                    Mover lead existente para esta etapa
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="w-full justify-start"
+                    onClick={handleForceDuplicate}
+                    disabled={transferring}
+                  >
+                    <AlertTriangle size={14} className="mr-2" />
+                    Duplicar mesmo assim (criar novo lead)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => setDuplicateInfo(null)}
+                    disabled={transferring}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+                {duplicateInfo.ownerId !== userId && (
+                  <p className="text-xs text-muted-foreground pt-2 border-t">
+                    💡 Se preferir, você também pode <button onClick={handleTransfer} disabled={transferring} className="text-primary underline hover:no-underline">transferir o lead atual para você</button> sem mover de etapa.
                   </p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={() => setDuplicateInfo(null)}>Cancelar</Button>
-                    <Button className="flex-1" onClick={handleTransfer} disabled={transferring}>
-                      <RefreshCw size={14} className={`mr-2 ${transferring ? "animate-spin" : ""}`} />
-                      {transferring ? "Transferindo..." : "Transferir para mim"}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">Este lead já está atribuído a você.</p>
-                  <Button variant="outline" className="w-full" onClick={() => setDuplicateInfo(null)}>Fechar</Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
