@@ -296,11 +296,19 @@ export default function CrmModelos() {
   };
 
 
-  const filtered = deduplicateTemplates(templates).filter(t => {
+  // Não deduplicar nesta tela de gestão: o usuário precisa enxergar TODOS os
+  // modelos (mesmo com mesmo nome base) para conseguir compartilhar individualmente.
+  const filtered = templates.filter(t => {
     if (tab === "aprovados" && t.status !== "APPROVED") return false;
     if (tab === "pendentes" && t.status !== "PENDING" && t.status !== "REJECTED") return false;
     const clean = cleanTemplateName(t.name).toLowerCase();
-    if (search && !clean.includes(search.toLowerCase()) && !(t.body_text || "").toLowerCase().includes(search.toLowerCase())) return false;
+    const rawName = (t.name || "").toLowerCase();
+    if (
+      search &&
+      !clean.includes(search.toLowerCase()) &&
+      !rawName.includes(search.toLowerCase()) &&
+      !(t.body_text || "").toLowerCase().includes(search.toLowerCase())
+    ) return false;
     if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
     return true;
   });
