@@ -108,21 +108,20 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
         };
 
-        // Verifica se já existe localmente (pelo meta_template_id)
-        const { data: existing } = await supabase
+        // Upsert por meta_template_id (unique constraint garante ausência de duplicatas)
+        const { data: existingRows } = await supabase
           .from("crm_whatsapp_templates")
           .select("id")
           .eq("meta_template_id", t.id)
-          .maybeSingle();
+          .limit(1);
+        const existing = existingRows && existingRows[0];
 
         if (existing) {
-          // Atualiza status e outros campos que podem ter mudado na Meta
           await supabase
             .from("crm_whatsapp_templates")
             .update(payload)
             .eq("id", existing.id);
         } else {
-          // Insere novo (pode ser template criado diretamente no Meta)
           await supabase.from("crm_whatsapp_templates").insert({
             ...payload,
             created_at: new Date().toISOString(),

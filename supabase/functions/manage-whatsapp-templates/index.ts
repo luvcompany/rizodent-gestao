@@ -156,11 +156,12 @@ Deno.serve(async (req) => {
       const metaTemplateIds = templates.map((t: any) => t.meta_template_id).filter(Boolean);
 
       for (const tmpl of templates) {
-        const { data: existing } = await supabase
+        const { data: existingRows } = await supabase
           .from("crm_whatsapp_templates")
           .select("id")
           .eq("meta_template_id", tmpl.meta_template_id)
-          .maybeSingle();
+          .limit(1);
+        const existing = existingRows && existingRows[0];
 
         if (existing) {
           await supabase
