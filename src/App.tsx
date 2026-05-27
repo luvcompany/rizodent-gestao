@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -6,49 +7,56 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import AppLayout from "./components/AppLayout";
-import CrmLayout from "./components/CrmLayout";
-import TenantLogin from "./pages/TenantLogin";
-import Dashboard from "./pages/Dashboard";
-import Atendimento from "./pages/Atendimento";
-import Pacientes from "./pages/Pacientes";
-import PacienteDetalhe from "./pages/PacienteDetalhe";
-import Relatorios from "./pages/Relatorios";
-import Marketing from "./pages/Marketing";
-import CadastroLeads from "./pages/CadastroLeads";
-import Usuarios from "./pages/Usuarios";
-import TiposProcedimento from "./pages/TiposProcedimento";
-import RegistroDiario from "./pages/RegistroDiario";
-import Configuracoes from "./pages/Configuracoes";
-import CrmKanban from "./pages/CrmKanban";
-import CrmAutomacoes from "./pages/CrmAutomacoes";
-import CrmModelos from "./pages/CrmModelos";
-import CrmConversa from "./pages/CrmConversa";
-import CrmIntegracoes from "./pages/CrmIntegracoes";
-import CrmRelatorios from "./pages/CrmRelatorios";
-import CrmConversas from "./pages/CrmConversas";
-import CrmCalendario from "./pages/CrmCalendario";
-import CrmFollowUps from "./pages/CrmFollowUps";
-import CrmBots from "./pages/CrmBots";
-import CrmBotEditor from "./pages/CrmBotEditor";
-import CrmDashboard from "./pages/CrmDashboard";
-import CrmPosVendaDashboard from "./pages/CrmPosVendaDashboard";
-import CrmExtras from "./pages/CrmExtras";
-import CrmConfiguracoes from "./pages/CrmConfiguracoes";
-import CrmRespostasRapidas from "./pages/CrmRespostasRapidas";
-import CrmCampanhas from "./pages/CrmCampanhas";
-import CrmIaConfig from "./pages/CrmIaConfig";
-import CrclinLanding from "./pages/CrclinLanding";
-import ChangePassword from "./pages/ChangePassword";
-import { AdminLayout, AdminClientes, AdminPlanos, AdminMetricas, AdminCobranca } from "./pages/admin/AdminPanel";
-import AdminClienteDetalhe from "./pages/admin/AdminClienteDetalhe";
-import AdminLogs from "./pages/admin/AdminLogs";
-import AdminLogin from "./pages/admin/AdminLogin";
-import NotFound from "./pages/NotFound";
+
+const AppLayout = lazy(() => import("./components/AppLayout"));
+const CrmLayout = lazy(() => import("./components/CrmLayout"));
+const TenantLogin = lazy(() => import("./pages/TenantLogin"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Atendimento = lazy(() => import("./pages/Atendimento"));
+const Pacientes = lazy(() => import("./pages/Pacientes"));
+const PacienteDetalhe = lazy(() => import("./pages/PacienteDetalhe"));
+const Relatorios = lazy(() => import("./pages/Relatorios"));
+const Marketing = lazy(() => import("./pages/Marketing"));
+const CadastroLeads = lazy(() => import("./pages/CadastroLeads"));
+const Usuarios = lazy(() => import("./pages/Usuarios"));
+const TiposProcedimento = lazy(() => import("./pages/TiposProcedimento"));
+const RegistroDiario = lazy(() => import("./pages/RegistroDiario"));
+const Configuracoes = lazy(() => import("./pages/Configuracoes"));
+const CrmKanban = lazy(() => import("./pages/CrmKanban"));
+const CrmAutomacoes = lazy(() => import("./pages/CrmAutomacoes"));
+const CrmModelos = lazy(() => import("./pages/CrmModelos"));
+const CrmConversa = lazy(() => import("./pages/CrmConversa"));
+const CrmIntegracoes = lazy(() => import("./pages/CrmIntegracoes"));
+const CrmRelatorios = lazy(() => import("./pages/CrmRelatorios"));
+const CrmConversas = lazy(() => import("./pages/CrmConversas"));
+const CrmCalendario = lazy(() => import("./pages/CrmCalendario"));
+const CrmFollowUps = lazy(() => import("./pages/CrmFollowUps"));
+const CrmBots = lazy(() => import("./pages/CrmBots"));
+const CrmBotEditor = lazy(() => import("./pages/CrmBotEditor"));
+const CrmDashboard = lazy(() => import("./pages/CrmDashboard"));
+const CrmPosVendaDashboard = lazy(() => import("./pages/CrmPosVendaDashboard"));
+const CrmExtras = lazy(() => import("./pages/CrmExtras"));
+const CrmConfiguracoes = lazy(() => import("./pages/CrmConfiguracoes"));
+const CrmRespostasRapidas = lazy(() => import("./pages/CrmRespostasRapidas"));
+const CrmCampanhas = lazy(() => import("./pages/CrmCampanhas"));
+const CrmIaConfig = lazy(() => import("./pages/CrmIaConfig"));
+const CrclinLanding = lazy(() => import("./pages/CrclinLanding"));
+const ChangePassword = lazy(() => import("./pages/ChangePassword"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminLayout })));
+const AdminClientes = lazy(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminClientes })));
+const AdminPlanos = lazy(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminPlanos })));
+const AdminMetricas = lazy(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminMetricas })));
+const AdminCobranca = lazy(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminCobranca })));
+const AdminClienteDetalhe = lazy(() => import("./pages/admin/AdminClienteDetalhe"));
+const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
+const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
-const Providers = ({ children }: { children: React.ReactNode }) => (
+const PageLoader = () => <div className="min-h-screen bg-background" />;
+
+const Providers = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
@@ -64,6 +72,7 @@ export const PublicApp = ({ basename }: { basename: string }) => (
     <BrowserRouter basename={basename}>
       <TenantProvider slugOverride={null}>
         <AuthProvider>
+          <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<CrclinLanding />} />
             <Route path="/admin/login" element={<AdminLogin />} />
@@ -77,6 +86,7 @@ export const PublicApp = ({ basename }: { basename: string }) => (
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </TenantProvider>
     </BrowserRouter>
@@ -89,6 +99,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
     <BrowserRouter basename={basename}>
       <TenantProvider slugOverride={slug}>
         <AuthProvider>
+          <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<TenantLogin />} />
             <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
@@ -140,6 +151,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </TenantProvider>
     </BrowserRouter>
