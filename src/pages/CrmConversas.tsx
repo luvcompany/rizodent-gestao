@@ -361,6 +361,45 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     return () => clearTimeout(handle);
   }, [search, tenant.id]);
 
+  // Server-side filter: quando o usuário aplica filtro de pipeline ou etapa
+  // no painel, busca explicitamente os leads que casam com esses filtros.
+  // Necessário porque `fetchAllConversationLeads` só carrega os 1000 leads
+  // mais recentes por last_message_at — leads em estágios "frios" (sem
+  // mensagens recentes) ficavam de fora e não apareciam mesmo com o
+  // filtro correto aplicado.
+  useEffect(() => {
+    if (!tenant.id) return;
+    if (!filters.pipelineId && !filters.stageId) return;
+    const fetchFilteredLeads = async () => {
+      let query = supabase
+        .from("crm_leads")
+        .select(LEAD_SELECT_COLS)
+        .eq("tenant_id", tenant.id)
+        .eq("is_blocked", false);
+      if (filters.pipelineId) query = query.eq("pipeline_id", filters.pipelineId);
+      if (filters.stageId) query = query.eq("stage_id", filters.stageId);
+      query = query
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: true })
+        .limit(5000);
+      const { data, error } = await query;
+      if (error) {
+        console.error("[Conversas] server-side filter failed:", error.message);
+        return;
+      }
+      if (!data?.length) return;
+      setLeads((prev) => {
+        const existingIds = new Set(prev.map((l) => l.id));
+        const additions = (data as any as LeadConversation[])
+          .map(normalizeLead)
+          .filter((l) => !existingIds.has(l.id));
+        if (!additions.length) return prev;
+        return sortLeadsByLastActivity([...prev, ...additions]);
+      });
+    };
+    fetchFilteredLeads();
+  }, [filters.pipelineId, filters.stageId, tenant.id]);
+
   // Load special URL filter data (ghost leads, appointment leads)
   useEffect(() => {
     if (!urlGhost && !urlAppointmentStatus && !urlInactiveDays) return;
