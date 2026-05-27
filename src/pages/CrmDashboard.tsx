@@ -110,6 +110,10 @@ export default function CrmDashboard() {
     const now = new Date();
     const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
     const monthEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+    // Janelas estreitas: tarefas ativas + agendamentos recentes/próximos (≈ 60 dias para trás, 60 à frente)
+    const taskWindowStart = format(addDays(new Date(), -60), "yyyy-MM-dd");
+    const apptWindowStart = format(addDays(new Date(), -60), "yyyy-MM-dd");
+    const apptWindowEnd = format(addDays(new Date(), 60), "yyyy-MM-dd");
 
     const PAGE = 1000;
     const fetchAll = async <T,>(build: (from: number, to: number) => any): Promise<T[]> => {
@@ -125,16 +129,25 @@ export default function CrmDashboard() {
       return out;
     };
 
-    const [tasksAll, leadsAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
-      fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").order("due_date").range(f, t)),
-      fetchAll<any>((f, t) => supabase.from("crm_leads").select("id, name").range(f, t)),
-      fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").order("scheduled_date").range(f, t)),
+    const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
+      fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart).order("due_date").range(f, t)),
+      fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd).order("scheduled_date").range(f, t)),
       supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
       fetchAll<any>((f, t) => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd).range(f, t)),
     ]);
 
-    const leadsList = leadsAll;
-    const nameMap = new Map(leadsList.map((l) => [l.id, l.name]));
+    // Buscar só os nomes dos leads referenciados (em vez de TODOS os leads)
+    const refIds = Array.from(new Set([
+      ...(tasksAll as any[]).map(t => t.lead_id),
+      ...(appointmentsAll as any[]).map(a => a.lead_id),
+    ].filter(Boolean)));
+    const nameMap = new Map<string, string>();
+    const CHUNK = 200;
+    for (let i = 0; i < refIds.length; i += CHUNK) {
+      const chunk = refIds.slice(i, i + CHUNK);
+      const { data: leadsChunk } = await supabase.from("crm_leads").select("id, name").in("id", chunk);
+      (leadsChunk || []).forEach((l: any) => nameMap.set(l.id, l.name));
+    }
 
     const isPrivileged = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
     const rawTasks = (tasksAll as Task[]).filter((t) => {
