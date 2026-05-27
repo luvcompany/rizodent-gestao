@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -7,6 +7,7 @@ interface ProfileData {
   email: string;
   cargo: string | null;
   avatar_url: string | null;
+  tenant_id: string | null;
   signature_enabled: boolean;
   must_change_password: boolean;
   is_blocked: boolean;
@@ -31,11 +32,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastProfileFetchRef = useRef<{ userId: string; at: number } | null>(null);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, force = false) => {
+    const last = lastProfileFetchRef.current;
+    if (!force && last?.userId === userId && Date.now() - last.at < 30_000) return;
+    lastProfileFetchRef.current = { userId, at: Date.now() };
     try {
       const [{ data: prof, error: profErr }, { data: role, error: roleErr }] = await Promise.all([
-        supabase.from("profiles").select("nome, email, cargo, avatar_url, signature_enabled, must_change_password, is_blocked").eq("id", userId).maybeSingle(),
+        supabase.from("profiles").select("nome, email, cargo, avatar_url, tenant_id, signature_enabled, must_change_password, is_blocked").eq("id", userId).maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
       ]);
       if (profErr) console.warn("[AuthContext] fetch profile error:", profErr.message);
@@ -49,12 +54,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const refreshProfile = async () => {
-    if (user) await fetchProfile(user.id);
+    if (user) await fetchProfile(user.id, true);
   };
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (_event === "INITIAL_SESSION") return;
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
