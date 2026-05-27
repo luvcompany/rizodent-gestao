@@ -3265,6 +3265,7 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: string
       }
+      get_crm_unread_leads_count: { Args: never; Returns: number }
       get_lead_for_conversation: {
         Args: { _lead_id: string }
         Returns: {
