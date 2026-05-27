@@ -1351,36 +1351,23 @@ function useChannelUnreadCount(channel: "whatsapp" | "instagram") {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    const isInstagram = channel === "instagram";
+    let refreshTimer: number | null = null;
     const fetch = async () => {
-      const PAGE_SIZE = 1000;
-      let total = 0;
-      for (let from = 0; ; from += PAGE_SIZE) {
-        let query = supabase
-          .from("crm_leads")
-          .select("last_inbound_at, last_outbound_at")
-          .eq("is_blocked", false)
-          .not("last_inbound_at", "is", null)
-          .range(from, from + PAGE_SIZE - 1);
-        if (isInstagram) {
-          query = query.not("instagram_user_id", "is", null);
-        } else {
-          query = query.is("instagram_user_id", null);
-        }
-        const { data, error } = await query;
-        if (error || !data?.length) break;
-        total += data.filter(
-          (l: any) => !l.last_outbound_at || new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
-        ).length;
-        if (data.length < PAGE_SIZE) break;
-      }
-      setCount(total);
+      const { data, error } = await (supabase as any).rpc("get_crm_unread_leads_count_by_channel", { _channel: channel });
+      if (!error) setCount(Number(data || 0));
+    };
+    const scheduleFetch = () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(fetch, 600);
     };
     fetch();
     const ch = supabase.channel(`unread-tab-${channel}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, fetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, scheduleFetch)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      supabase.removeChannel(ch);
+    };
   }, [channel]);
 
   return count;
