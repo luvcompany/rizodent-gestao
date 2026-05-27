@@ -588,27 +588,36 @@ Deno.serve(async (req) => {
 
           if (!withinWindow) continue;
 
-          const { data: existing } = await supabase
+          // CLAIM ATÔMICO: INSERT antes de enviar a mensagem. O UNIQUE
+          // partial em (automation_id, appointment_id) garante que apenas
+          // UM worker consegue inserir essa combinação. Se dois cron ticks
+          // rodam em paralelo, o segundo recebe 23505 e pula. Isso elimina
+          // a race condition que estava causando envio duplicado.
+          const { error: claimErr } = await supabase
             .from("crm_automation_queue")
-            .select("id")
-            .eq("automation_id", auto.id)
-            .eq("lead_id", lead.id)
-            .gte("created_at", new Date(scheduledAt - 86400000 * 7).toISOString())
-            .in("status", ["pending", "sent"])
-            .limit(1);
-          if (existing && existing.length > 0) continue;
+            .insert({
+              automation_id: auto.id,
+              lead_id: lead.id,
+              action_type: auto.action_type,
+              action_config: config,
+              scheduled_at: new Date().toISOString(),
+              status: "sent",
+              layer_index: 0,
+              appointment_id: appt.id,
+            });
 
-          console.log(`[BEFORE_SCHEDULED] FIRING for lead ${lead.id}, appt ${appt.id}`);
+          if (claimErr) {
+            if ((claimErr as any).code === "23505") {
+              // Outro worker já reservou este slot — não dispare de novo
+              console.log(`[BEFORE_SCHEDULED] Skipping appt ${appt.id} for lead ${lead.id} — already claimed by another worker`);
+              continue;
+            }
+            console.error(`[BEFORE_SCHEDULED] Claim insert error for appt ${appt.id}:`, (claimErr as any).message);
+            continue;
+          }
+
+          console.log(`[BEFORE_SCHEDULED] FIRING for lead ${lead.id}, appt ${appt.id} (claim ok)`);
           await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
-          await supabase.from("crm_automation_queue").insert({
-            automation_id: auto.id,
-            lead_id: lead.id,
-            action_type: auto.action_type,
-            action_config: config,
-            scheduled_at: new Date().toISOString(),
-            status: "sent",
-            layer_index: 0,
-          });
           results.before_scheduled++;
         }
       }
@@ -637,26 +646,30 @@ Deno.serve(async (req) => {
 
           if (!withinWindow) continue;
 
-          const { data: existing } = await supabase
+          // CLAIM ATÔMICO via UNIQUE partial (automation_id, task_id)
+          const { error: claimErr } = await supabase
             .from("crm_automation_queue")
-            .select("id")
-            .eq("automation_id", auto.id)
-            .eq("lead_id", lead.id)
-            .gte("created_at", new Date(scheduledAt - 86400000 * 7).toISOString())
-            .in("status", ["pending", "sent"])
-            .limit(1);
-          if (existing && existing.length > 0) continue;
+            .insert({
+              automation_id: auto.id,
+              lead_id: lead.id,
+              action_type: auto.action_type,
+              action_config: config,
+              scheduled_at: new Date().toISOString(),
+              status: "sent",
+              layer_index: 0,
+              task_id: task.id,
+            });
+
+          if (claimErr) {
+            if ((claimErr as any).code === "23505") {
+              console.log(`[BEFORE_SCHEDULED] Skipping task ${task.id} for lead ${lead.id} — already claimed`);
+              continue;
+            }
+            console.error(`[BEFORE_SCHEDULED] Claim insert error for task ${task.id}:`, (claimErr as any).message);
+            continue;
+          }
 
           await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
-          await supabase.from("crm_automation_queue").insert({
-            automation_id: auto.id,
-            lead_id: lead.id,
-            action_type: auto.action_type,
-            action_config: config,
-            scheduled_at: new Date().toISOString(),
-            status: "sent",
-            layer_index: 0,
-          });
           results.before_scheduled++;
         }
       }
