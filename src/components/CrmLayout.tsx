@@ -91,6 +91,7 @@ const CrmLayout = () => {
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
   const unreadFetchSeq = useRef(0);
+  const unreadRefreshTimer = useRef<number | null>(null);
   const crmNavItems = buildCrmNavItems(userRole);
 
   const toggleGroup = (label: string) => {
@@ -107,32 +108,23 @@ const CrmLayout = () => {
       const seq = ++unreadFetchSeq.current;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || seq !== unreadFetchSeq.current) return;
-      const PAGE_SIZE = 1000;
-      let unreadTotal = 0;
-      for (let from = 0; ; from += PAGE_SIZE) {
-        const { data: unreadCandidates, error } = await supabase
-          .from("crm_leads")
-          .select("id, last_inbound_at, last_outbound_at")
-          .eq("is_blocked", false)
-          .not("last_inbound_at", "is", null)
-          .order("id", { ascending: true })
-          .range(from, from + PAGE_SIZE - 1);
-
-        if (seq !== unreadFetchSeq.current || error || !unreadCandidates?.length) break;
-        unreadTotal += unreadCandidates.filter(
-          (l: any) => !l.last_outbound_at || new Date(l.last_inbound_at) > new Date(l.last_outbound_at)
-        ).length;
-        if (unreadCandidates.length < PAGE_SIZE) break;
+      const { data, error } = await (supabase as any).rpc("get_crm_unread_leads_count");
+      if (!error && seq === unreadFetchSeq.current) {
+        setUnreadCount(Number(data || 0));
       }
-      if (seq === unreadFetchSeq.current) {
-        setUnreadCount(unreadTotal);
-      }
+    };
+    const scheduleFetchUnread = () => {
+      if (unreadRefreshTimer.current) window.clearTimeout(unreadRefreshTimer.current);
+      unreadRefreshTimer.current = window.setTimeout(fetchUnread, 600);
     };
     fetchUnread();
     const ch = supabase.channel("unread-badge")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, fetchUnread)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, scheduleFetchUnread)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      if (unreadRefreshTimer.current) window.clearTimeout(unreadRefreshTimer.current);
+      supabase.removeChannel(ch);
+    };
   }, []);
 
   useEffect(() => {
