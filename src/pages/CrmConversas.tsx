@@ -145,47 +145,20 @@ const sortLeadsByLastActivity = (items: LeadConversation[]) =>
     return bTime - aTime;
   });
 
-// Carrega todos os leads via paginação real (range-based), porque .limit() pode
-// ser capado pelo PostgREST (db-max-rows). A paginação com range() permite buscar
-// além desse cap, e usamos count: "exact" para saber quantas páginas precisamos.
-// Conversas antigas continuam acessíveis nessa lista; busca/filtro server-side
-// adicional existe nos useEffects abaixo para casos de tenant com muitos leads.
+// Carrega apenas os leads mais recentes por last_message_at.
+// Conversas antigas continuam acessíveis via busca server-side (ver useEffect de search).
 const fetchAllConversationLeads = async (tenantId: string) => {
-  const all: LeadConversation[] = [];
-
-  // Conta total pra saber quantas páginas precisamos
-  const { count } = await supabase
+  const { data, error } = await supabase
     .from("crm_leads")
-    .select("id", { count: "exact", head: true })
+    .select(LEAD_SELECT_COLS)
     .eq("tenant_id", tenantId)
-    .eq("is_blocked", false);
-  const totalRows = count ?? 0;
-  const PAGE = 1000;
-  // Upper bound de segurança: 50k leads = 50 páginas
-  const pagesNeeded = Math.min(50, Math.max(1, Math.ceil(totalRows / PAGE)));
+    .eq("is_blocked", false)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(CONVERSATION_PAGE_SIZE);
 
-  for (let i = 0; i < pagesNeeded; i++) {
-    const from = i * PAGE;
-    const { data, error } = await supabase
-      .from("crm_leads")
-      .select(LEAD_SELECT_COLS)
-      .eq("tenant_id", tenantId)
-      .eq("is_blocked", false)
-      // Tiebreaker `id` torna a paginação estável quando há rows com mesmo
-      // last_message_at (incluindo NULL) — sem isso, OFFSET pode pular ou
-      // duplicar rows entre páginas.
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) {
-      console.error(`[Conversas] page ${i} failed:`, error.message);
-      break;
-    }
-    const page = ((data || []) as any as LeadConversation[]).map(normalizeLead);
-    all.push(...page);
-    if (page.length === 0) break;
-  }
-  return sortLeadsByLastActivity(all);
+  if (error) throw error;
+  const page = ((data || []) as any as LeadConversation[]).map(normalizeLead);
+  return sortLeadsByLastActivity(page);
 };
 
 interface ConversationsViewProps {
