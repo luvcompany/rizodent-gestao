@@ -15,6 +15,7 @@ interface PacienteView {
   cidade: string | null;
   created_at: string;
   valor_contratado: number;
+  ultimo_valor_pago: number | null;
   ultima_visita: string | null;
   clinica_nome: string | null;
   is_recorrente: boolean;
@@ -88,13 +89,16 @@ const Pacientes = () => {
         const valorContratado = periodActive
           ? pags.reduce((s: number, pg: any) => s + Number(pg.valor || 0), 0)
           : valorContratadoTotal;
+        // pags[0] é o pagamento mais recente porque o select já ordena por data_pagamento DESC
         const ultimaVisita = pags[0]?.data_pagamento || null;
+        const ultimoValorPago = pags[0]?.valor != null ? Number(pags[0].valor) : null;
         const clinicaNome = pags[0]?.clinica_id ? clinicaMap.get(pags[0].clinica_id) || null : null;
         const isRecorrente = (pagMap.get(p.id) || []).some((pg: any) => pg.tipo === "recorrente");
 
         result.push({
           ...p,
           valor_contratado: valorContratado,
+          ultimo_valor_pago: ultimoValorPago,
           ultima_visita: ultimaVisita,
           clinica_nome: clinicaNome,
           is_recorrente: isRecorrente,
@@ -184,6 +188,11 @@ const Pacientes = () => {
                     <p className="text-sm font-semibold text-primary">
                       Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
+                    {pac.ultimo_valor_pago != null && pac.ultimo_valor_pago !== pac.valor_contratado && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                        Último pagamento: R$ {pac.ultimo_valor_pago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </p>
+                    )}
                     {pac.ultima_visita && (
                       <p className="text-xs text-muted-foreground">
                         Última visita: {new Date(pac.ultima_visita + "T12:00:00").toLocaleDateString("pt-BR")}
