@@ -3266,6 +3266,10 @@ export type Database = {
         Returns: string
       }
       get_crm_unread_leads_count: { Args: never; Returns: number }
+      get_crm_unread_leads_count_by_channel: {
+        Args: { _channel: string }
+        Returns: number
+      }
       get_lead_for_conversation: {
         Args: { _lead_id: string }
         Returns: {
