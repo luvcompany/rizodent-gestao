@@ -106,8 +106,7 @@ const CrmLayout = () => {
   useEffect(() => {
     const fetchUnread = async () => {
       const seq = ++unreadFetchSeq.current;
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || seq !== unreadFetchSeq.current) return;
+      if (!user?.id || seq !== unreadFetchSeq.current) return;
       const { data, error } = await (supabase as any).rpc("get_crm_unread_leads_count");
       if (!error && seq === unreadFetchSeq.current) {
         setUnreadCount(Number(data || 0));
@@ -125,7 +124,7 @@ const CrmLayout = () => {
       if (unreadRefreshTimer.current) window.clearTimeout(unreadRefreshTimer.current);
       supabase.removeChannel(ch);
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     const fetchTodayTasks = async () => {
