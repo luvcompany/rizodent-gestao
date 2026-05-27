@@ -188,7 +188,7 @@ const Pacientes = () => {
                     <p className="text-sm font-semibold text-primary">
                       Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
-                    {pac.ultimo_valor_pago != null && pac.ultimo_valor_pago !== pac.valor_contratado && (
+                    {pac.ultimo_valor_pago != null && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400">
                         Último pagamento: R$ {pac.ultimo_valor_pago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                       </p>
