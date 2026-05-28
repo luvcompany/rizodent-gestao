@@ -121,7 +121,9 @@ const SidePanelFallback = () => (
   </div>
 );
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
-const CONVERSATION_PAGE_SIZE = 500;
+const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+const CONVERSATION_PAGE_SIZE = 1000;
+const CONVERSATION_MAX_PAGES = 20; // up to 20k leads
 const LEAD_SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
 
 const getLastDirection = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => {
@@ -145,21 +147,29 @@ const sortLeadsByLastActivity = (items: LeadConversation[]) =>
     return bTime - aTime;
   });
 
-// Carrega apenas os leads mais recentes por last_message_at.
-// Conversas antigas continuam acessíveis via busca server-side (ver useEffect de search).
+// Carrega TODOS os leads do tenant em páginas de 1000 (limite default do Supabase).
+// Necessário para que filtros por etapa/funil correspondam ao Kanban.
 const fetchAllConversationLeads = async (tenantId: string) => {
-  const { data, error } = await supabase
-    .from("crm_leads")
-    .select(LEAD_SELECT_COLS)
-    .eq("tenant_id", tenantId)
-    .eq("is_blocked", false)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(CONVERSATION_PAGE_SIZE);
+  const all: LeadConversation[] = [];
+  for (let page = 0; page < CONVERSATION_MAX_PAGES; page++) {
+    const from = page * CONVERSATION_PAGE_SIZE;
+    const to = from + CONVERSATION_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("crm_leads")
+      .select(LEAD_SELECT_COLS)
+      .eq("tenant_id", tenantId)
+      .eq("is_blocked", false)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .range(from, to);
 
-  if (error) throw error;
-  const page = ((data || []) as any as LeadConversation[]).map(normalizeLead);
-  return sortLeadsByLastActivity(page);
+    if (error) throw error;
+    const rows = ((data || []) as any as LeadConversation[]).map(normalizeLead);
+    all.push(...rows);
+    if (rows.length < CONVERSATION_PAGE_SIZE) break;
+  }
+  return sortLeadsByLastActivity(all);
 };
+
 
 interface ConversationsViewProps {
   pipelineFilter?: string;          // include only this pipeline
