@@ -1210,19 +1210,39 @@ Deno.serve(async (req) => {
           for (const status of statuses) {
             const messageId = status.id;
             const statusValue = status.status;
-            const failureDetails = Array.isArray(status.errors) && status.errors.length > 0
-              ? JSON.stringify(status.errors)
-              : null;
+            const errorsArr = Array.isArray(status.errors) ? status.errors : [];
+            const failureDetails = errorsArr.length > 0 ? JSON.stringify(errorsArr) : null;
 
             console.log(`Status update: ${messageId} -> ${statusValue}`);
+
+            const updatePayload: Record<string, any> = { status: statusValue };
+
+            // Quando a entrega falha, a Meta envia detalhes em status.errors[].
+            // Preserva isso em error_reason pra você ver o motivo real
+            // (ex: "131047 - Re-engagement message", "131026 - Undeliverable",
+            // "131056 - Pair rate limit", etc) em vez de só "failed".
+            if (statusValue === "failed" && errorsArr.length > 0) {
+              const e = errorsArr[0] || {};
+              const code = e.code ?? "";
+              const title = e.title || e.message || "";
+              const details = e.error_data?.details || e.details || "";
+              // Formato amigável: "131047 - Re-engagement message: detail..."
+              const reason = [
+                code ? String(code) : null,
+                title || null,
+                details && details !== title ? details : null,
+              ].filter(Boolean).join(" - ");
+              updatePayload.error_reason = reason || failureDetails;
+              console.error(`[WEBHOOK] Delivery failed for ${messageId}: ${reason}`);
+            } else if (statusValue === "failed") {
+              console.error(`[WEBHOOK] Delivery failed for ${messageId} (sem detalhes Meta): ${JSON.stringify(status)}`);
+              updatePayload.error_reason = "Falha de entrega sem detalhes";
+            }
+
             await supabase
               .from("messages")
-              .update({ status: statusValue })
+              .update(updatePayload)
               .eq("whatsapp_message_id", messageId);
-
-            if (statusValue === "failed") {
-              console.error(`[WEBHOOK] Delivery failed for ${messageId}: ${failureDetails || JSON.stringify(status)}`);
-            }
           }
         }
       }
