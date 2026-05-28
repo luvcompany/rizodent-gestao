@@ -617,6 +617,7 @@ export type Database = {
         Row: {
           action_config: Json
           action_type: string
+          appointment_id: string | null
           automation_id: string
           created_at: string
           id: string
@@ -624,11 +625,13 @@ export type Database = {
           lead_id: string
           scheduled_at: string
           status: string
+          task_id: string | null
           updated_at: string
         }
         Insert: {
           action_config?: Json
           action_type: string
+          appointment_id?: string | null
           automation_id: string
           created_at?: string
           id?: string
@@ -636,11 +639,13 @@ export type Database = {
           lead_id: string
           scheduled_at?: string
           status?: string
+          task_id?: string | null
           updated_at?: string
         }
         Update: {
           action_config?: Json
           action_type?: string
+          appointment_id?: string | null
           automation_id?: string
           created_at?: string
           id?: string
@@ -648,6 +653,7 @@ export type Database = {
           lead_id?: string
           scheduled_at?: string
           status?: string
+          task_id?: string | null
           updated_at?: string
         }
         Relationships: [
