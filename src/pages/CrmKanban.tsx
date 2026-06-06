@@ -1235,7 +1235,8 @@ export default function CrmKanban() {
                 const stageLeads = stageLeadsMap.get(stage.id) || [];
                 const visibleCount = stageVisibleCounts[stage.id] || PAGE_SIZE;
                 const visibleLeads = stageLeads.slice(0, visibleCount);
-                const hasMore = stageLeads.length > visibleCount;
+                const totalStageLeads = stageTotalCounts[stage.id] ?? stageLeads.length;
+                const hasMore = totalStageLeads > stageLeads.length || stageLeads.length > visibleCount;
                 const stageValue = stageLeads.reduce((a, l) => a + (leadMonthValueMap.get(l.id) || 0), 0);
                 return (
                   <div key={stage.id} className="flex items-start gap-1">
@@ -1243,7 +1244,7 @@ export default function CrmKanban() {
                       <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
                       <div className="px-3 py-2 flex-shrink-0">
                         <div className="font-semibold text-sm text-foreground">{stage.name}</div>
-                        <div className="text-xs text-muted-foreground">{stageLeads.length} leads · {formatCurrency(stageValue)}</div>
+                        <div className="text-xs text-muted-foreground">{totalStageLeads} leads · {formatCurrency(stageValue)}</div>
                       </div>
 
                       {idx === 0 && (
@@ -1370,7 +1371,7 @@ export default function CrmKanban() {
                             )}
                             {hasMore && (
                               <p className="text-center text-[10px] text-muted-foreground pb-2">
-                                {visibleCount} de {stageLeads.length} leads
+                                {Math.min(stageLeads.length, totalStageLeads)} de {totalStageLeads} leads
                               </p>
                             )}
                           </div>
