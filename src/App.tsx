@@ -52,7 +52,16 @@ const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
 const AdminLogin = lazy(() => import("./pages/admin/AdminLogin"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,        // 30s: navegar para tela já visitada não refaz fetch
+      gcTime: 5 * 60_000,       // 5min: mantém em memória mesmo sem componentes ativos
+      refetchOnWindowFocus: false, // evita re-fetch quando o usuário troca de aba do browser
+      retry: 1,
+    },
+  },
+});
 
 const PageLoader = () => <div className="min-h-screen bg-background" />;
 

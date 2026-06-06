@@ -61,7 +61,7 @@ type DashboardCacheData = {
 const _dashCache: { userId: string | null; data: DashboardCacheData | null; ts: number } = {
   userId: null, data: null, ts: 0,
 };
-const DASH_CACHE_TTL = 2 * 60_000;
+const DASH_CACHE_TTL = 5 * 60_000; // 5 min — navegação volta instantânea
 const DASH_LS_KEY = "crm:dashboard_cache_v2";
 const DASH_LS_TTL = 15 * 60_000;
 
