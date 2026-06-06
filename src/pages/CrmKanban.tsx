@@ -950,6 +950,12 @@ export default function CrmKanban() {
     try { localStorage.setItem("crm:kanbanSearch", searchTerm); } catch {}
   }, [searchTerm]);
 
+  useEffect(() => {
+    if (viewMode === "list" || searchTerm || countActive(kanbanFilters) > 0) {
+      hydrateAllStageLeads();
+    }
+  }, [viewMode, searchTerm, kanbanFilters, hydrateAllStageLeads]);
+
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
     const leadId = result.draggableId;
