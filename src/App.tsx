@@ -137,15 +137,19 @@ export const PublicApp = ({ basename }: { basename: string }) => (
 );
 
 /** Tenant shell — client login + full app. Slug-bound. */
-export const TenantApp = ({ slug, basename }: { slug: string; basename: string }) => (
+export const TenantApp = ({ slug, basename }: { slug: string; basename: string }) => {
+  useEffect(() => {
+    preloadTenantRoutes();
+  }, []);
+
+  return (
   <Providers>
     <BrowserRouter basename={basename}>
       <TenantProvider slugOverride={slug}>
         <AuthProvider>
-          <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<TenantLogin />} />
-            <Route path="/change-password" element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
+            <Route path="/" element={withRouteSuspense(<TenantLogin />)} />
+            <Route path="/change-password" element={<ProtectedRoute>{withRouteSuspense(<ChangePassword />)}</ProtectedRoute>} />
             <Route
               element={
                 <ProtectedRoute>
@@ -153,17 +157,17 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
                 </ProtectedRoute>
               }
             >
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/atendimento" element={<Atendimento />} />
-              <Route path="/pacientes" element={<Pacientes />} />
-              <Route path="/pacientes/:id" element={<PacienteDetalhe />} />
-              <Route path="/relatorios" element={<Relatorios />} />
-              <Route path="/marketing" element={<Marketing />} />
-              <Route path="/leads" element={<CadastroLeads />} />
-              <Route path="/usuarios" element={<Usuarios />} />
-              <Route path="/procedimentos" element={<TiposProcedimento />} />
-              <Route path="/registro-diario" element={<RegistroDiario />} />
-              <Route path="/configuracoes" element={<Configuracoes />} />
+              <Route path="/dashboard" element={withRouteSuspense(<Dashboard />)} />
+              <Route path="/atendimento" element={withRouteSuspense(<Atendimento />)} />
+              <Route path="/pacientes" element={withRouteSuspense(<Pacientes />)} />
+              <Route path="/pacientes/:id" element={withRouteSuspense(<PacienteDetalhe />)} />
+              <Route path="/relatorios" element={withRouteSuspense(<Relatorios />)} />
+              <Route path="/marketing" element={withRouteSuspense(<Marketing />)} />
+              <Route path="/leads" element={withRouteSuspense(<CadastroLeads />)} />
+              <Route path="/usuarios" element={withRouteSuspense(<Usuarios />)} />
+              <Route path="/procedimentos" element={withRouteSuspense(<TiposProcedimento />)} />
+              <Route path="/registro-diario" element={withRouteSuspense(<RegistroDiario />)} />
+              <Route path="/configuracoes" element={withRouteSuspense(<Configuracoes />)} />
             </Route>
             <Route
               element={
@@ -172,33 +176,33 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
                 </ProtectedRoute>
               }
             >
-              <Route path="/crm" element={<CrmKanban />} />
-              <Route path="/crm/dashboard" element={<CrmDashboard />} />
-              <Route path="/crm/posvenda" element={<CrmPosVendaDashboard />} />
-              <Route path="/crm/conversas" element={<CrmConversas />} />
-              <Route path="/crm/conversa/:id" element={<CrmConversa />} />
-              <Route path="/crm/automacoes" element={<CrmAutomacoes />} />
-              <Route path="/crm/modelos" element={<CrmModelos />} />
-              <Route path="/crm/integracoes" element={<CrmIntegracoes />} />
-              <Route path="/crm/relatorios" element={<CrmRelatorios />} />
-              <Route path="/crm/calendario" element={<CrmCalendario />} />
-              <Route path="/crm/followups" element={<CrmFollowUps />} />
-              <Route path="/crm/bots" element={<CrmBots />} />
-              <Route path="/crm/bots/:id" element={<CrmBotEditor />} />
-              <Route path="/crm/extras" element={<CrmExtras />} />
-              <Route path="/crm/configuracoes" element={<CrmConfiguracoes />} />
-              <Route path="/crm/respostas-rapidas" element={<CrmRespostasRapidas />} />
-              <Route path="/crm/campanhas" element={<CrmCampanhas />} />
-              <Route path="/crm/ia-config" element={<CrmIaConfig />} />
-              <Route path="/crm/usuarios" element={<Usuarios />} />
+              <Route path="/crm" element={withRouteSuspense(<CrmKanban />)} />
+              <Route path="/crm/dashboard" element={withRouteSuspense(<CrmDashboard />)} />
+              <Route path="/crm/posvenda" element={withRouteSuspense(<CrmPosVendaDashboard />)} />
+              <Route path="/crm/conversas" element={withRouteSuspense(<CrmConversas />)} />
+              <Route path="/crm/conversa/:id" element={withRouteSuspense(<CrmConversa />)} />
+              <Route path="/crm/automacoes" element={withRouteSuspense(<CrmAutomacoes />)} />
+              <Route path="/crm/modelos" element={withRouteSuspense(<CrmModelos />)} />
+              <Route path="/crm/integracoes" element={withRouteSuspense(<CrmIntegracoes />)} />
+              <Route path="/crm/relatorios" element={withRouteSuspense(<CrmRelatorios />)} />
+              <Route path="/crm/calendario" element={withRouteSuspense(<CrmCalendario />)} />
+              <Route path="/crm/followups" element={withRouteSuspense(<CrmFollowUps />)} />
+              <Route path="/crm/bots" element={withRouteSuspense(<CrmBots />)} />
+              <Route path="/crm/bots/:id" element={withRouteSuspense(<CrmBotEditor />)} />
+              <Route path="/crm/extras" element={withRouteSuspense(<CrmExtras />)} />
+              <Route path="/crm/configuracoes" element={withRouteSuspense(<CrmConfiguracoes />)} />
+              <Route path="/crm/respostas-rapidas" element={withRouteSuspense(<CrmRespostasRapidas />)} />
+              <Route path="/crm/campanhas" element={withRouteSuspense(<CrmCampanhas />)} />
+              <Route path="/crm/ia-config" element={withRouteSuspense(<CrmIaConfig />)} />
+              <Route path="/crm/usuarios" element={withRouteSuspense(<Usuarios />)} />
             </Route>
-            <Route path="*" element={<NotFound />} />
+            <Route path="*" element={withRouteSuspense(<NotFound />)} />
           </Routes>
-          </Suspense>
         </AuthProvider>
       </TenantProvider>
     </BrowserRouter>
   </Providers>
-);
+  );
+};
 
 export default PublicApp;
