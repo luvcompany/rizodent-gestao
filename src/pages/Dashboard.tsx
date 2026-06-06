@@ -55,10 +55,11 @@ type DashboardPayload = {
 let dashboardMemoryCache: { ts: number; data: DashboardPayload } | null = null;
 
 const readDashboardCache = () => {
-  if (!dashboardMemoryCache) return null;
-  if (Date.now() - dashboardMemoryCache.ts > DASHBOARD_BG_REFRESH_AFTER) return null;
   return dashboardMemoryCache;
 };
+
+const isDashboardCacheFresh = (cache: typeof dashboardMemoryCache) =>
+  !!cache && Date.now() - cache.ts < DASHBOARD_BG_REFRESH_AFTER;
 
 const writeDashboardCache = (data: DashboardPayload) => {
   dashboardMemoryCache = { ts: Date.now(), data };
@@ -179,7 +180,8 @@ const Dashboard = () => {
     if (cached) {
       applyDashboardData(cached.data);
       setLoading(false);
-      return;
+      if (isDashboardCacheFresh(cached)) return;
+      showLoading = false;
     }
     if (showLoading) setLoading(true);
     const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
