@@ -91,6 +91,68 @@ function writeDashCache(userId: string | null | undefined, data: DashboardCacheD
   try { localStorage.setItem(`${DASH_LS_KEY}:${userId}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
 }
 
+/** Pré-carrega tarefas, agendamentos, leads de hoje e faturamento do mês.
+ *  Popula o cache em memória + localStorage para tornar a primeira renderização instantânea. */
+export const prefetchCrmDashboardData = async (
+  userId: string | null | undefined,
+  userRole: string | null | undefined,
+): Promise<void> => {
+  if (!userId) return;
+  // Cache fresco: nada a fazer.
+  if (_dashCache.userId === userId && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return;
+  try {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const now = new Date();
+    const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+    const monthEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+    const taskWindowStart = format(addDays(new Date(), -60), "yyyy-MM-dd");
+    const apptWindowStart = format(addDays(new Date(), -60), "yyyy-MM-dd");
+    const apptWindowEnd = format(addDays(new Date(), 60), "yyyy-MM-dd");
+    const PAGE = 1000;
+    const fetchAll = async <T,>(build: (from: number, to: number) => any): Promise<T[]> => {
+      const out: T[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await build(from, from + PAGE - 1);
+        if (error || !data || data.length === 0) break;
+        out.push(...(data as T[]));
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      return out;
+    };
+    const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
+      fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart).order("due_date").range(f, t)),
+      fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd).order("scheduled_date").range(f, t)),
+      supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
+      fetchAll<any>((f, t) => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd).range(f, t)),
+    ]);
+    const refIds = Array.from(new Set([
+      ...(tasksAll as any[]).map((t) => t.lead_id),
+      ...(appointmentsAll as any[]).map((a) => a.lead_id),
+    ].filter(Boolean)));
+    const nameMap = new Map<string, string>();
+    const CHUNK = 200;
+    for (let i = 0; i < refIds.length; i += CHUNK) {
+      const chunk = refIds.slice(i, i + CHUNK);
+      const { data: leadsChunk } = await supabase.from("crm_leads").select("id, name").in("id", chunk);
+      (leadsChunk || []).forEach((l: any) => nameMap.set(l.id, l.name));
+    }
+    const isPrivileged = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+    const rawTasks = (tasksAll as Task[]).filter((t) => {
+      if (isPrivileged || !userRole) return true;
+      return t.owner_role === userRole || t.assigned_to === userId;
+    });
+    rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
+    const rawAppts = appointmentsAll as Appointment[];
+    rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
+    const totalFat = (pagamentosAll as any[]).reduce((s, p) => s + Number(p.valor || 0), 0);
+    writeDashCache(userId, { tasks: rawTasks, appointments: rawAppts, leadsToday: leadsCountRes.count || 0, faturamentoMes: totalFat });
+  } catch (e) {
+    console.warn("[prefetchCrmDashboardData] falhou:", e);
+  }
+};
+
 export default function CrmDashboard() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();

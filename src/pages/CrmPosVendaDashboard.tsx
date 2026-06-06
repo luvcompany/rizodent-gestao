@@ -69,6 +69,22 @@ function writePvCache(userId: string | null | undefined, data: Metrics) {
 }
 // ──────────────────────────────────────────────────────────────────────────
 
+/** Pré-carrega métricas do painel Pós-Venda (idempotente: pula se cache fresco). */
+export const prefetchPosVendaData = async (
+  userId: string | null | undefined,
+  userRole: string | null | undefined,
+): Promise<void> => {
+  if (!userId || !userRole || !ALLOWED_ROLES.includes(userRole)) return;
+  if (_pvCache.userId === userId && _pvCache.data && Date.now() - _pvCache.ts < PV_MODULE_TTL) return;
+  try {
+    const { data, error } = await supabase.rpc("posvenda_dashboard_metrics");
+    if (error || !data) return;
+    writePvCache(userId, data as unknown as Metrics);
+  } catch (e) {
+    console.warn("[prefetchPosVendaData] falhou:", e);
+  }
+};
+
 export default function CrmPosVendaDashboard() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();

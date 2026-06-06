@@ -135,6 +135,59 @@ function writeCalendarLS(userId: string | null | undefined, data: CalendarLS) {
   try { localStorage.setItem(`${CAL_LS_KEY}:${userId}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
 }
 
+/** Pré-carrega tarefas/agendamentos da semana atual + perfis/etapas/pipelines.
+ *  Popula o cache em memória + localStorage para tornar a primeira renderização instantânea. */
+export const prefetchCrmCalendarioData = async (userId: string | null | undefined): Promise<void> => {
+  if (!userId) return;
+  if (calendarCache.userId === userId && calendarCache.tasks && calendarCache.appointments
+    && calendarCache.timestamp && Date.now() - calendarCache.timestamp < CALENDAR_CACHE_TTL) return;
+  try {
+    const today = new Date();
+    const weekStart = format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const weekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
+    const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
+      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role").order("due_date"),
+      supabase.from("profiles").select("id, nome"),
+      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, lead_name, lead_cidade").gte("scheduled_date", weekStart).lte("scheduled_date", weekEnd).order("scheduled_date").order("scheduled_time"),
+      supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
+      supabase.from("crm_pipelines").select("id, name"),
+    ]);
+    const apptLeadIds = (apptsRes.data || []).filter((a: any) => !a.lead_name || !a.lead_cidade).map((a: any) => a.lead_id).filter(Boolean);
+    const taskLeadIds = (tasksRes.data || []).map((t: any) => t.lead_id).filter(Boolean);
+    const allLeadIds = [...new Set([...apptLeadIds, ...taskLeadIds])];
+    let leadsData: any[] = [];
+    if (allLeadIds.length) {
+      const { data: rpcData, error: rpcError } = await supabase.rpc("get_leads_for_calendar", { _lead_ids: allLeadIds });
+      if (!rpcError && rpcData) leadsData = rpcData;
+      else {
+        const { data } = await supabase.from("crm_leads").select("id, name, cidade").in("id", allLeadIds);
+        leadsData = data || [];
+      }
+    }
+    const leadsMap = new Map(leadsData.map((l: any) => [l.id, l]));
+    const rawTasks = (tasksRes.data || []).map((t: any) => ({ ...t, lead_name: leadsMap.get(t.lead_id)?.name || "Lead" })) as Task[];
+    const profs = (profilesRes.data as Profile[]) || [];
+    const rawAppts = (apptsRes.data || []).map((a: any) => ({
+      ...a,
+      lead_name: a.lead_name || leadsMap.get(a.lead_id)?.name || "Lead",
+      lead_cidade: a.lead_cidade || leadsMap.get(a.lead_id)?.cidade || null,
+      is_rescheduled: a.is_rescheduled || false,
+    })) as Appointment[];
+    const stgs = (stagesRes.data as Stage[]) || [];
+    const pipes = (pipelinesRes.data as Pipeline[]) || [];
+    calendarCache.userId = userId;
+    calendarCache.tasks = rawTasks;
+    calendarCache.profiles = profs;
+    calendarCache.appointments = rawAppts;
+    calendarCache.stages = stgs;
+    calendarCache.pipelines = pipes;
+    calendarCache.timestamp = Date.now();
+    writeCalendarLS(userId, { tasks: rawTasks, profiles: profs, stages: stgs, pipelines: pipes });
+  } catch (e) {
+    console.warn("[prefetchCrmCalendarioData] falhou:", e);
+  }
+};
+
 export default function CrmCalendario() {
   const navigate = useNavigate();
   const { user, userRole } = useAuth();
