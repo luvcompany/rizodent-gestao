@@ -36,6 +36,33 @@ const toLocalDateStr = (d: Date) => {
 
 const CRM_LEADS_PAGE_SIZE = 1000;
 const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
+const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
+
+type DashboardPayload = {
+  clinicas: any[];
+  pagamentos: any[];
+  tratamentos: any[];
+  pacientes: any[];
+  leadsData: any[];
+  crmLeads: any[];
+  crmAppointments: any[];
+  crmStages: any[];
+  crmStageHistory: any[];
+  adIdMapping: any[];
+  holidays: Holiday[];
+};
+
+let dashboardMemoryCache: { ts: number; data: DashboardPayload } | null = null;
+
+const readDashboardCache = () => {
+  if (!dashboardMemoryCache) return null;
+  if (Date.now() - dashboardMemoryCache.ts > DASHBOARD_BG_REFRESH_AFTER) return null;
+  return dashboardMemoryCache;
+};
+
+const writeDashboardCache = (data: DashboardPayload) => {
+  dashboardMemoryCache = { ts: Date.now(), data };
+};
 
 const fetchAllCrmLeads = async () => {
   const rows: any[] = [];
