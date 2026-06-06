@@ -36,6 +36,34 @@ const toLocalDateStr = (d: Date) => {
 
 const CRM_LEADS_PAGE_SIZE = 1000;
 const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
+const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
+
+type DashboardPayload = {
+  clinicas: any[];
+  pagamentos: any[];
+  tratamentos: any[];
+  pacientes: any[];
+  leadsData: any[];
+  crmLeads: any[];
+  crmAppointments: any[];
+  crmStages: any[];
+  crmStageHistory: any[];
+  adIdMapping: any[];
+  holidays: Holiday[];
+};
+
+let dashboardMemoryCache: { ts: number; data: DashboardPayload } | null = null;
+
+const readDashboardCache = () => {
+  return dashboardMemoryCache;
+};
+
+const isDashboardCacheFresh = (cache: typeof dashboardMemoryCache) =>
+  !!cache && Date.now() - cache.ts < DASHBOARD_BG_REFRESH_AFTER;
+
+const writeDashboardCache = (data: DashboardPayload) => {
+  dashboardMemoryCache = { ts: Date.now(), data };
+};
 
 const fetchAllCrmLeads = async () => {
   const rows: any[] = [];
@@ -133,7 +161,28 @@ const Dashboard = () => {
     setHolidays((hd || []) as Holiday[]);
   };
 
-  const fetchAll = async (showLoading = true) => {
+  const applyDashboardData = (payload: DashboardPayload) => {
+    setClinicas(payload.clinicas || []);
+    setPagamentos(payload.pagamentos || []);
+    setTratamentos(payload.tratamentos || []);
+    setPacientes(payload.pacientes || []);
+    setLeadsData(payload.leadsData || []);
+    setHolidays((payload.holidays || []) as Holiday[]);
+    setCrmLeads(payload.crmLeads || []);
+    setCrmAppointments(payload.crmAppointments || []);
+    setCrmStages(payload.crmStages || []);
+    setCrmStageHistory(payload.crmStageHistory || []);
+    setAdIdMapping(payload.adIdMapping || []);
+  };
+
+  const fetchAll = async (showLoading = true, force = false) => {
+    const cached = readDashboardCache();
+    if (cached && !force) {
+      applyDashboardData(cached.data);
+      setLoading(false);
+      if (isDashboardCacheFresh(cached)) return;
+      showLoading = false;
+    }
     if (showLoading) setLoading(true);
     const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
     supabase.from("clinicas").select("*").eq("ativa", true),
@@ -148,17 +197,21 @@ const Dashboard = () => {
     supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
     (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
     );
-    setClinicas(cl || []);
-    setPagamentos(pg || []);
-    setTratamentos(tr || []);
-    setPacientes(pc || []);
-    setLeadsData(ld || []);
-    setHolidays((hd || []) as Holiday[]);
-    setCrmLeads(cLeads || []);
-    setCrmAppointments(cAppts || []);
-    setCrmStages(cStages || []);
-    setCrmStageHistory(cHist || []);
-    setAdIdMapping(adMap || []);
+    const payload: DashboardPayload = {
+      clinicas: cl || [],
+      pagamentos: pg || [],
+      tratamentos: tr || [],
+      pacientes: pc || [],
+      leadsData: ld || [],
+      holidays: (hd || []) as Holiday[],
+      crmLeads: cLeads || [],
+      crmAppointments: cAppts || [],
+      crmStages: cStages || [],
+      crmStageHistory: cHist || [],
+      adIdMapping: adMap || [],
+    };
+    writeDashboardCache(payload);
+    applyDashboardData(payload);
     if (showLoading) setLoading(false);
   };
 
@@ -169,7 +222,7 @@ const Dashboard = () => {
     let debounceTimer: any = null;
     const scheduleRefetch = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => fetchAll(false), 800);
+      debounceTimer = setTimeout(() => fetchAll(false, true), 800);
     };
 
     const channel = supabase

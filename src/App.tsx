@@ -82,6 +82,8 @@ const withRouteSuspense = (node: ReactNode) => (
 const preloadTenantRoutes = () => {
   const preload = () => {
     [
+      Dashboard,
+      Atendimento,
       CrmDashboard,
       CrmKanban,
       CrmConversas,
