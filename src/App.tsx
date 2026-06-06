@@ -11,6 +11,9 @@ import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
 import { prefetchDashboardData } from "./pages/Dashboard";
 import { prefetchConversasData } from "./pages/CrmConversas";
+import { prefetchCrmDashboardData } from "./pages/CrmDashboard";
+import { prefetchCrmCalendarioData } from "./pages/CrmCalendario";
+import { prefetchPosVendaData } from "./pages/CrmPosVendaDashboard";
 
 type PreloadableComponent<T extends ComponentType<any> = ComponentType<any>> = LazyExoticComponent<T> & {
   preload: () => Promise<unknown>;
