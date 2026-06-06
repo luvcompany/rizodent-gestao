@@ -63,10 +63,17 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  // Platform already enforces JWT via verify_jwt=true in config.toml.
-  // The previous in-code Bearer comparison was rejecting valid cron calls
-  // (anon key rotated), which prevented bot timeouts from ever firing.
+  // Restrict to cron / service-role / anon callers only.
   const authHeader = req.headers.get("authorization") || "";
+  const apiKeyHeader = req.headers.get("apikey") || "";
+  const serviceKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const anonKeyEnv = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const allowed = [serviceKeyEnv, anonKeyEnv].filter(Boolean);
+  const ok = allowed.some((k) => k && (bearer === k || apiKeyHeader === k));
+  if (!ok) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
