@@ -175,9 +175,9 @@ const Dashboard = () => {
     setAdIdMapping(payload.adIdMapping || []);
   };
 
-  const fetchAll = async (showLoading = true) => {
+  const fetchAll = async (showLoading = true, force = false) => {
     const cached = readDashboardCache();
-    if (cached) {
+    if (cached && !force) {
       applyDashboardData(cached.data);
       setLoading(false);
       if (isDashboardCacheFresh(cached)) return;
@@ -222,7 +222,7 @@ const Dashboard = () => {
     let debounceTimer: any = null;
     const scheduleRefetch = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => fetchAll(false), 800);
+      debounceTimer = setTimeout(() => fetchAll(false, true), 800);
     };
 
     const channel = supabase
