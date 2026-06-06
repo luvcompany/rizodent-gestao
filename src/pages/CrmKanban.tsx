@@ -565,6 +565,7 @@ export default function CrmKanban() {
       if (p) setPipeline(p);
       setStages(e.stages);
       setLeads(e.leads);
+      setStageTotalCounts(e.stageTotalCounts || {});
       setProfiles(e.profiles);
       setFollowUpLeads(e.followUpLeads);
       setVendasConcluidas(e.vendasConcluidas);
@@ -584,35 +585,25 @@ export default function CrmKanban() {
     const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
     const monthEnd = toLocalDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
-    const LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio";
-    const fetchAllLeads = async (pipelineId: string): Promise<Lead[]> => {
-      const PAGE = 1000;
-      const out: Lead[] = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("crm_leads")
-          .select(LEAD_COLS)
-          .eq("pipeline_id", pipelineId)
-          .eq("is_blocked", false)
-          .order("position")
-          .range(from, from + PAGE - 1);
-        if (error || !data || data.length === 0) break;
-        out.push(...(data as Lead[]));
-        if (data.length < PAGE) break;
-        from += PAGE;
-      }
-      return out;
+    const fetchStageLeads = async (stageId: string, from = 0): Promise<{ rows: Lead[]; count: number }> => {
+      const { data, error, count } = await supabase
+        .from("crm_leads")
+        .select(KANBAN_LEAD_COLS, { count: "exact" })
+        .eq("stage_id", stageId)
+        .eq("is_blocked", false)
+        .order("position")
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) return { rows: [], count: 0 };
+      return { rows: (data as Lead[]) || [], count: count || 0 };
     };
 
     // ── Fase 1: pipelines, perfis, etapas, leads e followups em paralelo ────
-    const [pipelinesRes, profilesRes, stagesRes, leadsAll, fqRes] = await Promise.all([
+    const [pipelinesRes, profilesRes, stagesRes, fqRes] = await Promise.all([
       supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
       supabase.from("profiles").select("id, nome"),
       targetPipelineId
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
-      targetPipelineId ? fetchAllLeads(targetPipelineId) : Promise.resolve([] as Lead[]),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
 
@@ -646,20 +637,20 @@ export default function CrmKanban() {
 
     let finalStages: Stage[];
     let finalLeads: Lead[];
-    if (targetPipelineId === p.id && stagesRes.data && leadsAll) {
+    let totalCounts: Record<string, number> = {};
+    if (targetPipelineId === p.id && stagesRes.data) {
       finalStages = (stagesRes.data as Stage[]) || [];
-      finalLeads = leadsAll as Lead[];
     } else {
-      const [s2, l2] = await Promise.all([
-        supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
-        fetchAllLeads(p.id),
-      ]);
+      const s2 = await supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position");
       finalStages = (s2.data as Stage[]) || [];
-      finalLeads = l2;
     }
+    const stageLeadChunks = await Promise.all(finalStages.map(s => fetchStageLeads(s.id)));
+    finalLeads = stageLeadChunks.flatMap(chunk => chunk.rows);
+    finalStages.forEach((s, index) => { totalCounts[s.id] = stageLeadChunks[index]?.count || 0; });
 
     setStages(finalStages);
     setLeads(finalLeads);
+    setStageTotalCounts(totalCounts);
 
     const fqMap: Record<string, string> = {};
     (fqRes.data || []).forEach((fq: any) => { fqMap[fq.lead_id] = fq.status; });
@@ -823,6 +814,7 @@ export default function CrmKanban() {
       pipelines: pList,
       stages: finalStages,
       leads: finalLeads,
+      stageTotalCounts: totalCounts,
       profiles: finalProfiles,
       followUpLeads: fqMap,
       vendasConcluidas: vendasConcluidasVal,
