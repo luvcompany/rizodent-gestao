@@ -278,6 +278,20 @@ Deno.serve(async (req) => {
         );
     }
 
+    // Commercial-hour guard: never fire bot timeouts outside 08h-20h BR, Mon-Sat.
+    // Push them to the next allowed window and skip this batch.
+    const nextFire = nextCommercialFireAt(new Date());
+    if (nextFire && expiredExecutions && expiredExecutions.length > 0) {
+      console.log(
+        `[AUTOMATION-ENGINE] Outside commercial hours; rescheduling ${expiredExecutions.length} bot timeouts to ${nextFire}`,
+      );
+      await supabase
+        .from("bot_executions")
+        .update({ timeout_at: nextFire })
+        .in("id", expiredExecutions.map((e) => e.id));
+      expiredExecutions.length = 0;
+    }
+
     const callBotTimeout = async (exec: { id: string; lead_id: string }) => {
       try {
         console.log(`[AUTOMATION-ENGINE] Bot timeout fired for execution ${exec.id}, lead ${exec.lead_id}`);
