@@ -9,11 +9,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
-  // Internal cron-only function. The Supabase gateway validates the API key.
+  // Restrict to cron / service-role / anon callers only.
   const authHeader = req.headers.get("authorization") || "";
   const apiKeyHeader = req.headers.get("apikey") || "";
-  if (!authHeader.startsWith("Bearer ") && !apiKeyHeader) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  const serviceKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const anonKeyEnv = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const allowed = [serviceKeyEnv, anonKeyEnv].filter(Boolean);
+  const ok = allowed.some((k) => k && (bearer === k || apiKeyHeader === k));
+  if (!ok) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
 
