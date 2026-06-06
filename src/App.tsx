@@ -169,6 +169,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
     <BrowserRouter basename={basename}>
       <TenantProvider slugOverride={slug}>
         <AuthProvider>
+          <DataPrefetcher />
           <Routes>
             <Route path="/" element={withRouteSuspense(<TenantLogin />)} />
             <Route path="/change-password" element={<ProtectedRoute>{withRouteSuspense(<ChangePassword />)}</ProtectedRoute>} />
