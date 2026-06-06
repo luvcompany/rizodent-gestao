@@ -95,7 +95,7 @@ const preloadTenantRoutes = () => {
   if ("requestIdleCallback" in window) {
     window.requestIdleCallback(preload, { timeout: 1_500 });
   } else {
-    window.setTimeout(preload, 700);
+    globalThis.setTimeout(preload, 700);
   }
 };
 
