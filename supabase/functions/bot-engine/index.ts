@@ -1025,13 +1025,22 @@ async function executeNode(
 
     case "move_stage": {
       if (data.stageId && data.stageId !== lead.stage_id) {
-        await supabase.from("crm_leads").update({ stage_id: data.stageId }).eq("id", lead.id);
+        // Fetch both stages (from + to) to get names and detect cross-pipeline moves
+        const { data: stages } = await supabase.from("crm_stages").select("id, name, pipeline_id").in("id", [lead.stage_id, data.stageId]);
+        const targetStage = stages?.find((s: any) => s.id === data.stageId);
+
+        // Build update payload — also update pipeline_id on cross-pipeline moves
+        const updatePayload: Record<string, any> = { stage_id: data.stageId };
+        if (targetStage?.pipeline_id && targetStage.pipeline_id !== lead.pipeline_id) {
+          updatePayload.pipeline_id = targetStage.pipeline_id;
+        }
+
+        await supabase.from("crm_leads").update(updatePayload).eq("id", lead.id);
         await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
           .eq("lead_id", lead.id).eq("stage_id", lead.stage_id).is("exited_at", null);
         await supabase.from("crm_lead_stage_history").insert({ lead_id: lead.id, stage_id: data.stageId });
-        const { data: stages } = await supabase.from("crm_stages").select("id, name").in("id", [lead.stage_id, data.stageId]);
         const fromName = stages?.find((s: any) => s.id === lead.stage_id)?.name || "?";
-        const toName = stages?.find((s: any) => s.id === data.stageId)?.name || "?";
+        const toName = targetStage?.name || "?";
         await supabase.from("messages").insert({
           lead_id: lead.id,
           content: `Etapa alterada: ${fromName} → ${toName} (Bot)`,

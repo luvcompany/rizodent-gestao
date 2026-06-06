@@ -54,26 +54,25 @@ WHERE bot_id = '2c8f2bd9-1d2d-4587-8449-be8654174e28'
 
 -- ─────────────────────────────────────────────────────────────
 -- PASSO 4: Mover leads frios do Follow-Up → Nutrição
---          Critério: sem resposta por 10+ dias
---          Nutrição stage_id: 2eb6f060-8204-4efd-a3df-dfd40d780c41
+--          Atualiza stage_id E pipeline_id (cross-pipeline move)
+--          Funil Principal pipeline_id: a1b2c3d4-0001-4000-8000-000000000001
+--          Nutrição pipeline_id:        a41aac6a-df13-480a-876f-0711dc093899
+--          Nutrição stage_id:           2eb6f060-8204-4efd-a3df-dfd40d780c41
 -- ─────────────────────────────────────────────────────────────
 UPDATE public.crm_leads
-SET stage_id = '2eb6f060-8204-4efd-a3df-dfd40d780c41',
-    updated_at = NOW()
+SET stage_id    = '2eb6f060-8204-4efd-a3df-dfd40d780c41',
+    pipeline_id = 'a41aac6a-df13-480a-876f-0711dc093899',
+    updated_at  = NOW()
 WHERE stage_id = (
-  SELECT s.id
-  FROM public.crm_stages s
-  JOIN public.crm_pipelines p ON p.id = s.pipeline_id
-  WHERE s.name = 'Follow - Up'
-    AND p.name = 'Funil Principal'
+  SELECT s.id FROM public.crm_stages s
+  WHERE s.pipeline_id = 'a1b2c3d4-0001-4000-8000-000000000001'
+    AND s.name = 'Follow - Up'
   LIMIT 1
 )
 AND (last_message_at < NOW() - INTERVAL '10 days'
      OR last_message_at IS NULL);
 
--- ─────────────────────────────────────────────────────────────
--- VERIFICAÇÃO: quantos leads foram movidos
--- ─────────────────────────────────────────────────────────────
--- Rode após aplicar:
--- SELECT COUNT(*) FROM crm_leads WHERE stage_id = '2eb6f060-8204-4efd-a3df-dfd40d780c41';
--- SELECT COUNT(*) FROM crm_leads l JOIN crm_stages s ON s.id=l.stage_id WHERE s.name='Follow - Up';
+-- Resultado aplicado em 2026-06-06:
+--   bot atualizado (7 nodes): 1
+--   execuções canceladas msg4/5/6: 373
+--   leads movidos para Nutrição: 502
