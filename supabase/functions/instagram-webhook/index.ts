@@ -414,6 +414,13 @@ Deno.serve(async (req: Request) => {
 
   if (req.method === "POST") {
     const rawBody = await req.text();
+    const signature = req.headers.get("x-hub-signature-256");
+    const appSecret = Deno.env.get("INSTAGRAM_APP_SECRET") || Deno.env.get("META_APP_SECRET") || "";
+    const sigOk = await verifyMetaSignature(rawBody, signature, appSecret);
+    if (!sigOk) {
+      console.warn("[ig-webhook] Invalid or missing x-hub-signature-256");
+      return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    }
     try {
       const payload = JSON.parse(rawBody);
       console.log("[ig-lite] payload:", JSON.stringify(payload));
