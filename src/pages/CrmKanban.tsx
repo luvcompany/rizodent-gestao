@@ -533,9 +533,33 @@ export default function CrmKanban() {
 
   // Quantos leads cada coluna exibe (scroll infinito)
   const [stageVisibleCounts, setStageVisibleCounts] = useState<Record<string, number>>({});
-  const loadMoreForStage = useCallback((stageId: string) => {
-    setStageVisibleCounts(prev => ({ ...prev, [stageId]: (prev[stageId] || PAGE_SIZE) + PAGE_SIZE }));
-  }, []);
+  const loadingMoreStagesRef = useRef<Set<string>>(new Set());
+  const loadMoreForStage = useCallback(async (stageId: string) => {
+    if (loadingMoreStagesRef.current.has(stageId)) return;
+    const loaded = leads.filter(l => l.stage_id === stageId).length;
+    const total = stageTotalCounts[stageId] ?? loaded;
+    if (loaded >= total) return;
+    loadingMoreStagesRef.current.add(stageId);
+    try {
+      const { data, error } = await supabase
+        .from("crm_leads")
+        .select(KANBAN_LEAD_COLS)
+        .eq("stage_id", stageId)
+        .eq("is_blocked", false)
+        .order("position")
+        .range(loaded, loaded + PAGE_SIZE - 1);
+      if (!error && data?.length) {
+        setLeads(prev => {
+          const existing = new Set(prev.map(l => l.id));
+          const incoming = (data as Lead[]).filter(l => !existing.has(l.id));
+          return incoming.length ? [...prev, ...incoming] : prev;
+        });
+        setStageVisibleCounts(prev => ({ ...prev, [stageId]: loaded + data.length }));
+      }
+    } finally {
+      loadingMoreStagesRef.current.delete(stageId);
+    }
+  }, [leads, stageTotalCounts]);
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
