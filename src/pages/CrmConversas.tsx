@@ -79,7 +79,8 @@ const leadsListCache = {
   pipelines: null as PipelineWithRoles[] | null,
   timestamp: 0,
 };
-const LEADS_CACHE_TTL = 2 * 60_000; // 2 minutes
+const LEADS_CACHE_TTL = 5 * 60_000; // 5 min: navegação entre telas usa cache instantâneo
+const LEADS_BG_REFRESH_AFTER = 60_000; // só refaz fetch em background se cache > 60s
 
 // ── localStorage: persiste entre reloads ────────────────────────────────────
 // v2: invalidate previous cache after RLS revert (Pós-Venda leak fix)
@@ -122,7 +123,7 @@ const SidePanelFallback = () => (
 );
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 const CONVERSATION_PAGE_SIZE = 1000;
-const CONVERSATION_MAX_PAGES = 20; // up to 20k leads
+const CONVERSATION_MAX_PAGES = 6; // ~6k leads; suficiente p/ base atual (~4.3k) sem páginas extras
 const LEAD_SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
 
 const getLastDirection = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => {
@@ -282,7 +283,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setProfiles(leadsListCache.profiles || []);
       setPipelines(leadsListCache.pipelines || []);
       setLoading(false);
-      // Still refresh in background
+      // Só refaz fetch em background se o cache estiver com mais de 60s — evita roundtrip a cada navegação.
+      const cacheAge = Date.now() - leadsListCache.timestamp;
+      if (cacheAge < LEADS_BG_REFRESH_AFTER) return;
       (async () => {
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
           fetchAllConversationLeads(tenant.id),
