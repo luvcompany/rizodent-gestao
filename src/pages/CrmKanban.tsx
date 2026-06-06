@@ -534,6 +534,7 @@ export default function CrmKanban() {
   // Quantos leads cada coluna exibe (scroll infinito)
   const [stageVisibleCounts, setStageVisibleCounts] = useState<Record<string, number>>({});
   const loadingMoreStagesRef = useRef<Set<string>>(new Set());
+  const hydratingAllRef = useRef(false);
   const loadMoreForStage = useCallback(async (stageId: string) => {
     if (loadingMoreStagesRef.current.has(stageId)) return;
     const loaded = leads.filter(l => l.stage_id === stageId).length;
@@ -560,6 +561,46 @@ export default function CrmKanban() {
       loadingMoreStagesRef.current.delete(stageId);
     }
   }, [leads, stageTotalCounts]);
+
+  const hydrateAllStageLeads = useCallback(async () => {
+    if (hydratingAllRef.current || stages.length === 0) return;
+    const missingStages = stages.filter(stage => {
+      const loaded = leads.filter(l => l.stage_id === stage.id).length;
+      const total = stageTotalCounts[stage.id] ?? loaded;
+      return loaded < total;
+    });
+    if (missingStages.length === 0) return;
+    hydratingAllRef.current = true;
+    try {
+      const chunks = await Promise.all(missingStages.map(async (stage) => {
+        const loaded = leads.filter(l => l.stage_id === stage.id).length;
+        const total = stageTotalCounts[stage.id] ?? loaded;
+        const out: Lead[] = [];
+        for (let from = loaded; from < total; from += 1000) {
+          const { data, error } = await supabase
+            .from("crm_leads")
+            .select(KANBAN_LEAD_COLS)
+            .eq("stage_id", stage.id)
+            .eq("is_blocked", false)
+            .order("position")
+            .range(from, Math.min(from + 999, total - 1));
+          if (error || !data?.length) break;
+          out.push(...(data as Lead[]));
+        }
+        return out;
+      }));
+      const incoming = chunks.flat();
+      if (incoming.length) {
+        setLeads(prev => {
+          const existing = new Set(prev.map(l => l.id));
+          const unique = incoming.filter(l => !existing.has(l.id));
+          return unique.length ? [...prev, ...unique] : prev;
+        });
+      }
+    } finally {
+      hydratingAllRef.current = false;
+    }
+  }, [stages, leads, stageTotalCounts]);
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
