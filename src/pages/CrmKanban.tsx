@@ -417,6 +417,7 @@ type KanbanCacheEntry = {
   pipelines: Pipeline[];
   stages: Stage[];
   leads: Lead[];
+  stageTotalCounts: Record<string, number>;
   profiles: { id: string; nome: string }[];
   followUpLeads: Record<string, string>;
   vendasConcluidas: number;
@@ -433,7 +434,7 @@ const kanbanDataCache: {
   entry: KanbanCacheEntry | null;
   timestamp: number;
 } = { userId: null, pipelineId: null, entry: null, timestamp: 0 };
-const KANBAN_CACHE_TTL = 2 * 60_000;
+const KANBAN_CACHE_TTL = 5 * 60_000;
 export const invalidateKanbanCache = () => {
   kanbanDataCache.timestamp = 0;
   kanbanDataCache.entry = null;
@@ -499,6 +500,7 @@ export default function CrmKanban() {
   });
   const [stages, setStages] = useState<Stage[]>(_lsInit?.stages || []);
   const [leads, setLeads] = useState<Lead[]>(_lsInit?.leads || []);
+  const [stageTotalCounts, setStageTotalCounts] = useState<Record<string, number>>(_lsInit?.stageTotalCounts || {});
   const [loading, setLoading] = useState(!_lsInit);
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
