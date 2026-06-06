@@ -114,6 +114,7 @@ function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, current
 }
 
 const PAGE_SIZE = 50; // leads por coluna no carregamento inicial
+const KANBAN_LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio";
 
 type NewLeadDialogProps = {
   open: boolean;
@@ -455,6 +456,7 @@ function loadKanbanCacheFromLS(userId: string, pipelineId: string): KanbanCacheE
     if (Date.now() - ts > KANBAN_LS_TTL) return null;
     return {
       ...entry,
+      stageTotalCounts: entry.stageTotalCounts || {},
       leadMonthValueMap: new Map<string, number>(entry.leadMonthValueMap),
       leadAllTimeValueMap: new Map<string, number>(entry.leadAllTimeValueMap),
       leadsWithPagamento: new Set<string>(entry.leadsWithPagamento),
