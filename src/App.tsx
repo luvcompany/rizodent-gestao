@@ -100,6 +100,27 @@ const preloadTenantRoutes = () => {
   }
 };
 
+/** Após o login, dispara em background a primeira carga de Dashboard e Conversas
+ *  para que a primeira navegação seja instantânea (sem 5–7s de espera). */
+const DataPrefetcher = () => {
+  const { user, loading: authLoading } = useAuth();
+  const { tenant } = useTenant();
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user?.id || !tenant?.id) return;
+    const run = () => {
+      prefetchDashboardData().catch(() => undefined);
+      prefetchConversasData(tenant.id, user.id).catch(() => undefined);
+    };
+    if ("requestIdleCallback" in window) {
+      (window as any).requestIdleCallback(run, { timeout: 1_500 });
+    } else {
+      globalThis.setTimeout(run, 300);
+    }
+  }, [authLoading, user?.id, tenant?.id]);
+  return null;
+};
+
 const Providers = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
