@@ -113,7 +113,8 @@ function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, current
   );
 }
 
-const PAGE_SIZE = 50; // leads por coluna no carregamento inicial
+const PAGE_SIZE = 20; // cards iniciais por coluna; o restante carrega ao rolar
+const KANBAN_LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio";
 
 type NewLeadDialogProps = {
   open: boolean;
@@ -417,6 +418,7 @@ type KanbanCacheEntry = {
   pipelines: Pipeline[];
   stages: Stage[];
   leads: Lead[];
+  stageTotalCounts: Record<string, number>;
   profiles: { id: string; nome: string }[];
   followUpLeads: Record<string, string>;
   vendasConcluidas: number;
@@ -433,7 +435,7 @@ const kanbanDataCache: {
   entry: KanbanCacheEntry | null;
   timestamp: number;
 } = { userId: null, pipelineId: null, entry: null, timestamp: 0 };
-const KANBAN_CACHE_TTL = 2 * 60_000;
+const KANBAN_CACHE_TTL = 5 * 60_000;
 export const invalidateKanbanCache = () => {
   kanbanDataCache.timestamp = 0;
   kanbanDataCache.entry = null;
@@ -442,8 +444,8 @@ export const invalidateKanbanCache = () => {
 };
 
 // ── localStorage: persiste o cache entre reloads de página ──────────────────
-// v2: chave passa a incluir o user.id para evitar vazamento entre usuários
-const KANBAN_LS_KEY = "crm:kanban_cache_v2";
+// v4: armazena somente uma fatia pequena por coluna + totais, evitando reidratar milhares de cards.
+const KANBAN_LS_KEY = "crm:kanban_cache_v4";
 const KANBAN_LS_TTL = 15 * 60_000;
 
 function loadKanbanCacheFromLS(userId: string, pipelineId: string): KanbanCacheEntry | null {
@@ -454,6 +456,7 @@ function loadKanbanCacheFromLS(userId: string, pipelineId: string): KanbanCacheE
     if (Date.now() - ts > KANBAN_LS_TTL) return null;
     return {
       ...entry,
+      stageTotalCounts: entry.stageTotalCounts || {},
       leadMonthValueMap: new Map<string, number>(entry.leadMonthValueMap),
       leadAllTimeValueMap: new Map<string, number>(entry.leadAllTimeValueMap),
       leadsWithPagamento: new Set<string>(entry.leadsWithPagamento),
@@ -499,6 +502,7 @@ export default function CrmKanban() {
   });
   const [stages, setStages] = useState<Stage[]>(_lsInit?.stages || []);
   const [leads, setLeads] = useState<Lead[]>(_lsInit?.leads || []);
+  const [stageTotalCounts, setStageTotalCounts] = useState<Record<string, number>>(_lsInit?.stageTotalCounts || {});
   const [loading, setLoading] = useState(!_lsInit);
   const [newLeadOpen, setNewLeadOpen] = useState(false);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
@@ -529,9 +533,74 @@ export default function CrmKanban() {
 
   // Quantos leads cada coluna exibe (scroll infinito)
   const [stageVisibleCounts, setStageVisibleCounts] = useState<Record<string, number>>({});
-  const loadMoreForStage = useCallback((stageId: string) => {
-    setStageVisibleCounts(prev => ({ ...prev, [stageId]: (prev[stageId] || PAGE_SIZE) + PAGE_SIZE }));
-  }, []);
+  const loadingMoreStagesRef = useRef<Set<string>>(new Set());
+  const hydratingAllRef = useRef(false);
+  const loadMoreForStage = useCallback(async (stageId: string) => {
+    if (loadingMoreStagesRef.current.has(stageId)) return;
+    const loaded = leads.filter(l => l.stage_id === stageId).length;
+    const total = stageTotalCounts[stageId] ?? loaded;
+    if (loaded >= total) return;
+    loadingMoreStagesRef.current.add(stageId);
+    try {
+      const { data, error } = await supabase
+        .from("crm_leads")
+        .select(KANBAN_LEAD_COLS)
+        .eq("stage_id", stageId)
+        .eq("is_blocked", false)
+        .order("position")
+        .range(loaded, loaded + PAGE_SIZE - 1);
+      if (!error && data?.length) {
+        setLeads(prev => {
+          const existing = new Set(prev.map(l => l.id));
+          const incoming = (data as Lead[]).filter(l => !existing.has(l.id));
+          return incoming.length ? [...prev, ...incoming] : prev;
+        });
+        setStageVisibleCounts(prev => ({ ...prev, [stageId]: loaded + data.length }));
+      }
+    } finally {
+      loadingMoreStagesRef.current.delete(stageId);
+    }
+  }, [leads, stageTotalCounts]);
+
+  const hydrateAllStageLeads = useCallback(async () => {
+    if (hydratingAllRef.current || stages.length === 0) return;
+    const missingStages = stages.filter(stage => {
+      const loaded = leads.filter(l => l.stage_id === stage.id).length;
+      const total = stageTotalCounts[stage.id] ?? loaded;
+      return loaded < total;
+    });
+    if (missingStages.length === 0) return;
+    hydratingAllRef.current = true;
+    try {
+      const chunks = await Promise.all(missingStages.map(async (stage) => {
+        const loaded = leads.filter(l => l.stage_id === stage.id).length;
+        const total = stageTotalCounts[stage.id] ?? loaded;
+        const out: Lead[] = [];
+        for (let from = loaded; from < total; from += 1000) {
+          const { data, error } = await supabase
+            .from("crm_leads")
+            .select(KANBAN_LEAD_COLS)
+            .eq("stage_id", stage.id)
+            .eq("is_blocked", false)
+            .order("position")
+            .range(from, Math.min(from + 999, total - 1));
+          if (error || !data?.length) break;
+          out.push(...(data as Lead[]));
+        }
+        return out;
+      }));
+      const incoming = chunks.flat();
+      if (incoming.length) {
+        setLeads(prev => {
+          const existing = new Set(prev.map(l => l.id));
+          const unique = incoming.filter(l => !existing.has(l.id));
+          return unique.length ? [...prev, ...unique] : prev;
+        });
+      }
+    } finally {
+      hydratingAllRef.current = false;
+    }
+  }, [stages, leads, stageTotalCounts]);
 
   // New stage between columns
   const [newStageOpen, setNewStageOpen] = useState(false);
@@ -561,6 +630,7 @@ export default function CrmKanban() {
       if (p) setPipeline(p);
       setStages(e.stages);
       setLeads(e.leads);
+      setStageTotalCounts(e.stageTotalCounts || {});
       setProfiles(e.profiles);
       setFollowUpLeads(e.followUpLeads);
       setVendasConcluidas(e.vendasConcluidas);
@@ -580,35 +650,25 @@ export default function CrmKanban() {
     const monthStart = toLocalDateISO(new Date(now.getFullYear(), now.getMonth(), 1));
     const monthEnd = toLocalDateISO(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
-    const LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio";
-    const fetchAllLeads = async (pipelineId: string): Promise<Lead[]> => {
-      const PAGE = 1000;
-      const out: Lead[] = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("crm_leads")
-          .select(LEAD_COLS)
-          .eq("pipeline_id", pipelineId)
-          .eq("is_blocked", false)
-          .order("position")
-          .range(from, from + PAGE - 1);
-        if (error || !data || data.length === 0) break;
-        out.push(...(data as Lead[]));
-        if (data.length < PAGE) break;
-        from += PAGE;
-      }
-      return out;
+    const fetchStageLeads = async (stageId: string, from = 0): Promise<{ rows: Lead[]; count: number }> => {
+      const { data, error, count } = await supabase
+        .from("crm_leads")
+        .select(KANBAN_LEAD_COLS, { count: "exact" })
+        .eq("stage_id", stageId)
+        .eq("is_blocked", false)
+        .order("position")
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) return { rows: [], count: 0 };
+      return { rows: (data as Lead[]) || [], count: count || 0 };
     };
 
     // ── Fase 1: pipelines, perfis, etapas, leads e followups em paralelo ────
-    const [pipelinesRes, profilesRes, stagesRes, leadsAll, fqRes] = await Promise.all([
+    const [pipelinesRes, profilesRes, stagesRes, fqRes] = await Promise.all([
       supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
       supabase.from("profiles").select("id, nome"),
       targetPipelineId
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
-      targetPipelineId ? fetchAllLeads(targetPipelineId) : Promise.resolve([] as Lead[]),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
 
@@ -642,20 +702,20 @@ export default function CrmKanban() {
 
     let finalStages: Stage[];
     let finalLeads: Lead[];
-    if (targetPipelineId === p.id && stagesRes.data && leadsAll) {
+    let totalCounts: Record<string, number> = {};
+    if (targetPipelineId === p.id && stagesRes.data) {
       finalStages = (stagesRes.data as Stage[]) || [];
-      finalLeads = leadsAll as Lead[];
     } else {
-      const [s2, l2] = await Promise.all([
-        supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position"),
-        fetchAllLeads(p.id),
-      ]);
+      const s2 = await supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position");
       finalStages = (s2.data as Stage[]) || [];
-      finalLeads = l2;
     }
+    const stageLeadChunks = await Promise.all(finalStages.map(s => fetchStageLeads(s.id)));
+    finalLeads = stageLeadChunks.flatMap(chunk => chunk.rows);
+    finalStages.forEach((s, index) => { totalCounts[s.id] = stageLeadChunks[index]?.count || 0; });
 
     setStages(finalStages);
     setLeads(finalLeads);
+    setStageTotalCounts(totalCounts);
 
     const fqMap: Record<string, string> = {};
     (fqRes.data || []).forEach((fq: any) => { fqMap[fq.lead_id] = fq.status; });
@@ -819,6 +879,7 @@ export default function CrmKanban() {
       pipelines: pList,
       stages: finalStages,
       leads: finalLeads,
+      stageTotalCounts: totalCounts,
       profiles: finalProfiles,
       followUpLeads: fqMap,
       vendasConcluidas: vendasConcluidasVal,
@@ -888,6 +949,12 @@ export default function CrmKanban() {
   useEffect(() => {
     try { localStorage.setItem("crm:kanbanSearch", searchTerm); } catch {}
   }, [searchTerm]);
+
+  useEffect(() => {
+    if (viewMode === "list" || searchTerm || countActive({ ...kanbanFilters, pipelineId: "" }) > 0) {
+      hydrateAllStageLeads();
+    }
+  }, [viewMode, searchTerm, kanbanFilters, hydrateAllStageLeads]);
 
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
@@ -1021,6 +1088,14 @@ export default function CrmKanban() {
   }, [searchTerm, kanbanFilters, user?.id, leadsWithPagamento, labelsByLead]);
 
   const allFilteredLeads = useMemo(() => applyFilters(leads), [leads, applyFilters]);
+  const hasClientFilters = useMemo(() => (
+    !!searchTerm || countActive({ ...kanbanFilters, pipelineId: "" }) > 0
+  ), [searchTerm, kanbanFilters]);
+  const visibleTotalCount = useMemo(() => {
+    if (hasClientFilters) return allFilteredLeads.length;
+    const total = Object.values(stageTotalCounts).reduce((sum, value) => sum + value, 0);
+    return total || allFilteredLeads.length;
+  }, [hasClientFilters, allFilteredLeads.length, stageTotalCounts]);
 
   // Pré-computa os leads de cada etapa UMA vez — não re-executa ao digitar no modal
   const stageLeadsMap = useMemo(() => {
@@ -1177,7 +1252,7 @@ export default function CrmKanban() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{allFilteredLeads.length} leads</span>
+          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{visibleTotalCount} leads</span>
           <Button variant="outline" size="sm" onClick={() => navigate("/crm/automacoes")}>
             <Zap size={14} className="mr-1" /> AUTOMATIZE
           </Button>
@@ -1215,7 +1290,8 @@ export default function CrmKanban() {
                 const stageLeads = stageLeadsMap.get(stage.id) || [];
                 const visibleCount = stageVisibleCounts[stage.id] || PAGE_SIZE;
                 const visibleLeads = stageLeads.slice(0, visibleCount);
-                const hasMore = stageLeads.length > visibleCount;
+                const totalStageLeads = stageTotalCounts[stage.id] ?? stageLeads.length;
+                const hasMore = totalStageLeads > stageLeads.length || stageLeads.length > visibleCount;
                 const stageValue = stageLeads.reduce((a, l) => a + (leadMonthValueMap.get(l.id) || 0), 0);
                 return (
                   <div key={stage.id} className="flex items-start gap-1">
@@ -1223,7 +1299,7 @@ export default function CrmKanban() {
                       <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
                       <div className="px-3 py-2 flex-shrink-0">
                         <div className="font-semibold text-sm text-foreground">{stage.name}</div>
-                        <div className="text-xs text-muted-foreground">{stageLeads.length} leads · {formatCurrency(stageValue)}</div>
+                        <div className="text-xs text-muted-foreground">{totalStageLeads} leads · {formatCurrency(stageValue)}</div>
                       </div>
 
                       {idx === 0 && (
@@ -1350,7 +1426,7 @@ export default function CrmKanban() {
                             )}
                             {hasMore && (
                               <p className="text-center text-[10px] text-muted-foreground pb-2">
-                                {visibleCount} de {stageLeads.length} leads
+                                {Math.min(stageLeads.length, totalStageLeads)} de {totalStageLeads} leads
                               </p>
                             )}
                           </div>

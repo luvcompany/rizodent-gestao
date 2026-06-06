@@ -19,6 +19,8 @@ const DEFAULT_TENANT: TenantBranding = {
   logo_url: crclinLogo,
   primary_color: null,
 };
+const TENANT_CACHE_TTL = 60 * 60_000;
+const TENANT_CACHE_KEY = "crm:tenant_cache_v1";
 
 const TenantContext = createContext<{ tenant: TenantBranding; loading: boolean }>({
   tenant: DEFAULT_TENANT,
@@ -93,9 +95,28 @@ function applyPrimaryColor(hex: string | null) {
   root.style.setProperty("--tenant-primary", hex);
 }
 
+function readTenantCache(slug: string | null) {
+  if (!slug) return null;
+  try {
+    const raw = localStorage.getItem(`${TENANT_CACHE_KEY}:${slug}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - parsed.ts > TENANT_CACHE_TTL) return null;
+    return parsed.data as TenantBranding;
+  } catch {
+    return null;
+  }
+}
+
+function writeTenantCache(slug: string, data: TenantBranding) {
+  try {
+    localStorage.setItem(`${TENANT_CACHE_KEY}:${slug}`, JSON.stringify({ data, ts: Date.now() }));
+  } catch {}
+}
+
 export const TenantProvider = ({ children, slugOverride = null }: ProviderProps) => {
-  const [tenant, setTenant] = useState<TenantBranding>(DEFAULT_TENANT);
-  const [loading, setLoading] = useState(true);
+  const [tenant, setTenant] = useState<TenantBranding>(() => readTenantCache(slugOverride) || DEFAULT_TENANT);
+  const [loading, setLoading] = useState(() => !readTenantCache(slugOverride) && !!slugOverride);
 
   useEffect(() => {
     if (!slugOverride) {
@@ -103,21 +124,32 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
       setLoading(false);
       return;
     }
+    const cached = readTenantCache(slugOverride);
+    if (cached) {
+      setTenant(cached);
+      applyPrimaryColor(cached.primary_color || null);
+      document.title = cached.name;
+      setLoading(false);
+    }
     (async () => {
       const { data: rows } = await (supabase as any).rpc("get_tenant_by_slug", { _slug: slugOverride });
       const data = Array.isArray(rows) ? rows[0] : rows;
       if (data) {
-        setTenant({
+        const nextTenant = {
           id: data.id,
           slug: data.slug,
           name: data.name,
           logo_url: data.logo_url || crclinLogo,
           primary_color: data.primary_color,
-        });
+        };
+        setTenant(nextTenant);
+        writeTenantCache(slugOverride, nextTenant);
         applyPrimaryColor(data.primary_color || null);
         document.title = data.name;
       } else {
-        setTenant({ ...DEFAULT_TENANT, slug: slugOverride, logo_url: crclinLogo });
+        const fallbackTenant = { ...DEFAULT_TENANT, slug: slugOverride, logo_url: crclinLogo };
+        setTenant(fallbackTenant);
+        writeTenantCache(slugOverride, fallbackTenant);
         applyPrimaryColor(null);
       }
       setLoading(false);

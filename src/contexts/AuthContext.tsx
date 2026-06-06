@@ -25,6 +25,27 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_PROFILE_CACHE_TTL = 15 * 60_000;
+const AUTH_PROFILE_CACHE_KEY = "crm:auth_profile_cache_v1";
+
+function readCachedAuth(userId: string | undefined) {
+  if (!userId) return null;
+  try {
+    const raw = localStorage.getItem(`${AUTH_PROFILE_CACHE_KEY}:${userId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - parsed.ts > AUTH_PROFILE_CACHE_TTL) return null;
+    return parsed.data as { profile: ProfileData | null; userRole: string | null };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedAuth(userId: string, data: { profile: ProfileData | null; userRole: string | null }) {
+  try {
+    localStorage.setItem(`${AUTH_PROFILE_CACHE_KEY}:${userId}`, JSON.stringify({ data, ts: Date.now() }));
+  } catch {}
+}
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
@@ -45,8 +66,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       ]);
       if (profErr) console.warn("[AuthContext] fetch profile error:", profErr.message);
       if (roleErr) console.warn("[AuthContext] fetch role error:", roleErr.message);
-      setProfile(prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false, must_change_password: (prof as any).must_change_password ?? false, is_blocked: (prof as any).is_blocked ?? false } : null);
-      setUserRole(role?.role ?? null);
+      const normalizedProfile = prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false, must_change_password: (prof as any).must_change_password ?? false, is_blocked: (prof as any).is_blocked ?? false } : null;
+      const normalizedRole = role?.role ?? null;
+      setProfile(normalizedProfile);
+      setUserRole(normalizedRole);
+      writeCachedAuth(userId, { profile: normalizedProfile, userRole: normalizedRole });
     } catch (e: any) {
       console.error("[AuthContext] fetchProfile failed:", e?.message || e);
       // Keep previous profile/role state on transient network errors.
@@ -64,6 +88,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
+          const cached = readCachedAuth(session.user.id);
+          if (cached) {
+            setProfile(cached.profile);
+            setUserRole(cached.userRole);
+          }
           setTimeout(() => fetchProfile(session.user.id), 0);
         } else {
           setProfile(null);
@@ -77,6 +106,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
+        const cached = readCachedAuth(session.user.id);
+        if (cached) {
+          setProfile(cached.profile);
+          setUserRole(cached.userRole);
+        }
         fetchProfile(session.user.id);
       }
       setLoading(false);
