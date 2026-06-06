@@ -74,6 +74,30 @@ const queryClient = new QueryClient({
 });
 
 const PageLoader = () => <div className="min-h-screen bg-background" />;
+const RouteLoader = () => <div className="min-h-full bg-background" />;
+const withRouteSuspense = (node: ReactNode) => (
+  <Suspense fallback={<RouteLoader />}>{node}</Suspense>
+);
+
+const preloadTenantRoutes = () => {
+  const preload = () => {
+    [
+      CrmDashboard,
+      CrmKanban,
+      CrmConversas,
+      CrmCalendario,
+      CrmConversa,
+      Dashboard,
+      Pacientes,
+      Relatorios,
+    ].forEach((component) => component.preload().catch(() => undefined));
+  };
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(preload, { timeout: 1_500 });
+  } else {
+    window.setTimeout(preload, 700);
+  }
+};
 
 const Providers = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>
