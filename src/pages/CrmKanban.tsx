@@ -444,8 +444,8 @@ export const invalidateKanbanCache = () => {
 };
 
 // ── localStorage: persiste o cache entre reloads de página ──────────────────
-// v2: chave passa a incluir o user.id para evitar vazamento entre usuários
-const KANBAN_LS_KEY = "crm:kanban_cache_v2";
+// v3: armazena somente a primeira fatia por coluna + totais, evitando reidratar milhares de cards.
+const KANBAN_LS_KEY = "crm:kanban_cache_v3";
 const KANBAN_LS_TTL = 15 * 60_000;
 
 function loadKanbanCacheFromLS(userId: string, pipelineId: string): KanbanCacheEntry | null {
