@@ -106,21 +106,25 @@ const preloadTenantRoutes = () => {
 /** Após o login, dispara em background a primeira carga de Dashboard e Conversas
  *  para que a primeira navegação seja instantânea (sem 5–7s de espera). */
 const DataPrefetcher = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, userRole, loading: authLoading } = useAuth();
   const { tenant } = useTenant();
   useEffect(() => {
     if (authLoading) return;
     if (!user?.id || !tenant?.id) return;
     const run = () => {
+      // Prefetch em paralelo: ao chegar nas abas, os dados já estão em cache.
       prefetchDashboardData().catch(() => undefined);
       prefetchConversasData(tenant.id, user.id).catch(() => undefined);
+      prefetchCrmDashboardData(user.id, userRole).catch(() => undefined);
+      prefetchCrmCalendarioData(user.id).catch(() => undefined);
+      prefetchPosVendaData(user.id, userRole).catch(() => undefined);
     };
     if ("requestIdleCallback" in window) {
       (window as any).requestIdleCallback(run, { timeout: 1_500 });
     } else {
       globalThis.setTimeout(run, 300);
     }
-  }, [authLoading, user?.id, tenant?.id]);
+  }, [authLoading, user?.id, tenant?.id, userRole]);
   return null;
 };
 
