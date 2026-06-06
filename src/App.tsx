@@ -87,9 +87,6 @@ const preloadTenantRoutes = () => {
       CrmConversas,
       CrmCalendario,
       CrmConversa,
-      Dashboard,
-      Pacientes,
-      Relatorios,
     ].forEach((component) => component.preload().catch(() => undefined));
   };
   if ("requestIdleCallback" in window) {
