@@ -1041,6 +1041,14 @@ export default function CrmKanban() {
   }, [searchTerm, kanbanFilters, user?.id, leadsWithPagamento, labelsByLead]);
 
   const allFilteredLeads = useMemo(() => applyFilters(leads), [leads, applyFilters]);
+  const hasClientFilters = useMemo(() => (
+    !!searchTerm || countActive(kanbanFilters) > 0
+  ), [searchTerm, kanbanFilters]);
+  const visibleTotalCount = useMemo(() => {
+    if (hasClientFilters) return allFilteredLeads.length;
+    const total = Object.values(stageTotalCounts).reduce((sum, value) => sum + value, 0);
+    return total || allFilteredLeads.length;
+  }, [hasClientFilters, allFilteredLeads.length, stageTotalCounts]);
 
   // Pré-computa os leads de cada etapa UMA vez — não re-executa ao digitar no modal
   const stageLeadsMap = useMemo(() => {
@@ -1197,7 +1205,7 @@ export default function CrmKanban() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{allFilteredLeads.length} leads</span>
+          <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">{visibleTotalCount} leads</span>
           <Button variant="outline" size="sm" onClick={() => navigate("/crm/automacoes")}>
             <Zap size={14} className="mr-1" /> AUTOMATIZE
           </Button>
