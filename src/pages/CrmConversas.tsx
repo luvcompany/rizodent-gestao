@@ -170,6 +170,37 @@ const fetchAllConversationLeads = async (tenantId: string) => {
   return sortLeadsByLastActivity(all);
 };
 
+/** Pré-carrega a lista de conversas + profiles + pipelines e popula o cache em memória + localStorage.
+ *  Idempotente: se o cache estiver fresco (< LEADS_BG_REFRESH_AFTER), retorna imediatamente. */
+export const prefetchConversasData = async (tenantId: string, userId: string): Promise<void> => {
+  if (!tenantId || !userId) return;
+  const cacheKey = `${tenantId}:${userId}`;
+  if (
+    leadsListCache.cacheKey === cacheKey &&
+    leadsListCache.leads &&
+    Date.now() - leadsListCache.timestamp < LEADS_BG_REFRESH_AFTER
+  ) {
+    return;
+  }
+  try {
+    const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
+      fetchAllConversationLeads(tenantId),
+      supabase.from("profiles").select("id, nome").eq("tenant_id", tenantId),
+      supabase.from("crm_pipelines").select("id, name, allowed_roles").eq("tenant_id", tenantId).order("created_at"),
+    ]);
+    const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
+    const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
+    leadsListCache.cacheKey = cacheKey;
+    leadsListCache.leads = rawLeads;
+    leadsListCache.profiles = profs;
+    leadsListCache.pipelines = pipes;
+    leadsListCache.timestamp = Date.now();
+    writeConversasLS(cacheKey, { leads: rawLeads, profiles: profs, pipelines: pipes });
+  } catch (e) {
+    console.warn("[prefetchConversasData] falhou:", e);
+  }
+};
+
 
 interface ConversationsViewProps {
   pipelineFilter?: string;          // include only this pipeline
