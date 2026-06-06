@@ -18,6 +18,21 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VERIFY_TOKEN_V1 = Deno.env.get("INSTAGRAM_LITE_VERIFY_TOKEN") ?? Deno.env.get("INSTAGRAM_VERIFY_TOKEN") ?? "";
 const VERIFY_TOKEN_V2 = Deno.env.get("INSTAGRAM_VERIFY_TOKEN_V2") ?? "";
 
+async function verifyMetaSignature(rawBody: string, signature: string | null, appSecret: string): Promise<boolean> {
+  if (!appSecret) return false;
+  if (!signature || !signature.startsWith("sha256=")) return false;
+  const sigHex = signature.slice("sha256=".length);
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(appSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sigBuf = await crypto.subtle.sign("HMAC", key, enc.encode(rawBody));
+  const computed = Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  if (computed.length !== sigHex.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < computed.length; i++) mismatch |= computed.charCodeAt(i) ^ sigHex.charCodeAt(i);
+  return mismatch === 0;
+}
+
+
 const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
 const RIZODENT_INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
