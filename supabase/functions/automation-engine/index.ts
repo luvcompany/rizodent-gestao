@@ -36,6 +36,29 @@ async function fetchAllRows<T = any>(buildQuery: () => any, pageSize = PAGE_SIZE
   return rows;
 }
 
+// Commercial hours guard (BR = UTC-3): Mon-Sat 08:00-20:00 local.
+// Returns ISO string for next allowed fire time, or null if we're inside the window.
+function nextCommercialFireAt(now: Date = new Date()): string | null {
+  const BR_OFFSET_MS = -3 * 60 * 60 * 1000; // UTC-3
+  const brNow = new Date(now.getTime() + BR_OFFSET_MS);
+  const dow = brNow.getUTCDay(); // 0=Sun..6=Sat
+  const hour = brNow.getUTCHours();
+  const inWindow = dow >= 1 && dow <= 6 && hour >= 8 && hour < 20;
+  if (inWindow) return null;
+  // Compute next 08:00 BR.
+  const next = new Date(brNow);
+  if (dow >= 1 && dow <= 6 && hour < 8) {
+    // Today, later — set to 08:00
+  } else {
+    // After 20:00 today, or Sunday: advance day until Mon-Sat
+    next.setUTCDate(next.getUTCDate() + 1);
+    while (next.getUTCDay() === 0) next.setUTCDate(next.getUTCDate() + 1);
+  }
+  next.setUTCHours(8, 0, 0, 0);
+  // Convert back to real UTC (subtract BR offset)
+  return new Date(next.getTime() - BR_OFFSET_MS).toISOString();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -253,6 +276,20 @@ Deno.serve(async (req) => {
           "id",
           expiredExecutions.map((e) => e.id),
         );
+    }
+
+    // Commercial-hour guard: never fire bot timeouts outside 08h-20h BR, Mon-Sat.
+    // Push them to the next allowed window and skip this batch.
+    const nextFire = nextCommercialFireAt(new Date());
+    if (nextFire && expiredExecutions && expiredExecutions.length > 0) {
+      console.log(
+        `[AUTOMATION-ENGINE] Outside commercial hours; rescheduling ${expiredExecutions.length} bot timeouts to ${nextFire}`,
+      );
+      await supabase
+        .from("bot_executions")
+        .update({ timeout_at: nextFire })
+        .in("id", expiredExecutions.map((e) => e.id));
+      expiredExecutions.length = 0;
     }
 
     const callBotTimeout = async (exec: { id: string; lead_id: string }) => {
