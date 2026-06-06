@@ -951,7 +951,7 @@ export default function CrmKanban() {
   }, [searchTerm]);
 
   useEffect(() => {
-    if (viewMode === "list" || searchTerm || countActive(kanbanFilters) > 0) {
+    if (viewMode === "list" || searchTerm || countActive({ ...kanbanFilters, pipelineId: "" }) > 0) {
       hydrateAllStageLeads();
     }
   }, [viewMode, searchTerm, kanbanFilters, hydrateAllStageLeads]);
@@ -1089,7 +1089,7 @@ export default function CrmKanban() {
 
   const allFilteredLeads = useMemo(() => applyFilters(leads), [leads, applyFilters]);
   const hasClientFilters = useMemo(() => (
-    !!searchTerm || countActive(kanbanFilters) > 0
+    !!searchTerm || countActive({ ...kanbanFilters, pipelineId: "" }) > 0
   ), [searchTerm, kanbanFilters]);
   const visibleTotalCount = useMemo(() => {
     if (hasClientFilters) return allFilteredLeads.length;
