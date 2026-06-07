@@ -799,7 +799,9 @@ const Dashboard = () => {
         </div>
         <div className="flex items-center gap-2">
           <HolidaysManager clinicas={clinicas} onChange={fetchHolidays} />
-          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          <Suspense fallback={<div className="h-8 w-[140px] rounded-md bg-secondary" />}>
+            <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          </Suspense>
         </div>
       </div>
 
