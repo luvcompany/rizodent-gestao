@@ -79,7 +79,7 @@ const writeDashboardCache = (key: string, data: DashboardPayload) => {
   dashboardMemoryCache = { key, ts: Date.now(), data };
 };
 
-const fetchAllCrmLeads = async (from?: string, to?: string) => {
+const fetchAllCrmLeads = async (dateFrom?: string, dateTo?: string) => {
   const rows: any[] = [];
 
   for (let from = 0; ; from += CRM_LEADS_PAGE_SIZE) {
@@ -90,9 +90,9 @@ const fetchAllCrmLeads = async (from?: string, to?: string) => {
       .order("id", { ascending: true })
       .range(from, from + CRM_LEADS_PAGE_SIZE - 1);
 
-    if (arguments[0] && arguments[1]) {
-      const start = `${arguments[0]}T00:00:00`;
-      const end = `${arguments[1]}T23:59:59`;
+    if (dateFrom && dateTo) {
+      const start = `${dateFrom}T00:00:00`;
+      const end = `${dateTo}T23:59:59`;
       query = query.or(`and(created_at.gte.${start},created_at.lte.${end}),and(first_inbound_at.gte.${start},first_inbound_at.lte.${end})`);
     }
 
