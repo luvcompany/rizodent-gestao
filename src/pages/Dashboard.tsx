@@ -291,7 +291,7 @@ const Dashboard = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [dateFrom, dateTo, isAllPeriod]);
 
   // Unique values for filter dropdowns
 
@@ -426,7 +426,7 @@ const Dashboard = () => {
     const agendadosLeadIds = new Set<string>(apptsNoPeriodo.map((a: any) => a.lead_id));
 
     return { leads, agendadosLeadIds, apptsDosAgendados: apptsNoPeriodo };
-  }, [crmLeads, crmAppointments, crmStages, crmStageHistory, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
+  }, [crmLeads, crmAppointments, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
   const crmLeadsCount = crmFiltered.leads.length;
   const crmAdLeadsCount = crmFiltered.leads.filter(l => l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "")).length;
   // KPIs CRM excluem reagendamentos para manter o mesmo escopo do funil "Agendamentos".
