@@ -1,19 +1,20 @@
-import { useState, useEffect, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import {
-  DollarSign, Users, TrendingUp, Building2, Filter, CalendarIcon, Megaphone } from
+  DollarSign, Users, TrendingUp, Building2, Megaphone } from
 "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter, getDateRangesFromFilter } from "@/components/ui/date-range-filter";
-import { Button } from "@/components/ui/button";
+import { type DateRangeFilterValue, getDateRangeFromFilter, getDateRangesFromFilter } from "@/components/ui/date-range-filter";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import DashboardFunnel from "@/components/DashboardFunnel";
 import { useChartTheme } from "@/hooks/useChartTheme";
 import { HolidaysManager, type Holiday } from "@/components/HolidaysManager";
+
+const DateRangeFilter = lazy(() =>
+  import("@/components/ui/date-range-filter").then((m) => ({ default: m.DateRangeFilter }))
+);
 
 const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(200, 70%, 50%)", "hsl(280, 60%, 55%)"];
 
