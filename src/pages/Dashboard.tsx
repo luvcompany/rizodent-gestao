@@ -37,6 +37,11 @@ const toLocalDateStr = (d: Date) => {
 const CRM_LEADS_PAGE_SIZE = 1000;
 const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
 const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
+const CLINICAS_SELECT = "id, nome, cidade, ativa";
+const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade";
+const TRATAMENTOS_SELECT = "id, paciente_id, clinica_id, created_at";
+const PACIENTES_SELECT = "id, origem, nome_anuncio";
+const LEADS_DIARIOS_SELECT = "id, clinica_id, data, leads_novos, agendaram, compareceram, contrataram, faltaram, nao_contrataram, remarcados, reagendados_compareceram, reagendados_contrataram";
 
 type DashboardPayload = {
   clinicas: any[];
@@ -46,13 +51,22 @@ type DashboardPayload = {
   leadsData: any[];
   crmLeads: any[];
   crmAppointments: any[];
-  crmStages: any[];
-  crmStageHistory: any[];
   adIdMapping: any[];
   holidays: Holiday[];
 };
 
-let dashboardMemoryCache: { ts: number; data: DashboardPayload } | null = null;
+let dashboardMemoryCache: { key: string; ts: number; data: DashboardPayload } | null = null;
+
+const getCurrentMonthBounds = () => {
+  const now = new Date();
+  return {
+    from: toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: toLocalDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  };
+};
+
+const dashboardCacheKey = (from: string, to: string, allPeriod: boolean) =>
+  allPeriod ? "all" : `${from}:${to}`;
 
 const readDashboardCache = () => {
   return dashboardMemoryCache;
@@ -61,20 +75,28 @@ const readDashboardCache = () => {
 const isDashboardCacheFresh = (cache: typeof dashboardMemoryCache) =>
   !!cache && Date.now() - cache.ts < DASHBOARD_BG_REFRESH_AFTER;
 
-const writeDashboardCache = (data: DashboardPayload) => {
-  dashboardMemoryCache = { ts: Date.now(), data };
+const writeDashboardCache = (key: string, data: DashboardPayload) => {
+  dashboardMemoryCache = { key, ts: Date.now(), data };
 };
 
-const fetchAllCrmLeads = async () => {
+const fetchAllCrmLeads = async (from?: string, to?: string) => {
   const rows: any[] = [];
 
   for (let from = 0; ; from += CRM_LEADS_PAGE_SIZE) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("crm_leads")
       .select(CRM_LEADS_SELECT)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, from + CRM_LEADS_PAGE_SIZE - 1);
+
+    if (arguments[0] && arguments[1]) {
+      const start = `${arguments[0]}T00:00:00`;
+      const end = `${arguments[1]}T23:59:59`;
+      query = query.or(`and(created_at.gte.${start},created_at.lte.${end}),and(first_inbound_at.gte.${start},first_inbound_at.lte.${end})`);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     if (!data?.length) break;
