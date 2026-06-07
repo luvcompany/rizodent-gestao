@@ -9,11 +9,6 @@ import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
-import { prefetchDashboardData } from "./pages/Dashboard";
-import { prefetchConversasData } from "./pages/CrmConversas";
-import { prefetchCrmDashboardData } from "./pages/CrmDashboard";
-import { prefetchCrmCalendarioData } from "./pages/CrmCalendario";
-import { prefetchPosVendaData } from "./pages/CrmPosVendaDashboard";
 
 type PreloadableComponent<T extends ComponentType<any> = ComponentType<any>> = LazyExoticComponent<T> & {
   preload: () => Promise<unknown>;
@@ -102,10 +97,10 @@ const preloadTenantRoutes = () => {
   };
   if ("requestIdleCallback" in window) {
     window.requestIdleCallback(preloadPrimary, { timeout: 1_200 });
-    window.setTimeout(() => window.requestIdleCallback(preloadSecondary, { timeout: 8_000 }), 4_000);
+    window.setTimeout(() => window.requestIdleCallback(preloadSecondary, { timeout: 12_000 }), 8_000);
   } else {
     globalThis.setTimeout(preloadPrimary, 700);
-    globalThis.setTimeout(preloadSecondary, 5_000);
+    globalThis.setTimeout(preloadSecondary, 9_000);
   }
 };
 
@@ -126,14 +121,24 @@ const DataPrefetcher = () => {
     const run = async () => {
       // Onda 1: Conversas (provável próxima navegação após Dashboard), mas só
       // depois do primeiro render do Dashboard para não competir com ele.
-      try { await prefetchConversasData(tenant.id, user.id); } catch {}
+      try {
+        const { prefetchConversasData } = await import("./pages/CrmConversas");
+        if (!cancelled) await prefetchConversasData(tenant.id, user.id);
+      } catch {}
       if (cancelled) return;
       // Onda 2: telas secundárias, em paralelo entre si mas DEPOIS do Dashboard
       // inicial já ter terminado de carregar.
-      prefetchDashboardData().catch(() => undefined);
-      prefetchCrmDashboardData(user.id, userRole).catch(() => undefined);
-      prefetchCrmCalendarioData(user.id).catch(() => undefined);
-      prefetchPosVendaData(user.id, userRole).catch(() => undefined);
+      const [dashboard, crmDashboard, calendario, posVenda] = await Promise.all([
+        import("./pages/Dashboard"),
+        import("./pages/CrmDashboard"),
+        import("./pages/CrmCalendario"),
+        import("./pages/CrmPosVendaDashboard"),
+      ]);
+      if (cancelled) return;
+      dashboard.prefetchDashboardData().catch(() => undefined);
+      crmDashboard.prefetchCrmDashboardData(user.id, userRole).catch(() => undefined);
+      calendario.prefetchCrmCalendarioData(user.id).catch(() => undefined);
+      posVenda.prefetchPosVendaData(user.id, userRole).catch(() => undefined);
     };
     // Espera o Dashboard inicial liberar a thread/conexões antes de começar.
     const schedule = () => {
@@ -143,7 +148,7 @@ const DataPrefetcher = () => {
         globalThis.setTimeout(run, 5_000);
       }
     };
-    const t = globalThis.setTimeout(schedule, 4_000);
+    const t = globalThis.setTimeout(schedule, 8_000);
     return () => { cancelled = true; globalThis.clearTimeout(t); };
   }, [authLoading, user?.id, tenant?.id, userRole]);
   return null;
