@@ -83,11 +83,11 @@ const preloadTenantRoutes = () => {
   const preloadPrimary = () => {
     [
       Dashboard,
-      Atendimento,
     ].forEach((component) => component.preload().catch(() => undefined));
   };
   const preloadSecondary = () => {
     [
+      Atendimento,
       CrmDashboard,
       CrmKanban,
       CrmConversas,
