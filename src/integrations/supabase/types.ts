@@ -3267,6 +3267,122 @@ export type Database = {
       }
       crm_unread_leads_count: { Args: never; Returns: number }
       current_tenant_id: { Args: never; Returns: string }
+      debug_audio_messages: {
+        Args: { p_lead_id: string; p_limit?: number }
+        Returns: {
+          created_at: string
+          direction: string
+          media_url: string
+          message_status: string
+        }[]
+      }
+      debug_automation_queue: {
+        Args: { p_hours?: number }
+        Returns: {
+          queue_status: string
+          total: number
+        }[]
+      }
+      debug_bot_flow: {
+        Args: { p_bot_id: string }
+        Returns: {
+          bot_name: string
+          bot_status: string
+          current_version: number
+          flow: Json
+          total_nodes: number
+        }[]
+      }
+      debug_bot_status: {
+        Args: { p_bot_id: string; p_hours?: number }
+        Returns: {
+          execution_status: string
+          total: number
+        }[]
+      }
+      debug_cold_leads_in_stages: {
+        Args: { p_days_cold?: number }
+        Returns: {
+          leads_frios: number
+          pipeline_name: string
+          stage_name: string
+          total_leads: number
+        }[]
+      }
+      debug_find_lead: {
+        Args: { p_search: string }
+        Returns: {
+          assigned_to_name: string
+          id: string
+          last_message_at: string
+          name: string
+          phone: string
+          pipeline_name: string
+          stage_name: string
+          tags: string[]
+        }[]
+      }
+      debug_followup_conversion: {
+        Args: never
+        Returns: {
+          leads_agendaram_depois: number
+          leads_contrataram_depois: number
+          taxa_agendamento: number
+          taxa_contratacao: number
+          template_name: string
+          total_leads_alcancados: number
+        }[]
+      }
+      debug_followup_roi: {
+        Args: { p_days?: number }
+        Returns: {
+          entregues: number
+          falhas: number
+          leads_responderam_24h: number
+          lidos: number
+          taxa_falha: number
+          taxa_resposta_apos_entrega: number
+          template_name: string
+          total_disparos: number
+        }[]
+      }
+      debug_lead_messages: {
+        Args: { p_lead_id: string; p_limit?: number }
+        Returns: {
+          content_preview: string
+          created_at: string
+          direction: string
+          error_reason: string
+          message_status: string
+          message_type: string
+        }[]
+      }
+      debug_messages_failed: {
+        Args: { p_hours?: number }
+        Returns: {
+          content_preview: string
+          created_at: string
+          error_reason: string
+          id: string
+          lead_id: string
+          lead_name: string
+          lead_phone: string
+          message_status: string
+          message_type: string
+        }[]
+      }
+      debug_messages_stuck: {
+        Args: { p_minutes?: number }
+        Returns: {
+          created_at: string
+          id: string
+          lead_name: string
+          lead_phone: string
+          message_status: string
+          message_type: string
+          minutes_ago: number
+        }[]
+      }
       ensure_instagram_pipeline: {
         Args: { _tenant_id: string }
         Returns: string
