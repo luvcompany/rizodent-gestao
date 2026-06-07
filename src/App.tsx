@@ -85,10 +85,14 @@ const withRouteSuspense = (node: ReactNode) => (
 );
 
 const preloadTenantRoutes = () => {
-  const preload = () => {
+  const preloadPrimary = () => {
     [
       Dashboard,
       Atendimento,
+    ].forEach((component) => component.preload().catch(() => undefined));
+  };
+  const preloadSecondary = () => {
+    [
       CrmDashboard,
       CrmKanban,
       CrmConversas,
@@ -97,9 +101,11 @@ const preloadTenantRoutes = () => {
     ].forEach((component) => component.preload().catch(() => undefined));
   };
   if ("requestIdleCallback" in window) {
-    window.requestIdleCallback(preload, { timeout: 1_500 });
+    window.requestIdleCallback(preloadPrimary, { timeout: 1_200 });
+    window.setTimeout(() => window.requestIdleCallback(preloadSecondary, { timeout: 8_000 }), 4_000);
   } else {
-    globalThis.setTimeout(preload, 700);
+    globalThis.setTimeout(preloadPrimary, 700);
+    globalThis.setTimeout(preloadSecondary, 5_000);
   }
 };
 
@@ -118,7 +124,8 @@ const DataPrefetcher = () => {
     if (!user?.id || !tenant?.id) return;
     let cancelled = false;
     const run = async () => {
-      // Onda 1: Conversas (provável próxima navegação após Dashboard).
+      // Onda 1: Conversas (provável próxima navegação após Dashboard), mas só
+      // depois do primeiro render do Dashboard para não competir com ele.
       try { await prefetchConversasData(tenant.id, user.id); } catch {}
       if (cancelled) return;
       // Onda 2: telas secundárias, em paralelo entre si mas DEPOIS do Dashboard
@@ -131,12 +138,12 @@ const DataPrefetcher = () => {
     // Espera o Dashboard inicial liberar a thread/conexões antes de começar.
     const schedule = () => {
       if ("requestIdleCallback" in window) {
-        (window as any).requestIdleCallback(run, { timeout: 3_000 });
+        (window as any).requestIdleCallback(run, { timeout: 8_000 });
       } else {
-        globalThis.setTimeout(run, 1_500);
+        globalThis.setTimeout(run, 5_000);
       }
     };
-    const t = globalThis.setTimeout(schedule, 800);
+    const t = globalThis.setTimeout(schedule, 4_000);
     return () => { cancelled = true; globalThis.clearTimeout(t); };
   }, [authLoading, user?.id, tenant?.id, userRole]);
   return null;
