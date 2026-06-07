@@ -1,19 +1,20 @@
-import { useState, useEffect, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import {
-  DollarSign, Users, TrendingUp, Building2, Filter, CalendarIcon, Megaphone } from
+  DollarSign, Users, TrendingUp, Building2, Megaphone } from
 "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter, getDateRangesFromFilter } from "@/components/ui/date-range-filter";
-import { Button } from "@/components/ui/button";
+import { type DateRangeFilterValue, getDateRangeFromFilter, getDateRangesFromFilter } from "@/lib/dateRangeFilter";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import DashboardFunnel from "@/components/DashboardFunnel";
 import { useChartTheme } from "@/hooks/useChartTheme";
 import { HolidaysManager, type Holiday } from "@/components/HolidaysManager";
+
+const DateRangeFilter = lazy(() =>
+  import("@/components/ui/date-range-filter").then((m) => ({ default: m.DateRangeFilter }))
+);
 
 const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(200, 70%, 50%)", "hsl(280, 60%, 55%)"];
 
@@ -37,6 +38,11 @@ const toLocalDateStr = (d: Date) => {
 const CRM_LEADS_PAGE_SIZE = 1000;
 const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
 const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
+const CLINICAS_SELECT = "id, nome, cidade, ativa";
+const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade";
+const TRATAMENTOS_SELECT = "id, paciente_id, clinica_id, created_at";
+const PACIENTES_SELECT = "id, origem, nome_anuncio";
+const LEADS_DIARIOS_SELECT = "id, clinica_id, data, leads_novos, agendaram, compareceram, contrataram, faltaram, nao_contrataram, remarcados, reagendados_compareceram, reagendados_contrataram";
 
 type DashboardPayload = {
   clinicas: any[];
@@ -46,13 +52,22 @@ type DashboardPayload = {
   leadsData: any[];
   crmLeads: any[];
   crmAppointments: any[];
-  crmStages: any[];
-  crmStageHistory: any[];
   adIdMapping: any[];
   holidays: Holiday[];
 };
 
-let dashboardMemoryCache: { ts: number; data: DashboardPayload } | null = null;
+let dashboardMemoryCache: { key: string; ts: number; data: DashboardPayload } | null = null;
+
+const getCurrentMonthBounds = () => {
+  const now = new Date();
+  return {
+    from: toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: toLocalDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  };
+};
+
+const dashboardCacheKey = (from: string, to: string, allPeriod: boolean) =>
+  allPeriod ? "all" : `${from}:${to}`;
 
 const readDashboardCache = () => {
   return dashboardMemoryCache;
@@ -61,20 +76,28 @@ const readDashboardCache = () => {
 const isDashboardCacheFresh = (cache: typeof dashboardMemoryCache) =>
   !!cache && Date.now() - cache.ts < DASHBOARD_BG_REFRESH_AFTER;
 
-const writeDashboardCache = (data: DashboardPayload) => {
-  dashboardMemoryCache = { ts: Date.now(), data };
+const writeDashboardCache = (key: string, data: DashboardPayload) => {
+  dashboardMemoryCache = { key, ts: Date.now(), data };
 };
 
-const fetchAllCrmLeads = async () => {
+const fetchAllCrmLeads = async (dateFrom?: string, dateTo?: string) => {
   const rows: any[] = [];
 
   for (let from = 0; ; from += CRM_LEADS_PAGE_SIZE) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("crm_leads")
       .select(CRM_LEADS_SELECT)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, from + CRM_LEADS_PAGE_SIZE - 1);
+
+    if (dateFrom && dateTo) {
+      const start = `${dateFrom}T00:00:00`;
+      const end = `${dateTo}T23:59:59`;
+      query = query.or(`and(created_at.gte.${start},created_at.lte.${end}),and(first_inbound_at.gte.${start},first_inbound_at.lte.${end})`);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
     if (!data?.length) break;
@@ -89,23 +112,23 @@ const fetchAllCrmLeads = async () => {
 /** Pré-carrega todos os dados do Dashboard e popula o cache em memória.
  *  Idempotente: se o cache estiver fresco, retorna imediatamente. */
 export const prefetchDashboardData = async (): Promise<void> => {
+  const { from, to } = getCurrentMonthBounds();
+  const key = dashboardCacheKey(from, to, false);
   const cached = dashboardMemoryCache;
-  if (cached && Date.now() - cached.ts < DASHBOARD_BG_REFRESH_AFTER) return;
+  if (cached?.key === key && Date.now() - cached.ts < DASHBOARD_BG_REFRESH_AFTER) return;
   try {
-    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
-      supabase.from("clinicas").select("*").eq("ativa", true),
-      supabase.from("pagamentos").select("*, clinicas(nome)").limit(50000),
-      supabase.from("tratamentos").select("*, clinicas(nome)").limit(20000),
-      supabase.from("pacientes").select("*").limit(20000),
-      supabase.from("leads_diarios").select("*, clinicas(nome)").limit(20000),
+    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: adMap }] = await Promise.all([
+      supabase.from("clinicas").select(CLINICAS_SELECT).eq("ativa", true),
+      supabase.from("pagamentos").select(PAGAMENTOS_SELECT).gte("data_pagamento", from).lte("data_pagamento", to).limit(50000),
+      supabase.from("tratamentos").select(TRATAMENTOS_SELECT).gte("created_at", `${from}T00:00:00`).lte("created_at", `${to}T23:59:59`).limit(20000),
+      supabase.from("pacientes").select(PACIENTES_SELECT).limit(20000),
+      supabase.from("leads_diarios").select(LEADS_DIARIOS_SELECT).gte("data", from).lte("data", to).limit(20000),
       (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      fetchAllCrmLeads(),
-      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").limit(10000),
-      supabase.from("crm_stages").select("id, name, pipeline_id"),
-      supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
+      fetchAllCrmLeads(from, to),
+      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").gte("scheduled_date", `${from}T00:00:00`).lte("scheduled_date", `${to}T23:59:59`).limit(10000),
       (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000),
     ]);
-    writeDashboardCache({
+    writeDashboardCache(key, {
       clinicas: cl || [],
       pagamentos: pg || [],
       tratamentos: tr || [],
@@ -114,8 +137,6 @@ export const prefetchDashboardData = async (): Promise<void> => {
       holidays: (hd || []) as Holiday[],
       crmLeads: cLeads || [],
       crmAppointments: cAppts || [],
-      crmStages: cStages || [],
-      crmStageHistory: cHist || [],
       adIdMapping: adMap || [],
     });
   } catch (e) {
@@ -162,8 +183,6 @@ const Dashboard = () => {
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [crmLeads, setCrmLeads] = useState<any[]>([]);
   const [crmAppointments, setCrmAppointments] = useState<any[]>([]);
-  const [crmStages, setCrmStages] = useState<any[]>([]);
-  const [crmStageHistory, setCrmStageHistory] = useState<any[]>([]);
   const [adIdMapping, setAdIdMapping] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
@@ -207,31 +226,29 @@ const Dashboard = () => {
     setHolidays((payload.holidays || []) as Holiday[]);
     setCrmLeads(payload.crmLeads || []);
     setCrmAppointments(payload.crmAppointments || []);
-    setCrmStages(payload.crmStages || []);
-    setCrmStageHistory(payload.crmStageHistory || []);
     setAdIdMapping(payload.adIdMapping || []);
   };
 
   const fetchAll = async (showLoading = true, force = false) => {
+    const key = dashboardCacheKey(dateFrom, dateTo, isAllPeriod);
     const cached = readDashboardCache();
-    if (cached && !force) {
+    if (cached?.key === key && !force) {
       applyDashboardData(cached.data);
       setLoading(false);
       if (isDashboardCacheFresh(cached)) return;
       showLoading = false;
     }
     if (showLoading) setLoading(true);
-    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
-    supabase.from("clinicas").select("*").eq("ativa", true),
-    supabase.from("pagamentos").select("*, clinicas(nome)").limit(50000),
-    supabase.from("tratamentos").select("*, clinicas(nome)").limit(20000),
-    supabase.from("pacientes").select("*").limit(20000),
-    supabase.from("leads_diarios").select("*, clinicas(nome)").limit(20000),
+    const bounded = !isAllPeriod;
+    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: adMap }] = await Promise.all([
+    supabase.from("clinicas").select(CLINICAS_SELECT).eq("ativa", true),
+    (bounded ? supabase.from("pagamentos").select(PAGAMENTOS_SELECT).gte("data_pagamento", dateFrom).lte("data_pagamento", dateTo) : supabase.from("pagamentos").select(PAGAMENTOS_SELECT)).limit(50000),
+    (bounded ? supabase.from("tratamentos").select(TRATAMENTOS_SELECT).gte("created_at", `${dateFrom}T00:00:00`).lte("created_at", `${dateTo}T23:59:59`) : supabase.from("tratamentos").select(TRATAMENTOS_SELECT)).limit(20000),
+    supabase.from("pacientes").select(PACIENTES_SELECT).limit(20000),
+    (bounded ? supabase.from("leads_diarios").select(LEADS_DIARIOS_SELECT).gte("data", dateFrom).lte("data", dateTo) : supabase.from("leads_diarios").select(LEADS_DIARIOS_SELECT)).limit(20000),
     (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-    fetchAllCrmLeads(),
-    supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").limit(10000),
-    supabase.from("crm_stages").select("id, name, pipeline_id"),
-    supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
+    fetchAllCrmLeads(bounded ? dateFrom : undefined, bounded ? dateTo : undefined),
+    (bounded ? supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").gte("scheduled_date", `${dateFrom}T00:00:00`).lte("scheduled_date", `${dateTo}T23:59:59`) : supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)")).limit(10000),
     (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
     );
     const payload: DashboardPayload = {
@@ -243,11 +260,9 @@ const Dashboard = () => {
       holidays: (hd || []) as Holiday[],
       crmLeads: cLeads || [],
       crmAppointments: cAppts || [],
-      crmStages: cStages || [],
-      crmStageHistory: cHist || [],
       adIdMapping: adMap || [],
     };
-    writeDashboardCache(payload);
+    writeDashboardCache(key, payload);
     applyDashboardData(payload);
     if (showLoading) setLoading(false);
   };
@@ -277,7 +292,7 @@ const Dashboard = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [dateFrom, dateTo, isAllPeriod]);
 
   // Unique values for filter dropdowns
 
@@ -412,7 +427,7 @@ const Dashboard = () => {
     const agendadosLeadIds = new Set<string>(apptsNoPeriodo.map((a: any) => a.lead_id));
 
     return { leads, agendadosLeadIds, apptsDosAgendados: apptsNoPeriodo };
-  }, [crmLeads, crmAppointments, crmStages, crmStageHistory, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
+  }, [crmLeads, crmAppointments, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
   const crmLeadsCount = crmFiltered.leads.length;
   const crmAdLeadsCount = crmFiltered.leads.filter(l => l.ad_id || /an[uú]ncio|ads?|meta|facebook|instagram/i.test(l.source || "")).length;
   // KPIs CRM excluem reagendamentos para manter o mesmo escopo do funil "Agendamentos".
@@ -784,7 +799,9 @@ const Dashboard = () => {
         </div>
         <div className="flex items-center gap-2">
           <HolidaysManager clinicas={clinicas} onChange={fetchHolidays} />
-          <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          <Suspense fallback={<div className="h-8 w-[140px] rounded-md bg-secondary" />}>
+            <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          </Suspense>
         </div>
       </div>
 

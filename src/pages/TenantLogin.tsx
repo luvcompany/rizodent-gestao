@@ -52,6 +52,9 @@ const TenantLogin = () => {
         setLoading(false);
         return;
       }
+      const dashboardWarmup = import("./Dashboard")
+        .then(({ prefetchDashboardData }) => prefetchDashboardData())
+        .catch(() => undefined);
       await refreshProfile();
       // Check role to redirect posvenda directly to CRM
       const { data: { user } } = await supabase.auth.getUser();
@@ -61,6 +64,7 @@ const TenantLogin = () => {
           .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
         if ((roleRow as any)?.role === "posvenda") target = "/crm";
       }
+      if (target === "/dashboard") await dashboardWarmup;
       navigate(target);
     } catch (err: any) {
       toast.error(err?.message || "Erro inesperado.");
@@ -83,6 +87,9 @@ const TenantLogin = () => {
           url.searchParams.delete("impersonate_at");
           url.searchParams.delete("impersonate_rt");
           window.history.replaceState({}, "", url.toString());
+          const dashboardWarmup = import("./Dashboard")
+            .then(({ prefetchDashboardData }) => prefetchDashboardData())
+            .catch(() => undefined);
           await refreshProfile();
           const { data: { user } } = await supabase.auth.getUser();
           let target = "/dashboard";
@@ -91,6 +98,7 @@ const TenantLogin = () => {
               .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
             if ((roleRow as any)?.role === "posvenda") target = "/crm";
           }
+          if (target === "/dashboard") await dashboardWarmup;
           navigate(target);
         }
       })();
