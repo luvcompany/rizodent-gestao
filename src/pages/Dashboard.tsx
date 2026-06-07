@@ -182,8 +182,6 @@ const Dashboard = () => {
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [crmLeads, setCrmLeads] = useState<any[]>([]);
   const [crmAppointments, setCrmAppointments] = useState<any[]>([]);
-  const [crmStages, setCrmStages] = useState<any[]>([]);
-  const [crmStageHistory, setCrmStageHistory] = useState<any[]>([]);
   const [adIdMapping, setAdIdMapping] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
@@ -227,31 +225,29 @@ const Dashboard = () => {
     setHolidays((payload.holidays || []) as Holiday[]);
     setCrmLeads(payload.crmLeads || []);
     setCrmAppointments(payload.crmAppointments || []);
-    setCrmStages(payload.crmStages || []);
-    setCrmStageHistory(payload.crmStageHistory || []);
     setAdIdMapping(payload.adIdMapping || []);
   };
 
   const fetchAll = async (showLoading = true, force = false) => {
+    const key = dashboardCacheKey(dateFrom, dateTo, isAllPeriod);
     const cached = readDashboardCache();
-    if (cached && !force) {
+    if (cached?.key === key && !force) {
       applyDashboardData(cached.data);
       setLoading(false);
       if (isDashboardCacheFresh(cached)) return;
       showLoading = false;
     }
     if (showLoading) setLoading(true);
-    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: cStages }, { data: cHist }, { data: adMap }] = await Promise.all([
-    supabase.from("clinicas").select("*").eq("ativa", true),
-    supabase.from("pagamentos").select("*, clinicas(nome)").limit(50000),
-    supabase.from("tratamentos").select("*, clinicas(nome)").limit(20000),
-    supabase.from("pacientes").select("*").limit(20000),
-    supabase.from("leads_diarios").select("*, clinicas(nome)").limit(20000),
+    const bounded = !isAllPeriod;
+    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }, cLeads, { data: cAppts }, { data: adMap }] = await Promise.all([
+    supabase.from("clinicas").select(CLINICAS_SELECT).eq("ativa", true),
+    (bounded ? supabase.from("pagamentos").select(PAGAMENTOS_SELECT).gte("data_pagamento", dateFrom).lte("data_pagamento", dateTo) : supabase.from("pagamentos").select(PAGAMENTOS_SELECT)).limit(50000),
+    (bounded ? supabase.from("tratamentos").select(TRATAMENTOS_SELECT).gte("created_at", `${dateFrom}T00:00:00`).lte("created_at", `${dateTo}T23:59:59`) : supabase.from("tratamentos").select(TRATAMENTOS_SELECT)).limit(20000),
+    supabase.from("pacientes").select(PACIENTES_SELECT).limit(20000),
+    (bounded ? supabase.from("leads_diarios").select(LEADS_DIARIOS_SELECT).gte("data", dateFrom).lte("data", dateTo) : supabase.from("leads_diarios").select(LEADS_DIARIOS_SELECT)).limit(20000),
     (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-    fetchAllCrmLeads(),
-    supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").limit(10000),
-    supabase.from("crm_stages").select("id, name, pipeline_id"),
-    supabase.from("crm_lead_stage_history").select("lead_id, stage_id, entered_at").limit(20000),
+    fetchAllCrmLeads(bounded ? dateFrom : undefined, bounded ? dateTo : undefined),
+    (bounded ? supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").gte("scheduled_date", `${dateFrom}T00:00:00`).lte("scheduled_date", `${dateTo}T23:59:59`) : supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)")).limit(10000),
     (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
     );
     const payload: DashboardPayload = {
@@ -263,11 +259,9 @@ const Dashboard = () => {
       holidays: (hd || []) as Holiday[],
       crmLeads: cLeads || [],
       crmAppointments: cAppts || [],
-      crmStages: cStages || [],
-      crmStageHistory: cHist || [],
       adIdMapping: adMap || [],
     };
-    writeDashboardCache(payload);
+    writeDashboardCache(key, payload);
     applyDashboardData(payload);
     if (showLoading) setLoading(false);
   };
