@@ -3,20 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, ChevronDown, Plus, X } from "lucide-react";
-import { format, startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, subWeeks, subDays, startOfDay, endOfDay } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
-
-export type DatePreset = "all" | "today" | "yesterday" | "this_week" | "last_week" | "7days" | "this_month" | "last_month" | "custom" | "multi";
-
-export interface DateRangeFilterValue {
-  preset: DatePreset;
-  customFrom?: Date;
-  customTo?: Date;
-  /** Used when preset === "multi" — list of independent intervals to be unioned */
-  customRanges?: { from: Date; to: Date }[];
-}
+import type { DatePreset, DateRangeFilterValue } from "@/lib/dateRangeFilter";
+export { getDateRangeFromFilter, getDateRangesFromFilter } from "@/lib/dateRangeFilter";
+export type { DatePreset, DateRangeFilterValue } from "@/lib/dateRangeFilter";
 
 const PRESETS: { value: DatePreset; label: string }[] = [
   { value: "all", label: "Todo período" },
@@ -30,48 +23,6 @@ const PRESETS: { value: DatePreset; label: string }[] = [
   { value: "custom", label: "Personalizado" },
   { value: "multi", label: "Múltiplos períodos" },
 ];
-
-/** Returns one envelope range (min start → max end) covering all selected intervals. Useful for fetching/coarse filters. */
-export function getDateRangeFromFilter(value: DateRangeFilterValue): { start: Date; end: Date } | null {
-  const list = getDateRangesFromFilter(value);
-  if (!list || list.length === 0) return null;
-  const start = list.reduce((min, r) => (r.start < min ? r.start : min), list[0].start);
-  const end = list.reduce((max, r) => (r.end > max ? r.end : max), list[0].end);
-  return { start, end };
-}
-
-/** Returns all selected intervals (multi-mode returns 2+; others return 1). */
-export function getDateRangesFromFilter(value: DateRangeFilterValue): { start: Date; end: Date }[] | null {
-  const now = new Date();
-  switch (value.preset) {
-    case "today": return [{ start: startOfDay(now), end: endOfDay(now) }];
-    case "yesterday": { const y = subDays(now, 1); return [{ start: startOfDay(y), end: endOfDay(y) }]; }
-    case "this_week": return [{ start: startOfWeek(now, { locale: ptBR }), end: endOfWeek(now, { locale: ptBR }) }];
-    case "last_week": return [{ start: startOfWeek(subWeeks(now, 1), { locale: ptBR }), end: endOfWeek(subWeeks(now, 1), { locale: ptBR }) }];
-    case "7days": return [{ start: subDays(now, 7), end: now }];
-    case "this_month": return [{ start: startOfMonth(now), end: endOfMonth(now) }];
-    case "last_month": return [{ start: startOfMonth(subMonths(now, 1)), end: endOfMonth(subMonths(now, 1)) }];
-    case "custom":
-      if (value.customFrom && value.customTo) return [{ start: startOfDay(value.customFrom), end: endOfDay(value.customTo) }];
-      if (value.customFrom) return [{ start: startOfDay(value.customFrom), end: endOfDay(value.customFrom) }];
-      return null;
-    case "multi": {
-      const ranges = (value.customRanges || []).filter((r) => r.from && r.to);
-      if (ranges.length === 0) return null;
-      return ranges.map((r) => ({ start: startOfDay(r.from), end: endOfDay(r.to) }));
-    }
-    default: return null;
-  }
-}
-
-/** True if a date falls in any of the selected intervals. */
-export function isDateInFilter(date: Date | string, value: DateRangeFilterValue): boolean {
-  const ranges = getDateRangesFromFilter(value);
-  if (!ranges) return true; // "all" or empty → no restriction
-  const d = typeof date === "string" ? new Date(date.length <= 10 ? date + "T12:00:00" : date) : date;
-  const t = d.getTime();
-  return ranges.some((r) => t >= r.start.getTime() && t <= r.end.getTime());
-}
 
 interface DateRangeFilterProps {
   value: DateRangeFilterValue;
