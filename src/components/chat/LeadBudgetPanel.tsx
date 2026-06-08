@@ -284,13 +284,16 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
     if (!force && phoneClean.length >= 8) {
       const tail = phoneClean.slice(-8);
-      const pattern = "%" + tail.split("").join("%") + "%";
-      const { data: existing } = await supabase
+      const { data: candidates } = await supabase
         .from("pacientes")
         .select("id, nome, telefone, email, cidade")
-        .ilike("telefone", pattern)
-        .limit(5);
-      if (existing && existing.length > 0) {
+        .ilike("telefone", `%${tail.slice(-4)}%`)
+        .limit(50);
+      const existing = (candidates || []).filter((p: any) => {
+        const d = String(p.telefone || "").replace(/\D/g, "");
+        return d.length >= 8 && d.endsWith(tail);
+      });
+      if (existing.length > 0) {
         setDuplicates(existing);
         setDuplicateOpen(true);
         return;
