@@ -765,9 +765,9 @@ export default function CrmCalendario() {
                               appt.status === "contracted"
                                 ? "bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/50"
                                 : appt.status === "no_show"
-                                ? "bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/50"
-                                : appt.status === "not_contracted"
                                 ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/50"
+                                : appt.status === "not_contracted"
+                                ? "bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/50"
                                 : appt.status === "cancelled"
                                 ? "bg-muted text-muted-foreground border border-border line-through"
                                 : (appt as any).is_rescheduled
