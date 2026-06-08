@@ -806,6 +806,31 @@ export default function CrmCalendario() {
                   })}
                 </div>
               ))}
+
+              {/* Totals row: per-day counts */}
+              <div className="bg-secondary/70 border-t-2 border-r border-border p-2 text-xs font-semibold text-foreground sticky bottom-0 z-10">
+                Total / dia
+              </div>
+              {apptWeekDays.map(day => {
+                const dayKey = format(day, "yyyy-MM-dd");
+                const dayAppts = appointments.filter(a => a.scheduled_date === dayKey);
+                const total = dayAppts.length;
+                const contratados = dayAppts.filter(a => a.status === "contracted").length;
+                const naoContratados = dayAppts.filter(a => a.status === "not_contracted").length;
+                return (
+                  <div
+                    key={`totals-${dayKey}`}
+                    className={cn(
+                      "bg-secondary/70 border-t-2 border-border p-2 text-center sticky bottom-0 z-10 space-y-0.5",
+                      isToday(day) && "bg-primary/10",
+                    )}
+                  >
+                    <div className="text-[10px] font-bold text-foreground">{total} agend.</div>
+                    <div className="text-[10px] text-emerald-700 dark:text-emerald-300">🤝 {contratados}</div>
+                    <div className="text-[10px] text-red-700 dark:text-red-300">❌ {naoContratados}</div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
