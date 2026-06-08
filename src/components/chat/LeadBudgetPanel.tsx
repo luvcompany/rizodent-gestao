@@ -100,13 +100,19 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     const phoneClean = (lead.phone || "").replace(/\D/g, "");
     if (phoneClean.length < 8) return;
     const tail = phoneClean.slice(-8);
-    const pattern = "%" + tail.split("").join("%") + "%";
-    const { data } = await supabase
+    // Busca ampla e filtra client-side por dígitos (sufixo exato).
+    // Evita o falso positivo do padrão frouxo `%d1%d2%...%` que casava
+    // dígitos em ordem com qualquer coisa entre eles.
+    const { data: candidates } = await supabase
       .from("pacientes")
       .select("id, nome, telefone, email, cidade")
-      .ilike("telefone", pattern)
-      .limit(5);
-    if (!data || data.length === 0) return;
+      .ilike("telefone", `%${tail.slice(-4)}%`)
+      .limit(50);
+    const data = (candidates || []).filter((p: any) => {
+      const d = String(p.telefone || "").replace(/\D/g, "");
+      return d.length >= 8 && d.endsWith(tail);
+    });
+    if (data.length === 0) return;
     if (data.length === 1) {
       await addPacienteLink(data[0].id, true);
     } else {
