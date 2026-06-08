@@ -723,8 +723,8 @@ export default function CrmCalendario() {
             <span className="text-muted-foreground font-medium">Legenda:</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500/40 border border-blue-500/60" /> Confirmado</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500/40 border border-emerald-500/60" /> Contratado</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500/40 border border-red-500/60" /> Não compareceu</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500/40 border border-amber-500/60" /> Não contratou</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500/40 border border-amber-500/60" /> Não compareceu</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500/40 border border-red-500/60" /> Não contratou</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-500/40 border border-purple-500/60" /> Reagendado</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-muted border border-border" /> Cancelado</span>
           </div>
