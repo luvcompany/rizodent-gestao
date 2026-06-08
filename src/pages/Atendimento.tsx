@@ -344,13 +344,19 @@ const Atendimento = () => {
           const phoneClean = telefone.replace(/\D/g, "");
           if (phoneClean.length >= 8) {
             const tail = phoneClean.slice(-8);
-            const pattern = "%" + tail.split("").join("%") + "%";
-            const { data: existing } = await supabase
+            // Busca ampla por subsequência curta e filtra client-side comparando
+            // apenas dígitos. Evita falsos positivos do padrão frouxo anterior
+            // (%d1%d2%d3...%) que casava dígitos com qualquer coisa entre eles.
+            const { data: candidates } = await supabase
               .from("pacientes")
               .select("*")
-              .ilike("telefone", pattern)
-              .limit(5);
-            if (existing && existing.length > 0) {
+              .ilike("telefone", `%${tail.slice(-4)}%`)
+              .limit(50);
+            const existing = (candidates || []).filter((p: any) => {
+              const d = String(p.telefone || "").replace(/\D/g, "");
+              return d.length >= 8 && d.endsWith(tail);
+            });
+            if (existing.length > 0) {
               setDuplicates(existing);
               setDuplicateOpen(true);
               setSaving(false);

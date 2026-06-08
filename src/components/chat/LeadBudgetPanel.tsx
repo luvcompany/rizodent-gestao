@@ -100,13 +100,19 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     const phoneClean = (lead.phone || "").replace(/\D/g, "");
     if (phoneClean.length < 8) return;
     const tail = phoneClean.slice(-8);
-    const pattern = "%" + tail.split("").join("%") + "%";
-    const { data } = await supabase
+    // Busca ampla e filtra client-side por dígitos (sufixo exato).
+    // Evita o falso positivo do padrão frouxo `%d1%d2%...%` que casava
+    // dígitos em ordem com qualquer coisa entre eles.
+    const { data: candidates } = await supabase
       .from("pacientes")
       .select("id, nome, telefone, email, cidade")
-      .ilike("telefone", pattern)
-      .limit(5);
-    if (!data || data.length === 0) return;
+      .ilike("telefone", `%${tail.slice(-4)}%`)
+      .limit(50);
+    const data = (candidates || []).filter((p: any) => {
+      const d = String(p.telefone || "").replace(/\D/g, "");
+      return d.length >= 8 && d.endsWith(tail);
+    });
+    if (data.length === 0) return;
     if (data.length === 1) {
       await addPacienteLink(data[0].id, true);
     } else {
@@ -238,16 +244,29 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     setSearching(true);
     const cleanSearch = searchTerm.replace(/\D/g, "");
     const isPhoneSearch = cleanSearch.length >= 4;
-    let query = supabase.from("pacientes").select("id, nome, telefone, email, cidade").limit(20);
     if (isPhoneSearch) {
       const tail = cleanSearch.slice(-8);
-      const pattern = "%" + tail.split("").join("%") + "%";
-      query = query.or(`telefone.ilike.${pattern},nome.ilike.%${searchTerm}%`);
+      // Busca ampla e filtra por sufixo exato em dígitos client-side.
+      const { data } = await supabase
+        .from("pacientes")
+        .select("id, nome, telefone, email, cidade")
+        .or(`telefone.ilike.%${tail.slice(-4)}%,nome.ilike.%${searchTerm}%`)
+        .limit(50);
+      const filtered = (data || []).filter((p: any) => {
+        const d = String(p.telefone || "").replace(/\D/g, "");
+        const nameMatch = p.nome?.toLowerCase().includes(searchTerm.toLowerCase());
+        const phoneMatch = d.length >= 8 && d.endsWith(tail);
+        return nameMatch || phoneMatch;
+      });
+      setSearchResults(filtered);
     } else {
-      query = query.or(`nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`);
+      const { data } = await supabase
+        .from("pacientes")
+        .select("id, nome, telefone, email, cidade")
+        .or(`nome.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`)
+        .limit(20);
+      setSearchResults(data || []);
     }
-    const { data } = await query;
-    setSearchResults(data || []);
     setSearching(false);
   };
 
@@ -265,13 +284,16 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
     if (!force && phoneClean.length >= 8) {
       const tail = phoneClean.slice(-8);
-      const pattern = "%" + tail.split("").join("%") + "%";
-      const { data: existing } = await supabase
+      const { data: candidates } = await supabase
         .from("pacientes")
         .select("id, nome, telefone, email, cidade")
-        .ilike("telefone", pattern)
-        .limit(5);
-      if (existing && existing.length > 0) {
+        .ilike("telefone", `%${tail.slice(-4)}%`)
+        .limit(50);
+      const existing = (candidates || []).filter((p: any) => {
+        const d = String(p.telefone || "").replace(/\D/g, "");
+        return d.length >= 8 && d.endsWith(tail);
+      });
+      if (existing.length > 0) {
         setDuplicates(existing);
         setDuplicateOpen(true);
         return;
