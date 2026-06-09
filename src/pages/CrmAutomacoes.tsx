@@ -209,13 +209,23 @@ export default function CrmAutomacoes() {
     };
     let savedAutomation: Automation | null = null;
     if (autoForm.editId) {
-      const { data } = await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId).select().single();
+      const { data, error } = await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId).select().single();
+      if (error) {
+        console.error("[Automacoes] Update error:", error);
+        toast.error(`Erro ao salvar automação: ${error.message}`);
+        return;
+      }
       if (data) {
         savedAutomation = data as Automation;
         setAutomations(prev => prev.map(a => a.id === autoForm.editId ? data as Automation : a));
       }
     } else {
-      const { data } = await supabase.from("crm_automations").insert(payload).select().single();
+      const { data, error } = await supabase.from("crm_automations").insert(payload).select().single();
+      if (error) {
+        console.error("[Automacoes] Insert error:", error);
+        toast.error(`Erro ao criar automação: ${error.message}`);
+        return;
+      }
       if (data) {
         savedAutomation = data as Automation;
         setAutomations(prev => [...prev, data as Automation]);
@@ -236,7 +246,12 @@ export default function CrmAutomacoes() {
           .select("id, phone")
           .eq("stage_id", autoForm.stage_id)
           .range(from, from + PAGE - 1);
-        if (error || !data || data.length === 0) break;
+        if (error) {
+          console.error("[Automacoes] Fetch leads error:", error);
+          toast.error(`Erro ao buscar leads: ${error.message}`);
+          break;
+        }
+        if (!data || data.length === 0) break;
         out.push(...(data as any[]));
         if (data.length < PAGE) break;
         from += PAGE;
@@ -245,34 +260,48 @@ export default function CrmAutomacoes() {
     };
 
     const enqueueForExistingLeads = async (actionType: string, actionConfig: Record<string, unknown>) => {
-      if (!savedAutomation?.id) return;
+      if (!savedAutomation?.id) {
+        toast.error("Automação não foi salva — não é possível enfileirar");
+        return;
+      }
       const leadsInStage = await fetchAllLeadsInStage();
 
-      if (leadsInStage?.length) {
-        toast.info(`Enfileirando automação para ${leadsInStage.length} leads...`);
-        const BATCH = 500;
-        for (let i = 0; i < leadsInStage.length; i += BATCH) {
-          const rows = leadsInStage.slice(i, i + BATCH).map((lead) => ({
-            automation_id: savedAutomation.id,
-            lead_id: lead.id,
-            action_type: actionType,
-            action_config: actionConfig,
-            scheduled_at: new Date().toISOString(),
-            status: "pending",
-            layer_index: 0,
-          }));
-          const { error } = await supabase.from("crm_automation_queue").insert(rows as any);
-          if (error) throw error;
-        }
-        supabase.functions.invoke("automation-engine", { body: { pending_batch_limit: 500 } }).catch(e => console.error("[Automacoes] Queue kick error:", e));
-        toast.success(`Automação enfileirada para ${leadsInStage.length} leads`);
+      if (!leadsInStage?.length) {
+        toast.warning("Nenhum lead encontrado nesta etapa para disparar");
+        return;
       }
+
+      toast.info(`Enfileirando automação para ${leadsInStage.length} leads...`);
+      const BATCH = 500;
+      let totalInserted = 0;
+      for (let i = 0; i < leadsInStage.length; i += BATCH) {
+        const rows = leadsInStage.slice(i, i + BATCH).map((lead) => ({
+          automation_id: savedAutomation!.id,
+          lead_id: lead.id,
+          action_type: actionType,
+          action_config: actionConfig,
+          scheduled_at: new Date().toISOString(),
+          status: "pending",
+          layer_index: 0,
+        }));
+        const { error, data } = await supabase.from("crm_automation_queue").insert(rows as any).select("id");
+        if (error) {
+          console.error("[Automacoes] Queue insert error:", error);
+          toast.error(`Erro ao enfileirar: ${error.message}`);
+          return;
+        }
+        totalInserted += data?.length || rows.length;
+      }
+      supabase.functions.invoke("automation-engine", { body: { pending_batch_limit: 500 } }).catch(e => console.error("[Automacoes] Queue kick error:", e));
+      toast.success(`Automação enfileirada para ${totalInserted} leads`);
     };
 
     if (config.send_to_all_existing && autoForm.action_type === "send_bot" && config.bot_id) {
       await enqueueForExistingLeads("send_bot", config);
     } else if (config.send_to_all_existing && autoForm.action_type === "send_template" && config.template_id) {
       await enqueueForExistingLeads("send_template", config);
+    } else if (config.send_to_all_existing) {
+      toast.warning("Marque um template ou bot antes de disparar para todos");
     }
   };
 
