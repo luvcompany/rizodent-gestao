@@ -841,56 +841,71 @@ Deno.serve(async (req) => {
       .order("scheduled_at")
       .limit(pendingBatchLimit);
 
-    for (const item of pendingQueue || []) {
-      const autoConfig = ((item as any).crm_automations?.action_config || {}) as Record<string, any>;
-      const triggerType = (item as any).crm_automations?.trigger_type;
-      // Honor optional conditions on queued items
-      if (!(await passesConditions(supabase, item.lead_id, autoConfig))) {
-        await supabase
-          .from("crm_automation_queue")
-          .update({ status: "skipped", updated_at: new Date().toISOString() })
-          .eq("id", item.id);
-        continue;
-      }
+    console.log(`[AUTOMATION-ENGINE] Pending queue: ${pendingQueue?.length || 0} items to process`);
 
-      if (triggerType === "time_window" || autoConfig.time_window) {
-        const tw = autoConfig.time_window || autoConfig;
-        const startHour = tw.start_hour ?? 8;
-        const endHour = tw.end_hour ?? 18;
-        const allowedDays = (tw.days_of_week || [0, 1, 2, 3, 4, 5, 6]) as number[];
-
-        const now = new Date();
-        const currentHour = now.getHours();
-        const currentDay = now.getDay();
-
-        if (!allowedDays.includes(currentDay) || currentHour < startHour || currentHour >= endHour) {
-          const nextDate = getNextValidWindow(startHour, allowedDays);
+    const processItem = async (item: any) => {
+      try {
+        const autoConfig = (item.crm_automations?.action_config || {}) as Record<string, any>;
+        const triggerType = item.crm_automations?.trigger_type;
+        if (!(await passesConditions(supabase, item.lead_id, autoConfig))) {
           await supabase
             .from("crm_automation_queue")
-            .update({ scheduled_at: nextDate.toISOString() })
+            .update({ status: "skipped", updated_at: new Date().toISOString() })
             .eq("id", item.id);
-          continue;
+          return;
         }
+
+        if (triggerType === "time_window" || autoConfig.time_window) {
+          const tw = autoConfig.time_window || autoConfig;
+          const startHour = tw.start_hour ?? 8;
+          const endHour = tw.end_hour ?? 18;
+          const allowedDays = (tw.days_of_week || [0, 1, 2, 3, 4, 5, 6]) as number[];
+
+          const now = new Date();
+          const currentHour = now.getHours();
+          const currentDay = now.getDay();
+
+          if (!allowedDays.includes(currentDay) || currentHour < startHour || currentHour >= endHour) {
+            const nextDate = getNextValidWindow(startHour, allowedDays);
+            await supabase
+              .from("crm_automation_queue")
+              .update({ scheduled_at: nextDate.toISOString() })
+              .eq("id", item.id);
+            return;
+          }
+        }
+
+        // Mark as sent BEFORE dispatching so a long/failed send doesn't block the next tick
+        await supabase
+          .from("crm_automation_queue")
+          .update({ status: "sent", updated_at: new Date().toISOString() })
+          .eq("id", item.id);
+
+        const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", item.lead_id).single();
+
+        await sendAction(
+          supabase,
+          supabaseUrl,
+          serviceKey,
+          item.action_type,
+          item.action_config as Record<string, any>,
+          item.lead_id,
+          lead?.phone,
+        );
+
+        results.time_window++;
+      } catch (e: any) {
+        console.error(`[AUTOMATION-ENGINE] Pending item ${item.id} error:`, e.message);
       }
+    };
 
-      const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", item.lead_id).single();
-
-      await sendAction(
-        supabase,
-        supabaseUrl,
-        serviceKey,
-        item.action_type,
-        item.action_config as Record<string, any>,
-        item.lead_id,
-        lead?.phone,
-      );
-
-      await supabase
-        .from("crm_automation_queue")
-        .update({ status: "sent", updated_at: new Date().toISOString() })
-        .eq("id", item.id);
-
-      results.time_window++;
+    // Process in parallel chunks of 10 to drain backlogs efficiently while
+    // staying under the WhatsApp gateway rate limit.
+    const items = pendingQueue || [];
+    const PARALLEL = 10;
+    for (let i = 0; i < items.length; i += PARALLEL) {
+      const slice = items.slice(i, i + PARALLEL);
+      await Promise.allSettled(slice.map(processItem));
     }
 
     console.log("[AUTOMATION-ENGINE] Results:", JSON.stringify(results));
