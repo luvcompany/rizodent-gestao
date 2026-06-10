@@ -67,7 +67,7 @@ const AdminLogin = () => {
       <div className="w-full max-w-md animate-fade-in">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 backdrop-blur p-8 shadow-2xl">
           <div className="mb-8 flex flex-col items-center gap-3 text-center">
-            <img src={crclinIcon} alt="CRClin" className="h-16 w-16" />
+            <img src={crclinIcon} alt="Logotipo CRClin" className="h-16 w-16" />
             <div>
               <h1 className="text-2xl font-bold text-white">CRClin Admin</h1>
               <p className="text-sm text-slate-400 mt-1">Painel de gestão de clientes</p>
@@ -103,6 +103,7 @@ const AdminLogin = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
