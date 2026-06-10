@@ -90,14 +90,22 @@ export default function CrmCampanhas() {
     await supabase.from("crm_broadcasts").update({ status: "sending" }).eq("id", id);
     const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
     try {
-      await fetch(`https://${projectId}.supabase.co/functions/v1/broadcast-engine`, {
+      const resp = await fetch(`https://${projectId}.supabase.co/functions/v1/broadcast-engine`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` },
         body: JSON.stringify({ broadcast_id: id }),
       });
-      toast.success("Envio iniciado");
+      if (resp.ok) {
+        const result = await resp.json();
+        toast.success(`Envio concluído: ${result.sent ?? 0} mensagens enviadas`);
+      } else {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+        await supabase.from("crm_broadcasts").update({ status: "draft" }).eq("id", id);
+        toast.error(`Erro no envio: ${err.error || resp.status}`);
+      }
     } catch {
-      toast.error("Erro ao iniciar envio");
+      await supabase.from("crm_broadcasts").update({ status: "draft" }).eq("id", id);
+      toast.error("Erro ao conectar com o servidor de envio");
     }
     load();
   };
