@@ -157,6 +157,29 @@ Deno.serve(async (req) => {
         return { isOpen, justClosed };
       };
 
+      // Helper: business-hours-off mode — janela "aberta" = fora do expediente
+      const evalBusinessOff = (cfg: any) => {
+        const bhDays = (Array.isArray(cfg.bh_days) ? cfg.bh_days : [1, 2, 3, 4, 5]).map((d: any) => Number(d));
+        const [sh, sm] = String(cfg.bh_start || "08:00").split(":").map(Number);
+        const [eh, em] = String(cfg.bh_end || "18:00").split(":").map(Number);
+        if ([sh, sm, eh, em].some((v) => Number.isNaN(v))) return null;
+        const startMin = sh * 60 + sm;
+        const endMin = eh * 60 + em;
+        if (startMin >= endMin) return null;
+        const brNow = new Date(nowMs - 3 * 3600 * 1000);
+        const day = brNow.getUTCDay();
+        const min = brNow.getUTCHours() * 60 + brNow.getUTCMinutes();
+        const isBH = bhDays.includes(day) && min >= startMin && min < endMin;
+        const isOpen = !isBH;
+        // justClosed = expediente acabou de abrir (estamos em BH agora, mas 6min atrás não estávamos)
+        const past = new Date(brNow.getTime() - 6 * 60 * 1000);
+        const pDay = past.getUTCDay();
+        const pMin = past.getUTCHours() * 60 + past.getUTCMinutes();
+        const wasBH = bhDays.includes(pDay) && pMin >= startMin && pMin < endMin;
+        const justClosed = isBH && !wasBH;
+        return { isOpen, justClosed };
+      };
+
       for (const auto of expiredWindows || []) {
         const cfg = (auto.action_config || {}) as Record<string, any>;
         const mode = (cfg.window_mode as string) || "once";
@@ -170,8 +193,11 @@ Deno.serve(async (req) => {
         if (mode === "weekly") {
           const state = evalWeekly(cfg);
           if (!state) continue;
-          // Sempre que a janela estiver fechada, cancela bots ainda pendurados.
-          // Reset do dedup só acontece na "borda" do fechamento (justClosed).
+          shouldCleanup = !state.isOpen;
+          resetExecutions = state.justClosed;
+        } else if (mode === "business_hours_off") {
+          const state = evalBusinessOff(cfg);
+          if (!state) continue;
           shouldCleanup = !state.isOpen;
           resetExecutions = state.justClosed;
         } else {
