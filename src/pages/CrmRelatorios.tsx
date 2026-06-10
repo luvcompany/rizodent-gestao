@@ -618,6 +618,9 @@ export default function CrmRelatorios() {
           <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all"]} />
         </div>
         {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+        <div className="ml-auto text-xs text-muted-foreground">{cohort.length} leads na coorte</div>
+      </Card>
+
       {/* Resumo Executivo — KPIs da jornada real */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KpiCard icon={Users} label="Total de Leads" value={resumo.totalLeads} accent="blue" hint="Coorte do período" />
