@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ pending_batch_limit: 500 }),
     }).catch((error) => console.error("[enqueue-stage-automation] automation-engine kick failed", error));
 
+    console.log(`[enqueue-stage-automation] DONE automation=${automationId} inserted=${inserted}/${leads.length}`);
     return json({ success: true, inserted, total_leads: leads.length });
   } catch (error) {
     console.error("[enqueue-stage-automation] error", error);
