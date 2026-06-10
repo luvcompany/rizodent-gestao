@@ -3260,6 +3260,10 @@ export type Database = {
         Args: { _number_id: string }
         Returns: boolean
       }
+      chat_media_belongs_to_current_tenant: {
+        Args: { _object_name: string }
+        Returns: boolean
+      }
       check_duplicate_phone: {
         Args: { p_phone: string }
         Returns: {
