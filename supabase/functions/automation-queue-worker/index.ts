@@ -15,14 +15,20 @@ const PARALLEL = 8;
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Restrict to cron / service-role / anon
+  // Restrict to cron / service-role callers only
+  const CRON_TOKEN = "cron_a91f3c2e7d8b4f6a9e1c5d3b2a8f7e6d";
   const authHeader = req.headers.get("authorization") || "";
   const apiKeyHeader = req.headers.get("apikey") || "";
+  const cronHeader = req.headers.get("x-cron-secret") || "";
   const serviceKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const anonKeyEnv = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const allowed = [serviceKeyEnv, anonKeyEnv].filter(Boolean);
-  if (!allowed.some((k) => k && (bearer === k || apiKeyHeader === k))) {
+  const allowed = [serviceKeyEnv, anonKeyEnv, CRON_TOKEN].filter(Boolean);
+  const ok =
+    cronHeader === CRON_TOKEN ||
+    allowed.some((k) => k && (bearer === k || apiKeyHeader === k));
+  if (!ok) {
+    console.warn("[queue-worker] Unauthorized", { hasAuth: !!authHeader, hasApiKey: !!apiKeyHeader, hasCron: !!cronHeader });
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

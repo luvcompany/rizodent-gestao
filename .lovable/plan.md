@@ -1,32 +1,25 @@
-# Corrigir disparos enfileirados que nunca são enviados
+## Problema (raiz confirmada)
 
-## Diagnóstico
+O cron chama o `automation-queue-worker` e o `automation-engine` a cada minuto, mas **100% das chamadas retornam 401 Unauthorized** (254 falhas só nas últimas 2h). A verificação de autorização dentro das funções compara a chave enviada pelo cron com variáveis de ambiente que não batem. Resultado: a fila acumula (1.745 itens pendentes hoje) e nada é enviado.
 
-O gatilho funcionou: 815 leads foram enfileirados às 18:40. Porém há **924 itens presos como "pending"** na fila. O motor de automação roda a cada minuto, mas executa primeiro várias verificações pesadas (no_response, time_window, chained triggers, lead por lead) e é **encerrado por limite de tempo antes de chegar na etapa final que envia os templates da fila**. Ou seja: enfileira, mas nunca envia.
+## Solução
 
-## Mudanças
+### 1. Autenticação robusta com segredo dedicado de cron
+- Criar um segredo `CRON_SECRET` (gerado automaticamente, sem ação sua).
+- Atualizar `automation-queue-worker` e `automation-engine` para aceitar requisições com o header `x-cron-secret` correto (mantendo a service role key como fallback) e logar claramente quando a autorização falhar.
+- Recriar os cron jobs para enviar esse header.
 
-### 1. Novo worker dedicado da fila (backend)
-- Criar a função `automation-queue-worker` que faz APENAS uma coisa: pegar itens pendentes da fila e enviar (template/bot), em lotes, respeitando o rate limit do WhatsApp.
-- Remover esse processamento da função `automation-engine` (ela continua cuidando dos gatilhos: no_response, time_window, etc.).
-- Recuperar itens travados em "processing" há mais de 10 minutos (voltam para "pending").
-- Evitar duplicados: se o mesmo lead + automação já tem item "sent" recente, pular.
+### 2. Drenagem segura do backlog
+- Itens pendentes com mais de 6 horas de atraso serão marcados como `expired` (não enviados), para evitar disparar centenas de mensagens antigas de uma vez.
+- Os itens recentes serão processados normalmente (60 por minuto).
 
-### 2. Agendamento (banco)
-- Criar um cron job para o `automation-queue-worker` rodar a cada minuto.
-- Adicionar coluna `error_message` na fila para registrar o motivo exato quando um envio falhar (visibilidade real em vez de falha silenciosa).
-
-### 3. UI — página de Automações
-- **Remover o botão "⚡ Disparar agora"**.
-- Manter apenas o fluxo do checkbox "Enviar para todos os leads que já estão nesta etapa", que já enfileira corretamente.
-- O toast de confirmação passará a dizer "X leads enfileirados — envio em andamento" para deixar claro que o envio é processado em segundo plano (1 a 2 minutos para começar).
-
-### 4. Backlog atual
-- Os 815 leads do "disparo luv" já estão na fila e serão enviados automaticamente assim que o worker entrar no ar (sem precisar disparar de novo).
-- Vou verificar se há duplicados na fila antes (mesmo lead enfileirado 2x) e limpar para ninguém receber mensagem dupla.
+### 3. Teste real com o lead 77988639272
+- Esse número ainda não existe na base — vou criar o lead com o telefone normalizado (`557788639272`) no estágio que possui a automação de disparo.
+- Acompanhar a fila: confirmar que o item entra como `pending`, vira `sent`, e que a mensagem aparece em `messages` com status `sent/delivered` da API do WhatsApp.
+- Só dou o problema como resolvido depois desse disparo chegar de verdade.
 
 ## Detalhes técnicos
-- Nova edge function: `supabase/functions/automation-queue-worker/index.ts` (processa lotes de ~50 itens por execução, chunks paralelos de 10, com pausa entre chunks).
-- Migration: `ALTER TABLE crm_automation_queue ADD COLUMN error_message text` + reset de itens "processing" antigos.
-- Cron via `cron.schedule` chamando o worker a cada minuto.
-- Editar `supabase/functions/automation-engine/index.ts` (remover seção 7) e `src/pages/CrmAutomacoes.tsx` (remover botão Disparar agora e função associada).
+- Arquivos: `supabase/functions/automation-queue-worker/index.ts`, `supabase/functions/automation-engine/index.ts`
+- Recriar `automation-queue-worker-cron` e `automation-engine-cron` com header `x-cron-secret` (via SQL direto, sem migração, pois contém segredo)
+- UPDATE em `crm_automation_queue` para expirar itens com `scheduled_at < now() - 6h`
+- Validação: `net._http_response` com status 200, logs `[queue-worker] fetched/done`, e a mensagem do lead de teste com status de entrega
