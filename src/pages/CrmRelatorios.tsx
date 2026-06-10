@@ -160,8 +160,48 @@ export default function CrmRelatorios() {
           )
         : [];
 
+      // Também busca leads que TÊM AGENDAMENTO no período (mesmo criados antes).
+      // Garante que leads de meses anteriores que agendam/comparecem/contratam agora
+      // entrem nas métricas de Agendaram/Compareceram/Contrataram.
+      let activityByAppt: Lead[] = [];
+      if (startISO && endISO) {
+        const startDateOnly = startISO.slice(0, 10);
+        const endDateOnly = endISO.slice(0, 10);
+        const apptLeadIds = new Set<string>();
+        const apptsCreated = await fetchAllPages<{ lead_id: string }>((f, t) =>
+          supabase
+            .from("crm_appointments")
+            .select("lead_id")
+            .gte("created_at", startISO)
+            .lte("created_at", endISO)
+            .range(f, t)
+        );
+        const apptsScheduled = await fetchAllPages<{ lead_id: string }>((f, t) =>
+          supabase
+            .from("crm_appointments")
+            .select("lead_id")
+            .gte("scheduled_date", startDateOnly)
+            .lte("scheduled_date", endDateOnly)
+            .range(f, t)
+        );
+        [...apptsCreated, ...apptsScheduled].forEach(a => apptLeadIds.add(a.lead_id));
+        const ids = Array.from(apptLeadIds);
+        for (let i = 0; i < ids.length; i += 300) {
+          const chunk = ids.slice(i, i + 300);
+          const rows = await fetchAllPages<Lead>((f, t) =>
+            supabase
+              .from("crm_leads")
+              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .eq("pipeline_id", pipelineId)
+              .in("id", chunk)
+              .range(f, t)
+          );
+          activityByAppt = activityByAppt.concat(rows);
+        }
+      }
+
       const merged = new Map<string, Lead>();
-      [...cohortLeads, ...activityInbound].forEach(l => merged.set(l.id, l));
+      [...cohortLeads, ...activityInbound, ...activityByAppt].forEach(l => merged.set(l.id, l));
       const leadsAll = Array.from(merged.values());
       setLeads(leadsAll);
 
