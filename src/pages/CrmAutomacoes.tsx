@@ -567,11 +567,21 @@ export default function CrmAutomacoes() {
                                         <span className="font-medium">{triggerLabel(auto.trigger_type)}</span>
                                       </div>
                                       <div className="text-foreground">{actionLabel(auto.action_type)}</div>
-                                      <div className="flex items-center gap-1 mt-1">
-                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive">
+                                      <div className="flex items-center gap-2 mt-1">
+                                        {(auto.action_type === "send_template" || auto.action_type === "send_bot") && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); triggerAutomationNow(auto.id); }}
+                                            className="text-[10px] text-primary hover:underline flex items-center gap-1"
+                                            title="Disparar para todos os leads atualmente nesta etapa"
+                                          >
+                                            <Zap size={10} /> Disparar agora
+                                          </button>
+                                        )}
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive ml-auto">
                                           <Trash2 size={10} />
                                         </button>
                                       </div>
+
                                     </div>
                                   ))}
                                   <button
