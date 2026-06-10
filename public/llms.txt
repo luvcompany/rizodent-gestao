@@ -1,0 +1,9 @@
+# CRClin
+
+> CRM completo para clínicas e empresas de agendamento: WhatsApp, bots, agenda e gestão financeira em uma só plataforma — personalizado com a marca do cliente.
+
+O CRClin centraliza atendimento via WhatsApp Business API, automações com bots, kanban de leads, agenda de profissionais, relatórios em tempo real e gestão de pagamentos. Atende clínicas odontológicas, médicas, estéticas, profissionais liberais e empresas com vendas consultivas.
+
+## Pages
+
+- [Home](/): Visão geral do CRClin, funcionalidades, públicos atendidos e FAQ.

@@ -106,7 +106,12 @@ const TenantLogin = () => {
   }, []);
 
   if (tenantLoading) {
-    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Carregando...</div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-2 text-muted-foreground">
+        <h1 className="sr-only">Acesso da equipe</h1>
+        <span>Carregando...</span>
+      </div>
+    );
   }
 
   if (!tenant.id) {
@@ -134,8 +139,8 @@ const TenantLogin = () => {
               <img src={logoFallback} alt={tenant.name} className="h-12 object-contain invert" />
             )}
             <div className="text-center">
-              <h1 className="text-xl font-bold">{tenant.name}</h1>
-              <p className="text-sm text-muted-foreground">Acesso da equipe</p>
+              <h1 className="text-xl font-bold">Acesso da equipe — {tenant.name}</h1>
+              <p className="text-sm text-muted-foreground">Entre com seu e-mail e senha</p>
             </div>
           </div>
 
@@ -168,6 +173,7 @@ const TenantLogin = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}

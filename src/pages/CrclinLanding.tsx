@@ -59,7 +59,24 @@ const CrclinLanding = () => {
       contactPoint: { "@type": "ContactPoint", telephone: "+5577981223133", contactType: "sales", areaServed: "BR" },
     });
     document.head.appendChild(ld);
-    return () => { document.head.removeChild(ld); };
+
+    const faqLd = document.createElement("script");
+    faqLd.type = "application/ld+json";
+    faqLd.text = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: faqs.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    });
+    document.head.appendChild(faqLd);
+
+    return () => {
+      document.head.removeChild(ld);
+      document.head.removeChild(faqLd);
+    };
   }, []);
 
   return (
@@ -68,7 +85,7 @@ const CrclinLanding = () => {
       <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
-            <img src={crclinIcon} alt="CRClin" className="h-9 w-9" />
+            <img src={crclinIcon} alt="Logotipo CRClin" className="h-9 w-9" />
             <span className="text-lg font-bold tracking-tight">CRClin</span>
           </div>
           <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-400 via-blue-500 to-purple-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-blue-500/20 hover:opacity-90">
@@ -82,12 +99,12 @@ const CrclinLanding = () => {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.15),transparent_50%)]" />
         <div className="relative mx-auto max-w-7xl px-6 py-20 lg:py-28">
           <div className="mx-auto max-w-3xl text-center">
-            <img src={crclinBrand} alt="CRClin — CRM completo para clínicas" className="mx-auto mb-8 w-full max-w-md rounded-2xl shadow-2xl shadow-blue-500/20" />
+            <img src={crclinBrand} alt="CRClin — CRM completo para clínicas" width={448} height={252} fetchPriority="high" className="mx-auto mb-8 w-full max-w-md rounded-2xl shadow-2xl shadow-blue-500/20" />
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs font-medium text-emerald-300">
               <Sparkles size={14} /> CRM completo para quem vive de agendamento
             </div>
             <h1 className="text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-              Transforme leads em clientes.<br />
+              CRClin — Transforme leads em clientes.<br />
               <span className="bg-gradient-to-r from-emerald-300 via-blue-400 to-purple-400 bg-clip-text text-transparent">Pare de perder vendas no WhatsApp.</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-300">
