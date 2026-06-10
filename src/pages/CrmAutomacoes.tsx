@@ -164,7 +164,7 @@ export default function CrmAutomacoes() {
       pipeline_id: selectedPipelineId, name: newStageName, color: newStageColor,
       position: stages.length,
     }).select().single();
-    if (error) { toast.error("Erro ao criar etapa"); return; }
+    if (error) { toast.error(`Erro ao criar etapa: ${error.message}`); return; }
     toast.success("Etapa criada");
     setNewStageOpen(false);
     setNewStageName("");
@@ -178,7 +178,7 @@ export default function CrmAutomacoes() {
     const { data, error } = await supabase.from("crm_pipelines").insert({
       name: newPipelineName, color: newPipelineColor,
     }).select().single();
-    if (error) { toast.error("Erro ao criar funil"); return; }
+    if (error) { toast.error(`Erro ao criar funil: ${error.message}`); return; }
     toast.success("Funil criado");
     setNewPipelineOpen(false);
     setNewPipelineName("");
