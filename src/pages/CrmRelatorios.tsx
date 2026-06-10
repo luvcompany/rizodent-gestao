@@ -738,34 +738,8 @@ export default function CrmRelatorios() {
             </div>
           </Card>
 
-          {/* Contratos diretos */}
-          {contratosDirectos.length > 0 && (
-            <Card className="p-6 border-amber-500/30 border-l-4">
-              <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
-                <h2 className="text-lg font-semibold">Contratos diretos (sem passar por Agendado)</h2>
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                <strong>{contratosDirectos.length}</strong> lead(s) estão na etapa "Contratado" mas não têm agendamento contratado neste período.
-                Normalmente são recorrentes do sistema antigo. <strong>Ficam fora das taxas de conversão acima</strong>.
-              </p>
-              <details className="text-sm">
-                <summary className="cursor-pointer text-primary hover:underline">Ver lista</summary>
-                <ul className="mt-3 space-y-1 max-h-48 overflow-y-auto">
-                  {contratosDirectos.slice(0, 50).map(l => (
-                    <li key={l.id}>
-                      <button onClick={() => navigate(`/crm/conversa/${l.id}`)} className="text-foreground hover:text-primary text-left truncate w-full">
-                        {l.name}
-                      </button>
-                    </li>
-                  ))}
-                  {contratosDirectos.length > 50 && (
-                    <li className="text-xs text-muted-foreground italic">+ {contratosDirectos.length - 50} outros…</li>
-                  )}
-                </ul>
-              </details>
-            </Card>
-          )}
+
+
 
           {/* Tempos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
