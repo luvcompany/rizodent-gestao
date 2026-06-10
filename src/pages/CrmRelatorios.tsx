@@ -12,10 +12,26 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
-import DashboardFunnel from "@/components/DashboardFunnel";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, RefreshCw, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox, AlertTriangle } from "lucide-react";
+import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox, AlertTriangle, HelpCircle } from "lucide-react";
+
+// ============================================================================
+// REGRA DE OURO (toda a aba segue esta regra):
+//
+//  - "Agendamentos no período" = COUNT(crm_appointments) com scheduled_date
+//    dentro do período, contados INDIVIDUALMENTE (não por lead). Bate 1:1
+//    com o que o calendário exibe.
+//  - Compareceram = appts com status IN ('contracted','not_contracted')
+//  - Contrataram = appts com status = 'contracted'
+//  - Faltas      = appts com status = 'no_show'
+//  - Pendentes   = appts com status IN ('pending','confirmed')
+//
+//  Separadamente, métricas de ATIVIDADE DA EQUIPE usam created_at:
+//  - "Agendamentos criados no dia" = COUNT(appts) WHERE created_at = dia
+//  - "Novos leads no dia"          = COUNT(leads) WHERE created_at = dia
+//  - "Leads que conversaram"       = DISTINCT lead_id com inbound no dia
+// ============================================================================
 
 // ---------- Tipos ----------
 type Pipeline = { id: string; name: string };
@@ -25,17 +41,18 @@ type Lead = {
   created_at: string; last_inbound_at: string | null; first_inbound_at: string | null;
 };
 type StageHistory = { lead_id: string; stage_id: string; entered_at: string };
-type Appointment = { id: string; lead_id: string; created_at: string; scheduled_date: string; status: string };
+type Appointment = {
+  id: string; lead_id: string; created_at: string;
+  scheduled_date: string; status: string;
+  is_rescheduled?: boolean | null;
+  lead_cidade?: string | null;
+};
 type Msg = { id: string; lead_id: string; direction: string; created_at: string };
-
-const FUNNEL_COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#06b6d4", "#3b82f6", "#ef4444", "#84cc16", "#a855f7"];
 
 // ---------- Helpers ----------
 const lower = (s: string | null | undefined) => (s || "").toLowerCase();
 const isAgendStage = (n: string) => /agend/.test(lower(n)) && !/n[aã]o\s*agend/.test(lower(n));
 const isReagendStage = (n: string) => /(reagend|remarc)/.test(lower(n));
-const isComparStage = (n: string) => /compar/.test(lower(n)) && !/n[aã]o\s*compar/.test(lower(n));
-const isFaltouStage = (n: string) => /(n[aã]o\s*compar|faltou|n[aã]o\s*compareceu)/.test(lower(n));
 const isContratStage = (n: string) => /contrat/.test(lower(n)) && !/n[aã]o\s*contrat/.test(lower(n));
 const isProtectedStage = (n: string) => isAgendStage(n) || isReagendStage(n) || isContratStage(n);
 
@@ -78,6 +95,10 @@ function mean(arr: number[]): number {
   return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
+const dateOnly = (iso: string) => iso.slice(0, 10);
+const dayKeyFromDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 // ---------- Página ----------
 export default function CrmRelatorios() {
   const navigate = useNavigate();
@@ -90,10 +111,11 @@ export default function CrmRelatorios() {
 
   // Dados
   const [stages, setStages] = useState<Stage[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [history, setHistory] = useState<StageHistory[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);                    // leads relevantes (coorte + atividade)
+  const [apptsPeriodo, setApptsPeriodo] = useState<Appointment[]>([]); // appts com scheduled_date no período (= calendário)
+  const [apptsCriadosPeriodo, setApptsCriadosPeriodo] = useState<Appointment[]>([]); // appts criados no período (atividade)
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [history, setHistory] = useState<StageHistory[]>([]);
 
   // Carregar pipelines
   useEffect(() => {
@@ -111,12 +133,16 @@ export default function CrmRelatorios() {
 
   // Carregar dados quando filtros mudam
   useEffect(() => {
-    if (!pipelineId) return;
+    if (!pipelineId || !range) return;
     setLoading(true);
-    const startISO = range?.start.toISOString();
-    const endISO = range?.end.toISOString();
+
+    const startISO = range.start.toISOString();
+    const endISO = range.end.toISOString();
+    const startDate = dateOnly(startISO);
+    const endDate = dateOnly(endISO);
 
     (async () => {
+      // 1. Stages
       const stagesRes = await supabase
         .from("crm_stages")
         .select("id, name, color, position, pipeline_id")
@@ -125,392 +151,308 @@ export default function CrmRelatorios() {
       const stagesList = (stagesRes.data || []) as Stage[];
       setStages(stagesList);
 
-      // Carrega leads em duas frentes (paginadas, sem perder por limite de 1000):
-      // 1) Coorte: criados no período  2) Atividade: leads com inbound/outbound no período
-      // Necessário para "tempo de resposta", "inativos" e "fantasmas" funcionarem com leads antigos.
-      const cohortLeads = startISO && endISO
-        ? await fetchAllPages<Lead>((f, t) =>
-            supabase
-              .from("crm_leads")
-              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-              .eq("pipeline_id", pipelineId)
-              .gte("created_at", startISO)
-              .lte("created_at", endISO)
-              .order("created_at")
-              .range(f, t)
-          )
-        : await fetchAllPages<Lead>((f, t) =>
-            supabase
-              .from("crm_leads")
-              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-              .eq("pipeline_id", pipelineId)
-              .order("created_at")
-              .range(f, t)
-          );
+      // 2. APPOINTMENTS DO PERÍODO (data marcada no intervalo) — fonte da verdade
+      //    Query equivalente à do CrmCalendario.tsx.
+      //    Filtramos por pipeline depois (precisamos do lead_id para fazer o filtro).
+      const apptsByScheduled = await fetchAllPages<Appointment>((f, t) =>
+        supabase
+          .from("crm_appointments")
+          .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
+          .gte("scheduled_date", startDate)
+          .lte("scheduled_date", endDate)
+          .range(f, t)
+      );
 
-      const activityInbound = startISO && endISO
-        ? await fetchAllPages<Lead>((f, t) =>
-            supabase
-              .from("crm_leads")
-              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-              .eq("pipeline_id", pipelineId)
-              .gte("last_inbound_at", startISO)
-              .lte("last_inbound_at", endISO)
-              .range(f, t)
-          )
-        : [];
+      // 3. APPOINTMENTS CRIADOS NO PERÍODO (ação da equipe)
+      const apptsByCreated = await fetchAllPages<Appointment>((f, t) =>
+        supabase
+          .from("crm_appointments")
+          .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
+          .gte("created_at", startISO)
+          .lte("created_at", endISO)
+          .range(f, t)
+      );
 
-      // Também busca leads que TÊM AGENDAMENTO no período (mesmo criados antes).
-      // Garante que leads de meses anteriores que agendam/comparecem/contratam agora
-      // entrem nas métricas de Agendaram/Compareceram/Contrataram.
+      // Leads envolvidos (qualquer um que apareça em qualquer agendamento do período +
+      // leads criados no período + leads com atividade inbound)
+      const leadIdsFromAppts = new Set<string>();
+      apptsByScheduled.forEach(a => leadIdsFromAppts.add(a.lead_id));
+      apptsByCreated.forEach(a => leadIdsFromAppts.add(a.lead_id));
+
+      // 4. LEADS criados no período (do pipeline)
+      const cohortLeads = await fetchAllPages<Lead>((f, t) =>
+        supabase
+          .from("crm_leads")
+          .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+          .eq("pipeline_id", pipelineId)
+          .gte("created_at", startISO)
+          .lte("created_at", endISO)
+          .order("created_at")
+          .range(f, t)
+      );
+
+      // 5. LEADS do pipeline com inbound no período (mesmo que criados antes)
+      const activityInbound = await fetchAllPages<Lead>((f, t) =>
+        supabase
+          .from("crm_leads")
+          .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+          .eq("pipeline_id", pipelineId)
+          .gte("last_inbound_at", startISO)
+          .lte("last_inbound_at", endISO)
+          .range(f, t)
+      );
+
+      // 6. LEADS dos appointments do período — limita ao pipeline (pode haver appts de outros pipelines)
       let activityByAppt: Lead[] = [];
-      if (startISO && endISO) {
-        const startDateOnly = startISO.slice(0, 10);
-        const endDateOnly = endISO.slice(0, 10);
-        const apptLeadIds = new Set<string>();
-        const apptsCreated = await fetchAllPages<{ lead_id: string }>((f, t) =>
+      const apptIds = Array.from(leadIdsFromAppts);
+      for (let i = 0; i < apptIds.length; i += 300) {
+        const chunk = apptIds.slice(i, i + 300);
+        const rows = await fetchAllPages<Lead>((f, t) =>
           supabase
-            .from("crm_appointments")
-            .select("lead_id")
-            .gte("created_at", startISO)
-            .lte("created_at", endISO)
+            .from("crm_leads")
+            .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+            .eq("pipeline_id", pipelineId)
+            .in("id", chunk)
             .range(f, t)
         );
-        const apptsScheduled = await fetchAllPages<{ lead_id: string }>((f, t) =>
-          supabase
-            .from("crm_appointments")
-            .select("lead_id")
-            .gte("scheduled_date", startDateOnly)
-            .lte("scheduled_date", endDateOnly)
-            .range(f, t)
-        );
-        [...apptsCreated, ...apptsScheduled].forEach(a => apptLeadIds.add(a.lead_id));
-        const ids = Array.from(apptLeadIds);
-        for (let i = 0; i < ids.length; i += 300) {
-          const chunk = ids.slice(i, i + 300);
-          const rows = await fetchAllPages<Lead>((f, t) =>
-            supabase
-              .from("crm_leads")
-              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-              .eq("pipeline_id", pipelineId)
-              .in("id", chunk)
-              .range(f, t)
-          );
-          activityByAppt = activityByAppt.concat(rows);
-        }
+        activityByAppt = activityByAppt.concat(rows);
       }
 
-      const merged = new Map<string, Lead>();
-      [...cohortLeads, ...activityInbound, ...activityByAppt].forEach(l => merged.set(l.id, l));
-      const leadsAll = Array.from(merged.values());
+      const mergedLeads = new Map<string, Lead>();
+      [...cohortLeads, ...activityInbound, ...activityByAppt].forEach(l => mergedLeads.set(l.id, l));
+      const leadsAll = Array.from(mergedLeads.values());
+      const leadIdsPipeline = new Set(leadsAll.map(l => l.id));
+
+      // FILTRA appts para somente os do pipeline selecionado
+      const apptsScheduledFiltered = apptsByScheduled.filter(a => leadIdsPipeline.has(a.lead_id));
+      const apptsCreatedFiltered = apptsByCreated.filter(a => leadIdsPipeline.has(a.lead_id));
+
       setLeads(leadsAll);
+      setApptsPeriodo(apptsScheduledFiltered);
+      setApptsCriadosPeriodo(apptsCreatedFiltered);
 
-      const leadIds = leadsAll.map(l => l.id);
-
-      let histRows: StageHistory[] = [];
-      let apptRows: Appointment[] = [];
+      // 7. Mensagens inbound do período (para "conversaram" diário + tempo de resposta)
+      //    Buscar inbound + outbound do período via join inner para limitar ao pipeline
       let msgRows: Msg[] = [];
-
-      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-      const msgsLowerISO = startISO && new Date(startISO) < todayStart ? startISO : todayStart.toISOString();
-
-      for (let i = 0; i < leadIds.length; i += 500) {
-        const chunk = leadIds.slice(i, i + 500);
-        const [hist, appt, msgs] = await Promise.all([
-          fetchAllPages<StageHistory>((f, t) =>
-            supabase
-              .from("crm_lead_stage_history")
-              .select("lead_id, stage_id, entered_at")
-              .in("lead_id", chunk)
-              .order("entered_at")
-              .range(f, t)
-          ),
-          fetchAllPages<Appointment>((f, t) =>
-            supabase
-              .from("crm_appointments")
-              .select("id, lead_id, created_at, scheduled_date, status")
-              .in("lead_id", chunk)
-              .order("created_at")
-              .range(f, t)
-          ),
-          fetchAllPages<Msg>((f, t) =>
-            supabase
-              .from("messages")
-              .select("id, lead_id, direction, created_at")
-              .in("lead_id", chunk)
-              .gte("created_at", msgsLowerISO)
-              .order("created_at")
-              .range(f, t)
-          ),
-        ]);
-        histRows = histRows.concat(hist);
-        apptRows = apptRows.concat(appt);
-        msgRows = msgRows.concat(msgs);
+      let mFrom = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("id, lead_id, direction, created_at, crm_leads!inner(pipeline_id)")
+          .eq("crm_leads.pipeline_id", pipelineId)
+          .gte("created_at", startISO)
+          .lte("created_at", endISO)
+          .order("created_at")
+          .range(mFrom, mFrom + 999);
+        if (error || !data || data.length === 0) break;
+        msgRows = msgRows.concat(data as any);
+        if (data.length < 1000) break;
+        mFrom += 1000;
       }
-
-      setHistory(histRows);
-      setAppointments(apptRows);
       setMessages(msgRows);
+
+      // 8. Stage history para coorte (tempo de contratação)
+      const cohortIds = cohortLeads.map(l => l.id);
+      let histRows: StageHistory[] = [];
+      for (let i = 0; i < cohortIds.length; i += 500) {
+        const chunk = cohortIds.slice(i, i + 500);
+        const rows = await fetchAllPages<StageHistory>((f, t) =>
+          supabase
+            .from("crm_lead_stage_history")
+            .select("lead_id, stage_id, entered_at")
+            .in("lead_id", chunk)
+            .order("entered_at")
+            .range(f, t)
+        );
+        histRows = histRows.concat(rows);
+      }
+      setHistory(histRows);
+
       setLoading(false);
     })();
   }, [pipelineId, range]);
 
   const inRange = (iso: string | null | undefined): boolean => {
-    if (!iso) return false;
-    if (!range) return true;
+    if (!iso || !range) return false;
     const d = new Date(iso).getTime();
     return d >= range.start.getTime() && d <= range.end.getTime();
   };
 
-  // Coorte = leads criados no período
+  // Coorte: leads criados no período
   const cohort = useMemo(() => leads.filter(l => inRange(l.created_at)), [leads, range]);
   const cohortIds = useMemo(() => new Set(cohort.map(l => l.id)), [cohort]);
   const stageById = useMemo(() => new Map(stages.map(s => [s.id, s])), [stages]);
-  // Etapa "Contratado" detectada pelo nome (não simplesmente a última posição)
   const contratStage = useMemo(
     () => stages.find(s => isContratStage(s.name)) ?? (stages.length ? stages[stages.length - 1] : null),
     [stages]
   );
-  const lastStage = contratStage;
 
-  // ===== JORNADA REAL DO LEAD (coorte = leads criados no período) =====
-  // Cada marco é um SUBCONJUNTO ESTRITO do anterior:
-  // Total > Conversaram > Agendaram > Compareceram > Contrataram
-  //
-  // REGRA-CHAVE: "Contratado válido" = lead com appointment status='contracted'.
-  // Leads que estão na etapa Contratado MAS não têm appointment são recorrentes
-  // do sistema antigo e ficam FORA das taxas de conversão.
-
-  // Agrupa appointments por lead (uma vez só)
-  const apptsByLead = useMemo(() => {
-    const m = new Map<string, Appointment[]>();
-    appointments.forEach(a => {
-      if (!m.has(a.lead_id)) m.set(a.lead_id, []);
-      m.get(a.lead_id)!.push(a);
-    });
-    return m;
-  }, [appointments]);
-
-  // Mensagens inbound por lead
-  const inboundByLead = useMemo(() => {
-    const s = new Set<string>();
-    messages.forEach(m => { if (m.direction === "inbound") s.add(m.lead_id); });
-    leads.forEach(l => { if (l.first_inbound_at) s.add(l.id); });
-    return s;
-  }, [messages, leads]);
-
-  // Helper: scheduled_date (YYYY-MM-DD) está no período?
-  const scheduledInRange = (sd: string | null | undefined): boolean => {
-    if (!sd) return false;
-    if (!range) return true;
-    const [y, m, d] = sd.split("-").map(Number);
-    const t = new Date(y, (m || 1) - 1, d || 1).getTime();
-    return t >= range.start.getTime() && t <= range.end.getTime();
-  };
-
-  const jornada = useMemo(() => {
-    // Total / Novos: leads criados no período (entradas no funil)
-    const total = new Set(cohort.map(l => l.id));
-
-    // Conversaram: leads (do pipeline, qualquer data de criação) com inbound NO PERÍODO
-    const conversaram = new Set<string>();
-    const leadsPipeline = new Set(leads.map(l => l.id));
-    messages.forEach(m => {
-      if (m.direction !== "inbound") return;
-      if (!leadsPipeline.has(m.lead_id)) return;
-      if (!inRange(m.created_at)) return;
-      conversaram.add(m.lead_id);
-    });
-    // Fallback para leads cuja primeira/última mensagem inbound caiu no período mas
-    // está fora da janela paginada de "messages" (rare): usa first_inbound_at/last_inbound_at
-    leads.forEach(l => {
-      if (inRange(l.first_inbound_at) || inRange(l.last_inbound_at)) conversaram.add(l.id);
-    });
-
-    // Agendaram: leads com appointment CRIADO no período (independente de quando o lead entrou)
-    const agendaram = new Set<string>();
-    appointments.forEach(a => {
-      if (!leadsPipeline.has(a.lead_id)) return;
-      if (inRange(a.created_at)) agendaram.add(a.lead_id);
-    });
-
-    // Compareceram / Contrataram / Faltaram: por DATA MARCADA no período
-    // (resultado do que aconteceu no mês, mesmo que o agendamento tenha sido criado antes)
-    const compareceram = new Set<string>();
-    const contratadosValidos = new Set<string>();
-    const naoContrataram = new Set<string>();
-    const faltaramSet = new Set<string>();
-
-    // Agrupa apenas appointments cuja data marcada cai no período
-    const apptsPeriodoByLead = new Map<string, Appointment[]>();
-    appointments.forEach(a => {
-      if (!leadsPipeline.has(a.lead_id)) return;
-      if (!scheduledInRange(a.scheduled_date)) return;
-      if (!apptsPeriodoByLead.has(a.lead_id)) apptsPeriodoByLead.set(a.lead_id, []);
-      apptsPeriodoByLead.get(a.lead_id)!.push(a);
-    });
-
-    apptsPeriodoByLead.forEach((apps, leadId) => {
-      const hasCompar = apps.some(a => a.status === "contracted" || a.status === "not_contracted");
-      const hasContrat = apps.some(a => a.status === "contracted");
-      const hasNoShow = apps.some(a => a.status === "no_show");
-      if (hasCompar) compareceram.add(leadId);
-      if (hasContrat) contratadosValidos.add(leadId);
-      if (hasCompar && !hasContrat) naoContrataram.add(leadId);
-      if (!hasCompar && hasNoShow) faltaramSet.add(leadId);
-    });
-
-    // Reagendados (informativo): appointments do período marcados como reagendados
-    const reagendaram = new Set<string>();
-    apptsPeriodoByLead.forEach((apps, leadId) => {
-      if (apps.some(a => (a as any).is_rescheduled === true)) reagendaram.add(leadId);
-    });
-
+  // ============= MÉTRICAS DO CALENDÁRIO (regra de ouro) =============
+  // Tudo contado por APPOINTMENT, não por lead.
+  const calendario = useMemo(() => {
+    const total = apptsPeriodo.length;
+    const contrataram = apptsPeriodo.filter(a => a.status === "contracted").length;
+    const naoContrataram = apptsPeriodo.filter(a => a.status === "not_contracted").length;
+    const faltas = apptsPeriodo.filter(a => a.status === "no_show").length;
+    const pendentes = apptsPeriodo.filter(a => a.status === "pending" || a.status === "confirmed").length;
+    const cancelados = apptsPeriodo.filter(a => a.status === "cancelled").length;
+    const compareceram = contrataram + naoContrataram;
+    const desfecho = compareceram + faltas; // appts com decisão (excluindo pendentes/cancelados)
     return {
-      total: total.size,
-      conversaram: conversaram.size,
-      agendaram: agendaram.size,
-      compareceram: compareceram.size,
-      faltaram: faltaramSet.size,
-      contratados: contratadosValidos.size,
-      naoContrataram: naoContrataram.size,
-      reagendaram: reagendaram.size,
-      contratadosValidosIds: contratadosValidos,
+      total, contrataram, naoContrataram, faltas, pendentes, cancelados,
+      compareceram, desfecho,
+      taxaComparecimento: desfecho > 0 ? (compareceram / desfecho) * 100 : 0,
+      taxaContratacao: compareceram > 0 ? (contrataram / compareceram) * 100 : 0,
     };
-  }, [cohort, leads, messages, appointments, range]);
+  }, [apptsPeriodo]);
 
-  // Atalho usado em vários cards: leads contratados pelo fluxo do CRM no período
-  const contractedLeadIds = jornada.contratadosValidosIds;
+  // ============= ATIVIDADE (criação no período) =============
+  const atividadePeriodo = useMemo(() => {
+    return {
+      novosLeads: cohort.length,
+      agendamentosCriados: apptsCriadosPeriodo.length,
+    };
+  }, [cohort, apptsCriadosPeriodo]);
 
-  // Contratos diretos: leads na etapa "Contratado" SEM appointment válido no período
-  // (= recorrentes do sistema antigo, fechados sem passar pelo fluxo).
+  // Conversaram: leads com inbound no período (distintos)
+  const leadsQueConversaram = useMemo(() => {
+    const s = new Set<string>();
+    messages.forEach(m => {
+      if (m.direction === "inbound") s.add(m.lead_id);
+    });
+    leads.forEach(l => {
+      if (inRange(l.first_inbound_at) || inRange(l.last_inbound_at)) s.add(l.id);
+    });
+    return s;
+  }, [messages, leads, range]);
+
+  // ============= CONTRATOS DIRETOS (informativo) =============
+  // Leads na etapa Contratado que NÃO têm appointment 'contracted' no período.
+  // Recorrentes do sistema antigo — ficam fora das taxas.
   const contratosDirectos = useMemo(() => {
     if (!contratStage) return [] as Lead[];
-    return cohort.filter(l => {
-      if (l.stage_id !== contratStage.id) return false;
-      return !contractedLeadIds.has(l.id);
+    const leadsComContratoNoPeriodo = new Set<string>();
+    apptsPeriodo.forEach(a => { if (a.status === "contracted") leadsComContratoNoPeriodo.add(a.lead_id); });
+    return cohort.filter(l => l.stage_id === contratStage.id && !leadsComContratoNoPeriodo.has(l.id));
+  }, [cohort, contratStage, apptsPeriodo]);
+
+  // ============= ATIVIDADE DIÁRIA =============
+  const dailyActivity = useMemo(() => {
+    if (!range) return { rows: [] as any[], totals: { conversaram: 0, novos: 0, agendamentosCriados: 0, agendamentosDoDia: 0, contratosDoDia: 0 } };
+
+    const days: string[] = [];
+    const cur = new Date(range.start); cur.setHours(0, 0, 0, 0);
+    const end = new Date(range.end);
+    const today = new Date(); today.setHours(23, 59, 59, 999);
+    const endRef = end.getTime() < today.getTime() ? end : today;
+    while (cur.getTime() <= endRef.getTime()) {
+      days.push(dayKeyFromDate(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    const conversaramByDay = new Map<string, Set<string>>();
+    const novosByDay = new Map<string, number>();
+    const agendCriadosByDay = new Map<string, number>(); // criados no dia (ação CRC)
+    const agendDoDiaByDay = new Map<string, number>();   // com data marcada para o dia
+    const contratosDoDiaByDay = new Map<string, number>(); // contratados no dia (marcados)
+
+    messages.forEach(m => {
+      if (m.direction !== "inbound") return;
+      const k = dayKeyFromDate(new Date(m.created_at));
+      if (!conversaramByDay.has(k)) conversaramByDay.set(k, new Set());
+      conversaramByDay.get(k)!.add(m.lead_id);
     });
-  }, [cohort, contratStage, contractedLeadIds]);
+    cohort.forEach(l => {
+      const k = dayKeyFromDate(new Date(l.created_at));
+      novosByDay.set(k, (novosByDay.get(k) || 0) + 1);
+    });
+    apptsCriadosPeriodo.forEach(a => {
+      const k = dayKeyFromDate(new Date(a.created_at));
+      agendCriadosByDay.set(k, (agendCriadosByDay.get(k) || 0) + 1);
+    });
+    apptsPeriodo.forEach(a => {
+      const k = a.scheduled_date; // já YYYY-MM-DD
+      agendDoDiaByDay.set(k, (agendDoDiaByDay.get(k) || 0) + 1);
+      if (a.status === "contracted") {
+        contratosDoDiaByDay.set(k, (contratosDoDiaByDay.get(k) || 0) + 1);
+      }
+    });
 
-  // Mantém para retrocompatibilidade dos cards de cidade/tempo abaixo (compareceu+contratou)
-  const agenda = useMemo(() => ({
-    agendados: jornada.agendaram,
-    compareceram: jornada.compareceram,
-    remarcaram: jornada.reagendaram,
-    faltaram: jornada.faltaram,
-    contratados: jornada.contratados,
-    presenca: jornada.agendaram > 0 ? (jornada.compareceram / jornada.agendaram) * 100 : 0,
-  }), [jornada]);
+    const rows = days.map(k => {
+      const conv = conversaramByDay.get(k)?.size || 0;
+      const agCriados = agendCriadosByDay.get(k) || 0;
+      return {
+        day: k,
+        conversaram: conv,
+        novos: novosByDay.get(k) || 0,
+        agendamentosCriados: agCriados,
+        agendamentosDoDia: agendDoDiaByDay.get(k) || 0,
+        contratosDoDia: contratosDoDiaByDay.get(k) || 0,
+        taxaConvCriados: conv > 0 ? (agCriados / conv) * 100 : 0,
+      };
+    });
 
-  // 3. Tempo até contratação — usa o appointment 'contracted' como evento
+    const totals = rows.reduce((acc, r) => ({
+      conversaram: acc.conversaram + r.conversaram,
+      novos: acc.novos + r.novos,
+      agendamentosCriados: acc.agendamentosCriados + r.agendamentosCriados,
+      agendamentosDoDia: acc.agendamentosDoDia + r.agendamentosDoDia,
+      contratosDoDia: acc.contratosDoDia + r.contratosDoDia,
+    }), { conversaram: 0, novos: 0, agendamentosCriados: 0, agendamentosDoDia: 0, contratosDoDia: 0 });
+
+    return { rows, totals };
+  }, [range, messages, cohort, apptsCriadosPeriodo, apptsPeriodo]);
+
+  // ============= TEMPO ATÉ CONTRATAÇÃO (coorte) =============
   const tempoContratacao = useMemo(() => {
+    const contratIds = new Set<string>();
+    apptsPeriodo.forEach(a => { if (a.status === "contracted") contratIds.add(a.lead_id); });
+
     const durations: number[] = [];
     cohort.forEach(l => {
-      if (!contractedLeadIds.has(l.id)) return;
-      const apps = apptsByLead.get(l.id) || [];
-      const ts = apps.filter(a => a.status === "contracted").map(a => new Date(a.scheduled_date).getTime()).sort((a, b) => a - b);
+      if (!contratIds.has(l.id)) return;
+      // Pega o primeiro appointment contratado deste lead
+      const aps = apptsPeriodo.filter(a => a.lead_id === l.id && a.status === "contracted");
+      const ts = aps.map(a => new Date(a.scheduled_date).getTime()).sort((a, b) => a - b);
       if (!ts.length) return;
       const dur = ts[0] - new Date(l.created_at).getTime();
       if (dur > 0) durations.push(dur);
     });
     return {
       count: durations.length,
-      media: mean(durations),
-      mediana: median(durations),
+      media: mean(durations), mediana: median(durations),
       min: durations.length ? Math.min(...durations) : 0,
       max: durations.length ? Math.max(...durations) : 0,
     };
-  }, [cohort, apptsByLead, contractedLeadIds]);
+  }, [cohort, apptsPeriodo]);
 
-  // 3b. Atividade Diária — quantos falam por dia e quantos agendam
-  const dailyActivity = useMemo(() => {
-    if (!range) return { rows: [] as any[], totals: { conversaram: 0, novos: 0, agendamentos: 0 } };
-    const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-    const days: string[] = [];
-    const cur = new Date(range.start);
-    cur.setHours(0, 0, 0, 0);
-    const end = new Date(range.end);
-    const today = new Date(); today.setHours(23, 59, 59, 999);
-    const endRef = end.getTime() < today.getTime() ? end : today;
-    while (cur.getTime() <= endRef.getTime()) {
-      days.push(dayKey(cur));
-      cur.setDate(cur.getDate() + 1);
-    }
-
-    const conversaramByDay = new Map<string, Set<string>>();
-    const novosByDay = new Map<string, number>();
-    const agendByDay = new Map<string, number>();
-
-    const leadsDoPipeline = new Set(leads.map(l => l.id));
-
-    messages.forEach(m => {
-      if (m.direction !== "inbound") return;
-      if (!leadsDoPipeline.has(m.lead_id)) return;
-      const k = dayKey(new Date(m.created_at));
-      if (!conversaramByDay.has(k)) conversaramByDay.set(k, new Set());
-      conversaramByDay.get(k)!.add(m.lead_id);
-    });
-
-    cohort.forEach(l => {
-      const k = dayKey(new Date(l.created_at));
-      novosByDay.set(k, (novosByDay.get(k) || 0) + 1);
-    });
-
-    appointments.forEach(a => {
-      if (!leadsDoPipeline.has(a.lead_id)) return;
-      const k = dayKey(new Date(a.created_at));
-      agendByDay.set(k, (agendByDay.get(k) || 0) + 1);
-    });
-
-    const rows = days.map(k => {
-      const conv = conversaramByDay.get(k)?.size || 0;
-      const ag = agendByDay.get(k) || 0;
-      return {
-        day: k,
-        conversaram: conv,
-        novos: novosByDay.get(k) || 0,
-        agendamentos: ag,
-        taxa: conv > 0 ? (ag / conv) * 100 : 0,
-      };
-    });
-    const totals = rows.reduce((acc, r) => ({
-      conversaram: acc.conversaram + r.conversaram,
-      novos: acc.novos + r.novos,
-      agendamentos: acc.agendamentos + r.agendamentos,
-    }), { conversaram: 0, novos: 0, agendamentos: 0 });
-    return { rows, totals };
-  }, [range, messages, leads, cohort, appointments]);
-
-  // 4. Tempo até primeiro agendamento
+  // ============= TEMPO ATÉ AGENDAMENTO (coorte) =============
   const tempoAgendamento = useMemo(() => {
-    const apptByLead = new Map<string, number>();
-    appointments.forEach(a => {
+    const firstByLead = new Map<string, number>();
+    apptsCriadosPeriodo.forEach(a => {
       const t = new Date(a.created_at).getTime();
-      const prev = apptByLead.get(a.lead_id);
-      if (prev === undefined || t < prev) apptByLead.set(a.lead_id, t);
+      const prev = firstByLead.get(a.lead_id);
+      if (prev === undefined || t < prev) firstByLead.set(a.lead_id, t);
     });
     const durations: number[] = [];
     cohort.forEach(l => {
-      const t = apptByLead.get(l.id);
+      const t = firstByLead.get(l.id);
       if (t == null) return;
       const dur = t - new Date(l.created_at).getTime();
       if (dur >= 0) durations.push(dur);
     });
     return { count: durations.length, media: mean(durations), mediana: median(durations) };
-  }, [cohort, appointments]);
+  }, [cohort, apptsCriadosPeriodo]);
 
-  // 4b. Distribuição: dias entre agendamento criado e data marcada
+  // ============= ANTECEDÊNCIA DE AGENDAMENTO =============
+  // Distribuição de quantos dias antes o agendamento foi criado.
+  // Usa TODOS os agendamentos com data marcada no período (1 linha por appointment).
   const distribAgendamento = useMemo(() => {
     const buckets = { mesmoDia: 0, proximoDia: 0, restanteSemana: 0, semanaSeguinte: 0, maisLonge: 0 };
     const diffs: number[] = [];
-    const detalhe: { dias: number; count: number }[] = [];
     const detalheMap = new Map<number, number>();
 
-    appointments.forEach(a => {
-      if (!cohortIds.has(a.lead_id)) return;
-      if (!inRange(a.created_at)) return;
-      // Normaliza para meia-noite local para contar dias inteiros
+    apptsPeriodo.forEach(a => {
       const created = new Date(a.created_at);
       const createdDay = new Date(created.getFullYear(), created.getMonth(), created.getDate());
       const [y, m, d] = a.scheduled_date.split("-").map(Number);
@@ -521,14 +463,14 @@ export default function CrmRelatorios() {
       detalheMap.set(diffDays, (detalheMap.get(diffDays) || 0) + 1);
       if (diffDays === 0) buckets.mesmoDia++;
       else if (diffDays === 1) buckets.proximoDia++;
-      else if (diffDays >= 2 && diffDays <= 6) buckets.restanteSemana++;
-      else if (diffDays >= 7 && diffDays <= 13) buckets.semanaSeguinte++;
+      else if (diffDays <= 6) buckets.restanteSemana++;
+      else if (diffDays <= 13) buckets.semanaSeguinte++;
       else buckets.maisLonge++;
     });
 
-    Array.from(detalheMap.entries())
+    const detalhe = Array.from(detalheMap.entries())
       .sort((a, b) => a[0] - b[0])
-      .forEach(([dias, count]) => detalhe.push({ dias, count }));
+      .map(([dias, count]) => ({ dias, count }));
 
     return {
       total: diffs.length,
@@ -537,36 +479,32 @@ export default function CrmRelatorios() {
       buckets,
       detalhe,
     };
-  }, [appointments, cohortIds, range]);
+  }, [apptsPeriodo]);
 
-  // 5. Total por cidade
+  // ============= POR CIDADE =============
   const porCidade = useMemo(() => {
-    const map = new Map<string, { agendamentos: number; comparecimentos: number; contratacoes: number }>();
+    const map = new Map<string, { agendamentos: number; comparecimentos: number; contratacoes: number; faltas: number }>();
     const ensure = (c: string) => {
-      if (!map.has(c)) map.set(c, { agendamentos: 0, comparecimentos: 0, contratacoes: 0 });
+      if (!map.has(c)) map.set(c, { agendamentos: 0, comparecimentos: 0, contratacoes: 0, faltas: 0 });
       return map.get(c)!;
     };
-    const cidadeByLead = new Map(cohort.map(l => [l.id, (l.cidade || "Sem cidade").trim() || "Sem cidade"]));
+    const cidadeByLead = new Map(leads.map(l => [l.id, (l.cidade || "Sem cidade").trim() || "Sem cidade"]));
 
-    appointments.forEach(a => {
-      if (!cohortIds.has(a.lead_id)) return;
-      if (!inRange(a.created_at)) return;
-      const c = cidadeByLead.get(a.lead_id)!;
-      ensure(c).agendamentos++;
-    });
-    cohort.forEach(l => {
-      const st = stageById.get(l.stage_id);
-      const c = cidadeByLead.get(l.id)!;
-      if (st && (isComparStage(st.name) || isContratStage(st.name))) ensure(c).comparecimentos++;
-      if (st && isContratStage(st.name)) ensure(c).contratacoes++;
+    apptsPeriodo.forEach(a => {
+      const c = a.lead_cidade?.trim() || cidadeByLead.get(a.lead_id) || "Sem cidade";
+      const row = ensure(c);
+      row.agendamentos++;
+      if (a.status === "contracted" || a.status === "not_contracted") row.comparecimentos++;
+      if (a.status === "contracted") row.contratacoes++;
+      if (a.status === "no_show") row.faltas++;
     });
 
     return Array.from(map.entries())
       .map(([cidade, v]) => ({ cidade, ...v }))
       .sort((a, b) => b.contratacoes - a.contratacoes || b.agendamentos - a.agendamentos);
-  }, [cohort, appointments, stageById, cohortIds, range]);
+  }, [apptsPeriodo, leads]);
 
-  // 6. Inativos
+  // ============= INATIVOS =============
   const inativos = useMemo(() => {
     const now = Date.now();
     const buckets = { d7: 0, d15: 0, d30: 0 };
@@ -582,7 +520,7 @@ export default function CrmRelatorios() {
     return buckets;
   }, [leads, stageById]);
 
-  // 7. Tempo de resposta
+  // ============= TEMPO DE RESPOSTA =============
   const tempoResposta = useMemo(() => {
     const byLead = new Map<string, Msg[]>();
     messages.forEach(m => {
@@ -605,7 +543,7 @@ export default function CrmRelatorios() {
     return { lead: mean(respLead), crc: mean(respCRC), nLead: respLead.length, nCRC: respCRC.length };
   }, [messages]);
 
-  // 8. Fantasmas
+  // ============= FANTASMAS =============
   const fantasmas = useMemo(() => {
     return cohort.filter(l => {
       if (!l.first_inbound_at || !l.last_inbound_at) return false;
@@ -613,30 +551,14 @@ export default function CrmRelatorios() {
     });
   }, [cohort]);
 
-  // Resumo executivo: KPIs principais derivados da jornada real (com appointment válido)
-  const resumo = useMemo(() => {
-    const total = jornada.total;
-    return {
-      totalLeads: total,
-      taxaConversa: total > 0 ? (jornada.conversaram / total) * 100 : 0,
-      taxaAgendamento: total > 0 ? (jornada.agendaram / total) * 100 : 0,
-      taxaContratacao: total > 0 ? (jornada.contratados / total) * 100 : 0,
-      taxaCompar: jornada.agendaram > 0 ? (jornada.compareceram / jornada.agendaram) * 100 : 0,
-      taxaFechamento: jornada.compareceram > 0 ? (jornada.contratados / jornada.compareceram) * 100 : 0,
-    };
-  }, [jornada]);
-
-
   // Ordenação da tabela de cidades
-  const [citySort, setCitySort] = useState<{ key: "cidade" | "agendamentos" | "comparecimentos" | "contratacoes"; dir: "asc" | "desc" }>({ key: "contratacoes", dir: "desc" });
+  const [citySort, setCitySort] = useState<{ key: "cidade" | "agendamentos" | "comparecimentos" | "contratacoes" | "faltas"; dir: "asc" | "desc" }>({ key: "contratacoes", dir: "desc" });
   const porCidadeSorted = useMemo(() => {
     const arr = [...porCidade];
     arr.sort((a, b) => {
       const av = a[citySort.key] as any;
       const bv = b[citySort.key] as any;
-      if (typeof av === "string") {
-        return citySort.dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      }
+      if (typeof av === "string") return citySort.dir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return citySort.dir === "asc" ? (av - bv) : (bv - av);
     });
     return arr;
@@ -645,7 +567,7 @@ export default function CrmRelatorios() {
     setCitySort(prev => prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "cidade" ? "asc" : "desc" });
   };
 
-  if (loading && !leads.length) {
+  if (loading && !apptsPeriodo.length && !leads.length) {
     return <CrmRelatoriosSkeleton />;
   }
 
@@ -653,7 +575,9 @@ export default function CrmRelatorios() {
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
-        <p className="text-sm text-muted-foreground">Análise de conversão, tempo, cidade e inatividade — por funil.</p>
+        <p className="text-sm text-muted-foreground">
+          Dados alinhados ao calendário. Métricas de agendamento contadas por <strong>agendamento</strong> (não por lead).
+        </p>
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
@@ -670,357 +594,324 @@ export default function CrmRelatorios() {
 
         <TabsContent value="overview" className="space-y-6 mt-4">
 
-      {/* Filtros */}
-      <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
-          <Select value={pipelineId} onValueChange={setPipelineId}>
-            <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
-          <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all"]} />
-        </div>
-        {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-        <div className="ml-auto text-xs text-muted-foreground">{cohort.length} leads na coorte</div>
-      </Card>
+          {/* Filtros */}
+          <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
+              <Select value={pipelineId} onValueChange={setPipelineId}>
+                <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
+              <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all"]} />
+            </div>
+            {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+            <div className="ml-auto text-xs text-muted-foreground">
+              {calendario.total} agendamentos · {cohort.length} novos leads
+            </div>
+          </Card>
 
-      {/* Resumo Executivo — KPIs da jornada real */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard icon={Users} label="Novos leads" value={resumo.totalLeads} accent="blue" hint="Entraram no funil no período" />
-        <KpiCard icon={MessageSquare} label="Conversaram" value={jornada.conversaram} accent="indigo" hint="Tiveram inbound no período" />
-        <KpiCard icon={Calendar} label="Agendaram" value={jornada.agendaram} accent="amber" hint="Agendamento criado no período" />
-        <KpiCard icon={CheckCircle2} label="Compareceram" value={jornada.compareceram} accent="green" hint={`${resumo.taxaCompar.toFixed(0)}% dos agendados do período`} />
-        <KpiCard icon={Target} label="Contrataram" value={jornada.contratados} accent="emerald" hint={`${resumo.taxaFechamento.toFixed(0)}% dos que compareceram`} />
-      </div>
+          {/* KPIs do período — espelham o calendário */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+            <KpiCard icon={Calendar} label="Agendamentos" value={calendario.total} accent="blue"
+              hint="Com data marcada no período (= calendário)" />
+            <KpiCard icon={CheckCircle2} label="Compareceram" value={calendario.compareceram} accent="green"
+              hint={`Contratados + Não contratados`} />
+            <KpiCard icon={Target} label="Contrataram" value={calendario.contrataram} accent="emerald"
+              hint={`${calendario.taxaContratacao.toFixed(0)}% dos que compareceram`} />
+            <KpiCard icon={XCircle} label="Não contrataram" value={calendario.naoContrataram} accent="amber" />
+            <KpiCard icon={Ghost} label="Faltas" value={calendario.faltas} accent="red"
+              hint="Status: no_show" />
+            <KpiCard icon={Clock} label="Pendentes" value={calendario.pendentes} accent="indigo"
+              hint="Sem desfecho ainda" />
+            <KpiCard icon={TrendingUp} label="Taxa comparec." value={`${calendario.taxaComparecimento.toFixed(0)}%`} accent="green"
+              hint={`${calendario.compareceram}/${calendario.desfecho} com desfecho`} />
+          </div>
 
-      {/* 1. Jornada do Lead (funil real de 5 marcos) */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <TrendingUp className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Jornada do Lead</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Cada métrica conta a <strong>atividade do período</strong>: leads que conversaram, agendaram, compareceram
-          ou contrataram <strong>neste mês</strong> — mesmo que tenham entrado no funil em meses anteriores.
-          Agendaram e Compareceram são contados pela data marcada do agendamento.
-        </p>
+          {/* Funil do período */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Funil do Período</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Atividade real do mês. Cada métrica tem uma definição independente — não é uma coorte estrita.
+            </p>
 
-        {jornada.total === 0 ? (
-          <EmptyState icon={Inbox} title="Sem leads no período" description="Ajuste o período ou troque o funil." />
-        ) : (
-          <>
-            <DashboardFunnel
-              data={[
-                { name: "Total de Leads", value: jornada.total, fill: "#3b82f6" },
-                { name: "Conversaram",    value: jornada.conversaram, fill: "#6366f1" },
-                { name: "Agendaram",      value: jornada.agendaram, fill: "#f59e0b" },
-                { name: "Compareceram",   value: jornada.compareceram, fill: "#10b981" },
-                { name: "Contrataram",    value: jornada.contratados, fill: "#059669" },
-              ]}
-            />
+            <div className="space-y-2">
+              <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram.size} color="#6366f1" />
+              <FunnelRow label="Agendamentos criados" hint="Ação da equipe — appts criados no período" value={atividadePeriodo.agendamentosCriados} color="#f59e0b" />
+              <FunnelRow label="Agendamentos do período" hint="Data marcada para o período (= calendário)" value={calendario.total} color="#3b82f6" />
+              <FunnelRow label="Compareceram" hint="Contratados + Não contratados" value={calendario.compareceram} color="#10b981" />
+              <FunnelRow label="Contrataram" hint="Status final: contracted" value={calendario.contrataram} color="#059669" />
+            </div>
 
             <div className="mt-6 border-t pt-4">
-              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Onde estou perdendo leads</p>
-              <div className="space-y-2">
-                {[
-                  { from: "Total de Leads", to: "Conversaram", a: jornada.total, b: jornada.conversaram },
-                  { from: "Conversaram", to: "Agendaram", a: jornada.conversaram, b: jornada.agendaram },
-                  { from: "Agendaram", to: "Compareceram", a: jornada.agendaram, b: jornada.compareceram },
-                  { from: "Compareceram", to: "Contrataram", a: jornada.compareceram, b: jornada.contratados },
-                ].map((step) => {
-                  const passou = step.a > 0 ? (step.b / step.a) * 100 : 0;
-                  const perdeu = Math.max(0, step.a - step.b);
-                  const passouDisplay = Math.min(passou, 999);
-                  return (
-                    <div key={step.from} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="text-sm font-medium">{step.from} → {step.to}</span>
-                          <span className={cn(
-                            "text-sm font-bold tabular-nums",
-                            passou >= 60 ? "text-green-600" :
-                            passou >= 30 ? "text-amber-600" : "text-red-500"
-                          )}>{passouDisplay.toFixed(1)}%</span>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {step.b} {step.to.toLowerCase()} vs {step.a} {step.from.toLowerCase()} no período
-                          {perdeu > 0 && step.b <= step.a && <> — diferença de <strong className="text-red-500">{perdeu}</strong></>}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Onde estou perdendo</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <StatBox label="Faltas" value={calendario.faltas} color="text-red-500" />
+                <StatBox label="Não contrataram" value={calendario.naoContrataram} color="text-orange-500" />
+                <StatBox label="Pendentes (sem decisão)" value={calendario.pendentes} color="text-indigo-500" />
               </div>
             </div>
-          </>
-        )}
-      </Card>
+          </Card>
 
-      {/* 2. Atividade Diária */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <Activity className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Atividade Diária</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Quantos leads falam comigo por dia e quantos agendamentos consigo criar.
-        </p>
-        {dailyActivity.rows.length === 0 ? (
-          <EmptyState icon={Calendar} title="Sem dados no período" />
-        ) : (
-          <>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <StatBox label="Total — Leads conversaram" value={dailyActivity.totals.conversaram} color="text-indigo-600" />
-              <StatBox label="Total — Novos leads" value={dailyActivity.totals.novos} color="text-blue-600" />
-              <StatBox label="Total — Agendamentos criados" value={dailyActivity.totals.agendamentos} color="text-amber-600" />
+          {/* Atividade Diária */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Activity className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Atividade Diária</h2>
             </div>
-            <div className="max-h-[420px] overflow-y-auto border rounded-lg">
+            <p className="text-sm text-muted-foreground mb-4">
+              Por dia: leads que falaram comigo, leads novos, agendamentos <strong>criados</strong> (ação CRC) e agendamentos <strong>marcados</strong> para o dia (espelha o calendário).
+            </p>
+            {dailyActivity.rows.length === 0 ? (
+              <EmptyState icon={Calendar} title="Sem dados no período" />
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                  <StatBox label="Leads conversaram" value={dailyActivity.totals.conversaram} color="text-indigo-600" />
+                  <StatBox label="Novos leads" value={dailyActivity.totals.novos} color="text-blue-600" />
+                  <StatBox label="Agend. criados" value={dailyActivity.totals.agendamentosCriados} color="text-amber-600" />
+                  <StatBox label="Agend. do dia" value={dailyActivity.totals.agendamentosDoDia} color="text-sky-600" />
+                  <StatBox label="Contratos do dia" value={dailyActivity.totals.contratosDoDia} color="text-emerald-600" />
+                </div>
+                <div className="max-h-[420px] overflow-y-auto border rounded-lg">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-card z-10">
+                      <TableRow>
+                        <TableHead>Dia</TableHead>
+                        <TableHead className="text-right">Conversaram</TableHead>
+                        <TableHead className="text-right">Novos</TableHead>
+                        <TableHead className="text-right">Agend. criados</TableHead>
+                        <TableHead className="text-right">Agend. do dia</TableHead>
+                        <TableHead className="text-right">Contratos</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dailyActivity.rows.map(r => (
+                        <TableRow key={r.day}>
+                          <TableCell className="font-medium">
+                            {format(new Date(r.day + "T12:00:00"), "EEE, dd/MM", { locale: ptBR })}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{r.conversaram}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{r.novos}</TableCell>
+                          <TableCell className="text-right tabular-nums text-amber-600 font-semibold">{r.agendamentosCriados}</TableCell>
+                          <TableCell className="text-right tabular-nums text-sky-600 font-semibold">{r.agendamentosDoDia}</TableCell>
+                          <TableCell className="text-right tabular-nums text-emerald-600 font-semibold">{r.contratosDoDia}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
+          </Card>
+
+          {/* Resultado dos Agendados (espelho do calendário) */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Calendar className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Resultado dos Agendados</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Quebra dos <strong>{calendario.total}</strong> agendamentos com data no período. Cada agendamento conta uma vez (mesmo lead com 2 agendamentos = 2).
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              <StatBox label="Agendamentos" value={calendario.total} />
+              <StatBox label="Compareceram" value={calendario.compareceram} color="text-green-600" />
+              <StatBox label="Contrataram" value={calendario.contrataram} color="text-emerald-600" />
+              <StatBox label="Não contrataram" value={calendario.naoContrataram} color="text-orange-500" />
+              <StatBox label="Faltas" value={calendario.faltas} color="text-red-500" />
+              <StatBox label="Pendentes" value={calendario.pendentes} color="text-muted-foreground" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+              <StatBox label="Taxa de comparecimento" value={`${calendario.taxaComparecimento.toFixed(0)}%`} color="text-primary"
+                hint={`${calendario.compareceram} de ${calendario.desfecho} appts com desfecho`} />
+              <StatBox label="Taxa de contratação" value={`${calendario.taxaContratacao.toFixed(0)}%`} color="text-emerald-600"
+                hint={`${calendario.contrataram} contratos / ${calendario.compareceram} comparecimentos`} />
+            </div>
+          </Card>
+
+          {/* Contratos diretos */}
+          {contratosDirectos.length > 0 && (
+            <Card className="p-6 border-amber-500/30 border-l-4">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <h2 className="text-lg font-semibold">Contratos diretos (sem passar por Agendado)</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                <strong>{contratosDirectos.length}</strong> lead(s) estão na etapa "Contratado" mas não têm agendamento contratado neste período.
+                Normalmente são recorrentes do sistema antigo. <strong>Ficam fora das taxas de conversão acima</strong>.
+              </p>
+              <details className="text-sm">
+                <summary className="cursor-pointer text-primary hover:underline">Ver lista</summary>
+                <ul className="mt-3 space-y-1 max-h-48 overflow-y-auto">
+                  {contratosDirectos.slice(0, 50).map(l => (
+                    <li key={l.id}>
+                      <button onClick={() => navigate(`/crm/conversa/${l.id}`)} className="text-foreground hover:text-primary text-left truncate w-full">
+                        {l.name}
+                      </button>
+                    </li>
+                  ))}
+                  {contratosDirectos.length > 50 && (
+                    <li className="text-xs text-muted-foreground italic">+ {contratosDirectos.length - 50} outros…</li>
+                  )}
+                </ul>
+              </details>
+            </Card>
+          )}
+
+          {/* Tempos */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="p-6">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold">Tempo até Contratação</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">Da entrada do lead até o agendamento contratado no período.</p>
+              {tempoContratacao.count > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <StatBox label="Média" value={fmtDuration(tempoContratacao.media)} />
+                  <StatBox label="Mediana" value={fmtDuration(tempoContratacao.mediana)} />
+                  <StatBox label="Mais rápido" value={fmtDuration(tempoContratacao.min)} color="text-green-600" />
+                  <StatBox label="Mais lento" value={fmtDuration(tempoContratacao.max)} color="text-orange-500" />
+                  <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
+                    Baseado em {tempoContratacao.count} lead(s) contratado(s) no período
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead contratado no período.</p>
+              )}
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold">Tempo até Agendamento</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">Da entrada do lead até a criação do primeiro agendamento.</p>
+              {tempoAgendamento.count > 0 ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <StatBox label="Média" value={fmtDuration(tempoAgendamento.media)} />
+                  <StatBox label="Mediana" value={fmtDuration(tempoAgendamento.mediana)} />
+                  <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
+                    Baseado em {tempoAgendamento.count} lead(s) agendado(s) no período
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento no período.</p>
+              )}
+            </Card>
+          </div>
+
+          {/* Cidade */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <MapPin className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Por Cidade</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">Agendamentos do período por cidade (1 linha por agendamento).</p>
+            {porCidade.length === 0 ? (
+              <EmptyState icon={MapPin} title="Sem agendamentos no período" />
+            ) : (
               <Table>
-                <TableHeader className="sticky top-0 bg-card z-10">
+                <TableHeader>
                   <TableRow>
-                    <TableHead>Dia</TableHead>
-                    <TableHead className="text-right">Conversaram</TableHead>
-                    <TableHead className="text-right">Novos</TableHead>
-                    <TableHead className="text-right">Agendamentos</TableHead>
-                    <TableHead className="text-right">Taxa agend.</TableHead>
+                    <SortableHead label="Cidade" sortKey="cidade" current={citySort} onClick={toggleCitySort} />
+                    <SortableHead label="Agendamentos" sortKey="agendamentos" current={citySort} onClick={toggleCitySort} align="right" />
+                    <SortableHead label="Compareceram" sortKey="comparecimentos" current={citySort} onClick={toggleCitySort} align="right" />
+                    <SortableHead label="Contrataram" sortKey="contratacoes" current={citySort} onClick={toggleCitySort} align="right" />
+                    <SortableHead label="Faltas" sortKey="faltas" current={citySort} onClick={toggleCitySort} align="right" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dailyActivity.rows.map(r => (
-                    <TableRow key={r.day}>
-                      <TableCell className="font-medium">
-                        {format(new Date(r.day + "T12:00:00"), "EEE, dd/MM", { locale: ptBR })}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{r.conversaram}</TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">{r.novos}</TableCell>
-                      <TableCell className="text-right tabular-nums text-amber-600 font-semibold">{r.agendamentos}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        <span className={cn(
-                          "font-semibold",
-                          r.taxa >= 30 ? "text-green-600" :
-                          r.taxa >= 15 ? "text-amber-600" :
-                          r.conversaram === 0 ? "text-muted-foreground" : "text-red-500"
-                        )}>
-                          {r.conversaram === 0 ? "—" : `${r.taxa.toFixed(0)}%`}
-                        </span>
-                      </TableCell>
+                  {porCidadeSorted.map(r => (
+                    <TableRow key={r.cidade}>
+                      <TableCell className="font-medium">{r.cidade}</TableCell>
+                      <TableCell className="text-right">{r.agendamentos}</TableCell>
+                      <TableCell className="text-right text-green-600 font-semibold">{r.comparecimentos}</TableCell>
+                      <TableCell className="text-right text-emerald-600 font-semibold">{r.contratacoes}</TableCell>
+                      <TableCell className="text-right text-red-500 font-semibold">{r.faltas}</TableCell>
                     </TableRow>
                   ))}
+                  <TableRow className="font-semibold border-t-2">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.agendamentos, 0)}</TableCell>
+                    <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.comparecimentos, 0)}</TableCell>
+                    <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.contratacoes, 0)}</TableCell>
+                    <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.faltas, 0)}</TableCell>
+                  </TableRow>
                 </TableBody>
               </Table>
+            )}
+          </Card>
+
+          {/* Inativos */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Bell className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Leads Inativos</h2>
             </div>
-          </>
-        )}
-      </Card>
+            <p className="text-sm text-muted-foreground mb-4">Leads sem responder há X dias. <strong>Exclui</strong> Contratados, Agendados e Reagendados.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <button onClick={() => navigate("/crm/conversas")} className="text-left">
+                <StatBox label="Sem resposta há +7 dias" value={inativos.d7} color="text-yellow-600" hover />
+              </button>
+              <button onClick={() => navigate("/crm/conversas")} className="text-left">
+                <StatBox label="Sem resposta há +15 dias" value={inativos.d15} color="text-orange-500" hover />
+              </button>
+              <button onClick={() => navigate("/crm/conversas")} className="text-left">
+                <StatBox label="Sem resposta há +30 dias" value={inativos.d30} color="text-red-500" hover />
+              </button>
+            </div>
+          </Card>
 
-      {/* 3. Resultado dos Agendados (coorte) */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <Calendar className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Resultado dos Agendados</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Quebra dos {jornada.agendaram} leads que agendaram no período (inclui leads que entraram no funil em meses anteriores).
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <StatBox label="Agendaram" value={jornada.agendaram} />
-          <StatBox label="Compareceram" value={jornada.compareceram} color="text-green-600" />
-          <StatBox label="Faltaram" value={jornada.faltaram} color="text-red-500" />
-          <StatBox label="Contrataram" value={jornada.contratados} color="text-emerald-600" />
-          <StatBox label="Não contrataram" value={jornada.naoContrataram} color="text-orange-500" />
-          <StatBox label="Taxa de fechamento" value={`${resumo.taxaFechamento.toFixed(0)}%`} color="text-primary" />
-        </div>
-        {jornada.reagendaram > 0 && (
-          <p className="text-xs text-muted-foreground mt-3">
-            Informativo: {jornada.reagendaram} desses leads tiveram pelo menos um reagendamento.
-          </p>
-        )}
-      </Card>
+          {/* Resposta */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Tempo Médio de Resposta</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">Pares consecutivos de mensagens no período (ignora intervalos &gt; 7d).</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <StatBox label={`Resposta do Lead (${tempoResposta.nLead} amostras)`} value={fmtDuration(tempoResposta.lead)} color="text-blue-500" />
+              <StatBox label={`Resposta do Atendente (${tempoResposta.nCRC} amostras)`} value={fmtDuration(tempoResposta.crc)} color="text-primary" />
+            </div>
+          </Card>
 
-      {/* 4. Contratos diretos (informativo) */}
-      {contratosDirectos.length > 0 && (
-        <Card className="p-6 border-amber-500/30 border-l-4">
-          <div className="flex items-center gap-2 mb-1">
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
-            <h2 className="text-lg font-semibold">Contratos diretos (sem passar por Agendado)</h2>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            <strong>{contratosDirectos.length}</strong> lead(s) estão na etapa "Contratado" mas não têm agendamento registrado.
-            Normalmente são recorrentes do sistema antigo. <strong>Ficam fora das taxas de conversão acima</strong> para não distorcer o relatório.
-          </p>
-          <details className="text-sm">
-            <summary className="cursor-pointer text-primary hover:underline">Ver lista</summary>
-            <ul className="mt-3 space-y-1 max-h-48 overflow-y-auto">
-              {contratosDirectos.slice(0, 50).map(l => (
-                <li key={l.id}>
-                  <button onClick={() => navigate(`/crm/conversa/${l.id}`)} className="text-foreground hover:text-primary text-left truncate w-full">
-                    {l.name}
-                  </button>
-                </li>
-              ))}
-              {contratosDirectos.length > 50 && (
-                <li className="text-xs text-muted-foreground italic">+ {contratosDirectos.length - 50} outros…</li>
+          {/* Fantasmas */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Ghost className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Leads Fantasmas</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">Leads que mandaram a primeira mensagem e nunca mais responderam.</p>
+            <div className="flex flex-col md:flex-row items-start md:items-end gap-6">
+              <div>
+                <p className="text-5xl font-bold text-primary">{fantasmas.length}</p>
+                <p className="text-xs text-muted-foreground mt-1">de {cohort.length} novos leads ({cohort.length ? ((fantasmas.length / cohort.length) * 100).toFixed(0) : 0}%)</p>
+              </div>
+              {fantasmas.length > 0 && (
+                <div className="flex-1 max-h-40 overflow-y-auto border-l pl-4 w-full">
+                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase">Top 10</p>
+                  <ul className="space-y-1">
+                    {fantasmas.slice(0, 10).map(f => (
+                      <li key={f.id}>
+                        <button onClick={() => navigate(`/crm/conversa/${f.id}`)} className="text-sm text-foreground hover:text-primary text-left truncate w-full">
+                          {f.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
-            </ul>
-          </details>
-        </Card>
-      )}
-
-
-      {/* 3 + 4 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <div className="flex items-center gap-2 mb-1">
-            <Clock className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-semibold">Tempo até Contratação</h2>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            Da entrada do lead até chegar em <strong>{lastStage?.name || "última etapa"}</strong>.
-          </p>
-          {tempoContratacao && tempoContratacao.count > 0 ? (
-            <div className="grid grid-cols-2 gap-3">
-              <StatBox label="Média" value={fmtDuration(tempoContratacao.media)} />
-              <StatBox label="Mediana" value={fmtDuration(tempoContratacao.mediana)} />
-              <StatBox label="Mais rápido" value={fmtDuration(tempoContratacao.min)} color="text-green-600" />
-              <StatBox label="Mais lento" value={fmtDuration(tempoContratacao.max)} color="text-orange-500" />
-              <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
-                Baseado em {tempoContratacao.count} lead(s) contratado(s)
-              </div>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead chegou em "{lastStage?.name}" no período.</p>
-          )}
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center gap-2 mb-1">
-            <Clock className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-semibold">Tempo até Agendamento</h2>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">Quanto tempo entre a entrada do lead e o primeiro agendamento criado.</p>
-          {tempoAgendamento.count > 0 ? (
-            <div className="grid grid-cols-2 gap-3">
-              <StatBox label="Média" value={fmtDuration(tempoAgendamento.media)} />
-              <StatBox label="Mediana" value={fmtDuration(tempoAgendamento.mediana)} />
-              <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
-                Baseado em {tempoAgendamento.count} lead(s) agendado(s)
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento encontrado.</p>
-          )}
-        </Card>
-      </div>
-
-      {/* 5. Cidade */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <MapPin className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Total por Cidade</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">Agendamentos, comparecimentos e contratações por cidade do lead.</p>
-        {porCidade.length === 0 ? (
-          <EmptyState
-            icon={MapPin}
-            title="Sem dados de cidade"
-            description="Os leads carregados não possuem cidade preenchida. Revise o cadastro ou amplie o período."
-          />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <SortableHead label="Cidade" sortKey="cidade" current={citySort} onClick={toggleCitySort} />
-                <SortableHead label="Agendamentos" sortKey="agendamentos" current={citySort} onClick={toggleCitySort} align="right" />
-                <SortableHead label="Comparecimentos" sortKey="comparecimentos" current={citySort} onClick={toggleCitySort} align="right" />
-                <SortableHead label="Contratações" sortKey="contratacoes" current={citySort} onClick={toggleCitySort} align="right" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {porCidadeSorted.map(r => (
-                <TableRow key={r.cidade}>
-                  <TableCell className="font-medium">{r.cidade}</TableCell>
-                  <TableCell className="text-right">{r.agendamentos}</TableCell>
-                  <TableCell className="text-right text-green-600 font-semibold">{r.comparecimentos}</TableCell>
-                  <TableCell className="text-right text-primary font-semibold">{r.contratacoes}</TableCell>
-                </TableRow>
-              ))}
-              <TableRow className="font-semibold border-t-2">
-                <TableCell>Total</TableCell>
-                <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.agendamentos, 0)}</TableCell>
-                <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.comparecimentos, 0)}</TableCell>
-                <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.contratacoes, 0)}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        )}
-      </Card>
-
-      {/* 6. Inativos */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <Bell className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Leads Inativos</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">Leads sem responder há X dias. <strong>Exclui</strong> Contratados, Agendados e Reagendados.</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <button onClick={() => navigate("/crm/conversas")} className="text-left">
-            <StatBox label="Sem resposta há +7 dias" value={inativos.d7} color="text-yellow-600" hover />
-          </button>
-          <button onClick={() => navigate("/crm/conversas")} className="text-left">
-            <StatBox label="Sem resposta há +15 dias" value={inativos.d15} color="text-orange-500" hover />
-          </button>
-          <button onClick={() => navigate("/crm/conversas")} className="text-left">
-            <StatBox label="Sem resposta há +30 dias" value={inativos.d30} color="text-red-500" hover />
-          </button>
-        </div>
-      </Card>
-
-      {/* 7. Resposta */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <MessageSquare className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Tempo Médio de Resposta</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">Calculado sobre pares consecutivos de mensagens no período (ignora intervalos &gt; 7d).</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <StatBox label={`Resposta do Lead (${tempoResposta.nLead} amostras)`} value={fmtDuration(tempoResposta.lead)} color="text-blue-500" />
-          <StatBox label={`Resposta do Atendente (${tempoResposta.nCRC} amostras)`} value={fmtDuration(tempoResposta.crc)} color="text-primary" />
-        </div>
-      </Card>
-
-      {/* 8. Fantasmas */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <Ghost className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Leads Fantasmas</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">Leads que mandaram a primeira mensagem e nunca mais responderam.</p>
-        <div className="flex flex-col md:flex-row items-start md:items-end gap-6">
-          <div>
-            <p className="text-5xl font-bold text-primary">{fantasmas.length}</p>
-            <p className="text-xs text-muted-foreground mt-1">de {cohort.length} na coorte ({cohort.length ? ((fantasmas.length / cohort.length) * 100).toFixed(0) : 0}%)</p>
-          </div>
-          {fantasmas.length > 0 && (
-            <div className="flex-1 max-h-40 overflow-y-auto border-l pl-4 w-full">
-              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase">Top 10</p>
-              <ul className="space-y-1">
-                {fantasmas.slice(0, 10).map(f => (
-                  <li key={f.id}>
-                    <button onClick={() => navigate(`/crm/conversa/${f.id}`)} className="text-sm text-foreground hover:text-primary text-left truncate w-full">
-                      {f.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </Card>
+          </Card>
 
         </TabsContent>
 
@@ -1052,8 +943,8 @@ export default function CrmRelatorios() {
               <h2 className="text-lg font-semibold">Quando o lead agenda?</h2>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              Diferença em dias entre quando o agendamento foi <strong>criado</strong> e a <strong>data marcada</strong>.
-              Útil para entender se os leads marcam para o mesmo dia ou para frente.
+              Diferença em dias entre a <strong>criação do agendamento</strong> e a <strong>data marcada</strong>.
+              Considera os {calendario.total} agendamentos do período (1 linha por agendamento).
             </p>
 
             {distribAgendamento.total === 0 ? (
@@ -1063,14 +954,14 @@ export default function CrmRelatorios() {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
                   <StatBox label="Mesmo dia" value={distribAgendamento.buckets.mesmoDia} color="text-green-600" />
                   <StatBox label="Próximo dia" value={distribAgendamento.buckets.proximoDia} color="text-emerald-500" />
-                  <StatBox label="2 a 6 dias (esta semana)" value={distribAgendamento.buckets.restanteSemana} color="text-blue-500" />
-                  <StatBox label="7 a 13 dias (próx. semana)" value={distribAgendamento.buckets.semanaSeguinte} color="text-orange-500" />
+                  <StatBox label="2 a 6 dias" value={distribAgendamento.buckets.restanteSemana} color="text-blue-500" />
+                  <StatBox label="7 a 13 dias" value={distribAgendamento.buckets.semanaSeguinte} color="text-orange-500" />
                   <StatBox label="14+ dias" value={distribAgendamento.buckets.maisLonge} color="text-red-500" />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
                   <StatBox label="Total de agendamentos" value={distribAgendamento.total} />
-                  <StatBox label="Média de dias até marcar" value={distribAgendamento.mediaDias.toFixed(1)} color="text-primary" />
+                  <StatBox label="Média de dias" value={distribAgendamento.mediaDias.toFixed(1)} color="text-primary" />
                   <StatBox label="Mediana de dias" value={distribAgendamento.medianaDias.toFixed(1)} color="text-primary" />
                 </div>
 
@@ -1110,17 +1001,34 @@ export default function CrmRelatorios() {
   );
 }
 
-function StatBox({ label, value, color = "text-foreground", hover = false }: { label: string; value: string | number; color?: string; hover?: boolean }) {
+// ============================================================================
+// Componentes auxiliares
+// ============================================================================
+
+function FunnelRow({ label, hint, value, color }: { label: string; hint?: string; value: number; color: string }) {
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: `${color}15`, borderLeft: `4px solid ${color}` }}>
+      <div className="flex-1 min-w-0">
+        <div className="font-medium">{label}</div>
+        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
+      </div>
+      <div className="text-2xl font-bold tabular-nums" style={{ color }}>{value}</div>
+    </div>
+  );
+}
+
+function StatBox({ label, value, color = "text-foreground", hover = false, hint }: { label: string; value: string | number; color?: string; hover?: boolean; hint?: string }) {
   return (
     <div className={`bg-secondary/40 rounded-lg p-4 text-center ${hover ? "hover:bg-secondary/70 transition cursor-pointer" : ""}`}>
       <p className={`text-3xl font-bold ${color}`}>{value}</p>
       <p className="text-xs text-muted-foreground mt-1">{label}</p>
+      {hint && <p className="text-[10px] text-muted-foreground/80 mt-1">{hint}</p>}
     </div>
   );
 }
 
 // ============================================================================
-// Aba: Ações por Dia
+// Aba: Ações por Dia (preservada)
 // ============================================================================
 
 const HOLIDAYS_FIXED: string[] = [
@@ -1135,9 +1043,7 @@ function isWorkingDay(d: Date): boolean {
 type AcoesStage = { id: string; name: string; color: string; position: number };
 
 function AcoesPorDiaTab({
-  pipelineId,
-  pipelines,
-  setPipelineId,
+  pipelineId, pipelines, setPipelineId,
 }: {
   pipelineId: string;
   pipelines: { id: string; name: string }[];
@@ -1150,8 +1056,9 @@ function AcoesPorDiaTab({
   const monthStart = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1), [selectedDate]);
   const monthEnd = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999), [selectedDate]);
 
-  const [history, setHistory] = useState<{ lead_id: string; stage_id: string; entered_at: string }[]>([]);
   const [inboundDays, setInboundDays] = useState<{ lead_id: string; created_at: string }[]>([]);
+  // Substituímos stage history por appointments (= calendário) para "agendados"
+  const [apptsMonth, setApptsMonth] = useState<{ lead_id: string; created_at: string; scheduled_date: string; is_rescheduled: boolean | null }[]>([]);
 
   useEffect(() => {
     if (!pipelineId) return;
@@ -1160,52 +1067,16 @@ function AcoesPorDiaTab({
   }, [pipelineId]);
 
   useEffect(() => {
-    if (!pipelineId || stages.length === 0) return;
+    if (!pipelineId) return;
     setLoading(true);
-    const stageIds = stages.map(s => s.id);
     const startISO = monthStart.toISOString();
     const endISO = monthEnd.toISOString();
+    const startDate = dateOnly(startISO);
+    const endDate = dateOnly(endISO);
 
     (async () => {
-      // Buscar TODOS os leads do pipeline (paginação manual para superar limite de 1000)
-      const leadIdsSet = new Set<string>();
-      let from = 0;
-      const pageSize = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from("crm_leads")
-          .select("id")
-          .eq("pipeline_id", pipelineId)
-          .range(from, from + pageSize - 1);
-        if (error || !data || data.length === 0) break;
-        data.forEach((l: any) => leadIdsSet.add(l.id));
-        if (data.length < pageSize) break;
-        from += pageSize;
-      }
-      const leadIds = Array.from(leadIdsSet);
-
-      let histAll: any[] = [];
+      // Mensagens inbound do mês (filtra pipeline via join)
       let msgsAll: any[] = [];
-      for (let i = 0; i < stageIds.length; i += 100) {
-        const chunk = stageIds.slice(i, i + 100);
-        let hFrom = 0;
-        while (true) {
-          const { data, error } = await supabase
-            .from("crm_lead_stage_history")
-            .select("lead_id, stage_id, entered_at")
-            .in("stage_id", chunk)
-            .gte("entered_at", startISO)
-            .lte("entered_at", endISO)
-            .order("entered_at", { ascending: true })
-            .range(hFrom, hFrom + pageSize - 1);
-
-          if (error || !data || data.length === 0) break;
-          histAll = histAll.concat(data);
-          if (data.length < pageSize) break;
-          hFrom += pageSize;
-        }
-      }
-      // Paginar mensagens inbound do pipeline (filtra via inner join, sem depender de chunks de IDs)
       let mFrom = 0;
       while (true) {
         const { data, error } = await supabase
@@ -1215,71 +1086,66 @@ function AcoesPorDiaTab({
           .eq("crm_leads.pipeline_id", pipelineId)
           .gte("created_at", startISO)
           .lte("created_at", endISO)
-          .order("created_at", { ascending: true })
-          .range(mFrom, mFrom + pageSize - 1);
+          .order("created_at")
+          .range(mFrom, mFrom + 999);
         if (error || !data || data.length === 0) break;
         msgsAll = msgsAll.concat(data);
-        if (data.length < pageSize) break;
-        mFrom += pageSize;
+        if (data.length < 1000) break;
+        mFrom += 1000;
       }
-      setHistory(histAll);
+
+      // Appointments criados no mês — filtra por pipeline via leads
+      const apptsCreated = await fetchAllPages<any>((f, t) =>
+        supabase
+          .from("crm_appointments")
+          .select("lead_id, created_at, scheduled_date, is_rescheduled, crm_leads!inner(pipeline_id)")
+          .eq("crm_leads.pipeline_id", pipelineId)
+          .gte("created_at", startISO)
+          .lte("created_at", endISO)
+          .range(f, t)
+      );
+
       setInboundDays(msgsAll);
+      setApptsMonth(apptsCreated);
       setLoading(false);
     })();
-  }, [pipelineId, stages, monthStart, monthEnd]);
+  }, [pipelineId, monthStart, monthEnd]);
 
-  const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const selectedKey = dayKey(selectedDate);
-
-  // Identificar etapa de agendamento exata (excluindo "Pré-Agendado" e "Reagendado")
-  const agendStage = useMemo(() => {
-    return stages.find(s => {
-      const n = lower(s.name);
-      return isAgendStage(s.name) && !/pr[eé]/.test(n) && !isReagendStage(s.name);
-    });
-  }, [stages]);
-
-  // Identificar etapa de reagendamento
-  const reagendStage = useMemo(() => {
-    return stages.find(s => isReagendStage(s.name));
-  }, [stages]);
+  const selectedKey = dayKeyFromDate(selectedDate);
 
   const falaramDia = useMemo(() => {
     const set = new Set<string>();
     inboundDays.forEach(m => {
-      if (dayKey(new Date(m.created_at)) === selectedKey) set.add(m.lead_id);
+      if (dayKeyFromDate(new Date(m.created_at)) === selectedKey) set.add(m.lead_id);
     });
     return set;
   }, [inboundDays, selectedKey]);
 
+  // Agendamentos criados no dia (não reagendados)
   const agendadosDia = useMemo(() => {
-    if (!agendStage) return new Set<string>();
-    const set = new Set<string>();
-    history.forEach(h => {
-      if (h.stage_id !== agendStage.id) return;
-      if (dayKey(new Date(h.entered_at)) === selectedKey) set.add(h.lead_id);
-    });
-    return set;
-  }, [history, agendStage, selectedKey]);
+    return apptsMonth.filter(a =>
+      dayKeyFromDate(new Date(a.created_at)) === selectedKey && a.is_rescheduled !== true
+    ).length;
+  }, [apptsMonth, selectedKey]);
 
+  // Reagendamentos criados no dia
   const reagendadosDia = useMemo(() => {
-    if (!reagendStage) return new Set<string>();
-    const set = new Set<string>();
-    history.forEach(h => {
-      if (h.stage_id !== reagendStage.id) return;
-      if (dayKey(new Date(h.entered_at)) === selectedKey) set.add(h.lead_id);
-    });
-    return set;
-  }, [history, reagendStage, selectedKey]);
+    return apptsMonth.filter(a =>
+      dayKeyFromDate(new Date(a.created_at)) === selectedKey && a.is_rescheduled === true
+    ).length;
+  }, [apptsMonth, selectedKey]);
 
-  // Interseção: dos que falaram, quantos foram agendados
+  // Dos que falaram, quantos agendaram (interseção por lead_id)
   const agendadosDosQueFalaram = useMemo(() => {
-    const intersection = new Set<string>();
-    agendadosDia.forEach(id => {
-      if (falaramDia.has(id)) intersection.add(id);
-    });
-    return intersection;
-  }, [agendadosDia, falaramDia]);
+    const leadsAgendDia = new Set(
+      apptsMonth
+        .filter(a => dayKeyFromDate(new Date(a.created_at)) === selectedKey && a.is_rescheduled !== true)
+        .map(a => a.lead_id)
+    );
+    let cnt = 0;
+    falaramDia.forEach(id => { if (leadsAgendDia.has(id)) cnt++; });
+    return cnt;
+  }, [apptsMonth, falaramDia, selectedKey]);
 
   const mediasMes = useMemo(() => {
     const today = new Date(); today.setHours(23, 59, 59, 999);
@@ -1287,7 +1153,7 @@ function AcoesPorDiaTab({
     const workingDays: string[] = [];
     const cur = new Date(monthStart);
     while (cur.getTime() <= endRef.getTime()) {
-      if (isWorkingDay(cur)) workingDays.push(dayKey(cur));
+      if (isWorkingDay(cur)) workingDays.push(dayKeyFromDate(cur));
       cur.setDate(cur.getDate() + 1);
     }
     if (workingDays.length === 0) {
@@ -1295,39 +1161,31 @@ function AcoesPorDiaTab({
     }
     const workingSet = new Set(workingDays);
 
-    // Média de pessoas que falaram por dia
     const falaramByDay = new Map<string, Set<string>>();
     inboundDays.forEach(m => {
-      const k = dayKey(new Date(m.created_at));
+      const k = dayKeyFromDate(new Date(m.created_at));
       if (!workingSet.has(k)) return;
       if (!falaramByDay.has(k)) falaramByDay.set(k, new Set());
       falaramByDay.get(k)!.add(m.lead_id);
     });
     let falaramTotal = 0;
     falaramByDay.forEach(s => { falaramTotal += s.size; });
-    const avgFalaram = falaramTotal / workingDays.length;
 
-    // Helper: total por dia útil (sem interseção - conta todos os movimentos para a etapa)
-    const totalForStage = (stageId: string | undefined) => {
-      if (!stageId) return 0;
-      const byDay = new Map<string, Set<string>>();
-      history.forEach(h => {
-        if (h.stage_id !== stageId) return;
-        const k = dayKey(new Date(h.entered_at));
-        if (!workingSet.has(k)) return;
-        if (!byDay.has(k)) byDay.set(k, new Set());
-        byDay.get(k)!.add(h.lead_id);
-      });
-      let total = 0;
-      byDay.forEach(s => { total += s.size; });
-      return total;
+    let agendTotal = 0, reagTotal = 0;
+    apptsMonth.forEach(a => {
+      const k = dayKeyFromDate(new Date(a.created_at));
+      if (!workingSet.has(k)) return;
+      if (a.is_rescheduled === true) reagTotal++;
+      else agendTotal++;
+    });
+
+    return {
+      avgFalaram: falaramTotal / workingDays.length,
+      avgAgendados: agendTotal / workingDays.length,
+      avgReagendados: reagTotal / workingDays.length,
+      totalDias: workingDays.length,
     };
-
-    const avgAgendados = totalForStage(agendStage?.id) / workingDays.length;
-    const avgReagendados = totalForStage(reagendStage?.id) / workingDays.length;
-
-    return { avgFalaram, avgAgendados, avgReagendados, totalDias: workingDays.length };
-  }, [history, inboundDays, stages, monthStart, monthEnd, agendStage, reagendStage]);
+  }, [apptsMonth, inboundDays, monthStart, monthEnd]);
 
   return (
     <div className="space-y-6">
@@ -1372,36 +1230,34 @@ function AcoesPorDiaTab({
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <Activity className="w-5 h-5 text-orange-500" />
-          <h2 className="text-lg font-semibold">
-            Ações de {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}
-          </h2>
+          <h2 className="text-lg font-semibold">Ações de {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Pessoas que falaram hoje, quantas foram agendadas e quantas reagendadas.
+          Pessoas que falaram, agendamentos criados e reagendamentos criados <strong>neste dia</strong>.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
             <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
             <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
-            <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound hoje</span>
+            <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound no dia</span>
           </div>
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
-            <span className="text-sm text-muted-foreground">Consegui agendar</span>
-            <span className="text-4xl font-bold text-green-600">{agendadosDia.size}</span>
-            <span className="text-xs text-muted-foreground">Leads movidos para etapa Agendado neste dia</span>
+            <span className="text-sm text-muted-foreground">Agendamentos criados</span>
+            <span className="text-4xl font-bold text-green-600">{agendadosDia}</span>
+            <span className="text-xs text-muted-foreground">Novos agendamentos (não reagendados) criados no dia</span>
           </div>
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
-            <span className="text-sm text-muted-foreground">Reagendados</span>
-            <span className="text-4xl font-bold text-amber-600">{reagendadosDia.size}</span>
-            <span className="text-xs text-muted-foreground">Leads movidos para etapa Reagendado neste dia</span>
+            <span className="text-sm text-muted-foreground">Reagendamentos</span>
+            <span className="text-4xl font-bold text-amber-600">{reagendadosDia}</span>
+            <span className="text-xs text-muted-foreground">Appts marcados como reagendados no dia</span>
           </div>
         </div>
 
-        {agendadosDosQueFalaram.size > 0 && falaramDia.size > 0 && (
+        {agendadosDosQueFalaram > 0 && falaramDia.size > 0 && (
           <div className="rounded-lg bg-secondary/40 p-4 text-center">
             <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendados)</span>
-            <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram.size / falaramDia.size) * 100).toFixed(1)}%</p>
+            <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram / falaramDia.size) * 100).toFixed(1)}%</p>
           </div>
         )}
       </Card>
@@ -1409,9 +1265,7 @@ function AcoesPorDiaTab({
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <TrendingUp className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">
-            Média Diária — {format(monthStart, "MMMM/yyyy", { locale: ptBR })}
-          </h2>
+          <h2 className="text-lg font-semibold">Média Diária — {format(monthStart, "MMMM/yyyy", { locale: ptBR })}</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
           Média por dia útil (excluindo domingos e feriados nacionais) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
@@ -1443,17 +1297,8 @@ function AcoesPorDiaTab({
   );
 }
 
-function StatBoxLite({ label, value, color = "text-foreground" }: { label: string; value: string | number; color?: string }) {
-  return (
-    <div className="bg-secondary/40 rounded-lg p-4 text-center">
-      <p className={`text-3xl font-bold ${color}`}>{value}</p>
-      <p className="text-xs text-muted-foreground mt-1">{label}</p>
-    </div>
-  );
-}
-
 // ============================================================================
-// Componentes auxiliares de UI
+// Componentes UI auxiliares
 // ============================================================================
 
 const ACCENTS: Record<string, { icon: string; ring: string; value: string }> = {
@@ -1545,19 +1390,13 @@ function CrmRelatoriosSkeleton() {
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-4 w-96" />
       </div>
-      <Skeleton className="h-16 w-full" />
+      <Skeleton className="h-14 w-full" />
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 w-full" />
-        ))}
+        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
       </div>
-      <Skeleton className="h-72 w-full" />
-      <Skeleton className="h-48 w-full" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Skeleton className="h-48 w-full" />
-        <Skeleton className="h-48 w-full" />
-      </div>
-      <Skeleton className="h-64 w-full" />
+      <Skeleton className="h-80 w-full" />
+      <Skeleton className="h-80 w-full" />
+      <Skeleton className="h-60 w-full" />
     </div>
   );
 }
