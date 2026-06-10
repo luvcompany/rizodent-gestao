@@ -618,91 +618,185 @@ export default function CrmRelatorios() {
           <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all"]} />
         </div>
         {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-        <div className="ml-auto text-xs text-muted-foreground">
-          {cohort.length} leads na coorte
-        </div>
-      </Card>
-
-      {/* Resumo Executivo */}
+      {/* Resumo Executivo — KPIs da jornada real */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KpiCard icon={Users} label="Total de Leads" value={resumo.totalLeads} accent="blue" hint="Coorte do período" />
-        <KpiCard icon={Calendar} label="Agendados" value={agenda.agendados} accent="indigo" />
-        <KpiCard icon={CheckCircle2} label="Compareceram" value={agenda.compareceram} accent="green" />
-        <KpiCard icon={Target} label="Contratados" value={agenda.contratados} accent="emerald" hint={`${resumo.taxaContratacao.toFixed(1)}% da coorte`} />
-        <KpiCard icon={XCircle} label="Faltaram" value={agenda.faltaram} accent="red" />
+        <KpiCard icon={MessageSquare} label="Conversaram" value={jornada.conversaram} accent="indigo" hint={`${resumo.taxaConversa.toFixed(1)}% da coorte`} />
+        <KpiCard icon={Calendar} label="Agendaram" value={jornada.agendaram} accent="amber" hint={`${resumo.taxaAgendamento.toFixed(1)}% da coorte`} />
+        <KpiCard icon={CheckCircle2} label="Compareceram" value={jornada.compareceram} accent="green" hint={`${resumo.taxaCompar.toFixed(0)}% dos agendados`} />
+        <KpiCard icon={Target} label="Contrataram" value={jornada.contratados} accent="emerald" hint={`${resumo.taxaContratacao.toFixed(1)}% da coorte`} />
       </div>
 
-      {/* 1. Funil */}
+      {/* 1. Jornada do Lead (funil real de 5 marcos) */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <TrendingUp className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Distribuição por Etapa</h2>
+          <h2 className="text-lg font-semibold">Jornada do Lead</h2>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">Onde estão os leads criados no período selecionado.</p>
-        {funnelData.some(d => d.value > 0) ? (
+        <p className="text-sm text-muted-foreground mb-4">
+          Cada etapa é um <strong>subconjunto</strong> da anterior. "Contrataram" só conta leads que passaram por Agendado
+          (recorrentes do sistema antigo aparecem em "Contratos diretos" abaixo).
+        </p>
+
+        {jornada.total === 0 ? (
+          <EmptyState icon={Inbox} title="Sem leads no período" description="Ajuste o período ou troque o funil." />
+        ) : (
           <>
-            <DashboardFunnel data={funnelData} />
+            <DashboardFunnel
+              data={[
+                { name: "Total de Leads", value: jornada.total, fill: "#3b82f6" },
+                { name: "Conversaram",    value: jornada.conversaram, fill: "#6366f1" },
+                { name: "Agendaram",      value: jornada.agendaram, fill: "#f59e0b" },
+                { name: "Compareceram",   value: jornada.compareceram, fill: "#10b981" },
+                { name: "Contrataram",    value: jornada.contratados, fill: "#059669" },
+              ]}
+            />
+
             <div className="mt-6 border-t pt-4">
-              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Conversão entre etapas consecutivas</p>
+              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Onde estou perdendo leads</p>
               <div className="space-y-2">
-                {stageConversion.map((s, i) => (
-                  <div key={s.name} className="flex items-center gap-3">
-                    <div className="w-2 h-8 rounded-sm" style={{ background: s.fill }} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-medium truncate">{s.name}</span>
-                        <span className="text-sm tabular-nums text-muted-foreground">{s.value}</span>
-                      </div>
-                      {i < stageConversion.length - 1 && (
-                        <div className="flex items-center gap-2 mt-1 text-xs">
-                          <ArrowDown className="w-3 h-3 text-muted-foreground" />
+                {[
+                  { from: "Total de Leads", to: "Conversaram", a: jornada.total, b: jornada.conversaram },
+                  { from: "Conversaram", to: "Agendaram", a: jornada.conversaram, b: jornada.agendaram },
+                  { from: "Agendaram", to: "Compareceram", a: jornada.agendaram, b: jornada.compareceram },
+                  { from: "Compareceram", to: "Contrataram", a: jornada.compareceram, b: jornada.contratados },
+                ].map((step) => {
+                  const passou = step.a > 0 ? (step.b / step.a) * 100 : 0;
+                  const perdeu = step.a - step.b;
+                  return (
+                    <div key={step.from} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-medium">{step.from} → {step.to}</span>
                           <span className={cn(
-                            "font-semibold tabular-nums",
-                            s.conversion === null ? "text-muted-foreground" :
-                            s.conversion >= 50 ? "text-green-600" :
-                            s.conversion >= 20 ? "text-amber-600" : "text-red-500"
-                          )}>
-                            {s.conversion === null ? "—" : `${s.conversion.toFixed(1)}%`}
-                          </span>
-                          <span className="text-muted-foreground">passam para "{stageConversion[i + 1].name}"</span>
+                            "text-sm font-bold tabular-nums",
+                            passou >= 60 ? "text-green-600" :
+                            passou >= 30 ? "text-amber-600" : "text-red-500"
+                          )}>{passou.toFixed(1)}%</span>
                         </div>
-                      )}
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Passaram <strong>{step.b}</strong> de {step.a} — perdemos <strong className="text-red-500">{perdeu}</strong> leads
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </>
-        ) : (
-          <EmptyState
-            icon={Inbox}
-            title="Sem leads no período"
-            description="Ajuste o período ou troque o funil para ver a distribuição por etapa."
-          />
         )}
       </Card>
 
+      {/* 2. Atividade Diária */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Activity className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Atividade Diária</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Quantos leads falam comigo por dia e quantos agendamentos consigo criar.
+        </p>
+        {dailyActivity.rows.length === 0 ? (
+          <EmptyState icon={Calendar} title="Sem dados no período" />
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <StatBox label="Total — Leads conversaram" value={dailyActivity.totals.conversaram} color="text-indigo-600" />
+              <StatBox label="Total — Novos leads" value={dailyActivity.totals.novos} color="text-blue-600" />
+              <StatBox label="Total — Agendamentos criados" value={dailyActivity.totals.agendamentos} color="text-amber-600" />
+            </div>
+            <div className="max-h-[420px] overflow-y-auto border rounded-lg">
+              <Table>
+                <TableHeader className="sticky top-0 bg-card z-10">
+                  <TableRow>
+                    <TableHead>Dia</TableHead>
+                    <TableHead className="text-right">Conversaram</TableHead>
+                    <TableHead className="text-right">Novos</TableHead>
+                    <TableHead className="text-right">Agendamentos</TableHead>
+                    <TableHead className="text-right">Taxa agend.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dailyActivity.rows.map(r => (
+                    <TableRow key={r.day}>
+                      <TableCell className="font-medium">
+                        {format(new Date(r.day + "T12:00:00"), "EEE, dd/MM", { locale: ptBR })}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{r.conversaram}</TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">{r.novos}</TableCell>
+                      <TableCell className="text-right tabular-nums text-amber-600 font-semibold">{r.agendamentos}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <span className={cn(
+                          "font-semibold",
+                          r.taxa >= 30 ? "text-green-600" :
+                          r.taxa >= 15 ? "text-amber-600" :
+                          r.conversaram === 0 ? "text-muted-foreground" : "text-red-500"
+                        )}>
+                          {r.conversaram === 0 ? "—" : `${r.taxa.toFixed(0)}%`}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        )}
+      </Card>
 
-
-      {/* 2. Agenda */}
+      {/* 3. Resultado dos Agendados (coorte) */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <Calendar className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Agenda no Período</h2>
+          <h2 className="text-lg font-semibold">Resultado dos Agendados</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Fonte: <strong>agendamentos</strong> (mesma do Dashboard) filtrados por <em>data marcada</em> no período.
-          Reagendados saem do total de Agendados; Compareceram = "Contratou" + "Não contratou".
+          Quebra dos {jornada.agendaram} leads da coorte que agendaram no período.
         </p>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <StatBox label="Agendados" value={agenda.agendados} />
-          <StatBox label="Compareceram" value={agenda.compareceram} color="text-green-600" />
-          <StatBox label="Contratados" value={agenda.contratados} color="text-primary" />
-          <StatBox label="Reagendados" value={agenda.remarcaram} color="text-orange-500" />
-          <StatBox label="Faltaram" value={agenda.faltaram} color="text-red-500" />
-          <StatBox label="Presença" value={`${agenda.presenca.toFixed(0)}%`} color="text-primary" />
+          <StatBox label="Agendaram" value={jornada.agendaram} />
+          <StatBox label="Compareceram" value={jornada.compareceram} color="text-green-600" />
+          <StatBox label="Faltaram" value={jornada.faltaram} color="text-red-500" />
+          <StatBox label="Contrataram" value={jornada.contratados} color="text-emerald-600" />
+          <StatBox label="Não contrataram" value={jornada.naoContrataram} color="text-orange-500" />
+          <StatBox label="Taxa de fechamento" value={`${resumo.taxaFechamento.toFixed(0)}%`} color="text-primary" />
         </div>
+        {jornada.reagendaram > 0 && (
+          <p className="text-xs text-muted-foreground mt-3">
+            Informativo: {jornada.reagendaram} desses leads tiveram pelo menos um reagendamento.
+          </p>
+        )}
       </Card>
+
+      {/* 4. Contratos diretos (informativo) */}
+      {contratosDirectos.length > 0 && (
+        <Card className="p-6 border-amber-500/30 border-l-4">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangleIcon />
+            <h2 className="text-lg font-semibold">Contratos diretos (sem passar por Agendado)</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            <strong>{contratosDirectos.length}</strong> lead(s) estão na etapa "Contratado" mas não têm agendamento registrado.
+            Normalmente são recorrentes do sistema antigo. <strong>Ficam fora das taxas de conversão acima</strong> para não distorcer o relatório.
+          </p>
+          <details className="text-sm">
+            <summary className="cursor-pointer text-primary hover:underline">Ver lista</summary>
+            <ul className="mt-3 space-y-1 max-h-48 overflow-y-auto">
+              {contratosDirectos.slice(0, 50).map(l => (
+                <li key={l.id}>
+                  <button onClick={() => navigate(`/crm/conversa/${l.id}`)} className="text-foreground hover:text-primary text-left truncate w-full">
+                    {l.name}
+                  </button>
+                </li>
+              ))}
+              {contratosDirectos.length > 50 && (
+                <li className="text-xs text-muted-foreground italic">+ {contratosDirectos.length - 50} outros…</li>
+              )}
+            </ul>
+          </details>
+        </Card>
+      )}
+
 
       {/* 3 + 4 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
