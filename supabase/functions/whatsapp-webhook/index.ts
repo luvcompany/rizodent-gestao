@@ -1176,6 +1176,14 @@ Deno.serve(async (req) => {
                             isOpen = nowWeekMin >= startWeekMin || nowWeekMin <= endWeekMin;
                           }
                           if (isOpen) { anyOpen = true; break; }
+                        } else if (mode === "business_hours_off") {
+                          const bhDays = (Array.isArray(cfg.bh_days) ? cfg.bh_days : [1,2,3,4,5]).map((d:any)=>Number(d));
+                          const [sh, sm] = String(cfg.bh_start || "08:00").split(":").map(Number);
+                          const [eh, em] = String(cfg.bh_end || "18:00").split(":").map(Number);
+                          if ([sh,sm,eh,em].some(v => Number.isNaN(v))) continue;
+                          const startMin = sh*60+sm, endMin = eh*60+em;
+                          const isBH = bhDays.includes(brDay) && brMin >= startMin && brMin < endMin;
+                          if (!isBH) { anyOpen = true; break; }
                         } else {
                           if (!a.is_active) continue;
                           const winStart = cfg.window_start as string | undefined;
