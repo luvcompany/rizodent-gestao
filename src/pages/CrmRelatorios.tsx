@@ -233,57 +233,116 @@ export default function CrmRelatorios() {
   );
   const lastStage = contratStage;
 
-  // 1. Funil visual
-  const funnelData = useMemo(() => {
-    return stages.map((s, i) => ({
-      name: s.name,
-      value: cohort.filter(l => l.stage_id === s.id).length,
-      fill: s.color || FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-    }));
-  }, [stages, cohort]);
+  // ===== JORNADA REAL DO LEAD (coorte = leads criados no período) =====
+  // Cada marco é um SUBCONJUNTO ESTRITO do anterior:
+  // Total > Conversaram > Agendaram > Compareceram > Contrataram
+  //
+  // REGRA-CHAVE: "Contratado válido" = lead com appointment status='contracted'.
+  // Leads que estão na etapa Contratado MAS não têm appointment são recorrentes
+  // do sistema antigo e ficam FORA das taxas de conversão.
 
-  // 2. Agenda no período — PADRONIZADO com Dashboard.tsx
-  // Fonte única: crm_appointments + status + is_rescheduled, filtrado por scheduled_date no período.
-  // (Antes: regex no nome das etapas — frágil quando renomeavam stages.)
-  const agenda = useMemo(() => {
-    const inDateRange = (yyyymmdd: string) => {
-      if (!range) return true;
-      const startStr = format(range.start, "yyyy-MM-dd");
-      const endStr = format(range.end, "yyyy-MM-dd");
-      return yyyymmdd >= startStr && yyyymmdd <= endStr;
-    };
-    // Restringe ao pipeline corrente: só conta appointments cujo lead esteja no conjunto carregado
-    const leadsDoPipeline = new Set(leads.map(l => l.id));
-    const appsPeriodo = appointments.filter(a =>
-      leadsDoPipeline.has(a.lead_id) && inDateRange(a.scheduled_date)
-    );
-
-    const naoReagendados = appsPeriodo.filter(a => !(a as any).is_rescheduled);
-    const agendados = naoReagendados.length;
-    const reagendados = appsPeriodo.filter(a => (a as any).is_rescheduled === true).length;
-    const compareceram = naoReagendados.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
-    const faltaram = naoReagendados.filter(a => a.status === "no_show").length;
-    const contratados = naoReagendados.filter(a => a.status === "contracted").length;
-
-    const presenca = (compareceram + faltaram) > 0 ? (compareceram / (compareceram + faltaram)) * 100 : 0;
-    return { agendados, compareceram, remarcaram: reagendados, faltaram, contratados, presenca };
-  }, [appointments, leads, range]);
-
-  // 3. Tempo até contratação (até entrar na etapa "Contratado")
-  const tempoContratacao = useMemo(() => {
-    if (!contratStage) return null;
-    const histByLead = new Map<string, StageHistory[]>();
-    history.forEach(h => {
-      if (!histByLead.has(h.lead_id)) histByLead.set(h.lead_id, []);
-      histByLead.get(h.lead_id)!.push(h);
+  // Agrupa appointments por lead (uma vez só)
+  const apptsByLead = useMemo(() => {
+    const m = new Map<string, Appointment[]>();
+    appointments.forEach(a => {
+      if (!m.has(a.lead_id)) m.set(a.lead_id, []);
+      m.get(a.lead_id)!.push(a);
     });
+    return m;
+  }, [appointments]);
+
+  // Mensagens inbound por lead
+  const inboundByLead = useMemo(() => {
+    const s = new Set<string>();
+    messages.forEach(m => { if (m.direction === "inbound") s.add(m.lead_id); });
+    leads.forEach(l => { if (l.first_inbound_at) s.add(l.id); });
+    return s;
+  }, [messages, leads]);
+
+  const jornada = useMemo(() => {
+    const total = new Set(cohort.map(l => l.id));
+
+    const conversaram = new Set<string>();
+    cohort.forEach(l => { if (inboundByLead.has(l.id)) conversaram.add(l.id); });
+
+    const agendaram = new Set<string>();
+    conversaram.forEach(id => {
+      if ((apptsByLead.get(id) || []).length > 0) agendaram.add(id);
+    });
+
+    const compareceram = new Set<string>();
+    const faltaramSet = new Set<string>();
+    const contratadosValidos = new Set<string>();
+    const naoContrataram = new Set<string>();
+
+    agendaram.forEach(id => {
+      const apps = apptsByLead.get(id) || [];
+      const hasCompar = apps.some(a => a.status === "contracted" || a.status === "not_contracted");
+      const hasContrat = apps.some(a => a.status === "contracted");
+      const hasNoShow = apps.some(a => a.status === "no_show");
+      if (hasCompar) compareceram.add(id);
+      if (hasContrat) contratadosValidos.add(id);
+      if (hasCompar && !hasContrat) naoContrataram.add(id);
+      if (!hasCompar && hasNoShow) faltaramSet.add(id);
+    });
+    // Faltaram = agendaram mas não compareceram (inclui no_show e pendentes vencidos)
+    agendaram.forEach(id => {
+      if (!compareceram.has(id)) faltaramSet.add(id);
+    });
+
+    // Reagendados (informativo)
+    const reagendaram = new Set<string>();
+    agendaram.forEach(id => {
+      const apps = apptsByLead.get(id) || [];
+      if (apps.some(a => (a as any).is_rescheduled === true)) reagendaram.add(id);
+    });
+
+    return {
+      total: total.size,
+      conversaram: conversaram.size,
+      agendaram: agendaram.size,
+      compareceram: compareceram.size,
+      faltaram: faltaramSet.size,
+      contratados: contratadosValidos.size,
+      naoContrataram: naoContrataram.size,
+      reagendaram: reagendaram.size,
+      contratadosValidosIds: contratadosValidos,
+    };
+  }, [cohort, inboundByLead, apptsByLead]);
+
+  // Atalho usado em vários cards: leads da coorte contratados pelo fluxo do CRM
+  const contractedLeadIds = jornada.contratadosValidosIds;
+
+  // Contratos diretos: leads na etapa "Contratado" SEM appointment 'contracted'
+  // (= recorrentes do sistema antigo, fechados sem passar pelo fluxo).
+  const contratosDirectos = useMemo(() => {
+    if (!contratStage) return [] as Lead[];
+    return cohort.filter(l => {
+      if (l.stage_id !== contratStage.id) return false;
+      const apps = apptsByLead.get(l.id) || [];
+      return !apps.some(a => a.status === "contracted");
+    });
+  }, [cohort, contratStage, apptsByLead]);
+
+  // Mantém para retrocompatibilidade dos cards de cidade/tempo abaixo (compareceu+contratou)
+  const agenda = useMemo(() => ({
+    agendados: jornada.agendaram,
+    compareceram: jornada.compareceram,
+    remarcaram: jornada.reagendaram,
+    faltaram: jornada.faltaram,
+    contratados: jornada.contratados,
+    presenca: jornada.agendaram > 0 ? (jornada.compareceram / jornada.agendaram) * 100 : 0,
+  }), [jornada]);
+
+  // 3. Tempo até contratação — usa o appointment 'contracted' como evento
+  const tempoContratacao = useMemo(() => {
     const durations: number[] = [];
     cohort.forEach(l => {
-      const hs = histByLead.get(l.id) || [];
-      const lastEntry = hs.filter(h => h.stage_id === contratStage.id).map(h => new Date(h.entered_at).getTime()).sort((a, b) => a - b)[0];
-      const target = lastEntry ?? (l.stage_id === contratStage.id ? new Date(l.created_at).getTime() : null);
-      if (target == null) return;
-      const dur = target - new Date(l.created_at).getTime();
+      if (!contractedLeadIds.has(l.id)) return;
+      const apps = apptsByLead.get(l.id) || [];
+      const ts = apps.filter(a => a.status === "contracted").map(a => new Date(a.scheduled_date).getTime()).sort((a, b) => a - b);
+      if (!ts.length) return;
+      const dur = ts[0] - new Date(l.created_at).getTime();
       if (dur > 0) durations.push(dur);
     });
     return {
@@ -293,7 +352,67 @@ export default function CrmRelatorios() {
       min: durations.length ? Math.min(...durations) : 0,
       max: durations.length ? Math.max(...durations) : 0,
     };
-  }, [cohort, history, contratStage]);
+  }, [cohort, apptsByLead, contractedLeadIds]);
+
+  // 3b. Atividade Diária — quantos falam por dia e quantos agendam
+  const dailyActivity = useMemo(() => {
+    if (!range) return { rows: [] as any[], totals: { conversaram: 0, novos: 0, agendamentos: 0 } };
+    const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    const days: string[] = [];
+    const cur = new Date(range.start);
+    cur.setHours(0, 0, 0, 0);
+    const end = new Date(range.end);
+    const today = new Date(); today.setHours(23, 59, 59, 999);
+    const endRef = end.getTime() < today.getTime() ? end : today;
+    while (cur.getTime() <= endRef.getTime()) {
+      days.push(dayKey(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    const conversaramByDay = new Map<string, Set<string>>();
+    const novosByDay = new Map<string, number>();
+    const agendByDay = new Map<string, number>();
+
+    const leadsDoPipeline = new Set(leads.map(l => l.id));
+
+    messages.forEach(m => {
+      if (m.direction !== "inbound") return;
+      if (!leadsDoPipeline.has(m.lead_id)) return;
+      const k = dayKey(new Date(m.created_at));
+      if (!conversaramByDay.has(k)) conversaramByDay.set(k, new Set());
+      conversaramByDay.get(k)!.add(m.lead_id);
+    });
+
+    cohort.forEach(l => {
+      const k = dayKey(new Date(l.created_at));
+      novosByDay.set(k, (novosByDay.get(k) || 0) + 1);
+    });
+
+    appointments.forEach(a => {
+      if (!leadsDoPipeline.has(a.lead_id)) return;
+      const k = dayKey(new Date(a.created_at));
+      agendByDay.set(k, (agendByDay.get(k) || 0) + 1);
+    });
+
+    const rows = days.map(k => {
+      const conv = conversaramByDay.get(k)?.size || 0;
+      const ag = agendByDay.get(k) || 0;
+      return {
+        day: k,
+        conversaram: conv,
+        novos: novosByDay.get(k) || 0,
+        agendamentos: ag,
+        taxa: conv > 0 ? (ag / conv) * 100 : 0,
+      };
+    });
+    const totals = rows.reduce((acc, r) => ({
+      conversaram: acc.conversaram + r.conversaram,
+      novos: acc.novos + r.novos,
+      agendamentos: acc.agendamentos + r.agendamentos,
+    }), { conversaram: 0, novos: 0, agendamentos: 0 });
+    return { rows, totals };
+  }, [range, messages, leads, cohort, appointments]);
 
   // 4. Tempo até primeiro agendamento
   const tempoAgendamento = useMemo(() => {
