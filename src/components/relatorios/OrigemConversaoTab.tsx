@@ -186,9 +186,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return { total: leads.length, totalAnswered, in1h, sameDay, in24h, notAnswered };
   }, [leads, msgs]);
 
-  // Contratados válidos: leads com appointment status='contracted' (passaram pelo fluxo do CRM).
-  // Não usamos mais pagamentos isoladamente para evitar contar recorrentes do sistema antigo
-  // que nunca passaram por Agendado.
+  // Contratados válidos: leads com appointment status='contracted'.
   const contractedLeadIds = useMemo(() => {
     const ids = new Set<string>();
     appts.forEach(a => {
@@ -197,33 +195,26 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return ids;
   }, [appts]);
 
-  // Funnel
+  // Funnel — agora contando APPOINTMENTS (não leads únicos com appt) para alinhar com o calendário.
   const funnel = useMemo(() => {
     const totalLeads = leads.length;
     const answered = responseStats.totalAnswered;
-    const leadIdsWithAppt = new Set(appts.map(a => a.lead_id));
-    const scheduled = leadIdsWithAppt.size;
-    // Compareceu = appointment com status contracted/not_contracted (desfecho registrado)
-    // OU lead que virou paciente pagante (cruzamento retroativo)
-    const showedLeadIds = new Set<string>();
-    appts.forEach(a => {
-      if (a.status === "contracted" || a.status === "not_contracted") showedLeadIds.add(a.lead_id);
-    });
-    contractedLeadIds.forEach(id => { if (leadIdsWithAppt.has(id)) showedLeadIds.add(id); });
+    // Agendamentos = total de appts (contagem por agendamento, igual ao calendário)
+    const scheduled = appts.length;
+    const showed = appts.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
     const noShow = appts.filter(a => a.status === "no_show").length;
-    const showed = showedLeadIds.size;
-    const contracted = contractedLeadIds.size;
+    const contracted = appts.filter(a => a.status === "contracted").length;
     const apptOutcomeCount = showed + noShow;
     return {
       totalLeads, answered, scheduled, showed, noShow, contracted,
-      attendanceRate: pct(showed, showed + noShow),
+      attendanceRate: pct(showed, apptOutcomeCount),
       leadToAnswered: pct(answered, totalLeads),
       answeredToScheduled: pct(scheduled, answered),
       scheduledToShowed: pct(showed, apptOutcomeCount),
       showedToContracted: pct(contracted, showed),
       leadToContracted: pct(contracted, totalLeads),
     };
-  }, [leads, appts, responseStats, contractedLeadIds]);
+  }, [leads, appts, responseStats]);
 
   // Ranking by origem
   const ranking = useMemo(() => {
