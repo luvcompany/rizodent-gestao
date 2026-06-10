@@ -32,7 +32,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const automationId = String(body.automation_id || "");
+    const force = Boolean(body.force);
     if (!automationId) return json({ error: "Automação não informada" }, 400);
+    console.log(`[enqueue-stage-automation] user=${userData.user.id} automation=${automationId} force=${force}`);
+
 
     const [{ data: profile }, { data: roleRow }] = await Promise.all([
       admin.from("profiles").select("tenant_id").eq("id", userData.user.id).maybeSingle(),
