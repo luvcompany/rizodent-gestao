@@ -875,11 +875,13 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Mark as sent BEFORE dispatching so a long/failed send doesn't block the next tick
+        // Reserve the item so the next cron tick doesn't process it in parallel,
+        // but only mark as sent after the WhatsApp/bot function succeeds.
         await supabase
           .from("crm_automation_queue")
-          .update({ status: "sent", updated_at: new Date().toISOString() })
-          .eq("id", item.id);
+          .update({ status: "processing", updated_at: new Date().toISOString() })
+          .eq("id", item.id)
+          .eq("status", "pending");
 
         const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", item.lead_id).single();
 
@@ -893,9 +895,18 @@ Deno.serve(async (req) => {
           lead?.phone,
         );
 
+        await supabase
+          .from("crm_automation_queue")
+          .update({ status: "sent", updated_at: new Date().toISOString() })
+          .eq("id", item.id);
+
         results.time_window++;
       } catch (e: any) {
         console.error(`[AUTOMATION-ENGINE] Pending item ${item.id} error:`, e.message);
+        await supabase
+          .from("crm_automation_queue")
+          .update({ status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", item.id);
       }
     };
 
