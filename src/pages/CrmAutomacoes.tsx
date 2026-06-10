@@ -275,6 +275,26 @@ export default function CrmAutomacoes() {
     setAutomations(prev => prev.filter(a => a.id !== id));
   };
 
+  const triggerAutomationNow = async (automationId: string) => {
+    toast.info("Enfileirando disparo para todos os leads da etapa...");
+    const { data, error } = await supabase.functions.invoke("enqueue-stage-automation", {
+      body: { automation_id: automationId, force: true },
+    });
+    if (error || (data as any)?.error) {
+      const message = (data as any)?.error || error?.message || "Erro ao enfileirar disparos";
+      toast.error(message);
+      return;
+    }
+    const inserted = Number((data as any)?.inserted || 0);
+    const totalLeads = Number((data as any)?.total_leads || 0);
+    if (inserted === 0) {
+      toast.warning((data as any)?.message || "Nenhum lead com telefone encontrado nesta etapa");
+      return;
+    }
+    toast.success(`Disparo enfileirado para ${inserted} de ${totalLeads} leads. A Meta pode bloquear parte das mensagens (erro 131049) por engajamento.`);
+  };
+
+
   const getAutomationsForStage = (stageId: string) => automations.filter(a => a.stage_id === stageId && a.action_type !== "assign_lead");
 
   const actionLabel = (type: string) => {
