@@ -238,10 +238,10 @@ Deno.serve(async (req) => {
           }
         }
 
-        // For weekly: clear executions only on the close edge so next occurrence opens fresh
-        if (mode === "weekly" && resetExecutions) {
+        // For weekly / business_hours_off: clear executions only on close edge so next occurrence opens fresh
+        if ((mode === "weekly" || mode === "business_hours_off") && resetExecutions) {
           await supabase.from("crm_automation_executions").delete().eq("automation_id", auto.id);
-          console.log(`[AUTOMATION-ENGINE] time_window weekly auto ${auto.id}: executions reset for next occurrence`);
+          console.log(`[AUTOMATION-ENGINE] time_window ${mode} auto ${auto.id}: executions reset for next occurrence`);
         }
       }
     } catch (e: any) {
