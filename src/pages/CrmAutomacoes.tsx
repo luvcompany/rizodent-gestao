@@ -236,70 +236,34 @@ export default function CrmAutomacoes() {
 
     // Execute "send to all existing" if checked
     const config = autoForm.action_config;
-    const fetchAllLeadsInStage = async (): Promise<{ id: string; phone: string | null }[]> => {
-      const PAGE = 1000;
-      const out: { id: string; phone: string | null }[] = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("crm_leads")
-          .select("id, phone")
-          .eq("stage_id", autoForm.stage_id)
-          .range(from, from + PAGE - 1);
-        if (error) {
-          console.error("[Automacoes] Fetch leads error:", error);
-          toast.error(`Erro ao buscar leads: ${error.message}`);
-          break;
-        }
-        if (!data || data.length === 0) break;
-        out.push(...(data as any[]));
-        if (data.length < PAGE) break;
-        from += PAGE;
-      }
-      return out;
-    };
-
-    const enqueueForExistingLeads = async (actionType: string, actionConfig: Record<string, unknown>) => {
+    const enqueueForExistingLeads = async () => {
       if (!savedAutomation?.id) {
         toast.error("Automação não foi salva — não é possível enfileirar");
         return;
       }
-      const leadsInStage = await fetchAllLeadsInStage();
-
-      if (!leadsInStage?.length) {
-        toast.warning("Nenhum lead encontrado nesta etapa para disparar");
+      toast.info("Enfileirando automação para todos os leads da etapa...");
+      const { data, error } = await supabase.functions.invoke("enqueue-stage-automation", {
+        body: { automation_id: savedAutomation.id },
+      });
+      if (error || (data as any)?.error) {
+        const message = (data as any)?.error || error?.message || "Erro ao enfileirar disparos";
+        console.error("[Automacoes] Queue function error:", error || data);
+        toast.error(message);
         return;
       }
-
-      toast.info(`Enfileirando automação para ${leadsInStage.length} leads...`);
-      const BATCH = 500;
-      let totalInserted = 0;
-      for (let i = 0; i < leadsInStage.length; i += BATCH) {
-        const rows = leadsInStage.slice(i, i + BATCH).map((lead) => ({
-          automation_id: savedAutomation!.id,
-          lead_id: lead.id,
-          action_type: actionType,
-          action_config: actionConfig,
-          scheduled_at: new Date().toISOString(),
-          status: "pending",
-          layer_index: 0,
-        }));
-        const { error, data } = await supabase.from("crm_automation_queue").insert(rows as any).select("id");
-        if (error) {
-          console.error("[Automacoes] Queue insert error:", error);
-          toast.error(`Erro ao enfileirar: ${error.message}`);
-          return;
-        }
-        totalInserted += data?.length || rows.length;
+      const inserted = Number((data as any)?.inserted || 0);
+      const totalLeads = Number((data as any)?.total_leads || 0);
+      if (inserted === 0) {
+        toast.warning((data as any)?.message || "Nenhum lead com telefone encontrado nesta etapa");
+        return;
       }
-      supabase.functions.invoke("automation-engine", { body: { pending_batch_limit: 500 } }).catch(e => console.error("[Automacoes] Queue kick error:", e));
-      toast.success(`Automação enfileirada para ${totalInserted} leads`);
+      toast.success(`Automação enfileirada para ${inserted} de ${totalLeads} leads`);
     };
 
     if (config.send_to_all_existing && autoForm.action_type === "send_bot" && config.bot_id) {
-      await enqueueForExistingLeads("send_bot", config);
+      await enqueueForExistingLeads();
     } else if (config.send_to_all_existing && autoForm.action_type === "send_template" && config.template_id) {
-      await enqueueForExistingLeads("send_template", config);
+      await enqueueForExistingLeads();
     } else if (config.send_to_all_existing) {
       toast.warning("Marque um template ou bot antes de disparar para todos");
     }
