@@ -506,7 +506,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
 
           {autoForm.trigger_type === "time_window" && (() => {
             const mode = (autoForm.action_config.window_mode as string) || "once";
-            const WEEK_DAYS = [
+            const WEEK_DAYS_FULL = [
               { value: "0", label: "Domingo" },
               { value: "1", label: "Segunda" },
               { value: "2", label: "Terça" },
@@ -515,6 +515,28 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
               { value: "5", label: "Sexta" },
               { value: "6", label: "Sábado" },
             ];
+            const WEEK_DAYS_SHORT = [
+              { value: "0", label: "Dom" },
+              { value: "1", label: "Seg" },
+              { value: "2", label: "Ter" },
+              { value: "3", label: "Qua" },
+              { value: "4", label: "Qui" },
+              { value: "5", label: "Sex" },
+              { value: "6", label: "Sáb" },
+            ];
+            const bhDaysRaw = autoForm.action_config.bh_days;
+            const bhDays: string[] = Array.isArray(bhDaysRaw)
+              ? (bhDaysRaw as any[]).map(String)
+              : ["1", "2", "3", "4", "5"];
+            const bhStart = (autoForm.action_config.bh_start as string) || "08:00";
+            const bhEnd = (autoForm.action_config.bh_end as string) || "18:00";
+            const toggleBhDay = (v: string) => {
+              const next = bhDays.includes(v) ? bhDays.filter(d => d !== v) : [...bhDays, v].sort();
+              updateConfig({ bh_days: next });
+            };
+            const bhSummary = bhDays.length
+              ? `${[...bhDays].sort().map(d => WEEK_DAYS_SHORT.find(w => w.value === d)?.label).join(", ")} ${bhStart}–${bhEnd}`
+              : "(nenhum dia útil selecionado)";
             return (
               <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
                 <Label className="text-xs">Tipo de janela</Label>
@@ -529,6 +551,13 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                         start_time: (autoForm.action_config.start_time as string) ?? "08:00",
                         end_time: (autoForm.action_config.end_time as string) ?? "08:00",
                       });
+                    } else if (v === "business_hours_off") {
+                      updateConfig({
+                        window_mode: v,
+                        bh_days: bhDays,
+                        bh_start: bhStart,
+                        bh_end: bhEnd,
+                      });
                     } else {
                       updateConfig({ window_mode: v });
                     }
@@ -538,6 +567,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                   <SelectContent>
                     <SelectItem value="once">Janela única (data/hora específica)</SelectItem>
                     <SelectItem value="weekly">Janela recorrente semanal (dia/hora)</SelectItem>
+                    <SelectItem value="business_hours_off">Fora do horário comercial</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -561,7 +591,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                       Todo lead desta etapa que enviar uma mensagem entre essas duas datas/horas receberá a ação. Cada lead recebe apenas uma vez.
                     </p>
                   </>
-                ) : (
+                ) : mode === "weekly" ? (
                   <>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -572,7 +602,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                         >
                           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {WEEK_DAYS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                            {WEEK_DAYS_FULL.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
@@ -595,7 +625,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                         >
                           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {WEEK_DAYS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                            {WEEK_DAYS_FULL.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
@@ -611,6 +641,52 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                     </div>
                     <p className="text-[10px] text-muted-foreground">
                       A janela abre e fecha toda semana nos dias/horas escolhidos (fuso de Brasília). Cada lead recebe a ação 1x por ocorrência semanal. Quando a janela fechar, bots ativos serão automaticamente cancelados.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Label className="text-xs">Dias úteis (horário comercial)</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {WEEK_DAYS_SHORT.map(d => {
+                        const active = bhDays.includes(d.value);
+                        return (
+                          <button
+                            type="button"
+                            key={d.value}
+                            onClick={() => toggleBhDay(d.value)}
+                            className={`px-2 py-1 rounded text-xs border transition-colors ${
+                              active
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                            }`}
+                          >
+                            {d.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Início do expediente</Label>
+                        <Input
+                          type="time"
+                          className="h-8 text-xs"
+                          value={bhStart}
+                          onChange={e => updateConfig({ bh_start: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Fim do expediente</Label>
+                        <Input
+                          type="time"
+                          className="h-8 text-xs"
+                          value={bhEnd}
+                          onChange={e => updateConfig({ bh_end: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      A ação dispara quando o lead enviar mensagem <strong>fora</strong> do expediente <strong>{bhSummary}</strong> (BR). Cada lead recebe a ação 1x por janela fora do expediente. Quando o expediente reabrir, bots ativos são automaticamente cancelados.
                     </p>
                   </>
                 )}
