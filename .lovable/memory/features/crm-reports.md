@@ -12,6 +12,7 @@ Regra de ouro dos Relatórios:
 - Faltas = status='no_show'
 - Pendentes = status IN ('pending','confirmed')
 - Métricas de atividade (criação): usam created_at no período — separadas dos KPIs de calendário.
+- NUNCA filtrar agendamentos pelo pipeline ATUAL do lead: leads são movidos de funil (ex: "Não contratados", "Pós-venda") e seus agendamentos/desfechos sumiriam do relatório. Agendamentos contam globalmente, igual ao calendário.
 - Contratos diretos: leads na etapa Contratado sem appt 'contracted' no período → recorrentes do sistema antigo, ficam fora das taxas.
 
 Arquivos: src/pages/CrmRelatorios.tsx, src/components/relatorios/OrigemConversaoTab.tsx.

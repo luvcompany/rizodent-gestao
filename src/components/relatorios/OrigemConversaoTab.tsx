@@ -139,9 +139,9 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           mFrom += 1000;
         }
       }
-      // Filtra appts para somente os de leads do pipeline carregados
-      const leadIdSet = new Set(leadIds);
-      allAppts = apptsRaw.filter(a => leadIdSet.has(a.lead_id));
+      // NÃO filtra appts por pipeline — leads mudam de funil (ex: "Não contratados")
+      // e seus agendamentos precisam continuar no relatório (calendário = verdade)
+      allAppts = apptsRaw;
 
       for (let i = 0; i < pacIds.length; i += CHUNK) {
         const chunk = pacIds.slice(i, i + CHUNK);

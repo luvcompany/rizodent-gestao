@@ -202,7 +202,9 @@ export default function CrmRelatorios() {
           .range(f, t)
       );
 
-      // 6. LEADS dos appointments do período — limita ao pipeline (pode haver appts de outros pipelines)
+      // 6. LEADS dos appointments do período — SEM filtro de pipeline.
+      //    Leads mudam de funil (ex: "Não contratados", "Pós-venda") e seus
+      //    agendamentos NÃO podem sumir do relatório. Calendário = verdade.
       let activityByAppt: Lead[] = [];
       const apptIds = Array.from(leadIdsFromAppts);
       for (let i = 0; i < apptIds.length; i += 300) {
@@ -211,7 +213,6 @@ export default function CrmRelatorios() {
           supabase
             .from("crm_leads")
             .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-            .eq("pipeline_id", pipelineId)
             .in("id", chunk)
             .range(f, t)
         );
@@ -221,15 +222,12 @@ export default function CrmRelatorios() {
       const mergedLeads = new Map<string, Lead>();
       [...cohortLeads, ...activityInbound, ...activityByAppt].forEach(l => mergedLeads.set(l.id, l));
       const leadsAll = Array.from(mergedLeads.values());
-      const leadIdsPipeline = new Set(leadsAll.map(l => l.id));
 
-      // FILTRA appts para somente os do pipeline selecionado
-      const apptsScheduledFiltered = apptsByScheduled.filter(a => leadIdsPipeline.has(a.lead_id));
-      const apptsCreatedFiltered = apptsByCreated.filter(a => leadIdsPipeline.has(a.lead_id));
-
+      // NÃO filtramos appts por pipeline: o calendário mostra todos os
+      // agendamentos do período, independente do funil atual do lead.
       setLeads(leadsAll);
-      setApptsPeriodo(apptsScheduledFiltered);
-      setApptsCriadosPeriodo(apptsCreatedFiltered);
+      setApptsPeriodo(apptsByScheduled);
+      setApptsCriadosPeriodo(apptsByCreated);
 
       // 7. Mensagens inbound do período (para "conversaram" diário + tempo de resposta)
       //    Buscar inbound + outbound do período via join inner para limitar ao pipeline
@@ -278,8 +276,11 @@ export default function CrmRelatorios() {
     return d >= range.start.getTime() && d <= range.end.getTime();
   };
 
-  // Coorte: leads criados no período
-  const cohort = useMemo(() => leads.filter(l => inRange(l.created_at)), [leads, range]);
+  // Coorte: leads criados no período (do pipeline selecionado — "novos leads")
+  const cohort = useMemo(
+    () => leads.filter(l => l.pipeline_id === pipelineId && inRange(l.created_at)),
+    [leads, range, pipelineId]
+  );
   const cohortIds = useMemo(() => new Set(cohort.map(l => l.id)), [cohort]);
   const stageById = useMemo(() => new Map(stages.map(s => [s.id, s])), [stages]);
   const contratStage = useMemo(
@@ -1094,12 +1095,12 @@ function AcoesPorDiaTab({
         mFrom += 1000;
       }
 
-      // Appointments criados no mês — filtra por pipeline via leads
+      // Appointments criados no mês — TODOS, sem filtro de pipeline
+      // (leads mudam de funil e suas ações não podem sumir do relatório)
       const apptsCreated = await fetchAllPages<any>((f, t) =>
         supabase
           .from("crm_appointments")
-          .select("lead_id, created_at, scheduled_date, is_rescheduled, crm_leads!inner(pipeline_id)")
-          .eq("crm_leads.pipeline_id", pipelineId)
+          .select("lead_id, created_at, scheduled_date, is_rescheduled")
           .gte("created_at", startISO)
           .lte("created_at", endISO)
           .range(f, t)
