@@ -825,7 +825,7 @@ export default function CrmRelatorios() {
           <h2 className="text-lg font-semibold">Resultado dos Agendados</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Quebra dos {jornada.agendaram} leads da coorte que agendaram no período.
+          Quebra dos {jornada.agendaram} leads que agendaram no período (inclui leads que entraram no funil em meses anteriores).
         </p>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <StatBox label="Agendaram" value={jornada.agendaram} />
