@@ -160,8 +160,48 @@ export default function CrmRelatorios() {
           )
         : [];
 
+      // Também busca leads que TÊM AGENDAMENTO no período (mesmo criados antes).
+      // Garante que leads de meses anteriores que agendam/comparecem/contratam agora
+      // entrem nas métricas de Agendaram/Compareceram/Contrataram.
+      let activityByAppt: Lead[] = [];
+      if (startISO && endISO) {
+        const startDateOnly = startISO.slice(0, 10);
+        const endDateOnly = endISO.slice(0, 10);
+        const apptLeadIds = new Set<string>();
+        const apptsCreated = await fetchAllPages<{ lead_id: string }>((f, t) =>
+          supabase
+            .from("crm_appointments")
+            .select("lead_id")
+            .gte("created_at", startISO)
+            .lte("created_at", endISO)
+            .range(f, t)
+        );
+        const apptsScheduled = await fetchAllPages<{ lead_id: string }>((f, t) =>
+          supabase
+            .from("crm_appointments")
+            .select("lead_id")
+            .gte("scheduled_date", startDateOnly)
+            .lte("scheduled_date", endDateOnly)
+            .range(f, t)
+        );
+        [...apptsCreated, ...apptsScheduled].forEach(a => apptLeadIds.add(a.lead_id));
+        const ids = Array.from(apptLeadIds);
+        for (let i = 0; i < ids.length; i += 300) {
+          const chunk = ids.slice(i, i + 300);
+          const rows = await fetchAllPages<Lead>((f, t) =>
+            supabase
+              .from("crm_leads")
+              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .eq("pipeline_id", pipelineId)
+              .in("id", chunk)
+              .range(f, t)
+          );
+          activityByAppt = activityByAppt.concat(rows);
+        }
+      }
+
       const merged = new Map<string, Lead>();
-      [...cohortLeads, ...activityInbound].forEach(l => merged.set(l.id, l));
+      [...cohortLeads, ...activityInbound, ...activityByAppt].forEach(l => merged.set(l.id, l));
       const leadsAll = Array.from(merged.values());
       setLeads(leadsAll);
 
@@ -259,42 +299,71 @@ export default function CrmRelatorios() {
     return s;
   }, [messages, leads]);
 
+  // Helper: scheduled_date (YYYY-MM-DD) está no período?
+  const scheduledInRange = (sd: string | null | undefined): boolean => {
+    if (!sd) return false;
+    if (!range) return true;
+    const [y, m, d] = sd.split("-").map(Number);
+    const t = new Date(y, (m || 1) - 1, d || 1).getTime();
+    return t >= range.start.getTime() && t <= range.end.getTime();
+  };
+
   const jornada = useMemo(() => {
+    // Total / Novos: leads criados no período (entradas no funil)
     const total = new Set(cohort.map(l => l.id));
 
+    // Conversaram: leads (do pipeline, qualquer data de criação) com inbound NO PERÍODO
     const conversaram = new Set<string>();
-    cohort.forEach(l => { if (inboundByLead.has(l.id)) conversaram.add(l.id); });
-
-    const agendaram = new Set<string>();
-    conversaram.forEach(id => {
-      if ((apptsByLead.get(id) || []).length > 0) agendaram.add(id);
+    const leadsPipeline = new Set(leads.map(l => l.id));
+    messages.forEach(m => {
+      if (m.direction !== "inbound") return;
+      if (!leadsPipeline.has(m.lead_id)) return;
+      if (!inRange(m.created_at)) return;
+      conversaram.add(m.lead_id);
+    });
+    // Fallback para leads cuja primeira/última mensagem inbound caiu no período mas
+    // está fora da janela paginada de "messages" (rare): usa first_inbound_at/last_inbound_at
+    leads.forEach(l => {
+      if (inRange(l.first_inbound_at) || inRange(l.last_inbound_at)) conversaram.add(l.id);
     });
 
+    // Agendaram: leads com appointment CRIADO no período (independente de quando o lead entrou)
+    const agendaram = new Set<string>();
+    appointments.forEach(a => {
+      if (!leadsPipeline.has(a.lead_id)) return;
+      if (inRange(a.created_at)) agendaram.add(a.lead_id);
+    });
+
+    // Compareceram / Contrataram / Faltaram: por DATA MARCADA no período
+    // (resultado do que aconteceu no mês, mesmo que o agendamento tenha sido criado antes)
     const compareceram = new Set<string>();
-    const faltaramSet = new Set<string>();
     const contratadosValidos = new Set<string>();
     const naoContrataram = new Set<string>();
+    const faltaramSet = new Set<string>();
 
-    agendaram.forEach(id => {
-      const apps = apptsByLead.get(id) || [];
+    // Agrupa apenas appointments cuja data marcada cai no período
+    const apptsPeriodoByLead = new Map<string, Appointment[]>();
+    appointments.forEach(a => {
+      if (!leadsPipeline.has(a.lead_id)) return;
+      if (!scheduledInRange(a.scheduled_date)) return;
+      if (!apptsPeriodoByLead.has(a.lead_id)) apptsPeriodoByLead.set(a.lead_id, []);
+      apptsPeriodoByLead.get(a.lead_id)!.push(a);
+    });
+
+    apptsPeriodoByLead.forEach((apps, leadId) => {
       const hasCompar = apps.some(a => a.status === "contracted" || a.status === "not_contracted");
       const hasContrat = apps.some(a => a.status === "contracted");
       const hasNoShow = apps.some(a => a.status === "no_show");
-      if (hasCompar) compareceram.add(id);
-      if (hasContrat) contratadosValidos.add(id);
-      if (hasCompar && !hasContrat) naoContrataram.add(id);
-      if (!hasCompar && hasNoShow) faltaramSet.add(id);
-    });
-    // Faltaram = agendaram mas não compareceram (inclui no_show e pendentes vencidos)
-    agendaram.forEach(id => {
-      if (!compareceram.has(id)) faltaramSet.add(id);
+      if (hasCompar) compareceram.add(leadId);
+      if (hasContrat) contratadosValidos.add(leadId);
+      if (hasCompar && !hasContrat) naoContrataram.add(leadId);
+      if (!hasCompar && hasNoShow) faltaramSet.add(leadId);
     });
 
-    // Reagendados (informativo)
+    // Reagendados (informativo): appointments do período marcados como reagendados
     const reagendaram = new Set<string>();
-    agendaram.forEach(id => {
-      const apps = apptsByLead.get(id) || [];
-      if (apps.some(a => (a as any).is_rescheduled === true)) reagendaram.add(id);
+    apptsPeriodoByLead.forEach((apps, leadId) => {
+      if (apps.some(a => (a as any).is_rescheduled === true)) reagendaram.add(leadId);
     });
 
     return {
@@ -308,21 +377,20 @@ export default function CrmRelatorios() {
       reagendaram: reagendaram.size,
       contratadosValidosIds: contratadosValidos,
     };
-  }, [cohort, inboundByLead, apptsByLead]);
+  }, [cohort, leads, messages, appointments, range]);
 
-  // Atalho usado em vários cards: leads da coorte contratados pelo fluxo do CRM
+  // Atalho usado em vários cards: leads contratados pelo fluxo do CRM no período
   const contractedLeadIds = jornada.contratadosValidosIds;
 
-  // Contratos diretos: leads na etapa "Contratado" SEM appointment 'contracted'
+  // Contratos diretos: leads na etapa "Contratado" SEM appointment válido no período
   // (= recorrentes do sistema antigo, fechados sem passar pelo fluxo).
   const contratosDirectos = useMemo(() => {
     if (!contratStage) return [] as Lead[];
     return cohort.filter(l => {
       if (l.stage_id !== contratStage.id) return false;
-      const apps = apptsByLead.get(l.id) || [];
-      return !apps.some(a => a.status === "contracted");
+      return !contractedLeadIds.has(l.id);
     });
-  }, [cohort, contratStage, apptsByLead]);
+  }, [cohort, contratStage, contractedLeadIds]);
 
   // Mantém para retrocompatibilidade dos cards de cidade/tempo abaixo (compareceu+contratou)
   const agenda = useMemo(() => ({
@@ -623,11 +691,11 @@ export default function CrmRelatorios() {
 
       {/* Resumo Executivo — KPIs da jornada real */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard icon={Users} label="Total de Leads" value={resumo.totalLeads} accent="blue" hint="Coorte do período" />
-        <KpiCard icon={MessageSquare} label="Conversaram" value={jornada.conversaram} accent="indigo" hint={`${resumo.taxaConversa.toFixed(1)}% da coorte`} />
-        <KpiCard icon={Calendar} label="Agendaram" value={jornada.agendaram} accent="amber" hint={`${resumo.taxaAgendamento.toFixed(1)}% da coorte`} />
-        <KpiCard icon={CheckCircle2} label="Compareceram" value={jornada.compareceram} accent="green" hint={`${resumo.taxaCompar.toFixed(0)}% dos agendados`} />
-        <KpiCard icon={Target} label="Contrataram" value={jornada.contratados} accent="emerald" hint={`${resumo.taxaContratacao.toFixed(1)}% da coorte`} />
+        <KpiCard icon={Users} label="Novos leads" value={resumo.totalLeads} accent="blue" hint="Entraram no funil no período" />
+        <KpiCard icon={MessageSquare} label="Conversaram" value={jornada.conversaram} accent="indigo" hint="Tiveram inbound no período" />
+        <KpiCard icon={Calendar} label="Agendaram" value={jornada.agendaram} accent="amber" hint="Agendamento criado no período" />
+        <KpiCard icon={CheckCircle2} label="Compareceram" value={jornada.compareceram} accent="green" hint={`${resumo.taxaCompar.toFixed(0)}% dos agendados do período`} />
+        <KpiCard icon={Target} label="Contrataram" value={jornada.contratados} accent="emerald" hint={`${resumo.taxaFechamento.toFixed(0)}% dos que compareceram`} />
       </div>
 
       {/* 1. Jornada do Lead (funil real de 5 marcos) */}
@@ -637,8 +705,9 @@ export default function CrmRelatorios() {
           <h2 className="text-lg font-semibold">Jornada do Lead</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Cada etapa é um <strong>subconjunto</strong> da anterior. "Contrataram" só conta leads que passaram por Agendado
-          (recorrentes do sistema antigo aparecem em "Contratos diretos" abaixo).
+          Cada métrica conta a <strong>atividade do período</strong>: leads que conversaram, agendaram, compareceram
+          ou contrataram <strong>neste mês</strong> — mesmo que tenham entrado no funil em meses anteriores.
+          Agendaram e Compareceram são contados pela data marcada do agendamento.
         </p>
 
         {jornada.total === 0 ? (
@@ -665,7 +734,8 @@ export default function CrmRelatorios() {
                   { from: "Compareceram", to: "Contrataram", a: jornada.compareceram, b: jornada.contratados },
                 ].map((step) => {
                   const passou = step.a > 0 ? (step.b / step.a) * 100 : 0;
-                  const perdeu = step.a - step.b;
+                  const perdeu = Math.max(0, step.a - step.b);
+                  const passouDisplay = Math.min(passou, 999);
                   return (
                     <div key={step.from} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40">
                       <div className="flex-1 min-w-0">
@@ -675,10 +745,11 @@ export default function CrmRelatorios() {
                             "text-sm font-bold tabular-nums",
                             passou >= 60 ? "text-green-600" :
                             passou >= 30 ? "text-amber-600" : "text-red-500"
-                          )}>{passou.toFixed(1)}%</span>
+                          )}>{passouDisplay.toFixed(1)}%</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          Passaram <strong>{step.b}</strong> de {step.a} — perdemos <strong className="text-red-500">{perdeu}</strong> leads
+                          {step.b} {step.to.toLowerCase()} vs {step.a} {step.from.toLowerCase()} no período
+                          {perdeu > 0 && step.b <= step.a && <> — diferença de <strong className="text-red-500">{perdeu}</strong></>}
                         </div>
                       </div>
                     </div>
@@ -754,7 +825,7 @@ export default function CrmRelatorios() {
           <h2 className="text-lg font-semibold">Resultado dos Agendados</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Quebra dos {jornada.agendaram} leads da coorte que agendaram no período.
+          Quebra dos {jornada.agendaram} leads que agendaram no período (inclui leads que entraram no funil em meses anteriores).
         </p>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <StatBox label="Agendaram" value={jornada.agendaram} />
