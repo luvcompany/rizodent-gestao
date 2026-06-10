@@ -1048,6 +1048,23 @@ Deno.serve(async (req) => {
                         let diffMin = nowWeekMin - startWeekMin;
                         if (diffMin < 0) diffMin += 7 * 1440;
                         occurrenceStartMs = nowMs - diffMin * 60 * 1000;
+                      } else if (mode === "business_hours_off") {
+                        // Walk back at most 8 days to find when current off-period started
+                        const bhDays = (Array.isArray(raCfg.bh_days) ? raCfg.bh_days : [1,2,3,4,5]).map((d:any)=>Number(d));
+                        const [sh, sm] = String(raCfg.bh_start || "08:00").split(":").map(Number);
+                        const [eh, em] = String(raCfg.bh_end || "18:00").split(":").map(Number);
+                        const startMin = sh*60+sm, endMin = eh*60+em;
+                        const brNow = new Date(nowMs - 3 * 3600 * 1000);
+                        let foundIdx = 8 * 24 * 60;
+                        for (let i = 0; i < 8 * 24 * 60; i++) {
+                          const t = new Date(brNow.getTime() - i * 60 * 1000);
+                          const d = t.getUTCDay();
+                          const m = t.getUTCHours() * 60 + t.getUTCMinutes();
+                          const isBH = bhDays.includes(d) && m >= startMin && m < endMin;
+                          if (isBH) { foundIdx = i; break; }
+                        }
+                        // Start of current off-period = 1 minute after the last BH minute
+                        occurrenceStartMs = nowMs - Math.max(0, foundIdx - 1) * 60 * 1000;
                       } else {
                         const winStart = raCfg.window_start as string | undefined;
                         if (winStart) {
