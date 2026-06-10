@@ -1002,6 +1002,18 @@ Deno.serve(async (req) => {
                         } else {
                           inWindow = nowWeekMin >= startWeekMin || nowWeekMin <= endWeekMin;
                         }
+                      } else if (mode === "business_hours_off") {
+                        const bhDays = (Array.isArray(raCfg.bh_days) ? raCfg.bh_days : [1,2,3,4,5]).map((d:any)=>Number(d));
+                        const [sh, sm] = String(raCfg.bh_start || "08:00").split(":").map(Number);
+                        const [eh, em] = String(raCfg.bh_end || "18:00").split(":").map(Number);
+                        if ([sh,sm,eh,em].some(v=>Number.isNaN(v))) { console.log(`[WEBHOOK] time_window bh_off auto ${ra.id}: invalid time`); continue; }
+                        const startMin = sh*60+sm, endMin = eh*60+em;
+                        if (startMin >= endMin) { console.log(`[WEBHOOK] time_window bh_off auto ${ra.id}: invalid range`); continue; }
+                        const brNow = new Date(nowMs - 3 * 3600 * 1000);
+                        const day = brNow.getUTCDay();
+                        const min = brNow.getUTCHours() * 60 + brNow.getUTCMinutes();
+                        const isBH = bhDays.includes(day) && min >= startMin && min < endMin;
+                        inWindow = !isBH;
                       } else {
                         const winStart = raCfg.window_start as string | undefined;
                         const winEnd = raCfg.window_end as string | undefined;
