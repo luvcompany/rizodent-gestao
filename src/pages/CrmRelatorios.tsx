@@ -734,7 +734,8 @@ export default function CrmRelatorios() {
                   { from: "Compareceram", to: "Contrataram", a: jornada.compareceram, b: jornada.contratados },
                 ].map((step) => {
                   const passou = step.a > 0 ? (step.b / step.a) * 100 : 0;
-                  const perdeu = step.a - step.b;
+                  const perdeu = Math.max(0, step.a - step.b);
+                  const passouDisplay = Math.min(passou, 999);
                   return (
                     <div key={step.from} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40">
                       <div className="flex-1 min-w-0">
@@ -744,10 +745,11 @@ export default function CrmRelatorios() {
                             "text-sm font-bold tabular-nums",
                             passou >= 60 ? "text-green-600" :
                             passou >= 30 ? "text-amber-600" : "text-red-500"
-                          )}>{passou.toFixed(1)}%</span>
+                          )}>{passouDisplay.toFixed(1)}%</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          Passaram <strong>{step.b}</strong> de {step.a} — perdemos <strong className="text-red-500">{perdeu}</strong> leads
+                          {step.b} {step.to.toLowerCase()} vs {step.a} {step.from.toLowerCase()} no período
+                          {perdeu > 0 && step.b <= step.a && <> — diferença de <strong className="text-red-500">{perdeu}</strong></>}
                         </div>
                       </div>
                     </div>
