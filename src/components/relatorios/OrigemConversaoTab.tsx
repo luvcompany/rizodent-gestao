@@ -82,24 +82,49 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       let allMsgs: Msg[] = [];
       let allPagamentos: Pagamento[] = [];
 
+      // Appointments: TUDO com scheduled_date no período (= calendário).
+      // Depois filtramos para os leads do pipeline carregados acima.
+      const startDate = range.start.toISOString().slice(0, 10);
+      const endDate = range.end.toISOString().slice(0, 10);
+      let apptsRaw: Appointment[] = [];
+      {
+        let aFrom = 0;
+        while (true) {
+          const { data: aps } = await supabase
+            .from("crm_appointments")
+            .select("id,lead_id,scheduled_date,status")
+            .gte("scheduled_date", startDate)
+            .lte("scheduled_date", endDate)
+            .range(aFrom, aFrom + 999);
+          if (!aps || aps.length === 0) break;
+          apptsRaw = apptsRaw.concat(aps as Appointment[]);
+          if (aps.length < 1000) break;
+          aFrom += 1000;
+        }
+      }
+      // Para cobrir leads que entraram no pipeline neste período mas marcaram appt depois,
+      // também buscamos appts dos leads carregados (não duplicam — usamos Set).
+      const apptIdsSet = new Set<string>(apptsRaw.map(a => a.id));
       for (let i = 0; i < leadIds.length; i += CHUNK) {
         const chunk = leadIds.slice(i, i + CHUNK);
-        // Appointments paginados por chunk
         let aFrom = 0;
         while (true) {
           const { data: aps } = await supabase
             .from("crm_appointments")
             .select("id,lead_id,scheduled_date,status")
             .in("lead_id", chunk)
-            .order("created_at")
+            .gte("scheduled_date", startDate)
+            .lte("scheduled_date", endDate)
             .range(aFrom, aFrom + 999);
           if (!aps || aps.length === 0) break;
-          allAppts = allAppts.concat(aps as Appointment[]);
+          (aps as Appointment[]).forEach(a => {
+            if (!apptIdsSet.has(a.id)) { apptsRaw.push(a); apptIdsSet.add(a.id); }
+          });
           if (aps.length < 1000) break;
           aFrom += 1000;
         }
 
-        // Mensagens: paginação por range pois pode passar de 1000 fácil
+        // Mensagens: paginação por range
         let mFrom = 0;
         while (true) {
           const { data: ms } = await supabase
@@ -114,6 +139,9 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           mFrom += 1000;
         }
       }
+      // Filtra appts para somente os de leads do pipeline carregados
+      const leadIdSet = new Set(leadIds);
+      allAppts = apptsRaw.filter(a => leadIdSet.has(a.lead_id));
 
       for (let i = 0; i < pacIds.length; i += CHUNK) {
         const chunk = pacIds.slice(i, i + CHUNK);
