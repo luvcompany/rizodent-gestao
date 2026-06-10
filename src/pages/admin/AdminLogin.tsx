@@ -84,7 +84,7 @@ const AdminLogin = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-400"
               />
             </div>
 
@@ -98,7 +98,7 @@ const AdminLogin = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="bg-slate-800 border-slate-700 text-white pr-10 placeholder:text-slate-500"
+                  className="bg-slate-800 border-slate-700 text-white pr-10 placeholder:text-slate-400"
                 />
                 <button
                   type="button"
@@ -120,7 +120,7 @@ const AdminLogin = () => {
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-xs text-slate-500">
+          <p className="mt-6 text-center text-xs text-slate-300">
             Acesso restrito à equipe CRClin
           </p>
         </div>

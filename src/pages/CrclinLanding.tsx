@@ -213,7 +213,7 @@ const CrclinLanding = () => {
 
       {/* FOOTER */}
       <footer className="border-t border-slate-800 bg-slate-950">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-6 py-8 text-xs text-slate-500 sm:flex-row">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-6 py-8 text-xs text-slate-300 sm:flex-row">
           <p>© {new Date().getFullYear()} CRClin. Todos os direitos reservados.</p>
           <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-300">Contato</a>
         </div>
