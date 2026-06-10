@@ -15,7 +15,7 @@ import { format } from "date-fns";
 import DashboardFunnel from "@/components/DashboardFunnel";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, RefreshCw, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox } from "lucide-react";
+import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, RefreshCw, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox, AlertTriangle } from "lucide-react";
 
 // ---------- Tipos ----------
 type Pipeline = { id: string; name: string };
@@ -233,57 +233,116 @@ export default function CrmRelatorios() {
   );
   const lastStage = contratStage;
 
-  // 1. Funil visual
-  const funnelData = useMemo(() => {
-    return stages.map((s, i) => ({
-      name: s.name,
-      value: cohort.filter(l => l.stage_id === s.id).length,
-      fill: s.color || FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-    }));
-  }, [stages, cohort]);
+  // ===== JORNADA REAL DO LEAD (coorte = leads criados no período) =====
+  // Cada marco é um SUBCONJUNTO ESTRITO do anterior:
+  // Total > Conversaram > Agendaram > Compareceram > Contrataram
+  //
+  // REGRA-CHAVE: "Contratado válido" = lead com appointment status='contracted'.
+  // Leads que estão na etapa Contratado MAS não têm appointment são recorrentes
+  // do sistema antigo e ficam FORA das taxas de conversão.
 
-  // 2. Agenda no período — PADRONIZADO com Dashboard.tsx
-  // Fonte única: crm_appointments + status + is_rescheduled, filtrado por scheduled_date no período.
-  // (Antes: regex no nome das etapas — frágil quando renomeavam stages.)
-  const agenda = useMemo(() => {
-    const inDateRange = (yyyymmdd: string) => {
-      if (!range) return true;
-      const startStr = format(range.start, "yyyy-MM-dd");
-      const endStr = format(range.end, "yyyy-MM-dd");
-      return yyyymmdd >= startStr && yyyymmdd <= endStr;
-    };
-    // Restringe ao pipeline corrente: só conta appointments cujo lead esteja no conjunto carregado
-    const leadsDoPipeline = new Set(leads.map(l => l.id));
-    const appsPeriodo = appointments.filter(a =>
-      leadsDoPipeline.has(a.lead_id) && inDateRange(a.scheduled_date)
-    );
-
-    const naoReagendados = appsPeriodo.filter(a => !(a as any).is_rescheduled);
-    const agendados = naoReagendados.length;
-    const reagendados = appsPeriodo.filter(a => (a as any).is_rescheduled === true).length;
-    const compareceram = naoReagendados.filter(a => a.status === "contracted" || a.status === "not_contracted").length;
-    const faltaram = naoReagendados.filter(a => a.status === "no_show").length;
-    const contratados = naoReagendados.filter(a => a.status === "contracted").length;
-
-    const presenca = (compareceram + faltaram) > 0 ? (compareceram / (compareceram + faltaram)) * 100 : 0;
-    return { agendados, compareceram, remarcaram: reagendados, faltaram, contratados, presenca };
-  }, [appointments, leads, range]);
-
-  // 3. Tempo até contratação (até entrar na etapa "Contratado")
-  const tempoContratacao = useMemo(() => {
-    if (!contratStage) return null;
-    const histByLead = new Map<string, StageHistory[]>();
-    history.forEach(h => {
-      if (!histByLead.has(h.lead_id)) histByLead.set(h.lead_id, []);
-      histByLead.get(h.lead_id)!.push(h);
+  // Agrupa appointments por lead (uma vez só)
+  const apptsByLead = useMemo(() => {
+    const m = new Map<string, Appointment[]>();
+    appointments.forEach(a => {
+      if (!m.has(a.lead_id)) m.set(a.lead_id, []);
+      m.get(a.lead_id)!.push(a);
     });
+    return m;
+  }, [appointments]);
+
+  // Mensagens inbound por lead
+  const inboundByLead = useMemo(() => {
+    const s = new Set<string>();
+    messages.forEach(m => { if (m.direction === "inbound") s.add(m.lead_id); });
+    leads.forEach(l => { if (l.first_inbound_at) s.add(l.id); });
+    return s;
+  }, [messages, leads]);
+
+  const jornada = useMemo(() => {
+    const total = new Set(cohort.map(l => l.id));
+
+    const conversaram = new Set<string>();
+    cohort.forEach(l => { if (inboundByLead.has(l.id)) conversaram.add(l.id); });
+
+    const agendaram = new Set<string>();
+    conversaram.forEach(id => {
+      if ((apptsByLead.get(id) || []).length > 0) agendaram.add(id);
+    });
+
+    const compareceram = new Set<string>();
+    const faltaramSet = new Set<string>();
+    const contratadosValidos = new Set<string>();
+    const naoContrataram = new Set<string>();
+
+    agendaram.forEach(id => {
+      const apps = apptsByLead.get(id) || [];
+      const hasCompar = apps.some(a => a.status === "contracted" || a.status === "not_contracted");
+      const hasContrat = apps.some(a => a.status === "contracted");
+      const hasNoShow = apps.some(a => a.status === "no_show");
+      if (hasCompar) compareceram.add(id);
+      if (hasContrat) contratadosValidos.add(id);
+      if (hasCompar && !hasContrat) naoContrataram.add(id);
+      if (!hasCompar && hasNoShow) faltaramSet.add(id);
+    });
+    // Faltaram = agendaram mas não compareceram (inclui no_show e pendentes vencidos)
+    agendaram.forEach(id => {
+      if (!compareceram.has(id)) faltaramSet.add(id);
+    });
+
+    // Reagendados (informativo)
+    const reagendaram = new Set<string>();
+    agendaram.forEach(id => {
+      const apps = apptsByLead.get(id) || [];
+      if (apps.some(a => (a as any).is_rescheduled === true)) reagendaram.add(id);
+    });
+
+    return {
+      total: total.size,
+      conversaram: conversaram.size,
+      agendaram: agendaram.size,
+      compareceram: compareceram.size,
+      faltaram: faltaramSet.size,
+      contratados: contratadosValidos.size,
+      naoContrataram: naoContrataram.size,
+      reagendaram: reagendaram.size,
+      contratadosValidosIds: contratadosValidos,
+    };
+  }, [cohort, inboundByLead, apptsByLead]);
+
+  // Atalho usado em vários cards: leads da coorte contratados pelo fluxo do CRM
+  const contractedLeadIds = jornada.contratadosValidosIds;
+
+  // Contratos diretos: leads na etapa "Contratado" SEM appointment 'contracted'
+  // (= recorrentes do sistema antigo, fechados sem passar pelo fluxo).
+  const contratosDirectos = useMemo(() => {
+    if (!contratStage) return [] as Lead[];
+    return cohort.filter(l => {
+      if (l.stage_id !== contratStage.id) return false;
+      const apps = apptsByLead.get(l.id) || [];
+      return !apps.some(a => a.status === "contracted");
+    });
+  }, [cohort, contratStage, apptsByLead]);
+
+  // Mantém para retrocompatibilidade dos cards de cidade/tempo abaixo (compareceu+contratou)
+  const agenda = useMemo(() => ({
+    agendados: jornada.agendaram,
+    compareceram: jornada.compareceram,
+    remarcaram: jornada.reagendaram,
+    faltaram: jornada.faltaram,
+    contratados: jornada.contratados,
+    presenca: jornada.agendaram > 0 ? (jornada.compareceram / jornada.agendaram) * 100 : 0,
+  }), [jornada]);
+
+  // 3. Tempo até contratação — usa o appointment 'contracted' como evento
+  const tempoContratacao = useMemo(() => {
     const durations: number[] = [];
     cohort.forEach(l => {
-      const hs = histByLead.get(l.id) || [];
-      const lastEntry = hs.filter(h => h.stage_id === contratStage.id).map(h => new Date(h.entered_at).getTime()).sort((a, b) => a - b)[0];
-      const target = lastEntry ?? (l.stage_id === contratStage.id ? new Date(l.created_at).getTime() : null);
-      if (target == null) return;
-      const dur = target - new Date(l.created_at).getTime();
+      if (!contractedLeadIds.has(l.id)) return;
+      const apps = apptsByLead.get(l.id) || [];
+      const ts = apps.filter(a => a.status === "contracted").map(a => new Date(a.scheduled_date).getTime()).sort((a, b) => a - b);
+      if (!ts.length) return;
+      const dur = ts[0] - new Date(l.created_at).getTime();
       if (dur > 0) durations.push(dur);
     });
     return {
@@ -293,7 +352,67 @@ export default function CrmRelatorios() {
       min: durations.length ? Math.min(...durations) : 0,
       max: durations.length ? Math.max(...durations) : 0,
     };
-  }, [cohort, history, contratStage]);
+  }, [cohort, apptsByLead, contractedLeadIds]);
+
+  // 3b. Atividade Diária — quantos falam por dia e quantos agendam
+  const dailyActivity = useMemo(() => {
+    if (!range) return { rows: [] as any[], totals: { conversaram: 0, novos: 0, agendamentos: 0 } };
+    const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    const days: string[] = [];
+    const cur = new Date(range.start);
+    cur.setHours(0, 0, 0, 0);
+    const end = new Date(range.end);
+    const today = new Date(); today.setHours(23, 59, 59, 999);
+    const endRef = end.getTime() < today.getTime() ? end : today;
+    while (cur.getTime() <= endRef.getTime()) {
+      days.push(dayKey(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    const conversaramByDay = new Map<string, Set<string>>();
+    const novosByDay = new Map<string, number>();
+    const agendByDay = new Map<string, number>();
+
+    const leadsDoPipeline = new Set(leads.map(l => l.id));
+
+    messages.forEach(m => {
+      if (m.direction !== "inbound") return;
+      if (!leadsDoPipeline.has(m.lead_id)) return;
+      const k = dayKey(new Date(m.created_at));
+      if (!conversaramByDay.has(k)) conversaramByDay.set(k, new Set());
+      conversaramByDay.get(k)!.add(m.lead_id);
+    });
+
+    cohort.forEach(l => {
+      const k = dayKey(new Date(l.created_at));
+      novosByDay.set(k, (novosByDay.get(k) || 0) + 1);
+    });
+
+    appointments.forEach(a => {
+      if (!leadsDoPipeline.has(a.lead_id)) return;
+      const k = dayKey(new Date(a.created_at));
+      agendByDay.set(k, (agendByDay.get(k) || 0) + 1);
+    });
+
+    const rows = days.map(k => {
+      const conv = conversaramByDay.get(k)?.size || 0;
+      const ag = agendByDay.get(k) || 0;
+      return {
+        day: k,
+        conversaram: conv,
+        novos: novosByDay.get(k) || 0,
+        agendamentos: ag,
+        taxa: conv > 0 ? (ag / conv) * 100 : 0,
+      };
+    });
+    const totals = rows.reduce((acc, r) => ({
+      conversaram: acc.conversaram + r.conversaram,
+      novos: acc.novos + r.novos,
+      agendamentos: acc.agendamentos + r.agendamentos,
+    }), { conversaram: 0, novos: 0, agendamentos: 0 });
+    return { rows, totals };
+  }, [range, messages, leads, cohort, appointments]);
 
   // 4. Tempo até primeiro agendamento
   const tempoAgendamento = useMemo(() => {
@@ -426,22 +545,19 @@ export default function CrmRelatorios() {
     });
   }, [cohort]);
 
-  // Resumo executivo: KPIs principais derivados das fontes já normalizadas
+  // Resumo executivo: KPIs principais derivados da jornada real (com appointment válido)
   const resumo = useMemo(() => {
-    const totalLeads = cohort.length;
-    const taxaAgendamento = totalLeads > 0 ? (agenda.agendados / totalLeads) * 100 : 0;
-    const taxaContratacao = totalLeads > 0 ? (agenda.contratados / totalLeads) * 100 : 0;
-    return { totalLeads, taxaAgendamento, taxaContratacao };
-  }, [cohort, agenda]);
+    const total = jornada.total;
+    return {
+      totalLeads: total,
+      taxaConversa: total > 0 ? (jornada.conversaram / total) * 100 : 0,
+      taxaAgendamento: total > 0 ? (jornada.agendaram / total) * 100 : 0,
+      taxaContratacao: total > 0 ? (jornada.contratados / total) * 100 : 0,
+      taxaCompar: jornada.agendaram > 0 ? (jornada.compareceram / jornada.agendaram) * 100 : 0,
+      taxaFechamento: jornada.compareceram > 0 ? (jornada.contratados / jornada.compareceram) * 100 : 0,
+    };
+  }, [jornada]);
 
-  // Funil de conversão entre etapas consecutivas (% de quem passou para a próxima)
-  const stageConversion = useMemo(() => {
-    return funnelData.map((s, i) => {
-      const next = funnelData[i + 1];
-      const conv = next && s.value > 0 ? (next.value / s.value) * 100 : null;
-      return { name: s.name, value: s.value, fill: s.fill, conversion: conv };
-    });
-  }, [funnelData]);
 
   // Ordenação da tabela de cidades
   const [citySort, setCitySort] = useState<{ key: "cidade" | "agendamentos" | "comparecimentos" | "contratacoes"; dir: "asc" | "desc" }>({ key: "contratacoes", dir: "desc" });
@@ -502,91 +618,188 @@ export default function CrmRelatorios() {
           <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all"]} />
         </div>
         {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-        <div className="ml-auto text-xs text-muted-foreground">
-          {cohort.length} leads na coorte
-        </div>
+        <div className="ml-auto text-xs text-muted-foreground">{cohort.length} leads na coorte</div>
       </Card>
 
-      {/* Resumo Executivo */}
+      {/* Resumo Executivo — KPIs da jornada real */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <KpiCard icon={Users} label="Total de Leads" value={resumo.totalLeads} accent="blue" hint="Coorte do período" />
-        <KpiCard icon={Calendar} label="Agendados" value={agenda.agendados} accent="indigo" />
-        <KpiCard icon={CheckCircle2} label="Compareceram" value={agenda.compareceram} accent="green" />
-        <KpiCard icon={Target} label="Contratados" value={agenda.contratados} accent="emerald" hint={`${resumo.taxaContratacao.toFixed(1)}% da coorte`} />
-        <KpiCard icon={XCircle} label="Faltaram" value={agenda.faltaram} accent="red" />
+        <KpiCard icon={MessageSquare} label="Conversaram" value={jornada.conversaram} accent="indigo" hint={`${resumo.taxaConversa.toFixed(1)}% da coorte`} />
+        <KpiCard icon={Calendar} label="Agendaram" value={jornada.agendaram} accent="amber" hint={`${resumo.taxaAgendamento.toFixed(1)}% da coorte`} />
+        <KpiCard icon={CheckCircle2} label="Compareceram" value={jornada.compareceram} accent="green" hint={`${resumo.taxaCompar.toFixed(0)}% dos agendados`} />
+        <KpiCard icon={Target} label="Contrataram" value={jornada.contratados} accent="emerald" hint={`${resumo.taxaContratacao.toFixed(1)}% da coorte`} />
       </div>
 
-      {/* 1. Funil */}
+      {/* 1. Jornada do Lead (funil real de 5 marcos) */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <TrendingUp className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Distribuição por Etapa</h2>
+          <h2 className="text-lg font-semibold">Jornada do Lead</h2>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">Onde estão os leads criados no período selecionado.</p>
-        {funnelData.some(d => d.value > 0) ? (
+        <p className="text-sm text-muted-foreground mb-4">
+          Cada etapa é um <strong>subconjunto</strong> da anterior. "Contrataram" só conta leads que passaram por Agendado
+          (recorrentes do sistema antigo aparecem em "Contratos diretos" abaixo).
+        </p>
+
+        {jornada.total === 0 ? (
+          <EmptyState icon={Inbox} title="Sem leads no período" description="Ajuste o período ou troque o funil." />
+        ) : (
           <>
-            <DashboardFunnel data={funnelData} />
+            <DashboardFunnel
+              data={[
+                { name: "Total de Leads", value: jornada.total, fill: "#3b82f6" },
+                { name: "Conversaram",    value: jornada.conversaram, fill: "#6366f1" },
+                { name: "Agendaram",      value: jornada.agendaram, fill: "#f59e0b" },
+                { name: "Compareceram",   value: jornada.compareceram, fill: "#10b981" },
+                { name: "Contrataram",    value: jornada.contratados, fill: "#059669" },
+              ]}
+            />
+
             <div className="mt-6 border-t pt-4">
-              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Conversão entre etapas consecutivas</p>
+              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Onde estou perdendo leads</p>
               <div className="space-y-2">
-                {stageConversion.map((s, i) => (
-                  <div key={s.name} className="flex items-center gap-3">
-                    <div className="w-2 h-8 rounded-sm" style={{ background: s.fill }} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-medium truncate">{s.name}</span>
-                        <span className="text-sm tabular-nums text-muted-foreground">{s.value}</span>
-                      </div>
-                      {i < stageConversion.length - 1 && (
-                        <div className="flex items-center gap-2 mt-1 text-xs">
-                          <ArrowDown className="w-3 h-3 text-muted-foreground" />
+                {[
+                  { from: "Total de Leads", to: "Conversaram", a: jornada.total, b: jornada.conversaram },
+                  { from: "Conversaram", to: "Agendaram", a: jornada.conversaram, b: jornada.agendaram },
+                  { from: "Agendaram", to: "Compareceram", a: jornada.agendaram, b: jornada.compareceram },
+                  { from: "Compareceram", to: "Contrataram", a: jornada.compareceram, b: jornada.contratados },
+                ].map((step) => {
+                  const passou = step.a > 0 ? (step.b / step.a) * 100 : 0;
+                  const perdeu = step.a - step.b;
+                  return (
+                    <div key={step.from} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-medium">{step.from} → {step.to}</span>
                           <span className={cn(
-                            "font-semibold tabular-nums",
-                            s.conversion === null ? "text-muted-foreground" :
-                            s.conversion >= 50 ? "text-green-600" :
-                            s.conversion >= 20 ? "text-amber-600" : "text-red-500"
-                          )}>
-                            {s.conversion === null ? "—" : `${s.conversion.toFixed(1)}%`}
-                          </span>
-                          <span className="text-muted-foreground">passam para "{stageConversion[i + 1].name}"</span>
+                            "text-sm font-bold tabular-nums",
+                            passou >= 60 ? "text-green-600" :
+                            passou >= 30 ? "text-amber-600" : "text-red-500"
+                          )}>{passou.toFixed(1)}%</span>
                         </div>
-                      )}
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Passaram <strong>{step.b}</strong> de {step.a} — perdemos <strong className="text-red-500">{perdeu}</strong> leads
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </>
-        ) : (
-          <EmptyState
-            icon={Inbox}
-            title="Sem leads no período"
-            description="Ajuste o período ou troque o funil para ver a distribuição por etapa."
-          />
         )}
       </Card>
 
+      {/* 2. Atividade Diária */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Activity className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">Atividade Diária</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Quantos leads falam comigo por dia e quantos agendamentos consigo criar.
+        </p>
+        {dailyActivity.rows.length === 0 ? (
+          <EmptyState icon={Calendar} title="Sem dados no período" />
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <StatBox label="Total — Leads conversaram" value={dailyActivity.totals.conversaram} color="text-indigo-600" />
+              <StatBox label="Total — Novos leads" value={dailyActivity.totals.novos} color="text-blue-600" />
+              <StatBox label="Total — Agendamentos criados" value={dailyActivity.totals.agendamentos} color="text-amber-600" />
+            </div>
+            <div className="max-h-[420px] overflow-y-auto border rounded-lg">
+              <Table>
+                <TableHeader className="sticky top-0 bg-card z-10">
+                  <TableRow>
+                    <TableHead>Dia</TableHead>
+                    <TableHead className="text-right">Conversaram</TableHead>
+                    <TableHead className="text-right">Novos</TableHead>
+                    <TableHead className="text-right">Agendamentos</TableHead>
+                    <TableHead className="text-right">Taxa agend.</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dailyActivity.rows.map(r => (
+                    <TableRow key={r.day}>
+                      <TableCell className="font-medium">
+                        {format(new Date(r.day + "T12:00:00"), "EEE, dd/MM", { locale: ptBR })}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{r.conversaram}</TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">{r.novos}</TableCell>
+                      <TableCell className="text-right tabular-nums text-amber-600 font-semibold">{r.agendamentos}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <span className={cn(
+                          "font-semibold",
+                          r.taxa >= 30 ? "text-green-600" :
+                          r.taxa >= 15 ? "text-amber-600" :
+                          r.conversaram === 0 ? "text-muted-foreground" : "text-red-500"
+                        )}>
+                          {r.conversaram === 0 ? "—" : `${r.taxa.toFixed(0)}%`}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        )}
+      </Card>
 
-
-      {/* 2. Agenda */}
+      {/* 3. Resultado dos Agendados (coorte) */}
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <Calendar className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Agenda no Período</h2>
+          <h2 className="text-lg font-semibold">Resultado dos Agendados</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Fonte: <strong>agendamentos</strong> (mesma do Dashboard) filtrados por <em>data marcada</em> no período.
-          Reagendados saem do total de Agendados; Compareceram = "Contratou" + "Não contratou".
+          Quebra dos {jornada.agendaram} leads da coorte que agendaram no período.
         </p>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <StatBox label="Agendados" value={agenda.agendados} />
-          <StatBox label="Compareceram" value={agenda.compareceram} color="text-green-600" />
-          <StatBox label="Contratados" value={agenda.contratados} color="text-primary" />
-          <StatBox label="Reagendados" value={agenda.remarcaram} color="text-orange-500" />
-          <StatBox label="Faltaram" value={agenda.faltaram} color="text-red-500" />
-          <StatBox label="Presença" value={`${agenda.presenca.toFixed(0)}%`} color="text-primary" />
+          <StatBox label="Agendaram" value={jornada.agendaram} />
+          <StatBox label="Compareceram" value={jornada.compareceram} color="text-green-600" />
+          <StatBox label="Faltaram" value={jornada.faltaram} color="text-red-500" />
+          <StatBox label="Contrataram" value={jornada.contratados} color="text-emerald-600" />
+          <StatBox label="Não contrataram" value={jornada.naoContrataram} color="text-orange-500" />
+          <StatBox label="Taxa de fechamento" value={`${resumo.taxaFechamento.toFixed(0)}%`} color="text-primary" />
         </div>
+        {jornada.reagendaram > 0 && (
+          <p className="text-xs text-muted-foreground mt-3">
+            Informativo: {jornada.reagendaram} desses leads tiveram pelo menos um reagendamento.
+          </p>
+        )}
       </Card>
+
+      {/* 4. Contratos diretos (informativo) */}
+      {contratosDirectos.length > 0 && (
+        <Card className="p-6 border-amber-500/30 border-l-4">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            <h2 className="text-lg font-semibold">Contratos diretos (sem passar por Agendado)</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            <strong>{contratosDirectos.length}</strong> lead(s) estão na etapa "Contratado" mas não têm agendamento registrado.
+            Normalmente são recorrentes do sistema antigo. <strong>Ficam fora das taxas de conversão acima</strong> para não distorcer o relatório.
+          </p>
+          <details className="text-sm">
+            <summary className="cursor-pointer text-primary hover:underline">Ver lista</summary>
+            <ul className="mt-3 space-y-1 max-h-48 overflow-y-auto">
+              {contratosDirectos.slice(0, 50).map(l => (
+                <li key={l.id}>
+                  <button onClick={() => navigate(`/crm/conversa/${l.id}`)} className="text-foreground hover:text-primary text-left truncate w-full">
+                    {l.name}
+                  </button>
+                </li>
+              ))}
+              {contratosDirectos.length > 50 && (
+                <li className="text-xs text-muted-foreground italic">+ {contratosDirectos.length - 50} outros…</li>
+              )}
+            </ul>
+          </details>
+        </Card>
+      )}
+
 
       {/* 3 + 4 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
