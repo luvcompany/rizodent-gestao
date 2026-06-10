@@ -705,8 +705,9 @@ export default function CrmRelatorios() {
           <h2 className="text-lg font-semibold">Jornada do Lead</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Cada etapa é um <strong>subconjunto</strong> da anterior. "Contrataram" só conta leads que passaram por Agendado
-          (recorrentes do sistema antigo aparecem em "Contratos diretos" abaixo).
+          Cada métrica conta a <strong>atividade do período</strong>: leads que conversaram, agendaram, compareceram
+          ou contrataram <strong>neste mês</strong> — mesmo que tenham entrado no funil em meses anteriores.
+          Agendaram e Compareceram são contados pela data marcada do agendamento.
         </p>
 
         {jornada.total === 0 ? (
