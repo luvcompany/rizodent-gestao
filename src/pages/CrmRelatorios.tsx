@@ -775,7 +775,7 @@ export default function CrmRelatorios() {
       {contratosDirectos.length > 0 && (
         <Card className="p-6 border-amber-500/30 border-l-4">
           <div className="flex items-center gap-2 mb-1">
-            <AlertTriangleIcon />
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
             <h2 className="text-lg font-semibold">Contratos diretos (sem passar por Agendado)</h2>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
