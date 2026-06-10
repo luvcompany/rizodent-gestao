@@ -186,22 +186,16 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return { total: leads.length, totalAnswered, in1h, sameDay, in24h, notAnswered };
   }, [leads, msgs]);
 
-  // Pacientes "contratados" reais: têm pagamento (tipo='primeiro' ou qualquer pagamento se não houver tipo).
-  // Cruzamos via paciente_id no lead.
+  // Contratados válidos: leads com appointment status='contracted' (passaram pelo fluxo do CRM).
+  // Não usamos mais pagamentos isoladamente para evitar contar recorrentes do sistema antigo
+  // que nunca passaram por Agendado.
   const contractedLeadIds = useMemo(() => {
-    const pagantes = new Set<string>();
-    pagamentos.forEach(p => {
-      if (!p.paciente_id) return;
-      // Considera "primeiro" pagamento como conversão (novo contrato).
-      // Se não houver tipo definido, considera qualquer pagamento.
-      if (!p.tipo || p.tipo === "primeiro") pagantes.add(p.paciente_id);
-    });
     const ids = new Set<string>();
-    leads.forEach(l => {
-      if (l.paciente_id && pagantes.has(l.paciente_id)) ids.add(l.id);
+    appts.forEach(a => {
+      if (a.status === "contracted") ids.add(a.lead_id);
     });
     return ids;
-  }, [leads, pagamentos]);
+  }, [appts]);
 
   // Funnel
   const funnel = useMemo(() => {
