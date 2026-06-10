@@ -299,42 +299,71 @@ export default function CrmRelatorios() {
     return s;
   }, [messages, leads]);
 
+  // Helper: scheduled_date (YYYY-MM-DD) está no período?
+  const scheduledInRange = (sd: string | null | undefined): boolean => {
+    if (!sd) return false;
+    if (!range) return true;
+    const [y, m, d] = sd.split("-").map(Number);
+    const t = new Date(y, (m || 1) - 1, d || 1).getTime();
+    return t >= range.start.getTime() && t <= range.end.getTime();
+  };
+
   const jornada = useMemo(() => {
+    // Total / Novos: leads criados no período (entradas no funil)
     const total = new Set(cohort.map(l => l.id));
 
+    // Conversaram: leads (do pipeline, qualquer data de criação) com inbound NO PERÍODO
     const conversaram = new Set<string>();
-    cohort.forEach(l => { if (inboundByLead.has(l.id)) conversaram.add(l.id); });
-
-    const agendaram = new Set<string>();
-    conversaram.forEach(id => {
-      if ((apptsByLead.get(id) || []).length > 0) agendaram.add(id);
+    const leadsPipeline = new Set(leads.map(l => l.id));
+    messages.forEach(m => {
+      if (m.direction !== "inbound") return;
+      if (!leadsPipeline.has(m.lead_id)) return;
+      if (!inRange(m.created_at)) return;
+      conversaram.add(m.lead_id);
+    });
+    // Fallback para leads cuja primeira/última mensagem inbound caiu no período mas
+    // está fora da janela paginada de "messages" (rare): usa first_inbound_at/last_inbound_at
+    leads.forEach(l => {
+      if (inRange(l.first_inbound_at) || inRange(l.last_inbound_at)) conversaram.add(l.id);
     });
 
+    // Agendaram: leads com appointment CRIADO no período (independente de quando o lead entrou)
+    const agendaram = new Set<string>();
+    appointments.forEach(a => {
+      if (!leadsPipeline.has(a.lead_id)) return;
+      if (inRange(a.created_at)) agendaram.add(a.lead_id);
+    });
+
+    // Compareceram / Contrataram / Faltaram: por DATA MARCADA no período
+    // (resultado do que aconteceu no mês, mesmo que o agendamento tenha sido criado antes)
     const compareceram = new Set<string>();
-    const faltaramSet = new Set<string>();
     const contratadosValidos = new Set<string>();
     const naoContrataram = new Set<string>();
+    const faltaramSet = new Set<string>();
 
-    agendaram.forEach(id => {
-      const apps = apptsByLead.get(id) || [];
+    // Agrupa apenas appointments cuja data marcada cai no período
+    const apptsPeriodoByLead = new Map<string, Appointment[]>();
+    appointments.forEach(a => {
+      if (!leadsPipeline.has(a.lead_id)) return;
+      if (!scheduledInRange(a.scheduled_date)) return;
+      if (!apptsPeriodoByLead.has(a.lead_id)) apptsPeriodoByLead.set(a.lead_id, []);
+      apptsPeriodoByLead.get(a.lead_id)!.push(a);
+    });
+
+    apptsPeriodoByLead.forEach((apps, leadId) => {
       const hasCompar = apps.some(a => a.status === "contracted" || a.status === "not_contracted");
       const hasContrat = apps.some(a => a.status === "contracted");
       const hasNoShow = apps.some(a => a.status === "no_show");
-      if (hasCompar) compareceram.add(id);
-      if (hasContrat) contratadosValidos.add(id);
-      if (hasCompar && !hasContrat) naoContrataram.add(id);
-      if (!hasCompar && hasNoShow) faltaramSet.add(id);
-    });
-    // Faltaram = agendaram mas não compareceram (inclui no_show e pendentes vencidos)
-    agendaram.forEach(id => {
-      if (!compareceram.has(id)) faltaramSet.add(id);
+      if (hasCompar) compareceram.add(leadId);
+      if (hasContrat) contratadosValidos.add(leadId);
+      if (hasCompar && !hasContrat) naoContrataram.add(leadId);
+      if (!hasCompar && hasNoShow) faltaramSet.add(leadId);
     });
 
-    // Reagendados (informativo)
+    // Reagendados (informativo): appointments do período marcados como reagendados
     const reagendaram = new Set<string>();
-    agendaram.forEach(id => {
-      const apps = apptsByLead.get(id) || [];
-      if (apps.some(a => (a as any).is_rescheduled === true)) reagendaram.add(id);
+    apptsPeriodoByLead.forEach((apps, leadId) => {
+      if (apps.some(a => (a as any).is_rescheduled === true)) reagendaram.add(leadId);
     });
 
     return {
@@ -348,21 +377,20 @@ export default function CrmRelatorios() {
       reagendaram: reagendaram.size,
       contratadosValidosIds: contratadosValidos,
     };
-  }, [cohort, inboundByLead, apptsByLead]);
+  }, [cohort, leads, messages, appointments, range]);
 
-  // Atalho usado em vários cards: leads da coorte contratados pelo fluxo do CRM
+  // Atalho usado em vários cards: leads contratados pelo fluxo do CRM no período
   const contractedLeadIds = jornada.contratadosValidosIds;
 
-  // Contratos diretos: leads na etapa "Contratado" SEM appointment 'contracted'
+  // Contratos diretos: leads na etapa "Contratado" SEM appointment válido no período
   // (= recorrentes do sistema antigo, fechados sem passar pelo fluxo).
   const contratosDirectos = useMemo(() => {
     if (!contratStage) return [] as Lead[];
     return cohort.filter(l => {
       if (l.stage_id !== contratStage.id) return false;
-      const apps = apptsByLead.get(l.id) || [];
-      return !apps.some(a => a.status === "contracted");
+      return !contractedLeadIds.has(l.id);
     });
-  }, [cohort, contratStage, apptsByLead]);
+  }, [cohort, contratStage, contractedLeadIds]);
 
   // Mantém para retrocompatibilidade dos cards de cidade/tempo abaixo (compareceu+contratou)
   const agenda = useMemo(() => ({
