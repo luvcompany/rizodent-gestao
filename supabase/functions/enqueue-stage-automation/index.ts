@@ -59,9 +59,10 @@ Deno.serve(async (req) => {
 
     const actionType = String(automation.action_type || "");
     const actionConfig = (automation.action_config || {}) as Record<string, unknown>;
-    if (!actionConfig.send_to_all_existing) {
+    if (!force && !actionConfig.send_to_all_existing) {
       return json({ error: "A opção de enviar para todos não está marcada" }, 400);
     }
+
     if (actionType === "send_template" && !actionConfig.template_id) {
       return json({ error: "Selecione um template antes de disparar" }, 400);
     }
