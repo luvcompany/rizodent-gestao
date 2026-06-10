@@ -974,7 +974,7 @@ async function sendAction(
             .eq("id", config.template_id)
             .single();
           if (tpl) {
-            await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+            const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -988,18 +988,22 @@ async function sendAction(
                 template_name: tpl.name,
                 template_language: tpl.language,
               }),
-            }).then((r) => r.text());
+            });
+            const respText = await resp.text();
+            if (!resp.ok) throw new Error(`send_template failed (${resp.status}): ${respText.substring(0, 500)}`);
           }
         }
         break;
 
       case "send_bot":
         if (config.bot_id) {
-          await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+          const resp = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
             body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation" }),
-          }).then((r) => r.text());
+          });
+          const respText = await resp.text();
+          if (!resp.ok) throw new Error(`send_bot failed (${resp.status}): ${respText.substring(0, 500)}`);
         }
         break;
 
