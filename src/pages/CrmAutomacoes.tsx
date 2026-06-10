@@ -164,7 +164,7 @@ export default function CrmAutomacoes() {
       pipeline_id: selectedPipelineId, name: newStageName, color: newStageColor,
       position: stages.length,
     }).select().single();
-    if (error) { toast.error("Erro ao criar etapa"); return; }
+    if (error) { toast.error(`Erro ao criar etapa: ${error.message}`); return; }
     toast.success("Etapa criada");
     setNewStageOpen(false);
     setNewStageName("");
@@ -178,7 +178,7 @@ export default function CrmAutomacoes() {
     const { data, error } = await supabase.from("crm_pipelines").insert({
       name: newPipelineName, color: newPipelineColor,
     }).select().single();
-    if (error) { toast.error("Erro ao criar funil"); return; }
+    if (error) { toast.error(`Erro ao criar funil: ${error.message}`); return; }
     toast.success("Funil criado");
     setNewPipelineOpen(false);
     setNewPipelineName("");
@@ -274,6 +274,26 @@ export default function CrmAutomacoes() {
     toast.success("Automação removida");
     setAutomations(prev => prev.filter(a => a.id !== id));
   };
+
+  const triggerAutomationNow = async (automationId: string) => {
+    toast.info("Enfileirando disparo para todos os leads da etapa...");
+    const { data, error } = await supabase.functions.invoke("enqueue-stage-automation", {
+      body: { automation_id: automationId, force: true },
+    });
+    if (error || (data as any)?.error) {
+      const message = (data as any)?.error || error?.message || "Erro ao enfileirar disparos";
+      toast.error(message);
+      return;
+    }
+    const inserted = Number((data as any)?.inserted || 0);
+    const totalLeads = Number((data as any)?.total_leads || 0);
+    if (inserted === 0) {
+      toast.warning((data as any)?.message || "Nenhum lead com telefone encontrado nesta etapa");
+      return;
+    }
+    toast.success(`Disparo enfileirado para ${inserted} de ${totalLeads} leads. A Meta pode bloquear parte das mensagens (erro 131049) por engajamento.`);
+  };
+
 
   const getAutomationsForStage = (stageId: string) => automations.filter(a => a.stage_id === stageId && a.action_type !== "assign_lead");
 
@@ -547,11 +567,21 @@ export default function CrmAutomacoes() {
                                         <span className="font-medium">{triggerLabel(auto.trigger_type)}</span>
                                       </div>
                                       <div className="text-foreground">{actionLabel(auto.action_type)}</div>
-                                      <div className="flex items-center gap-1 mt-1">
-                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive">
+                                      <div className="flex items-center gap-2 mt-1">
+                                        {(auto.action_type === "send_template" || auto.action_type === "send_bot") && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); triggerAutomationNow(auto.id); }}
+                                            className="text-[10px] text-primary hover:underline flex items-center gap-1"
+                                            title="Disparar para todos os leads atualmente nesta etapa"
+                                          >
+                                            <Zap size={10} /> Disparar agora
+                                          </button>
+                                        )}
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive ml-auto">
                                           <Trash2 size={10} />
                                         </button>
                                       </div>
+
                                     </div>
                                   ))}
                                   <button

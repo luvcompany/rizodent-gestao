@@ -32,7 +32,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const automationId = String(body.automation_id || "");
+    const force = Boolean(body.force);
     if (!automationId) return json({ error: "Automação não informada" }, 400);
+    console.log(`[enqueue-stage-automation] user=${userData.user.id} automation=${automationId} force=${force}`);
+
 
     const [{ data: profile }, { data: roleRow }] = await Promise.all([
       admin.from("profiles").select("tenant_id").eq("id", userData.user.id).maybeSingle(),
@@ -56,9 +59,10 @@ Deno.serve(async (req) => {
 
     const actionType = String(automation.action_type || "");
     const actionConfig = (automation.action_config || {}) as Record<string, unknown>;
-    if (!actionConfig.send_to_all_existing) {
+    if (!force && !actionConfig.send_to_all_existing) {
       return json({ error: "A opção de enviar para todos não está marcada" }, 400);
     }
+
     if (actionType === "send_template" && !actionConfig.template_id) {
       return json({ error: "Selecione um template antes de disparar" }, 400);
     }
@@ -129,6 +133,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ pending_batch_limit: 500 }),
     }).catch((error) => console.error("[enqueue-stage-automation] automation-engine kick failed", error));
 
+    console.log(`[enqueue-stage-automation] DONE automation=${automationId} inserted=${inserted}/${leads.length}`);
     return json({ success: true, inserted, total_leads: leads.length });
   } catch (error) {
     console.error("[enqueue-stage-automation] error", error);
