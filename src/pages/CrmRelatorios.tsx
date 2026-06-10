@@ -545,22 +545,19 @@ export default function CrmRelatorios() {
     });
   }, [cohort]);
 
-  // Resumo executivo: KPIs principais derivados das fontes já normalizadas
+  // Resumo executivo: KPIs principais derivados da jornada real (com appointment válido)
   const resumo = useMemo(() => {
-    const totalLeads = cohort.length;
-    const taxaAgendamento = totalLeads > 0 ? (agenda.agendados / totalLeads) * 100 : 0;
-    const taxaContratacao = totalLeads > 0 ? (agenda.contratados / totalLeads) * 100 : 0;
-    return { totalLeads, taxaAgendamento, taxaContratacao };
-  }, [cohort, agenda]);
+    const total = jornada.total;
+    return {
+      totalLeads: total,
+      taxaConversa: total > 0 ? (jornada.conversaram / total) * 100 : 0,
+      taxaAgendamento: total > 0 ? (jornada.agendaram / total) * 100 : 0,
+      taxaContratacao: total > 0 ? (jornada.contratados / total) * 100 : 0,
+      taxaCompar: jornada.agendaram > 0 ? (jornada.compareceram / jornada.agendaram) * 100 : 0,
+      taxaFechamento: jornada.compareceram > 0 ? (jornada.contratados / jornada.compareceram) * 100 : 0,
+    };
+  }, [jornada]);
 
-  // Funil de conversão entre etapas consecutivas (% de quem passou para a próxima)
-  const stageConversion = useMemo(() => {
-    return funnelData.map((s, i) => {
-      const next = funnelData[i + 1];
-      const conv = next && s.value > 0 ? (next.value / s.value) * 100 : null;
-      return { name: s.name, value: s.value, fill: s.fill, conversion: conv };
-    });
-  }, [funnelData]);
 
   // Ordenação da tabela de cidades
   const [citySort, setCitySort] = useState<{ key: "cidade" | "agendamentos" | "comparecimentos" | "contratacoes"; dir: "asc" | "desc" }>({ key: "contratacoes", dir: "desc" });
