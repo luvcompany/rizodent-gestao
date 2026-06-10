@@ -257,7 +257,7 @@ export default function CrmAutomacoes() {
         toast.warning((data as any)?.message || "Nenhum lead com telefone encontrado nesta etapa");
         return;
       }
-      toast.success(`Automação enfileirada para ${inserted} de ${totalLeads} leads`);
+      toast.success(`${inserted} de ${totalLeads} leads enfileirados — envio em andamento (até 2 min)`);
     };
 
     if (config.send_to_all_existing && autoForm.action_type === "send_bot" && config.bot_id) {
@@ -275,24 +275,8 @@ export default function CrmAutomacoes() {
     setAutomations(prev => prev.filter(a => a.id !== id));
   };
 
-  const triggerAutomationNow = async (automationId: string) => {
-    toast.info("Enfileirando disparo para todos os leads da etapa...");
-    const { data, error } = await supabase.functions.invoke("enqueue-stage-automation", {
-      body: { automation_id: automationId, force: true },
-    });
-    if (error || (data as any)?.error) {
-      const message = (data as any)?.error || error?.message || "Erro ao enfileirar disparos";
-      toast.error(message);
-      return;
-    }
-    const inserted = Number((data as any)?.inserted || 0);
-    const totalLeads = Number((data as any)?.total_leads || 0);
-    if (inserted === 0) {
-      toast.warning((data as any)?.message || "Nenhum lead com telefone encontrado nesta etapa");
-      return;
-    }
-    toast.success(`Disparo enfileirado para ${inserted} de ${totalLeads} leads. A Meta pode bloquear parte das mensagens (erro 131049) por engajamento.`);
-  };
+
+
 
 
   const getAutomationsForStage = (stageId: string) => automations.filter(a => a.stage_id === stageId && a.action_type !== "assign_lead");
@@ -568,19 +552,11 @@ export default function CrmAutomacoes() {
                                       </div>
                                       <div className="text-foreground">{actionLabel(auto.action_type)}</div>
                                       <div className="flex items-center gap-2 mt-1">
-                                        {(auto.action_type === "send_template" || auto.action_type === "send_bot") && (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); triggerAutomationNow(auto.id); }}
-                                            className="text-[10px] text-primary hover:underline flex items-center gap-1"
-                                            title="Disparar para todos os leads atualmente nesta etapa"
-                                          >
-                                            <Zap size={10} /> Disparar agora
-                                          </button>
-                                        )}
                                         <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive ml-auto">
                                           <Trash2 size={10} />
                                         </button>
                                       </div>
+
 
                                     </div>
                                   ))}

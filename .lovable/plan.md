@@ -1,30 +1,32 @@
-# Corrigir disparo em massa e criação/edição de funis
+# Corrigir disparos enfileirados que nunca são enviados
 
-## Diagnóstico (já confirmado no banco e logs)
+## Diagnóstico
 
-1. **Disparo "Enviar para todos"**: o salvamento da automação está falhando antes do disparo — nenhuma automação foi criada nas últimas 36h e não existe automação nas etapas "Não compareceu". As regras de acesso (RLS) de `crm_automations` permitem salvar apenas para os papéis **crc** e **gerente** — **superadmin (Luv Agency) e pós-venda ficaram de fora**. Se o teste foi feito com o usuário superadmin, o salvar falha e nada é enfileirado.
-2. **Funis**: a regra restritiva de isolamento por cliente (`tenant_isolation`) em `crm_pipelines` não tem exceção para superadmin (diferente das outras tabelas), bloqueando criar/editar funis nesse perfil. O toast genérico "Erro ao criar funil" esconde a mensagem real do erro.
-3. **Entregas Meta**: 48 mensagens de template nas últimas 48h falharam com erro **131049** ("healthy ecosystem engagement") — a Meta está limitando entregas de templates de marketing para alguns contatos. Isso não é bug do sistema, mas precisa ficar visível.
-4. **Cron duplicado**: existem 2 agendamentos chamando o motor de automação a cada minuto, um deles com token corrompido (sempre falha em silêncio).
+O gatilho funcionou: 815 leads foram enfileirados às 18:40. Porém há **924 itens presos como "pending"** na fila. O motor de automação roda a cada minuto, mas executa primeiro várias verificações pesadas (no_response, time_window, chained triggers, lead por lead) e é **encerrado por limite de tempo antes de chegar na etapa final que envia os templates da fila**. Ou seja: enfileira, mas nunca envia.
 
-## Plano de correção
+## Mudanças
 
-### 1. Migração de banco (RLS)
-- `crm_automations`: recriar políticas de criar/editar/excluir incluindo `superadmin` e `gerente` (e remover a duplicação de `crc` na expressão atual).
-- `crm_pipelines` e `crm_stages`: adicionar exceção `OR has_role(auth.uid(),'superadmin')` à política restritiva `tenant_isolation`, igual ao padrão já usado em `crm_automations`.
-- Remover o cron duplicado com token corrompido (`invoke-automation-engine-every-minute`), mantendo apenas `automation-engine-cron`.
+### 1. Novo worker dedicado da fila (backend)
+- Criar a função `automation-queue-worker` que faz APENAS uma coisa: pegar itens pendentes da fila e enviar (template/bot), em lotes, respeitando o rate limit do WhatsApp.
+- Remover esse processamento da função `automation-engine` (ela continua cuidando dos gatilhos: no_response, time_window, etc.).
+- Recuperar itens travados em "processing" há mais de 10 minutos (voltam para "pending").
+- Evitar duplicados: se o mesmo lead + automação já tem item "sent" recente, pular.
 
-### 2. Frontend — `src/pages/CrmAutomacoes.tsx`
-- Mostrar a mensagem real do erro (`error.message`) nos toasts de criar/editar funil e etapa (hoje é genérico).
-- Adicionar botão **"Disparar agora"** em cada automação de envio (template/bot) que chama diretamente a função `enqueue-stage-automation`, desacoplando o disparo do fluxo de salvar — com feedback claro de quantos leads foram enfileirados.
-- Manter o modal aberto quando o salvamento falhar, para o erro não passar despercebido.
+### 2. Agendamento (banco)
+- Criar um cron job para o `automation-queue-worker` rodar a cada minuto.
+- Adicionar coluna `error_message` na fila para registrar o motivo exato quando um envio falhar (visibilidade real em vez de falha silenciosa).
 
-### 3. Backend — `supabase/functions/enqueue-stage-automation`
-- Adicionar logs em todas as requisições (quem chamou, automação, quantos leads enfileirados) para rastreabilidade futura.
+### 3. UI — página de Automações
+- **Remover o botão "⚡ Disparar agora"**.
+- Manter apenas o fluxo do checkbox "Enviar para todos os leads que já estão nesta etapa", que já enfileira corretamente.
+- O toast de confirmação passará a dizer "X leads enfileirados — envio em andamento" para deixar claro que o envio é processado em segundo plano (1 a 2 minutos para começar).
 
-### 4. Visibilidade de falhas da Meta
-- No resultado do disparo, exibir aviso quando houver falhas 131049, explicando que a Meta limita entregas de templates de marketing por contato (não é falha do sistema).
+### 4. Backlog atual
+- Os 815 leads do "disparo luv" já estão na fila e serão enviados automaticamente assim que o worker entrar no ar (sem precisar disparar de novo).
+- Vou verificar se há duplicados na fila antes (mesmo lead enfileirado 2x) e limpar para ninguém receber mensagem dupla.
 
-## Validação
-- Testar criação de funil e salvamento de automação com consulta direta ao banco após as mudanças.
-- Disparar uma automação de teste e confirmar itens na fila (`crm_automation_queue`) e processamento pelo motor.
+## Detalhes técnicos
+- Nova edge function: `supabase/functions/automation-queue-worker/index.ts` (processa lotes de ~50 itens por execução, chunks paralelos de 10, com pausa entre chunks).
+- Migration: `ALTER TABLE crm_automation_queue ADD COLUMN error_message text` + reset de itens "processing" antigos.
+- Cron via `cron.schedule` chamando o worker a cada minuto.
+- Editar `supabase/functions/automation-engine/index.ts` (remover seção 7) e `src/pages/CrmAutomacoes.tsx` (remover botão Disparar agora e função associada).

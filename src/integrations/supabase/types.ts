@@ -620,6 +620,7 @@ export type Database = {
           appointment_id: string | null
           automation_id: string
           created_at: string
+          error_message: string | null
           id: string
           layer_index: number
           lead_id: string
@@ -634,6 +635,7 @@ export type Database = {
           appointment_id?: string | null
           automation_id: string
           created_at?: string
+          error_message?: string | null
           id?: string
           layer_index?: number
           lead_id: string
@@ -648,6 +650,7 @@ export type Database = {
           appointment_id?: string | null
           automation_id?: string
           created_at?: string
+          error_message?: string | null
           id?: string
           layer_index?: number
           lead_id?: string
