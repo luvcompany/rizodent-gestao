@@ -691,11 +691,11 @@ export default function CrmRelatorios() {
 
       {/* Resumo Executivo — KPIs da jornada real */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard icon={Users} label="Total de Leads" value={resumo.totalLeads} accent="blue" hint="Coorte do período" />
-        <KpiCard icon={MessageSquare} label="Conversaram" value={jornada.conversaram} accent="indigo" hint={`${resumo.taxaConversa.toFixed(1)}% da coorte`} />
-        <KpiCard icon={Calendar} label="Agendaram" value={jornada.agendaram} accent="amber" hint={`${resumo.taxaAgendamento.toFixed(1)}% da coorte`} />
-        <KpiCard icon={CheckCircle2} label="Compareceram" value={jornada.compareceram} accent="green" hint={`${resumo.taxaCompar.toFixed(0)}% dos agendados`} />
-        <KpiCard icon={Target} label="Contrataram" value={jornada.contratados} accent="emerald" hint={`${resumo.taxaContratacao.toFixed(1)}% da coorte`} />
+        <KpiCard icon={Users} label="Novos leads" value={resumo.totalLeads} accent="blue" hint="Entraram no funil no período" />
+        <KpiCard icon={MessageSquare} label="Conversaram" value={jornada.conversaram} accent="indigo" hint="Tiveram inbound no período" />
+        <KpiCard icon={Calendar} label="Agendaram" value={jornada.agendaram} accent="amber" hint="Agendamento criado no período" />
+        <KpiCard icon={CheckCircle2} label="Compareceram" value={jornada.compareceram} accent="green" hint={`${resumo.taxaCompar.toFixed(0)}% dos agendados do período`} />
+        <KpiCard icon={Target} label="Contrataram" value={jornada.contratados} accent="emerald" hint={`${resumo.taxaFechamento.toFixed(0)}% dos que compareceram`} />
       </div>
 
       {/* 1. Jornada do Lead (funil real de 5 marcos) */}
