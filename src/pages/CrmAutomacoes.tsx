@@ -179,6 +179,7 @@ export default function CrmAutomacoes() {
     if (!newPipelineName) return;
     const { data, error } = await supabase.from("crm_pipelines").insert({
       name: newPipelineName, color: newPipelineColor,
+      ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}),
     }).select().single();
     if (error) { toast.error(`Erro ao criar funil: ${error.message}`); return; }
     toast.success("Funil criado");
