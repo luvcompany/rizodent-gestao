@@ -146,6 +146,7 @@ function WebhookSection() {
 
 export default function CrmIntegracoes() {
   const { tenant } = useTenant();
+  const { profile } = useAuth();
   const [whatsappEntries, setWhatsappEntries] = useState<WhatsAppEntry[]>([]);
   const [editEntry, setEditEntry] = useState<WhatsAppEntry | null>(null);
   const [showToken, setShowToken] = useState(false);
