@@ -349,6 +349,7 @@ export default function CrmAutomacoes() {
                     if (!pipe) return;
                     const { data } = await supabase.from("crm_pipelines").insert({
                       name: `${pipe.name} (cópia)`, color: pipe.color,
+                      ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}),
                     }).select().single();
                     if (data) {
                       // Duplicate stages
