@@ -40,6 +40,7 @@ const PRESET_COLORS = [
 
 export default function CrmAutomacoes() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
