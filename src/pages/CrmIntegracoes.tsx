@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -145,6 +146,7 @@ function WebhookSection() {
 
 export default function CrmIntegracoes() {
   const { tenant } = useTenant();
+  const { profile } = useAuth();
   const [whatsappEntries, setWhatsappEntries] = useState<WhatsAppEntry[]>([]);
   const [editEntry, setEditEntry] = useState<WhatsAppEntry | null>(null);
   const [showToken, setShowToken] = useState(false);
@@ -332,7 +334,7 @@ export default function CrmIntegracoes() {
   const handleCreatePipeline = async () => {
     if (!newPipelineName.trim()) { toast.error("Digite um nome para o funil"); return; }
     setCreatingPipeline(true);
-    const { data: pipeline, error } = await supabase.from("crm_pipelines").insert({ name: newPipelineName.trim() }).select().single();
+    const { data: pipeline, error } = await supabase.from("crm_pipelines").insert({ name: newPipelineName.trim(), ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}) }).select().single();
     if (error || !pipeline) { toast.error("Erro ao criar funil"); setCreatingPipeline(false); return; }
 
     // Create default stages

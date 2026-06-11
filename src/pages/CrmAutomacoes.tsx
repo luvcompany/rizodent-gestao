@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { deduplicateTemplates } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ const PRESET_COLORS = [
 
 export default function CrmAutomacoes() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
@@ -177,6 +179,7 @@ export default function CrmAutomacoes() {
     if (!newPipelineName) return;
     const { data, error } = await supabase.from("crm_pipelines").insert({
       name: newPipelineName, color: newPipelineColor,
+      ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}),
     }).select().single();
     if (error) { toast.error(`Erro ao criar funil: ${error.message}`); return; }
     toast.success("Funil criado");
@@ -346,6 +349,7 @@ export default function CrmAutomacoes() {
                     if (!pipe) return;
                     const { data } = await supabase.from("crm_pipelines").insert({
                       name: `${pipe.name} (cópia)`, color: pipe.color,
+                      ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}),
                     }).select().single();
                     if (data) {
                       // Duplicate stages
