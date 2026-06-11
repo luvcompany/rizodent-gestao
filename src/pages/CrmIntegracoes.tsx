@@ -334,7 +334,7 @@ export default function CrmIntegracoes() {
   const handleCreatePipeline = async () => {
     if (!newPipelineName.trim()) { toast.error("Digite um nome para o funil"); return; }
     setCreatingPipeline(true);
-    const { data: pipeline, error } = await supabase.from("crm_pipelines").insert({ name: newPipelineName.trim() }).select().single();
+    const { data: pipeline, error } = await supabase.from("crm_pipelines").insert({ name: newPipelineName.trim(), ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}) }).select().single();
     if (error || !pipeline) { toast.error("Erro ao criar funil"); setCreatingPipeline(false); return; }
 
     // Create default stages
