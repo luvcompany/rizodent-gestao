@@ -1,58 +1,33 @@
-# Refazer TODA a aba Relatórios (as 4 abas) usando o calendário como fonte da verdade
+## Problema encontrado
 
-## Diagnóstico (confirmado no banco)
+O frontend já está enviando o `tenant_id` correto ao criar o funil. O erro continua porque a criação usa retorno imediato do registro criado, e a regra de leitura atual de `crm_pipelines` depende de uma função que consulta a própria tabela. Durante esse retorno do insert, a regra não consegue validar o funil recém-criado e o banco bloqueia com RLS.
 
-O calendário está certo e o relatório está errado. Verifiquei direto no banco de dados:
+Também há um segundo ponto provável: as etapas (`crm_stages`) têm `tenant_id`, mas alguns inserts de etapa ainda não enviam esse campo e não existe trigger para preencher automaticamente.
 
-| Período | Agendamentos | Contrataram | Não contrataram | Faltas | Pendentes |
-|---|---|---|---|---|---|
-| 01–06/jun | 65 | 11 | 13 | 41 | 0 |
-| 08–14/jun | 60 | 3 | 4 | 19 | 34 |
+## Plano de correção
 
-Esses números batem milimetricamente com o calendário (65 + 60, 14 contratados). O relatório atual erra por dois motivos:
+1. **Ajustar a regra de leitura de funis no banco**
+   - Trocar a política de leitura de `crm_pipelines` para validar acesso usando os próprios campos da linha nova (`tenant_id`, `allowed_roles`) em vez de chamar uma função que consulta `crm_pipelines` novamente.
+   - Manter o isolamento por clínica/tenant e os acessos por papel: `crc`, `gerente`, `posvenda` e `superadmin` conforme já definido.
 
-1. **Conta leads, não agendamentos** — um lead com 2 agendamentos vira "1", e o calendário mostra "2".
-2. **Mistura dois critérios de data** — usa a data de *criação* do agendamento em uns cards e a data *marcada* em outros, gerando números que não batem entre si nem com o calendário.
+2. **Garantir tenant automático em funis e etapas**
+   - Criar uma trigger segura para preencher `tenant_id` automaticamente em `crm_pipelines` e `crm_stages` quando o frontend não enviar.
+   - Corrigir registros antigos de etapas sem `tenant_id` usando o tenant do funil pai.
 
-Esses mesmos erros contaminam as 4 abas: Visão Geral, Origem & Conversão, Ações por Dia e Antecedência de Agendamento.
+3. **Reforçar o frontend onde cria etapas**
+   - Em `CrmAutomacoes.tsx`, incluir `tenant_id` ao criar nova etapa e ao duplicar etapas de um funil.
+   - Em `CrmIntegracoes.tsx`, incluir `tenant_id` ao criar as etapas padrão de um novo funil.
+   - Manter o `tenant_id` já enviado na criação dos funis.
 
-## Solução: reescrever as 4 abas com UMA regra única
+4. **Validar o fluxo do CRC**
+   - Repetir a criação de funil como usuário CRC.
+   - Confirmar que o funil aparece na lista e que as etapas são criadas sem erro.
 
-**Regra de ouro:** todo número de agendamento usa exatamente a mesma consulta do calendário — agendamentos com `data marcada` dentro do período selecionado, contados individualmente (não por lead).
-
-### Aba 1 — Visão Geral (reescrita completa)
-
-**KPIs do período:**
-- Agendamentos no período (= soma do calendário)
-- Compareceram (contratados + não contratados)
-- Contrataram
-- Faltas (no_show)
-- Pendentes/confirmados (ainda sem desfecho)
-- Taxa de comparecimento = compareceram ÷ (agendamentos com desfecho)
-- Taxa de contratação = contrataram ÷ compareceram
-
-**Atendimento diário:** tabela por dia — leads que conversaram, leads novos, agendamentos marcados para o dia e desfechos. Cada linha bate com a coluna do calendário.
-
-**Funil do período:** Conversaram (leads com mensagem recebida) → Agendaram (agendamentos criados no período = ação da equipe) → Compareceram → Contrataram (pelo desfecho dos agendamentos com data no período). Rótulos claros, sem percentuais cruzando critérios diferentes.
-
-**Resultado dos agendados:** quebra semanal espelhando o calendário — total, contratados (verde), não contratados (laranja), faltas (vermelho), pendentes (cinza).
-
-**Contratos diretos (informativo, separado):** leads na etapa Contratado sem agendamento (recorrentes do sistema antigo) — fora de todas as taxas.
-
-### Aba 2 — Origem & Conversão (corrigida)
-Mantém a análise por origem (anúncio, orgânico, etc.), mas "agendou/compareceu/contratou" passam a usar a regra de ouro: desfecho dos agendamentos do lead, com a mesma definição de período. Os totais da aba devem somar os mesmos números da Visão Geral.
-
-### Aba 3 — Ações por Dia (corrigida)
-Atividade da equipe por dia: mensagens enviadas/recebidas e agendamentos *criados* no dia (ação real do atendente), claramente separado dos agendamentos *marcados para* o dia (que pertencem ao calendário). Hoje os dois conceitos estão misturados.
-
-### Aba 4 — Antecedência de Agendamento (corrigida)
-Tempo entre a criação do agendamento e a data marcada, calculado por agendamento (não por lead), apenas sobre os agendamentos do período.
-
-### Validação obrigatória antes de entregar
-Depois de implementar, comparo lado a lado os números de cada aba com consultas diretas no banco para as duas semanas de junho (65 / 60 / 14 contratados) e só concluo quando bater 100% — incluindo a consistência entre abas (totais da Origem & Conversão = totais da Visão Geral).
-
-## Detalhes técnicos
-
-- `src/pages/CrmRelatorios.tsx`: reescrita completa das 4 abas. Busca de agendamentos por `scheduled_date` no período (query idêntica à do `CrmCalendario.tsx`), contagem por agendamento. Remoção dos memos que misturam `created_at` e `scheduled_date`.
-- `src/components/relatorios/OrigemConversaoTab.tsx`: reescrita com a mesma definição de agendado/compareceu/contratou.
-- Nenhuma mudança no banco de dados.
+```xml
+<presentation-actions>
+  <presentation-open-history>View History</presentation-open-history>
+</presentation-actions>
+<presentation-actions>
+<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
+</presentation-actions>
+```
