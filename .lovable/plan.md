@@ -1,33 +1,71 @@
-## Problema encontrado
+## Objetivo
 
-O frontend já está enviando o `tenant_id` correto ao criar o funil. O erro continua porque a criação usa retorno imediato do registro criado, e a regra de leitura atual de `crm_pipelines` depende de uma função que consulta a própria tabela. Durante esse retorno do insert, a regra não consegue validar o funil recém-criado e o banco bloqueia com RLS.
+Separar todos os leads originados de anúncios de **Zigomático** que ainda **não agendaram nem contrataram** para o funil **Zigomático**, preservando o estágio em que cada um está hoje.
 
-Também há um segundo ponto provável: as etapas (`crm_stages`) têm `tenant_id`, mas alguns inserts de etapa ainda não enviam esse campo e não existe trigger para preencher automaticamente.
+## 1. Criar estágios no funil Zigomático
 
-## Plano de correção
+O funil Zigomático (`13809677-…`) hoje tem só "Novo Lead". Vou completar com os mesmos estágios do Funil Principal, mantendo nomes, posições e cores:
 
-1. **Ajustar a regra de leitura de funis no banco**
-   - Trocar a política de leitura de `crm_pipelines` para validar acesso usando os próprios campos da linha nova (`tenant_id`, `allowed_roles`) em vez de chamar uma função que consulta `crm_pipelines` novamente.
-   - Manter o isolamento por clínica/tenant e os acessos por papel: `crc`, `gerente`, `posvenda` e `superadmin` conforme já definido.
+| Posição | Estágio | Cor |
+|---|---|---|
+| 0 | Novo Lead (já existe) | #3b82f6 (ajustar) |
+| 1 | Conversando | #f59e0b |
+| 2 | Relacionamento | #8b5cf6 |
+| 3 | Follow - Up | #f59e0b |
+| 4 | Recuperado | #8b5cf6 |
+| 5 | Pré - Agendado | #bff075 |
+| 6 | Agendado | #c0ee1b |
+| 7 | Não compareceu | #eab308 |
+| 8 | Reagendado | #6366f1 |
+| 9 | Contratado | #84cc16 |
+| 10 | Desqualificado | #ef4444 |
 
-2. **Garantir tenant automático em funis e etapas**
-   - Criar uma trigger segura para preencher `tenant_id` automaticamente em `crm_pipelines` e `crm_stages` quando o frontend não enviar.
-   - Corrigir registros antigos de etapas sem `tenant_id` usando o tenant do funil pai.
+Crio os 10 estágios faltantes e ajusto a cor do "Novo Lead" existente para casar com o padrão.
 
-3. **Reforçar o frontend onde cria etapas**
-   - Em `CrmAutomacoes.tsx`, incluir `tenant_id` ao criar nova etapa e ao duplicar etapas de um funil.
-   - Em `CrmIntegracoes.tsx`, incluir `tenant_id` ao criar as etapas padrão de um novo funil.
-   - Manter o `tenant_id` já enviado na criação dos funis.
+## 2. Critério de detecção (anúncios Zigomático)
 
-4. **Validar o fluxo do CRC**
-   - Repetir a criação de funil como usuário CRC.
-   - Confirmar que o funil aparece na lista e que as etapas são criadas sem erro.
+Um lead é considerado de Zigomático quando **qualquer** um destes campos contém `zigom` (case-insensitive, com/sem acento):
 
-```xml
-<presentation-actions>
-  <presentation-open-history>View History</presentation-open-history>
-</presentation-actions>
-<presentation-actions>
-<presentation-link url="https://docs.lovable.dev/tips-tricks/troubleshooting">Troubleshooting docs</presentation-link>
-</presentation-actions>
-```
+- `nome_anuncio`
+- `titulo_anuncio`
+- `descricao_anuncio`
+- `servico_interesse`
+
+## 3. Critério de status (ainda não agendou/contratou)
+
+Mover apenas leads cujo estágio atual (em **qualquer funil** do tenant Rizodent) tenha um destes nomes:
+
+- Novo Lead
+- Conversando
+- Relacionamento
+- Follow - Up
+- Recuperado
+- Não compareceu
+
+**Não** serão movidos: Pré-Agendado, Agendado, Reagendado, Contratado, Desqualificado (e qualquer outro estágio fora da lista acima).
+
+## 4. Migração dos leads
+
+Para cada lead elegível:
+
+1. Identifica o estágio atual pelo **nome**.
+2. Mapeia para o estágio de mesmo nome no funil Zigomático.
+3. Atualiza `pipeline_id` → Zigomático e `stage_id` → estágio espelho.
+
+O trigger existente `sync_lead_stage_history` registra automaticamente a transição no histórico, então o rastro fica preservado. O `enforce_lead_tenant_consistency` continua válido porque o novo pipeline/stage é do mesmo tenant.
+
+Pré-visualização atual (Funil Principal Rizodent):
+
+- Novo Lead: 3 · Conversando: 1 · Relacionamento: 8 · Follow-Up: 13 · Recuperado: 55 · Não compareceu: 12 → **~92 leads**
+
+Se houver leads de Zigomático em outros funis do mesmo tenant nos mesmos estágios, eles também serão movidos.
+
+## 5. Validação pós-migração
+
+Depois da execução, rodo uma contagem por estágio no funil Zigomático para confirmar a distribuição e te mostro o total movido.
+
+## Notas técnicas
+
+- Tudo feito em migration única e idempotente (verifica existência dos estágios antes de criar).
+- O `UPDATE` em `crm_leads` é uma operação de dados; será feito dentro da mesma migration (lícito porque vem logo após a criação dos estágios e depende deles).
+- Bots/automação/follow-up vinculados aos estágios antigos continuam disparando para os leads que **permaneceram** no Funil Principal. Os leads movidos passarão a depender de automações configuradas no funil Zigomático — hoje ele não tem nenhuma, então **eles ficarão sem follow-up automático até você configurar**. Posso, em um passo seguinte, copiar os follow-ups/automações do Funil Principal para o Zigomático se quiser.
