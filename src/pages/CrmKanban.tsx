@@ -1066,11 +1066,17 @@ export default function CrmKanban() {
       if (kanbanFilters.stageId && l.stage_id !== kanbanFilters.stageId) return false;
       if (kanbanFilters.tags.length && !kanbanFilters.tags.some((t) => l.tags?.includes(t))) return false;
       if (kanbanFilters.source) {
-        if (kanbanFilters.source === "anuncio") {
-          const s = (l.source || "").toLowerCase();
-          if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
-        } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
+        const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const src = normalize(l.source || "");
+        const f = normalize(kanbanFilters.source);
+        if (f === "anuncio") {
+          if (!src.includes("_ad") && src !== "anuncio") return false;
+        } else {
+          // Match by substring so values como "Instagram Lite (@x)" / "facebook_ad" / "indicação" sejam capturados.
+          if (!src.includes(f)) return false;
+        }
       }
+
       if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
       if (kanbanFilters.adAccountId && (l.ad_account_id || "") !== kanbanFilters.adAccountId) return false;
       if (kanbanFilters.adId && (l.ad_id || "") !== kanbanFilters.adId) return false;
