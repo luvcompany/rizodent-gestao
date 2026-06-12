@@ -742,11 +742,16 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (filters.status === "no_reply" && !!l.last_direction) return false;
       if (filters.tags.length && !filters.tags.some((t) => l.tags?.includes(t))) return false;
       if (filters.source) {
-        if (filters.source === "anuncio") {
-          const s = (l.source || "").toLowerCase();
-          if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
-        } else if (l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
+        const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const src = normalize(l.source || "");
+        const f = normalize(filters.source);
+        if (f === "anuncio") {
+          if (!src.includes("_ad") && src !== "anuncio") return false;
+        } else {
+          if (!src.includes(f)) return false;
+        }
       }
+
       if (filters.cidade && (l.cidade || "") !== filters.cidade) return false;
       if (filters.adAccountId && ((l as any).ad_account_id || "") !== filters.adAccountId) return false;
       if (filters.adId && ((l as any).ad_id || "") !== filters.adId) return false;
