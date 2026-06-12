@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { evaluateConditions, type ConditionsConfig } from "../_shared/automationConditions.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -101,13 +102,19 @@ Deno.serve(async (req) => {
     }
 
     const leads = await fetchAllLeads(admin, automation.stage_id, pipelineTenantId || userTenantId || null);
+    const conditions = (actionConfig.conditions as ConditionsConfig | undefined) || undefined;
+    const hasConditions = !!(conditions && Array.isArray(conditions.rules) && conditions.rules.length > 0);
     const eligibleLeads = leads.filter((lead) => {
       const digits = String(lead.phone || "").replace(/\D/g, "");
-      return digits.length >= 8;
+      if (digits.length < 8) return false;
+      if (hasConditions && !evaluateConditions(conditions!, lead as any)) return false;
+      return true;
     });
 
+    console.log(`[enqueue-stage-automation] total=${leads.length} eligible=${eligibleLeads.length} hasConditions=${hasConditions}`);
+
     if (eligibleLeads.length === 0) {
-      return json({ success: true, inserted: 0, total_leads: leads.length, message: "Nenhum lead com telefone encontrado nesta etapa" });
+      return json({ success: true, inserted: 0, total_leads: leads.length, message: hasConditions ? "Nenhum lead atende às condições configuradas" : "Nenhum lead com telefone encontrado nesta etapa" });
     }
 
     let inserted = 0;
@@ -142,12 +149,12 @@ Deno.serve(async (req) => {
 });
 
 async function fetchAllLeads(admin: any, stageId: string, tenantId: string | null) {
-  const leads: Array<{ id: string; phone: string | null }> = [];
+  const leads: Array<Record<string, any>> = [];
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     let query = admin
       .from("crm_leads")
-      .select("id, phone")
+      .select("id, phone, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
       .eq("stage_id", stageId)
       .range(from, from + pageSize - 1);
     if (tenantId) query = query.eq("tenant_id", tenantId);
