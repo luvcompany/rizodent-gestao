@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { evaluateConditions, type ConditionsConfig } from "../_shared/automationConditions.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
