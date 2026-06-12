@@ -158,37 +158,30 @@ Deno.serve(async (req) => {
     const apiKeyHeader = req.headers.get("apikey") || "";
     const token = authHeader.replace("Bearer ", "");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-    const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      serviceRoleKey,
+    );
+
     const isServiceKey =
-      (!!serviceRoleKey && (token === serviceRoleKey || apiKeyHeader === serviceRoleKey));
+      !!serviceRoleKey && (token === serviceRoleKey || apiKeyHeader === serviceRoleKey);
+
     if (!isServiceKey) {
-      if (!authHeader) {
+      if (!token) {
         return new Response(JSON.stringify({ error: "Missing authorization header" }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const anonClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_ANON_KEY")!
-      );
-      const { data: { user }, error: authError } = await anonClient.auth.getUser(token);
-      if (authError || !user) {
-        // Allow if apikey is the public anon/publishable key (gateway may rewrite Authorization for internal calls)
-        if (!apiKeyHeader || (apiKeyHeader !== anonKey && apiKeyHeader !== publishableKey && apiKeyHeader !== serviceRoleKey)) {
-          console.warn(`[send-whatsapp-message] Unauthorized: token len=${token.length}, apikey len=${apiKeyHeader.length}, serviceKey len=${serviceRoleKey.length}`);
-          return new Response(JSON.stringify({ error: "Unauthorized" }), {
-            status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        console.warn(`[send-whatsapp-message] Allowed via apikey fallback (no user JWT)`);
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+      if (claimsError || !claimsData?.claims?.sub) {
+        console.warn(`[send-whatsapp-message] Unauthorized via getClaims: tokenLen=${token.length}, err=${claimsError?.message || "no-sub"}`);
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     const {
       lead_id,
