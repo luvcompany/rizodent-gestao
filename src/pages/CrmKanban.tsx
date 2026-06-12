@@ -1290,7 +1290,9 @@ export default function CrmKanban() {
                 const stageLeads = stageLeadsMap.get(stage.id) || [];
                 const visibleCount = stageVisibleCounts[stage.id] || PAGE_SIZE;
                 const visibleLeads = stageLeads.slice(0, visibleCount);
-                const totalStageLeads = stageTotalCounts[stage.id] ?? stageLeads.length;
+                const totalStageLeads = hasClientFilters
+                  ? stageLeads.length
+                  : (stageTotalCounts[stage.id] ?? stageLeads.length);
                 const hasMore = totalStageLeads > stageLeads.length || stageLeads.length > visibleCount;
                 const stageValue = stageLeads.reduce((a, l) => a + (leadMonthValueMap.get(l.id) || 0), 0);
                 return (
