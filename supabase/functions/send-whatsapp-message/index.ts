@@ -662,6 +662,8 @@ Deno.serve(async (req) => {
       });
     }
 
+    console.log(`[send-whatsapp] Sending to META phoneId=${phoneNumberId} tokenLen=${whatsappToken.length} type=${type} payload=${JSON.stringify(waBody)}`);
+
     const waResponse = await fetch(
       `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
       {
@@ -679,7 +681,8 @@ Deno.serve(async (req) => {
     if (!waResponse.ok) {
       const metaError = waData?.error?.message || waData?.error?.error_user_msg || JSON.stringify(waData?.error || waData);
       const metaErrorCode = waData?.error?.code || waResponse.status;
-      console.error(`[send-whatsapp] META API error (${metaErrorCode}): ${metaError}`);
+      console.error(`[send-whatsapp] META API error (${metaErrorCode}) status=${waResponse.status}: ${metaError} | full=${JSON.stringify(waData)}`);
+
 
       // Translate common META errors to user-friendly Portuguese
       let friendlyError = metaError;
