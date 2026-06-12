@@ -149,12 +149,12 @@ Deno.serve(async (req) => {
 });
 
 async function fetchAllLeads(admin: any, stageId: string, tenantId: string | null) {
-  const leads: Array<{ id: string; phone: string | null }> = [];
+  const leads: Array<Record<string, any>> = [];
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     let query = admin
       .from("crm_leads")
-      .select("id, phone")
+      .select("id, phone, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
       .eq("stage_id", stageId)
       .range(from, from + pageSize - 1);
     if (tenantId) query = query.eq("tenant_id", tenantId);
