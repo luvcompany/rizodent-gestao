@@ -1290,8 +1290,11 @@ export default function CrmKanban() {
                 const stageLeads = stageLeadsMap.get(stage.id) || [];
                 const visibleCount = stageVisibleCounts[stage.id] || PAGE_SIZE;
                 const visibleLeads = stageLeads.slice(0, visibleCount);
-                const totalStageLeads = stageTotalCounts[stage.id] ?? stageLeads.length;
-                const hasMore = totalStageLeads > stageLeads.length || stageLeads.length > visibleCount;
+                const serverTotal = stageTotalCounts[stage.id] ?? stageLeads.length;
+                // Quando filtros client-side estão ativos, o total exibido deve refletir
+                // os leads filtrados — não o total bruto vindo do servidor.
+                const totalStageLeads = hasClientFilters ? stageLeads.length : serverTotal;
+                const hasMore = serverTotal > stageLeads.length || stageLeads.length > visibleCount;
                 const stageValue = stageLeads.reduce((a, l) => a + (leadMonthValueMap.get(l.id) || 0), 0);
                 return (
                   <div key={stage.id} className="flex items-start gap-1">
@@ -1299,7 +1302,11 @@ export default function CrmKanban() {
                       <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
                       <div className="px-3 py-2 flex-shrink-0">
                         <div className="font-semibold text-sm text-foreground">{stage.name}</div>
-                        <div className="text-xs text-muted-foreground">{totalStageLeads} leads · {formatCurrency(stageValue)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {totalStageLeads} leads
+                          {hasClientFilters && serverTotal !== totalStageLeads ? ` de ${serverTotal}` : ""}
+                          {" · "}{formatCurrency(stageValue)}
+                        </div>
                       </div>
 
                       {idx === 0 && (
