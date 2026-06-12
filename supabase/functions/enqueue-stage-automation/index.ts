@@ -102,13 +102,19 @@ Deno.serve(async (req) => {
     }
 
     const leads = await fetchAllLeads(admin, automation.stage_id, pipelineTenantId || userTenantId || null);
+    const conditions = (actionConfig.conditions as ConditionsConfig | undefined) || undefined;
+    const hasConditions = !!(conditions && Array.isArray(conditions.rules) && conditions.rules.length > 0);
     const eligibleLeads = leads.filter((lead) => {
       const digits = String(lead.phone || "").replace(/\D/g, "");
-      return digits.length >= 8;
+      if (digits.length < 8) return false;
+      if (hasConditions && !evaluateConditions(conditions!, lead as any)) return false;
+      return true;
     });
 
+    console.log(`[enqueue-stage-automation] total=${leads.length} eligible=${eligibleLeads.length} hasConditions=${hasConditions}`);
+
     if (eligibleLeads.length === 0) {
-      return json({ success: true, inserted: 0, total_leads: leads.length, message: "Nenhum lead com telefone encontrado nesta etapa" });
+      return json({ success: true, inserted: 0, total_leads: leads.length, message: hasConditions ? "Nenhum lead atende às condições configuradas" : "Nenhum lead com telefone encontrado nesta etapa" });
     }
 
     let inserted = 0;
