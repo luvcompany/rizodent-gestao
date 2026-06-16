@@ -66,6 +66,10 @@ export default function CrmAutomacoes() {
   });
 
   const [deleteStageId, setDeleteStageId] = useState<string | null>(null);
+  const [deleteStageLeadCount, setDeleteStageLeadCount] = useState<number>(0);
+  const [deleteStageLoading, setDeleteStageLoading] = useState(false);
+  const [deleteStageAction, setDeleteStageAction] = useState<"move" | "delete">("move");
+  const [deleteStageMoveTo, setDeleteStageMoveTo] = useState<string>("");
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
   const [newPipelineName, setNewPipelineName] = useState("");
   const [newPipelineColor, setNewPipelineColor] = useState("#6366f1");
@@ -190,16 +194,52 @@ export default function CrmAutomacoes() {
     fetchData(data.id);
   };
 
+  const openDeleteStage = async (stageId: string) => {
+    setDeleteStageId(stageId);
+    setDeleteStageAction("move");
+    setDeleteStageMoveTo("");
+    setDeleteStageLeadCount(0);
+    const { count } = await supabase
+      .from("crm_leads")
+      .select("id", { count: "exact", head: true })
+      .eq("stage_id", stageId);
+    setDeleteStageLeadCount(count || 0);
+  };
+
+  const closeDeleteStage = () => {
+    setDeleteStageId(null);
+    setDeleteStageMoveTo("");
+    setDeleteStageLeadCount(0);
+    setDeleteStageAction("move");
+  };
+
   const handleDeleteStage = async () => {
     if (!deleteStageId) return;
-    const { error } = await supabase.from("crm_stages").delete().eq("id", deleteStageId);
-    if (error) { toast.error("Erro ao excluir etapa. Mova os leads primeiro."); }
-    else {
+    setDeleteStageLoading(true);
+    try {
+      if (deleteStageLeadCount > 0) {
+        if (deleteStageAction === "move") {
+          if (!deleteStageMoveTo) { toast.error("Selecione uma etapa de destino para os leads"); return; }
+          const { error: moveErr } = await supabase
+            .from("crm_leads")
+            .update({ stage_id: deleteStageMoveTo, updated_at: new Date().toISOString() })
+            .eq("stage_id", deleteStageId);
+          if (moveErr) { toast.error("Erro ao mover leads: " + moveErr.message); return; }
+          toast.success(`${deleteStageLeadCount} lead(s) movido(s)`);
+        } else {
+          const { error: delLeadsErr } = await supabase.from("crm_leads").delete().eq("stage_id", deleteStageId);
+          if (delLeadsErr) { toast.error("Erro ao excluir leads: " + delLeadsErr.message); return; }
+        }
+      }
+      const { error } = await supabase.from("crm_stages").delete().eq("id", deleteStageId);
+      if (error) { toast.error("Erro ao excluir etapa: " + error.message); return; }
       toast.success("Etapa excluída");
       setStages(prev => prev.filter(s => s.id !== deleteStageId));
       setAutomations(prev => prev.filter(a => a.stage_id !== deleteStageId));
+      closeDeleteStage();
+    } finally {
+      setDeleteStageLoading(false);
     }
-    setDeleteStageId(null);
   };
 
   const handleSaveAutomation = async () => {
@@ -527,7 +567,7 @@ export default function CrmAutomacoes() {
                                         </div>
                                       </PopoverContent>
                                     </Popover>
-                                    <button onClick={() => setDeleteStageId(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                    <button onClick={() => openDeleteStage(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
                                       <Trash2 size={14} />
                                     </button>
                                   </div>
@@ -653,13 +693,52 @@ export default function CrmAutomacoes() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!deleteStageId} onOpenChange={() => setDeleteStageId(null)}>
-        <DialogContent className="max-w-sm">
+      <Dialog open={!!deleteStageId} onOpenChange={(o) => { if (!o) closeDeleteStage(); }}>
+        <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Excluir Etapa?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Todos os leads e automações desta etapa serão excluídos. Deseja continuar?</p>
+          {deleteStageLeadCount > 0 ? (
+            <div className="space-y-4">
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                ⚠️ Existem <strong>{deleteStageLeadCount} lead(s)</strong> nesta etapa. O que deseja fazer?
+              </div>
+              <div className="space-y-2 text-sm">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" name="delStageAction" checked={deleteStageAction === "move"} onChange={() => setDeleteStageAction("move")} className="mt-1" />
+                  <div className="flex-1">
+                    <div className="font-medium">Mover os leads para outra etapa</div>
+                    {deleteStageAction === "move" && (
+                      <Select value={deleteStageMoveTo} onValueChange={setDeleteStageMoveTo}>
+                        <SelectTrigger className="mt-2"><SelectValue placeholder="Selecione a etapa de destino" /></SelectTrigger>
+                        <SelectContent>
+                          {stages.filter(s => s.id !== deleteStageId).map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="radio" name="delStageAction" checked={deleteStageAction === "delete"} onChange={() => setDeleteStageAction("delete")} className="mt-1" />
+                  <div>
+                    <div className="font-medium text-destructive">Excluir os leads junto com a etapa</div>
+                    <div className="text-xs text-muted-foreground">Esta ação não pode ser desfeita.</div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Esta etapa está vazia. As automações vinculadas também serão removidas. Deseja continuar?</p>
+          )}
           <div className="flex gap-2 justify-end mt-4">
-            <Button variant="outline" onClick={() => setDeleteStageId(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleDeleteStage}>Excluir</Button>
+            <Button variant="outline" onClick={closeDeleteStage} disabled={deleteStageLoading}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteStage}
+              disabled={deleteStageLoading || (deleteStageLeadCount > 0 && deleteStageAction === "move" && !deleteStageMoveTo)}
+            >
+              {deleteStageLoading ? "Processando..." : deleteStageLeadCount > 0 && deleteStageAction === "move" ? "Mover e excluir etapa" : "Excluir"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
