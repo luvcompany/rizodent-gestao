@@ -2065,6 +2065,57 @@ export type Database = {
           },
         ]
       }
+      deleted_leads_backup: {
+        Row: {
+          deleted_at: string
+          deleted_by: string | null
+          expires_at: string
+          id: string
+          instagram_messages_snapshot: Json
+          lead_name: string | null
+          lead_phone: string | null
+          lead_snapshot: Json
+          messages_count: number
+          messages_snapshot: Json
+          original_lead_id: string
+          restored_at: string | null
+          restored_by: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          deleted_at?: string
+          deleted_by?: string | null
+          expires_at?: string
+          id?: string
+          instagram_messages_snapshot?: Json
+          lead_name?: string | null
+          lead_phone?: string | null
+          lead_snapshot: Json
+          messages_count?: number
+          messages_snapshot?: Json
+          original_lead_id: string
+          restored_at?: string | null
+          restored_by?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          deleted_at?: string
+          deleted_by?: string | null
+          expires_at?: string
+          id?: string
+          instagram_messages_snapshot?: Json
+          lead_name?: string | null
+          lead_phone?: string | null
+          lead_snapshot?: Json
+          messages_count?: number
+          messages_snapshot?: Json
+          original_lead_id?: string
+          restored_at?: string | null
+          restored_by?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       funnel_channels: {
         Row: {
           channel_config: Json | null
@@ -3272,6 +3323,7 @@ export type Database = {
           lead_name: string
         }[]
       }
+      cleanup_expired_lead_backups: { Args: never; Returns: number }
       crm_unread_leads_count: { Args: never; Returns: number }
       current_tenant_id: { Args: never; Returns: string }
       debug_audio_messages: {
@@ -3513,6 +3565,7 @@ export type Database = {
           completed_orphans: number
         }[]
       }
+      restore_deleted_lead: { Args: { _backup_id: string }; Returns: string }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
       update_whatsapp_template_sharing: {
