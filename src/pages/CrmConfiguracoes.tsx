@@ -11,7 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Upload, Bell, CheckCircle2, Ban, RotateCcw } from "lucide-react";
+import { Upload, Bell, CheckCircle2, Ban, RotateCcw, Trash2, MessageSquare } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 
 /* ═══════════════════════════════════════════════════
    Importação em Massa
@@ -313,22 +320,212 @@ function BlockedTab() {
 }
 
 /* ═══════════════════════════════════════════════════
+   Lixeira — Conversas Excluídas (retenção 30 dias)
+   ═══════════════════════════════════════════════════ */
+type DeletedBackup = {
+  id: string;
+  original_lead_id: string;
+  lead_name: string | null;
+  lead_phone: string | null;
+  messages_count: number;
+  deleted_at: string;
+  expires_at: string;
+  restored_at: string | null;
+  lead_snapshot: any;
+  messages_snapshot: any[];
+  instagram_messages_snapshot: any[];
+};
+
+function LixeiraTab() {
+  const [items, setItems] = useState<DeletedBackup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [viewItem, setViewItem] = useState<DeletedBackup | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DeletedBackup | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("deleted_leads_backup" as any)
+      .select("*")
+      .order("deleted_at", { ascending: false })
+      .limit(500);
+    if (error) toast.error("Erro ao carregar lixeira: " + error.message);
+    setItems((data as any) || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const restore = async (bk: DeletedBackup) => {
+    setBusyId(bk.id);
+    const { data, error } = await supabase.rpc("restore_deleted_lead" as any, { _backup_id: bk.id });
+    setBusyId(null);
+    if (error) { toast.error("Erro ao restaurar: " + error.message); return; }
+    toast.success(`Lead restaurado (${bk.messages_count} mensagens)`);
+    await load();
+  };
+
+  const purge = async (bk: DeletedBackup) => {
+    setBusyId(bk.id);
+    const { error } = await supabase.from("deleted_leads_backup" as any).delete().eq("id", bk.id);
+    setBusyId(null);
+    setConfirmDelete(null);
+    if (error) { toast.error("Erro ao apagar definitivamente: " + error.message); return; }
+    toast.success("Backup apagado definitivamente");
+    setItems((prev) => prev.filter((i) => i.id !== bk.id));
+  };
+
+  const filtered = items.filter((i) => {
+    if (!search.trim()) return true;
+    const t = search.toLowerCase();
+    return (i.lead_name || "").toLowerCase().includes(t)
+      || (i.lead_phone || "").toLowerCase().includes(t);
+  });
+
+  const daysLeft = (expires_at: string) => {
+    const ms = new Date(expires_at).getTime() - Date.now();
+    return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-lg font-semibold">Lixeira de Conversas</h3>
+        <Input placeholder="Buscar por nome ou telefone" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Toda vez que um lead é excluído (manualmente ou via exclusão de etapa), uma cópia completa fica aqui por <strong>30 dias</strong>. Você pode restaurar com todo o histórico de mensagens ou apagar definitivamente.
+      </p>
+      <Card className="p-0 overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">Carregando...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            {items.length === 0 ? "Nenhum lead excluído nos últimos 30 dias." : "Nenhum resultado."}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Lead</TableHead>
+                <TableHead>Telefone</TableHead>
+                <TableHead className="text-right">Mensagens</TableHead>
+                <TableHead>Excluído em</TableHead>
+                <TableHead>Expira em</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((bk) => (
+                <TableRow key={bk.id}>
+                  <TableCell className="font-medium">{bk.lead_name || "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{bk.lead_phone || "—"}</TableCell>
+                  <TableCell className="text-right">{bk.messages_count}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{new Date(bk.deleted_at).toLocaleString("pt-BR")}</TableCell>
+                  <TableCell className="text-sm">
+                    <Badge variant={daysLeft(bk.expires_at) <= 3 ? "destructive" : "secondary"}>
+                      {daysLeft(bk.expires_at)} dia(s)
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {bk.restored_at ? (
+                      <Badge variant="default" className="gap-1"><CheckCircle2 size={12} /> Restaurado</Badge>
+                    ) : (
+                      <Badge variant="outline">Na lixeira</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex gap-1 justify-end">
+                      <Button size="sm" variant="outline" onClick={() => setViewItem(bk)} title="Ver conversa">
+                        <MessageSquare size={14} />
+                      </Button>
+                      {!bk.restored_at && (
+                        <Button size="sm" variant="outline" disabled={busyId === bk.id} onClick={() => restore(bk)}>
+                          <RotateCcw size={14} className="mr-1" /> Restaurar
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmDelete(bk)} title="Apagar definitivamente">
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      {/* Preview das mensagens */}
+      <Dialog open={!!viewItem} onOpenChange={(o) => !o && setViewItem(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{viewItem?.lead_name || "Lead"}</DialogTitle>
+            <DialogDescription>
+              {viewItem?.lead_phone} · {viewItem?.messages_count} mensagem(ns)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {(viewItem?.messages_snapshot || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">Nenhuma mensagem registrada.</p>
+            ) : (
+              viewItem?.messages_snapshot.map((m: any, i: number) => (
+                <div key={i} className={`p-2 rounded-md text-sm ${m.direction === "inbound" ? "bg-muted" : "bg-primary/10 ml-12"}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-muted-foreground">{m.direction === "inbound" ? "← Recebida" : "→ Enviada"} · {m.type}</span>
+                    <span className="text-xs text-muted-foreground">{m.created_at ? new Date(m.created_at).toLocaleString("pt-BR") : ""}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap break-words">{m.content || (m.media_url ? `[mídia: ${m.media_url}]` : "—")}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de exclusão definitiva */}
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apagar definitivamente?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O backup de <strong>{confirmDelete?.lead_name}</strong> e todas as {confirmDelete?.messages_count} mensagens serão excluídos para sempre. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmDelete && purge(confirmDelete)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Apagar definitivamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
    PÁGINA PRINCIPAL — Configurações CRM
    ═══════════════════════════════════════════════════ */
 export default function CrmConfiguracoes() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Configurações</h1>
-      <p className="text-muted-foreground">Importação de dados, notificações e leads bloqueados.</p>
+      <p className="text-muted-foreground">Importação de dados, notificações, leads bloqueados e lixeira.</p>
       <Tabs defaultValue="import" className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="import"><Upload size={14} className="mr-1" /> Importação</TabsTrigger>
           <TabsTrigger value="notifications"><Bell size={14} className="mr-1" /> Notificações</TabsTrigger>
           <TabsTrigger value="blocked"><Ban size={14} className="mr-1" /> Bloqueados</TabsTrigger>
+          <TabsTrigger value="lixeira"><Trash2 size={14} className="mr-1" /> Lixeira</TabsTrigger>
         </TabsList>
         <TabsContent value="import"><ImportTab /></TabsContent>
         <TabsContent value="notifications"><NotificationsTab /></TabsContent>
         <TabsContent value="blocked"><BlockedTab /></TabsContent>
+        <TabsContent value="lixeira"><LixeiraTab /></TabsContent>
       </Tabs>
     </div>
   );
