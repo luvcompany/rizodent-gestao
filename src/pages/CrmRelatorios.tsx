@@ -275,10 +275,10 @@ export default function CrmRelatorios() {
     return d >= range.start.getTime() && d <= range.end.getTime();
   };
 
-  // Coorte: leads criados no período (do pipeline selecionado — "novos leads")
+  // Coorte: leads criados no período (todos os pipelines)
   const cohort = useMemo(
-    () => leads.filter(l => l.pipeline_id === pipelineId && inRange(l.created_at)),
-    [leads, range, pipelineId]
+    () => leads.filter(l => inRange(l.created_at)),
+    [leads, range]
   );
   const cohortIds = useMemo(() => new Set(cohort.map(l => l.id)), [cohort]);
   const stageById = useMemo(() => new Map(stages.map(s => [s.id, s])), [stages]);
