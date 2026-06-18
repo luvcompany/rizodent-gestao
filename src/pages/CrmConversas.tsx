@@ -38,6 +38,7 @@ import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { isWithinInterval } from "date-fns";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
+import { useIsCrmMobile } from "@/hooks/use-mobile";
 
 type LeadConversation = {
   id: string;
