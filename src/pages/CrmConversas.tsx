@@ -1214,7 +1214,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-y-auto">
                 {isCrmMobile && (
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card sticky top-0 z-10">
-                    <Button variant="ghost" size="sm" className="h-8 gap-1 -ml-1" onClick={() => setRightPanelVisible(false)}>
+                    <Button variant="ghost" size="sm" className="h-8 gap-1 -ml-1" onClick={() => isCrmMobile ? setMobileShowDetails(false) : setRightPanelVisible(false)}>
                       <PanelLeftOpen size={16} /> Voltar ao chat
                     </Button>
                   </div>
