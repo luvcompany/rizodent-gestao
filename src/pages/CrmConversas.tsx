@@ -273,8 +273,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     setSelectedLeadId(lead.id);
     setSelectedLead(lead);
     // On mobile: opening a lead should land on the chat view, not the details panel.
-    if (isCrmMobile) setRightPanelVisible(false);
-  }, [isCrmMobile]);
+    setMobileShowDetails(false);
+  }, []);
 
   // ===== Bot Active Execution State =====
   const checkExecution = useCallback(async () => {
