@@ -812,10 +812,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   return (
     <div className="flex h-full w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
-      <ResizablePanelGroup direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
+      <ResizablePanelGroup key={isCrmMobile ? "m" : "d"} direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
         {/* LEFT PANEL - Leads list */}
-        {leftPanelVisible && (
-        <><ResizablePanel defaultSize={24} minSize={20} maxSize={28} className="min-w-0 overflow-hidden">
+        {effLeftVisible && (
+        <><ResizablePanel defaultSize={isCrmMobile ? 100 : 24} minSize={isCrmMobile ? 100 : 20} maxSize={isCrmMobile ? 100 : 28} className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-hidden">
               {/* URL filter banner */}
               {(urlGhost || urlAppointmentStatus || urlInactiveDays) && (
