@@ -1065,8 +1065,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   </div>
                 </div>
                 <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRightPanelVisible(!rightPanelVisible)}>
-                  {rightPanelVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => isCrmMobile ? setMobileShowDetails(true) : setRightPanelVisible(!rightPanelVisible)}>
+                  {(isCrmMobile ? false : rightPanelVisible) ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>
               </div>
 
