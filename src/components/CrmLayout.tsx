@@ -319,11 +319,11 @@ const CrmLayout = () => {
           </button>
           <div className="ml-auto flex items-center gap-3">
             <NotificationBell />
-            <span className="text-sm text-muted-foreground">CRM — Gestão de Leads</span>
+            <span className="hidden md:inline text-sm text-muted-foreground">CRM — Gestão de Leads</span>
           </div>
         </header>
 
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-6">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-2 sm:p-4 lg:p-6">
           <TaskReminderWatcher />
           <Outlet />
         </main>
