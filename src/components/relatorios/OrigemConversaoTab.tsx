@@ -273,12 +273,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       <Card className="p-4 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
-          <Select value={pipelineId} onValueChange={setPipelineId}>
-            <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
