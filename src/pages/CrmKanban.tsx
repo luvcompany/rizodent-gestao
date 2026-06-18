@@ -1263,7 +1263,7 @@ export default function CrmKanban() {
       </div>
 
       {/* Metrics bar - FIXED, no horizontal scroll */}
-      <div style={{ flexShrink: 0, width: "100%", overflowX: "hidden" }} className="bg-card border-b border-border px-6 py-2 flex items-center gap-6 text-sm flex-wrap">
+      <div style={{ flexShrink: 0, width: "100%", overflowX: "auto" }} className="bg-card border-b border-border px-3 lg:px-6 py-1.5 lg:py-2 flex items-center gap-3 lg:gap-6 text-xs lg:text-sm flex-nowrap lg:flex-wrap whitespace-nowrap">
         <MetricBadge icon={<Calendar size={14} />} label="Com tarefas para hoje" value={withTaskToday} variant="info"
           onClick={() => openMetricModal("Com tarefas para hoje", l => taskTodayLeadIds.has(l.id))} />
         <MetricBadge icon={<Users size={14} />} label="Sem tarefas atribuídas" value={noTasks} variant="muted"
