@@ -1282,7 +1282,7 @@ export default function CrmKanban() {
       {viewMode === "kanban" ? (
         <div
           style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }}
-          className="p-4"
+          className="p-2 lg:p-4 snap-x snap-mandatory lg:snap-none"
         >
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-3 h-full min-w-max">
