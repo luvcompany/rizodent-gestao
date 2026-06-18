@@ -1296,8 +1296,8 @@ export default function CrmKanban() {
                 const hasMore = totalStageLeads > stageLeads.length || stageLeads.length > visibleCount;
                 const stageValue = stageLeads.reduce((a, l) => a + (leadMonthValueMap.get(l.id) || 0), 0);
                 return (
-                  <div key={stage.id} className="flex items-start gap-1">
-                    <div className="w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
+                  <div key={stage.id} className="flex items-start gap-1 snap-center lg:snap-align-none">
+                    <div className="w-[82vw] max-w-[320px] sm:w-[280px] flex-shrink-0 flex flex-col bg-secondary/50 rounded-lg overflow-hidden h-full">
                       <div className="h-1 flex-shrink-0" style={{ backgroundColor: stage.color }} />
                       <div className="px-3 py-2 flex-shrink-0">
                         <div className="font-semibold text-sm text-foreground">{stage.name}</div>
