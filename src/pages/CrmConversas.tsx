@@ -227,15 +227,19 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const isCrmMobile = useIsCrmMobile();
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
-  // On mobile, force single-panel view: list OR chat OR lead details, never combined.
-  const effLeftVisible = isCrmMobile
-    ? (!selectedLeadId || (!rightPanelVisible && leftPanelVisible && false)) // never combine: only when no lead selected
-    : leftPanelVisible;
+  // On mobile, force single-panel view: list | chat | lead details
+  const effLeftVisible = isCrmMobile ? !selectedLeadId : leftPanelVisible;
   const effRightVisible = isCrmMobile
     ? (!!selectedLeadId && rightPanelVisible)
     : rightPanelVisible;
-  // helper used by the chat header back button on mobile
-  const mobileBackToList = () => { setSelectedLeadId(null); setSelectedLead(null); setRightPanelVisible(false); };
+  const effCenterVisible = isCrmMobile
+    ? (!!selectedLeadId && !rightPanelVisible)
+    : true;
+  const mobileBackToList = () => {
+    setSelectedLeadId(null);
+    setSelectedLead(null);
+    setRightPanelVisible(false);
+  };
   const [urlFiltersApplied, setUrlFiltersApplied] = useState(false);
   const [filters, setFilters] = useState<ConversationFilterValues>(() => {
     // Initialize from URL params if present
