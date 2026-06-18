@@ -95,7 +95,11 @@ function mean(arr: number[]): number {
   return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
-const dateOnly = (iso: string) => iso.slice(0, 10);
+// Formata uma Date em "YYYY-MM-DD" no horário LOCAL (evita o off-by-one de
+// fuso quando convertemos via toISOString — endOfDay BRT vira o dia seguinte em UTC,
+// fazendo a query lte(scheduled_date, ...) incluir um dia a mais).
+const localDateOnly = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const dayKeyFromDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -138,8 +142,8 @@ export default function CrmRelatorios() {
 
     const startISO = range.start.toISOString();
     const endISO = range.end.toISOString();
-    const startDate = dateOnly(startISO);
-    const endDate = dateOnly(endISO);
+    const startDate = localDateOnly(range.start);
+    const endDate = localDateOnly(range.end);
 
     (async () => {
       // 1. Stages
@@ -1046,8 +1050,8 @@ function AcoesPorDiaTab({
     setLoading(true);
     const startISO = monthStart.toISOString();
     const endISO = monthEnd.toISOString();
-    const startDate = dateOnly(startISO);
-    const endDate = dateOnly(endISO);
+    const startDate = localDateOnly(monthStart);
+    const endDate = localDateOnly(monthEnd);
 
     (async () => {
       // Mensagens inbound do mês (filtra pipeline via join)
