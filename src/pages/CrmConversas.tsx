@@ -1210,6 +1210,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             <ResizablePanel defaultSize={isCrmMobile ? 100 : 30} minSize={isCrmMobile ? 100 : 24} maxSize={isCrmMobile ? 100 : 34} className="min-w-0 overflow-hidden">
               <Suspense fallback={<SidePanelFallback />}>
               <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-y-auto">
+                {isCrmMobile && (
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card sticky top-0 z-10">
+                    <Button variant="ghost" size="sm" className="h-8 gap-1 -ml-1" onClick={() => setRightPanelVisible(false)}>
+                      <PanelLeftOpen size={16} /> Voltar ao chat
+                    </Button>
+                  </div>
+                )}
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center gap-3 mb-3">
                     <Avatar className="h-12 w-12">
