@@ -1201,12 +1201,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             </div>
           )}
         </ResizablePanel>
+        )}
 
         {/* RIGHT PANEL - Lead details */}
-        {rightPanelVisible && selectedLeadId && selectedLead && selectedLead.id === selectedLeadId && (
+        {effRightVisible && selectedLeadId && selectedLead && selectedLead.id === selectedLeadId && (
           <>
-            <ResizableHandle />
-            <ResizablePanel defaultSize={30} minSize={24} maxSize={34} className="min-w-0 overflow-hidden">
+            {!isCrmMobile && <ResizableHandle />}
+            <ResizablePanel defaultSize={isCrmMobile ? 100 : 30} minSize={isCrmMobile ? 100 : 24} maxSize={isCrmMobile ? 100 : 34} className="min-w-0 overflow-hidden">
               <Suspense fallback={<SidePanelFallback />}>
               <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-y-auto">
                 <div className="p-4 border-b border-border">
