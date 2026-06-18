@@ -95,7 +95,11 @@ function mean(arr: number[]): number {
   return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
-const dateOnly = (iso: string) => iso.slice(0, 10);
+// Formata uma Date em "YYYY-MM-DD" no horário LOCAL (evita o off-by-one de
+// fuso quando convertemos via toISOString — endOfDay BRT vira o dia seguinte em UTC,
+// fazendo a query lte(scheduled_date, ...) incluir um dia a mais).
+const localDateOnly = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const dayKeyFromDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
