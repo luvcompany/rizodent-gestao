@@ -142,8 +142,8 @@ export default function CrmRelatorios() {
 
     const startISO = range.start.toISOString();
     const endISO = range.end.toISOString();
-    const startDate = dateOnly(startISO);
-    const endDate = dateOnly(endISO);
+    const startDate = localDateOnly(range.start);
+    const endDate = localDateOnly(range.end);
 
     (async () => {
       // 1. Stages
@@ -1050,8 +1050,8 @@ function AcoesPorDiaTab({
     setLoading(true);
     const startISO = monthStart.toISOString();
     const endISO = monthEnd.toISOString();
-    const startDate = dateOnly(startISO);
-    const endDate = dateOnly(endISO);
+    const startDate = localDateOnly(monthStart);
+    const endDate = localDateOnly(monthEnd);
 
     (async () => {
       // Mensagens inbound do mês (filtra pipeline via join)
