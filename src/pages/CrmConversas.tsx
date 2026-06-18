@@ -227,18 +227,20 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const isCrmMobile = useIsCrmMobile();
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
-  // On mobile, force single-panel view: list | chat | lead details
+  // On mobile, force single-panel view: list | chat | lead details.
+  // Use a separate flag so opening a lead always lands on the chat, not on details.
+  const [mobileShowDetails, setMobileShowDetails] = useState(false);
   const effLeftVisible = isCrmMobile ? !selectedLeadId : leftPanelVisible;
   const effRightVisible = isCrmMobile
-    ? (!!selectedLeadId && rightPanelVisible)
+    ? (!!selectedLeadId && mobileShowDetails)
     : rightPanelVisible;
   const effCenterVisible = isCrmMobile
-    ? (!!selectedLeadId && !rightPanelVisible)
+    ? (!!selectedLeadId && !mobileShowDetails)
     : true;
   const mobileBackToList = () => {
     setSelectedLeadId(null);
     setSelectedLead(null);
-    setRightPanelVisible(false);
+    setMobileShowDetails(false);
   };
   const [urlFiltersApplied, setUrlFiltersApplied] = useState(false);
   const [filters, setFilters] = useState<ConversationFilterValues>(() => {
@@ -271,8 +273,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     setSelectedLeadId(lead.id);
     setSelectedLead(lead);
     // On mobile: opening a lead should land on the chat view, not the details panel.
-    if (isCrmMobile) setRightPanelVisible(false);
-  }, [isCrmMobile]);
+    setMobileShowDetails(false);
+  }, []);
 
   // ===== Bot Active Execution State =====
   const checkExecution = useCallback(async () => {
@@ -1063,8 +1065,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   </div>
                 </div>
                 <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setRightPanelVisible(!rightPanelVisible)}>
-                  {rightPanelVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => isCrmMobile ? setMobileShowDetails(true) : setRightPanelVisible(!rightPanelVisible)}>
+                  {(isCrmMobile ? false : rightPanelVisible) ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>
               </div>
 
@@ -1212,7 +1214,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-y-auto">
                 {isCrmMobile && (
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card sticky top-0 z-10">
-                    <Button variant="ghost" size="sm" className="h-8 gap-1 -ml-1" onClick={() => setRightPanelVisible(false)}>
+                    <Button variant="ghost" size="sm" className="h-8 gap-1 -ml-1" onClick={() => isCrmMobile ? setMobileShowDetails(false) : setRightPanelVisible(false)}>
                       <PanelLeftOpen size={16} /> Voltar ao chat
                     </Button>
                   </div>
