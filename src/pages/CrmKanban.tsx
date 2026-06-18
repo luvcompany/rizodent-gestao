@@ -1183,9 +1183,9 @@ export default function CrmKanban() {
   }
 
   return (
-    <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}>
+    <div className="flex flex-col bg-background -m-2 sm:-m-4 lg:-m-6" style={{ height: "calc(100vh - 4rem)", overflow: "hidden" }}>
       {/* Header - FIXED, no horizontal scroll */}
-      <div style={{ flexShrink: 0, width: "100%", overflowX: "hidden" }} className="bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+      <div style={{ flexShrink: 0, width: "100%", overflowX: "hidden" }} className="bg-card border-b border-border px-3 lg:px-6 py-2 lg:py-3 flex items-center justify-between gap-2 lg:gap-4 flex-wrap">
          <div className="flex items-center gap-3 min-w-0 flex-wrap">
           {pipelines.length > 1 && (
             <select
