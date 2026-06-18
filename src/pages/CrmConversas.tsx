@@ -38,6 +38,7 @@ import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { isWithinInterval } from "date-fns";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
+import { useIsCrmMobile } from "@/hooks/use-mobile";
 
 type LeadConversation = {
   id: string;
@@ -223,8 +224,22 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
+  const isCrmMobile = useIsCrmMobile();
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+  // On mobile, force single-panel view: list | chat | lead details
+  const effLeftVisible = isCrmMobile ? !selectedLeadId : leftPanelVisible;
+  const effRightVisible = isCrmMobile
+    ? (!!selectedLeadId && rightPanelVisible)
+    : rightPanelVisible;
+  const effCenterVisible = isCrmMobile
+    ? (!!selectedLeadId && !rightPanelVisible)
+    : true;
+  const mobileBackToList = () => {
+    setSelectedLeadId(null);
+    setSelectedLead(null);
+    setRightPanelVisible(false);
+  };
   const [urlFiltersApplied, setUrlFiltersApplied] = useState(false);
   const [filters, setFilters] = useState<ConversationFilterValues>(() => {
     // Initialize from URL params if present
@@ -255,7 +270,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const handleSelectLead = useCallback((lead: LeadConversation) => {
     setSelectedLeadId(lead.id);
     setSelectedLead(lead);
-  }, []);
+    // On mobile: opening a lead should land on the chat view, not the details panel.
+    if (isCrmMobile) setRightPanelVisible(false);
+  }, [isCrmMobile]);
 
   // ===== Bot Active Execution State =====
   const checkExecution = useCallback(async () => {
@@ -795,10 +812,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   return (
     <div className="flex h-full w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
-      <ResizablePanelGroup direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
+      <ResizablePanelGroup key={isCrmMobile ? "m" : "d"} direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
         {/* LEFT PANEL - Leads list */}
-        {leftPanelVisible && (
-        <><ResizablePanel defaultSize={24} minSize={20} maxSize={28} className="min-w-0 overflow-hidden">
+        {effLeftVisible && (
+        <><ResizablePanel defaultSize={isCrmMobile ? 100 : 24} minSize={isCrmMobile ? 100 : 20} maxSize={isCrmMobile ? 100 : 28} className="min-w-0 overflow-hidden">
           <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-hidden">
               {/* URL filter banner */}
               {(urlGhost || urlAppointmentStatus || urlInactiveDays) && (
@@ -997,16 +1014,23 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             </div>
           </div>
         </ResizablePanel>
-        <ResizableHandle /></>
+        {!isCrmMobile && <ResizableHandle />}</>
         )}
 
         {/* CENTER PANEL - Chat */}
-        <ResizablePanel defaultSize={rightPanelVisible ? 46 : 76} minSize={38} className="min-w-0 overflow-hidden">
+        {effCenterVisible && (
+        <ResizablePanel defaultSize={isCrmMobile ? 100 : (rightPanelVisible ? 46 : 76)} minSize={isCrmMobile ? 100 : 38} className="min-w-0 overflow-hidden">
           {selectedLeadId && selectedLead && selectedLead.id === selectedLeadId ? (
             <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden relative">
               {/* Chat header */}
               <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => isCrmMobile ? mobileBackToList() : setLeftPanelVisible(!leftPanelVisible)}
+                  title={isCrmMobile ? "Voltar para conversas" : (leftPanelVisible ? "Ocultar lista" : "Mostrar lista")}
+                >
                   {leftPanelVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
                 </Button>
                 <div className="relative">
@@ -1043,6 +1067,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   {rightPanelVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>
               </div>
+
 
               {/* Notes Bar */}
               <NotesBar notes={selectedLead.notes} onUpdateNotes={handleSaveNotes} />
@@ -1176,14 +1201,22 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             </div>
           )}
         </ResizablePanel>
+        )}
 
         {/* RIGHT PANEL - Lead details */}
-        {rightPanelVisible && selectedLeadId && selectedLead && selectedLead.id === selectedLeadId && (
+        {effRightVisible && selectedLeadId && selectedLead && selectedLead.id === selectedLeadId && (
           <>
-            <ResizableHandle />
-            <ResizablePanel defaultSize={30} minSize={24} maxSize={34} className="min-w-0 overflow-hidden">
+            {!isCrmMobile && <ResizableHandle />}
+            <ResizablePanel defaultSize={isCrmMobile ? 100 : 30} minSize={isCrmMobile ? 100 : 24} maxSize={isCrmMobile ? 100 : 34} className="min-w-0 overflow-hidden">
               <Suspense fallback={<SidePanelFallback />}>
               <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-y-auto">
+                {isCrmMobile && (
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card sticky top-0 z-10">
+                    <Button variant="ghost" size="sm" className="h-8 gap-1 -ml-1" onClick={() => setRightPanelVisible(false)}>
+                      <PanelLeftOpen size={16} /> Voltar ao chat
+                    </Button>
+                  </div>
+                )}
                 <div className="p-4 border-b border-border">
                   <div className="flex items-center gap-3 mb-3">
                     <Avatar className="h-12 w-12">
