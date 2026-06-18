@@ -182,24 +182,22 @@ export default function CrmRelatorios() {
       apptsByScheduled.forEach(a => leadIdsFromAppts.add(a.lead_id));
       apptsByCreated.forEach(a => leadIdsFromAppts.add(a.lead_id));
 
-      // 4. LEADS criados no período (do pipeline)
+      // 4. LEADS criados no período (todos os pipelines)
       const cohortLeads = await fetchAllPages<Lead>((f, t) =>
         supabase
           .from("crm_leads")
           .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-          .eq("pipeline_id", pipelineId)
           .gte("created_at", startISO)
           .lte("created_at", endISO)
           .order("created_at")
           .range(f, t)
       );
 
-      // 5. LEADS do pipeline com inbound no período (mesmo que criados antes)
+      // 5. LEADS com inbound no período (todos os pipelines)
       const activityInbound = await fetchAllPages<Lead>((f, t) =>
         supabase
           .from("crm_leads")
           .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-          .eq("pipeline_id", pipelineId)
           .gte("last_inbound_at", startISO)
           .lte("last_inbound_at", endISO)
           .range(f, t)
