@@ -1025,29 +1025,24 @@ function AcoesPorDiaTab({
   const [apptsMonth, setApptsMonth] = useState<{ lead_id: string; created_at: string; scheduled_date: string; is_rescheduled: boolean | null }[]>([]);
 
   useEffect(() => {
-    if (!pipelineId) return;
-    supabase.from("crm_stages").select("id, name, color, position").eq("pipeline_id", pipelineId).order("position")
+    supabase.from("crm_stages").select("id, name, color, position").order("position")
       .then(({ data }) => setStages((data || []) as AcoesStage[]));
-  }, [pipelineId]);
+  }, []);
 
   useEffect(() => {
-    if (!pipelineId) return;
     setLoading(true);
     const startISO = monthStart.toISOString();
     const endISO = monthEnd.toISOString();
-    const startDate = localDateOnly(monthStart);
-    const endDate = localDateOnly(monthEnd);
 
     (async () => {
-      // Mensagens inbound do mês (filtra pipeline via join)
+      // Mensagens inbound do mês — todos os pipelines
       let msgsAll: any[] = [];
       let mFrom = 0;
       while (true) {
         const { data, error } = await supabase
           .from("messages")
-          .select("lead_id, created_at, crm_leads!inner(pipeline_id)")
+          .select("lead_id, created_at")
           .eq("direction", "inbound")
-          .eq("crm_leads.pipeline_id", pipelineId)
           .gte("created_at", startISO)
           .lte("created_at", endISO)
           .order("created_at")
@@ -1059,7 +1054,6 @@ function AcoesPorDiaTab({
       }
 
       // Appointments criados no mês — TODOS, sem filtro de pipeline
-      // (leads mudam de funil e suas ações não podem sumir do relatório)
       const apptsCreated = await fetchAllPages<any>((f, t) =>
         supabase
           .from("crm_appointments")
@@ -1073,7 +1067,7 @@ function AcoesPorDiaTab({
       setApptsMonth(apptsCreated);
       setLoading(false);
     })();
-  }, [pipelineId, monthStart, monthEnd]);
+  }, [monthStart, monthEnd]);
 
   const selectedKey = dayKeyFromDate(selectedDate);
 
