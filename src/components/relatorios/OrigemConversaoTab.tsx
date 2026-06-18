@@ -49,12 +49,11 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
 
   useEffect(() => {
-    if (!pipelineId) return;
     const range = getDateRangeFromFilter(period);
     if (!range) return;
     setLoading(true);
     (async () => {
-      // Paginar leads (Supabase limita a 1000 por padrão)
+      // Paginar leads (Supabase limita a 1000 por padrão) — TODOS os pipelines
       let allLeads: Lead[] = [];
       let from = 0;
       const pageSize = 1000;
@@ -62,7 +61,6 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         const { data, error } = await supabase
           .from("crm_leads")
           .select("id,name,pipeline_id,cidade,source,nome_anuncio,created_at,first_inbound_at,paciente_id")
-          .eq("pipeline_id", pipelineId)
           .gte("created_at", range.start.toISOString())
           .lte("created_at", range.end.toISOString())
           .order("created_at")
@@ -166,7 +164,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       setPagamentos(allPagamentos);
       setLoading(false);
     })();
-  }, [pipelineId, period]);
+  }, [period]);
 
   // City × Origin matrix
   const cityOrigin = useMemo(() => {
@@ -275,12 +273,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       <Card className="p-4 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
-          <Select value={pipelineId} onValueChange={setPipelineId}>
-            <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>

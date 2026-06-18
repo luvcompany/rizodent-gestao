@@ -121,7 +121,7 @@ export default function CrmRelatorios() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [history, setHistory] = useState<StageHistory[]>([]);
 
-  // Carregar pipelines
+  // Carregar pipelines (mantido para a aba "Origem & Conversão")
   useEffect(() => {
     supabase.from("crm_pipelines").select("id, name").order("created_at").then(({ data }) => {
       const list = (data || []) as Pipeline[];
@@ -135,9 +135,9 @@ export default function CrmRelatorios() {
 
   const range = useMemo(() => getDateRangeFromFilter(period), [period]);
 
-  // Carregar dados quando filtros mudam
+  // Carregar dados quando o período muda — SEM filtro de funil (todos os pipelines)
   useEffect(() => {
-    if (!pipelineId || !range) return;
+    if (!range) return;
     setLoading(true);
 
     const startISO = range.start.toISOString();
@@ -146,11 +146,10 @@ export default function CrmRelatorios() {
     const endDate = localDateOnly(range.end);
 
     (async () => {
-      // 1. Stages
+      // 1. Stages (todos os pipelines)
       const stagesRes = await supabase
         .from("crm_stages")
         .select("id, name, color, position, pipeline_id")
-        .eq("pipeline_id", pipelineId)
         .order("position");
       const stagesList = (stagesRes.data || []) as Stage[];
       setStages(stagesList);
@@ -183,24 +182,22 @@ export default function CrmRelatorios() {
       apptsByScheduled.forEach(a => leadIdsFromAppts.add(a.lead_id));
       apptsByCreated.forEach(a => leadIdsFromAppts.add(a.lead_id));
 
-      // 4. LEADS criados no período (do pipeline)
+      // 4. LEADS criados no período (todos os pipelines)
       const cohortLeads = await fetchAllPages<Lead>((f, t) =>
         supabase
           .from("crm_leads")
           .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-          .eq("pipeline_id", pipelineId)
           .gte("created_at", startISO)
           .lte("created_at", endISO)
           .order("created_at")
           .range(f, t)
       );
 
-      // 5. LEADS do pipeline com inbound no período (mesmo que criados antes)
+      // 5. LEADS com inbound no período (todos os pipelines)
       const activityInbound = await fetchAllPages<Lead>((f, t) =>
         supabase
           .from("crm_leads")
           .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-          .eq("pipeline_id", pipelineId)
           .gte("last_inbound_at", startISO)
           .lte("last_inbound_at", endISO)
           .range(f, t)
@@ -233,15 +230,13 @@ export default function CrmRelatorios() {
       setApptsPeriodo(apptsByScheduled);
       setApptsCriadosPeriodo(apptsByCreated);
 
-      // 7. Mensagens inbound do período (para "conversaram" diário + tempo de resposta)
-      //    Buscar inbound + outbound do período via join inner para limitar ao pipeline
+      // 7. Mensagens do período (todos os pipelines)
       let msgRows: Msg[] = [];
       let mFrom = 0;
       while (true) {
         const { data, error } = await supabase
           .from("messages")
-          .select("id, lead_id, direction, created_at, crm_leads!inner(pipeline_id)")
-          .eq("crm_leads.pipeline_id", pipelineId)
+          .select("id, lead_id, direction, created_at")
           .gte("created_at", startISO)
           .lte("created_at", endISO)
           .order("created_at")
@@ -272,7 +267,7 @@ export default function CrmRelatorios() {
 
       setLoading(false);
     })();
-  }, [pipelineId, range]);
+  }, [range]);
 
   const inRange = (iso: string | null | undefined): boolean => {
     if (!iso || !range) return false;
@@ -280,10 +275,10 @@ export default function CrmRelatorios() {
     return d >= range.start.getTime() && d <= range.end.getTime();
   };
 
-  // Coorte: leads criados no período (do pipeline selecionado — "novos leads")
+  // Coorte: leads criados no período (todos os pipelines)
   const cohort = useMemo(
-    () => leads.filter(l => l.pipeline_id === pipelineId && inRange(l.created_at)),
-    [leads, range, pipelineId]
+    () => leads.filter(l => inRange(l.created_at)),
+    [leads, range]
   );
   const cohortIds = useMemo(() => new Set(cohort.map(l => l.id)), [cohort]);
   const stageById = useMemo(() => new Map(stages.map(s => [s.id, s])), [stages]);
@@ -603,12 +598,7 @@ export default function CrmRelatorios() {
           <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
-              <Select value={pipelineId} onValueChange={setPipelineId}>
-                <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
@@ -902,12 +892,7 @@ export default function CrmRelatorios() {
           <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
-              <Select value={pipelineId} onValueChange={setPipelineId}>
-                <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
@@ -1040,29 +1025,24 @@ function AcoesPorDiaTab({
   const [apptsMonth, setApptsMonth] = useState<{ lead_id: string; created_at: string; scheduled_date: string; is_rescheduled: boolean | null }[]>([]);
 
   useEffect(() => {
-    if (!pipelineId) return;
-    supabase.from("crm_stages").select("id, name, color, position").eq("pipeline_id", pipelineId).order("position")
+    supabase.from("crm_stages").select("id, name, color, position").order("position")
       .then(({ data }) => setStages((data || []) as AcoesStage[]));
-  }, [pipelineId]);
+  }, []);
 
   useEffect(() => {
-    if (!pipelineId) return;
     setLoading(true);
     const startISO = monthStart.toISOString();
     const endISO = monthEnd.toISOString();
-    const startDate = localDateOnly(monthStart);
-    const endDate = localDateOnly(monthEnd);
 
     (async () => {
-      // Mensagens inbound do mês (filtra pipeline via join)
+      // Mensagens inbound do mês — todos os pipelines
       let msgsAll: any[] = [];
       let mFrom = 0;
       while (true) {
         const { data, error } = await supabase
           .from("messages")
-          .select("lead_id, created_at, crm_leads!inner(pipeline_id)")
+          .select("lead_id, created_at")
           .eq("direction", "inbound")
-          .eq("crm_leads.pipeline_id", pipelineId)
           .gte("created_at", startISO)
           .lte("created_at", endISO)
           .order("created_at")
@@ -1074,7 +1054,6 @@ function AcoesPorDiaTab({
       }
 
       // Appointments criados no mês — TODOS, sem filtro de pipeline
-      // (leads mudam de funil e suas ações não podem sumir do relatório)
       const apptsCreated = await fetchAllPages<any>((f, t) =>
         supabase
           .from("crm_appointments")
@@ -1088,7 +1067,7 @@ function AcoesPorDiaTab({
       setApptsMonth(apptsCreated);
       setLoading(false);
     })();
-  }, [pipelineId, monthStart, monthEnd]);
+  }, [monthStart, monthEnd]);
 
   const selectedKey = dayKeyFromDate(selectedDate);
 
@@ -1171,12 +1150,7 @@ function AcoesPorDiaTab({
       <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
-          <Select value={pipelineId} onValueChange={setPipelineId}>
-            <SelectTrigger className="w-[260px] h-9"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Dia</span>
