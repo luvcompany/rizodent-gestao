@@ -164,7 +164,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       setPagamentos(allPagamentos);
       setLoading(false);
     })();
-  }, [pipelineId, period]);
+  }, [period]);
 
   // City × Origin matrix
   const cityOrigin = useMemo(() => {
