@@ -84,8 +84,9 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
       // Appointments: TUDO com scheduled_date no período (= calendário).
       // Depois filtramos para os leads do pipeline carregados acima.
-      const startDate = range.start.toISOString().slice(0, 10);
-      const endDate = range.end.toISOString().slice(0, 10);
+      // Usa horário LOCAL para evitar off-by-one de fuso (BRT endOfDay → UTC dia seguinte).
+      const startDate = `${range.start.getFullYear()}-${String(range.start.getMonth() + 1).padStart(2, "0")}-${String(range.start.getDate()).padStart(2, "0")}`;
+      const endDate = `${range.end.getFullYear()}-${String(range.end.getMonth() + 1).padStart(2, "0")}-${String(range.end.getDate()).padStart(2, "0")}`;
       let apptsRaw: Appointment[] = [];
       {
         let aFrom = 0;
