@@ -230,15 +230,13 @@ export default function CrmRelatorios() {
       setApptsPeriodo(apptsByScheduled);
       setApptsCriadosPeriodo(apptsByCreated);
 
-      // 7. Mensagens inbound do período (para "conversaram" diário + tempo de resposta)
-      //    Buscar inbound + outbound do período via join inner para limitar ao pipeline
+      // 7. Mensagens do período (todos os pipelines)
       let msgRows: Msg[] = [];
       let mFrom = 0;
       while (true) {
         const { data, error } = await supabase
           .from("messages")
-          .select("id, lead_id, direction, created_at, crm_leads!inner(pipeline_id)")
-          .eq("crm_leads.pipeline_id", pipelineId)
+          .select("id, lead_id, direction, created_at")
           .gte("created_at", startISO)
           .lte("created_at", endISO)
           .order("created_at")
@@ -269,7 +267,7 @@ export default function CrmRelatorios() {
 
       setLoading(false);
     })();
-  }, [pipelineId, range]);
+  }, [range]);
 
   const inRange = (iso: string | null | undefined): boolean => {
     if (!iso || !range) return false;
