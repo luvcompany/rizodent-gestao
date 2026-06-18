@@ -1014,16 +1014,23 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             </div>
           </div>
         </ResizablePanel>
-        <ResizableHandle /></>
+        {!isCrmMobile && <ResizableHandle />}</>
         )}
 
         {/* CENTER PANEL - Chat */}
-        <ResizablePanel defaultSize={rightPanelVisible ? 46 : 76} minSize={38} className="min-w-0 overflow-hidden">
+        {effCenterVisible && (
+        <ResizablePanel defaultSize={isCrmMobile ? 100 : (rightPanelVisible ? 46 : 76)} minSize={isCrmMobile ? 100 : 38} className="min-w-0 overflow-hidden">
           {selectedLeadId && selectedLead && selectedLead.id === selectedLeadId ? (
             <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden relative">
               {/* Chat header */}
               <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLeftPanelVisible(!leftPanelVisible)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => isCrmMobile ? mobileBackToList() : setLeftPanelVisible(!leftPanelVisible)}
+                  title={isCrmMobile ? "Voltar para conversas" : (leftPanelVisible ? "Ocultar lista" : "Mostrar lista")}
+                >
                   {leftPanelVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
                 </Button>
                 <div className="relative">
@@ -1060,6 +1067,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   {rightPanelVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>
               </div>
+
 
               {/* Notes Bar */}
               <NotesBar notes={selectedLead.notes} onUpdateNotes={handleSaveNotes} />
