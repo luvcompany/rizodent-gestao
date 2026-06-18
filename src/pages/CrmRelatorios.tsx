@@ -121,7 +121,7 @@ export default function CrmRelatorios() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [history, setHistory] = useState<StageHistory[]>([]);
 
-  // Carregar pipelines
+  // Carregar pipelines (mantido para a aba "Origem & Conversão")
   useEffect(() => {
     supabase.from("crm_pipelines").select("id, name").order("created_at").then(({ data }) => {
       const list = (data || []) as Pipeline[];
@@ -135,9 +135,9 @@ export default function CrmRelatorios() {
 
   const range = useMemo(() => getDateRangeFromFilter(period), [period]);
 
-  // Carregar dados quando filtros mudam
+  // Carregar dados quando o período muda — SEM filtro de funil (todos os pipelines)
   useEffect(() => {
-    if (!pipelineId || !range) return;
+    if (!range) return;
     setLoading(true);
 
     const startISO = range.start.toISOString();
@@ -146,11 +146,10 @@ export default function CrmRelatorios() {
     const endDate = localDateOnly(range.end);
 
     (async () => {
-      // 1. Stages
+      // 1. Stages (todos os pipelines)
       const stagesRes = await supabase
         .from("crm_stages")
         .select("id, name, color, position, pipeline_id")
-        .eq("pipeline_id", pipelineId)
         .order("position");
       const stagesList = (stagesRes.data || []) as Stage[];
       setStages(stagesList);
