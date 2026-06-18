@@ -36,7 +36,7 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
   return "children" in entry;
 }
 
-const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
+const buildCrmNavItems = (): SidebarEntry[] => {
   const items: SidebarEntry[] = [
     { to: "/crm/dashboard", icon: Home, label: "Dashboard" },
     { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
