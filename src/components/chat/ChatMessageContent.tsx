@@ -244,7 +244,9 @@ function TemplateMessageBubble({
 }
 
 function useSignedUrl(mediaUrl: string | null): string | null {
-  const [signedUrl, setSignedUrl] = useState<string | null>(mediaUrl);
+  // If it's a chat-media storage URL, start as null so we don't render the (potentially 403) public URL
+  const initial = mediaUrl && extractStoragePath(mediaUrl) ? null : mediaUrl;
+  const [signedUrl, setSignedUrl] = useState<string | null>(initial);
 
   useEffect(() => {
     if (!mediaUrl || !isMediaUrl(mediaUrl)) {
@@ -254,6 +256,7 @@ function useSignedUrl(mediaUrl: string | null): string | null {
 
     const storagePath = extractStoragePath(mediaUrl);
     if (storagePath) {
+      setSignedUrl(null);
       getSignedMediaUrl(mediaUrl).then(setSignedUrl);
     } else {
       setSignedUrl(mediaUrl);
@@ -275,6 +278,7 @@ export default function ChatMessageContent({
   const resolvedUrl = useSignedUrl(message.media_url);
   const hasResolvedMedia = isMediaUrl(resolvedUrl);
   const [imgError, setImgError] = useState(false);
+  useEffect(() => { setImgError(false); }, [resolvedUrl]);
   const handleImgError = useCallback(() => setImgError(true), []);
 
   if (message.type === "template" || message.content?.startsWith("📋 Template:")) {
