@@ -278,6 +278,7 @@ export default function ChatMessageContent({
   const resolvedUrl = useSignedUrl(message.media_url);
   const hasResolvedMedia = isMediaUrl(resolvedUrl);
   const [imgError, setImgError] = useState(false);
+  useEffect(() => { setImgError(false); }, [resolvedUrl]);
   const handleImgError = useCallback(() => setImgError(true), []);
 
   if (message.type === "template" || message.content?.startsWith("📋 Template:")) {
