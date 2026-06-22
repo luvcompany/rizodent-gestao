@@ -348,6 +348,10 @@ Deno.serve(async (req) => {
       }
     }
     if (parts[0] === "conversations" && req.method === "GET") return await conversations(p);
+    if (parts[0] === "messages" && parts[1] && parts[2] === "download" && req.method === "GET") {
+      return await mediaDownload(parts[1]);
+    }
+    if (parts[0] === "media" && parts[1] === "sign") return await mediaSign(p, body);
     if (parts[0] === "appointments") return await appointments(req.method, p, body, parts[1]);
     if (parts[0] === "tasks") return await tasks(req.method, p, body, parts[1]);
     if (parts[0] === "reports") {
