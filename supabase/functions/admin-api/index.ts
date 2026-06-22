@@ -11,6 +11,7 @@ const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-api-key, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "X-Admin-API-Version": "media-download-2026-06-22",
 };
 const json = (b: any, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
