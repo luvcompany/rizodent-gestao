@@ -84,14 +84,83 @@ async function deleteLead(id: string) {
   return json({ deleted: true });
 }
 
+// Extract { bucket, path } from a Supabase storage URL (sign/public/authenticated).
+function parseStorageUrl(u: string | null): { bucket: string; path: string } | null {
+  if (!u) return null;
+  try {
+    const url = new URL(u);
+    const m = url.pathname.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/([^/]+)\/(.+)$/);
+    if (!m) return null;
+    return { bucket: decodeURIComponent(m[1]), path: decodeURIComponent(m[2]) };
+  } catch { return null; }
+}
+
+async function signMediaUrl(rawUrl: string | null, expiresIn = 3600): Promise<string | null> {
+  const parsed = parseStorageUrl(rawUrl);
+  if (!parsed) return rawUrl;
+  const { data, error } = await admin.storage.from(parsed.bucket).createSignedUrl(parsed.path, expiresIn);
+  if (error || !data) return rawUrl;
+  return data.signedUrl;
+}
+
 async function leadMessages(id: string, p: URLSearchParams) {
   const limit = Math.min(parseInt(p.get("limit") || "100"), 500);
+  const sign = p.get("sign") !== "false"; // default true
+  const expiresIn = Math.min(parseInt(p.get("expires_in") || "3600"), 60 * 60 * 24 * 7);
   const { data, error } = await admin.from("messages")
     .select("id,direction,type,content,media_url,status,transcription,created_at,channel,whatsapp_message_id")
     .eq("tenant_id", TENANT_ID).eq("lead_id", id)
     .order("created_at", { ascending: false }).limit(limit);
   if (error) return json({ error: error.message }, 500);
-  return json({ data: (data || []).reverse() });
+  let rows = (data || []).reverse();
+  if (sign) {
+    rows = await Promise.all(rows.map(async (m: any) => {
+      if (!m.media_url) return m;
+      const signed = await signMediaUrl(m.media_url, expiresIn);
+      return { ...m, media_url_signed: signed };
+    }));
+  }
+  return json({ data: rows });
+}
+
+async function mediaSign(p: URLSearchParams, body: any) {
+  const url = p.get("url") || body?.url;
+  const bucket = p.get("bucket") || body?.bucket;
+  const path = p.get("path") || body?.path;
+  const expiresIn = Math.min(parseInt(p.get("expires_in") || body?.expires_in || "3600"), 60 * 60 * 24 * 7);
+  let b = bucket, pa = path;
+  if (!b || !pa) {
+    const parsed = parseStorageUrl(url);
+    if (!parsed) return json({ error: "provide ?url= or ?bucket=&path=" }, 400);
+    b = parsed.bucket; pa = parsed.path;
+  }
+  const { data, error } = await admin.storage.from(b!).createSignedUrl(pa!, expiresIn);
+  if (error) return json({ error: error.message }, 400);
+  return json({ bucket: b, path: pa, signed_url: data.signedUrl, expires_in: expiresIn });
+}
+
+async function mediaDownload(messageId: string) {
+  const { data: msg, error } = await admin.from("messages")
+    .select("id,media_url,type,tenant_id").eq("tenant_id", TENANT_ID).eq("id", messageId).maybeSingle();
+  if (error) return json({ error: error.message }, 500);
+  if (!msg || !msg.media_url) return json({ error: "not_found" }, 404);
+  const parsed = parseStorageUrl(msg.media_url);
+  if (!parsed) {
+    // External URL — just redirect.
+    return new Response(null, { status: 302, headers: { ...cors, Location: msg.media_url } });
+  }
+  const { data: file, error: dErr } = await admin.storage.from(parsed.bucket).download(parsed.path);
+  if (dErr || !file) return json({ error: dErr?.message || "download_failed" }, 500);
+  const ext = parsed.path.split(".").pop() || "bin";
+  const filename = `${msg.id}.${ext}`;
+  return new Response(file, {
+    status: 200,
+    headers: {
+      ...cors,
+      "Content-Type": file.type || "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    },
+  });
 }
 
 async function sendMessage(id: string, body: any) {
