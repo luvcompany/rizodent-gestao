@@ -517,9 +517,8 @@ export default function CrmConversa() {
             onStageChange={handleStageChange}
           />
 
-          <LeadExtraFields
+          <LeadServiceField
             leadId={lead.id}
-            cidade={lead.cidade || null}
             servicoInteresse={lead.servico_interesse || null}
             onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
           />

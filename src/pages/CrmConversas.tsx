@@ -1254,9 +1254,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     onStageChange={handleStageChange}
                   />
 
-                  <LeadExtraFields
+                  <LeadServiceField
                     leadId={selectedLead.id}
-                    cidade={(selectedLead as any).cidade || null}
                     servicoInteresse={(selectedLead as any).servico_interesse || null}
                     onUpdated={(updates) => {
                       setSelectedLead((prev) => prev ? { ...prev, ...updates } as any : prev);
