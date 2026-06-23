@@ -82,6 +82,7 @@ function countActive(f: ConversationFilterValues): number {
   if (f.source) c++;
   if (f.assignedTo) c++;
   if (f.cidade) c++;
+  if (f.servicoInteresse) c++;
   if (f.hasPagamento) c++;
   if (f.adAccountId) c++;
   if (f.adId) c++;
