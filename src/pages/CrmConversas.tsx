@@ -1344,6 +1344,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   leadId={selectedLead.id}
                   stages={chat.stages}
                   lastInboundAt={chat.lastInboundAt}
+                />
+
                 <LeadCustomFields leadId={selectedLead.id} />
 
                 
