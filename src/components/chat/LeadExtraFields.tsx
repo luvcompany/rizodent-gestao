@@ -12,6 +12,15 @@ const CIDADES = [
   "VCA",
 ];
 
+const SERVICOS = [
+  "PRÓTESE",
+  "IMPLANTE",
+  "ZIGOMÁTICO",
+  "FACETA",
+  "PROTOCOLO",
+  "OUTROS",
+];
+
 type Props = {
   leadId: string;
   cidade: string | null;
