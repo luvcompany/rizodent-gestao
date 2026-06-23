@@ -21,6 +21,10 @@ const SERVICOS = [
   "OUTROS",
 ];
 
+function isCustomService(value: string | null): boolean {
+  return !!value && !SERVICOS.includes(value);
+}
+
 type Props = {
   leadId: string;
   cidade: string | null;
@@ -31,7 +35,9 @@ type Props = {
 export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUpdated }: Props) {
   const [saving, setSaving] = useState(false);
   const [cidadeValue, setCidadeValue] = useState(cidade || "none");
+
   const [servicoValue, setServicoValue] = useState(servicoInteresse || "");
+  const [outrosTexto, setOutrosTexto] = useState(isCustomService(servicoInteresse) ? servicoInteresse || "" : "");
   const lastSavedServicoRef = useRef(servicoInteresse || "");
 
   useEffect(() => {
@@ -41,6 +47,7 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
   useEffect(() => {
     const nextValue = servicoInteresse || "";
     setServicoValue(nextValue);
+    setOutrosTexto(isCustomService(servicoInteresse) ? nextValue : "");
     lastSavedServicoRef.current = nextValue;
   }, [servicoInteresse, leadId]);
 
@@ -67,7 +74,10 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
   }, [leadId, onUpdated]);
 
   useEffect(() => {
-    const normalizedCurrent = servicoValue.trim();
+    const selectValue = SERVICOS.includes(servicoValue) ? servicoValue : (servicoValue ? "OUTROS" : "none");
+    if (selectValue !== "OUTROS") return;
+
+    const normalizedCurrent = outrosTexto.trim();
     const normalizedSaved = lastSavedServicoRef.current.trim();
 
     if (normalizedCurrent === normalizedSaved) return;
@@ -76,11 +86,12 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
       const success = await updateField("servico_interesse", normalizedCurrent || null);
       if (success) {
         lastSavedServicoRef.current = normalizedCurrent;
+        setServicoValue(normalizedCurrent);
       }
     }, 500);
 
     return () => window.clearTimeout(timeout);
-  }, [servicoValue, updateField]);
+  }, [outrosTexto, servicoValue, updateField]);
 
   const handleCidadeChange = async (value: string) => {
     const previousValue = cidadeValue;
@@ -93,6 +104,41 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
     if (!success) {
       setCidadeValue(previousValue);
       onUpdated({ cidade: previousValue === "none" ? null : previousValue });
+    }
+  };
+
+  const selectValue = SERVICOS.includes(servicoValue) ? servicoValue : (servicoValue ? "OUTROS" : "none");
+
+  const handleServicoChange = async (value: string) => {
+    const previousValue = servicoValue;
+
+    if (value === "none") {
+      setServicoValue("");
+      setOutrosTexto("");
+      lastSavedServicoRef.current = "";
+      const ok = await updateField("servico_interesse", null);
+      if (!ok) {
+        setServicoValue(previousValue);
+        setOutrosTexto(isCustomService(previousValue) ? previousValue : "");
+        lastSavedServicoRef.current = previousValue;
+      }
+      return;
+    }
+
+    if (value === "OUTROS") {
+      setServicoValue(value);
+      setOutrosTexto("");
+      return;
+    }
+
+    setServicoValue(value);
+    setOutrosTexto("");
+    lastSavedServicoRef.current = value;
+    const ok = await updateField("servico_interesse", value);
+    if (!ok) {
+      setServicoValue(previousValue);
+      setOutrosTexto(isCustomService(previousValue) ? previousValue : "");
+      lastSavedServicoRef.current = previousValue;
     }
   };
 
@@ -120,18 +166,8 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
           <Briefcase size={10} /> Serviço de Interesse
         </label>
         <select
-          value={SERVICOS.includes(servicoValue) ? servicoValue : (servicoValue ? "OUTROS" : "none")}
-          onChange={async (e) => {
-            const v = e.target.value;
-            const normalized = v === "none" ? null : v;
-            setServicoValue(normalized || "");
-            lastSavedServicoRef.current = normalized || "";
-            const ok = await updateField("servico_interesse", normalized);
-            if (!ok) {
-              setServicoValue(servicoValue);
-              lastSavedServicoRef.current = servicoValue;
-            }
-          }}
+          value={selectValue}
+          onChange={(e) => void handleServicoChange(e.target.value)}
           disabled={saving}
           className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -140,6 +176,16 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+
+        {selectValue === "OUTROS" && (
+          <Input
+            value={outrosTexto}
+            onChange={(e) => setOutrosTexto(e.target.value)}
+            placeholder="Especifique o serviço (restauração, extração, canal...)"
+            disabled={saving}
+            className="mt-2 bg-secondary border-border text-sm h-8"
+          />
+        )}
       </div>
     </div>
   );
