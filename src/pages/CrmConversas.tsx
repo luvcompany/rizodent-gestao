@@ -1344,18 +1344,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   leadId={selectedLead.id}
                   stages={chat.stages}
                   lastInboundAt={chat.lastInboundAt}
-                />
-
-                <LeadExtraFields
-                  leadId={selectedLead.id}
-                  cidade={(selectedLead as any).cidade || null}
-                  servicoInteresse={(selectedLead as any).servico_interesse || null}
-                  onUpdated={(updates) => {
-                    setSelectedLead((prev) => prev ? { ...prev, ...updates } as any : prev);
-                    setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
-                  }}
-                />
-
                 <LeadCustomFields leadId={selectedLead.id} />
 
                 
