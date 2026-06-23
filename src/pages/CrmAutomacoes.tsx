@@ -243,10 +243,15 @@ export default function CrmAutomacoes() {
   };
 
   const handleSaveAutomation = async () => {
+    const isBulkMove = autoForm.trigger_type === "manual_bulk_move";
+    if (isBulkMove && !autoForm.action_config?.target_stage_id) {
+      toast.error("Selecione a etapa destino para a movimentação em massa");
+      return;
+    }
     const payload = {
       stage_id: autoForm.stage_id,
       trigger_type: autoForm.trigger_type,
-      action_type: autoForm.action_type,
+      action_type: isBulkMove ? "move_stage" : autoForm.action_type,
       action_config: autoForm.action_config as unknown as import("@/integrations/supabase/types").Json,
       is_active: true,
     };
