@@ -53,6 +53,7 @@ type Lead = {
   last_message_at: string | null;
   assigned_to: string | null;
   cidade: string | null;
+  servico_interesse?: string | null;
   paciente_id: string | null;
   ad_id?: string | null;
   ad_account_id?: string | null;
