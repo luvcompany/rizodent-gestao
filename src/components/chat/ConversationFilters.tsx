@@ -21,6 +21,7 @@ export type ConversationFilterValues = {
   source: string;
   assignedTo: string;
   cidade: string;
+  servicoInteresse: string;
   hasPagamento: string; // "" | "yes" | "no"
   adAccountId: string;
   adId: string;
@@ -37,6 +38,7 @@ const emptyFilters: ConversationFilterValues = {
   source: "",
   assignedTo: "",
   cidade: "",
+  servicoInteresse: "",
   hasPagamento: "",
   adAccountId: "",
   adId: "",
@@ -61,6 +63,15 @@ const CIDADES = [
   "Itabuna",
 ];
 
+const SERVICOS = [
+  "PRÓTESE",
+  "IMPLANTE",
+  "ZIGOMÁTICO",
+  "FACETA",
+  "PROTOCOLO",
+  "OUTROS",
+];
+
 function countActive(f: ConversationFilterValues): number {
   let c = 0;
   if (f.pipelineId) c++;
@@ -71,6 +82,7 @@ function countActive(f: ConversationFilterValues): number {
   if (f.source) c++;
   if (f.assignedTo) c++;
   if (f.cidade) c++;
+  if (f.servicoInteresse) c++;
   if (f.hasPagamento) c++;
   if (f.adAccountId) c++;
   if (f.adId) c++;
@@ -258,6 +270,20 @@ export default function ConversationFilters({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Serviço de Interesse */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Serviço de Interesse</label>
+              <Select value={draft.servicoInteresse} onValueChange={(v) => setDraft({ ...draft, servicoInteresse: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectContent>
+                  {SERVICOS.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
 
             {/* Pagamentos vinculados */}
             <div>

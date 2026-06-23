@@ -53,6 +53,7 @@ type Lead = {
   last_message_at: string | null;
   assigned_to: string | null;
   cidade: string | null;
+  servico_interesse?: string | null;
   paciente_id: string | null;
   ad_id?: string | null;
   ad_account_id?: string | null;
@@ -114,7 +115,7 @@ function NewLeadStageSelector({ pipelineId, allPipelines, currentStages, current
 }
 
 const PAGE_SIZE = 20; // cards iniciais por coluna; o restante carrega ao rolar
-const KANBAN_LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio";
+const KANBAN_LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, has_task, task_overdue, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, servico_interesse, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio";
 
 type NewLeadDialogProps = {
   open: boolean;
@@ -1072,6 +1073,7 @@ export default function CrmKanban() {
         } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
       }
       if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
+      if (kanbanFilters.servicoInteresse && ((l as any).servico_interesse || "") !== kanbanFilters.servicoInteresse) return false;
       if (kanbanFilters.adAccountId && (l.ad_account_id || "") !== kanbanFilters.adAccountId) return false;
       if (kanbanFilters.adId && (l.ad_id || "") !== kanbanFilters.adId) return false;
       if (kanbanFilters.hasPagamento) {

@@ -768,6 +768,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         } else if (l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
       }
       if (filters.cidade && (l.cidade || "") !== filters.cidade) return false;
+      if (filters.servicoInteresse && ((l as any).servico_interesse || "") !== filters.servicoInteresse) return false;
       if (filters.adAccountId && ((l as any).ad_account_id || "") !== filters.adAccountId) return false;
       if (filters.adId && ((l as any).ad_id || "") !== filters.adId) return false;
       if (filters.instagramAccountId) {
