@@ -697,8 +697,29 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             );
           })()}
 
+          {/* MANUAL BULK MOVE CONFIG */}
+          {isBulkMove && (
+            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+              <Label className="text-xs">Mover todos os leads desta etapa para</Label>
+              <Select
+                value={(autoForm.action_config.target_stage_id as string) || undefined}
+                onValueChange={v => updateConfig({ target_stage_id: v })}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar etapa destino" /></SelectTrigger>
+                <SelectContent>
+                  {stages.filter(s => s.id !== autoForm.stage_id).map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Após salvar, use o botão <strong>Executar</strong> no card desta automação para mover todos os leads que atenderem às condições.
+              </p>
+            </div>
+          )}
+
           {/* AÇÃO - only show for non-sequence triggers (sequences have their own actions) */}
-          {!isSequenceTrigger && !isReengagement && (
+          {!isSequenceTrigger && !isReengagement && !isBulkMove && (
             <>
               <div>
                 <Label>Ação</Label>
@@ -739,17 +760,19 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             onChange={(v) => updateConfig({ conditions: v })}
           />
 
-          {/* Checkbox: send to all existing */}
-          <div className="flex items-center gap-3">
-            <Checkbox
-              id="send-to-all-modal"
-              checked={!!(autoForm.action_config.send_to_all_existing)}
-              onCheckedChange={v => updateConfig({ send_to_all_existing: !!v })}
-            />
-            <label htmlFor="send-to-all-modal" className="text-sm text-foreground cursor-pointer">
-              Enviar para todos os leads que já estão nesta etapa
-            </label>
-          </div>
+          {/* Checkbox: send to all existing - not applicable for bulk_move */}
+          {!isBulkMove && (
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="send-to-all-modal"
+                checked={!!(autoForm.action_config.send_to_all_existing)}
+                onCheckedChange={v => updateConfig({ send_to_all_existing: !!v })}
+              />
+              <label htmlFor="send-to-all-modal" className="text-sm text-foreground cursor-pointer">
+                Enviar para todos os leads que já estão nesta etapa
+              </label>
+            </div>
+          )}
 
           <Button className="w-full" onClick={onSave}>Salvar Automação</Button>
         </div>
