@@ -382,13 +382,16 @@ const Dashboard = () => {
   }, [filtered.pagamentos, holidaySet]);
 
   // Total de dias úteis do mês para projeção — exclui domingos e feriados
+  // Quando não há pagamentos no período, calcula com base no mês atual real
+  // (em vez de fallback fixo 26 dias).
   const diasUteisMes = useMemo(() => {
-    if (!filtered.pagamentos.length) return 26;
-    const dates = filtered.pagamentos.map((p) => p.data_pagamento).sort();
-    const firstDate = new Date(dates[0] + "T12:00:00");
-    const lastDay = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
+    const ref = filtered.pagamentos.length
+      ? new Date(filtered.pagamentos.map((p) => p.data_pagamento).sort()[0] + "T12:00:00")
+      : new Date();
+    const firstDay = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    const lastDay = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
     let count = 0;
-    const current = new Date(firstDate);
+    const current = new Date(firstDay);
     while (current <= lastDay) {
       const ds = toLocalDateStr(current);
       if (isWorkingDay(current, ds)) count++;

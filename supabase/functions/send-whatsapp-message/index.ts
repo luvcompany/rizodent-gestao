@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,23 +165,14 @@ Deno.serve(async (req) => {
       serviceRoleKey,
     );
 
-    const isServiceKey =
-      !!serviceRoleKey && (token === serviceRoleKey || apiKeyHeader === serviceRoleKey);
-
-    if (!isServiceKey) {
-      if (!token) {
-        return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-      if (claimsError || !claimsData?.claims?.sub) {
-        console.warn(`[send-whatsapp-message] Unauthorized via getClaims: tokenLen=${token.length}, err=${claimsError?.message || "no-sub"}`);
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    const caller = await resolveCaller(req, supabase);
+    if (!caller.ok) {
+      console.warn(`[send-whatsapp-message] auth failed: ${caller.error}`);
+      return new Response(JSON.stringify({ error: caller.error }), {
+        status: caller.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+
 
 
     const {
@@ -212,6 +204,16 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Tenant ownership check (IDOR guard) — service-role and superadmin bypass.
+    const tenantCheck = await assertLeadInTenant(supabase, lead_id, caller);
+    if (!tenantCheck.ok) {
+      console.warn(`[send-whatsapp-message] tenant guard: ${tenantCheck.error} lead=${lead_id} user=${caller.userId ?? "service"}`);
+      return new Response(JSON.stringify({ error: tenantCheck.error }), {
+        status: tenantCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
 
     let whatsappToken = Deno.env.get("WHATSAPP_TOKEN") || "";
     let phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";

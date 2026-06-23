@@ -1,43 +1,90 @@
-# Otimização Mobile do CRM
 
-Hoje o CRM foi desenhado para desktop/iPad. Em telas <768px (celular), os três painéis do `CrmConversas` (lista de leads, chat, painel do lead) aparecem espremidos lado a lado, e o Kanban exige rolagem horizontal extrema. Vou ajustar a experiência mobile sem alterar o comportamento desktop.
+# Plano de correção — Segurança e qualidade do CRM
 
-## O que muda
+Objetivo: fechar os vazamentos entre clínicas (multi-tenant) e os bugs altos **sem alterar comportamento visível** para quem já usa o sistema. Cada fase é independente e validável isoladamente, para podermos pausar/reverter sem afetar a operação.
 
-### 1. Layout geral (`CrmLayout.tsx`)
-- Sidebar já é "drawer" no mobile (ok), mas o `main` tem `p-6` que come espaço. Reduzir para `p-2 sm:p-4 lg:p-6`.
-- Header: ocultar o texto "CRM — Gestão de Leads" em telas pequenas, mantendo só o menu e a sineta.
+---
 
-### 2. Conversas (`CrmConversas.tsx`)
-Em telas `< lg` (1024px), trocar o `ResizablePanelGroup` de 3 colunas por uma navegação em "views" única:
-- **View 1: Lista de conversas** (padrão ao entrar).
-- **View 2: Chat** (abre ao tocar em um lead, com botão "← Voltar" no header do chat).
-- **View 3: Painel do lead** (abre via botão de info no header do chat, com "← Voltar").
+## Fase 1 — IDOR nas Edge Functions (CRÍTICO, prioridade #1)
 
-Em `lg+` (desktop/iPad), mantém o layout atual com 3 painéis redimensionáveis.
+Criar um helper compartilhado `_shared/authz.ts` (montado via `import_map` ou copiado em cada função, conforme padrão do projeto) com:
 
-Implementação: estado `mobileView: "list" | "chat" | "lead"` controlado por `useIsMobile()` + handlers nos cliques.
+- `requireUser(req)` → valida JWT via `supabase.auth.getClaims(token)`, retorna `{ userId, tenantId, roles }` lendo `profiles.tenant_id` + `user_roles`.
+- `assertLeadInTenant(leadId, tenantId)` → consulta `tenant_of_lead(leadId)` e lança 403 se divergir.
+- `assertMessageInTenant(messageId, tenantId)` → idem com `tenant_of_message`.
+- `assertWhatsAppNumberInTenant` / `assertInstagramAccountInTenant`.
 
-### 3. Kanban (`CrmKanban.tsx`)
-- Manter rolagem horizontal, mas reduzir largura das colunas no mobile (`w-[260px]` → `w-[78vw]` em mobile) para mostrar uma coluna por tela com "peek" da próxima.
-- Adicionar `snap-x snap-mandatory` ao container e `snap-center` nas colunas para que o swipe pare em cada coluna.
-- Reduzir paddings internos no mobile.
+Aplicar em:
+- `send-whatsapp-message`
+- `transcribe-audio`
+- `ai-conversation-assist`
+- `delete-whatsapp-message`
+- `instagram-send-message`
 
-### 4. Painel do lead (sidebar direita)
-- No mobile (view 3) ocupa 100% da largura.
-- Botão "Voltar para chat" no topo.
+Critério "não quebrar": helper é **aditivo** (rejeita só requests cross-tenant); fluxos normais do front continuam idênticos pois o front sempre usa leads do tenant do usuário.
+
+## Fase 2 — Webhooks (CRÍTICO + ALTO)
+
+- **Instagram webhook**: adicionar verificação HMAC SHA-256 do header `X-Hub-Signature-256` usando `META_APP_SECRET` (mesmo padrão do `whatsapp-webhook`). Aplicar em `instagram-webhook` e `instagram-lite-webhook`.
+- **Idempotência**: criar índice único parcial em `messages(whatsapp_message_id)` e `instagram_messages(instagram_message_id)` (WHERE NOT NULL), e ajustar os webhooks para `ON CONFLICT DO NOTHING`. Migração separada — antes, deduplicar registros existentes.
+- **verify_token**: comparar com `timingSafeEqual`.
+
+## Fase 3 — Escalada de privilégio e RPC vazante (CRÍTICO)
+
+- `tenant-create-user`: aplicar allowlist de roles (`crc`, `gerente`, `posvenda`); apenas `superadmin` pode criar `superadmin` / `gerente`. Validar no servidor.
+- `check_duplicate_phone`: nova migration recriando a função com filtro `tenant_id = current_tenant_id()`. Mantém assinatura → `CrmKanban.tsx` continua chamando sem mudanças.
+- `ai_conversation_analysis`: trocar política `USING(true)` por `USING(tenant_id = current_tenant_id())`. Antes, preencher `tenant_id` nas linhas existentes a partir do lead.
+- `crm_notifications`: corrigir `WITH CHECK(true)` para `WITH CHECK(user_id IN (SELECT id FROM profiles WHERE tenant_id = current_tenant_id()))`.
+
+## Fase 4 — Edge Functions sem `verify_jwt` explícito (ALTO)
+
+Auditar `supabase/config.toml`: para `automation-engine`, `bot-engine`, `followup-engine` e quaisquer cron-only, declarar explicitamente `verify_jwt = false` **e** exigir header `X-Cron-Secret` (gerado via `generate_secret`) checado em código. Funções chamadas pelo front continuam com validação JWT em código.
+
+## Fase 5 — Automações silenciosamente quebradas (ALTO)
+
+Em `automationUtils.ts` alinhar nomes lendo **ambos** os campos (compatibilidade retroativa) e gravando o canônico:
+- `create_tag`: aceita `config.tag ?? config.tag_name`.
+- `combo`: aceita `config.actions ?? config.combo_actions`.
+- `notify_assignee`: adicionar `case` no executor.
+
+Sem migração de dados — automações antigas continuam rodando.
+
+## Fase 6 — Bugs de cálculo (ALTO/MÉDIO)
+
+- `Relatorios.tsx:206`: `Number(p.valor) || 0`.
+- `Dashboard.tsx:280`: usar dias úteis reais do mês atual em vez de fallback fixo 26.
+
+## Fase 7 — Memory leak no chat (MÉDIO)
+
+`ChatInput.tsx`: guardar URLs criadas em ref e `URL.revokeObjectURL` no cleanup do `useEffect` / ao remover anexo / no unmount.
+
+## Fase 8 — Higiene de build (MÉDIO/BAIXO)
+
+- Remover `bun.lockb` e `package-lock.json`, manter apenas `bun.lock`.
+- Adicionar `.env` ao `.gitignore` (mantém arquivo local).
+- CORS: restringir `Access-Control-Allow-Origin` ao domínio publicado + preview Lovable nas funções sensíveis (manter `*` apenas em webhooks públicos).
+- Não passar tokens Meta em querystring (mover para header/body).
+
+Itens **não** abordados nesta passada (registrar como follow-up, não bloqueiam segurança): vulnerabilidades npm audit, 810 lint warnings, ausência de testes, code-splitting, ordem do `@import` no `index.css`.
+
+---
 
 ## Detalhes técnicos
 
-- Usar o hook existente `useIsMobile()` (`src/hooks/use-mobile.tsx`, breakpoint 768px) — ampliar para `< 1024` neste fluxo via prop ou novo hook `useIsCrmMobile()`.
-- Não mexer em lógica de dados, RLS, queries ou estado de chat — só camada de apresentação.
-- Sem mudanças em rotas: tudo continua em `/crm/conversas` e `/crm`.
+**Ordem de deploy recomendada** (cada passo independente, validável):
+1. Migrations da Fase 3 (RLS + função) — não afetam código existente.
+2. Helper `authz.ts` + Fase 1 (deploy função por função, testando cada uma via `curl_edge_functions`).
+3. Fase 2 webhooks (deduplicar dados → criar índice único → ativar HMAC).
+4. Fase 4 config.toml + secret de cron.
+5. Fase 5–8 (frontend/limpeza).
 
-## Arquivos afetados
-- `src/components/CrmLayout.tsx` (paddings + header)
-- `src/pages/CrmConversas.tsx` (views condicionais mobile)
-- `src/pages/CrmKanban.tsx` (snap + largura de coluna)
-- `src/hooks/use-mobile.tsx` (novo helper `useIsCrmMobile` para breakpoint lg)
+**Validação por fase**: `supabase--linter` após cada migration; chamadas `curl_edge_functions` com tokens de tenants diferentes para confirmar 403 cross-tenant; smoke test manual nas telas principais (Kanban, Conversa, Dashboard).
 
-## Fora de escopo (posso fazer depois se quiser)
-- Dashboard, Relatórios, Calendário, Configurações — também precisam de ajuste mobile, mas em telas separadas. Posso atacar numa segunda rodada para manter este PR focado.
+**Rollback**: cada fase = 1 commit isolado. Migrations são aditivas/substitutivas (sem `DROP` destrutivo), funções de edge têm versionamento Supabase.
+
+---
+
+## Perguntas antes de implementar
+
+1. Posso seguir a ordem acima (Fases 1→8 em sequência, validando cada uma), ou prefere que eu execute **só Fase 1+2+3** agora (os CRÍTICOS) e deixe o resto para depois?
+2. Confirma que **nenhum** workflow legítimo hoje envia mensagens / consulta dados entre tenants? (Se a Luv Agency como superadmin precisa cruzar tenants pelo front, o helper precisa permitir esse caso — é o comportamento que vou implementar por padrão.)

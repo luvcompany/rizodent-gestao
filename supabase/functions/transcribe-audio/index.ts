@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { resolveCaller, assertMessageInTenant } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,20 +57,19 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ error: "Não autenticado" }, 401);
 
-    // Validate JWT
-    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsErr } = await userClient.auth.getClaims(token);
-    if (claimsErr || !claims?.claims?.sub) return json({ error: "Não autorizado" }, 401);
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    const caller = await resolveCaller(req, admin);
+    if (!caller.ok) return json({ error: caller.error }, caller.status);
 
     const body = await req.json().catch(() => ({}));
     const messageId = body.message_id as string | undefined;
     const force = !!body.force;
     if (!messageId) return json({ error: "message_id é obrigatório" }, 400);
 
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Tenant ownership check (IDOR guard)
+    const tenantCheck = await assertMessageInTenant(admin, messageId, caller);
+    if (!tenantCheck.ok) return json({ error: tenantCheck.error }, tenantCheck.status);
 
     const { data: msg, error: msgErr } = await admin
       .from("messages")

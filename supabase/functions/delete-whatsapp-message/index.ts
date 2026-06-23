@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCaller, assertMessageInTenant } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,23 +10,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Não autenticado" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
     );
 
-    const { data: userData, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Usuário inválido" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const caller = await resolveCaller(req, supabase);
+    if (!caller.ok) {
+      return new Response(JSON.stringify({ error: caller.error }), {
+        status: caller.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -33,6 +26,14 @@ Deno.serve(async (req) => {
     if (!messageId || typeof messageId !== "string") {
       return new Response(JSON.stringify({ error: "messageId é obrigatório" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Tenant ownership check (IDOR guard)
+    const tenantCheck = await assertMessageInTenant(supabase, messageId, caller);
+    if (!tenantCheck.ok) {
+      return new Response(JSON.stringify({ error: tenantCheck.error }), {
+        status: tenantCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -79,7 +80,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[delete-whatsapp-message] Deleted ${messageId} by user ${userData.user.id}`);
+    console.log(`[delete-whatsapp-message] Deleted ${messageId} by user ${caller.userId ?? "service"}`);
 
     return new Response(JSON.stringify({ success: true, meta: metaResult }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },

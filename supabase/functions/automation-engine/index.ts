@@ -983,7 +983,8 @@ async function sendAction(
         break;
 
       case "add_tag": {
-        const tag = config.tag as string;
+        // Accept both legacy and editor key names
+        const tag = (config.tag ?? config.tag_name) as string | undefined;
         if (tag) {
           const { data: lead } = await supabase.from("crm_leads").select("tags").eq("id", leadId).single();
           const existing = (lead?.tags || []) as string[];
@@ -997,7 +998,8 @@ async function sendAction(
         break;
       }
 
-      case "notify_owner": {
+      case "notify_owner":
+      case "notify_assignee": {
         const { data: lead } = await supabase.from("crm_leads").select("assigned_to, name").eq("id", leadId).single();
         if (lead?.assigned_to) {
           await supabase.from("crm_notifications").insert({
@@ -1092,9 +1094,15 @@ async function sendAction(
         break;
 
       case "combo": {
-        const actions = (config.actions || []) as Array<{ action_type: string; action_config: Record<string, any> }>;
-        for (const sub of actions) {
-          await sendAction(supabase, supabaseUrl, serviceKey, sub.action_type, sub.action_config || {}, leadId, phone);
+        // Accept both shapes:
+        //  - legacy: config.actions = [{ action_type, action_config }]
+        //  - editor: config.combo_actions = [{ type, config }]
+        const rawActions = (config.actions ?? config.combo_actions ?? []) as Array<any>;
+        for (const sub of rawActions) {
+          const subType = (sub?.action_type ?? sub?.type) as string | undefined;
+          const subConfig = (sub?.action_config ?? sub?.config ?? {}) as Record<string, any>;
+          if (!subType) continue;
+          await sendAction(supabase, supabaseUrl, serviceKey, subType, subConfig, leadId, phone);
         }
         break;
       }
