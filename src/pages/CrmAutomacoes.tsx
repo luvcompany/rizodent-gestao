@@ -648,8 +648,20 @@ export default function CrmAutomacoes() {
                                         <Bot size={12} />
                                         <span className="font-medium">{triggerLabel(auto.trigger_type)}</span>
                                       </div>
-                                      <div className="text-foreground">{actionLabel(auto.action_type)}</div>
+                                      <div className="text-foreground">
+                                        {auto.trigger_type === "manual_bulk_move"
+                                          ? `Mover → ${stages.find(s => s.id === (auto.action_config as any)?.target_stage_id)?.name || "?"}`
+                                          : actionLabel(auto.action_type)}
+                                      </div>
                                       <div className="flex items-center gap-2 mt-1">
+                                        {auto.trigger_type === "manual_bulk_move" && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); handleRunBulkMove(auto); }}
+                                            className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:opacity-90"
+                                          >
+                                            Executar
+                                          </button>
+                                        )}
                                         <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive ml-auto">
                                           <Trash2 size={10} />
                                         </button>
