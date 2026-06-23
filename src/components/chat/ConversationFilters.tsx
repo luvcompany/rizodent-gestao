@@ -21,6 +21,7 @@ export type ConversationFilterValues = {
   source: string;
   assignedTo: string;
   cidade: string;
+  servicoInteresse: string;
   hasPagamento: string; // "" | "yes" | "no"
   adAccountId: string;
   adId: string;
@@ -37,6 +38,7 @@ const emptyFilters: ConversationFilterValues = {
   source: "",
   assignedTo: "",
   cidade: "",
+  servicoInteresse: "",
   hasPagamento: "",
   adAccountId: "",
   adId: "",
@@ -59,6 +61,15 @@ const CIDADES = [
   "Guanambi",
   "Ipiaú",
   "Itabuna",
+];
+
+const SERVICOS = [
+  "PRÓTESE",
+  "IMPLANTE",
+  "ZIGOMÁTICO",
+  "FACETA",
+  "PROTOCOLO",
+  "OUTROS",
 ];
 
 function countActive(f: ConversationFilterValues): number {
