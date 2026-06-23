@@ -448,6 +448,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <SelectItem value="no_response">Leads sem resposta há X tempo</SelectItem>
                 <SelectItem value="before_scheduled">Antes de agendamento/tarefa</SelectItem>
                 <SelectItem value="time_window">Janela de data/hora (mensagem recebida)</SelectItem>
+                <SelectItem value="manual_bulk_move">Mover todos os leads desta etapa (manual)</SelectItem>
               </SelectContent>
             </Select>
             {TRIGGER_DESCRIPTIONS[autoForm.trigger_type] && (
