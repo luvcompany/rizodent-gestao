@@ -422,6 +422,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
   };
 
   const isCombo = autoForm.action_type === "combo";
+  const isBulkMove = autoForm.trigger_type === "manual_bulk_move";
   const isSequenceTrigger = false; // simplified - no more sequence triggers in main list
   const isReengagement = false; // simplified
 
