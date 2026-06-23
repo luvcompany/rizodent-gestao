@@ -62,6 +62,7 @@ const PROFILES_CACHE_TTL = 5 * 60_000;
 const LeadEditPanel = lazy(() => import("@/components/chat/LeadEditPanel"));
 const LeadCustomFields = lazy(() => import("@/components/chat/LeadCustomFields"));
 const LeadExtraFields = lazy(() => import("@/components/chat/LeadExtraFields"));
+const LeadServiceField = lazy(() => import("@/components/chat/LeadServiceField"));
 const LeadStageTimeline = lazy(() => import("@/components/chat/LeadStageTimeline"));
 const LeadResponseTimes = lazy(() => import("@/components/chat/LeadResponseTimes"));
 const LeadBudgetPanel = lazy(() => import("@/components/chat/LeadBudgetPanel"));
@@ -517,9 +518,8 @@ export default function CrmConversa() {
             onStageChange={handleStageChange}
           />
 
-          <LeadExtraFields
+          <LeadServiceField
             leadId={lead.id}
-            cidade={lead.cidade || null}
             servicoInteresse={lead.servico_interesse || null}
             onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
           />
@@ -598,6 +598,13 @@ export default function CrmConversa() {
           leadId={lead.id}
           stages={chat.stages}
           lastInboundAt={chat.lastInboundAt}
+        />
+
+        {/* Cidade */}
+        <LeadExtraFields
+          leadId={lead.id}
+          cidade={lead.cidade || null}
+          onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
         />
 
         {/* Custom Fields */}
