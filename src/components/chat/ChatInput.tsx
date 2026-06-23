@@ -548,6 +548,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       const url = await uploadFile(audioFile, "audio", uploadContentType);
       if (!url) {
+        URL.revokeObjectURL(optimisticUrl);
         onMessageError?.(tempId);
         toast.error("Falha no upload do áudio");
         return;
@@ -560,6 +561,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       const { data, error } = await supabase.functions.invoke(sendFnName, { body: audioBody });
 
+      URL.revokeObjectURL(optimisticUrl);
       if (error || data?.error || data?.ok === false) {
         if (data?.message) {
           onMessageSuccess?.(tempId, data.message);
@@ -572,6 +574,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       onMessageSuccess?.(tempId, data?.message);
     } catch (err: any) {
+      URL.revokeObjectURL(optimisticUrl);
       onMessageError?.(tempId);
       toast.error(err?.message || "Erro ao enviar áudio");
     }
