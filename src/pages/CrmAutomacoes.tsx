@@ -351,6 +351,7 @@ export default function CrmAutomacoes() {
       on_create_or_enter: "Ao mover/criar",
       no_response: "Sem resposta",
       before_scheduled: "Antes de agendamento",
+      manual_bulk_move: "Mover em massa (manual)",
       // Legacy triggers still show labels for existing automations
       lead_created_date: "Por data",
       progressive_reengagement: "Reengajamento",
@@ -363,6 +364,54 @@ export default function CrmAutomacoes() {
     };
     return map[type] || type;
   };
+
+  const handleRunBulkMove = async (auto: Automation) => {
+    const { evaluateConditions } = await import("@/lib/automationConditions");
+    const targetStageId = (auto.action_config as any)?.target_stage_id as string | undefined;
+    const conditions = (auto.action_config as any)?.conditions;
+    if (!targetStageId) {
+      toast.error("Esta automação não tem etapa destino configurada");
+      return;
+    }
+    if (targetStageId === auto.stage_id) {
+      toast.error("Etapa destino é igual à origem");
+      return;
+    }
+    const sourceName = stages.find(s => s.id === auto.stage_id)?.name || "?";
+    const targetName = stages.find(s => s.id === targetStageId)?.name || "?";
+    if (!confirm(`Mover todos os leads da etapa "${sourceName}" para "${targetName}"?\n${conditions?.rules?.length ? `(aplicando ${conditions.rules.length} condição(ões))` : "(sem filtros)"}`)) return;
+
+    toast.info("Carregando leads...");
+    const { data: leads, error } = await supabase
+      .from("crm_leads")
+      .select("id, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+      .eq("stage_id", auto.stage_id);
+    if (error) { toast.error("Erro ao buscar leads: " + error.message); return; }
+
+    const matching = (leads || []).filter(l =>
+      !conditions?.rules?.length || evaluateConditions(conditions, l as any)
+    );
+    if (matching.length === 0) {
+      toast.warning("Nenhum lead atende às condições");
+      return;
+    }
+    toast.info(`Movendo ${matching.length} lead(s)...`);
+    const ids = matching.map(l => l.id);
+    // Update in chunks of 200 to avoid URL length limits
+    const chunkSize = 200;
+    let updated = 0;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const { error: upErr } = await supabase
+        .from("crm_leads")
+        .update({ stage_id: targetStageId, updated_at: new Date().toISOString() })
+        .in("id", chunk);
+      if (upErr) { toast.error("Erro ao mover: " + upErr.message); return; }
+      updated += chunk.length;
+    }
+    toast.success(`${updated} lead(s) movido(s) para "${targetName}"`);
+  };
+
 
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-background"><span className="text-muted-foreground">Carregando...</span></div>;
