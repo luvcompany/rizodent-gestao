@@ -119,12 +119,27 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
         <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
           <Briefcase size={10} /> Serviço de Interesse
         </label>
-        <Input
-          value={servicoValue}
-          onChange={(e) => setServicoValue(e.target.value)}
-          placeholder="Ex: Implante, Ortodontia..."
-          className="bg-secondary border-border text-sm h-8"
-        />
+        <select
+          value={SERVICOS.includes(servicoValue) ? servicoValue : (servicoValue ? "OUTROS" : "none")}
+          onChange={async (e) => {
+            const v = e.target.value;
+            const normalized = v === "none" ? null : v;
+            setServicoValue(normalized || "");
+            lastSavedServicoRef.current = normalized || "";
+            const ok = await updateField("servico_interesse", normalized);
+            if (!ok) {
+              setServicoValue(servicoValue);
+              lastSavedServicoRef.current = servicoValue;
+            }
+          }}
+          disabled={saving}
+          className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value="none">Selecione...</option>
+          {SERVICOS.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
       </div>
     </div>
   );
