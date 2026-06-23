@@ -1,5 +1,6 @@
 // bot-engine v2 - skipMarkAsRead scope fix
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
+import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -208,11 +209,12 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // Internal function. Supabase gateway already validates the API key.
-    const authHeader = req.headers.get("Authorization") || "";
-    const apiKeyHeader = req.headers.get("apikey") || "";
-    if (!authHeader.startsWith("Bearer ") && !apiKeyHeader) {
-      return json({ error: "Unauthorized" }, 401);
+    // Real auth: accept internal service-role calls OR a valid logged-in user JWT.
+    // (Frontend invokes via supabase.functions.invoke which forwards the user's JWT.)
+    const auth = await authorizeInternal(req, supabase, { allowUserJwt: true });
+    if (!auth.ok) {
+      console.warn("[bot-engine] Unauthorized");
+      return unauthorizedResponse(corsHeaders);
     }
 
     const body = await req.json();

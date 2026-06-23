@@ -102,19 +102,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const cached = readCachedAuth(session.user.id);
-        if (cached) {
-          setProfile(cached.profile);
-          setUserRole(cached.userRole);
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          const cached = readCachedAuth(session.user.id);
+          if (cached) {
+            setProfile(cached.profile);
+            setUserRole(cached.userRole);
+          }
+          fetchProfile(session.user.id);
         }
-        fetchProfile(session.user.id);
-      }
-      setLoading(false);
-    });
+      })
+      .catch((err) => {
+        console.error("[AuthContext] getSession failed:", err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
 
     return () => subscription.unsubscribe();
   }, []);

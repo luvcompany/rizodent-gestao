@@ -156,7 +156,8 @@ export async function executeAction(
       break;
 
     case "add_tag": {
-      const tag = config.tag as string;
+      // Editor saves the tag under "tag_name"; legacy automations used "tag".
+      const tag = (config.tag_name ?? config.tag) as string | undefined;
       if (tag) {
         const { data: lead } = await supabase.from("crm_leads").select("tags").eq("id", leadId).single();
         const existing = (lead?.tags || []) as string[];
@@ -167,14 +168,18 @@ export async function executeAction(
       break;
     }
 
-    case "notify_owner": {
+    case "notify_owner":
+    case "notify_assignee": {
       const { data: lead } = await supabase.from("crm_leads").select("assigned_to, name").eq("id", leadId).single();
       if (lead?.assigned_to) {
         await supabase.from("crm_notifications").insert({
           user_id: lead.assigned_to,
           lead_id: leadId,
           title: (config.notification_title as string) || "Automação disparada",
-          body: (config.notification_body as string) || `Automação acionada para o lead ${lead.name}`,
+          body:
+            (config.notify_message as string) ||
+            (config.notification_body as string) ||
+            `Automação acionada para o lead ${lead.name}`,
           type: "automation",
         });
       }
@@ -182,12 +187,17 @@ export async function executeAction(
     }
 
     case "combo": {
-      const actions = (config.actions as Array<{ action_type: string; action_config: Record<string, unknown> }>) || [];
-      for (const sub of actions) {
-        await executeAction(sub.action_type, sub.action_config || {}, leadId, phone, stageId);
+      // Editor saves combo_actions: [{ type, config }]; legacy was actions: [{ action_type, action_config }].
+      const rawActions = (config.combo_actions ?? config.actions ?? []) as Array<any>;
+      for (const sub of rawActions) {
+        const subType = (sub?.type ?? sub?.action_type) as string | undefined;
+        const subConfig = (sub?.config ?? sub?.action_config ?? {}) as Record<string, unknown>;
+        if (!subType) continue;
+        await executeAction(subType, subConfig, leadId, phone, stageId);
       }
       break;
     }
+
 
     case "webhook":
       if (config.url) {

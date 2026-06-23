@@ -96,9 +96,9 @@ const Relatorios = () => {
   const contratadoVsPago = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
-      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + (Number(p.valor) || 0));
     });
-    const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
+    const totalContratado = filteredPagamentos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
     const lista = pacientes
       .map(pac => ({ id: pac.id, nome: pac.nome, contratado: contratadoPorPaciente.get(pac.id) || 0 }))
       .filter(p => p.contratado > 0)
@@ -149,7 +149,7 @@ const Relatorios = () => {
     filteredPagamentos.forEach((p) => {
       const d = p.data_pagamento;
       const entry = map.get(d) || { date: d, faturamento: 0, pagamentos: 0 };
-      entry.faturamento += Number(p.valor);
+      entry.faturamento += (Number(p.valor) || 0);
       entry.pagamentos += 1;
       map.set(d, entry);
     });
@@ -167,7 +167,7 @@ const Relatorios = () => {
     filteredPagamentos.forEach((p) => {
       const w = getWeek(p.data_pagamento);
       const entry = map.get(w) || { week: w, faturamento: 0, pagamentos: 0 };
-      entry.faturamento += Number(p.valor);
+      entry.faturamento += (Number(p.valor) || 0);
       entry.pagamentos += 1;
       map.set(w, entry);
     });
@@ -263,7 +263,7 @@ const Relatorios = () => {
     const contratadoPorPaciente = new Map<string, number>();
     const qtdPgtoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
-      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + (Number(p.valor) || 0));
       qtdPgtoPorPaciente.set(p.paciente_id, (qtdPgtoPorPaciente.get(p.paciente_id) || 0) + 1);
     });
     return pacientes
@@ -293,7 +293,7 @@ const Relatorios = () => {
   const origemReport = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
-      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + Number(p.valor));
+      contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + (Number(p.valor) || 0));
     });
     const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
     pacientes.forEach((p) => {
@@ -339,7 +339,7 @@ const Relatorios = () => {
         descricao: `${p.forma_pagamento || "—"} • ${p.tipo === "primeiro" ? "Novo" : "Recorrente"}`,
         pacienteId: p.paciente_id,
         pacienteNome: p.pacientes?.nome,
-        valor: Number(p.valor),
+        valor: (Number(p.valor) || 0),
       });
     });
 
@@ -907,7 +907,7 @@ const Relatorios = () => {
           const clinicaNome = p.clinicas?.nome || "Sem clínica";
           const entry = pgByClinica.get(clinicaNome) || { clinica: clinicaNome, qtd: 0, total: 0 };
           entry.qtd += 1;
-          entry.total += Number(p.valor);
+          entry.total += (Number(p.valor) || 0);
           pgByClinica.set(clinicaNome, entry);
         });
         const pgClinicaData = Array.from(pgByClinica.values()).sort((a, b) => b.total - a.total);
@@ -916,11 +916,11 @@ const Relatorios = () => {
           const forma = p.forma_pagamento || "Não informado";
           const entry = pgByForma.get(forma) || { forma, qtd: 0, total: 0 };
           entry.qtd += 1;
-          entry.total += Number(p.valor);
+          entry.total += (Number(p.valor) || 0);
           pgByForma.set(forma, entry);
         });
         const pgFormaData = Array.from(pgByForma.values()).sort((a, b) => b.total - a.total);
-        const totalPagamentos = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
+        const totalPagamentos = filteredPagamentos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
 
         return (
           <Card className="gradient-card border-border shadow-card">
@@ -1014,7 +1014,7 @@ const Relatorios = () => {
                           <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.paciente_id}`)}>
                             <TableCell>{new Date(p.data_pagamento + "T12:00:00").toLocaleDateString("pt-BR")}</TableCell>
                             <TableCell className="font-medium text-primary hover:underline">{p.pacientes?.nome || "—"}</TableCell>
-                            <TableCell>{formatCurrency(Number(p.valor))}</TableCell>
+                            <TableCell>{formatCurrency(Number(p.valor) || 0)}</TableCell>
                             <TableCell>{p.forma_pagamento}</TableCell>
                             <TableCell><Badge variant="outline" className={p.tipo === "primeiro" ? "bg-primary/10 text-primary border-primary/30" : "bg-secondary"}>{p.tipo === "primeiro" ? "Novo" : "Recorrente"}</Badge></TableCell>
                           </TableRow>

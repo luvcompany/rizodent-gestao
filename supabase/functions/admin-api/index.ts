@@ -48,7 +48,12 @@ async function listLeads(p: URLSearchParams) {
     .eq("tenant_id", TENANT_ID)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
-  if (search) q = q.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
+  if (search) {
+    // Escape PostgREST .or() reserved characters to block filter injection.
+    // PostgREST splits on commas and parentheses; backslashes/double-quotes also need escaping.
+    const safe = search.replace(/[\\"(),]/g, " ").trim();
+    if (safe) q = q.or(`name.ilike.%${safe}%,phone.ilike.%${safe}%`);
+  }
   if (stageId) q = q.eq("stage_id", stageId);
   if (pipelineId) q = q.eq("pipeline_id", pipelineId);
   const { data, error, count } = await q;
