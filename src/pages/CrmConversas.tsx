@@ -107,6 +107,7 @@ function writeConversasLS(cacheKey: string, data: ConversasLSData): void {
 const LeadEditPanel = lazy(() => import("@/components/chat/LeadEditPanel"));
 const LeadCustomFields = lazy(() => import("@/components/chat/LeadCustomFields"));
 const LeadExtraFields = lazy(() => import("@/components/chat/LeadExtraFields"));
+const LeadServiceField = lazy(() => import("@/components/chat/LeadServiceField"));
 const LeadStageTimeline = lazy(() => import("@/components/chat/LeadStageTimeline"));
 const LeadResponseTimes = lazy(() => import("@/components/chat/LeadResponseTimes"));
 const LeadBudgetPanel = lazy(() => import("@/components/chat/LeadBudgetPanel"));
@@ -1343,6 +1344,16 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   leadId={selectedLead.id}
                   stages={chat.stages}
                   lastInboundAt={chat.lastInboundAt}
+                />
+
+                {/* Cidade */}
+                <LeadExtraFields
+                  leadId={selectedLead.id}
+                  cidade={(selectedLead as any).cidade || null}
+                  onUpdated={(updates) => {
+                    setSelectedLead((prev) => prev ? { ...prev, ...updates } as any : prev);
+                    setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
+                  }}
                 />
 
                 <LeadCustomFields leadId={selectedLead.id} />
