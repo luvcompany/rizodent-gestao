@@ -600,14 +600,6 @@ export default function CrmConversa() {
           lastInboundAt={chat.lastInboundAt}
         />
 
-        {/* Extra Fields (Cidade & Serviço de Interesse) */}
-        <LeadExtraFields
-          leadId={lead.id}
-          cidade={lead.cidade || null}
-          servicoInteresse={lead.servico_interesse || null}
-          onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
-        />
-
         {/* Custom Fields */}
         <LeadCustomFields leadId={lead.id} />
 
