@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { MapPin, Briefcase } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const CIDADES = [
   "Vitória da Conquista",
@@ -143,39 +143,24 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
   };
 
   return (
-    <div className="p-4 border-b border-border space-y-2">
+    <div className="space-y-2">
       <div>
-        <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
-          <MapPin size={10} /> Cidade
-        </label>
-        <select
-          value={cidadeValue}
-          onChange={(e) => void handleCidadeChange(e.target.value)}
-          disabled={saving}
-          className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <option value="none">Sem localização</option>
-          {CIDADES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
-          <Briefcase size={10} /> Serviço de Interesse
-        </label>
-        <select
+        <label className="text-xs text-muted-foreground mb-1 block">Serviço de Interesse</label>
+        <Select
           value={selectValue}
-          onChange={(e) => void handleServicoChange(e.target.value)}
+          onValueChange={(val) => void handleServicoChange(val)}
           disabled={saving}
-          className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <option value="none">Selecione...</option>
-          {SERVICOS.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+          <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+            <SelectValue placeholder="Selecione..." />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Selecione...</SelectItem>
+            {SERVICOS.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {selectValue === "OUTROS" && (
           <Input
@@ -186,6 +171,25 @@ export default function LeadExtraFields({ leadId, cidade, servicoInteresse, onUp
             className="mt-2 bg-secondary border-border text-sm h-8"
           />
         )}
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground mb-1 block">Cidade</label>
+        <Select
+          value={cidadeValue}
+          onValueChange={(val) => void handleCidadeChange(val)}
+          disabled={saving}
+        >
+          <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+            <SelectValue placeholder="Sem localização" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Sem localização</SelectItem>
+            {CIDADES.map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );
