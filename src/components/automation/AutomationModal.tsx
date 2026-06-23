@@ -45,6 +45,7 @@ const TRIGGER_DESCRIPTIONS: Record<string, string> = {
   no_response: "Dispara quando o lead não responde após um tempo definido.",
   before_scheduled: "Dispara X tempo antes de um agendamento ou tarefa marcada. Ideal para lembretes automáticos.",
   time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora. Pode ser única (data/hora específica) ou recorrente semanal (mesmos dias/horas toda semana). Cada lead recebe a ação 1x por janela.",
+  manual_bulk_move: "Move em massa todos os leads desta etapa para outra etapa. Permite filtrar por condições (cidade, serviço, tags etc). Executado manualmente pelo botão 'Executar' no card da automação.",
 };
 
 function TemplateCombobox({
@@ -421,6 +422,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
   };
 
   const isCombo = autoForm.action_type === "combo";
+  const isBulkMove = autoForm.trigger_type === "manual_bulk_move";
   const isSequenceTrigger = false; // simplified - no more sequence triggers in main list
   const isReengagement = false; // simplified
 
@@ -446,6 +448,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <SelectItem value="no_response">Leads sem resposta há X tempo</SelectItem>
                 <SelectItem value="before_scheduled">Antes de agendamento/tarefa</SelectItem>
                 <SelectItem value="time_window">Janela de data/hora (mensagem recebida)</SelectItem>
+                <SelectItem value="manual_bulk_move">Mover todos os leads desta etapa (manual)</SelectItem>
               </SelectContent>
             </Select>
             {TRIGGER_DESCRIPTIONS[autoForm.trigger_type] && (
@@ -694,8 +697,29 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             );
           })()}
 
+          {/* MANUAL BULK MOVE CONFIG */}
+          {isBulkMove && (
+            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+              <Label className="text-xs">Mover todos os leads desta etapa para</Label>
+              <Select
+                value={(autoForm.action_config.target_stage_id as string) || undefined}
+                onValueChange={v => updateConfig({ target_stage_id: v })}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar etapa destino" /></SelectTrigger>
+                <SelectContent>
+                  {stages.filter(s => s.id !== autoForm.stage_id).map(s => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Após salvar, use o botão <strong>Executar</strong> no card desta automação para mover todos os leads que atenderem às condições.
+              </p>
+            </div>
+          )}
+
           {/* AÇÃO - only show for non-sequence triggers (sequences have their own actions) */}
-          {!isSequenceTrigger && !isReengagement && (
+          {!isSequenceTrigger && !isReengagement && !isBulkMove && (
             <>
               <div>
                 <Label>Ação</Label>
@@ -736,17 +760,19 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             onChange={(v) => updateConfig({ conditions: v })}
           />
 
-          {/* Checkbox: send to all existing */}
-          <div className="flex items-center gap-3">
-            <Checkbox
-              id="send-to-all-modal"
-              checked={!!(autoForm.action_config.send_to_all_existing)}
-              onCheckedChange={v => updateConfig({ send_to_all_existing: !!v })}
-            />
-            <label htmlFor="send-to-all-modal" className="text-sm text-foreground cursor-pointer">
-              Enviar para todos os leads que já estão nesta etapa
-            </label>
-          </div>
+          {/* Checkbox: send to all existing - not applicable for bulk_move */}
+          {!isBulkMove && (
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="send-to-all-modal"
+                checked={!!(autoForm.action_config.send_to_all_existing)}
+                onCheckedChange={v => updateConfig({ send_to_all_existing: !!v })}
+              />
+              <label htmlFor="send-to-all-modal" className="text-sm text-foreground cursor-pointer">
+                Enviar para todos os leads que já estão nesta etapa
+              </label>
+            </div>
+          )}
 
           <Button className="w-full" onClick={onSave}>Salvar Automação</Button>
         </div>
