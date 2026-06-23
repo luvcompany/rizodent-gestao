@@ -517,6 +517,13 @@ export default function CrmConversa() {
             onStageChange={handleStageChange}
           />
 
+          <LeadExtraFields
+            leadId={lead.id}
+            cidade={lead.cidade || null}
+            servicoInteresse={lead.servico_interesse || null}
+            onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
+          />
+
           {/* Responsible User Assignment */}
           <div className="mt-3">
             <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">

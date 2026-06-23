@@ -1254,6 +1254,16 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     onStageChange={handleStageChange}
                   />
 
+                  <LeadExtraFields
+                    leadId={selectedLead.id}
+                    cidade={(selectedLead as any).cidade || null}
+                    servicoInteresse={(selectedLead as any).servico_interesse || null}
+                    onUpdated={(updates) => {
+                      setSelectedLead((prev) => prev ? { ...prev, ...updates } as any : prev);
+                      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
+                    }}
+                  />
+
                   {/* Responsible User Assignment */}
                   <div className="mt-3">
                     <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">
