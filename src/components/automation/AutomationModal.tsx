@@ -45,6 +45,7 @@ const TRIGGER_DESCRIPTIONS: Record<string, string> = {
   no_response: "Dispara quando o lead não responde após um tempo definido.",
   before_scheduled: "Dispara X tempo antes de um agendamento ou tarefa marcada. Ideal para lembretes automáticos.",
   time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora. Pode ser única (data/hora específica) ou recorrente semanal (mesmos dias/horas toda semana). Cada lead recebe a ação 1x por janela.",
+  manual_bulk_move: "Move em massa todos os leads desta etapa para outra etapa. Permite filtrar por condições (cidade, serviço, tags etc). Executado manualmente pelo botão 'Executar' no card da automação.",
 };
 
 function TemplateCombobox({
