@@ -120,8 +120,14 @@ export function evaluateConditions(
         const arr = Array.isArray(value) ? value : String(value || "").split(",");
         return !arr.map(normStr).includes(normStr(leadVal));
       }
-      case "gt": return Number(leadVal) > Number(value);
-      case "lt": return Number(leadVal) < Number(value);
+      case "gt": {
+        const a = Number(leadVal), b = Number(value);
+        return Number.isFinite(a) && Number.isFinite(b) && a > b;
+      }
+      case "lt": {
+        const a = Number(leadVal), b = Number(value);
+        return Number.isFinite(a) && Number.isFinite(b) && a < b;
+      }
       default: return true;
     }
   };

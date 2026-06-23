@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      _internal_secrets: {
+        Row: {
+          created_at: string
+          name: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          name: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          name?: string
+          value?: string
+        }
+        Relationships: []
+      }
       access_logs: {
         Row: {
           context: string
@@ -3321,6 +3339,8 @@ export type Database = {
           assigned_to: string
           lead_id: string
           lead_name: string
+          pipeline_name: string
+          stage_name: string
         }[]
       }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
@@ -3618,6 +3638,10 @@ export type Database = {
       }
       user_override: {
         Args: { _resource_id: string; _scope: string; _user_id: string }
+        Returns: boolean
+      }
+      verify_internal_secret: {
+        Args: { _name: string; _token: string }
         Returns: boolean
       }
       watchdog_reenqueue_missing_bots: { Args: never; Returns: number }

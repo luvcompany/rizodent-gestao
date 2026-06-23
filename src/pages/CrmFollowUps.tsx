@@ -449,7 +449,7 @@ export default function CrmFollowUps() {
                 <Input
                   type="number" min={1} className="h-8 text-sm w-32"
                   value={form.max_attempts}
-                  onChange={e => setForm(prev => ({ ...prev, max_attempts: parseInt(e.target.value) || 1 }))}
+                  onChange={e => setForm(prev => ({ ...prev, max_attempts: Math.max(1, parseInt(e.target.value) || 1) }))}
                 />
               </div>
             </div>
