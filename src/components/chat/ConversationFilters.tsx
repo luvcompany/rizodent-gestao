@@ -271,6 +271,20 @@ export default function ConversationFilters({
               </Select>
             </div>
 
+            {/* Serviço de Interesse */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Serviço de Interesse</label>
+              <Select value={draft.servicoInteresse} onValueChange={(v) => setDraft({ ...draft, servicoInteresse: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectContent>
+                  {SERVICOS.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+
             {/* Pagamentos vinculados */}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Pagamentos vinculados</label>
