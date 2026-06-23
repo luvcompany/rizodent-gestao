@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,9 +107,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    const caller = await resolveCaller(req, supabase);
+    if (!caller.ok) {
+      return new Response(JSON.stringify({ error: caller.error }), {
+        status: caller.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const body = await req.json().catch(() => ({}));
     const leadId = body.lead_id as string | undefined;
@@ -119,6 +126,15 @@ Deno.serve(async (req) => {
     if (!leadId) {
       return new Response(JSON.stringify({ error: "lead_id é obrigatório" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Tenant ownership check (IDOR guard)
+    const tenantCheck = await assertLeadInTenant(supabase, leadId, caller);
+    if (!tenantCheck.ok) {
+      return new Response(JSON.stringify({ error: tenantCheck.error }), {
+        status: tenantCheck.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

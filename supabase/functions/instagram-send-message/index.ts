@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -157,14 +158,10 @@ Deno.serve(async (req: Request) => {
   }
 
   // Require authenticated caller (user JWT) or service role
-  const authHeader = req.headers.get("authorization") || "";
-  const isServiceRole = authHeader === `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
-  if (!isServiceRole) {
-    if (!authHeader.startsWith("Bearer ")) return jsonResponse({ error: "Unauthorized" }, 401);
-    const token = authHeader.slice("Bearer ".length);
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user) return jsonResponse({ error: "Unauthorized" }, 401);
-  }
+  const caller = await resolveCaller(req, supabase);
+  if (!caller.ok) return jsonResponse({ error: caller.error }, caller.status);
+
+
 
   let body: Body;
   try {
@@ -186,6 +183,16 @@ Deno.serve(async (req: Request) => {
 
   let leadId = lead_id ?? null;
   const recipientExplicit = !!recipient_id;
+
+  // Tenant ownership check when lead_id is supplied (IDOR guard)
+  if (leadId) {
+    const tenantCheck = await assertLeadInTenant(supabase, leadId, caller);
+    if (!tenantCheck.ok) {
+      console.warn(`[instagram-send-message] tenant guard: ${tenantCheck.error} lead=${leadId} user=${caller.userId ?? "service"}`);
+      return jsonResponse({ error: tenantCheck.error }, tenantCheck.status);
+    }
+  }
+
 
   if (MEDIA_MESSAGE_TYPES.has(message_type) && !media_url) {
     return jsonResponse({ error: "media_url is required for media messages" }, 400);

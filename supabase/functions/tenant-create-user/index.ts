@@ -31,7 +31,8 @@ Deno.serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", requesterId);
-    const isAdmin = (roles || []).some((r: any) => r.role === "crc" || r.role === "superadmin");
+    const isSuperadmin = (roles || []).some((r: any) => r.role === "superadmin");
+    const isAdmin = isSuperadmin || (roles || []).some((r: any) => r.role === "crc" || r.role === "gerente");
     if (!isAdmin) return json({ error: "Forbidden — admin only" }, 403);
 
     // Pega o tenant do solicitante
@@ -45,7 +46,18 @@ Deno.serve(async (req) => {
 
     const { email, password, nome, cargo, role } = await req.json();
     if (!email || !password || !nome) return json({ error: "Campos obrigatórios faltando" }, 400);
-    const userRole = role || "crc";
+
+    // Allowlist de roles — bloqueia escalada de privilégio.
+    // - crc/gerente só podem criar: crc, posvenda
+    // - superadmin pode criar: crc, posvenda, gerente, superadmin
+    const requestedRole = role || "crc";
+    const allowedForAdmin = new Set(["crc", "posvenda"]);
+    const allowedForSuperadmin = new Set(["crc", "posvenda", "gerente", "superadmin"]);
+    const allowed = isSuperadmin ? allowedForSuperadmin : allowedForAdmin;
+    if (!allowed.has(requestedRole)) {
+      return json({ error: `Role '${requestedRole}' não permitida para este usuário` }, 403);
+    }
+    const userRole = requestedRole;
 
     // Procura usuário existente paginando (operação intencional do admin recria limpo)
     let existingUser: any = null;

@@ -203,7 +203,7 @@ const Relatorios = () => {
   }, [dateFrom, dateTo]);
 
   const predictability = useMemo(() => {
-    const totalContratado = filteredPagamentos.reduce((s, p) => s + Number(p.valor), 0);
+    const totalContratado = filteredPagamentos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
       leads: acc.leads + l.leads_novos, agendaram: acc.agendaram + l.agendaram,
       compareceram: acc.compareceram + (l.agendaram - l.faltaram), faltaram: acc.faltaram + l.faltaram,
