@@ -309,37 +309,35 @@ Responda SOMENTE com JSON válido no formato:
     ];
 
     const modelId: string = config.model || "google/gemini-3-flash-preview";
-    let aiText = "";
     let usedModel = modelId;
 
-    if (modelId.startsWith("anthropic/") && ANTHROPIC_API_KEY) {
-      const anthropicModel = modelId.replace(/^anthropic\//, "");
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: anthropicModel,
-          max_tokens: 600,
-          system: systemPrompt,
-          messages: anchoredHistory.map((m) => ({ role: m.role, content: m.content })),
-        }),
-      });
-      if (!r.ok) {
-        const t = await r.text();
-        return new Response(JSON.stringify({ error: `anthropic ${r.status}: ${t}` }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    async function callModel(extraInstruction?: string): Promise<string> {
+      const sys = extraInstruction ? `${systemPrompt}\n\n${extraInstruction}` : systemPrompt;
+      if (modelId.startsWith("anthropic/") && ANTHROPIC_API_KEY) {
+        const anthropicModel = modelId.replace(/^anthropic\//, "");
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: anthropicModel,
+            max_tokens: 1024,
+            system: sys,
+            messages: anchoredHistory.map((m) => ({ role: m.role, content: m.content })),
+          }),
+        });
+        if (!r.ok) {
+          const t = await r.text();
+          throw new Error(`anthropic ${r.status}: ${t}`);
+        }
+        usedModel = modelId;
+        const j = await r.json();
+        return (j?.content || []).map((c: any) => c?.text || "").join("\n").trim();
       }
-      usedModel = modelId;
-      const j = await r.json();
-      aiText = (j?.content || []).map((c: any) => c?.text || "").join("\n").trim();
-    } else {
-      // Fallback to Lovable AI Gateway (also used when model is Anthropic but key missing)
-      if (!LOVABLE_API_KEY) {
-        return new Response(JSON.stringify({ error: "LOVABLE_API_KEY não configurado" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
+      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY não configurado");
       const fallbackModel = modelId.startsWith("anthropic/") ? "google/gemini-2.5-flash" : modelId;
       usedModel = fallbackModel;
       const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -347,23 +345,46 @@ Responda SOMENTE com JSON válido no formato:
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: fallbackModel,
-          messages: [{ role: "system", content: systemPrompt }, ...anchoredHistory],
+          max_tokens: 1024,
+          messages: [{ role: "system", content: sys }, ...anchoredHistory],
         }),
       });
-      if (r.status === 429) return new Response(JSON.stringify({ error: "rate_limited" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (r.status === 402) return new Response(JSON.stringify({ error: "credits_exhausted" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (r.status === 429) throw new Error("__RATE_LIMITED__");
+      if (r.status === 402) throw new Error("__CREDITS_EXHAUSTED__");
       if (!r.ok) {
         const t = await r.text();
-        return new Response(JSON.stringify({ error: `gateway ${r.status}: ${t}` }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        throw new Error(`gateway ${r.status}: ${t}`);
       }
       const j = await r.json();
-      aiText = j?.choices?.[0]?.message?.content || "";
+      return j?.choices?.[0]?.message?.content || "";
     }
 
-    const parsed = parseJsonTolerant(aiText);
-    if (!parsed || !parsed.reply.trim()) {
-      return new Response(JSON.stringify({ error: "parse_failed", raw: aiText }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    let aiText = "";
+    let parsed = null as ReturnType<typeof parseJsonTolerant>;
+    try {
+      aiText = await callModel();
+      parsed = parseJsonTolerant(aiText);
+      // Retry uma vez se veio vazio ou sem JSON parseável
+      if (!parsed || !parsed.reply.trim()) {
+        const reinforcement = `IMPORTANTE: sua última resposta veio vazia ou fora do formato. Responda AGORA somente com um objeto JSON em uma única linha, sem markdown, sem cercas de código, sem texto antes ou depois. Exemplo exato de formato: {"reply":"texto da mensagem","action":"reply","action_reason":"curto"}`;
+        aiText = await callModel(reinforcement);
+        parsed = parseJsonTolerant(aiText);
+      }
+      // Último recurso: se ainda não parseou mas há texto, usa o texto cru como reply
+      if ((!parsed || !parsed.reply.trim()) && aiText.trim()) {
+        parsed = { reply: aiText.trim().slice(0, 1200), action: "reply" };
+      }
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      if (msg === "__RATE_LIMITED__") return new Response(JSON.stringify({ error: "rate_limited" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (msg === "__CREDITS_EXHAUSTED__") return new Response(JSON.stringify({ error: "credits_exhausted" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: msg }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    if (!parsed || !parsed.reply.trim()) {
+      return new Response(JSON.stringify({ error: "empty_response", model: usedModel, raw: aiText }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
 
     // Mark prior pending as superseded
     await supabase
