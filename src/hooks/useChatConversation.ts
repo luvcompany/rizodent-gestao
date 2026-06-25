@@ -150,14 +150,13 @@ export function useChatConversation(leadId: string | null | undefined) {
       const cached = messageCache.get(targetLeadId);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         applyMessages(cached.messages as ChatMessage[]);
-        // Still refresh in background
+        // Only refresh in background if cache is stale (>30s) to avoid wasting bandwidth
+        if (Date.now() - cached.timestamp < 30_000) return;
         supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true }).then(({ data }) => {
           if (data) {
             const nextMessages = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
             messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
-            if (!applyMessages(nextMessages)) return;
-            const mediaUrls = nextMessages.filter((m) => m.media_url?.startsWith("http")).map((m) => m.media_url!);
-            if (mediaUrls.length > 0) batchSignMediaUrls(mediaUrls).catch((err) => console.warn("[useChatConversation] batchSignMediaUrls error:", err));
+            applyMessages(nextMessages);
           }
         });
         return;
@@ -169,17 +168,14 @@ export function useChatConversation(leadId: string | null | undefined) {
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       const msgs = ((data as unknown as ChatMessage[]) || []).map(normalizeOutboundStatus);
       messageCache.set(targetLeadId, { messages: msgs, timestamp: Date.now() });
-      if (!applyMessages(msgs)) return;
-      // Pre-sign all media URLs in background so they're cached when rendering
-      const mediaUrls = msgs.filter(m => m.media_url?.startsWith("http")).map(m => m.media_url!);
-      if (mediaUrls.length > 0) {
-        batchSignMediaUrls(mediaUrls).catch((err) => console.warn("[useChatConversation] batchSignMediaUrls error:", err));
-      }
+      applyMessages(msgs);
+      // Media URLs are signed on-demand by ChatMessageContent's useSignedUrl, no upfront batch needed.
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
       if (isCurrentRequest()) setLoading(false);
     }
   }, [leadId]);
+
 
   useEffect(() => { fetchMessages(); fetchStages(); }, [fetchMessages, fetchStages]);
 
@@ -208,10 +204,11 @@ export function useChatConversation(leadId: string | null | undefined) {
     setLoading(true);
   }, [leadId]);
 
-  // ─── Repair legacy media (deferred, non-blocking) ───
+  // ─── Repair legacy media (deferred, non-blocking, visible-tab-only) ───
   useEffect(() => {
     if (!leadId || repairedMediaLeadCache.has(leadId)) return;
     const timer = setTimeout(async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       repairedMediaLeadCache.add(leadId);
       try {
         if (activeLeadRef.current !== leadId) return;
@@ -226,9 +223,10 @@ export function useChatConversation(leadId: string | null | undefined) {
       } catch {
         repairedMediaLeadCache.delete(leadId);
       }
-    }, 3000); // Defer 3s to not block initial render
+    }, 8000); // Defer 8s to not block initial render or quick lead-switching
     return () => clearTimeout(timer);
   }, [leadId, fetchMessages]);
+
 
   // ─── Scroll to bottom on initial load ───
   useEffect(() => {
@@ -302,13 +300,14 @@ export function useChatConversation(leadId: string | null | undefined) {
     return () => { supabase.removeChannel(channel); };
   }, [leadId]);
 
-  // ─── Polling fallback (very infrequent, realtime handles most updates) ───
+  // ─── Polling fallback (only when tab is visible; realtime handles most updates) ───
   useEffect(() => {
     const targetLeadId = leadId;
     if (!targetLeadId) return;
 
     const interval = setInterval(async () => {
       if (activeLeadRef.current !== targetLeadId) return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       if (data && activeLeadRef.current === targetLeadId) {
         const nextMessages = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
@@ -321,9 +320,10 @@ export function useChatConversation(leadId: string | null | undefined) {
           return prev;
         });
       }
-    }, 30000);
+    }, 60000); // 60s — realtime carries the load; this is just a safety net
     return () => clearInterval(interval);
   }, [leadId]);
+
 
   // ─── Activity Toasts ───
   const dismissToast = useCallback((toastId: string) => {

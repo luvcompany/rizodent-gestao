@@ -1,4 +1,6 @@
-import { Suspense, lazy, useState, useEffect, useCallback, useMemo } from "react";
+import { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -102,8 +104,22 @@ function readConversasLS(cacheKey: string): ConversasLSData | null {
   } catch { return null; }
 }
 function writeConversasLS(cacheKey: string, data: ConversasLSData): void {
-  try { localStorage.setItem(`${CONV_LS_KEY}:${cacheKey}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
+  // Persistimos só os 500 leads mais recentes p/ não travar a thread serializando ~6k linhas.
+  const slim: ConversasLSData = {
+    leads: data.leads.slice(0, 500),
+    profiles: data.profiles,
+    pipelines: data.pipelines,
+  };
+  const write = () => {
+    try { localStorage.setItem(`${CONV_LS_KEY}:${cacheKey}`, JSON.stringify({ data: slim, ts: Date.now() })); } catch {}
+  };
+  if (typeof (window as any).requestIdleCallback === "function") {
+    (window as any).requestIdleCallback(write, { timeout: 2000 });
+  } else {
+    setTimeout(write, 0);
+  }
 }
+
 const LeadEditPanel = lazy(() => import("@/components/chat/LeadEditPanel"));
 const LeadCustomFields = lazy(() => import("@/components/chat/LeadCustomFields"));
 const LeadExtraFields = lazy(() => import("@/components/chat/LeadExtraFields"));
@@ -126,7 +142,13 @@ const SidePanelFallback = () => (
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 const CONVERSATION_PAGE_SIZE = 1000;
 const CONVERSATION_MAX_PAGES = 6; // ~6k leads; suficiente p/ base atual (~4.3k) sem páginas extras
-const LEAD_SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
+// Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
+// Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
+// porque os filtros derivam opções deles).
+const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name";
+// Colunas completas p/ o lead selecionado (inclui notes/value).
+const LEAD_SELECT_COLS = LEAD_LIST_COLS + ", value, notes";
+
 
 const getLastDirection = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => {
   if (lead.last_inbound_at && lead.last_outbound_at) {
@@ -149,16 +171,29 @@ const sortLeadsByLastActivity = (items: LeadConversation[]) =>
     return bTime - aTime;
   });
 
+// Idle scheduler helper — não bloqueia a thread principal.
+const runIdle = (cb: () => void, timeout = 1500) => {
+  if (typeof (window as any).requestIdleCallback === "function") {
+    (window as any).requestIdleCallback(cb, { timeout });
+  } else {
+    setTimeout(cb, 0);
+  }
+};
+
 // Carrega TODOS os leads do tenant em páginas de 1000 (limite default do Supabase).
 // Necessário para que filtros por etapa/funil correspondam ao Kanban.
-const fetchAllConversationLeads = async (tenantId: string) => {
+// `onFirstPage` é chamado assim que a primeira página chega (para pintar a UI rápido).
+const fetchAllConversationLeads = async (
+  tenantId: string,
+  onFirstPage?: (rows: LeadConversation[]) => void,
+) => {
   const all: LeadConversation[] = [];
   for (let page = 0; page < CONVERSATION_MAX_PAGES; page++) {
     const from = page * CONVERSATION_PAGE_SIZE;
     const to = from + CONVERSATION_PAGE_SIZE - 1;
     const { data, error } = await supabase
       .from("crm_leads")
-      .select(LEAD_SELECT_COLS)
+      .select(LEAD_LIST_COLS)
       .eq("tenant_id", tenantId)
       .eq("is_blocked", false)
       .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -167,10 +202,12 @@ const fetchAllConversationLeads = async (tenantId: string) => {
     if (error) throw error;
     const rows = ((data || []) as any as LeadConversation[]).map(normalizeLead);
     all.push(...rows);
+    if (page === 0 && onFirstPage) onFirstPage([...rows]);
     if (rows.length < CONVERSATION_PAGE_SIZE) break;
   }
   return sortLeadsByLastActivity(all);
 };
+
 
 /** Pré-carrega a lista de conversas + profiles + pipelines e popula o cache em memória + localStorage.
  *  Idempotente: se o cache estiver fresco (< LEADS_BG_REFRESH_AFTER), retorna imediatamente. */
@@ -361,8 +398,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     }
 
     const fetchLeads = async () => {
+      // First-paint rápido: mostra a UI assim que profiles + pipelines + 1ª página de leads chegam.
+      let firstPainted = false;
       const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
-        fetchAllConversationLeads(tenant.id),
+        fetchAllConversationLeads(tenant.id, (firstPage) => {
+          firstPainted = true;
+          setLeads(firstPage);
+          setLoading(false);
+        }),
         supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
         supabase.from("crm_pipelines").select("id, name, allowed_roles").eq("tenant_id", tenant.id).order("created_at"),
       ]);
@@ -379,10 +422,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setLeads(rawLeads);
       setProfiles(profs);
       setPipelines(pipes);
-      setLoading(false);
+      if (!firstPainted) setLoading(false);
     };
     fetchLeads();
   }, [tenant.id, cacheKey]);
+
 
   // Server-side search: when user types, fetch matching leads beyond the initial 500-row cache
   // so older conversations (sorted lower by last_message_at) are still findable.
@@ -409,7 +453,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       const { data, error } = await supabase
         .from("crm_leads")
-        .select(LEAD_SELECT_COLS)
+        .select(LEAD_LIST_COLS)
         .eq("tenant_id", tenant.id)
         .eq("is_blocked", false)
         .or(orParts.join(","))
@@ -453,7 +497,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (missing.length) {
         const { data: leadRows } = await supabase
           .from("crm_leads")
-          .select(LEAD_SELECT_COLS)
+          .select(LEAD_LIST_COLS)
           .eq("tenant_id", tenant.id)
           .eq("is_blocked", false)
           .in("id", missing.slice(0, 100));
@@ -519,7 +563,22 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     }
     const lead = leads.find((l) => l.id === selectedLeadId) || null;
     setSelectedLead(lead);
+    // Hidrata campos pesados ausentes na lista (notes/value) sob demanda.
+    if (lead && ((lead as any).notes === undefined || (lead as any).value === undefined)) {
+      let cancelled = false;
+      supabase
+        .from("crm_leads")
+        .select("id, notes, value")
+        .eq("id", selectedLeadId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (cancelled || !data) return;
+          setSelectedLead((prev) => prev && prev.id === selectedLeadId ? { ...prev, ...(data as any) } : prev);
+        });
+      return () => { cancelled = true; };
+    }
   }, [selectedLeadId, leads]);
+
 
   // Realtime - leads list
   useEffect(() => {
@@ -856,10 +915,19 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     return filtered;
   }, [filtered, sortMode]);
 
-  // Render limit for performance — show more on scroll
-  const [visibleCount, setVisibleCount] = useState(50);
-  useEffect(() => { setVisibleCount(50); }, [search, filters]);
-  const visibleLeads = useMemo(() => sortedFiltered.slice(0, visibleCount), [sortedFiltered, visibleCount]);
+  // Lista virtualizada: renderiza só os itens visíveis no scroll, DOM permanece pequeno.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: sortedFiltered.length,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 76,
+    overscan: 8,
+    getItemKey: (i) => sortedFiltered[i]?.id ?? i,
+  });
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [search, filters, sortMode]);
+
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
@@ -946,7 +1014,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 )}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div ref={listScrollRef} className="flex-1 overflow-y-auto" style={{ contain: "strict" }}>
               {loading ? (
                 <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
               ) : sortedFiltered.length === 0 ? (
@@ -955,14 +1023,20 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   <p className="text-sm">Nenhuma conversa</p>
                 </div>
               ) : (
-                <div className="divide-y divide-border">
-                  {visibleLeads.map((lead) => {
+                <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
+                  {rowVirtualizer.getVirtualItems().map((vRow) => {
+                    const lead = sortedFiltered[vRow.index];
+                    if (!lead) return null;
                     const initials = lead.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
                     const isActive = lead.id === selectedLeadId;
-                    const stageDot = chat.stages.find((s) => s.id === lead.stage_id);
                     const isInbound = lead.last_direction === "inbound";
                      return (
-                      <div key={lead.id} className={`relative group flex items-start gap-0 transition-colors ${
+                      <div
+                        key={lead.id}
+                        ref={rowVirtualizer.measureElement}
+                        data-index={vRow.index}
+                        style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vRow.start}px)` }}
+                        className={`relative group flex items-start gap-0 border-b border-border transition-colors ${
                           isActive
                             ? "bg-primary/15 border-l-2 border-l-primary"
                             : isInbound
@@ -1054,17 +1128,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       </div>
                      );
                   })}
-                  {visibleCount < sortedFiltered.length && (
-                    <button
-                      className="w-full py-3 text-xs text-primary hover:bg-secondary/50 transition-colors"
-                      onClick={() => setVisibleCount((c) => c + 50)}
-                    >
-                      Carregar mais ({sortedFiltered.length - visibleCount} restantes)
-                    </button>
-                  )}
                 </div>
               )}
             </div>
+
           </div>
         </ResizablePanel>
         {!isCrmMobile && <ResizableHandle />}</>

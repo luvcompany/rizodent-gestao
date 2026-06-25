@@ -1,90 +1,56 @@
+## Objetivo
+Deixar a tela de Conversas (lista + chat + painel lateral) abrir e rolar de forma fluida mesmo em internet fraca, sem alterar nenhuma regra de negócio.
 
-# Plano de correção — Segurança e qualidade do CRM
+## Diagnóstico
+1. **Payload inicial gigante**: `fetchAllConversationLeads` baixa até 6.000 leads × ~30 colunas em páginas sequenciais de 1.000 (vários MB). Tudo isso *antes* de mostrar a primeira linha.
+2. **Colunas demais no SELECT**: a lista usa só ~12 campos, mas o SELECT puxa também `titulo_anuncio`, `descricao_anuncio`, `link_anuncio`, `imagem_origem`, `ad_account_*`, `notes`, `value`, etc. — só usados no painel de detalhes.
+3. **localStorage pesado**: serializar 6k leads em JSON trava a thread principal em celulares fracos.
+4. **Sem virtualização**: a lista usa `slice(0, visibleCount)` + botão "Ver mais"; ao crescer, o DOM fica grande e o scroll engasga.
+5. **Hook do chat (`useChatConversation`)**: além do realtime, mantém um **polling de 30s por lead aberto** e dispara `batchSignMediaUrls` para o histórico inteiro logo no `open` — duas chamadas extras desnecessárias em rede fraca.
+6. **Painéis laterais montam cedo**: vários `lazy()` (TaskPanel, LeadBudgetPanel, LeadStageTimeline, LeadFollowUpPanel, etc.) entram no bundle inicial do leadOpen mesmo quando o usuário não abre o painel direito (no mobile, por exemplo).
 
-Objetivo: fechar os vazamentos entre clínicas (multi-tenant) e os bugs altos **sem alterar comportamento visível** para quem já usa o sistema. Cada fase é independente e validável isoladamente, para podermos pausar/reverter sem afetar a operação.
+## Mudanças
 
----
+### 1. Enxugar a query da lista
+Em `CrmConversas.tsx` e `CrmConversa.tsx`:
+- Criar `LEAD_LIST_COLS` reduzido (id, name, phone, instagram_user_id, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, assigned_to, paciente_id, cidade, servico_interesse).
+- Manter `LEAD_SELECT_COLS` completo apenas para a query do lead selecionado (um SELECT pequeno por lead aberto), populando os campos extras em `selectedLead`.
 
-## Fase 1 — IDOR nas Edge Functions (CRÍTICO, prioridade #1)
+Redução esperada: ~55–65% no tamanho de cada página.
 
-Criar um helper compartilhado `_shared/authz.ts` (montado via `import_map` ou copiado em cada função, conforme padrão do projeto) com:
+### 2. First paint em 1 round-trip
+- Mostrar a UI assim que a **primeira página (1.000 leads recentes)** chegar — `setLeads` + `setLoading(false)` imediatamente.
+- Continuar buscando as páginas seguintes em background (`requestIdleCallback` quando disponível) e mesclar via `sortLeadsByLastActivity`.
+- A busca server-side já cobre leads antigos ainda não carregados, então a UX não regride.
 
-- `requireUser(req)` → valida JWT via `supabase.auth.getClaims(token)`, retorna `{ userId, tenantId, roles }` lendo `profiles.tenant_id` + `user_roles`.
-- `assertLeadInTenant(leadId, tenantId)` → consulta `tenant_of_lead(leadId)` e lança 403 se divergir.
-- `assertMessageInTenant(messageId, tenantId)` → idem com `tenant_of_message`.
-- `assertWhatsAppNumberInTenant` / `assertInstagramAccountInTenant`.
+### 3. Persistência mais barata
+- Gravar no `localStorage` somente os **primeiros 500 leads** (suficientes para o paint inicial offline) e adiar a gravação com `requestIdleCallback` / `setTimeout(0)`.
+- Em runtime, manter o array completo só na memória.
 
-Aplicar em:
-- `send-whatsapp-message`
-- `transcribe-audio`
-- `ai-conversation-assist`
-- `delete-whatsapp-message`
-- `instagram-send-message`
+### 4. Virtualizar a lista de conversas
+- Instalar `@tanstack/react-virtual` e substituir o `visibleLeads.map(...)` por uma lista virtualizada (altura fixa de item). Remover o botão "Ver mais 50".
+- Mantém DOM constante (~15-25 nós) independente da quantidade de leads → scroll fluido no celular.
 
-Critério "não quebrar": helper é **aditivo** (rejeita só requests cross-tenant); fluxos normais do front continuam idênticos pois o front sempre usa leads do tenant do usuário.
+### 5. Hook do chat mais leve (`useChatConversation.ts`)
+- Remover o `setInterval` de 30s quando o canal realtime estiver `SUBSCRIBED`; reativar apenas se o subscribe falhar (`CHANNEL_ERROR`/`TIMED_OUT`).
+- Não chamar `batchSignMediaUrls` para o histórico inteiro no open: deixar cada `ChatMessageContent` assinar sob demanda (já existe `useSignedUrl`). Isso economiza 1 chamada grande por lead aberto.
+- Pular o refetch em background quando o cache tem menos de 30s.
+- Adiar `repair-chat-media` de 3s para 8s e só executar se a aba estiver visível (`document.visibilityState === "visible"`).
 
-## Fase 2 — Webhooks (CRÍTICO + ALTO)
+### 6. Gating dos painéis laterais
+- Só montar `LeadCustomFields`, `LeadStageTimeline`, `LeadResponseTimes`, `LeadBudgetPanel`, `TaskPanel`, `LeadFollowUpPanel`, `LeadAiAssistPanel` quando `effRightVisible === true`. No mobile, isso evita carregar tudo só por abrir uma conversa.
 
-- **Instagram webhook**: adicionar verificação HMAC SHA-256 do header `X-Hub-Signature-256` usando `META_APP_SECRET` (mesmo padrão do `whatsapp-webhook`). Aplicar em `instagram-webhook` e `instagram-lite-webhook`.
-- **Idempotência**: criar índice único parcial em `messages(whatsapp_message_id)` e `instagram_messages(instagram_message_id)` (WHERE NOT NULL), e ajustar os webhooks para `ON CONFLICT DO NOTHING`. Migração separada — antes, deduplicar registros existentes.
-- **verify_token**: comparar com `timingSafeEqual`.
+### 7. Índices de apoio (migration)
+- Garantir `CREATE INDEX IF NOT EXISTS crm_leads_tenant_lastmsg_idx ON crm_leads (tenant_id, is_blocked, last_message_at DESC NULLS LAST);`
+- Para a busca por conteúdo de mensagem: `CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE INDEX IF NOT EXISTS messages_content_trgm_idx ON messages USING gin (content gin_trgm_ops);` — torna o `ilike '%termo%'` rápido em vez de full scan.
 
-## Fase 3 — Escalada de privilégio e RPC vazante (CRÍTICO)
+## Arquivos tocados
+- `src/pages/CrmConversas.tsx`
+- `src/pages/CrmConversa.tsx`
+- `src/hooks/useChatConversation.ts`
+- `package.json` (+ `@tanstack/react-virtual`)
+- 1 migration de índices
 
-- `tenant-create-user`: aplicar allowlist de roles (`crc`, `gerente`, `posvenda`); apenas `superadmin` pode criar `superadmin` / `gerente`. Validar no servidor.
-- `check_duplicate_phone`: nova migration recriando a função com filtro `tenant_id = current_tenant_id()`. Mantém assinatura → `CrmKanban.tsx` continua chamando sem mudanças.
-- `ai_conversation_analysis`: trocar política `USING(true)` por `USING(tenant_id = current_tenant_id())`. Antes, preencher `tenant_id` nas linhas existentes a partir do lead.
-- `crm_notifications`: corrigir `WITH CHECK(true)` para `WITH CHECK(user_id IN (SELECT id FROM profiles WHERE tenant_id = current_tenant_id()))`.
-
-## Fase 4 — Edge Functions sem `verify_jwt` explícito (ALTO)
-
-Auditar `supabase/config.toml`: para `automation-engine`, `bot-engine`, `followup-engine` e quaisquer cron-only, declarar explicitamente `verify_jwt = false` **e** exigir header `X-Cron-Secret` (gerado via `generate_secret`) checado em código. Funções chamadas pelo front continuam com validação JWT em código.
-
-## Fase 5 — Automações silenciosamente quebradas (ALTO)
-
-Em `automationUtils.ts` alinhar nomes lendo **ambos** os campos (compatibilidade retroativa) e gravando o canônico:
-- `create_tag`: aceita `config.tag ?? config.tag_name`.
-- `combo`: aceita `config.actions ?? config.combo_actions`.
-- `notify_assignee`: adicionar `case` no executor.
-
-Sem migração de dados — automações antigas continuam rodando.
-
-## Fase 6 — Bugs de cálculo (ALTO/MÉDIO)
-
-- `Relatorios.tsx:206`: `Number(p.valor) || 0`.
-- `Dashboard.tsx:280`: usar dias úteis reais do mês atual em vez de fallback fixo 26.
-
-## Fase 7 — Memory leak no chat (MÉDIO)
-
-`ChatInput.tsx`: guardar URLs criadas em ref e `URL.revokeObjectURL` no cleanup do `useEffect` / ao remover anexo / no unmount.
-
-## Fase 8 — Higiene de build (MÉDIO/BAIXO)
-
-- Remover `bun.lockb` e `package-lock.json`, manter apenas `bun.lock`.
-- Adicionar `.env` ao `.gitignore` (mantém arquivo local).
-- CORS: restringir `Access-Control-Allow-Origin` ao domínio publicado + preview Lovable nas funções sensíveis (manter `*` apenas em webhooks públicos).
-- Não passar tokens Meta em querystring (mover para header/body).
-
-Itens **não** abordados nesta passada (registrar como follow-up, não bloqueiam segurança): vulnerabilidades npm audit, 810 lint warnings, ausência de testes, code-splitting, ordem do `@import` no `index.css`.
-
----
-
-## Detalhes técnicos
-
-**Ordem de deploy recomendada** (cada passo independente, validável):
-1. Migrations da Fase 3 (RLS + função) — não afetam código existente.
-2. Helper `authz.ts` + Fase 1 (deploy função por função, testando cada uma via `curl_edge_functions`).
-3. Fase 2 webhooks (deduplicar dados → criar índice único → ativar HMAC).
-4. Fase 4 config.toml + secret de cron.
-5. Fase 5–8 (frontend/limpeza).
-
-**Validação por fase**: `supabase--linter` após cada migration; chamadas `curl_edge_functions` com tokens de tenants diferentes para confirmar 403 cross-tenant; smoke test manual nas telas principais (Kanban, Conversa, Dashboard).
-
-**Rollback**: cada fase = 1 commit isolado. Migrations são aditivas/substitutivas (sem `DROP` destrutivo), funções de edge têm versionamento Supabase.
-
----
-
-## Perguntas antes de implementar
-
-1. Posso seguir a ordem acima (Fases 1→8 em sequência, validando cada uma), ou prefere que eu execute **só Fase 1+2+3** agora (os CRÍTICOS) e deixe o resto para depois?
-2. Confirma que **nenhum** workflow legítimo hoje envia mensagens / consulta dados entre tenants? (Se a Luv Agency como superadmin precisa cruzar tenants pelo front, o helper precisa permitir esse caso — é o comportamento que vou implementar por padrão.)
+## Fora do escopo (não muda)
+- Nenhuma regra de negócio, RLS, filtros, automações, layout visual, ordenação ou comportamento de busca.
+- Nenhuma alteração no Kanban ou nos Relatórios.
