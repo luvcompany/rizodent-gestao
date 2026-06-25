@@ -17,6 +17,8 @@ const MODELS = [
   { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (mais preciso)" },
   { value: "openai/gpt-5-mini", label: "GPT-5 Mini" },
   { value: "openai/gpt-5", label: "GPT-5 (mais avançado)" },
+  { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (Anthropic)" },
+  { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5 (Anthropic)" },
 ];
 
 const TONES = [
@@ -36,6 +38,14 @@ type Config = {
   custom_instructions: string;
   enabled_features: { summary?: boolean; suggestions?: boolean; auto_reply?: boolean };
   is_active: boolean;
+  assistant_display_name?: string;
+  knowledge_base?: string;
+  copilot_enabled?: boolean;
+  auto_send_enabled?: boolean;
+  shift_start?: string;
+  shift_end?: string;
+  wait_minutes?: number;
+  recoil_hours?: number;
 };
 
 export default function CrmIaConfig() {
