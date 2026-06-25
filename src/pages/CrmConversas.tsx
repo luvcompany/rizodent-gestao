@@ -796,13 +796,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         }
         const matchesMessage = !!messageMatchLeadIds && messageMatchLeadIds.has(l.id);
         if (!matchesText && !matchesPhone && !matchesMessage) return false;
-            for (const pv of phoneVariants) {
-              if (pv.includes(sv)) { matchesPhone = true; break; }
-            }
-            if (matchesPhone) break;
-          }
-        }
-        if (!matchesText && !matchesPhone) return false;
       }
       if (filters.dateFilter.preset !== "all") {
         if (!l.last_message_at) return false;
