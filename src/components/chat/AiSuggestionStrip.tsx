@@ -48,26 +48,42 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
     })();
   }, []);
 
-  const loadPending = useCallback(async () => {
+  const currentLeadRef = useRef(leadId);
+  useEffect(() => { currentLeadRef.current = leadId; }, [leadId]);
+
+  const loadPending = useCallback(async (targetLeadId: string) => {
     setLoading(true);
     const { data } = await supabase
       .from("ai_reply_suggestions" as any)
       .select("*")
-      .eq("lead_id", leadId)
+      .eq("lead_id", targetLeadId)
       .eq("status", "pending")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+    // Discard stale results from a previous lead
+    if (currentLeadRef.current !== targetLeadId) return;
     const s = (data as any) || null;
+    if (s && s.lead_id !== targetLeadId) { setSuggestion(null); setLoading(false); return; }
     setSuggestion(s);
     if (s) {
       setEditedText(s.suggested_text);
       editedRef.current = s.suggested_text;
+    } else {
+      setEditedText("");
+      editedRef.current = "";
     }
     setLoading(false);
-  }, [leadId]);
+  }, []);
 
-  useEffect(() => { loadPending(); }, [loadPending]);
+  // Reset immediately when switching leads to avoid showing previous lead's suggestion
+  useEffect(() => {
+    setSuggestion(null);
+    setEditedText("");
+    editedRef.current = "";
+    setLoading(true);
+    loadPending(leadId);
+  }, [leadId, loadPending]);
 
   // Realtime subscription
   useEffect(() => {
@@ -76,7 +92,7 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "ai_reply_suggestions", filter: `lead_id=eq.${leadId}` },
-        () => { loadPending(); },
+        () => { loadPending(leadId); },
       )
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -94,7 +110,7 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       } else if ((data as any)?.skipped) {
         toast.info("Sem mensagens suficientes para sugerir.");
       } else {
-        await loadPending();
+        await loadPending(leadId);
       }
     } catch (e: any) {
       toast.error(`Falha ao gerar sugestão: ${e?.message || e}`);
