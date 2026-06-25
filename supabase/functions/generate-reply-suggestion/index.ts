@@ -365,7 +365,7 @@ Responda SOMENTE com JSON válido no formato:
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: fallbackModel,
-          max_tokens: 1024,
+          max_tokens: 2048,
           messages: [{ role: "system", content: sys }, ...anchoredHistory],
         }),
       });
