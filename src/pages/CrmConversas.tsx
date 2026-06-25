@@ -1,4 +1,6 @@
-import { Suspense, lazy, useState, useEffect, useCallback, useMemo } from "react";
+import { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
