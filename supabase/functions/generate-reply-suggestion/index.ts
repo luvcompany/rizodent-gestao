@@ -344,7 +344,7 @@ Responda SOMENTE com JSON válido no formato:
           },
           body: JSON.stringify({
             model: anthropicModel,
-            max_tokens: 1024,
+            max_tokens: 2048,
             system: sys,
             messages: anchoredHistory.map((m) => ({ role: m.role, content: m.content })),
           }),
