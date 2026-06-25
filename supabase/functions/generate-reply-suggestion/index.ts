@@ -115,6 +115,26 @@ function parseJsonTolerant(text: string): { reply: string; action: string; actio
     const ok = tryParse(cleaned);
     if (ok) return ok;
   }
+
+  // Last resort: extract the "reply" string field from a possibly-truncated JSON
+  // (handles cases where the model hit max_tokens mid-object).
+  const replyMatch = t.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)/);
+  if (replyMatch) {
+    try {
+      // Unescape JSON string sequences (\n, \", \\ etc.) safely
+      const raw = JSON.parse(`"${replyMatch[1].replace(/"/g, '\\"')}"`);
+      const reply = String(raw).trim();
+      if (reply) {
+        const actionMatch = t.match(/"action"\s*:\s*"(reply|handoff)"/);
+        const reasonMatch = t.match(/"action_reason"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        return {
+          reply,
+          action: actionMatch?.[1] === "handoff" ? "handoff" : "reply",
+          action_reason: reasonMatch ? reasonMatch[1] : undefined,
+        };
+      }
+    } catch (_) { /* noop */ }
+  }
   return null;
 }
 
