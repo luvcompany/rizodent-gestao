@@ -146,8 +146,10 @@ export default function CrmIaConfig() {
       </div>
 
       <Tabs defaultValue="bia">
-        <TabsList className="grid grid-cols-5 w-full max-w-3xl">
-          <TabsTrigger value="bia" className="gap-2"><Sparkles size={14} />Bia (Copiloto)</TabsTrigger>
+        <TabsList className="grid grid-cols-7 w-full max-w-5xl">
+          <TabsTrigger value="bia" className="gap-2"><Sparkles size={14} />Bia</TabsTrigger>
+          <TabsTrigger value="orientacoes" className="gap-2"><ShieldCheck size={14} />Orientações</TabsTrigger>
+          <TabsTrigger value="aprendizado" className="gap-2"><GraduationCap size={14} />Aprendizado</TabsTrigger>
           <TabsTrigger value="comportamento" className="gap-2"><Bot size={14} />Comportamento</TabsTrigger>
           <TabsTrigger value="instrucoes" className="gap-2"><Wand2 size={14} />Instruções</TabsTrigger>
           <TabsTrigger value="funcoes" className="gap-2"><MessageSquare size={14} />Funções</TabsTrigger>
