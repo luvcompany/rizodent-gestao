@@ -69,6 +69,7 @@ async function transcribeAudio(mediaUrl: string, supabase: any, apiKey: string):
 
 function parseJsonTolerant(text: string): { reply: string; action: string; action_reason?: string } | null {
   if (!text) return null;
+  const original = text.trim();
   // strip ``` or ''' fences anywhere
   let t = text.replace(/```(?:json)?/gi, "").replace(/'''(?:json)?/gi, "").trim();
 
@@ -134,6 +135,19 @@ function parseJsonTolerant(text: string): { reply: string; action: string; actio
         };
       }
     } catch (_) { /* noop */ }
+  }
+
+  // Safe fallback: some models ignore the JSON-only instruction and return the
+  // patient-facing message as plain text. Accept it ONLY when it is clearly not
+  // JSON/code/serialized data, so malformed JSON is never sent to the patient.
+  const jsonish = /^[\s`']*[{\[]/.test(original)
+    || /"(?:reply|action|action_reason)"\s*:/.test(original)
+    || /```|'''/.test(original);
+  const plain = t
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+    .trim();
+  if (!jsonish && plain && plain.length <= 4000) {
+    return { reply: plain, action: "reply", action_reason: "plain_text_model_response" };
   }
   return null;
 }
