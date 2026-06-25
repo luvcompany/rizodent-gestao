@@ -141,9 +141,12 @@ const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 const CONVERSATION_PAGE_SIZE = 1000;
 const CONVERSATION_MAX_PAGES = 6; // ~6k leads; suficiente p/ base atual (~4.3k) sem páginas extras
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
-const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse";
-// Colunas completas p/ o lead selecionado (inclui dados de anúncio usados no painel direito).
-const LEAD_SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
+// Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
+// porque os filtros derivam opções deles).
+const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name";
+// Colunas completas p/ o lead selecionado (inclui notes/value).
+const LEAD_SELECT_COLS = LEAD_LIST_COLS + ", value, notes";
+
 
 const getLastDirection = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => {
   if (lead.last_inbound_at && lead.last_outbound_at) {
