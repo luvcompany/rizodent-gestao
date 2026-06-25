@@ -1,0 +1,2 @@
+REVOKE EXECUTE ON FUNCTION public.match_good_examples(vector, int, uuid, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.match_good_examples(vector, int, uuid, text, text) TO authenticated, service_role;
