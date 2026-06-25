@@ -115,6 +115,26 @@ function parseJsonTolerant(text: string): { reply: string; action: string; actio
     const ok = tryParse(cleaned);
     if (ok) return ok;
   }
+
+  // Last resort: extract the "reply" string field from a possibly-truncated JSON
+  // (handles cases where the model hit max_tokens mid-object).
+  const replyMatch = t.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)/);
+  if (replyMatch) {
+    try {
+      // Unescape JSON string sequences (\n, \", \\ etc.) safely
+      const raw = JSON.parse(`"${replyMatch[1].replace(/"/g, '\\"')}"`);
+      const reply = String(raw).trim();
+      if (reply) {
+        const actionMatch = t.match(/"action"\s*:\s*"(reply|handoff)"/);
+        const reasonMatch = t.match(/"action_reason"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        return {
+          reply,
+          action: actionMatch?.[1] === "handoff" ? "handoff" : "reply",
+          action_reason: reasonMatch ? reasonMatch[1] : undefined,
+        };
+      }
+    } catch (_) { /* noop */ }
+  }
   return null;
 }
 
@@ -324,7 +344,7 @@ Responda SOMENTE com JSON válido no formato:
           },
           body: JSON.stringify({
             model: anthropicModel,
-            max_tokens: 1024,
+            max_tokens: 2048,
             system: sys,
             messages: anchoredHistory.map((m) => ({ role: m.role, content: m.content })),
           }),
@@ -345,7 +365,7 @@ Responda SOMENTE com JSON válido no formato:
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: fallbackModel,
-          max_tokens: 1024,
+          max_tokens: 2048,
           messages: [{ role: "system", content: sys }, ...anchoredHistory],
         }),
       });
@@ -370,10 +390,8 @@ Responda SOMENTE com JSON válido no formato:
         aiText = await callModel(reinforcement);
         parsed = parseJsonTolerant(aiText);
       }
-      // Último recurso: se ainda não parseou mas há texto, usa o texto cru como reply
-      if ((!parsed || !parsed.reply.trim()) && aiText.trim()) {
-        parsed = { reply: aiText.trim().slice(0, 1200), action: "reply" };
-      }
+      // NÃO usar texto cru como fallback: corre risco de enviar JSON bruto ao cliente.
+      // Se ainda não parseou, o handler abaixo retorna empty_response e a UI mostra erro.
     } catch (e: any) {
       const msg = e?.message || String(e);
       if (msg === "__RATE_LIMITED__") return new Response(JSON.stringify({ error: "rate_limited" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
