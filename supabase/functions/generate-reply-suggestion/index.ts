@@ -93,6 +93,36 @@ Regras de ouro: nunca deixe o preço travar (converta em avaliação gratuita + 
 
 Faixas: facetas ~R$350–550/dente; manutenção de aparelho ~R$90/mês. Nunca jogue valor cheio de protocolo (R$9–14 mil) sem antes falar de entrada/parcela.`;
 
+// Endereços oficiais por unidade. Se a unidade do lead não estiver aqui, a IA NÃO deve enviar endereço.
+const UNIT_ADDRESSES: Record<string, string> = {
+  // Preencher conforme os endereços oficiais forem cadastrados em ai_assistant_config.knowledge_base
+  // Ex.: "itabuna": "Rua X, 123 - Centro, Itabuna/BA",
+};
+
+function normalizeCity(s: string | null | undefined): string {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z\s]/g, "")
+    .trim();
+}
+
+function resolveUnitAddress(cidade: string | null | undefined, kb: string): string | null {
+  const key = normalizeCity(cidade);
+  if (!key) return null;
+  // 1) Lookup hardcoded table
+  if (UNIT_ADDRESSES[key]) return UNIT_ADDRESSES[key];
+  // 2) Try to extract from KB lines like "Endereço Itabuna: ..." ou "Itabuna: Rua ..."
+  const lines = (kb || "").split(/\r?\n/);
+  for (const ln of lines) {
+    const m = ln.match(/^\s*(?:endere[çc]o\s+)?([A-Za-zÀ-ÿ\s]+?)\s*[:\-–]\s*(.+)$/i);
+    if (!m) continue;
+    if (normalizeCity(m[1]) === key && /\d/.test(m[2])) return m[2].trim();
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
