@@ -195,6 +195,39 @@ export type Database = {
           },
         ]
       }
+      ai_assistant_rules: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          tenant_id: string
+          text: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          tenant_id?: string
+          text: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          tenant_id?: string
+          text?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_conversation_analysis: {
         Row: {
           created_at: string
@@ -237,6 +270,42 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_good_examples: {
+        Row: {
+          cidade: string | null
+          context: string
+          created_at: string
+          embedding: string | null
+          id: string
+          ideal_reply: string
+          lead_id: string | null
+          servico: string | null
+          tenant_id: string
+        }
+        Insert: {
+          cidade?: string | null
+          context: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          ideal_reply: string
+          lead_id?: string | null
+          servico?: string | null
+          tenant_id?: string
+        }
+        Update: {
+          cidade?: string | null
+          context?: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          ideal_reply?: string
+          lead_id?: string | null
+          servico?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       ai_reply_suggestions: {
         Row: {
           action: string
@@ -244,13 +313,16 @@ export type Database = {
           created_at: string
           decided_at: string | null
           decided_by: string | null
+          final_text: string | null
           id: string
           lead_id: string
           model: string | null
+          outcome: string | null
           status: string
           suggested_text: string
           tenant_id: string | null
           trigger_message_id: string | null
+          was_edited: boolean
         }
         Insert: {
           action?: string
@@ -258,13 +330,16 @@ export type Database = {
           created_at?: string
           decided_at?: string | null
           decided_by?: string | null
+          final_text?: string | null
           id?: string
           lead_id: string
           model?: string | null
+          outcome?: string | null
           status?: string
           suggested_text: string
           tenant_id?: string | null
           trigger_message_id?: string | null
+          was_edited?: boolean
         }
         Update: {
           action?: string
@@ -272,13 +347,16 @@ export type Database = {
           created_at?: string
           decided_at?: string | null
           decided_by?: string | null
+          final_text?: string | null
           id?: string
           lead_id?: string
           model?: string | null
+          outcome?: string | null
           status?: string
           suggested_text?: string
           tenant_id?: string | null
           trigger_message_id?: string | null
+          was_edited?: boolean
         }
         Relationships: [
           {
@@ -3655,6 +3733,23 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      match_good_examples: {
+        Args: {
+          filter_cidade?: string
+          filter_servico?: string
+          filter_tenant?: string
+          match_count?: number
+          query_embedding: string
+        }
+        Returns: {
+          cidade: string
+          context: string
+          id: string
+          ideal_reply: string
+          servico: string
+          similarity: number
+        }[]
       }
       posvenda_dashboard_metrics: { Args: never; Returns: Json }
       recalculate_all_lead_scores:

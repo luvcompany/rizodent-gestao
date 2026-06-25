@@ -152,6 +152,7 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
     if (!suggestion || !leadPhone) return;
     const text = editedText.trim();
     if (!text) { toast.error("Mensagem vazia"); return; }
+    const wasEdited = text !== suggestion.suggested_text;
     setSending(true);
     try {
       const { error: sendErr } = await supabase.functions.invoke("send-whatsapp-message", {
@@ -160,8 +161,18 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       if (sendErr) throw sendErr;
       await supabase
         .from("ai_reply_suggestions" as any)
-        .update({ status: "sent", decided_at: new Date().toISOString(), decided_by: user?.id || null, suggested_text: text })
+        .update({
+          status: "sent",
+          decided_at: new Date().toISOString(),
+          decided_by: user?.id || null,
+          final_text: text,
+          was_edited: wasEdited,
+        })
         .eq("id", suggestion.id);
+      // 7C: registra exemplo bom em background (não bloqueia)
+      supabase.functions.invoke("record-good-example", {
+        body: { lead_id: leadId, ideal_reply: text },
+      }).catch(() => {});
       setSuggestion(null);
       onSent?.();
       toast.success(`${assistantName} enviou a resposta`);
