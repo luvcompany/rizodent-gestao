@@ -1276,6 +1276,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 <ChatReplyPreview replyTo={chat.replyTo} leadName={selectedLead.name} onCancel={() => chat.setReplyTo(null)} />
               )}
 
+              {!(channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID) && (
+                <AiSuggestionStrip leadId={selectedLeadId} leadPhone={selectedLead.phone} />
+              )}
               <ChatInput
                 leadId={selectedLeadId}
                 leadPhone={selectedLead.phone}
