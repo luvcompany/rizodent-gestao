@@ -92,7 +92,7 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "ai_reply_suggestions", filter: `lead_id=eq.${leadId}` },
-        () => { loadPending(); },
+        () => { loadPending(leadId); },
       )
       .subscribe();
     return () => { supabase.removeChannel(ch); };
