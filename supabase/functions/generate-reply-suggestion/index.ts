@@ -69,20 +69,51 @@ async function transcribeAudio(mediaUrl: string, supabase: any, apiKey: string):
 
 function parseJsonTolerant(text: string): { reply: string; action: string; action_reason?: string } | null {
   if (!text) return null;
-  // strip code fences
-  let t = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
-  // try direct
-  try {
-    const o = JSON.parse(t);
-    if (typeof o.reply === "string") return { reply: o.reply, action: o.action === "handoff" ? "handoff" : "reply", action_reason: o.action_reason };
-  } catch (_) { /* noop */ }
-  // try first {...} block
-  const m = t.match(/\{[\s\S]*\}/);
-  if (m) {
+  // strip ``` or ''' fences anywhere
+  let t = text.replace(/```(?:json)?/gi, "").replace(/'''(?:json)?/gi, "").trim();
+
+  const tryParse = (s: string) => {
     try {
-      const o = JSON.parse(m[0]);
-      if (typeof o.reply === "string") return { reply: o.reply, action: o.action === "handoff" ? "handoff" : "reply", action_reason: o.action_reason };
+      const o = JSON.parse(s);
+      if (o && typeof o.reply === "string" && o.reply.trim()) {
+        return { reply: o.reply, action: o.action === "handoff" ? "handoff" : "reply", action_reason: o.action_reason };
+      }
     } catch (_) { /* noop */ }
+    return null;
+  };
+
+  // direct
+  const direct = tryParse(t);
+  if (direct) return direct;
+
+  // collect all balanced {...} candidates and try the LAST valid one first
+  const candidates: string[] = [];
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== "{") continue;
+    let depth = 0, inStr = false, esc = false;
+    for (let j = i; j < t.length; j++) {
+      const c = t[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === "\\") esc = true;
+        else if (c === '"') inStr = false;
+      } else {
+        if (c === '"') inStr = true;
+        else if (c === "{") depth++;
+        else if (c === "}") {
+          depth--;
+          if (depth === 0) { candidates.push(t.substring(i, j + 1)); break; }
+        }
+      }
+    }
+  }
+  for (let k = candidates.length - 1; k >= 0; k--) {
+    const cleaned = candidates[k]
+      .replace(/,\s*}/g, "}")
+      .replace(/,\s*]/g, "]")
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+    const ok = tryParse(cleaned);
+    if (ok) return ok;
   }
   return null;
 }
