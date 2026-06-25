@@ -260,6 +260,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const urlAppointmentStatus = searchParams.get("appointment_status");
   const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
   const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
+  // Lead IDs whose message history contains the current search term
+  const [messageMatchLeadIds, setMessageMatchLeadIds] = useState<Set<string> | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? (leadsListCache.profiles || []) : (_lsData?.profiles || []));
   const [pipelines, setPipelines] = useState<PipelineWithRoles[]>(() => canUseInitialCache ? (leadsListCache.pipelines || []) : (_lsData?.pipelines || []));
   const [activeExecution, setActiveExecution] = useState<{
