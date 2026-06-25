@@ -305,6 +305,62 @@ Deno.serve(async (req) => {
     const persona = config.assistant_display_name || "Bia";
     const unitAddress = resolveUnitAddress(lead.cidade, kb);
 
+    // === 7A: Carrega Diretrizes e Restrições ativas do tenant ===
+    let diretrizesBlock = "";
+    let restricoesBlock = "";
+    try {
+      const { data: rules } = await supabase
+        .from("ai_assistant_rules")
+        .select("kind, text")
+        .eq("active", true)
+        .eq("tenant_id", lead.tenant_id)
+        .order("created_at", { ascending: true });
+      const dirs = (rules || []).filter((r: any) => r.kind === "diretriz").map((r: any) => r.text);
+      const rests = (rules || []).filter((r: any) => r.kind === "restricao").map((r: any) => r.text);
+      if (dirs.length) {
+        diretrizesBlock = `\n\n=== DIRETRIZES (siga sempre) ===\n${dirs.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}`;
+      }
+      if (rests.length) {
+        restricoesBlock = `\n\n=== RESTRIÇÕES (NUNCA faça — prioridade máxima, vencem qualquer outra regra) ===\n${rests.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}`;
+      }
+    } catch (_) { /* sem regras */ }
+
+    // === 7C: RAG — busca exemplos similares se houver volume (>= 30) ===
+    let examplesBlock = "";
+    try {
+      const { count: exampleCount } = await supabase
+        .from("ai_good_examples")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", lead.tenant_id);
+      if ((exampleCount || 0) >= 30 && LOVABLE_API_KEY) {
+        const lastInbound = history.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join("\n");
+        if (lastInbound.trim()) {
+          const er = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "openai/text-embedding-3-small", input: lastInbound }),
+          });
+          if (er.ok) {
+            const ej = await er.json();
+            const emb = ej?.data?.[0]?.embedding;
+            if (Array.isArray(emb)) {
+              const { data: matches } = await supabase.rpc("match_good_examples", {
+                query_embedding: emb,
+                match_count: 4,
+                filter_tenant: lead.tenant_id,
+                filter_cidade: lead.cidade || null,
+                filter_servico: lead.servico_interesse || null,
+              });
+              if (matches && matches.length) {
+                examplesBlock = `\n\n=== EXEMPLOS DE RESPOSTAS QUE FUNCIONARAM EM CASOS PARECIDOS (imite o estilo, adapte ao caso atual; NUNCA copie nomes/cidades/valores de lá) ===\n` +
+                  (matches as any[]).map((m, i) => `Exemplo ${i + 1}:\nContexto: ${m.context}\nResposta ideal: ${m.ideal_reply}`).join("\n\n");
+              }
+            }
+          }
+        }
+      }
+    } catch (_) { /* RAG opcional */ }
+
     // Hora local Bahia (UTC-3) para saudação correta
     const nowBahia = new Date(Date.now() - 3 * 60 * 60 * 1000);
     const hourBA = nowBahia.getUTCHours();
