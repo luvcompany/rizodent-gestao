@@ -102,8 +102,22 @@ function readConversasLS(cacheKey: string): ConversasLSData | null {
   } catch { return null; }
 }
 function writeConversasLS(cacheKey: string, data: ConversasLSData): void {
-  try { localStorage.setItem(`${CONV_LS_KEY}:${cacheKey}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
+  // Persistimos só os 500 leads mais recentes p/ não travar a thread serializando ~6k linhas.
+  const slim: ConversasLSData = {
+    leads: data.leads.slice(0, 500),
+    profiles: data.profiles,
+    pipelines: data.pipelines,
+  };
+  const write = () => {
+    try { localStorage.setItem(`${CONV_LS_KEY}:${cacheKey}`, JSON.stringify({ data: slim, ts: Date.now() })); } catch {}
+  };
+  if (typeof (window as any).requestIdleCallback === "function") {
+    (window as any).requestIdleCallback(write, { timeout: 2000 });
+  } else {
+    setTimeout(write, 0);
+  }
 }
+
 const LeadEditPanel = lazy(() => import("@/components/chat/LeadEditPanel"));
 const LeadCustomFields = lazy(() => import("@/components/chat/LeadCustomFields"));
 const LeadExtraFields = lazy(() => import("@/components/chat/LeadExtraFields"));
