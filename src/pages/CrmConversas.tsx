@@ -448,7 +448,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       const { data, error } = await supabase
         .from("crm_leads")
-        .select(LEAD_SELECT_COLS)
+        .select(LEAD_LIST_COLS)
         .eq("tenant_id", tenant.id)
         .eq("is_blocked", false)
         .or(orParts.join(","))
@@ -492,7 +492,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (missing.length) {
         const { data: leadRows } = await supabase
           .from("crm_leads")
-          .select(LEAD_SELECT_COLS)
+          .select(LEAD_LIST_COLS)
           .eq("tenant_id", tenant.id)
           .eq("is_blocked", false)
           .in("id", missing.slice(0, 100));
