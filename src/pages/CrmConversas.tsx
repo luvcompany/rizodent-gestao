@@ -561,7 +561,22 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     }
     const lead = leads.find((l) => l.id === selectedLeadId) || null;
     setSelectedLead(lead);
+    // Hidrata campos pesados ausentes na lista (notes/value) sob demanda.
+    if (lead && ((lead as any).notes === undefined || (lead as any).value === undefined)) {
+      let cancelled = false;
+      supabase
+        .from("crm_leads")
+        .select("id, notes, value")
+        .eq("id", selectedLeadId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (cancelled || !data) return;
+          setSelectedLead((prev) => prev && prev.id === selectedLeadId ? { ...prev, ...(data as any) } : prev);
+        });
+      return () => { cancelled = true; };
+    }
   }, [selectedLeadId, leads]);
+
 
   // Realtime - leads list
   useEffect(() => {
