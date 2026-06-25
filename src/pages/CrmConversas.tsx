@@ -917,7 +917,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               <div className="relative">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
                 <Input
-                  placeholder="Buscar por nome ou telefone..."
+                  placeholder="Buscar por nome, telefone ou mensagem..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-8 h-8 text-sm bg-secondary"
