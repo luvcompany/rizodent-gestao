@@ -160,15 +160,26 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "copilot_disabled" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Load lead
+    // Load lead (incluindo stage_id para resolver a etapa atual)
     const { data: lead } = await supabase
       .from("crm_leads")
-      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes")
+      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id")
       .eq("id", leadId)
       .maybeSingle();
     if (!lead) return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // Load last ~60 messages (only meaningful types)
+    // Resolver nome da etapa atual
+    let stageName: string | null = null;
+    if (lead.stage_id) {
+      const { data: stg } = await supabase
+        .from("crm_stages")
+        .select("name")
+        .eq("id", lead.stage_id)
+        .maybeSingle();
+      stageName = stg?.name || null;
+    }
+
+    // Carrega últimas 60 mensagens em ordem cronológica
     const { data: msgsDesc } = await supabase
       .from("messages")
       .select("id, direction, type, content, media_url, transcription, created_at")
@@ -182,7 +193,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "no_messages" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Transcribe pending audios
+    // Transcreve TODOS os áudios pendentes ANTES de montar o contexto (await sequencial).
+    // Marca os que falharem para a IA não assumir o conteúdo.
     const pending = msgs.filter((m: any) => m.type === "audio" && !m.transcription && m.media_url);
     if (pending.length && LOVABLE_API_KEY) {
       for (const m of pending) {
@@ -191,17 +203,24 @@ Deno.serve(async (req) => {
           if (t) {
             m.transcription = t;
             await supabase.from("messages").update({ transcription: t }).eq("id", m.id);
+          } else {
+            m._transcribe_failed = true;
           }
-        } catch (_) { /* ignore */ }
+        } catch (_) {
+          m._transcribe_failed = true;
+        }
       }
     }
 
-    // Build chat history (inbound=user, outbound=assistant)
+    // Build chat history (inbound=user, outbound=assistant) em ordem cronológica
     const history: Array<{ role: "user" | "assistant"; content: string }> = [];
     for (const m of msgs) {
       const role = m.direction === "inbound" ? "user" : "assistant";
       let content = "";
-      if (m.type === "audio") content = m.transcription ? m.transcription : "[áudio não transcrito]";
+      if (m.type === "audio") {
+        if (m.transcription) content = `[áudio transcrito]: ${m.transcription}`;
+        else content = "[áudio não transcrito — não assuma o conteúdo]";
+      }
       else if (m.type === "image") content = m.content ? `[imagem] ${m.content}` : "[imagem]";
       else if (m.type === "video") content = m.content ? `[vídeo] ${m.content}` : "[vídeo]";
       else if (m.type === "document") content = m.content ? `[documento] ${m.content}` : "[documento]";
@@ -215,32 +234,48 @@ Deno.serve(async (req) => {
 
     const kb = (config.knowledge_base && String(config.knowledge_base).trim()) || DEFAULT_KB;
     const persona = config.assistant_display_name || "Bia";
+    const unitAddress = resolveUnitAddress(lead.cidade, kb);
 
-    const leadInfo = [
-      `Nome: ${lead.name || "—"}`,
-      `Telefone: ${lead.phone || "—"}`,
-      `Cidade: ${lead.cidade || "—"}`,
-      `Serviço de interesse: ${lead.servico_interesse || "—"}`,
-      `Origem: ${lead.source || "—"}`,
-      `Tags: ${(lead.tags || []).join(", ") || "—"}`,
-      `Anotações internas: ${lead.notes || "—"}`,
-    ].join("\n");
+    // Bloco de FATOS CONFIRMADOS — âncora obrigatória, vai como primeira mensagem do usuário
+    const factsBlock = `=== FATOS CONFIRMADOS (use EXATAMENTE, nunca invente nem troque) ===
+Nome do cliente: ${lead.name || "[não informado — pergunte]"}
+Cidade/Unidade: ${lead.cidade || "[não informado — pergunte]"}
+Telefone: ${lead.phone || "—"}
+Serviço de interesse: ${lead.servico_interesse || "[não informado — pergunte]"}
+Etapa atual: ${stageName || "—"}
+Endereço da unidade: ${unitAddress || "[NÃO CADASTRADO — NÃO envie endereço; diga que confirma em seguida]"}
+
+Use SEMPRE o nome e a cidade exatos acima. É PROIBIDO usar outro nome de cliente ou outra cidade.
+Lead ID interno (não mencione ao cliente): ${lead.id}`;
 
     const systemPrompt = `Você é a "${persona}", atendente humana da Rizodent. Responda em PT-BR informal, caloroso, mensagens curtas (1-3 linhas), no máximo 1 emoji. Nunca diga que é robô/IA a menos que perguntem.
+
+=== ANTI-ALUCINAÇÃO (regra absoluta) ===
+Você só pode afirmar informações que estejam (a) nos FATOS CONFIRMADOS ou (b) explicitamente ditas na conversa. NUNCA invente nome, cidade, endereço, ponto de referência, horário, data, valor ou condição. Se algo necessário não estiver disponível, NÃO invente — peça para confirmar ou diga que vai verificar e retornar.
+
+=== RESPEITAR O COMBINADO ===
+Leia TODA a conversa, do início ao fim, antes de responder. Respeite o que a equipe já combinou (horário, data, valor, condição) — não altere. Ex.: se já foi oferecido às 17h e o cliente aceitou, confirme 17h, nunca 17h30. Não troque o nome do cliente, mesmo que o histórico tenha ruído. Use sempre o nome dos FATOS CONFIRMADOS.
+
+=== ENDEREÇOS ===
+Só envie endereço se ele estiver no campo "Endereço da unidade" dos FATOS CONFIRMADOS. Se estiver marcado como "NÃO CADASTRADO", responda que vai confirmar o endereço da unidade e retorna — NUNCA invente rua, número, bairro ou ponto de referência.
 
 === BASE DE CONHECIMENTO ===
 ${kb}
 
-=== DADOS DO LEAD ===
-${leadInfo}
-
 === TAREFA ===
-Gere a PRÓXIMA mensagem que deve ser enviada agora ao paciente, com base no histórico. Decida também a ação:
+Gere a PRÓXIMA mensagem que deve ser enviada agora ao paciente, com base no histórico completo. Decida também a ação:
 - action="reply" → resposta direta ao paciente.
 - action="handoff" → quando houver dor forte/urgência, reclamação, pedido de humano, ou negociação de preço complexa.
 
 Responda SOMENTE com JSON válido no formato:
 {"reply":"...","action":"reply"|"handoff","action_reason":"motivo curto"}`;
+
+    // Injeta os FATOS como primeira mensagem do usuário, antes do histórico real.
+    const anchoredHistory: Array<{ role: "user" | "assistant"; content: string }> = [
+      { role: "user", content: factsBlock },
+      { role: "assistant", content: "Entendido. Vou usar exatamente esses dados e não inventar nada fora deles." },
+      ...history,
+    ];
 
     const modelId: string = config.model || "google/gemini-3-flash-preview";
     let aiText = "";
@@ -259,7 +294,7 @@ Responda SOMENTE com JSON válido no formato:
           model: anthropicModel,
           max_tokens: 600,
           system: systemPrompt,
-          messages: history.map((m) => ({ role: m.role, content: m.content })),
+          messages: anchoredHistory.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
       if (!r.ok) {
@@ -281,7 +316,7 @@ Responda SOMENTE com JSON válido no formato:
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: fallbackModel,
-          messages: [{ role: "system", content: systemPrompt }, ...history],
+          messages: [{ role: "system", content: systemPrompt }, ...anchoredHistory],
         }),
       });
       if (r.status === 429) return new Response(JSON.stringify({ error: "rate_limited" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
