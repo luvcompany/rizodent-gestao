@@ -126,6 +126,9 @@ const SidePanelFallback = () => (
 const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 const CONVERSATION_PAGE_SIZE = 1000;
 const CONVERSATION_MAX_PAGES = 6; // ~6k leads; suficiente p/ base atual (~4.3k) sem páginas extras
+// Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
+const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse";
+// Colunas completas p/ o lead selecionado (inclui dados de anúncio usados no painel direito).
 const LEAD_SELECT_COLS = "id, name, phone, instagram_user_id, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, paciente_id, cidade, servico_interesse, instagram_username, instagram_profile_pic_url";
 
 const getLastDirection = (lead: LeadConversation & { last_inbound_at?: string | null; last_outbound_at?: string | null }) => {
@@ -149,16 +152,29 @@ const sortLeadsByLastActivity = (items: LeadConversation[]) =>
     return bTime - aTime;
   });
 
+// Idle scheduler helper — não bloqueia a thread principal.
+const runIdle = (cb: () => void, timeout = 1500) => {
+  if (typeof (window as any).requestIdleCallback === "function") {
+    (window as any).requestIdleCallback(cb, { timeout });
+  } else {
+    setTimeout(cb, 0);
+  }
+};
+
 // Carrega TODOS os leads do tenant em páginas de 1000 (limite default do Supabase).
 // Necessário para que filtros por etapa/funil correspondam ao Kanban.
-const fetchAllConversationLeads = async (tenantId: string) => {
+// `onFirstPage` é chamado assim que a primeira página chega (para pintar a UI rápido).
+const fetchAllConversationLeads = async (
+  tenantId: string,
+  onFirstPage?: (rows: LeadConversation[]) => void,
+) => {
   const all: LeadConversation[] = [];
   for (let page = 0; page < CONVERSATION_MAX_PAGES; page++) {
     const from = page * CONVERSATION_PAGE_SIZE;
     const to = from + CONVERSATION_PAGE_SIZE - 1;
     const { data, error } = await supabase
       .from("crm_leads")
-      .select(LEAD_SELECT_COLS)
+      .select(LEAD_LIST_COLS)
       .eq("tenant_id", tenantId)
       .eq("is_blocked", false)
       .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -167,10 +183,12 @@ const fetchAllConversationLeads = async (tenantId: string) => {
     if (error) throw error;
     const rows = ((data || []) as any as LeadConversation[]).map(normalizeLead);
     all.push(...rows);
+    if (page === 0 && onFirstPage) onFirstPage([...rows]);
     if (rows.length < CONVERSATION_PAGE_SIZE) break;
   }
   return sortLeadsByLastActivity(all);
 };
+
 
 /** Pré-carrega a lista de conversas + profiles + pipelines e popula o cache em memória + localStorage.
  *  Idempotente: se o cache estiver fresco (< LEADS_BG_REFRESH_AFTER), retorna imediatamente. */
