@@ -104,25 +104,48 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
     return () => { supabase.removeChannel(ch); };
   }, [leadId, loadPending]);
 
-  const generate = async () => {
-    setGenerating(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("generate-reply-suggestion", {
-        body: { lead_id: leadId },
-      });
-      if (error) throw error;
-      if ((data as any)?.skipped === "copilot_disabled") {
-        toast.info("Copiloto da IA está desligado nas configurações.");
-      } else if ((data as any)?.skipped) {
-        toast.info("Sem mensagens suficientes para sugerir.");
-      } else {
-        await loadPending(leadId);
+  // Reflete o estado de geração em background para este lead. Se a IA estiver
+  // gerando uma sugestão para o lead atual (mesmo que tenha sido iniciada antes
+  // de trocar de conversa), mostramos o indicador "gerando".
+  useEffect(() => {
+    const update = () => setGenerating(inFlightByLead.has(leadId));
+    update();
+    inFlightListeners.add(update);
+    return () => { inFlightListeners.delete(update); };
+  }, [leadId]);
+
+  const generate = () => {
+    const target = leadId;
+    if (inFlightByLead.has(target)) return; // já rodando em background
+    const p = (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("generate-reply-suggestion", {
+          body: { lead_id: target },
+        });
+        if (error) throw error;
+        if ((data as any)?.skipped === "copilot_disabled") {
+          if (currentLeadRef.current === target) toast.info("Copiloto da IA está desligado nas configurações.");
+        } else if ((data as any)?.skipped) {
+          if (currentLeadRef.current === target) toast.info("Sem mensagens suficientes para sugerir.");
+        } else {
+          // Realtime já vai disparar loadPending, mas garantimos uma busca imediata
+          // se o usuário ainda está olhando este lead.
+          if (currentLeadRef.current === target) await loadPending(target);
+        }
+      } catch (e: any) {
+        if (currentLeadRef.current === target) {
+          toast.error(`Falha ao gerar sugestão: ${e?.message || e}`);
+        } else {
+          // Notifica de forma neutra para não confundir na conversa em que o usuário está agora
+          toast.error("Falha ao gerar sugestão (conversa anterior).");
+        }
+      } finally {
+        inFlightByLead.delete(target);
+        notifyInFlight();
       }
-    } catch (e: any) {
-      toast.error(`Falha ao gerar sugestão: ${e?.message || e}`);
-    } finally {
-      setGenerating(false);
-    }
+    })();
+    inFlightByLead.set(target, p);
+    notifyInFlight();
   };
 
   const send = async () => {
