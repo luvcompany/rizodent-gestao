@@ -110,7 +110,7 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       } else if ((data as any)?.skipped) {
         toast.info("Sem mensagens suficientes para sugerir.");
       } else {
-        await loadPending();
+        await loadPending(leadId);
       }
     } catch (e: any) {
       toast.error(`Falha ao gerar sugestão: ${e?.message || e}`);
