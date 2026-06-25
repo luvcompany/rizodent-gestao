@@ -18,6 +18,12 @@ type Suggestion = {
   model: string | null;
 };
 
+// Registro global de gerações em andamento por lead. Persiste quando o usuário troca de conversa
+// para que a IA continue rodando em background e a sugestão apareça ao voltar.
+const inFlightByLead = new Map<string, Promise<void>>();
+const inFlightListeners = new Set<() => void>();
+function notifyInFlight() { inFlightListeners.forEach((fn) => { try { fn(); } catch {} }); }
+
 interface Props {
   leadId: string;
   leadPhone: string | null;
