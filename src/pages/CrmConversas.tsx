@@ -426,6 +426,52 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     return () => clearTimeout(handle);
   }, [search, tenant.id]);
 
+  // Server-side search inside message content (texto de mensagens antigas)
+  useEffect(() => {
+    const term = search.trim();
+    if (!tenant.id) { setMessageMatchLeadIds(null); return; }
+    if (term.length < 3) { setMessageMatchLeadIds(null); return; }
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      // Escape special chars for ilike pattern
+      const safe = term.replace(/[%_\\]/g, (c) => `\\${c}`);
+      const { data, error } = await supabase
+        .from("messages")
+        .select("lead_id")
+        .eq("tenant_id", tenant.id)
+        .not("lead_id", "is", null)
+        .ilike("content", `%${safe}%`)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (cancelled || error) return;
+      const ids = new Set<string>();
+      (data ?? []).forEach((r: any) => { if (r.lead_id) ids.add(r.lead_id); });
+      setMessageMatchLeadIds(ids);
+
+      // Fetch any matching leads not present in current cache so they show up in results
+      const missing = Array.from(ids).filter((id) => !leads.some((l) => l.id === id));
+      if (missing.length) {
+        const { data: leadRows } = await supabase
+          .from("crm_leads")
+          .select(LEAD_SELECT_COLS)
+          .eq("tenant_id", tenant.id)
+          .eq("is_blocked", false)
+          .in("id", missing.slice(0, 100));
+        if (cancelled || !leadRows?.length) return;
+        setLeads((prev) => {
+          const existing = new Set(prev.map((l) => l.id));
+          const additions = (leadRows as any as LeadConversation[])
+            .map(normalizeLead)
+            .filter((l) => !existing.has(l.id));
+          if (!additions.length) return prev;
+          return sortLeadsByLastActivity([...prev, ...additions]);
+        });
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [search, tenant.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
   // Load special URL filter data (ghost leads, appointment leads)
   useEffect(() => {
     if (!urlGhost && !urlAppointmentStatus && !urlInactiveDays) return;
