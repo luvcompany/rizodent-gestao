@@ -245,7 +245,15 @@ export default function CrmIaConfig() {
           </Card>
         </TabsContent>
 
+        {/* ORIENTAÇÕES (Diretrizes × Restrições) */}
+        <TabsContent value="orientacoes" className="space-y-4 mt-4">
+          <AiRulesManager />
+        </TabsContent>
 
+        {/* APRENDIZADO (feedback dataset) */}
+        <TabsContent value="aprendizado" className="space-y-4 mt-4">
+          <AiLearningReport />
+        </TabsContent>
 
         {/* COMPORTAMENTO */}
         <TabsContent value="comportamento" className="space-y-4 mt-4">
