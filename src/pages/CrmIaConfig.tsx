@@ -17,6 +17,8 @@ const MODELS = [
   { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (mais preciso)" },
   { value: "openai/gpt-5-mini", label: "GPT-5 Mini" },
   { value: "openai/gpt-5", label: "GPT-5 (mais avançado)" },
+  { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (Anthropic)" },
+  { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5 (Anthropic)" },
 ];
 
 const TONES = [
@@ -36,6 +38,14 @@ type Config = {
   custom_instructions: string;
   enabled_features: { summary?: boolean; suggestions?: boolean; auto_reply?: boolean };
   is_active: boolean;
+  assistant_display_name?: string;
+  knowledge_base?: string;
+  copilot_enabled?: boolean;
+  auto_send_enabled?: boolean;
+  shift_start?: string;
+  shift_end?: string;
+  wait_minutes?: number;
+  recoil_hours?: number;
 };
 
 export default function CrmIaConfig() {
@@ -76,6 +86,14 @@ export default function CrmIaConfig() {
         custom_instructions: config.custom_instructions,
         enabled_features: config.enabled_features,
         is_active: config.is_active,
+        assistant_display_name: config.assistant_display_name || "Bia",
+        knowledge_base: config.knowledge_base || null,
+        copilot_enabled: !!config.copilot_enabled,
+        auto_send_enabled: !!config.auto_send_enabled,
+        shift_start: config.shift_start || "07:29",
+        shift_end: config.shift_end || "14:00",
+        wait_minutes: Number(config.wait_minutes) || 10,
+        recoil_hours: Number(config.recoil_hours) || 2,
       })
       .eq("id", config.id);
     setSaving(false);
@@ -125,13 +143,105 @@ export default function CrmIaConfig() {
         </div>
       </div>
 
-      <Tabs defaultValue="comportamento">
-        <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+      <Tabs defaultValue="bia">
+        <TabsList className="grid grid-cols-5 w-full max-w-3xl">
+          <TabsTrigger value="bia" className="gap-2"><Sparkles size={14} />Bia (Copiloto)</TabsTrigger>
           <TabsTrigger value="comportamento" className="gap-2"><Bot size={14} />Comportamento</TabsTrigger>
           <TabsTrigger value="instrucoes" className="gap-2"><Wand2 size={14} />Instruções</TabsTrigger>
           <TabsTrigger value="funcoes" className="gap-2"><MessageSquare size={14} />Funções</TabsTrigger>
           <TabsTrigger value="agenda" className="gap-2"><Clock size={14} />Atendimento</TabsTrigger>
         </TabsList>
+
+        {/* BIA / COPILOTO */}
+        <TabsContent value="bia" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2"><Sparkles size={16} className="text-primary" />Atendente IA "Bia"</CardTitle>
+              <CardDescription>
+                Configure a atendente virtual que sugere respostas no WhatsApp. Comece com o copiloto LIGADO e o auto-envio DESLIGADO até validar a qualidade.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nome da assistente</Label>
+                  <Input
+                    value={config.assistant_display_name || ""}
+                    onChange={(e) => update({ assistant_display_name: e.target.value })}
+                    placeholder="Bia"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Modelo de IA</Label>
+                  <Select value={config.model} onValueChange={(v) => update({ model: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MODELS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Modelos Anthropic exigem a secret <code>ANTHROPIC_API_KEY</code> configurada no backend.
+                  </p>
+                </div>
+              </div>
+
+              <ToggleRow
+                title="Copiloto (sugestões com aprovação humana)"
+                desc="A Bia gera sugestões de resposta e o atendente aprova (✓) ou descarta (✗) antes do envio."
+                checked={!!config.copilot_enabled}
+                onChange={(v) => update({ copilot_enabled: v })}
+              />
+              <ToggleRow
+                title="Auto-envio (cuidado!)"
+                desc="A Bia envia automaticamente as sugestões pendentes respeitando o turno da SDR, a janela de 24h e as regras de convivência. Deixe DESLIGADO até validar tudo no modo copiloto."
+                checked={!!config.auto_send_enabled}
+                onChange={(v) => update({ auto_send_enabled: v })}
+              />
+
+              <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                <div className="space-y-2">
+                  <Label>Início do turno da SDR (Bahia, UTC-3)</Label>
+                  <Input type="time" value={config.shift_start || "07:29"} onChange={(e) => update({ shift_start: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fim do turno da SDR</Label>
+                  <Input type="time" value={config.shift_end || "14:00"} onChange={(e) => update({ shift_end: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tempo de espera após inbound (minutos)</Label>
+                  <Input
+                    type="number" min={1} max={240}
+                    value={config.wait_minutes ?? 10}
+                    onChange={(e) => update({ wait_minutes: parseInt(e.target.value || "10", 10) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Janela de recuo após resposta humana (horas)</Label>
+                  <Input
+                    type="number" min={0} max={48}
+                    value={config.recoil_hours ?? 2}
+                    onChange={(e) => update({ recoil_hours: parseInt(e.target.value || "2", 10) })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <Label>Base de Conhecimento da Bia</Label>
+                <Textarea
+                  value={config.knowledge_base || ""}
+                  onChange={(e) => update({ knowledge_base: e.target.value })}
+                  className="min-h-[260px] font-mono text-xs"
+                  placeholder="Persona, regras de ouro, respostas-padrão, faixas de preço, endereços das unidades..."
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Este texto é injetado no prompt da IA em toda sugestão. Se ficar vazio, será usada a base padrão da Rizodent.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+
 
         {/* COMPORTAMENTO */}
         <TabsContent value="comportamento" className="space-y-4 mt-4">

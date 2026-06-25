@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
 
 import ChatInput from "@/components/chat/ChatInput";
+import AiSuggestionStrip from "@/components/chat/AiSuggestionStrip";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
 import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
@@ -454,22 +455,28 @@ export default function CrmConversa() {
 
         {/* Input Area */}
         {id && (
-          <ChatInput
-            leadId={id}
-            leadPhone={lead.phone}
-            onLoadTemplates={chat.loadTemplates}
-            externalMessage={templateMessage}
-            onExternalMessageConsumed={() => setTemplateMessage("")}
-            replyTo={chat.replyTo}
-            onReplySent={() => chat.setReplyTo(null)}
-            onMessageSent={chat.handleOptimisticMessage}
-            onMessageError={chat.handleMessageError}
-            onMessageSuccess={chat.handleMessageSuccess}
-            lastInboundAt={chat.lastInboundAt}
-            lastInboundDmAt={chat.lastInboundDmAt}
-            channel={lead.instagram_user_id ? "instagram" : "whatsapp"}
-          />
+          <>
+            {!lead.instagram_user_id && (
+              <AiSuggestionStrip leadId={id} leadPhone={lead.phone} />
+            )}
+            <ChatInput
+              leadId={id}
+              leadPhone={lead.phone}
+              onLoadTemplates={chat.loadTemplates}
+              externalMessage={templateMessage}
+              onExternalMessageConsumed={() => setTemplateMessage("")}
+              replyTo={chat.replyTo}
+              onReplySent={() => chat.setReplyTo(null)}
+              onMessageSent={chat.handleOptimisticMessage}
+              onMessageError={chat.handleMessageError}
+              onMessageSuccess={chat.handleMessageSuccess}
+              lastInboundAt={chat.lastInboundAt}
+              lastInboundDmAt={chat.lastInboundDmAt}
+              channel={lead.instagram_user_id ? "instagram" : "whatsapp"}
+            />
+          </>
         )}
+
 
         {/* Active Bot Badge — bottom-right corner of chat area */}
         {activeExecution && (

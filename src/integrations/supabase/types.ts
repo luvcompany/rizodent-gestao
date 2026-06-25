@@ -120,46 +120,70 @@ export type Database = {
       }
       ai_assistant_config: {
         Row: {
+          assistant_display_name: string
+          auto_send_enabled: boolean
+          copilot_enabled: boolean
           created_at: string
           custom_instructions: string | null
           enabled_features: Json
           id: string
           is_active: boolean
+          knowledge_base: string | null
           language: string
           model: string
           name: string
+          recoil_hours: number
+          shift_end: string
+          shift_start: string
           system_prompt: string
           tenant_id: string | null
           tone: string
           updated_at: string
+          wait_minutes: number
         }
         Insert: {
+          assistant_display_name?: string
+          auto_send_enabled?: boolean
+          copilot_enabled?: boolean
           created_at?: string
           custom_instructions?: string | null
           enabled_features?: Json
           id?: string
           is_active?: boolean
+          knowledge_base?: string | null
           language?: string
           model?: string
           name?: string
+          recoil_hours?: number
+          shift_end?: string
+          shift_start?: string
           system_prompt?: string
           tenant_id?: string | null
           tone?: string
           updated_at?: string
+          wait_minutes?: number
         }
         Update: {
+          assistant_display_name?: string
+          auto_send_enabled?: boolean
+          copilot_enabled?: boolean
           created_at?: string
           custom_instructions?: string | null
           enabled_features?: Json
           id?: string
           is_active?: boolean
+          knowledge_base?: string | null
           language?: string
           model?: string
           name?: string
+          recoil_hours?: number
+          shift_end?: string
+          shift_start?: string
           system_prompt?: string
           tenant_id?: string | null
           tone?: string
           updated_at?: string
+          wait_minutes?: number
         }
         Relationships: [
           {
@@ -212,6 +236,66 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      ai_reply_suggestions: {
+        Row: {
+          action: string
+          action_reason: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          lead_id: string
+          model: string | null
+          status: string
+          suggested_text: string
+          tenant_id: string | null
+          trigger_message_id: string | null
+        }
+        Insert: {
+          action?: string
+          action_reason?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          lead_id: string
+          model?: string | null
+          status?: string
+          suggested_text: string
+          tenant_id?: string | null
+          trigger_message_id?: string | null
+        }
+        Update: {
+          action?: string
+          action_reason?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          lead_id?: string
+          model?: string | null
+          status?: string
+          suggested_text?: string
+          tenant_id?: string | null
+          trigger_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_reply_suggestions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_reply_suggestions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+        ]
       }
       bot_execution_logs: {
         Row: {
