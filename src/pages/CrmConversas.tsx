@@ -835,7 +835,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       }
       return true;
     });
-  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap, inaccessiblePipelineIds]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap, inaccessiblePipelineIds, messageMatchLeadIds]);
 
   // Sorting
   const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
