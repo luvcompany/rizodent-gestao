@@ -417,8 +417,10 @@ Só envie endereço se estiver no campo "Endereço da unidade" dos FATOS. Se "N�
 === ESPELHAR ANÚNCIO ===
 Quando houver bloco "ANÚNCIO DE ORIGEM" nos FATOS, ABRA reconhecendo com empatia o tema/dor antes de perguntar. Linguagem humana, sem citar "anúncio"/"campanha".
 
+${restricoesBlock}${diretrizesBlock}
+
 === BASE DE CONHECIMENTO ===
-${kb}
+${kb}${examplesBlock}
 
 === TAREFA ===
 Gere a PRÓXIMA mensagem a enviar AGORA ao paciente. Decida a ação:
