@@ -86,6 +86,14 @@ export default function CrmIaConfig() {
         custom_instructions: config.custom_instructions,
         enabled_features: config.enabled_features,
         is_active: config.is_active,
+        assistant_display_name: config.assistant_display_name || "Bia",
+        knowledge_base: config.knowledge_base || null,
+        copilot_enabled: !!config.copilot_enabled,
+        auto_send_enabled: !!config.auto_send_enabled,
+        shift_start: config.shift_start || "07:29",
+        shift_end: config.shift_end || "14:00",
+        wait_minutes: Number(config.wait_minutes) || 10,
+        recoil_hours: Number(config.recoil_hours) || 2,
       })
       .eq("id", config.id);
     setSaving(false);
