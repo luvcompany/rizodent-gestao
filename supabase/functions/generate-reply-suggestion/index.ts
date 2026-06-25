@@ -216,10 +216,7 @@ Responda SOMENTE com JSON válido no formato:
     let aiText = "";
     let usedModel = modelId;
 
-    if (modelId.startsWith("anthropic/")) {
-      if (!ANTHROPIC_API_KEY) {
-        return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY não configurado" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
+    if (modelId.startsWith("anthropic/") && ANTHROPIC_API_KEY) {
       const anthropicModel = modelId.replace(/^anthropic\//, "");
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -239,17 +236,21 @@ Responda SOMENTE com JSON válido no formato:
         const t = await r.text();
         return new Response(JSON.stringify({ error: `anthropic ${r.status}: ${t}` }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
+      usedModel = modelId;
       const j = await r.json();
       aiText = (j?.content || []).map((c: any) => c?.text || "").join("\n").trim();
     } else {
+      // Fallback to Lovable AI Gateway (also used when model is Anthropic but key missing)
       if (!LOVABLE_API_KEY) {
         return new Response(JSON.stringify({ error: "LOVABLE_API_KEY não configurado" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
+      const fallbackModel = modelId.startsWith("anthropic/") ? "google/gemini-2.5-flash" : modelId;
+      usedModel = fallbackModel;
       const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: modelId,
+          model: fallbackModel,
           messages: [{ role: "system", content: systemPrompt }, ...history],
         }),
       });
