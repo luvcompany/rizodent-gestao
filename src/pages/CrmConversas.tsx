@@ -393,8 +393,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     }
 
     const fetchLeads = async () => {
+      // First-paint rápido: mostra a UI assim que profiles + pipelines + 1ª página de leads chegam.
+      let firstPainted = false;
       const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
-        fetchAllConversationLeads(tenant.id),
+        fetchAllConversationLeads(tenant.id, (firstPage) => {
+          firstPainted = true;
+          setLeads(firstPage);
+          setLoading(false);
+        }),
         supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
         supabase.from("crm_pipelines").select("id, name, allowed_roles").eq("tenant_id", tenant.id).order("created_at"),
       ]);
@@ -411,10 +417,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setLeads(rawLeads);
       setProfiles(profs);
       setPipelines(pipes);
-      setLoading(false);
+      if (!firstPainted) setLoading(false);
     };
     fetchLeads();
   }, [tenant.id, cacheKey]);
+
 
   // Server-side search: when user types, fetch matching leads beyond the initial 500-row cache
   // so older conversations (sorted lower by last_message_at) are still findable.
