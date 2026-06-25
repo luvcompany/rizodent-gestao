@@ -236,7 +236,13 @@ Responda SOMENTE com JSON válido no formato:
         const t = await r.text();
         return new Response(JSON.stringify({ error: `anthropic ${r.status}: ${t}` }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
+      usedModel = modelId;
       const j = await r.json();
+      aiText = (j?.content || []).map((c: any) => c?.text || "").join("\n").trim();
+    } else {
+      // Fallback to Lovable AI Gateway (also used when Anthropic key is missing)
+      const fallbackModel = modelId.startsWith("anthropic/") ? "google/gemini-2.5-flash" : modelId;
+      usedModel = fallbackModel;
       aiText = (j?.content || []).map((c: any) => c?.text || "").join("\n").trim();
     } else {
       if (!LOVABLE_API_KEY) {
