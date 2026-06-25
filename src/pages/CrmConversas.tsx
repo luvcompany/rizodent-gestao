@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import ChatInput from "@/components/chat/ChatInput";
+import AiSuggestionStrip from "@/components/chat/AiSuggestionStrip";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
 import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
