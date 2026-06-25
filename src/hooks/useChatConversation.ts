@@ -300,13 +300,14 @@ export function useChatConversation(leadId: string | null | undefined) {
     return () => { supabase.removeChannel(channel); };
   }, [leadId]);
 
-  // ─── Polling fallback (very infrequent, realtime handles most updates) ───
+  // ─── Polling fallback (only when tab is visible; realtime handles most updates) ───
   useEffect(() => {
     const targetLeadId = leadId;
     if (!targetLeadId) return;
 
     const interval = setInterval(async () => {
       if (activeLeadRef.current !== targetLeadId) return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       if (data && activeLeadRef.current === targetLeadId) {
         const nextMessages = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
@@ -319,9 +320,10 @@ export function useChatConversation(leadId: string | null | undefined) {
           return prev;
         });
       }
-    }, 30000);
+    }, 60000); // 60s — realtime carries the load; this is just a safety net
     return () => clearInterval(interval);
   }, [leadId]);
+
 
   // ─── Activity Toasts ───
   const dismissToast = useCallback((toastId: string) => {
