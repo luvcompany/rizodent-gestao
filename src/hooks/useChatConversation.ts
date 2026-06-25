@@ -204,10 +204,11 @@ export function useChatConversation(leadId: string | null | undefined) {
     setLoading(true);
   }, [leadId]);
 
-  // ─── Repair legacy media (deferred, non-blocking) ───
+  // ─── Repair legacy media (deferred, non-blocking, visible-tab-only) ───
   useEffect(() => {
     if (!leadId || repairedMediaLeadCache.has(leadId)) return;
     const timer = setTimeout(async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       repairedMediaLeadCache.add(leadId);
       try {
         if (activeLeadRef.current !== leadId) return;
@@ -222,9 +223,10 @@ export function useChatConversation(leadId: string | null | undefined) {
       } catch {
         repairedMediaLeadCache.delete(leadId);
       }
-    }, 3000); // Defer 3s to not block initial render
+    }, 8000); // Defer 8s to not block initial render or quick lead-switching
     return () => clearTimeout(timer);
   }, [leadId, fetchMessages]);
+
 
   // ─── Scroll to bottom on initial load ───
   useEffect(() => {
