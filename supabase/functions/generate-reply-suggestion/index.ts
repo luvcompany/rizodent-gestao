@@ -390,10 +390,8 @@ Responda SOMENTE com JSON válido no formato:
         aiText = await callModel(reinforcement);
         parsed = parseJsonTolerant(aiText);
       }
-      // Último recurso: se ainda não parseou mas há texto, usa o texto cru como reply
-      if ((!parsed || !parsed.reply.trim()) && aiText.trim()) {
-        parsed = { reply: aiText.trim().slice(0, 1200), action: "reply" };
-      }
+      // NÃO usar texto cru como fallback: corre risco de enviar JSON bruto ao cliente.
+      // Se ainda não parseou, o handler abaixo retorna empty_response e a UI mostra erro.
     } catch (e: any) {
       const msg = e?.message || String(e);
       if (msg === "__RATE_LIMITED__") return new Response(JSON.stringify({ error: "rate_limited" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
