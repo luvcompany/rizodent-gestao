@@ -1014,7 +1014,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 )}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div ref={listScrollRef} className="flex-1 overflow-y-auto" style={{ contain: "strict" }}>
               {loading ? (
                 <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
               ) : sortedFiltered.length === 0 ? (
@@ -1023,14 +1023,20 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   <p className="text-sm">Nenhuma conversa</p>
                 </div>
               ) : (
-                <div className="divide-y divide-border">
-                  {visibleLeads.map((lead) => {
+                <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
+                  {rowVirtualizer.getVirtualItems().map((vRow) => {
+                    const lead = sortedFiltered[vRow.index];
+                    if (!lead) return null;
                     const initials = lead.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
                     const isActive = lead.id === selectedLeadId;
-                    const stageDot = chat.stages.find((s) => s.id === lead.stage_id);
                     const isInbound = lead.last_direction === "inbound";
                      return (
-                      <div key={lead.id} className={`relative group flex items-start gap-0 transition-colors ${
+                      <div
+                        key={lead.id}
+                        ref={rowVirtualizer.measureElement}
+                        data-index={vRow.index}
+                        style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vRow.start}px)` }}
+                        className={`relative group flex items-start gap-0 border-b border-border transition-colors ${
                           isActive
                             ? "bg-primary/15 border-l-2 border-l-primary"
                             : isInbound
@@ -1122,17 +1128,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       </div>
                      );
                   })}
-                  {visibleCount < sortedFiltered.length && (
-                    <button
-                      className="w-full py-3 text-xs text-primary hover:bg-secondary/50 transition-colors"
-                      onClick={() => setVisibleCount((c) => c + 50)}
-                    >
-                      Carregar mais ({sortedFiltered.length - visibleCount} restantes)
-                    </button>
-                  )}
                 </div>
               )}
             </div>
+
           </div>
         </ResizablePanel>
         {!isCrmMobile && <ResizableHandle />}</>
