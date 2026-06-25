@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sparkles, Save, Loader2, Bot, MessageSquare, Wand2, Clock } from "lucide-react";
+import { Sparkles, Save, Loader2, Bot, MessageSquare, Wand2, Clock, ShieldCheck, GraduationCap } from "lucide-react";
+import AiRulesManager from "@/components/ai/AiRulesManager";
+import AiLearningReport from "@/components/ai/AiLearningReport";
 import { toast } from "sonner";
 
 const MODELS = [
