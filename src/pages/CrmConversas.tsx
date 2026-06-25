@@ -794,6 +794,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             if (matchesPhone) break;
           }
         }
+        const matchesMessage = !!messageMatchLeadIds && messageMatchLeadIds.has(l.id);
+        if (!matchesText && !matchesPhone && !matchesMessage) return false;
+            for (const pv of phoneVariants) {
+              if (pv.includes(sv)) { matchesPhone = true; break; }
+            }
+            if (matchesPhone) break;
+          }
+        }
         if (!matchesText && !matchesPhone) return false;
       }
       if (filters.dateFilter.preset !== "all") {
