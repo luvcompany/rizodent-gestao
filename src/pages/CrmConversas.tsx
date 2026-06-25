@@ -915,10 +915,19 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     return filtered;
   }, [filtered, sortMode]);
 
-  // Render limit for performance — show more on scroll
-  const [visibleCount, setVisibleCount] = useState(50);
-  useEffect(() => { setVisibleCount(50); }, [search, filters]);
-  const visibleLeads = useMemo(() => sortedFiltered.slice(0, visibleCount), [sortedFiltered, visibleCount]);
+  // Lista virtualizada: renderiza só os itens visíveis no scroll, DOM permanece pequeno.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: sortedFiltered.length,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 76,
+    overscan: 8,
+    getItemKey: (i) => sortedFiltered[i]?.id ?? i,
+  });
+  useEffect(() => {
+    listScrollRef.current?.scrollTo({ top: 0 });
+  }, [search, filters, sortMode]);
+
 
   const currentStage = chat.stages.find((s) => s.id === selectedLead?.stage_id);
 
