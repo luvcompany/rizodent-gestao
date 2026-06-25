@@ -216,10 +216,7 @@ Responda SOMENTE com JSON válido no formato:
     let aiText = "";
     let usedModel = modelId;
 
-    if (modelId.startsWith("anthropic/")) {
-      if (!ANTHROPIC_API_KEY) {
-        return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY não configurado" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
+    if (modelId.startsWith("anthropic/") && ANTHROPIC_API_KEY) {
       const anthropicModel = modelId.replace(/^anthropic\//, "");
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
