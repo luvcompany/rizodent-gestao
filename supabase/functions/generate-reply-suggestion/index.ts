@@ -158,10 +158,14 @@ Regras de ouro: nunca deixe o preço travar (converta em avaliação gratuita + 
 
 Faixas: facetas ~R$350–550/dente; manutenção de aparelho ~R$90/mês. Nunca jogue valor cheio de protocolo (R$9–14 mil) sem antes falar de entrada/parcela.`;
 
-// Endereços oficiais por unidade. Se a unidade do lead não estiver aqui, a IA NÃO deve enviar endereço.
+// Endereços oficiais por unidade (texto exato dos templates de agendamento).
+// Se a unidade do lead não estiver aqui, a IA NÃO deve enviar endereço.
 const UNIT_ADDRESSES: Record<string, string> = {
-  // Preencher conforme os endereços oficiais forem cadastrados em ai_assistant_config.knowledge_base
-  // Ex.: "itabuna": "Rua X, 123 - Centro, Itabuna/BA",
+  "itabuna": "Avenida Cinquentenário, 375, ao lado da Jan e Ju e em frente ao banco Bradesco",
+  "guanambi": "Rua dos Expedicionários, 71 - Centro, ao lado do banco Santander",
+  "vitoria da conquista": "Rua Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens",
+  "conquista": "Rua Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens",
+  "ipiau": "Praça Ruy Barbosa, 122 - Centro, em frente à Praça Ruy Barbosa",
 };
 
 function normalizeCity(s: string | null | undefined): string {
