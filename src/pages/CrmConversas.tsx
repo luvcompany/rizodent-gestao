@@ -260,6 +260,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const urlAppointmentStatus = searchParams.get("appointment_status");
   const [ghostLeadIds, setGhostLeadIds] = useState<Set<string> | null>(null);
   const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
+  // Lead IDs whose message history contains the current search term
+  const [messageMatchLeadIds, setMessageMatchLeadIds] = useState<Set<string> | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? (leadsListCache.profiles || []) : (_lsData?.profiles || []));
   const [pipelines, setPipelines] = useState<PipelineWithRoles[]>(() => canUseInitialCache ? (leadsListCache.pipelines || []) : (_lsData?.pipelines || []));
   const [activeExecution, setActiveExecution] = useState<{
@@ -423,6 +425,52 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     }, 350);
     return () => clearTimeout(handle);
   }, [search, tenant.id]);
+
+  // Server-side search inside message content (texto de mensagens antigas)
+  useEffect(() => {
+    const term = search.trim();
+    if (!tenant.id) { setMessageMatchLeadIds(null); return; }
+    if (term.length < 3) { setMessageMatchLeadIds(null); return; }
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      // Escape special chars for ilike pattern
+      const safe = term.replace(/[%_\\]/g, (c) => `\\${c}`);
+      const { data, error } = await supabase
+        .from("messages")
+        .select("lead_id")
+        .eq("tenant_id", tenant.id)
+        .not("lead_id", "is", null)
+        .ilike("content", `%${safe}%`)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (cancelled || error) return;
+      const ids = new Set<string>();
+      (data ?? []).forEach((r: any) => { if (r.lead_id) ids.add(r.lead_id); });
+      setMessageMatchLeadIds(ids);
+
+      // Fetch any matching leads not present in current cache so they show up in results
+      const missing = Array.from(ids).filter((id) => !leads.some((l) => l.id === id));
+      if (missing.length) {
+        const { data: leadRows } = await supabase
+          .from("crm_leads")
+          .select(LEAD_SELECT_COLS)
+          .eq("tenant_id", tenant.id)
+          .eq("is_blocked", false)
+          .in("id", missing.slice(0, 100));
+        if (cancelled || !leadRows?.length) return;
+        setLeads((prev) => {
+          const existing = new Set(prev.map((l) => l.id));
+          const additions = (leadRows as any as LeadConversation[])
+            .map(normalizeLead)
+            .filter((l) => !existing.has(l.id));
+          if (!additions.length) return prev;
+          return sortLeadsByLastActivity([...prev, ...additions]);
+        });
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [search, tenant.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // Load special URL filter data (ghost leads, appointment leads)
   useEffect(() => {
@@ -746,7 +794,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             if (matchesPhone) break;
           }
         }
-        if (!matchesText && !matchesPhone) return false;
+        const matchesMessage = !!messageMatchLeadIds && messageMatchLeadIds.has(l.id);
+        if (!matchesText && !matchesPhone && !matchesMessage) return false;
       }
       if (filters.dateFilter.preset !== "all") {
         if (!l.last_message_at) return false;
@@ -786,7 +835,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       }
       return true;
     });
-  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap, inaccessiblePipelineIds]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap, inaccessiblePipelineIds, messageMatchLeadIds]);
 
   // Sorting
   const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
@@ -868,7 +917,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               <div className="relative">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
                 <Input
-                  placeholder="Buscar por nome ou telefone..."
+                  placeholder="Buscar por nome, telefone ou mensagem..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-8 h-8 text-sm bg-secondary"
