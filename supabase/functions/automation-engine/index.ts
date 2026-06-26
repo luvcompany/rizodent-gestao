@@ -876,6 +876,24 @@ Deno.serve(async (req) => {
           `[AUTOMATION-ENGINE] no_response FIRING for lead ${lead.id}, automation ${auto.id}, elapsed=${Math.round(elapsed / 1000)}s, threshold=${Math.round(thresholdMs / 1000)}s`,
         );
 
+        // Commercial-hours guard: if outside window, enqueue for next opening instead of sending now
+        const nextWindow = nextCommercialFireAt();
+        if (nextWindow) {
+          console.log(`[AUTOMATION-ENGINE] no_response auto ${auto.id} lead ${lead.id}: outside commercial hours, deferring to ${nextWindow}`);
+          await supabase.from("crm_automation_queue").insert({
+            automation_id: auto.id,
+            lead_id: lead.id,
+            action_type: auto.action_type,
+            action_config: config,
+            scheduled_at: nextWindow,
+            status: "pending",
+            layer_index: 0,
+          });
+          if (!results.no_response) results.no_response = 0;
+          results.no_response++;
+          continue;
+        }
+
         await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
 
         await supabase.from("crm_automation_queue").insert({
@@ -887,6 +905,7 @@ Deno.serve(async (req) => {
           status: "sent",
           layer_index: 0,
         });
+
 
         if (!results.no_response) results.no_response = 0;
         results.no_response++;
