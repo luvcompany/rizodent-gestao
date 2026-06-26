@@ -100,6 +100,34 @@ function calculateTimeoutAt(nodeData: any): string | null {
   return new Date(Date.now() + totalMs).toISOString();
 }
 
+/** Detect canonical cidade / servico_interesse from an interactive reply text. */
+function detectLeadFieldsFromReply(text: string): { cidade?: string; servico?: string } {
+  const out: { cidade?: string; servico?: string } = {};
+  if (!text) return out;
+  const t = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (t.includes("itabuna")) out.cidade = "Itabuna";
+  else if (t.includes("guanambi")) out.cidade = "Guanambi";
+  else if (t.includes("ipiau")) out.cidade = "Ipiaú";
+  else if (t.includes("vca") || t.includes("vitoria") || t.includes("conquista")) out.cidade = "Vitória da Conquista";
+
+  if (t.includes("implante") || t.includes("zigomatic")) out.servico = "Implante";
+  else if (t.includes("protese") || t.includes("protocolo") || t.includes("dentadura")) out.servico = "Prótese/Protocolo";
+  else if (t.includes("faceta") || t.includes("lente")) out.servico = "Facetas/Lentes";
+  else if (t.includes("clareamento")) out.servico = "Clareamento";
+  else if (t.includes("aparelho") || t.includes("ortodont")) out.servico = "Ortodontia";
+  else if (
+    t.includes("limpeza") || t.includes("restaura") || t.includes("canal") ||
+    t.includes("extra") || t.includes("dor") || t.includes("urgenc")
+  ) out.servico = "Clínico Geral";
+
+  return out;
+}
+
+
 // Compute due_date for a task created by the bot. Supports modes: hours, days,
 // days_at_time, next_day_first, next_business_day, specific. All times use
 // Brazil timezone (America/Sao_Paulo / UTC-3, no DST).
