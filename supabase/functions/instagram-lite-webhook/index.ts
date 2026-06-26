@@ -473,11 +473,20 @@ Deno.serve(async (req: Request) => {
   if (req.method === "POST") {
     const rawBody = await req.text();
     const signature = req.headers.get("x-hub-signature-256");
-    const appSecret = Deno.env.get("INSTAGRAM_APP_SECRET") || Deno.env.get("META_APP_SECRET") || "";
+    // Mirror whatsapp-webhook signature source: WHATSAPP_APP_SECRET / META_APP_SECRET / INSTAGRAM_APP_SECRET
+    const appSecret =
+      Deno.env.get("WHATSAPP_APP_SECRET") ||
+      Deno.env.get("META_APP_SECRET") ||
+      Deno.env.get("INSTAGRAM_APP_SECRET") ||
+      "";
+    if (!appSecret) {
+      console.error("[ig-lite] APP_SECRET not configured — rejecting webhook");
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    }
     const sigOk = await verifyMetaSignature(rawBody, signature, appSecret);
     if (!sigOk) {
-      console.warn("[ig-lite] Invalid or missing x-hub-signature-256");
-      return new Response("Forbidden", { status: 403, headers: corsHeaders });
+      console.warn("[ig-lite] Invalid or missing x-hub-signature-256 — rejecting");
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
     }
     try {
       const payload = JSON.parse(rawBody);
