@@ -906,6 +906,25 @@ Deno.serve(async (req) => {
                 console.error("[WEBHOOK] ai suggestion trigger error:", e?.message);
               }
 
+              // Fire-and-forget: transcrição de áudio inbound
+              if (msgType === "audio" && savedMsg?.id) {
+                try {
+                  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+                  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+                  fetch(`${supabaseUrl}/functions/v1/transcribe-audio`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${serviceKey}`,
+                      apikey: serviceKey,
+                    },
+                    body: JSON.stringify({ message_id: savedMsg.id }),
+                  }).catch((e) => console.error("[WEBHOOK] transcribe fire-and-forget error:", e?.message));
+                } catch (e: any) {
+                  console.error("[WEBHOOK] transcribe trigger error:", e?.message);
+                }
+              }
+
 
 
 
