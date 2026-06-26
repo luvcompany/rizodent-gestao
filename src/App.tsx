@@ -251,6 +251,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/respostas-rapidas" element={withRouteSuspense(<CrmRespostasRapidas />)} />
               <Route path="/crm/campanhas" element={withRouteSuspense(<CrmCampanhas />)} />
               <Route path="/crm/ia-config" element={withRouteSuspense(<CrmIaConfig />)} />
+              <Route path="/crm/metricas" element={withRouteSuspense(<CrmMetricas />)} />
               <Route path="/crm/usuarios" element={withRouteSuspense(<Usuarios />)} />
             </Route>
             <Route path="*" element={withRouteSuspense(<NotFound />)} />
