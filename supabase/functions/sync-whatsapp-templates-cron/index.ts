@@ -21,9 +21,19 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Autenticação por x-cron-secret (definido em _internal_secrets.sync_templates_cron_token)
-  const expected = Deno.env.get("SYNC_TEMPLATES_CRON_TOKEN") || "";
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // Autenticação por x-cron-secret (valor em _internal_secrets.sync_templates_cron_token)
   const provided = req.headers.get("x-cron-secret") || "";
+  const { data: secretRow } = await supabase
+    .from("_internal_secrets")
+    .select("value")
+    .eq("name", "sync_templates_cron_token")
+    .maybeSingle();
+  const expected = (secretRow as any)?.value || "";
   if (!expected || provided !== expected) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
@@ -31,11 +41,6 @@ Deno.serve(async (req) => {
     });
   }
 
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
 
   // Busca todas as integrações WhatsApp conectadas (todos os tenants)
   const { data: integrations, error: intgErr } = await supabase
