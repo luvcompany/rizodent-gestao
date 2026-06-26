@@ -137,7 +137,10 @@ export type Database = {
           shift_start: string
           system_prompt: string
           tenant_id: string | null
+          text_provider: string
           tone: string
+          transcription_model: string
+          transcription_provider: string
           updated_at: string
           wait_minutes: number
         }
@@ -159,7 +162,10 @@ export type Database = {
           shift_start?: string
           system_prompt?: string
           tenant_id?: string | null
+          text_provider?: string
           tone?: string
+          transcription_model?: string
+          transcription_provider?: string
           updated_at?: string
           wait_minutes?: number
         }
@@ -181,7 +187,10 @@ export type Database = {
           shift_start?: string
           system_prompt?: string
           tenant_id?: string | null
+          text_provider?: string
           tone?: string
+          transcription_model?: string
+          transcription_provider?: string
           updated_at?: string
           wait_minutes?: number
         }
