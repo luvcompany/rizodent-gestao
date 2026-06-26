@@ -21,15 +21,16 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Aceita chamadas com apikey (anon) da Supabase gateway (pg_cron) ou Bearer
-  const authHeader = req.headers.get("authorization") || "";
-  const apiKeyHeader = req.headers.get("apikey") || "";
-  if (!authHeader.startsWith("Bearer ") && !apiKeyHeader) {
+  // Autenticação por x-cron-secret (definido em _internal_secrets.sync_templates_cron_token)
+  const expected = Deno.env.get("SYNC_TEMPLATES_CRON_TOKEN") || "";
+  const provided = req.headers.get("x-cron-secret") || "";
+  if (!expected || provided !== expected) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
