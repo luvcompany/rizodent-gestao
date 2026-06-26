@@ -9,7 +9,7 @@ const corsHeaders = {
 /**
  * instagram-token-refresh
  * Renova automaticamente os tokens das contas Instagram (tabela ig_accounts)
- * que vencem nos próximos 7 dias. Agendado para rodar 1x por semana.
+ * que vencem nos próximos 7 dias. Agendado para rodar diariamente.
  */
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
