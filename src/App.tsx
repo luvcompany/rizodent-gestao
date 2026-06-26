@@ -50,6 +50,7 @@ const CrmConfiguracoes = lazyWithPreload(() => import("./pages/CrmConfiguracoes"
 const CrmRespostasRapidas = lazyWithPreload(() => import("./pages/CrmRespostasRapidas"));
 const CrmCampanhas = lazyWithPreload(() => import("./pages/CrmCampanhas"));
 const CrmIaConfig = lazyWithPreload(() => import("./pages/CrmIaConfig"));
+const CrmMetricas = lazyWithPreload(() => import("./pages/CrmMetricas"));
 const CrclinLanding = lazyWithPreload(() => import("./pages/CrclinLanding"));
 const ChangePassword = lazyWithPreload(() => import("./pages/ChangePassword"));
 const AdminLayout = lazyWithPreload(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminLayout })));
