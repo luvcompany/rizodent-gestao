@@ -3507,6 +3507,10 @@ export type Database = {
       }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
       crm_unread_leads_count: { Args: never; Returns: number }
+      crm_usage_metrics: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
       current_tenant_id: { Args: never; Returns: string }
       debug_audio_messages: {
         Args: { p_lead_id: string; p_limit?: number }
