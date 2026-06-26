@@ -104,6 +104,7 @@ export default function CrmIaConfig() {
         shift_end: config.shift_end || "14:00",
         wait_minutes: Number(config.wait_minutes) || 10,
         recoil_hours: Number(config.recoil_hours) || 2,
+        transcription_model: config.transcription_model || "google/gemini-2.5-flash",
       })
       .eq("id", config.id);
     setSaving(false);
