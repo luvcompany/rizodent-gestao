@@ -1,14 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeInternal } from "../_shared/internalAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 /**
  * instagram-token-refresh
  * Renova automaticamente os tokens das contas Instagram (tabela ig_accounts)
- * que vencem nos próximos 7 dias. Agendado para rodar 1x por semana.
+ * que vencem nos próximos 7 dias. Agendado para rodar diariamente.
  */
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -19,6 +20,17 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
+
+  const auth = await authorizeInternal(req, supabase, {
+    cronSecretName: "instagram_token_refresh_cron_token",
+  });
+
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const horizon = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -61,7 +73,17 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const expiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
+      const expiresIn = Number(data.expires_in);
+      const hasValidExpiresIn = Number.isFinite(expiresIn) && expiresIn > 0;
+      const expiresAt = new Date(
+        Date.now() + (hasValidExpiresIn ? expiresIn : 60 * 24 * 60 * 60) * 1000,
+      ).toISOString();
+
+      if (!hasValidExpiresIn) {
+        console.warn(
+          `⚠️ expires_in ausente/inválido para @${account.username}. Usando fallback de 60 dias.`,
+        );
+      }
 
       const { error: updateError } = await supabase
         .from("ig_accounts")
