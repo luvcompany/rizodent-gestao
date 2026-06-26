@@ -497,6 +497,27 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Auto-persist cidade / servico_interesse detected from interactive reply
+      try {
+        const detected = detectLeadFieldsFromReply(replyValue || replyText || "");
+        if (detected.cidade || detected.servico) {
+          const { data: leadCur } = await supabase
+            .from("crm_leads")
+            .select("cidade, servico_interesse")
+            .eq("id", leadId)
+            .single();
+          const updates: Record<string, string> = {};
+          if (detected.cidade && !leadCur?.cidade) updates.cidade = detected.cidade;
+          if (detected.servico && !leadCur?.servico_interesse) updates.servico_interesse = detected.servico;
+          if (Object.keys(updates).length > 0) {
+            await supabase.from("crm_leads").update(updates).eq("id", leadId);
+            console.log(`[BOT] lead ${leadId} ${Object.entries(updates).map(([k, v]) => `${k}=${v}`).join(" ")}`);
+          }
+        }
+      } catch (e) {
+        console.error("[bot-engine] detectLeadFieldsFromReply error", e);
+      }
+
       if (!nextEdge) {
         console.log(`[bot-engine] No path found from node ${execution.current_node_id} after reply "${replyText}"`);
         await supabase.from("bot_executions").update({ status: "completed", completed_at: new Date().toISOString(), timeout_at: null }).eq("id", execution.id);
