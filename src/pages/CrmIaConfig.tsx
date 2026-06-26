@@ -23,6 +23,13 @@ const MODELS = [
   { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5 (Anthropic)" },
 ];
 
+const TRANSCRIPTION_MODELS = [
+  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash (padrão, via Lovable AI)" },
+  { value: "openai/whisper-1", label: "OpenAI Whisper-1 (sua chave OPENAI_API_KEY)" },
+  { value: "openai/gpt-4o-mini-transcribe", label: "OpenAI gpt-4o-mini-transcribe (sua chave)" },
+  { value: "openai/gpt-4o-transcribe", label: "OpenAI gpt-4o-transcribe (sua chave, + preciso)" },
+];
+
 const TONES = [
   "profissional e acolhedor",
   "informal e amigável",
