@@ -537,6 +537,7 @@ Deno.serve(async (req) => {
           "GET /reports/overview?from=&to=",
           "GET /reports/funnel?pipeline_id=",
           "GET /reports/by-source?from=&to=",
+          "GET /reports/financeiro?from=YYYY-MM-DD&to=YYYY-MM-DD&clinica=<uuid?>",
         ],
       });
     }
