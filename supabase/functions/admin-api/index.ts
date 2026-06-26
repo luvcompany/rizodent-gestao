@@ -249,6 +249,209 @@ async function tasks(method: string, p: URLSearchParams, body: any, id?: string)
   return json({ error: "method_not_allowed" }, 405);
 }
 
+// ===== /reports/financeiro — replica a lógica do Dashboard.tsx =====
+function toLocalDateStr(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+async function reportFinanceiro(p: URLSearchParams) {
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const from = (p.get("from") || toLocalDateStr(firstOfMonth)).slice(0, 10);
+  const to = (p.get("to") || toLocalDateStr(lastOfMonth)).slice(0, 10);
+  const clinicaId = p.get("clinica");
+
+  // pagamentos
+  let pagQ = admin.from("pagamentos")
+    .select("id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade")
+    .gte("data_pagamento", from).lte("data_pagamento", to).limit(50000);
+  if (clinicaId) pagQ = pagQ.eq("clinica_id", clinicaId);
+
+  // crm_appointments (tenant-scoped) com cidade do lead
+  let aptQ = admin.from("crm_appointments")
+    .select("id, lead_id, scheduled_date, status, is_rescheduled, crm_leads(cidade)")
+    .eq("tenant_id", TENANT_ID)
+    .gte("scheduled_date", `${from}T00:00:00`).lte("scheduled_date", `${to}T23:59:59`).limit(10000);
+
+  const [pagRes, clinRes, pacRes, aptRes, holRes] = await Promise.all([
+    pagQ,
+    admin.from("clinicas").select("id, nome, cidade, ativa").eq("ativa", true),
+    admin.from("pacientes").select("id, origem, nome_anuncio").limit(20000),
+    aptQ,
+    admin.from("dashboard_holidays" as any).select("id, data, descricao, clinica_id"),
+  ]);
+  if (pagRes.error) return json({ error: pagRes.error.message }, 500);
+  const pagamentos = (pagRes.data || []) as any[];
+  const clinicas = (clinRes.data || []) as any[];
+  const pacientes = (pacRes.data || []) as any[];
+  const appointments = (aptRes.data || []) as any[];
+  const holidays = (holRes.data || []) as any[];
+
+  const num = (v: any) => Number(v) || 0;
+
+  // KPIs faturamento
+  const fatTotal = pagamentos.reduce((s, p) => s + num(p.valor), 0);
+  const fatNovos = pagamentos.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + num(p.valor), 0);
+  const fatRecorrentes = pagamentos.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + num(p.valor), 0);
+
+  const pacientesTotalSet = new Set(pagamentos.map((p) => p.paciente_id).filter(Boolean));
+  const novosContratadosSet = new Set(pagamentos.filter((p) => p.tipo === "primeiro").map((p) => p.paciente_id).filter(Boolean));
+
+  // ticket_medio (mesma lógica do Dashboard): fatTotal / dias úteis com pagamento
+  // dias úteis = seg-sáb (exclui domingos) - feriados aplicáveis, do 1º pagamento até ontem ou último dia do mês de referência.
+  const holidaySet = new Set<string>();
+  holidays.forEach((h: any) => {
+    const applies = !h.clinica_id || !clinicaId || h.clinica_id === clinicaId;
+    if (applies) holidaySet.add(h.data);
+  });
+  const isWorkingDay = (d: Date, ds: string) => d.getDay() !== 0 && !holidaySet.has(ds);
+
+  let diasUteisPassados = 1;
+  if (pagamentos.length) {
+    const dates = pagamentos.map((p) => p.data_pagamento as string).sort();
+    const firstDate = new Date(dates[0] + "T12:00:00");
+    const todayLocal = new Date(); todayLocal.setHours(12, 0, 0, 0);
+    const yesterday = new Date(todayLocal); yesterday.setDate(yesterday.getDate() - 1);
+    const lastDayMonth = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
+    const end = yesterday < lastDayMonth ? yesterday : lastDayMonth;
+    let count = 0;
+    const cur = new Date(firstDate);
+    while (cur <= end) {
+      const ds = toLocalDateStr(cur);
+      if (isWorkingDay(cur, ds)) count++;
+      cur.setDate(cur.getDate() + 1);
+    }
+    diasUteisPassados = Math.max(count, 1);
+  }
+  const ticketMedio = fatTotal / diasUteisPassados;
+
+  // por especialidade
+  const espMap = new Map<string, { faturamento: number; qtd: number }>();
+  pagamentos.forEach((p) => {
+    const k = p.especialidade || "Sem Especialidade";
+    const e = espMap.get(k) || { faturamento: 0, qtd: 0 };
+    e.faturamento += num(p.valor); e.qtd += 1;
+    espMap.set(k, e);
+  });
+  const porEspecialidade = Array.from(espMap.entries())
+    .map(([especialidade, v]) => ({ especialidade, ...v }))
+    .sort((a, b) => b.faturamento - a.faturamento);
+
+  // por clínica (agrupando VCA 01 + VCA 02 como "VCA")
+  const clinicNameFor = (c: any) => {
+    let n = String(c?.nome || "").replace("Clínica ", "").replace("Rizodent ", "");
+    if (n.includes("VCA")) n = "VCA";
+    return n || "Sem Clínica";
+  };
+  const clinicById = new Map<string, any>();
+  clinicas.forEach((c) => clinicById.set(c.id, c));
+  const clinMap = new Map<string, { faturamento: number; pacientes: Set<string> }>();
+  pagamentos.forEach((p) => {
+    const c = p.clinica_id ? clinicById.get(p.clinica_id) : null;
+    const name = c ? clinicNameFor(c) : "Sem Clínica";
+    const entry = clinMap.get(name) || { faturamento: 0, pacientes: new Set<string>() };
+    entry.faturamento += num(p.valor);
+    if (p.paciente_id) entry.pacientes.add(p.paciente_id);
+    clinMap.set(name, entry);
+  });
+  const porClinica = Array.from(clinMap.entries())
+    .map(([clinica, v]) => ({ clinica, faturamento: v.faturamento, pacientes: v.pacientes.size }))
+    .sort((a, b) => b.faturamento - a.faturamento);
+
+  // por origem (pacientes.origem || 'Outros') — só pacientes que aparecem em pagamentos
+  const pacienteById = new Map<string, any>();
+  pacientes.forEach((p) => pacienteById.set(p.id, p));
+  const pagByPaciente = new Map<string, number>();
+  pagamentos.forEach((p) => {
+    if (!p.paciente_id) return;
+    pagByPaciente.set(p.paciente_id, (pagByPaciente.get(p.paciente_id) || 0) + num(p.valor));
+  });
+  const origemMap = new Map<string, { pacientes: number; faturamento: number }>();
+  pacientesTotalSet.forEach((pid) => {
+    const pac = pacienteById.get(pid as string);
+    const origem = (pac?.origem || "Outros") as string;
+    const entry = origemMap.get(origem) || { pacientes: 0, faturamento: 0 };
+    entry.pacientes += 1;
+    entry.faturamento += pagByPaciente.get(pid as string) || 0;
+    origemMap.set(origem, entry);
+  });
+  const porOrigem = Array.from(origemMap.entries())
+    .map(([origem, v]) => ({ origem, ...v }))
+    .sort((a, b) => b.faturamento - a.faturamento);
+
+  // por anúncio top 10
+  const anuncioMap = new Map<string, { display: string; faturamento: number }>();
+  pacientes.forEach((p) => {
+    if (!p.nome_anuncio) return;
+    const fat = pagByPaciente.get(p.id) || 0;
+    if (!fat) return;
+    const key = String(p.nome_anuncio).trim().toLowerCase();
+    const entry = anuncioMap.get(key) || { display: String(p.nome_anuncio).trim(), faturamento: 0 };
+    entry.faturamento += fat;
+    anuncioMap.set(key, entry);
+  });
+  const porAnuncio = Array.from(anuncioMap.values())
+    .map((v) => ({ anuncio: v.display, faturamento: v.faturamento }))
+    .sort((a, b) => b.faturamento - a.faturamento)
+    .slice(0, 10);
+
+  // agendamentos
+  const total = appointments.length;
+  const porStatus: Record<string, number> = {};
+  appointments.forEach((a) => {
+    const s = a.status || "sem_status";
+    porStatus[s] = (porStatus[s] || 0) + 1;
+  });
+  const remarcados = appointments.filter((a) => a.is_rescheduled === true).length;
+
+  // por clínica via crm_leads.cidade
+  const norm = (s: string) => s.toLowerCase();
+  const cidadeToClinica = (cidade: string | null | undefined): string => {
+    const cid = (cidade || "").trim();
+    if (!cid) return "Sem Cidade";
+    const c = clinicas.find((cc: any) => cc.cidade && norm(cc.cidade) === norm(cid));
+    if (c) return clinicNameFor(c);
+    return cid;
+  };
+  const aptClinMap = new Map<string, { total: number; por_status: Record<string, number> }>();
+  appointments.forEach((a: any) => {
+    const cidade = a.crm_leads?.cidade ?? null;
+    const key = cidadeToClinica(cidade);
+    const entry = aptClinMap.get(key) || { total: 0, por_status: {} };
+    entry.total += 1;
+    const st = a.status || "sem_status";
+    entry.por_status[st] = (entry.por_status[st] || 0) + 1;
+    aptClinMap.set(key, entry);
+  });
+  const aptPorClinica = Array.from(aptClinMap.entries())
+    .map(([clinica, v]) => ({ clinica, total: v.total, por_status: v.por_status }))
+    .sort((a, b) => b.total - a.total);
+
+  return json({
+    period: { from, to },
+    faturamento: { total: fatTotal, novos: fatNovos, recorrentes: fatRecorrentes },
+    ticket_medio: ticketMedio,
+    dias_uteis_passados: diasUteisPassados,
+    pacientes_total: pacientesTotalSet.size,
+    novos_contratados: novosContratadosSet.size,
+    num_pagamentos: pagamentos.length,
+    por_especialidade: porEspecialidade,
+    por_clinica: porClinica,
+    por_origem: porOrigem,
+    por_anuncio: porAnuncio,
+    agendamentos: {
+      total,
+      por_status: porStatus,
+      remarcados,
+      por_clinica: aptPorClinica,
+    },
+  });
+}
+
 async function reportOverview(p: URLSearchParams) {
   const { fromISO, toISO } = parseRange(p);
   const [{ count: leadsCount }, { count: msgsIn }, { count: msgsOut }, { count: aptScheduled }, { count: aptContracted }] = await Promise.all([
