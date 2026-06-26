@@ -3765,6 +3765,7 @@ export type Database = {
         }[]
       }
       restore_deleted_lead: { Args: { _backup_id: string }; Returns: string }
+      rizodent_infer_cidade: { Args: { p_texto: string }; Returns: string }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
