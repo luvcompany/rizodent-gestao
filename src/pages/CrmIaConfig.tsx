@@ -55,6 +55,7 @@ type Config = {
   shift_end?: string;
   wait_minutes?: number;
   recoil_hours?: number;
+  transcription_model?: string;
 };
 
 export default function CrmIaConfig() {
