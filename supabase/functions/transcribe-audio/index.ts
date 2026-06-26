@@ -44,6 +44,42 @@ function mimeToFormat(mime: string): string {
   return "ogg";
 }
 
+function mimeToExt(mime: string): string {
+  const m = (mime || "").toLowerCase();
+  if (m.includes("ogg") || m.includes("opus")) return "ogg";
+  if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
+  if (m.includes("wav")) return "wav";
+  if (m.includes("mp4") || m.includes("m4a") || m.includes("aac")) return "m4a";
+  if (m.includes("webm")) return "webm";
+  if (m.includes("flac")) return "flac";
+  return "ogg";
+}
+
+async function transcribeWithOpenAI(
+  audioBytes: Uint8Array,
+  mime: string,
+  model: string,
+  apiKey: string,
+): Promise<string> {
+  const ext = mimeToExt(mime);
+  const form = new FormData();
+  const blob = new Blob([audioBytes], { type: mime || "audio/ogg" });
+  form.append("file", blob, `audio.${ext}`);
+  form.append("model", model);
+  form.append("language", "pt");
+  form.append("response_format", "text");
+  const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`openai ${r.status}: ${t.substring(0, 300)}`);
+  }
+  return (await r.text()).trim();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
