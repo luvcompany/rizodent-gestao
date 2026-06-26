@@ -198,6 +198,23 @@ export default function CrmIaConfig() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label>Modelo de transcrição de áudio</Label>
+                <Select
+                  value={config.transcription_model || "google/gemini-2.5-flash"}
+                  onValueChange={(v) => update({ transcription_model: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TRANSCRIPTION_MODELS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Modelos OpenAI usam a secret <code>OPENAI_API_KEY</code> configurada no backend (cobrada na sua conta OpenAI). O Gemini usa créditos da Lovable AI.
+                </p>
+              </div>
+
+
               <ToggleRow
                 title="Copiloto (sugestões com aprovação humana)"
                 desc="A Bia gera sugestões de resposta e o atendente aprova (✓) ou descarta (✗) antes do envio."
