@@ -5,6 +5,7 @@ import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
   Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
@@ -60,6 +61,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
     { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
     { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
     { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
+    { to: "/crm/metricas", icon: Activity, label: "Métricas de Uso" },
     { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
     { to: "/crm/configuracoes", icon: Settings, label: "Configurações" },
   );
