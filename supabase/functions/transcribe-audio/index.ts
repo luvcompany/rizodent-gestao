@@ -138,45 +138,70 @@ Deno.serve(async (req) => {
       mime = r.headers.get("content-type") || mime;
     }
 
-    const b64 = bytesToBase64(audioBytes);
-    const format = mimeToFormat(mime);
+    // Read configured transcription model
+    const { data: cfg } = await admin
+      .from("ai_assistant_config")
+      .select("transcription_model")
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const transcriptionModel: string = (cfg as any)?.transcription_model || "google/gemini-2.5-flash";
 
-    // Call Lovable AI Gateway with audio (OpenAI-compatible input_audio for Gemini)
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Você transcreve áudios em português brasileiro. Devolva APENAS o texto transcrito, sem comentários, sem aspas, sem prefixos. Preserve pontuação e nomes próprios. Se o áudio não tiver fala, responda exatamente: [áudio sem fala].",
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Transcreva este áudio:" },
-              { type: "input_audio", input_audio: { data: b64, format } },
-            ],
-          },
-        ],
-      }),
-    });
+    let text = "";
 
-    if (aiResp.status === 429) return json({ error: "Limite de requisições atingido. Tente em instantes." }, 429);
-    if (aiResp.status === 402) return json({ error: "Créditos da IA esgotados." }, 402);
-    if (!aiResp.ok) {
-      const t = await aiResp.text();
-      console.error("AI gateway error:", aiResp.status, t);
-      return json({ error: "Erro no gateway de IA", detail: t }, 500);
+    if (transcriptionModel.startsWith("openai/")) {
+      const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+      if (!OPENAI_API_KEY) {
+        return json({ error: "OPENAI_API_KEY não configurada no backend." }, 500);
+      }
+      const openaiModel = transcriptionModel.replace(/^openai\//, "");
+      try {
+        text = await transcribeWithOpenAI(audioBytes, mime, openaiModel, OPENAI_API_KEY);
+      } catch (e: any) {
+        console.error("OpenAI transcription error:", e?.message);
+        return json({ error: "Erro na transcrição OpenAI", detail: e?.message }, 502);
+      }
+    } else {
+      // Default: Lovable AI Gateway with Gemini (input_audio)
+      const b64 = bytesToBase64(audioBytes);
+      const format = mimeToFormat(mime);
+      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: transcriptionModel,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Você transcreve áudios em português brasileiro. Devolva APENAS o texto transcrito, sem comentários, sem aspas, sem prefixos. Preserve pontuação e nomes próprios. Se o áudio não tiver fala, responda exatamente: [áudio sem fala].",
+            },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Transcreva este áudio:" },
+                { type: "input_audio", input_audio: { data: b64, format } },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (aiResp.status === 429) return json({ error: "Limite de requisições atingido. Tente em instantes." }, 429);
+      if (aiResp.status === 402) return json({ error: "Créditos da IA esgotados." }, 402);
+      if (!aiResp.ok) {
+        const t = await aiResp.text();
+        console.error("AI gateway error:", aiResp.status, t);
+        return json({ error: "Erro no gateway de IA", detail: t }, 500);
+      }
+
+      const data = await aiResp.json();
+      text = (data?.choices?.[0]?.message?.content || "").trim();
     }
-
-    const data = await aiResp.json();
-    const text: string = (data?.choices?.[0]?.message?.content || "").trim();
     if (!text) return json({ error: "Transcrição vazia" }, 500);
 
     await admin.from("messages").update({ transcription: text }).eq("id", messageId);
