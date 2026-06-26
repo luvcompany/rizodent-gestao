@@ -423,7 +423,7 @@ async function persistMessage(opts: {
   // Espelha no chat unificado (DMs e comentários no mesmo thread do lead)
   if (leadId) {
     const isComment = opts.messageType === "comment";
-    await supabase.from("messages").insert({
+    const { data: savedMsg } = await supabase.from("messages").insert({
       lead_id: leadId,
       tenant_id: opts.account.tenant_id,
       direction: "inbound",
@@ -439,7 +439,7 @@ async function persistMessage(opts: {
       instagram_post_thumbnail: isComment ? postThumbnail : null,
       instagram_post_permalink: isComment ? postPermalink : null,
       status: "received",
-    });
+    }).select("id").maybeSingle();
     await supabase
       .from("crm_leads")
       .update({
@@ -448,6 +448,21 @@ async function persistMessage(opts: {
         last_inbound_at: new Date().toISOString(),
       })
       .eq("id", leadId);
+
+    // Fire-and-forget audio transcription
+    if (!isComment && msgType === "audio" && savedMsg?.id) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      fetch(`${supabaseUrl}/functions/v1/transcribe-audio`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+          apikey: serviceKey,
+        },
+        body: JSON.stringify({ message_id: savedMsg.id }),
+      }).catch((e) => console.error("[ig-lite] transcribe fire-and-forget error:", e?.message));
+    }
   }
 }
 
@@ -473,11 +488,20 @@ Deno.serve(async (req: Request) => {
   if (req.method === "POST") {
     const rawBody = await req.text();
     const signature = req.headers.get("x-hub-signature-256");
-    const appSecret = Deno.env.get("INSTAGRAM_APP_SECRET") || Deno.env.get("META_APP_SECRET") || "";
+    // Mirror whatsapp-webhook signature source: WHATSAPP_APP_SECRET / META_APP_SECRET / INSTAGRAM_APP_SECRET
+    const appSecret =
+      Deno.env.get("WHATSAPP_APP_SECRET") ||
+      Deno.env.get("META_APP_SECRET") ||
+      Deno.env.get("INSTAGRAM_APP_SECRET") ||
+      "";
+    if (!appSecret) {
+      console.error("[ig-lite] APP_SECRET not configured — rejecting webhook");
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    }
     const sigOk = await verifyMetaSignature(rawBody, signature, appSecret);
     if (!sigOk) {
-      console.warn("[ig-lite] Invalid or missing x-hub-signature-256");
-      return new Response("Forbidden", { status: 403, headers: corsHeaders });
+      console.warn("[ig-lite] Invalid or missing x-hub-signature-256 — rejecting");
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
     }
     try {
       const payload = JSON.parse(rawBody);

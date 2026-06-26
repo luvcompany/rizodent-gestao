@@ -398,51 +398,91 @@ Deno.serve(async (req) => {
       );
 
       for (const lead of leads || []) {
-        if (!(await passesConditions(supabase, lead.id, config))) continue;
+        if (!(await passesConditions(supabase, lead.id, config))) {
+          continue;
+        }
         if (!lead.last_outbound_at) continue;
         const lastOut = new Date(lead.last_outbound_at).getTime();
         const lastIn = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
 
+        // Lead responded → cancel any pending layers and stop progressing
         if (lastIn > lastOut) {
-          await supabase
+          const { data: cancelled } = await supabase
             .from("crm_automation_queue")
-            .update({ status: "cancelled" })
+            .update({ status: "cancelled", error_message: "lead_replied", updated_at: new Date().toISOString() })
             .eq("automation_id", auto.id)
             .eq("lead_id", lead.id)
-            .eq("status", "pending");
+            .eq("status", "pending")
+            .select("id, layer_index");
+          if (cancelled && cancelled.length > 0) {
+            console.log(`[reengagement] auto ${auto.id} lead ${lead.id}: cancelled ${cancelled.length} pending layer(s) — lead_replied`);
+          }
           continue;
         }
 
-        const minutesSinceLastOut = (Date.now() - lastOut) / 60000;
+        // Determine next layer to enqueue: max(layer_index) already pending/sent + 1
+        const { data: existingItems } = await supabase
+          .from("crm_automation_queue")
+          .select("layer_index, status")
+          .eq("automation_id", auto.id)
+          .eq("lead_id", lead.id)
+          .in("status", ["pending", "processing", "sent"])
+          .order("layer_index", { ascending: false })
+          .limit(1);
 
-        for (let i = 0; i < layers.length; i++) {
-          const layer = layers[i];
-          if (minutesSinceLastOut < layer.delay_minutes) continue;
+        const lastIdx = existingItems && existingItems.length > 0 ? Number(existingItems[0].layer_index ?? -1) : -1;
+        const nextIdx = lastIdx + 1;
+        if (nextIdx >= layers.length) continue; // sequence finished
+        const layer = layers[nextIdx];
 
-          const { data: existing } = await supabase
+        // Reference time = previous send time if any, else last_outbound_at
+        let referenceMs = lastOut;
+        if (lastIdx >= 0) {
+          const { data: prev } = await supabase
             .from("crm_automation_queue")
-            .select("id")
+            .select("created_at")
             .eq("automation_id", auto.id)
             .eq("lead_id", lead.id)
-            .eq("layer_index", i)
-            .in("status", ["pending", "sent"])
-            .limit(1);
-
-          if (existing && existing.length > 0) continue;
-
-          await supabase.from("crm_automation_queue").insert({
-            automation_id: auto.id,
-            lead_id: lead.id,
-            action_type: layer.action_type || auto.action_type,
-            action_config: layer.action_config || config,
-            scheduled_at: new Date().toISOString(),
-            layer_index: i,
-            status: "pending",
-          });
-          results.progressive_reengagement++;
+            .eq("layer_index", lastIdx)
+            .in("status", ["sent", "processing", "pending"])
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (prev?.created_at) referenceMs = new Date(prev.created_at).getTime();
         }
+        const minutesSinceRef = (Date.now() - referenceMs) / 60000;
+        if (minutesSinceRef < (layer.delay_minutes || 0)) continue;
+
+        // Commercial-hours guard: schedule for next opening if outside window
+        const nextWindow = nextCommercialFireAt();
+        const scheduledAt = nextWindow ?? new Date().toISOString();
+        if (nextWindow) {
+          console.log(`[reengagement] auto ${auto.id} lead ${lead.id} layer ${nextIdx}: outside commercial hours, deferring to ${nextWindow}`);
+        }
+
+        // Atomic insert; ignore race if duplicate slips in
+        const { error: insErr } = await supabase.from("crm_automation_queue").insert({
+          automation_id: auto.id,
+          lead_id: lead.id,
+          action_type: layer.action_type || auto.action_type,
+          action_config: layer.action_config || config,
+          scheduled_at: scheduledAt,
+          layer_index: nextIdx,
+          status: "pending",
+        });
+        if (insErr) {
+          if ((insErr as any).code === "23505") {
+            console.log(`[reengagement] auto ${auto.id} lead ${lead.id} layer ${nextIdx}: duplicate insert ignored`);
+          } else {
+            console.error(`[reengagement] insert error:`, (insErr as any).message);
+          }
+          continue;
+        }
+        console.log(`[reengagement] auto ${auto.id} lead ${lead.id} layer ${nextIdx} enqueued (scheduled_at=${scheduledAt})`);
+        results.progressive_reengagement++;
       }
     }
+
 
     // =========================================================
     // 2. LEAD STALE (parado há X dias)
@@ -836,6 +876,24 @@ Deno.serve(async (req) => {
           `[AUTOMATION-ENGINE] no_response FIRING for lead ${lead.id}, automation ${auto.id}, elapsed=${Math.round(elapsed / 1000)}s, threshold=${Math.round(thresholdMs / 1000)}s`,
         );
 
+        // Commercial-hours guard: if outside window, enqueue for next opening instead of sending now
+        const nextWindow = nextCommercialFireAt();
+        if (nextWindow) {
+          console.log(`[AUTOMATION-ENGINE] no_response auto ${auto.id} lead ${lead.id}: outside commercial hours, deferring to ${nextWindow}`);
+          await supabase.from("crm_automation_queue").insert({
+            automation_id: auto.id,
+            lead_id: lead.id,
+            action_type: auto.action_type,
+            action_config: config,
+            scheduled_at: nextWindow,
+            status: "pending",
+            layer_index: 0,
+          });
+          if (!results.no_response) results.no_response = 0;
+          results.no_response++;
+          continue;
+        }
+
         await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
 
         await supabase.from("crm_automation_queue").insert({
@@ -847,6 +905,7 @@ Deno.serve(async (req) => {
           status: "sent",
           layer_index: 0,
         });
+
 
         if (!results.no_response) results.no_response = 0;
         results.no_response++;

@@ -906,17 +906,36 @@ Deno.serve(async (req) => {
                 console.error("[WEBHOOK] ai suggestion trigger error:", e?.message);
               }
 
+              // Fire-and-forget: transcrição de áudio inbound
+              if (msgType === "audio" && savedMsg?.id) {
+                try {
+                  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+                  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+                  fetch(`${supabaseUrl}/functions/v1/transcribe-audio`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${serviceKey}`,
+                      apikey: serviceKey,
+                    },
+                    body: JSON.stringify({ message_id: savedMsg.id }),
+                  }).catch((e) => console.error("[WEBHOOK] transcribe fire-and-forget error:", e?.message));
+                } catch (e: any) {
+                  console.error("[WEBHOOK] transcribe trigger error:", e?.message);
+                }
+              }
 
 
 
-              // Check follow-up queue - mark as responded if active
+
+              // Check follow-up queue - mark as responded if active (covers ALL waiting statuses)
               try {
                 const { data: fqItems } = await supabase
                   .from("crm_followup_queue")
                   .select("id, config_id")
                   .eq("lead_id", lead.id)
-                  .in("status", ["waiting_disparo1", "waiting_disparo2"])
-                  .limit(10);
+                  .in("status", ["waiting", "waiting_disparo1", "waiting_disparo2"])
+                  .limit(20);
 
                 if (fqItems && fqItems.length > 0) {
                   for (const fq of fqItems) {
@@ -941,6 +960,17 @@ Deno.serve(async (req) => {
                     }
                   }
                   console.log(`[WEBHOOK] Follow-up: marked ${fqItems.length} queue items as responded for lead ${lead.id}`);
+                }
+
+                // Cancel any pending automation queue items (progressive_reengagement / no_response) for this lead
+                const { data: cancelledItems } = await supabase
+                  .from("crm_automation_queue")
+                  .update({ status: "cancelled", error_message: "lead_replied", updated_at: new Date().toISOString() })
+                  .eq("lead_id", lead.id)
+                  .eq("status", "pending")
+                  .select("id, automation_id, layer_index");
+                if (cancelledItems && cancelledItems.length > 0) {
+                  console.log(`[WEBHOOK] Cancelled ${cancelledItems.length} pending automation queue items for lead ${lead.id} (lead replied)`);
                 }
               } catch (fqErr: any) {
                 console.error("[WEBHOOK] Erro ao verificar follow-up queue:", fqErr.message);
