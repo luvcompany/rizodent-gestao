@@ -880,31 +880,8 @@ Deno.serve(async (req) => {
 
               console.log(`[WEBHOOK] Message received from ${from}, lead ${lead.id}, type: ${msgType}, media_url: ${mediaUrl}`);
 
-              // Fire-and-forget: gerar sugestão da IA "Bia" (copiloto). Não bloqueia o webhook.
-              try {
-                const { data: aiCfg } = await supabase
-                  .from("ai_assistant_config")
-                  .select("copilot_enabled, is_active")
-                  .eq("is_active", true)
-                  .order("updated_at", { ascending: false })
-                  .limit(1)
-                  .maybeSingle();
-                if (aiCfg?.copilot_enabled) {
-                  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-                  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-                  fetch(`${supabaseUrl}/functions/v1/generate-reply-suggestion`, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${serviceKey}`,
-                      apikey: serviceKey,
-                    },
-                    body: JSON.stringify({ lead_id: lead.id, trigger_message_id: savedMsg?.id || null }),
-                  }).catch((e) => console.error("[WEBHOOK] ai suggestion fire-and-forget error:", e?.message));
-                }
-              } catch (e: any) {
-                console.error("[WEBHOOK] ai suggestion trigger error:", e?.message);
-              }
+              // Sugestão da Bia agora é estritamente sob demanda (clique em "Sugerir resposta").
+              // Removido o disparo automático no webhook para evitar consumo de créditos sem necessidade.
 
               // Fire-and-forget: transcrição de áudio inbound
               if (msgType === "audio" && savedMsg?.id) {
