@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
+import CrmMetricas from "@/pages/CrmMetricas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox, AlertTriangle, HelpCircle } from "lucide-react";
 
@@ -586,10 +587,15 @@ export default function CrmRelatorios() {
           <TabsTrigger value="origem-conversao">Origem & Conversão</TabsTrigger>
           <TabsTrigger value="acoes-dia">Ações por Dia</TabsTrigger>
           <TabsTrigger value="antecedencia">Antecedência de Agendamento</TabsTrigger>
+          <TabsTrigger value="metricas-uso">Métricas de Uso</TabsTrigger>
         </TabsList>
 
         <TabsContent value="origem-conversao" className="mt-4">
           <OrigemConversaoTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
+        </TabsContent>
+
+        <TabsContent value="metricas-uso" className="mt-4">
+          <CrmMetricas />
         </TabsContent>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
