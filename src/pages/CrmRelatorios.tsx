@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
+import CrmMetricas from "@/pages/CrmMetricas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox, AlertTriangle, HelpCircle } from "lucide-react";
 
