@@ -40,7 +40,7 @@ const CrmIntegracoes = lazyWithPreload(() => import("./pages/CrmIntegracoes"));
 const CrmRelatorios = lazyWithPreload(() => import("./pages/CrmRelatorios"));
 const CrmConversas = lazyWithPreload(() => import("./pages/CrmConversas"));
 const CrmCalendario = lazyWithPreload(() => import("./pages/CrmCalendario"));
-const CrmFollowUps = lazyWithPreload(() => import("./pages/CrmFollowUps"));
+
 const CrmBots = lazyWithPreload(() => import("./pages/CrmBots"));
 const CrmBotEditor = lazyWithPreload(() => import("./pages/CrmBotEditor"));
 const CrmDashboard = lazyWithPreload(() => import("./pages/CrmDashboard"));
