@@ -58,7 +58,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
         { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
       ],
     },
-    { to: "/crm/followups", icon: RefreshCw, label: "Follow Ups" },
+    
     { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
     { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
     { to: "/crm/metricas", icon: Activity, label: "Métricas de Uso" },

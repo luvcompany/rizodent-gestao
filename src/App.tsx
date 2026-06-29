@@ -40,7 +40,7 @@ const CrmIntegracoes = lazyWithPreload(() => import("./pages/CrmIntegracoes"));
 const CrmRelatorios = lazyWithPreload(() => import("./pages/CrmRelatorios"));
 const CrmConversas = lazyWithPreload(() => import("./pages/CrmConversas"));
 const CrmCalendario = lazyWithPreload(() => import("./pages/CrmCalendario"));
-const CrmFollowUps = lazyWithPreload(() => import("./pages/CrmFollowUps"));
+
 const CrmBots = lazyWithPreload(() => import("./pages/CrmBots"));
 const CrmBotEditor = lazyWithPreload(() => import("./pages/CrmBotEditor"));
 const CrmDashboard = lazyWithPreload(() => import("./pages/CrmDashboard"));
@@ -243,7 +243,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/integracoes" element={withRouteSuspense(<CrmIntegracoes />)} />
               <Route path="/crm/relatorios" element={withRouteSuspense(<CrmRelatorios />)} />
               <Route path="/crm/calendario" element={withRouteSuspense(<CrmCalendario />)} />
-              <Route path="/crm/followups" element={withRouteSuspense(<CrmFollowUps />)} />
+              
               <Route path="/crm/bots" element={withRouteSuspense(<CrmBots />)} />
               <Route path="/crm/bots/:id" element={withRouteSuspense(<CrmBotEditor />)} />
               <Route path="/crm/extras" element={withRouteSuspense(<CrmExtras />)} />

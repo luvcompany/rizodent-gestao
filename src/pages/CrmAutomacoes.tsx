@@ -680,30 +680,6 @@ export default function CrmAutomacoes() {
                                     <Plus size={12} /> Adicionar automação
                                   </button>
 
-                                  {/* Follow Up - simple dropdown */}
-                                  {(() => {
-                                    const stageFollowUp = followUpConfigs.find(f => f.stage_id === stage.id);
-                                    return (
-                                      <div className="flex items-center justify-between bg-amber-500/5 border border-amber-500/20 rounded-lg px-2 py-1.5">
-                                        <div className="flex items-center gap-1.5">
-                                          <RefreshCw size={11} className="text-amber-500" />
-                                          <span className="text-[10px] text-foreground font-medium">Follow Up</span>
-                                        </div>
-                                        {stageFollowUp ? (
-                                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${stageFollowUp.is_active ? "bg-green-500/20 text-green-500" : "bg-muted text-muted-foreground"}`}>
-                                            {stageFollowUp.is_active ? "Ativo" : "Inativo"}
-                                          </span>
-                                        ) : (
-                                          <button
-                                            onClick={() => navigate("/crm/followups")}
-                                            className="text-[10px] text-primary hover:underline"
-                                          >
-                                            Configurar
-                                          </button>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
                                 </div>
                               </div>
                             </div>
