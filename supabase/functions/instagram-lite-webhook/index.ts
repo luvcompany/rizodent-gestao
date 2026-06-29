@@ -488,21 +488,32 @@ Deno.serve(async (req: Request) => {
   if (req.method === "POST") {
     const rawBody = await req.text();
     const signature = req.headers.get("x-hub-signature-256");
-    // Mirror whatsapp-webhook signature source: WHATSAPP_APP_SECRET / META_APP_SECRET / INSTAGRAM_APP_SECRET
-    const appSecret =
-      Deno.env.get("WHATSAPP_APP_SECRET") ||
-      Deno.env.get("META_APP_SECRET") ||
-      Deno.env.get("INSTAGRAM_APP_SECRET") ||
-      "";
-    if (!appSecret) {
-      console.error("[ig-lite] APP_SECRET not configured — rejecting webhook");
+    // Try every possible app secret — Instagram payloads may be signed by the
+    // v1 OR v2 Meta app depending on which one owns the connected IG account.
+    const candidateSecrets = [
+      Deno.env.get("INSTAGRAM_APP_SECRET_V2"),
+      Deno.env.get("META_APP_SECRET_V2"),
+      Deno.env.get("INSTAGRAM_APP_SECRET"),
+      Deno.env.get("META_APP_SECRET"),
+      Deno.env.get("WHATSAPP_APP_SECRET"),
+    ].filter((s): s is string => !!s && s.length > 0);
+
+    if (candidateSecrets.length === 0) {
+      console.error("[ig-lite] No APP_SECRET configured — rejecting webhook");
       return new Response("Unauthorized", { status: 401, headers: corsHeaders });
     }
-    const sigOk = await verifyMetaSignature(rawBody, signature, appSecret);
+    let sigOk = false;
+    for (const secret of candidateSecrets) {
+      if (await verifyMetaSignature(rawBody, signature, secret)) {
+        sigOk = true;
+        break;
+      }
+    }
     if (!sigOk) {
-      console.warn("[ig-lite] Invalid or missing x-hub-signature-256 — rejecting");
+      console.warn(`[ig-lite] Invalid or missing x-hub-signature-256 — rejecting (tried ${candidateSecrets.length} secret(s), sig=${signature ? "present" : "missing"})`);
       return new Response("Unauthorized", { status: 401, headers: corsHeaders });
     }
+
     try {
       const payload = JSON.parse(rawBody);
       console.log("[ig-lite] payload:", JSON.stringify(payload));
