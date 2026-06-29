@@ -587,10 +587,15 @@ export default function CrmRelatorios() {
           <TabsTrigger value="origem-conversao">Origem & Conversão</TabsTrigger>
           <TabsTrigger value="acoes-dia">Ações por Dia</TabsTrigger>
           <TabsTrigger value="antecedencia">Antecedência de Agendamento</TabsTrigger>
+          <TabsTrigger value="metricas-uso">Métricas de Uso</TabsTrigger>
         </TabsList>
 
         <TabsContent value="origem-conversao" className="mt-4">
           <OrigemConversaoTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
+        </TabsContent>
+
+        <TabsContent value="metricas-uso" className="mt-4">
+          <CrmMetricas />
         </TabsContent>
 
         <TabsContent value="overview" className="space-y-6 mt-4">
