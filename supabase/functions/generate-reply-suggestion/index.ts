@@ -325,16 +325,36 @@ Deno.serve(async (req) => {
       }
     } catch (_) { /* sem regras */ }
 
-    // === 7C: RAG — busca exemplos similares se houver volume (>= 30) ===
+    // === 7C: Aprendizado — usa correções recentes sempre, e RAG quando houver embeddings ===
     let examplesBlock = "";
     try {
-      const { count: exampleCount } = await supabase
+      const learnedExamples = new Map<string, any>();
+      const addLearned = (items: any[] | null | undefined) => {
+        for (const item of items || []) {
+          if (item?.id && !learnedExamples.has(item.id)) learnedExamples.set(item.id, item);
+        }
+      };
+
+      const { data: recentCorrections } = await supabase
         .from("ai_good_examples")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", lead.tenant_id);
-      if ((exampleCount || 0) >= 30 && LOVABLE_API_KEY) {
-        const lastInbound = history.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join("\n");
-        if (lastInbound.trim()) {
+        .select("id, context, ideal_reply, rejected_reply, source, created_at")
+        .eq("tenant_id", lead.tenant_id)
+        .not("rejected_reply", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(6);
+      addLearned(recentCorrections as any[]);
+
+      const { data: recentApproved } = await supabase
+        .from("ai_good_examples")
+        .select("id, context, ideal_reply, rejected_reply, source, created_at")
+        .eq("tenant_id", lead.tenant_id)
+        .order("created_at", { ascending: false })
+        .limit(4);
+      addLearned(recentApproved as any[]);
+
+      const lastInbound = history.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join("\n");
+      if (LOVABLE_API_KEY && lastInbound.trim()) {
+        try {
           const er = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
@@ -351,14 +371,21 @@ Deno.serve(async (req) => {
                 filter_cidade: lead.cidade || null,
                 filter_servico: lead.servico_interesse || null,
               });
-              if (matches && matches.length) {
-                examplesBlock = `\n\n=== EXEMPLOS DE RESPOSTAS QUE FUNCIONARAM EM CASOS PARECIDOS (imite o estilo, adapte ao caso atual; NUNCA copie nomes/cidades/valores de lá) ===\n` +
-                  (matches as any[]).map((m, i) => `Exemplo ${i + 1}:\nContexto: ${m.context}\nResposta ideal: ${m.ideal_reply}`).join("\n\n");
-              }
+              addLearned(matches as any[]);
             }
           }
-        }
+        } catch (_) { /* busca semântica opcional */ }
       }
+
+      const examples = Array.from(learnedExamples.values()).slice(0, 8);
+      if (examples.length) {
+        examplesBlock = `\n\n=== CORREÇÕES E EXEMPLOS APRENDIDOS COM A EQUIPE (prioridade alta) ===
+Use estes casos como guia. Quando houver "Resposta rejeitada", NÃO repita o mesmo padrão/abordagem; siga a "Resposta correta" adaptando ao lead atual. Não copie nomes, cidades, horários ou valores de outro caso.\n` +
+          examples.map((m, i) => {
+            const rejected = m.rejected_reply ? `\nResposta rejeitada pela equipe: ${m.rejected_reply}` : "";
+            return `Exemplo ${i + 1}:\nContexto: ${String(m.context || "").slice(0, 1200)}${rejected}\nResposta correta: ${m.ideal_reply}`;
+          }).join("\n\n");
+        }
     } catch (_) { /* RAG opcional */ }
 
     // Hora local Bahia (UTC-3) para saudação correta
