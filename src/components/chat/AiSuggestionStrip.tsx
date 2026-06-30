@@ -171,7 +171,13 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
         .eq("id", suggestion.id);
       // 7C: registra exemplo bom em background (não bloqueia)
       supabase.functions.invoke("record-good-example", {
-        body: { lead_id: leadId, ideal_reply: text },
+        body: {
+          lead_id: leadId,
+          ideal_reply: text,
+          rejected_reply: wasEdited ? suggestion.suggested_text : null,
+          source_suggestion_id: suggestion.id,
+          source: wasEdited ? "human_correction" : "approved_reply",
+        },
       }).catch(() => {});
       setSuggestion(null);
       onSent?.();

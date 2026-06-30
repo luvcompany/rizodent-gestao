@@ -382,6 +382,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         toast.error(getInvokeErrorMessage(data, error));
       } else {
         onMessageSuccess?.(tempId, data?.message);
+        if (type === "text" && rawMessage.trim() && !isInstagram) {
+          supabase.functions.invoke("record-good-example", {
+            body: { lead_id: leadId, ideal_reply: rawMessage.trim(), learn_from_pending: true, source: "manual_reply_after_suggestion" },
+          }).catch(() => {});
+        }
       }
     } catch (err: any) {
       onMessageError?.(tempId);
