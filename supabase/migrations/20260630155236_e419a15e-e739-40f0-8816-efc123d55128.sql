@@ -1,0 +1,1 @@
+UPDATE crm_leads SET stage_id='f9ed5256-ec4e-4aea-b0fb-e3004e4f9211', cidade=NULL, updated_at=now() WHERE id='4a42269a-2be3-427f-b28f-f219f3e84b1e';
