@@ -8,10 +8,8 @@ import {
   ConditionsConfig,
   AutomationCondition,
   ConditionField,
-  ConditionOperator,
   FIELD_LABELS,
-  OPERATOR_LABELS,
-  operatorsForField,
+  defaultOperatorForField,
 } from "@/lib/automationConditions";
 import { supabase } from "@/integrations/supabase/client";
 
