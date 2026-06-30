@@ -21,9 +21,8 @@ interface Props {
 }
 
 const FIELD_OPTIONS: ConditionField[] = [
-  "tags", "source", "cidade", "ad_id", "ad_account_name",
-  "nome_anuncio", "servico_interesse", "assigned_to", "value",
-  "has_ad", "no_tags",
+  "tags", "cidade", "servico_interesse", "source",
+  "assigned_to", "has_ad", "no_tags",
 ];
 
 const OP_NEEDS_VALUE = (op: ConditionOperator) =>
