@@ -1,0 +1,1 @@
+UPDATE crm_leads SET cidade = 'TESTE_VITOR' WHERE id = '4a42269a-2be3-427f-b28f-f219f3e84b1e';
