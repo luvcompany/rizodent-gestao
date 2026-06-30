@@ -1,0 +1,1 @@
+UPDATE public.bot_executions SET status='cancelled' WHERE id='f0c1eba2-40bf-4bd2-b9f2-71c765b44ab7';
