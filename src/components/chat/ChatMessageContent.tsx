@@ -13,6 +13,7 @@ type ChatMessage = {
   content: string | null;
   media_url: string | null;
   transcription?: string | null;
+  created_at?: string | null;
 };
 
 type TemplateData = {
@@ -75,10 +76,12 @@ function TemplateMessageBubble({
   templateName,
   leadName,
   leadId,
+  messageCreatedAt,
 }: {
   templateName: string;
   leadName?: string;
   leadId?: string;
+  messageCreatedAt?: string | null;
 }) {
   const [template, setTemplate] = useState<TemplateData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,22 +108,40 @@ function TemplateMessageBubble({
         .maybeSingle(),
       supabase
         .from("crm_appointments")
-        .select("scheduled_date, scheduled_time")
+        .select("scheduled_date, scheduled_time, status, created_at")
         .eq("lead_id", leadId)
-        .in("status", ["confirmed", "pending"])
-        .order("scheduled_date", { ascending: true })
-        .order("scheduled_time", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
+        .order("scheduled_date", { ascending: false })
+        .order("scheduled_time", { ascending: false }),
     ]).then(([leadResult, appointmentResult]) => {
       if (!isMounted) return;
 
       const fetchedLeadName = leadResult.data?.name?.trim() || leadName?.trim() || "";
       const fetchedService = leadResult.data?.servico_interesse?.trim() || "consulta";
-      const appointmentLabel = formatAppointmentLabel(
-        appointmentResult.data?.scheduled_date,
-        appointmentResult.data?.scheduled_time,
-      );
+
+      const appts = appointmentResult.data || [];
+      let chosen: { scheduled_date: string | null; scheduled_time: string | null } | null = null;
+
+      if (appts.length > 0) {
+        const msgTime = messageCreatedAt ? new Date(messageCreatedAt).getTime() : null;
+        const scoreDistance = (a: typeof appts[number]) => {
+          if (!a.scheduled_date || msgTime == null) return Number.POSITIVE_INFINITY;
+          const t = new Date(`${a.scheduled_date}T${a.scheduled_time || "00:00:00"}`).getTime();
+          return Math.abs(t - msgTime);
+        };
+
+        const active = appts.filter((a) => a.status === "confirmed" || a.status === "pending");
+        const pool = active.length > 0 ? active : appts;
+
+        if (msgTime != null) {
+          chosen = [...pool].sort((a, b) => scoreDistance(a) - scoreDistance(b))[0];
+        } else {
+          chosen = pool[0];
+        }
+      }
+
+      const appointmentLabel = chosen
+        ? formatAppointmentLabel(chosen.scheduled_date, chosen.scheduled_time)
+        : "data e horário a confirmar";
 
       setResolvedLeadName(fetchedLeadName);
       setResolvedServiceLabel(fetchedService);
@@ -130,7 +151,7 @@ function TemplateMessageBubble({
     return () => {
       isMounted = false;
     };
-  }, [leadId, leadName]);
+  }, [leadId, leadName, messageCreatedAt]);
 
   useEffect(() => {
     supabase
@@ -286,7 +307,7 @@ export default function ChatMessageContent({
       ? message.content?.replace("📋 Template: ", "").trim() || ""
       : message.content?.replace("📋 Template: ", "").trim() || "";
     if (name) {
-      return <TemplateMessageBubble templateName={name} leadName={leadName} leadId={message.lead_id} />;
+      return <TemplateMessageBubble templateName={name} leadName={leadName} leadId={message.lead_id} messageCreatedAt={message.created_at} />;
     }
   }
 
