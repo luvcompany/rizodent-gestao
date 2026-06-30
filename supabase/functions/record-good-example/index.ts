@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
         .update({
           status: learn_from_pending ? "discarded" : pendingSuggestion.status,
           decided_at: new Date().toISOString(),
-          decided_by: auth.user?.id || null,
+          decided_by: auth.userId || null,
           final_text: cleanIdeal,
           was_edited: hasCorrection,
         })
