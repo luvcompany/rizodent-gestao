@@ -2,8 +2,10 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
+import { sortTemplatesByUsage } from "@/lib/templateUsage";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import {
   Send, Paperclip, FileText, Image, File, Video, X,
@@ -93,6 +95,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   };
 
   const { profile } = useAuth();
+  const { tenant } = useTenant();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
@@ -250,10 +253,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   useEffect(() => {
     const loadSlashData = async () => {
       const { data: t } = await supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED").order("created_at", { ascending: false });
-      setSlashTemplates(deduplicateTemplates(t || []));
+      const deduped = deduplicateTemplates(t || []);
+      const sorted = await sortTemplatesByUsage(deduped, tenant.id);
+      setSlashTemplates(sorted);
     };
     loadSlashData();
-  }, []);
+  }, [tenant.id]);
 
   // Auto-resize textarea
   useEffect(() => {
