@@ -3541,6 +3541,13 @@ export type Database = {
         }[]
       }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
+      crm_template_usage_counts: {
+        Args: { _tenant_id: string }
+        Returns: {
+          template_name: string
+          usage_count: number
+        }[]
+      }
       crm_unread_leads_count: { Args: never; Returns: number }
       crm_usage_metrics: {
         Args: { p_from: string; p_to: string }
