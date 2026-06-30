@@ -13,6 +13,7 @@ type ChatMessage = {
   content: string | null;
   media_url: string | null;
   transcription?: string | null;
+  created_at?: string | null;
 };
 
 type TemplateData = {
