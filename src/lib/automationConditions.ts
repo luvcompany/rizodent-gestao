@@ -73,10 +73,10 @@ export const OPERATOR_LABELS: Record<ConditionOperator, string> = {
 };
 
 export function operatorsForField(field: ConditionField): ConditionOperator[] {
-  if (field === "tags") return ["contains", "not_contains", "is_empty", "is_not_empty"];
+  if (field === "tags") return ["is_empty", "is_not_empty"];
   if (field === "has_ad" || field === "no_tags") return ["is_true", "is_false"];
-  if (field === "value") return ["equals", "not_equals", "gt", "lt"];
-  return ["equals", "not_equals", "contains", "not_contains", "is_empty", "is_not_empty"];
+  if (field === "value") return ["not_equals", "gt", "lt"];
+  return ["not_equals", "is_empty", "is_not_empty"];
 }
 
 function normStr(v: unknown): string {
