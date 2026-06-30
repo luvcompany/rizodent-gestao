@@ -133,31 +133,46 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                   <MessageCircle size={11} />
                   <span>{msg.direction === "outbound" ? "Resposta ao comentário" : "Comentário no post"}</span>
                 </div>
-                {(msg.instagram_post_thumbnail || msg.instagram_post_id) && (
-                  <a
-                    href={msg.instagram_post_permalink || (msg.instagram_post_id ? `https://www.instagram.com/p/${msg.instagram_post_id}` : "#")}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1.5 flex items-center gap-2 rounded-md bg-background/60 border border-border px-2 py-1.5 hover:bg-background transition-colors"
-                    title="Ver post no Instagram"
-                  >
-                    {msg.instagram_post_thumbnail ? (
-                      <img
-                        src={msg.instagram_post_thumbnail}
-                        alt="Post"
-                        className="h-10 w-10 rounded object-cover flex-shrink-0"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded bg-muted flex items-center justify-center flex-shrink-0">
-                        <MessageCircle size={16} className="text-muted-foreground" />
-                      </div>
-                    )}
-                    <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
-                      Ver post <ExternalLink size={10} />
-                    </span>
-                  </a>
-                )}
+                {(msg.instagram_post_thumbnail || msg.instagram_post_id) && (() => {
+                  const hasValidPermalink = !!msg.instagram_post_permalink && /^https?:\/\//i.test(msg.instagram_post_permalink);
+                  const Inner = (
+                    <>
+                      {msg.instagram_post_thumbnail ? (
+                        <img
+                          src={msg.instagram_post_thumbnail}
+                          alt="Post"
+                          className="h-10 w-10 rounded object-cover flex-shrink-0"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                          <MessageCircle size={16} className="text-muted-foreground" />
+                        </div>
+                      )}
+                      <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+                        {hasValidPermalink ? <>Ver post <ExternalLink size={10} /></> : "Post (link indisponível)"}
+                      </span>
+                    </>
+                  );
+                  return hasValidPermalink ? (
+                    <a
+                      href={msg.instagram_post_permalink!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1.5 flex items-center gap-2 rounded-md bg-background/60 border border-border px-2 py-1.5 hover:bg-background transition-colors"
+                      title="Ver post no Instagram"
+                    >
+                      {Inner}
+                    </a>
+                  ) : (
+                    <div
+                      className="mt-1.5 flex items-center gap-2 rounded-md bg-background/60 border border-border px-2 py-1.5"
+                      title="Permalink do post indisponível"
+                    >
+                      {Inner}
+                    </div>
+                  );
+                })()}
               </div>
             )}
             {quotedMsg && (
