@@ -52,8 +52,8 @@ export default function AiLearningReport() {
 
   if (loading) return <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 size={14} className="animate-spin" />Carregando...</div>;
 
-  const discarded = rows.filter((r) => r.status === "discarded");
-  const edited = rows.filter((r) => r.status === "sent" && r.was_edited);
+  const discarded = rows.filter((r) => r.status === "discarded" && !r.was_edited);
+  const edited = rows.filter((r) => r.was_edited);
   const approved = rows.filter((r) => r.status === "sent" && !r.was_edited);
 
   const Block = ({ title, items, color, icon }: { title: string; items: Row[]; color: string; icon: any }) => (
