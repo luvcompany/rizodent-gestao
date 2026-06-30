@@ -95,6 +95,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   };
 
   const { profile } = useAuth();
+  const { tenant } = useTenant();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
