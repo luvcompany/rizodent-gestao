@@ -245,6 +245,9 @@ Deno.serve(async (req) => {
       return unauthorizedResponse(corsHeaders);
     }
 
+    // authHeader used for downstream service calls (send-whatsapp-message, etc.)
+    const authHeader = req.headers.get("Authorization") || `Bearer ${serviceKey}`;
+
     const body = await req.json();
     const { leadId, botId, trigger, executionId, replyText, replyOptionId } = body;
 
