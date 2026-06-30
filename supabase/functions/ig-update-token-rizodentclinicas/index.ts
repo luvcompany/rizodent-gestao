@@ -24,7 +24,7 @@ Deno.serve(async () => {
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const { error } = await supabase
     .from("ig_accounts")
-    .update({ access_token: finalToken, token_expires_at: expiresAt, updated_at: new Date().toISOString(), is_active: true })
+    .update({ access_token: finalToken, token_expires_at: expiresAt, updated_at: new Date().toISOString(), active: true })
     .eq("username", "rizodentclinicas");
 
   if (error) return new Response(JSON.stringify({ step: "update", error }), { status: 500 });
