@@ -180,49 +180,32 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
         )}
       </div>
 
-      {conditions.rules.map((rule, idx) => {
-        const ops = operatorsForField(rule.field);
-        const needsValue = OP_NEEDS_VALUE(rule.operator);
-        return (
-          <div key={idx} className="flex items-start gap-1 p-2 bg-card rounded border border-border">
-            <div className="flex-1 grid grid-cols-1 gap-1.5">
-              <Select value={rule.field} onValueChange={(v) => updateRule(idx, { field: v as ConditionField })}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {FIELD_OPTIONS.map((f) => (
-                    <SelectItem key={f} value={f}>{FIELD_LABELS[f]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="grid grid-cols-2 gap-1.5">
-                <Select value={rule.operator} onValueChange={(v) => updateRule(idx, { operator: v as ConditionOperator })}>
-                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {ops.map((o) => (
-                      <SelectItem key={o} value={o}>{OPERATOR_LABELS[o]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {needsValue ? (
-                  <ValueSelector
-                    field={rule.field}
-                    operator={rule.operator}
-                    value={rule.value}
-                    onChange={(v) => updateRule(idx, { value: v })}
-                  />
-                ) : <div />}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => removeRule(idx)}
-              className="text-destructive/70 hover:text-destructive p-1"
-            >
-              <Trash2 size={12} />
-            </button>
+      {conditions.rules.map((rule, idx) => (
+        <div key={idx} className="flex items-start gap-1 p-2 bg-card rounded border border-border">
+          <div className="flex-1 grid grid-cols-2 gap-1.5">
+            <Select value={rule.field} onValueChange={(v) => updateRule(idx, { field: v as ConditionField })}>
+              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FIELD_OPTIONS.map((f) => (
+                  <SelectItem key={f} value={f}>{FIELD_LABELS[f]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <ValueSelector
+              field={rule.field}
+              value={rule.value}
+              onChange={(v) => updateRule(idx, { value: v })}
+            />
           </div>
-        );
-      })}
+          <button
+            type="button"
+            onClick={() => removeRule(idx)}
+            className="text-destructive/70 hover:text-destructive p-1"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      ))}
 
       <button
         type="button"
