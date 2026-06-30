@@ -721,8 +721,38 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             </div>
           )}
 
+          {/* MANUAL BULK SEND CONFIG */}
+          {isBulkSend && (
+            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+              <Label className="text-xs">Tipo de mensagem</Label>
+              <Select
+                value={autoForm.action_type === "send_template" || autoForm.action_type === "send_bot" || autoForm.action_type === "send_audio" || autoForm.action_type === "send_file" ? autoForm.action_type : "send_template"}
+                onValueChange={v => setAutoForm(p => ({ ...p, action_type: v, action_config: { ...p.action_config } }))}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="send_template">Enviar template WhatsApp</SelectItem>
+                  <SelectItem value="send_bot">Enviar Bot</SelectItem>
+                  <SelectItem value="send_audio">Enviar áudio</SelectItem>
+                  <SelectItem value="send_file">Enviar arquivo</SelectItem>
+                </SelectContent>
+              </Select>
+              <ActionConfigFields
+                actionType={autoForm.action_type}
+                config={autoForm.action_config}
+                onChange={updateConfig}
+                templates={templates}
+                publishedBots={publishedBots}
+                stages={stages}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Após salvar, use o botão <strong>Executar</strong> no card desta automação. Será exibida uma prévia da quantidade de leads impactados antes de confirmar.
+              </p>
+            </div>
+          )}
+
           {/* AÇÃO - only show for non-sequence triggers (sequences have their own actions) */}
-          {!isSequenceTrigger && !isReengagement && !isBulkMove && (
+          {!isSequenceTrigger && !isReengagement && !isBulkMove && !isBulkSend && (
             <>
               <div>
                 <Label>Ação</Label>
@@ -763,8 +793,8 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             onChange={(v) => updateConfig({ conditions: v })}
           />
 
-          {/* Checkbox: send to all existing - not applicable for bulk_move */}
-          {!isBulkMove && (
+          {/* Checkbox: send to all existing - not applicable for bulk triggers */}
+          {!isBulkMove && !isBulkSend && (
             <div className="flex items-center gap-3">
               <Checkbox
                 id="send-to-all-modal"
