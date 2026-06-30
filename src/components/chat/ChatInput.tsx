@@ -108,6 +108,30 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const recordManualAiCorrection = useCallback((idealReply: string) => {
+    if (!idealReply.trim() || isInstagram) return;
+    supabase
+      .from("ai_reply_suggestions" as any)
+      .select("id")
+      .eq("lead_id", leadId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!(data as any)?.id) return;
+        supabase.functions.invoke("record-good-example", {
+          body: {
+            lead_id: leadId,
+            ideal_reply: idealReply.trim(),
+            source_suggestion_id: (data as any).id,
+            learn_from_pending: true,
+            source: "manual_reply_after_suggestion",
+          },
+        }).catch(() => {});
+      });
+  }, [leadId, isInstagram]);
+
   const resolveInstagramAccountId = useCallback(async () => {
     if (!isInstagram) return null;
     if (igAccountId) return igAccountId;
@@ -382,6 +406,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         toast.error(getInvokeErrorMessage(data, error));
       } else {
         onMessageSuccess?.(tempId, data?.message);
+        if (type === "text" && rawMessage.trim() && !isInstagram) {
+          recordManualAiCorrection(rawMessage.trim());
+        }
       }
     } catch (err: any) {
       onMessageError?.(tempId);
