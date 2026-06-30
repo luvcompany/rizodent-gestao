@@ -72,6 +72,13 @@ export const OPERATOR_LABELS: Record<ConditionOperator, string> = {
   lt: "menor que",
 };
 
+export function defaultOperatorForField(field: ConditionField): ConditionOperator {
+  if (field === "tags") return "contains";
+  if (field === "has_ad" || field === "no_tags") return "is_true";
+  if (field === "value") return "equals";
+  return "equals";
+}
+
 export function operatorsForField(field: ConditionField): ConditionOperator[] {
   if (field === "tags") return ["is_empty", "is_not_empty"];
   if (field === "has_ad" || field === "no_tags") return ["is_true", "is_false"];

@@ -8,10 +8,8 @@ import {
   ConditionsConfig,
   AutomationCondition,
   ConditionField,
-  ConditionOperator,
   FIELD_LABELS,
-  OPERATOR_LABELS,
-  operatorsForField,
+  defaultOperatorForField,
 } from "@/lib/automationConditions";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -24,9 +22,6 @@ const FIELD_OPTIONS: ConditionField[] = [
   "tags", "cidade", "servico_interesse", "source", "assigned_to",
 ];
 
-const OP_NEEDS_VALUE = (op: ConditionOperator) =>
-  !["is_empty", "is_not_empty", "is_true", "is_false"].includes(op);
-
 // Static option presets per field
 const STATIC_FIELD_OPTIONS: Partial<Record<ConditionField, string[]>> = {
   servico_interesse: ["PRÓTESE", "IMPLANTE", "ZIGOMÁTICO", "FACETA", "PROTOCÓLO", "OUTROS"],
@@ -35,7 +30,7 @@ const STATIC_FIELD_OPTIONS: Partial<Record<ConditionField, string[]>> = {
 
 // Fields that should be loaded dynamically from the database (distinct values)
 const DYNAMIC_FIELDS: ConditionField[] = [
-  "tags", "cidade", "ad_account_name", "nome_anuncio", "assigned_to",
+  "tags", "cidade", "assigned_to",
 ];
 
 function useDynamicOptions(field: ConditionField | null) {
@@ -84,10 +79,9 @@ function useDynamicOptions(field: ConditionField | null) {
 }
 
 function ValueSelector({
-  field, operator, value, onChange,
+  field, value, onChange,
 }: {
   field: ConditionField;
-  operator: ConditionOperator;
   value: any;
   onChange: (v: string) => void;
 }) {
@@ -96,19 +90,6 @@ function ValueSelector({
   const opts = staticOpts
     ? staticOpts.map((v) => ({ value: v, label: v }))
     : dynamic;
-
-  // Numeric field
-  if (field === "value") {
-    return (
-      <Input
-        className="h-7 text-xs"
-        type="number"
-        placeholder="Valor"
-        value={String(value ?? "")}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    );
-  }
 
   if (opts.length > 0) {
     return (
@@ -138,9 +119,10 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
   const conditions: ConditionsConfig = value || { match: "all", rules: [] };
 
   const addRule = () => {
+    const field: ConditionField = "tags";
     const next: ConditionsConfig = {
       match: conditions.match || "all",
-      rules: [...conditions.rules, { field: "tags", operator: "contains", value: "" }],
+      rules: [...conditions.rules, { field, operator: defaultOperatorForField(field), value: "" }],
     };
     onChange(next);
     setExpanded(true);
@@ -156,9 +138,9 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
     const rules = conditions.rules.map((r, i) => {
       if (i !== idx) return r;
       const merged = { ...r, ...patch } as AutomationCondition;
-      // If field changed, reset operator if invalid
-      if (patch.field && !operatorsForField(patch.field).includes(merged.operator)) {
-        merged.operator = operatorsForField(patch.field)[0];
+      // If field changed, reset operator to its default and clear value
+      if (patch.field) {
+        merged.operator = defaultOperatorForField(patch.field);
         merged.value = "";
       }
       return merged;
@@ -198,49 +180,32 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
         )}
       </div>
 
-      {conditions.rules.map((rule, idx) => {
-        const ops = operatorsForField(rule.field);
-        const needsValue = OP_NEEDS_VALUE(rule.operator);
-        return (
-          <div key={idx} className="flex items-start gap-1 p-2 bg-card rounded border border-border">
-            <div className="flex-1 grid grid-cols-1 gap-1.5">
-              <Select value={rule.field} onValueChange={(v) => updateRule(idx, { field: v as ConditionField })}>
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {FIELD_OPTIONS.map((f) => (
-                    <SelectItem key={f} value={f}>{FIELD_LABELS[f]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="grid grid-cols-2 gap-1.5">
-                <Select value={rule.operator} onValueChange={(v) => updateRule(idx, { operator: v as ConditionOperator })}>
-                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {ops.map((o) => (
-                      <SelectItem key={o} value={o}>{OPERATOR_LABELS[o]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {needsValue ? (
-                  <ValueSelector
-                    field={rule.field}
-                    operator={rule.operator}
-                    value={rule.value}
-                    onChange={(v) => updateRule(idx, { value: v })}
-                  />
-                ) : <div />}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => removeRule(idx)}
-              className="text-destructive/70 hover:text-destructive p-1"
-            >
-              <Trash2 size={12} />
-            </button>
+      {conditions.rules.map((rule, idx) => (
+        <div key={idx} className="flex items-start gap-1 p-2 bg-card rounded border border-border">
+          <div className="flex-1 grid grid-cols-2 gap-1.5">
+            <Select value={rule.field} onValueChange={(v) => updateRule(idx, { field: v as ConditionField })}>
+              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FIELD_OPTIONS.map((f) => (
+                  <SelectItem key={f} value={f}>{FIELD_LABELS[f]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <ValueSelector
+              field={rule.field}
+              value={rule.value}
+              onChange={(v) => updateRule(idx, { value: v })}
+            />
           </div>
-        );
-      })}
+          <button
+            type="button"
+            onClick={() => removeRule(idx)}
+            className="text-destructive/70 hover:text-destructive p-1"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      ))}
 
       <button
         type="button"
