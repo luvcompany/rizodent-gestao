@@ -22,9 +22,6 @@ const FIELD_OPTIONS: ConditionField[] = [
   "tags", "cidade", "servico_interesse", "source", "assigned_to",
 ];
 
-const OP_NEEDS_VALUE = (op: ConditionOperator) =>
-  !["is_empty", "is_not_empty", "is_true", "is_false"].includes(op);
-
 // Static option presets per field
 const STATIC_FIELD_OPTIONS: Partial<Record<ConditionField, string[]>> = {
   servico_interesse: ["PRÓTESE", "IMPLANTE", "ZIGOMÁTICO", "FACETA", "PROTOCÓLO", "OUTROS"],
@@ -33,7 +30,7 @@ const STATIC_FIELD_OPTIONS: Partial<Record<ConditionField, string[]>> = {
 
 // Fields that should be loaded dynamically from the database (distinct values)
 const DYNAMIC_FIELDS: ConditionField[] = [
-  "tags", "cidade", "ad_account_name", "nome_anuncio", "assigned_to",
+  "tags", "cidade", "assigned_to",
 ];
 
 function useDynamicOptions(field: ConditionField | null) {
