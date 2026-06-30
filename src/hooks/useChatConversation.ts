@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { deduplicateTemplates } from "@/lib/templateUtils";
+import { sortTemplatesByUsage } from "@/lib/templateUsage";
 import { supabase } from "@/integrations/supabase/client";
 import { executeStageAutomations } from "@/lib/automationUtils";
 import { toast } from "sonner";
