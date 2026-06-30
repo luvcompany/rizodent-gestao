@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
   OPERATOR_LABELS,
   operatorsForField,
 } from "@/lib/automationConditions";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   value: ConditionsConfig | undefined;
@@ -27,6 +28,112 @@ const FIELD_OPTIONS: ConditionField[] = [
 
 const OP_NEEDS_VALUE = (op: ConditionOperator) =>
   !["is_empty", "is_not_empty", "is_true", "is_false"].includes(op);
+
+// Static option presets per field
+const STATIC_FIELD_OPTIONS: Partial<Record<ConditionField, string[]>> = {
+  servico_interesse: ["PRÓTESE", "IMPLANTE", "ZIGOMÁTICO", "FACETA", "PROTOCÓLO", "OUTROS"],
+  source: ["whatsapp", "instagram", "manual", "webhook", "import"],
+};
+
+// Fields that should be loaded dynamically from the database (distinct values)
+const DYNAMIC_FIELDS: ConditionField[] = [
+  "tags", "cidade", "ad_account_name", "nome_anuncio", "assigned_to",
+];
+
+function useDynamicOptions(field: ConditionField | null) {
+  const [options, setOptions] = useState<{ value: string; label: string }[]>([]);
+  useEffect(() => {
+    if (!field || !DYNAMIC_FIELDS.includes(field)) { setOptions([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        if (field === "assigned_to") {
+          const { data } = await supabase.from("profiles").select("id, full_name, email").limit(500);
+          if (cancelled) return;
+          setOptions((data || []).map((u: any) => ({
+            value: u.id,
+            label: u.full_name || u.email || u.id,
+          })));
+          return;
+        }
+        if (field === "tags") {
+          const { data } = await supabase.from("crm_leads").select("tags").not("tags", "is", null).limit(2000);
+          if (cancelled) return;
+          const set = new Set<string>();
+          (data || []).forEach((r: any) => (r.tags || []).forEach((t: string) => t && set.add(t)));
+          setOptions([...set].sort().map((v) => ({ value: v, label: v })));
+          return;
+        }
+        const { data } = await supabase
+          .from("crm_leads")
+          .select(field)
+          .not(field, "is", null)
+          .limit(2000);
+        if (cancelled) return;
+        const set = new Set<string>();
+        (data || []).forEach((r: any) => {
+          const v = r[field];
+          if (v && String(v).trim()) set.add(String(v).trim());
+        });
+        setOptions([...set].sort().map((v) => ({ value: v, label: v })));
+      } catch (_e) {
+        if (!cancelled) setOptions([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [field]);
+  return options;
+}
+
+function ValueSelector({
+  field, operator, value, onChange,
+}: {
+  field: ConditionField;
+  operator: ConditionOperator;
+  value: any;
+  onChange: (v: string) => void;
+}) {
+  const dynamic = useDynamicOptions(field);
+  const staticOpts = STATIC_FIELD_OPTIONS[field];
+  const opts = staticOpts
+    ? staticOpts.map((v) => ({ value: v, label: v }))
+    : dynamic;
+
+  // Numeric field
+  if (field === "value") {
+    return (
+      <Input
+        className="h-7 text-xs"
+        type="number"
+        placeholder="Valor"
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  }
+
+  if (opts.length > 0) {
+    return (
+      <Select value={String(value ?? "")} onValueChange={onChange}>
+        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+        <SelectContent className="max-h-64">
+          {opts.map((o) => (
+            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  return (
+    <Input
+      className="h-7 text-xs"
+      placeholder="Valor"
+      value={String(value ?? "")}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
 
 export default function ConditionsBuilder({ value, onChange }: Props) {
   const [expanded, setExpanded] = useState<boolean>(!!value?.rules?.length);
@@ -117,11 +224,11 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
                   </SelectContent>
                 </Select>
                 {needsValue ? (
-                  <Input
-                    className="h-7 text-xs"
-                    placeholder="Valor"
-                    value={String(rule.value ?? "")}
-                    onChange={(e) => updateRule(idx, { value: e.target.value })}
+                  <ValueSelector
+                    field={rule.field}
+                    operator={rule.operator}
+                    value={rule.value}
+                    onChange={(v) => updateRule(idx, { value: v })}
                   />
                 ) : <div />}
               </div>
