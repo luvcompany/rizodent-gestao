@@ -361,6 +361,7 @@ export default function CrmAutomacoes() {
       no_response: "Sem resposta",
       before_scheduled: "Antes de agendamento",
       manual_bulk_move: "Mover em massa (manual)",
+      manual_bulk_send: "Disparar mensagem (manual)",
       // Legacy triggers still show labels for existing automations
       lead_created_date: "Por data",
       progressive_reengagement: "Reengajamento",
@@ -375,6 +376,103 @@ export default function CrmAutomacoes() {
   };
 
   const handleRunBulkMove = async (auto: Automation) => {
+    const { evaluateConditions } = await import("@/lib/automationConditions");
+    const targetStageId = (auto.action_config as any)?.target_stage_id as string | undefined;
+    const conditions = (auto.action_config as any)?.conditions;
+    if (!targetStageId) {
+      toast.error("Esta automação não tem etapa destino configurada");
+      return;
+    }
+    if (targetStageId === auto.stage_id) {
+      toast.error("Etapa destino é igual à origem");
+      return;
+    }
+    const sourceName = stages.find(s => s.id === auto.stage_id)?.name || "?";
+    const targetName = stages.find(s => s.id === targetStageId)?.name || "?";
+
+    toast.info("Calculando prévia...");
+    const { data: leads, error } = await supabase
+      .from("crm_leads")
+      .select("id, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+      .eq("stage_id", auto.stage_id);
+    if (error) { toast.error("Erro ao buscar leads: " + error.message); return; }
+
+    const matching = (leads || []).filter(l =>
+      !conditions?.rules?.length || evaluateConditions(conditions, l as any)
+    );
+    if (matching.length === 0) {
+      toast.warning(`Nenhum lead na etapa "${sourceName}" atende aos filtros`);
+      return;
+    }
+    const filterInfo = conditions?.rules?.length
+      ? `\n\nFiltros aplicados: ${conditions.rules.length} (${conditions.match === "any" ? "OU" : "E"})`
+      : "\n\n(sem filtros)";
+    if (!confirm(`Mover ${matching.length} lead(s) da etapa "${sourceName}" → "${targetName}"?${filterInfo}\n\nEsta ação não pode ser desfeita.`)) return;
+
+    toast.info(`Movendo ${matching.length} lead(s)...`);
+    const ids = matching.map(l => l.id);
+    const chunkSize = 200;
+    let updated = 0;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const { error: upErr } = await supabase
+        .from("crm_leads")
+        .update({ stage_id: targetStageId, updated_at: new Date().toISOString() })
+        .in("id", chunk);
+      if (upErr) { toast.error("Erro ao mover: " + upErr.message); return; }
+      updated += chunk.length;
+    }
+    console.log(`[BulkMove] auto=${auto.id} source=${sourceName} target=${targetName} moved=${updated}/${matching.length}`);
+    toast.success(`✓ ${updated} lead(s) movido(s) de "${sourceName}" para "${targetName}"`);
+  };
+
+  const handleRunBulkSend = async (auto: Automation) => {
+    const { evaluateConditions } = await import("@/lib/automationConditions");
+    const cfg = (auto.action_config || {}) as any;
+    const at = auto.action_type;
+    if (at === "send_template" && !cfg.template_id) { toast.error("Selecione um template antes de executar"); return; }
+    if (at === "send_bot" && !cfg.bot_id) { toast.error("Selecione um bot antes de executar"); return; }
+    if (!at?.startsWith("send_")) { toast.error("Ação inválida para disparo em massa"); return; }
+
+    const sourceName = stages.find(s => s.id === auto.stage_id)?.name || "?";
+    const conditions = cfg.conditions;
+
+    toast.info("Calculando prévia...");
+    const { data: leads, error } = await supabase
+      .from("crm_leads")
+      .select("id, phone, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+      .eq("stage_id", auto.stage_id);
+    if (error) { toast.error("Erro ao buscar leads: " + error.message); return; }
+
+    const matching = (leads || []).filter(l => {
+      const digits = String((l as any).phone || "").replace(/\D/g, "");
+      if (digits.length < 8) return false;
+      return !conditions?.rules?.length || evaluateConditions(conditions, l as any);
+    });
+    if (matching.length === 0) {
+      toast.warning(`Nenhum lead na etapa "${sourceName}" atende aos filtros (ou sem telefone válido)`);
+      return;
+    }
+    const filterInfo = conditions?.rules?.length
+      ? `\n\nFiltros aplicados: ${conditions.rules.length} (${conditions.match === "any" ? "OU" : "E"})`
+      : "\n\n(sem filtros)";
+    if (!confirm(`Enviar mensagem para ${matching.length} lead(s) da etapa "${sourceName}"?${filterInfo}\n\nEsta ação enviará mensagens reais e não pode ser desfeita.`)) return;
+
+    toast.info(`Enfileirando disparo para ${matching.length} lead(s)...`);
+    const { data, error: invErr } = await supabase.functions.invoke("enqueue-stage-automation", {
+      body: { automation_id: auto.id, force: true },
+    });
+    if (invErr || (data as any)?.error) {
+      const message = (data as any)?.error || invErr?.message || "Erro ao enfileirar disparos";
+      console.error("[BulkSend] error:", invErr || data);
+      toast.error(message);
+      return;
+    }
+    const inserted = Number((data as any)?.inserted || 0);
+    const total = Number((data as any)?.total_leads || 0);
+    console.log(`[BulkSend] auto=${auto.id} stage=${sourceName} enqueued=${inserted}/${total}`);
+    toast.success(`✓ ${inserted} disparo(s) enfileirado(s) — envio em andamento (até 2 min)`);
+  };
     const { evaluateConditions } = await import("@/lib/automationConditions");
     const targetStageId = (auto.action_config as any)?.target_stage_id as string | undefined;
     const conditions = (auto.action_config as any)?.conditions;
