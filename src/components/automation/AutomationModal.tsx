@@ -45,7 +45,8 @@ const TRIGGER_DESCRIPTIONS: Record<string, string> = {
   no_response: "Dispara quando o lead não responde após um tempo definido.",
   before_scheduled: "Dispara X tempo antes de um agendamento ou tarefa marcada. Ideal para lembretes automáticos.",
   time_window: "Dispara quando o lead enviar uma mensagem dentro de uma janela de data/hora. Pode ser única (data/hora específica) ou recorrente semanal (mesmos dias/horas toda semana). Cada lead recebe a ação 1x por janela.",
-  manual_bulk_move: "Move em massa todos os leads desta etapa para outra etapa. Permite filtrar por condições (cidade, serviço, tags etc). Executado manualmente pelo botão 'Executar' no card da automação.",
+  manual_bulk_move: "Move em massa os leads desta etapa para outra etapa. Permite filtrar por condições (cidade, serviço, tags etc). Executado manualmente pelo botão 'Executar' no card da automação. Apenas leads que atenderem aos filtros serão movidos.",
+  manual_bulk_send: "Dispara uma mensagem modelo (template/bot/áudio/arquivo) em massa para os leads desta etapa. Permite filtrar por condições. Executado manualmente pelo botão 'Executar' no card; exibe prévia da quantidade antes de confirmar.",
 };
 
 function TemplateCombobox({
@@ -423,6 +424,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
 
   const isCombo = autoForm.action_type === "combo";
   const isBulkMove = autoForm.trigger_type === "manual_bulk_move";
+  const isBulkSend = autoForm.trigger_type === "manual_bulk_send";
   const isSequenceTrigger = false; // simplified - no more sequence triggers in main list
   const isReengagement = false; // simplified
 
@@ -448,7 +450,8 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 <SelectItem value="no_response">Leads sem resposta há X tempo</SelectItem>
                 <SelectItem value="before_scheduled">Antes de agendamento/tarefa</SelectItem>
                 <SelectItem value="time_window">Janela de data/hora (mensagem recebida)</SelectItem>
-                <SelectItem value="manual_bulk_move">Mover todos os leads desta etapa (manual)</SelectItem>
+                <SelectItem value="manual_bulk_move">Mover leads desta etapa (manual, c/ filtros)</SelectItem>
+                <SelectItem value="manual_bulk_send">Disparar mensagem modelo (manual, c/ filtros)</SelectItem>
               </SelectContent>
             </Select>
             {TRIGGER_DESCRIPTIONS[autoForm.trigger_type] && (
@@ -718,8 +721,38 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             </div>
           )}
 
+          {/* MANUAL BULK SEND CONFIG */}
+          {isBulkSend && (
+            <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
+              <Label className="text-xs">Tipo de mensagem</Label>
+              <Select
+                value={autoForm.action_type === "send_template" || autoForm.action_type === "send_bot" || autoForm.action_type === "send_audio" || autoForm.action_type === "send_file" ? autoForm.action_type : "send_template"}
+                onValueChange={v => setAutoForm(p => ({ ...p, action_type: v, action_config: { ...p.action_config } }))}
+              >
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="send_template">Enviar template WhatsApp</SelectItem>
+                  <SelectItem value="send_bot">Enviar Bot</SelectItem>
+                  <SelectItem value="send_audio">Enviar áudio</SelectItem>
+                  <SelectItem value="send_file">Enviar arquivo</SelectItem>
+                </SelectContent>
+              </Select>
+              <ActionConfigFields
+                actionType={autoForm.action_type}
+                config={autoForm.action_config}
+                onChange={updateConfig}
+                templates={templates}
+                publishedBots={publishedBots}
+                stages={stages}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Após salvar, use o botão <strong>Executar</strong> no card desta automação. Será exibida uma prévia da quantidade de leads impactados antes de confirmar.
+              </p>
+            </div>
+          )}
+
           {/* AÇÃO - only show for non-sequence triggers (sequences have their own actions) */}
-          {!isSequenceTrigger && !isReengagement && !isBulkMove && (
+          {!isSequenceTrigger && !isReengagement && !isBulkMove && !isBulkSend && (
             <>
               <div>
                 <Label>Ação</Label>
@@ -760,8 +793,8 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
             onChange={(v) => updateConfig({ conditions: v })}
           />
 
-          {/* Checkbox: send to all existing - not applicable for bulk_move */}
-          {!isBulkMove && (
+          {/* Checkbox: send to all existing - not applicable for bulk triggers */}
+          {!isBulkMove && !isBulkSend && (
             <div className="flex items-center gap-3">
               <Checkbox
                 id="send-to-all-modal"
