@@ -224,11 +224,11 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
                   </SelectContent>
                 </Select>
                 {needsValue ? (
-                  <Input
-                    className="h-7 text-xs"
-                    placeholder="Valor"
-                    value={String(rule.value ?? "")}
-                    onChange={(e) => updateRule(idx, { value: e.target.value })}
+                  <ValueSelector
+                    field={rule.field}
+                    operator={rule.operator}
+                    value={rule.value}
+                    onChange={(v) => updateRule(idx, { value: v })}
                   />
                 ) : <div />}
               </div>
