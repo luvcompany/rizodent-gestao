@@ -478,7 +478,9 @@ export function useChatConversation(leadId: string | null | undefined) {
   const loadTemplates = useCallback(async () => {
     if (!tenant.id) return;
     const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("tenant_id", tenant.id).eq("status", "APPROVED").order("created_at", { ascending: false });
-    setTemplates(deduplicateTemplates(data || []));
+    const deduped = deduplicateTemplates(data || []);
+    const sorted = await sortTemplatesByUsage(deduped, tenant.id);
+    setTemplates(sorted);
     setTemplatesOpen(true);
   }, [tenant.id]);
 
