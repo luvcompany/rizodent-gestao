@@ -244,9 +244,18 @@ export default function CrmAutomacoes() {
 
   const handleSaveAutomation = async () => {
     const isBulkMove = autoForm.trigger_type === "manual_bulk_move";
+    const isBulkSend = autoForm.trigger_type === "manual_bulk_send";
     if (isBulkMove && !autoForm.action_config?.target_stage_id) {
       toast.error("Selecione a etapa destino para a movimentação em massa");
       return;
+    }
+    if (isBulkSend) {
+      const at = autoForm.action_type;
+      const cfg = autoForm.action_config as any;
+      if (at === "send_template" && !cfg?.template_id) { toast.error("Selecione um template"); return; }
+      if (at === "send_bot" && !cfg?.bot_id) { toast.error("Selecione um bot"); return; }
+      if (at === "send_audio" && !cfg?.audio_url) { toast.error("Informe a URL do áudio"); return; }
+      if (at === "send_file" && !cfg?.file_url) { toast.error("Informe a URL do arquivo"); return; }
     }
     const payload = {
       stage_id: autoForm.stage_id,
