@@ -14,6 +14,7 @@ import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConditionsBuilder from "@/components/automation/ConditionsBuilder";
 import type { ConditionsConfig } from "@/lib/automationConditions";
+import { FilePicker, AudioPicker } from "@/components/automation/AutomationMediaPicker";
 
 type Stage = { id: string; name: string; color: string };
 type Template = { id: string; name: string; status: string };
@@ -153,20 +154,10 @@ function ActionConfigFields({
     );
   }
   if (actionType === "send_audio") {
-    return (
-      <div>
-        <Label className="text-xs">URL do áudio</Label>
-        <Input className="h-8 text-xs" placeholder="https://..." value={(config[key("audio_url")] as string) || ""} onChange={e => onChange({ [key("audio_url")]: e.target.value })} />
-      </div>
-    );
+    return <AudioPicker config={config} onChange={onChange} keyOf={key} />;
   }
   if (actionType === "send_file") {
-    return (
-      <div>
-        <Label className="text-xs">URL do arquivo</Label>
-        <Input className="h-8 text-xs" placeholder="https://..." value={(config[key("file_url")] as string) || ""} onChange={e => onChange({ [key("file_url")]: e.target.value })} />
-      </div>
-    );
+    return <FilePicker config={config} onChange={onChange} keyOf={key} />;
   }
   if (actionType === "add_tag") {
     return (
