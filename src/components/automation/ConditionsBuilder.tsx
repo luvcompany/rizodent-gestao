@@ -79,10 +79,9 @@ function useDynamicOptions(field: ConditionField | null) {
 }
 
 function ValueSelector({
-  field, operator, value, onChange,
+  field, value, onChange,
 }: {
   field: ConditionField;
-  operator: ConditionOperator;
   value: any;
   onChange: (v: string) => void;
 }) {
@@ -91,19 +90,6 @@ function ValueSelector({
   const opts = staticOpts
     ? staticOpts.map((v) => ({ value: v, label: v }))
     : dynamic;
-
-  // Numeric field
-  if (field === "value") {
-    return (
-      <Input
-        className="h-7 text-xs"
-        type="number"
-        placeholder="Valor"
-        value={String(value ?? "")}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    );
-  }
 
   if (opts.length > 0) {
     return (
@@ -133,9 +119,10 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
   const conditions: ConditionsConfig = value || { match: "all", rules: [] };
 
   const addRule = () => {
+    const field: ConditionField = "tags";
     const next: ConditionsConfig = {
       match: conditions.match || "all",
-      rules: [...conditions.rules, { field: "tags", operator: "contains", value: "" }],
+      rules: [...conditions.rules, { field, operator: defaultOperatorForField(field), value: "" }],
     };
     onChange(next);
     setExpanded(true);
@@ -151,9 +138,9 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
     const rules = conditions.rules.map((r, i) => {
       if (i !== idx) return r;
       const merged = { ...r, ...patch } as AutomationCondition;
-      // If field changed, reset operator if invalid
-      if (patch.field && !operatorsForField(patch.field).includes(merged.operator)) {
-        merged.operator = operatorsForField(patch.field)[0];
+      // If field changed, reset operator to its default and clear value
+      if (patch.field) {
+        merged.operator = defaultOperatorForField(patch.field);
         merged.value = "";
       }
       return merged;
