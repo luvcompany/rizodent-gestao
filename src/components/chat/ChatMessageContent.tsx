@@ -307,7 +307,7 @@ export default function ChatMessageContent({
       ? message.content?.replace("📋 Template: ", "").trim() || ""
       : message.content?.replace("📋 Template: ", "").trim() || "";
     if (name) {
-      return <TemplateMessageBubble templateName={name} leadName={leadName} leadId={message.lead_id} />;
+      return <TemplateMessageBubble templateName={name} leadName={leadName} leadId={message.lead_id} messageCreatedAt={message.created_at} />;
     }
   }
 
