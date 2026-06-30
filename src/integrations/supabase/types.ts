@@ -3544,6 +3544,7 @@ export type Database = {
       crm_template_usage_counts: {
         Args: { _tenant_id: string }
         Returns: {
+          last_used_at: string
           template_name: string
           usage_count: number
         }[]
