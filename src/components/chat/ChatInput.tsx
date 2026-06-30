@@ -253,10 +253,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   useEffect(() => {
     const loadSlashData = async () => {
       const { data: t } = await supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED").order("created_at", { ascending: false });
-      setSlashTemplates(deduplicateTemplates(t || []));
+      const deduped = deduplicateTemplates(t || []);
+      const sorted = await sortTemplatesByUsage(deduped, tenant.id);
+      setSlashTemplates(sorted);
     };
     loadSlashData();
-  }, []);
+  }, [tenant.id]);
 
   // Auto-resize textarea
   useEffect(() => {
