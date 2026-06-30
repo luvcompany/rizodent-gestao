@@ -714,11 +714,24 @@ export default function CrmAutomacoes() {
                                         {auto.trigger_type === "manual_bulk_move"
                                           ? `Mover → ${stages.find(s => s.id === (auto.action_config as any)?.target_stage_id)?.name || "?"}`
                                           : actionLabel(auto.action_type)}
+                                        {((auto.action_config as any)?.conditions?.rules?.length || 0) > 0 && (
+                                          <span className="ml-1 text-[10px] text-muted-foreground">
+                                            · {(auto.action_config as any).conditions.rules.length} filtro(s)
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="flex items-center gap-2 mt-1">
                                         {auto.trigger_type === "manual_bulk_move" && (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); handleRunBulkMove(auto); }}
+                                            className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:opacity-90"
+                                          >
+                                            Executar
+                                          </button>
+                                        )}
+                                        {auto.trigger_type === "manual_bulk_send" && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); handleRunBulkSend(auto); }}
                                             className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:opacity-90"
                                           >
                                             Executar
