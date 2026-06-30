@@ -284,36 +284,62 @@ export type Database = {
           cidade: string | null
           context: string
           created_at: string
+          embedded_at: string | null
           embedding: string | null
+          embedding_error: string | null
+          embedding_model: string | null
           id: string
           ideal_reply: string
           lead_id: string | null
+          rejected_reply: string | null
           servico: string | null
+          source: string
+          source_suggestion_id: string | null
           tenant_id: string
         }
         Insert: {
           cidade?: string | null
           context: string
           created_at?: string
+          embedded_at?: string | null
           embedding?: string | null
+          embedding_error?: string | null
+          embedding_model?: string | null
           id?: string
           ideal_reply: string
           lead_id?: string | null
+          rejected_reply?: string | null
           servico?: string | null
+          source?: string
+          source_suggestion_id?: string | null
           tenant_id?: string
         }
         Update: {
           cidade?: string | null
           context?: string
           created_at?: string
+          embedded_at?: string | null
           embedding?: string | null
+          embedding_error?: string | null
+          embedding_model?: string | null
           id?: string
           ideal_reply?: string
           lead_id?: string | null
+          rejected_reply?: string | null
           servico?: string | null
+          source?: string
+          source_suggestion_id?: string | null
           tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_good_examples_source_suggestion_id_fkey"
+            columns: ["source_suggestion_id"]
+            isOneToOne: false
+            referencedRelation: "ai_reply_suggestions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_reply_suggestions: {
         Row: {
