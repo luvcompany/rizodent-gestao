@@ -1,24 +1,27 @@
-# Plano
+## Problema
 
-## 1. Salvar a chave da Anthropic com segurança
-- A chave que você colou no chat será armazenada como secret `ANTHROPIC_API_KEY` no backend (Lovable Cloud), via `set_secret`. Ela fica acessível apenas para as edge functions, nunca para o navegador.
-- **Importante:** como ela apareceu em texto plano no chat, recomendo revogá-la no console da Anthropic e gerar uma nova depois de salvarmos — chaves expostas em qualquer canal devem ser rotacionadas.
-- Após salvar o secret, a função `generate-reply-suggestion` voltará a usar os modelos `anthropic/*` (Claude Sonnet/Haiku) selecionados em Configurações → IA → Bia, sem precisar do fallback para o Gemini.
+Em `src/components/chat/ChatMessageContent.tsx` (linhas 100-128), o componente `TemplateMessageBubble` resolve o placeholder `{{2}}` (data/horário) consultando `crm_appointments` filtrando por `status in ('confirmed','pending')`.
 
-## 2. Exibir a barra da Bia também em `/crm/conversas`
-Hoje o componente `AiSuggestionStrip` (sugestão da Bia com ✓/✗, edição inline e handoff) só aparece em `src/pages/CrmConversa.tsx` (página de conversa individual). Vou replicar exatamente o mesmo posicionamento em `src/pages/CrmConversas.tsx` (a lista lateral com chat embutido):
+Quando o agendamento é apagado (ou marcado como "Não compareceu", "Contratado", etc.), a query não encontra nenhum registro ativo e cai no fallback `"data e horário a confirmar"`. A mensagem original enviada ao lead já saiu com a data correta — é só a re-renderização da bolha do template no chat que perde a referência.
 
-- Importar `AiSuggestionStrip` no topo do arquivo.
-- Inserir o componente imediatamente **acima** do `<ChatInput>` (linha ~1278), dentro do mesmo bloco condicional do lead selecionado.
-- Renderizar apenas quando o canal resolvido for `whatsapp` (mesma regra usada em `CrmConversa.tsx`); para Instagram não mostramos (a Bia só envia WhatsApp).
-- Props: `leadId={selectedLeadId}` e `leadPhone={selectedLead.phone}`, idênticas às de `CrmConversa.tsx`.
-- O componente já tem subscription Realtime própria por `lead_id`, então não precisa de nenhuma mudança de estado na página — basta montar.
+## Correção
 
-## 3. Validação
-- Abrir `/crm/conversas`, selecionar um lead de WhatsApp, e conferir que a tira da Bia aparece acima do campo de digitação, com o botão "Sugerir resposta (Bia)" quando não há sugestão pendente.
-- Disparar uma sugestão e confirmar que ela usa um modelo `anthropic/*` (visível no badge), comprovando que o `ANTHROPIC_API_KEY` está ativo.
+Ajustar a busca para nunca exibir "data e horário a confirmar" quando existir histórico de agendamento do lead, e priorizar o agendamento mais próximo da data de envio da mensagem.
 
-## Notas técnicas
-- Nenhuma alteração de banco de dados.
-- Nenhuma mudança em edge functions — o suporte a Anthropic já está implementado e cai sozinho de volta para o Gateway se a chave for removida.
-- Apenas dois arquivos editados: `src/pages/CrmConversas.tsx` (import + uma linha no JSX) e o secret store.
+### Mudanças em `src/components/chat/ChatMessageContent.tsx`
+
+1. Receber `messageCreatedAt` como prop opcional em `TemplateMessageBubble` (passado pelo `ChatMessageBubble`).
+2. Substituir a query única por uma busca em duas etapas:
+   - Buscar **todos** os agendamentos do lead (qualquer status), ordenados por `scheduled_date`/`scheduled_time`.
+   - Selecionar preferencialmente: (a) o agendamento `confirmed/pending` mais próximo de `messageCreatedAt`; senão (b) o agendamento (qualquer status) cuja `scheduled_date` esteja mais próxima da data da mensagem; senão (c) o mais recente.
+3. Manter o fallback `"data e horário a confirmar"` apenas quando o lead realmente nunca teve agendamento.
+
+### Mudança em `src/components/chat/ChatMessageBubble.tsx`
+
+Passar `messageCreatedAt={message.created_at}` ao renderizar `TemplateMessageBubble` (verificar a prop atual do componente).
+
+## Escopo
+
+- Apenas frontend / camada de apresentação.
+- Sem migração de banco e sem alteração no envio real da mensagem (que já funciona corretamente).
+- Sem mudanças em modelos, edge functions ou lógica de agendamento.
