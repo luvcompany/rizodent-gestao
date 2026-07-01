@@ -248,15 +248,33 @@ Deno.serve(async (req) => {
       stageName = stg?.name || null;
     }
 
-    // Carrega últimas 60 mensagens em ordem cronológica
-    const { data: msgsDesc } = await supabase
-      .from("messages")
-      .select("id, direction, type, content, media_url, transcription, created_at")
-      .eq("lead_id", leadId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(60);
-    const msgs = (msgsDesc || []).reverse();
+    // Carrega TODAS as mensagens do lead em ordem cronológica (paginado).
+    const PAGE = 1000;
+    let allMsgs: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id, direction, type, content, media_url, transcription, created_at")
+        .eq("lead_id", leadId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error || !data?.length) break;
+      allMsgs.push(...data);
+      if (data.length < PAGE) break;
+    }
+
+    // Guarda de custo: se estourar 400 mensagens, mantém 50 iniciais + 350 finais.
+    let omittedCount = 0;
+    let omittedAfterIndex = -1;
+    if (allMsgs.length > 400) {
+      const head = allMsgs.slice(0, 50);
+      const tail = allMsgs.slice(-350);
+      omittedCount = allMsgs.length - head.length - tail.length;
+      omittedAfterIndex = head.length - 1;
+      allMsgs = [...head, ...tail];
+    }
+    const msgs = allMsgs;
 
     if (!msgs.length) {
       return new Response(JSON.stringify({ skipped: "no_messages" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -281,9 +299,41 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Carrega notas da conversa (crm_conversation_notes) para ancorar por after_message_id
+    // ou expor como "anotações da equipe" no bloco de fatos.
+    const { data: convNotesRaw } = await supabase
+      .from("crm_conversation_notes")
+      .select("id, after_message_id, content, created_at, author_id")
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: true });
+    const convNotes = convNotesRaw || [];
+    const notesByAnchor = new Map<string, any[]>();
+    const unanchoredNotes: any[] = [];
+    for (const n of convNotes) {
+      if (n.after_message_id) {
+        const arr = notesByAnchor.get(n.after_message_id) || [];
+        arr.push(n);
+        notesByAnchor.set(n.after_message_id, arr);
+      } else {
+        unanchoredNotes.push(n);
+      }
+    }
+
+    // Helper: timestamp local Bahia (UTC-3) no formato [dd/MM HH:mm]
+    const fmtBahia = (iso: string) => {
+      const d = new Date(new Date(iso).getTime() - 3 * 60 * 60 * 1000);
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mi = String(d.getUTCMinutes()).padStart(2, "0");
+      return `[${dd}/${mm} ${hh}:${mi}]`;
+    };
+
     // Build chat history (inbound=user, outbound=assistant) em ordem cronológica
+    // com timestamp prefixado e notas ancoradas injetadas logo após a mensagem.
     const history: Array<{ role: "user" | "assistant"; content: string }> = [];
-    for (const m of msgs) {
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
       const role = m.direction === "inbound" ? "user" : "assistant";
       let content = "";
       if (m.type === "audio") {
@@ -294,12 +344,70 @@ Deno.serve(async (req) => {
       else if (m.type === "video") content = m.content ? `[vídeo] ${m.content}` : "[vídeo]";
       else if (m.type === "document") content = m.content ? `[documento] ${m.content}` : "[documento]";
       else content = (m.content || "").trim();
-      if (!content) continue;
-      history.push({ role, content });
+      if (content) {
+        history.push({ role, content: `${fmtBahia(m.created_at)} ${content}` });
+      }
+      // Marcador de mensagens omitidas (só quando há corte por custo)
+      if (i === omittedAfterIndex && omittedCount > 0) {
+        history.push({
+          role: "user",
+          content: `[... ${omittedCount} mensagens antigas omitidas por tamanho — foram preservadas apenas as primeiras 50 e as últimas 350 ...]`,
+        });
+      }
+      // Nota interna ancorada logo após esta mensagem
+      const anchored = notesByAnchor.get(m.id);
+      if (anchored && anchored.length) {
+        for (const n of anchored) {
+          history.push({
+            role: "user",
+            content: `${fmtBahia(n.created_at)} [NOTA INTERNA DA EQUIPE — NÃO enviar ao cliente]: ${String(n.content || "").trim()}`,
+          });
+        }
+      }
     }
     if (!history.length) {
       return new Response(JSON.stringify({ skipped: "no_text_history" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    // Carrega histórico de etapas (últimas 5) para explicar o "porquê" da etapa atual.
+    let stageHistoryBlock = "";
+    try {
+      const { data: sh } = await supabase
+        .from("crm_lead_stage_history")
+        .select("entered_at, stage_id, from_stage_id")
+        .eq("lead_id", leadId)
+        .order("entered_at", { ascending: false })
+        .limit(5);
+      const rows = (sh || []).reverse();
+      if (rows.length) {
+        const stageIds = Array.from(new Set(rows.flatMap((r: any) => [r.stage_id, r.from_stage_id]).filter(Boolean)));
+        const { data: stagesLookup } = await supabase
+          .from("crm_stages")
+          .select("id, name")
+          .in("id", stageIds);
+        const nameById = new Map((stagesLookup || []).map((s: any) => [s.id, s.name]));
+        const lines = rows.map((r: any) => {
+          const to = nameById.get(r.stage_id) || "?";
+          const from = r.from_stage_id ? (nameById.get(r.from_stage_id) || "?") : "(início)";
+          return `${fmtBahia(r.entered_at)} ${from} → ${to}`;
+        });
+        stageHistoryBlock = `\n\n=== HISTÓRICO DE ETAPAS (últimas ${lines.length}) ===\n${lines.join("\n")}`;
+      }
+    } catch (_) { /* opcional */ }
+
+    // Bloco de anotações não ancoradas (observações fixadas pela equipe)
+    let teamNotesBlock = "";
+    if (unanchoredNotes.length) {
+      const lines = unanchoredNotes
+        .slice(-10)
+        .map((n: any) => `${fmtBahia(n.created_at)} ${String(n.content || "").trim().slice(0, 500)}`);
+      teamNotesBlock = `\n\n=== ANOTAÇÕES DA EQUIPE (leia com prioridade, NÃO enviar ao cliente) ===\n${lines.join("\n")}`;
+    }
+
+    // Observação do lead promovida
+    const leadNotesBlock = (lead.notes && String(lead.notes).trim())
+      ? `\n\n=== OBSERVAÇÃO DO LEAD (leia com prioridade) ===\n${String(lead.notes).trim().slice(0, 1500)}`
+      : "";
 
     const kb = (config.knowledge_base && String(config.knowledge_base).trim()) || DEFAULT_KB;
     const persona = config.assistant_display_name || "Bia";
@@ -419,7 +527,7 @@ Serviço de interesse: ${lead.servico_interesse || "[não informado — pergunte
 Etapa atual: ${stageName || "—"}
 Endereço da unidade: ${unitAddress || "[NÃO CADASTRADO — NÃO envie endereço; diga que confirma em seguida]"}
 Hora atual (America/Bahia, UTC-3): ${String(hourBA).padStart(2, "0")}:${String(nowBahia.getUTCMinutes()).padStart(2, "0")}
-Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)${adBlock}
+Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)${adBlock}${leadNotesBlock}${teamNotesBlock}${stageHistoryBlock}
 
 Use SEMPRE o nome e a cidade exatos acima. É PROIBIDO usar outro nome de cliente ou outra cidade.
 Lead ID interno (não mencione ao cliente): ${lead.id}`;
@@ -435,8 +543,8 @@ Use SEMPRE o "Primeiro nome" dos FATOS CONFIRMADOS na abertura (ex.: "Oi, ${firs
 === ANTI-ALUCINAÇÃO (regra absoluta) ===
 Você só pode afirmar o que está (a) nos FATOS CONFIRMADOS ou (b) explicitamente dito na conversa. NUNCA invente nome, cidade, endereço, ponto de referência, horário, data, valor, condição NEM ações do cliente. É PROIBIDO afirmar que o cliente "já conseguiu falar com a equipe", "já agendou", "já recebeu", "já viu", "já confirmou" sem isso estar explícito no histórico. Se não está claro, pergunte — não suponha.
 
-=== RESPEITAR O COMBINADO ===
-Leia TODA a conversa antes de responder. Respeite o que a equipe já combinou (horário, data, valor, condição) — não altere. Use sempre o nome dos FATOS CONFIRMADOS.
+=== RESPEITAR O COMBINADO E CONTINUIDADE TEMPORAL ===
+Leia TODA a conversa antes de responder. Cada mensagem do histórico vem prefixada com "[dd/mm hh:mm]" no fuso America/Bahia — use isso para respeitar a ordem, não repetir assunto já resolvido e reengajar com naturalidade se a última interação foi há muito tempo. Respeite o que a equipe já combinou (horário, data, valor, condição, telefone passado, encaminhamento para recepção) — NÃO altere, NÃO ofereça agendamento novo se a equipe já direcionou. Se a etapa atual for de desfecho (Desqualificado, Ganho, Compareceu, Perdido, Não contratado, Cliente, Nutrição), NÃO reinicie fluxo de agendamento do zero — apenas dê continuidade ao que já foi combinado. Notas internas (linhas "[NOTA INTERNA DA EQUIPE — NÃO enviar ao cliente]") são direcionadores da equipe: siga-as, mas NUNCA repita seu conteúdo textual para o cliente. Use sempre o nome dos FATOS CONFIRMADOS.
 
 === ENDEREÇOS ===
 Só envie endereço se estiver no campo "Endereço da unidade" dos FATOS. Se "NÃO CADASTRADO", diga que confirma e retorna — NUNCA invente rua, número, bairro ou ponto de referência.
