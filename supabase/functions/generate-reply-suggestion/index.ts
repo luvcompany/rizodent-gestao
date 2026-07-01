@@ -527,7 +527,7 @@ Serviço de interesse: ${lead.servico_interesse || "[não informado — pergunte
 Etapa atual: ${stageName || "—"}
 Endereço da unidade: ${unitAddress || "[NÃO CADASTRADO — NÃO envie endereço; diga que confirma em seguida]"}
 Hora atual (America/Bahia, UTC-3): ${String(hourBA).padStart(2, "0")}:${String(nowBahia.getUTCMinutes()).padStart(2, "0")}
-Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)${adBlock}
+Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)${adBlock}${leadNotesBlock}${teamNotesBlock}${stageHistoryBlock}
 
 Use SEMPRE o nome e a cidade exatos acima. É PROIBIDO usar outro nome de cliente ou outra cidade.
 Lead ID interno (não mencione ao cliente): ${lead.id}`;
