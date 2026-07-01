@@ -62,7 +62,7 @@ const getCurrentMonthBounds = () => {
   const now = new Date();
   return {
     from: toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1)),
-    to: toLocalDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+    to: toLocalDateStr(now),
   };
 };
 
@@ -190,12 +190,21 @@ const Dashboard = () => {
   const dateRange = useMemo(() => getDateRangeFromFilter(dateFilter), [dateFilter]);
   const allRanges = useMemo(() => getDateRangesFromFilter(dateFilter), [dateFilter]);
   const isAllPeriod = dateFilter.preset === "all";
+  const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
   const dateFrom = useMemo(() => dateRange ? toLocalDateStr(dateRange.start) : "2020-01-01", [dateRange]);
-  const dateTo = useMemo(() => dateRange ? toLocalDateStr(dateRange.end) : toLocalDateStr(new Date()), [dateRange]);
+  const dateTo = useMemo(() => {
+    if (!dateRange) return todayStr;
+    const end = toLocalDateStr(dateRange.end);
+    return dateFilter.preset === "this_month" && end > todayStr ? todayStr : end;
+  }, [dateRange, dateFilter.preset, todayStr]);
   // Pre-compute interval bounds as YYYY-MM-DD strings for fast date comparison
   const rangeBounds = useMemo(
-    () => allRanges?.map((r) => ({ from: toLocalDateStr(r.start), to: toLocalDateStr(r.end) })) ?? null,
-    [allRanges]
+    () => allRanges?.map((r) => {
+      const from = toLocalDateStr(r.start);
+      const rawTo = toLocalDateStr(r.end);
+      return { from, to: dateFilter.preset === "this_month" && rawTo > todayStr ? todayStr : rawTo };
+    }) ?? null,
+    [allRanges, dateFilter.preset, todayStr]
   );
   const isInSelectedRanges = (dateStr: string | undefined | null) => {
     if (!dateStr) return false;
