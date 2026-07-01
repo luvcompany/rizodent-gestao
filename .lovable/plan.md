@@ -1,38 +1,30 @@
-## Objetivo
-No `AutomationModal` (gatilhos "Enviar arquivo" e "Enviar áudio"), substituir os campos de URL livre por upload real de mídia (e gravador no caso de áudio), reaproveitando as regras do CRM Conversa/Conversas.
+## Ajustes na Edge Function `generate-reply-suggestion`
 
-## Mudanças
+Somente backend (`supabase/functions/generate-reply-suggestion/index.ts`), sem tocar UI.
 
-### 1. `src/components/automation/AutomationModal.tsx` — bloco `ActionConfigInline`
+### 1. Enviar TODA a conversa (não só as últimas 60)
+- Remover o `limit(60)`.
+- Paginar `messages` do lead em blocos de 1000 (mesmo padrão já usado em `ai-conversation-assist`) até puxar tudo, em ordem cronológica.
+- Guarda de custo: se o total ultrapassar ~400 mensagens, manter as **50 primeiras** (para preservar contexto inicial: primeira dor, origem, promessas iniciais) + **todas as últimas 350**, com um marcador `[... N mensagens antigas omitidas ...]` no meio. Assim mesmo conversas gigantes cabem no prompt sem estourar contexto.
 
-**Enviar arquivo (`send_file`):**
-- Remover o input "URL do arquivo".
-- Adicionar botão "Selecionar arquivo" (`<input type="file">`) aceitando imagem, vídeo e documento.
-- Validar tamanho seguindo o ChatInput:
-  - Imagem ≤ 5 MB (com compressão automática se > 4 MB, via `compressImage`)
-  - Vídeo ≤ 16 MB
-  - Documento ≤ 100 MB
-- Upload no bucket `chat-media` (mesmo path padrão usado pelo ChatInput) e gravar a URL pública resultante em `file_url` + também salvar `file_name` e `file_mime` em `config` para reuso.
-- Mostrar preview com nome/tamanho + botão para remover/trocar.
-- Indicador de "Enviando..." durante upload.
+### 2. Incluir data/hora em cada mensagem
+- Ao montar o histórico enviado ao modelo, prefixar cada linha com timestamp local (America/Bahia, UTC-3) no formato `[dd/MM HH:mm]`.
+- Como a AI SDK espera `role`+`content`, o timestamp entra dentro do `content` (ex.: `[27/06 15:28] Boa tarde, retornaremos as atividades somente amanhã`).
+- Adicionar no system prompt uma diretriz curta: *"Cada mensagem do histórico vem prefixada com `[dia/mês hh:mm]` no fuso America/Bahia. Use isso para respeitar continuidade temporal (não retomar assunto já resolvido; se a última interação foi há muito tempo, reengaje com naturalidade)."*
 
-**Enviar áudio (`send_audio`):**
-- Remover o input "URL do áudio".
-- Duas opções em tabs/botões: **Gravar** e **Enviar arquivo**.
-  - **Gravar**: integrar o `AudioRecorderComposer` (já existente). Ao confirmar, converter via mesma lógica do ChatInput (OGG/Opus nativo ou via OpusMediaRecorder), upload no bucket `chat-media` pasta `audio`, e gravar `audio_url`.
-  - **Upload**: `<input type="file" accept="audio/*">` com mesmo limite/processamento usado no chat (sem conversão para WAV/Instagram, já que automação é WhatsApp).
-- Mostrar player simples para o áudio escolhido e botão "Regravar/Trocar".
+### 3. Contexto que já estava faltando (mantido do plano anterior)
+- Puxar `crm_conversation_notes` do lead e:
+  - Injetar cada nota, ancorada por `after_message_id`, como linha `[NOTA INTERNA — não enviar ao cliente] <texto>` logo após a mensagem correspondente no histórico.
+  - Notas sem âncora (ex.: observação fixada tipo *"JA É PACIENTE E DESEJA FAZER MANUTENÇÃO"*) entram em bloco próprio nos FATOS: `=== ANOTAÇÕES DA EQUIPE ===`.
+- Puxar `crm_lead_stage_history` (últimas 5) e listar nos FATOS: `Etapa X → Y em dd/MM HH:mm`.
+- Promover `lead.notes` para bloco próprio `=== OBSERVAÇÃO DO LEAD ===` acima dos FATOS.
+- Reforçar regra "RESPEITAR O COMBINADO": se a etapa atual é desfecho (Desqualificado / Ganho / Compareceu / etc.), não retomar fluxo de agendamento do zero.
 
-### 2. Reuso/refator leve
-- Extrair helper `uploadAutomationMedia(file, folder)` em `src/components/automation/automationMediaUpload.ts` (espelho do `uploadFile` do ChatInput) para manter o ChatInput intacto.
-- Reutilizar `compressImage` de `src/components/chat/imageCompressor`.
-- Reutilizar `AudioRecorderComposer` (props já compatíveis: `onConfirm(blob)`).
+### Não vou mexer
+- `AiSuggestionStrip.tsx`, modelo, RAG, aprendizado, `send-whatsapp-message`, tabelas.
 
-### 3. Compatibilidade com backend
-- `automation-engine` / `automation-queue-worker` já enviam via `send-whatsapp-message` usando `file_url` / `audio_url`. Não precisa mexer no backend — só garantir que a URL salva é pública e acessível pela Meta (bucket `chat-media` já tem policy de leitura pública assinada / signed URL — manter mesma estratégia do chat).
-- Se o bucket não for público, gerar `createSignedUrl` com validade longa (ex.: 7 dias) ou usar a mesma URL pública que o `ChatInput` usa hoje (via `getPublicUrl`). Manter exatamente o mesmo método do ChatInput para consistência.
-
-## Fora de escopo
-- Não alterar `CrmConversa.tsx` / `CrmConversas.tsx`.
-- Não alterar a tabela de automações nem o schema do `config` JSONB (apenas adicionamos campos opcionais `file_name`/`file_mime` que já são tolerados).
-- Não mexer em outros tipos de ação (template, bot, webhook, etc.).
+### Validação
+Após publicar, disparar `generate-reply-suggestion` para a "cristal" (557381824640) e conferir se:
+- A sugestão referencia a observação "já é paciente e quer manutenção".
+- A sugestão respeita que a equipe já mandou o telefone da recepção (73 9841-7725).
+- Não sugere retomar agendamento — a etapa é *Desqualificado*.
