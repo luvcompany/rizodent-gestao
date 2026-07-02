@@ -151,43 +151,46 @@ export default function AiLearningReport() {
   if (loading) return <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 size={14} className="animate-spin" />Carregando...</div>;
 
   const Block = ({ title, items, color, icon, kind }: { title: string; items: Row[]; color: string; icon: any; kind: ColKind }) => (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <CardTitle className={`text-base flex items-center gap-2 ${color}`}>{icon}{title} ({items.length})</CardTitle>
-            <CardDescription>Últimas 300 sugestões.</CardDescription>
-          </div>
-          <Button size="sm" variant="outline" onClick={() => setAdd(emptyAdd(kind))}>
-            <Plus size={14} className="mr-1" /> Adicionar
+    <Card className="flex flex-col">
+      <CardHeader className="pb-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className={`text-sm font-semibold flex items-center gap-2 whitespace-nowrap ${color}`}>
+            {icon}
+            <span>{title}</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{items.length}</Badge>
+          </CardTitle>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs shrink-0" onClick={() => setAdd(emptyAdd(kind))}>
+            <Plus size={12} className="mr-1" /> Adicionar
           </Button>
         </div>
+        <CardDescription className="text-xs">Últimas 300 sugestões.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2 max-h-[420px] overflow-y-auto">
-        {items.length === 0 && <p className="text-xs text-muted-foreground">Nada por aqui ainda.</p>}
+      <CardContent className="space-y-2 max-h-[460px] overflow-y-auto pt-0">
+        {items.length === 0 && <p className="text-xs text-muted-foreground py-4 text-center">Nada por aqui ainda.</p>}
         {items.map((r) => (
-          <div key={r.id} className="p-2 rounded border border-border bg-secondary/30 text-xs space-y-1 group">
-            <div className="flex items-center justify-between">
-              <Badge variant="outline" className="text-[10px]">{new Date(r.created_at).toLocaleString("pt-BR")}</Badge>
-              <div className="flex items-center gap-1">
-                {r.was_edited && <Badge variant="secondary" className="text-[10px]">editada</Badge>}
+          <div key={r.id} className="p-2 rounded-md border border-border bg-secondary/30 text-xs space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] text-muted-foreground">{new Date(r.created_at).toLocaleString("pt-BR")}</span>
+              <div className="flex items-center gap-0.5">
+                {r.was_edited && <Badge variant="secondary" className="text-[10px] mr-1">editada</Badge>}
                 <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => openEdit(kind, r)} title="Editar">
                   <Pencil size={12} />
                 </Button>
-                <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => removeRow(r)} title="Remover">
+                <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => removeRow(r)} title="Remover">
                   <Trash2 size={12} />
                 </Button>
               </div>
             </div>
-            <div><span className="text-muted-foreground">Sugerida:</span> {r.suggested_text}</div>
+            <div className="leading-snug"><span className="font-medium text-muted-foreground">Sugerida:</span> {r.suggested_text}</div>
             {r.final_text && r.final_text !== r.suggested_text && (
-              <div><span className="text-muted-foreground">Enviada:</span> {r.final_text}</div>
+              <div className="leading-snug"><span className="font-medium text-muted-foreground">Enviada:</span> {r.final_text}</div>
             )}
           </div>
         ))}
       </CardContent>
     </Card>
   );
+
 
   return (
     <div className="space-y-4">
