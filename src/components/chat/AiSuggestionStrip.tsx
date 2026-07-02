@@ -243,9 +243,14 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
           {suggestion.model && <Badge variant="outline" className="h-4 text-[10px] px-1">{suggestion.model.split("/").pop()}</Badge>}
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Descartar" onClick={discard}>
+          <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs text-destructive hover:text-destructive" title="Marcar como ruim (a Bia aprende a evitar)" onClick={discardAsBad}>
+            <ThumbsDown size={12} />
+            <span className="hidden sm:inline">Ruim</span>
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Fechar sem enviar" onClick={dismiss}>
             <X size={14} />
           </Button>
+
           <Button
             size="sm"
             variant={isHandoff ? "outline" : "default"}
