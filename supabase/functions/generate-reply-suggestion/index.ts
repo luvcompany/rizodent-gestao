@@ -499,9 +499,21 @@ Use estes casos como guia. Quando houver "Resposta rejeitada", NÃO repita o mes
     // Hora local Bahia (UTC-3) para saudação correta
     const nowBahia = new Date(Date.now() - 3 * 60 * 60 * 1000);
     const hourBA = nowBahia.getUTCHours();
+    const minBA = nowBahia.getUTCMinutes();
+    const nowMinutesBA = hourBA * 60 + minBA;
     let saudacao = "Boa noite";
     if (hourBA >= 5 && hourBA < 12) saudacao = "Bom dia";
     else if (hourBA >= 12 && hourBA < 18) saudacao = "Boa tarde";
+
+    // Horário comercial configurado — decide se a Bia pode confirmar horário direto.
+    const shiftStartStr = String((config as any).shift_start || "07:29");
+    const shiftEndStr = String((config as any).shift_end || "18:00");
+    const parseHMM = (s: string) => {
+      const [h, m] = s.split(":").map((x) => parseInt(x, 10) || 0);
+      return h * 60 + m;
+    };
+    const inShift = nowMinutesBA >= parseHMM(shiftStartStr) && nowMinutesBA <= parseHMM(shiftEndStr);
+
 
     // Primeiro nome do lead
     const firstName = (lead.name || "").trim().split(/\s+/)[0] || "";
