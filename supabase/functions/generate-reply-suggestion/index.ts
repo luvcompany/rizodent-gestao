@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
     // Load lead (incluindo stage_id para resolver a etapa atual)
     const { data: lead } = await supabase
       .from("crm_leads")
-      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio")
+      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
       .eq("id", leadId)
       .maybeSingle();
     if (!lead) return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
