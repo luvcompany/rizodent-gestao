@@ -236,11 +236,10 @@ const CrmMetricas = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: "Execuções de Bot", value: kpis.bots, icon: Bot },
           { label: "Interações com a IA", value: kpis.ia, icon: Sparkles },
-          { label: "Follow-ups enviados", value: kpis.followups, icon: RefreshCw },
           { label: "Mensagens em Transmissões", value: kpis.broadcasts, icon: Send },
         ].map((k) => (
           <Card key={k.label} className="gradient-card shadow-card">
