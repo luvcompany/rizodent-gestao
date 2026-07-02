@@ -306,30 +306,7 @@ const CrmMetricas = () => {
         </CardContent>
       </Card>
 
-      {/* Follow-ups */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><RefreshCw size={16} /> Follow-ups enviados</CardTitle>
-          <p className="text-xs text-muted-foreground">Retomadas automáticas — 1º e 2º disparo.</p>
-        </CardHeader>
-        <CardContent className="h-[320px]">
-          {fuPorMes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem dados no período.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={fuPorMes}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
-                <Legend />
-                <Line type="monotone" dataKey="1º disparo" stroke={COLORS[0]} strokeWidth={2} />
-                <Line type="monotone" dataKey="2º disparo" stroke={COLORS[1]} strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
+
 
       {/* Automações */}
       <Card>
