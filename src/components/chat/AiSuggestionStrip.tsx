@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Check, X, Loader2, AlertTriangle, Send } from "lucide-react";
+import { Sparkles, Check, X, Loader2, AlertTriangle, Send, ThumbsDown } from "lucide-react";
 import { toast } from "sonner";
 
 type Suggestion = {
