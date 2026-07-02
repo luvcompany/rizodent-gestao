@@ -499,9 +499,21 @@ Use estes casos como guia. Quando houver "Resposta rejeitada", NÃO repita o mes
     // Hora local Bahia (UTC-3) para saudação correta
     const nowBahia = new Date(Date.now() - 3 * 60 * 60 * 1000);
     const hourBA = nowBahia.getUTCHours();
+    const minBA = nowBahia.getUTCMinutes();
+    const nowMinutesBA = hourBA * 60 + minBA;
     let saudacao = "Boa noite";
     if (hourBA >= 5 && hourBA < 12) saudacao = "Bom dia";
     else if (hourBA >= 12 && hourBA < 18) saudacao = "Boa tarde";
+
+    // Horário comercial configurado — decide se a Bia pode confirmar horário direto.
+    const shiftStartStr = String((config as any).shift_start || "07:29");
+    const shiftEndStr = String((config as any).shift_end || "18:00");
+    const parseHMM = (s: string) => {
+      const [h, m] = s.split(":").map((x) => parseInt(x, 10) || 0);
+      return h * 60 + m;
+    };
+    const inShift = nowMinutesBA >= parseHMM(shiftStartStr) && nowMinutesBA <= parseHMM(shiftEndStr);
+
 
     // Primeiro nome do lead
     const firstName = (lead.name || "").trim().split(/\s+/)[0] || "";
@@ -527,7 +539,9 @@ Serviço de interesse: ${lead.servico_interesse || "[não informado — pergunte
 Etapa atual: ${stageName || "—"}
 Endereço da unidade: ${unitAddress || "[NÃO CADASTRADO — NÃO envie endereço; diga que confirma em seguida]"}
 Hora atual (America/Bahia, UTC-3): ${String(hourBA).padStart(2, "0")}:${String(nowBahia.getUTCMinutes()).padStart(2, "0")}
+Horário comercial da clínica: ${shiftStartStr}–${shiftEndStr} (America/Bahia). AGORA está ${inShift ? "DENTRO" : "FORA"} do expediente.
 Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)${adBlock}${leadNotesBlock}${teamNotesBlock}${stageHistoryBlock}
+
 
 Use SEMPRE o nome e a cidade exatos acima. É PROIBIDO usar outro nome de cliente ou outra cidade.
 Lead ID interno (não mencione ao cliente): ${lead.id}`;
@@ -557,7 +571,21 @@ ${restricoesBlock}${diretrizesBlock}
 === BASE DE CONHECIMENTO ===
 ${kb}${examplesBlock}
 
+=== RACIOCÍNIO ANTES DE RESPONDER (siga esta ordem mental) ===
+1. LEIA A ÚLTIMA MENSAGEM DO LEAD PRIMEIRO. Se tem pergunta, dúvida, medo, objeção ou informação nova (ex.: "posso levar acompanhante?", "tenho medo", "moro em outra cidade"), RESPONDA ISSO antes de qualquer script ou agendamento. Nunca ignore o conteúdo livre da mensagem para seguir roteiro.
+2. AGENDAMENTO — solicitação vs. confirmado:
+   • Se o horário/data veio de formulário, anúncio ou preferência do próprio lead e NÃO há mensagem anterior da equipe confirmando (nem etapa "Agendado" no histórico de etapas), trate como SOLICITAÇÃO.
+   • Se AGORA está DENTRO do horário comercial (ver FATOS), você PODE confirmar o horário pedido diretamente com naturalidade (ex.: "perfeito, ${firstName || "tudo bem"}, tô te confirmando pra [dia] às [hora]"), desde que o horário pedido também caia no expediente.
+   • Se AGORA está FORA do horário comercial, ou o horário pedido está fora do expediente, NÃO confirme — diga que vai verificar a disponibilidade e retorna ("já verifico a agenda e te confirmo em seguida"). NUNCA escreva "já anotei seu agendamento" se não houve confirmação real.
+   • Se há confirmação prévia explícita no histórico ou etapa "Agendado", apenas reforce o combinado, sem reabrir.
+3. PRIMEIRO CONTATO VIA FORMULÁRIO/ANÚNCIO: saudação curta (1 linha, com primeiro nome) e vá direto ao ponto. NADA de parágrafos longos de boas-vindas.
+4. ACOLHIMENTO EMOCIONAL: se o lead demonstra medo, insegurança, dor ou frustração, ACOLHA em 1 frase antes de qualquer dado operacional (horário, endereço, valor).
+5. CONTINUIDADE: use os timestamps [dd/mm hh:mm] para NÃO repetir o que já foi dito e para reengajar com naturalidade se ficou tempo sem falar.
+6. UMA PERGUNTA POR VEZ: se faltar informação, pergunte só a mais importante — nunca empilhe 2-3 perguntas na mesma mensagem.
+7. ETAPA/DESFECHO: respeite a etapa atual dos FATOS. Se for Desqualificado/Ganho/Compareceu/Cliente/Nutrição, NÃO reinicie fluxo de agendamento — apenas dê continuidade.
+
 === TAREFA ===
+
 Gere a PRÓXIMA mensagem a enviar AGORA ao paciente. Decida a ação:
 - action="reply" → resposta direta.
 - action="handoff" → dor forte/urgência, reclamação, pedido de humano, ou negociação de preço complexa.
