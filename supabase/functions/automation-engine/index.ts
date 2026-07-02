@@ -808,7 +808,7 @@ Deno.serve(async (req) => {
       const leads = await fetchAllRows(() =>
         supabase
           .from("crm_leads")
-          .select("id, phone, last_inbound_at, created_at, updated_at")
+          .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
           .eq("stage_id", auto.stage_id)
           .not("automation_paused", "is", true)
           .order("id"),
@@ -816,15 +816,23 @@ Deno.serve(async (req) => {
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
-        // "Sem resposta" neste gatilho = tempo desde a última resposta do LEAD.
-        // Não usamos last_outbound_at aqui, porque uma resposta nossa antiga/recente não deve
-        // ser a referência. O gatilho dispara somente se o lead não fala conosco há X tempo.
+        // "Sem resposta" = o LEAD não respondeu à NOSSA última mensagem por X tempo.
+        // Requisitos:
+        //  1) O lead já enviou pelo menos uma mensagem (temos com quem falar).
+        //  2) NÓS já enviamos algo depois da última mensagem dele (SDR ou automação/bot
+        //     respondeu). Se ainda não respondemos, não faz sentido "follow-up" —
+        //     o pendente é responder, não cobrar retorno do lead.
+        //  3) Passou X tempo desde a nossa última mensagem sem retorno do lead.
         const lastInboundMs = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
+        const lastOutboundMs = lead.last_outbound_at ? new Date(lead.last_outbound_at).getTime() : 0;
 
-        // Precisa ter havido pelo menos uma mensagem do lead para medir a inatividade dele.
         if (!lastInboundMs) continue;
+        if (lastOutboundMs <= lastInboundMs) {
+          // Ainda não respondemos ao lead — não disparar follow-up.
+          continue;
+        }
 
-        const referenceTime = lastInboundMs;
+        const referenceTime = lastOutboundMs;
 
         const { data: currentStageEntry } = await supabase
           .from("crm_lead_stage_history")
