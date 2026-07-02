@@ -189,14 +189,26 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
     }
   };
 
-  const discard = async () => {
+  const dismiss = async () => {
+    if (!suggestion) return;
+    // Fechar sem enviar NÃO significa que a sugestão era ruim — apenas descarta a exibição.
+    await supabase
+      .from("ai_reply_suggestions" as any)
+      .update({ status: "dismissed", decided_at: new Date().toISOString(), decided_by: user?.id || null })
+      .eq("id", suggestion.id);
+    setSuggestion(null);
+  };
+
+  const discardAsBad = async () => {
     if (!suggestion) return;
     await supabase
       .from("ai_reply_suggestions" as any)
       .update({ status: "discarded", decided_at: new Date().toISOString(), decided_by: user?.id || null })
       .eq("id", suggestion.id);
     setSuggestion(null);
+    toast.success("Marcada como ruim — a Bia vai aprender a evitar respostas assim.");
   };
+
 
   if (loading) return null;
 
