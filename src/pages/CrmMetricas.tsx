@@ -228,7 +228,7 @@ const CrmMetricas = () => {
         <div>
           <h1 className="text-2xl font-bold">Métricas de Uso</h1>
           <p className="text-sm text-muted-foreground">
-            Bots, IA, Follow-ups, Automações e Transmissões · <span className="font-medium">{periodoLabel}</span>
+            Bots, IA, Automações e Transmissões · <span className="font-medium">{periodoLabel}</span>
           </p>
         </div>
         <Select value={preset} onValueChange={(v) => setPreset(v as Preset)}>
