@@ -43,11 +43,17 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
 
 const IA_MODE_LABELS: Record<string, string> = {
   suggest: "Sugestão",
+  suggested: "Sugerida",
+  approved: "Aprovada",
+  edited: "Corrigida",
+  discarded: "Ruim",
+  dismissed: "Ignorada",
   auto: "Envio automático",
   analyze: "Análise de conversa",
   transcribe: "Transcrição de áudio",
   reply: "Resposta gerada",
   learn: "Aprendizado",
+  good_example: "Exemplo aprendido",
   openai: "OpenAI",
   gemini: "Gemini",
   anthropic: "Anthropic",
