@@ -21,18 +21,117 @@ const fmtMes = (iso: string) => {
   return d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 };
 
+const fmtDia = (iso: string) => {
+  const d = new Date(iso);
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+};
+
+// Tradução de rótulos vindos do backend em inglês/snake_case
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  send_message: "Mensagem de texto",
+  send_template: "Template",
+  send_audio: "Áudio",
+  send_file: "Arquivo",
+  send_image: "Imagem",
+  send_video: "Vídeo",
+  move_stage: "Mover etapa",
+  assign_user: "Atribuir responsável",
+  add_tag: "Adicionar etiqueta",
+  remove_tag: "Remover etiqueta",
+  create_task: "Criar tarefa",
+  webhook: "Webhook",
+};
+
+const IA_MODE_LABELS: Record<string, string> = {
+  suggest: "Sugestão",
+  auto: "Envio automático",
+  analyze: "Análise de conversa",
+  transcribe: "Transcrição de áudio",
+  reply: "Resposta gerada",
+  learn: "Aprendizado",
+  openai: "OpenAI",
+  gemini: "Gemini",
+  anthropic: "Anthropic",
+  lovable: "Lovable AI",
+};
+
+const titleize = (s: string) =>
+  s.replace(/[_\-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+const traduzir = (key: string, dict: Record<string, string>) =>
+  dict[key?.toLowerCase?.() ?? ""] || titleize(key || "—");
+
+type Preset =
+  | "current_month"
+  | "last_month"
+  | "last_30"
+  | "last_60"
+  | "last_90"
+  | "last_6m"
+  | "last_12m"
+  | "ytd";
+
+const PRESETS: { value: Preset; label: string }[] = [
+  { value: "current_month", label: "Mês atual" },
+  { value: "last_month", label: "Mês passado" },
+  { value: "last_30", label: "Últimos 30 dias" },
+  { value: "last_60", label: "Últimos 60 dias" },
+  { value: "last_90", label: "Últimos 90 dias" },
+  { value: "last_6m", label: "Últimos 6 meses" },
+  { value: "last_12m", label: "Últimos 12 meses" },
+  { value: "ytd", label: "Este ano" },
+];
+
+const rangeFromPreset = (p: Preset): { from: Date; to: Date; granularity: "day" | "month" } => {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+  switch (p) {
+    case "current_month":
+      return { from: startOfMonth(today), to: today, granularity: "day" };
+    case "last_month": {
+      const from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const to = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+      return { from, to, granularity: "day" };
+    }
+    case "last_30": {
+      const from = new Date(today); from.setDate(from.getDate() - 29); from.setHours(0, 0, 0, 0);
+      return { from, to: today, granularity: "day" };
+    }
+    case "last_60": {
+      const from = new Date(today); from.setDate(from.getDate() - 59); from.setHours(0, 0, 0, 0);
+      return { from, to: today, granularity: "day" };
+    }
+    case "last_90": {
+      const from = new Date(today); from.setDate(from.getDate() - 89); from.setHours(0, 0, 0, 0);
+      return { from, to: today, granularity: "day" };
+    }
+    case "last_6m": {
+      const from = startOfMonth(today); from.setMonth(from.getMonth() - 5);
+      return { from, to: today, granularity: "month" };
+    }
+    case "last_12m": {
+      const from = startOfMonth(today); from.setMonth(from.getMonth() - 11);
+      return { from, to: today, granularity: "month" };
+    }
+    case "ytd": {
+      const from = new Date(today.getFullYear(), 0, 1);
+      return { from, to: today, granularity: "month" };
+    }
+  }
+};
+
 const CrmMetricas = () => {
-  const [months, setMonths] = useState<3 | 6 | 12>(6);
+  const [preset, setPreset] = useState<Preset>("current_month");
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const { from, to, granularity } = useMemo(() => rangeFromPreset(preset), [preset]);
+  const fmtEixo = granularity === "day" ? fmtDia : fmtMes;
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const to = new Date();
-      const from = new Date();
-      from.setMonth(from.getMonth() - months + 1);
-      from.setDate(1);
       const toIso = to.toISOString().slice(0, 10);
       const fromIso = from.toISOString().slice(0, 10);
       const { data: res, error } = await (supabase as any).rpc("crm_usage_metrics", {
@@ -42,7 +141,7 @@ const CrmMetricas = () => {
       setLoading(false);
     };
     load();
-  }, [months]);
+  }, [from, to]);
 
   const kpis = useMemo(() => {
     if (!data) return { bots: 0, ia: 0, followups: 0, broadcasts: 0 };
@@ -60,77 +159,84 @@ const CrmMetricas = () => {
     const map = new Map<string, any>();
     data.respostas_por_bot.forEach((r) => {
       const key = r.mes;
-      if (!map.has(key)) map.set(key, { mes: fmtMes(key) });
+      if (!map.has(key)) map.set(key, { mes: fmtEixo(key) });
       const row = map.get(key);
-      row[r.bot_name] = (row[r.bot_name] || 0) + Number(r.total);
+      const label = r.bot_name || "Sem nome";
+      row[label] = (row[label] || 0) + Number(r.total);
     });
     return Array.from(map.values());
-  }, [data]);
+  }, [data, fmtEixo]);
 
   const botNames = useMemo(() => {
     if (!data) return [];
-    return Array.from(new Set(data.respostas_por_bot.map((r) => r.bot_name)));
+    return Array.from(new Set(data.respostas_por_bot.map((r) => r.bot_name || "Sem nome")));
   }, [data]);
 
   const iaPorMes = useMemo(() => {
     if (!data) return [];
     const map = new Map<string, any>();
     data.uso_ia.forEach((r) => {
-      if (!map.has(r.mes)) map.set(r.mes, { mes: fmtMes(r.mes) });
+      if (!map.has(r.mes)) map.set(r.mes, { mes: fmtEixo(r.mes) });
       const row = map.get(r.mes);
-      row[r.mode] = (row[r.mode] || 0) + Number(r.total);
+      const label = traduzir(r.mode, IA_MODE_LABELS);
+      row[label] = (row[label] || 0) + Number(r.total);
     });
     return Array.from(map.values());
-  }, [data]);
+  }, [data, fmtEixo]);
 
   const iaModes = useMemo(() => {
     if (!data) return [];
-    return Array.from(new Set(data.uso_ia.map((r) => r.mode || "—")));
+    return Array.from(new Set(data.uso_ia.map((r) => traduzir(r.mode, IA_MODE_LABELS))));
   }, [data]);
 
   const fuPorMes = useMemo(
-    () => (data?.followups || []).map((r) => ({ mes: fmtMes(r.mes), d1: Number(r.d1), d2: Number(r.d2) })),
-    [data],
+    () => (data?.followups || []).map((r) => ({ mes: fmtEixo(r.mes), "1º disparo": Number(r.d1), "2º disparo": Number(r.d2) })),
+    [data, fmtEixo],
   );
 
   const autoPorMes = useMemo(() => {
     if (!data) return [];
     const map = new Map<string, any>();
     data.automacoes.forEach((r) => {
-      if (!map.has(r.mes)) map.set(r.mes, { mes: fmtMes(r.mes) });
+      if (!map.has(r.mes)) map.set(r.mes, { mes: fmtEixo(r.mes) });
       const row = map.get(r.mes);
-      row[r.action_type] = (row[r.action_type] || 0) + Number(r.enviados);
+      const label = traduzir(r.action_type, ACTION_TYPE_LABELS);
+      row[label] = (row[label] || 0) + Number(r.enviados);
     });
     return Array.from(map.values());
-  }, [data]);
+  }, [data, fmtEixo]);
 
   const autoTypes = useMemo(() => {
     if (!data) return [];
-    return Array.from(new Set(data.automacoes.map((r) => r.action_type)));
+    return Array.from(new Set(data.automacoes.map((r) => traduzir(r.action_type, ACTION_TYPE_LABELS))));
   }, [data]);
 
   const bcPorMes = useMemo(
     () => (data?.broadcasts || []).map((r) => ({
-      mes: fmtMes(r.mes), campanhas: Number(r.campanhas), enviados: Number(r.enviados),
+      mes: fmtEixo(r.mes), Campanhas: Number(r.campanhas), "Mensagens enviadas": Number(r.enviados),
     })),
-    [data],
+    [data, fmtEixo],
   );
 
   const COLORS = ["hsl(var(--primary))", "#22c55e", "#3b82f6", "#a855f7", "#f59e0b", "#ef4444", "#06b6d4", "#ec4899"];
+
+  const periodoLabel = `${from.toLocaleDateString("pt-BR")} — ${to.toLocaleDateString("pt-BR")}`;
 
   return (
     <div className="animate-fade-in space-y-6 overflow-y-auto h-full pr-2">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Métricas de Uso</h1>
-          <p className="text-sm text-muted-foreground">Bots, IA, Follow-ups, Automações e Transmissões</p>
+          <p className="text-sm text-muted-foreground">
+            Bots, IA, Follow-ups, Automações e Transmissões · <span className="font-medium">{periodoLabel}</span>
+          </p>
         </div>
-        <Select value={String(months)} onValueChange={(v) => setMonths(Number(v) as 3 | 6 | 12)}>
-          <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+        <Select value={preset} onValueChange={(v) => setPreset(v as Preset)}>
+          <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="3">Últimos 3 meses</SelectItem>
-            <SelectItem value="6">Últimos 6 meses</SelectItem>
-            <SelectItem value="12">Últimos 12 meses</SelectItem>
+            {PRESETS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -139,7 +245,7 @@ const CrmMetricas = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Execuções de Bot", value: kpis.bots, icon: Bot },
-          { label: "Análises de IA", value: kpis.ia, icon: Sparkles },
+          { label: "Interações com a IA", value: kpis.ia, icon: Sparkles },
           { label: "Follow-ups enviados", value: kpis.followups, icon: RefreshCw },
           { label: "Mensagens em Transmissões", value: kpis.broadcasts, icon: Send },
         ].map((k) => (
@@ -157,7 +263,10 @@ const CrmMetricas = () => {
 
       {/* Bots */}
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Bot size={16} /> Respostas por Bot / mês</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Bot size={16} /> Respostas por Bot</CardTitle>
+          <p className="text-xs text-muted-foreground">Quantas mensagens cada bot enviou no período.</p>
+        </CardHeader>
         <CardContent className="h-[320px]">
           {botPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem dados no período.</p>
@@ -180,7 +289,10 @@ const CrmMetricas = () => {
 
       {/* IA */}
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Sparkles size={16} /> Uso da IA por modo / mês</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Sparkles size={16} /> Uso da IA (Bia)</CardTitle>
+          <p className="text-xs text-muted-foreground">Interações agrupadas por tipo (sugestão, transcrição, análise, etc).</p>
+        </CardHeader>
         <CardContent className="h-[320px]">
           {iaPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem dados no período.</p>
@@ -203,7 +315,10 @@ const CrmMetricas = () => {
 
       {/* Follow-ups */}
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><RefreshCw size={16} /> Follow-ups enviados / mês</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><RefreshCw size={16} /> Follow-ups enviados</CardTitle>
+          <p className="text-xs text-muted-foreground">Retomadas automáticas — 1º e 2º disparo.</p>
+        </CardHeader>
         <CardContent className="h-[320px]">
           {fuPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem dados no período.</p>
@@ -215,8 +330,8 @@ const CrmMetricas = () => {
                 <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
                 <Legend />
-                <Line type="monotone" dataKey="d1" name="Disparo 1" stroke={COLORS[0]} strokeWidth={2} />
-                <Line type="monotone" dataKey="d2" name="Disparo 2" stroke={COLORS[1]} strokeWidth={2} />
+                <Line type="monotone" dataKey="1º disparo" stroke={COLORS[0]} strokeWidth={2} />
+                <Line type="monotone" dataKey="2º disparo" stroke={COLORS[1]} strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -225,7 +340,10 @@ const CrmMetricas = () => {
 
       {/* Automações */}
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Zap size={16} /> Automações enviadas por tipo / mês</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Zap size={16} /> Automações executadas</CardTitle>
+          <p className="text-xs text-muted-foreground">Ações disparadas por gatilhos, agrupadas por tipo.</p>
+        </CardHeader>
         <CardContent className="h-[320px]">
           {autoPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem dados no período.</p>
@@ -248,7 +366,10 @@ const CrmMetricas = () => {
 
       {/* Broadcasts */}
       <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Send size={16} /> Transmissões / mês</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2"><Send size={16} /> Transmissões (Broadcasts)</CardTitle>
+          <p className="text-xs text-muted-foreground">Campanhas disparadas e total de mensagens enviadas.</p>
+        </CardHeader>
         <CardContent className="h-[320px]">
           {bcPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem dados no período.</p>
@@ -260,8 +381,8 @@ const CrmMetricas = () => {
                 <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
                 <Legend />
-                <Bar dataKey="campanhas" name="Campanhas" fill={COLORS[2]} />
-                <Bar dataKey="enviados" name="Mensagens enviadas" fill={COLORS[0]} />
+                <Bar dataKey="Campanhas" fill={COLORS[2]} />
+                <Bar dataKey="Mensagens enviadas" fill={COLORS[0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
