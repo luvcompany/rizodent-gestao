@@ -607,6 +607,14 @@ Responda SOMENTE com JSON válido:
       const sys = extraInstruction ? `${systemPrompt}\n\n${extraInstruction}` : systemPrompt;
       if (modelId.startsWith("anthropic/") && ANTHROPIC_API_KEY) {
         const anthropicModel = modelId.replace(/^anthropic\//, "");
+        // Anthropic exige que a última mensagem seja do usuário (sem prefill).
+        const anthMessages = anchoredHistory.map((m) => ({ role: m.role, content: m.content }));
+        while (anthMessages.length > 1 && anthMessages[anthMessages.length - 1].role === "assistant") {
+          anthMessages.pop();
+        }
+        if (anthMessages.length === 0 || anthMessages[anthMessages.length - 1].role !== "user") {
+          anthMessages.push({ role: "user", content: "Com base em tudo acima, gere a próxima resposta no formato JSON solicitado." });
+        }
         const r = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
@@ -614,14 +622,6 @@ Responda SOMENTE com JSON válido:
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
           },
-          // Anthropic exige que a última mensagem seja do usuário (sem prefill).
-          const anthMessages = anchoredHistory.map((m) => ({ role: m.role, content: m.content }));
-          while (anthMessages.length > 1 && anthMessages[anthMessages.length - 1].role === "assistant") {
-            anthMessages.pop();
-          }
-          if (anthMessages.length === 0 || anthMessages[anthMessages.length - 1].role !== "user") {
-            anthMessages.push({ role: "user", content: "Com base em tudo acima, gere a próxima resposta no formato JSON solicitado." });
-          }
           body: JSON.stringify({
             model: anthropicModel,
             max_tokens: 2048,
