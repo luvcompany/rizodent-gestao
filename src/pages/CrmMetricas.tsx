@@ -187,10 +187,6 @@ const CrmMetricas = () => {
     return Array.from(new Set(data.uso_ia.map((r) => traduzir(r.mode, IA_MODE_LABELS))));
   }, [data]);
 
-  const fuPorMes = useMemo(
-    () => (data?.followups || []).map((r) => ({ mes: fmtEixo(r.mes), "1º disparo": Number(r.d1), "2º disparo": Number(r.d2) })),
-    [data, fmtEixo],
-  );
 
   const autoPorMes = useMemo(() => {
     if (!data) return [];
