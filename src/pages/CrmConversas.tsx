@@ -1276,6 +1276,23 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 <ChatReplyPreview replyTo={chat.replyTo} leadName={selectedLead.name} onCancel={() => chat.setReplyTo(null)} />
               )}
 
+              {/* Active Bot Badge */}
+              {activeExecution && (
+                <div className="flex items-center gap-2 border-t border-border bg-muted/40 px-3 py-1.5">
+                  <Badge variant="default" className="gap-1.5 bg-primary">
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                    <Bot size={12} />
+                    {activeExecution.bot_name || "Bot"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground flex-1 truncate">
+                    {activeExecution.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
+                  </span>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={handleStopBot}>
+                    <Square size={10} className="mr-1" /> Parar
+                  </Button>
+                </div>
+              )}
+
               {!(channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID) && (
                 <AiSuggestionStrip leadId={selectedLeadId} leadPhone={selectedLead.phone} />
               )}
@@ -1295,22 +1312,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 channel={channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp"}
               />
 
-              {/* Active Bot Badge */}
-              {activeExecution && (
-                <div className="absolute bottom-20 right-4 z-10 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-lg">
-                  <Badge variant="default" className="gap-1.5 bg-primary">
-                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    <Bot size={12} />
-                    {activeExecution.bot_name || "Bot"}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {activeExecution.status === "waiting_reply" ? "Aguardando resposta" : "Executando"}
-                  </span>
-                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={handleStopBot}>
-                    <Square size={10} className="mr-1" /> Parar
-                  </Button>
-                </div>
-              )}
             </div>
           ) : selectedLeadId ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
