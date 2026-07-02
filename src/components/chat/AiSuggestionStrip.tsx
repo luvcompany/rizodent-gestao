@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Check, X, Loader2, AlertTriangle, Send } from "lucide-react";
+import { Sparkles, Check, X, Loader2, AlertTriangle, Send, ThumbsDown } from "lucide-react";
 import { toast } from "sonner";
 
 type Suggestion = {
@@ -189,14 +189,26 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
     }
   };
 
-  const discard = async () => {
+  const dismiss = async () => {
+    if (!suggestion) return;
+    // Fechar sem enviar NÃO significa que a sugestão era ruim — apenas descarta a exibição.
+    await supabase
+      .from("ai_reply_suggestions" as any)
+      .update({ status: "dismissed", decided_at: new Date().toISOString(), decided_by: user?.id || null })
+      .eq("id", suggestion.id);
+    setSuggestion(null);
+  };
+
+  const discardAsBad = async () => {
     if (!suggestion) return;
     await supabase
       .from("ai_reply_suggestions" as any)
       .update({ status: "discarded", decided_at: new Date().toISOString(), decided_by: user?.id || null })
       .eq("id", suggestion.id);
     setSuggestion(null);
+    toast.success("Marcada como ruim — a Bia vai aprender a evitar respostas assim.");
   };
+
 
   if (loading) return null;
 
@@ -231,9 +243,14 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
           {suggestion.model && <Badge variant="outline" className="h-4 text-[10px] px-1">{suggestion.model.split("/").pop()}</Badge>}
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Descartar" onClick={discard}>
+          <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs text-destructive hover:text-destructive" title="Marcar como ruim (a Bia aprende a evitar)" onClick={discardAsBad}>
+            <ThumbsDown size={12} />
+            <span className="hidden sm:inline">Ruim</span>
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Fechar sem enviar" onClick={dismiss}>
             <X size={14} />
           </Button>
+
           <Button
             size="sm"
             variant={isHandoff ? "outline" : "default"}
