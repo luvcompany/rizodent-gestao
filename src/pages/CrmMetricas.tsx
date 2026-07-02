@@ -2,16 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, Sparkles, Send, RefreshCw, Zap } from "lucide-react";
+import { Bot, Sparkles, Send, Zap } from "lucide-react";
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   ResponsiveContainer, Legend,
 } from "recharts";
 
 type UsageData = {
   respostas_por_bot: Array<{ bot_name: string; mes: string; total: number; concluidos: number }>;
   uso_ia: Array<{ mes: string; mode: string; total: number; leads: number }>;
-  followups: Array<{ mes: string; d1: number; d2: number }>;
   automacoes: Array<{ mes: string; action_type: string; enviados: number; total: number }>;
   broadcasts: Array<{ mes: string; campanhas: number; enviados: number }>;
 };
@@ -44,11 +43,17 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
 
 const IA_MODE_LABELS: Record<string, string> = {
   suggest: "Sugestão",
+  suggested: "Sugerida",
+  approved: "Aprovada",
+  edited: "Corrigida",
+  discarded: "Ruim",
+  dismissed: "Ignorada",
   auto: "Envio automático",
   analyze: "Análise de conversa",
   transcribe: "Transcrição de áudio",
   reply: "Resposta gerada",
   learn: "Aprendizado",
+  good_example: "Exemplo aprendido",
   openai: "OpenAI",
   gemini: "Gemini",
   anthropic: "Anthropic",
@@ -144,11 +149,10 @@ const CrmMetricas = () => {
   }, [from, to]);
 
   const kpis = useMemo(() => {
-    if (!data) return { bots: 0, ia: 0, followups: 0, broadcasts: 0 };
+    if (!data) return { bots: 0, ia: 0, broadcasts: 0 };
     return {
       bots: data.respostas_por_bot.reduce((s, r) => s + Number(r.total), 0),
       ia: data.uso_ia.reduce((s, r) => s + Number(r.total), 0),
-      followups: data.followups.reduce((s, r) => s + Number(r.d1) + Number(r.d2), 0),
       broadcasts: data.broadcasts.reduce((s, r) => s + Number(r.enviados), 0),
     };
   }, [data]);
@@ -189,10 +193,6 @@ const CrmMetricas = () => {
     return Array.from(new Set(data.uso_ia.map((r) => traduzir(r.mode, IA_MODE_LABELS))));
   }, [data]);
 
-  const fuPorMes = useMemo(
-    () => (data?.followups || []).map((r) => ({ mes: fmtEixo(r.mes), "1º disparo": Number(r.d1), "2º disparo": Number(r.d2) })),
-    [data, fmtEixo],
-  );
 
   const autoPorMes = useMemo(() => {
     if (!data) return [];
@@ -228,7 +228,7 @@ const CrmMetricas = () => {
         <div>
           <h1 className="text-2xl font-bold">Métricas de Uso</h1>
           <p className="text-sm text-muted-foreground">
-            Bots, IA, Follow-ups, Automações e Transmissões · <span className="font-medium">{periodoLabel}</span>
+            Bots, IA, Automações e Transmissões · <span className="font-medium">{periodoLabel}</span>
           </p>
         </div>
         <Select value={preset} onValueChange={(v) => setPreset(v as Preset)}>
@@ -242,11 +242,10 @@ const CrmMetricas = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: "Execuções de Bot", value: kpis.bots, icon: Bot },
           { label: "Interações com a IA", value: kpis.ia, icon: Sparkles },
-          { label: "Follow-ups enviados", value: kpis.followups, icon: RefreshCw },
           { label: "Mensagens em Transmissões", value: kpis.broadcasts, icon: Send },
         ].map((k) => (
           <Card key={k.label} className="gradient-card shadow-card">
@@ -313,30 +312,7 @@ const CrmMetricas = () => {
         </CardContent>
       </Card>
 
-      {/* Follow-ups */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><RefreshCw size={16} /> Follow-ups enviados</CardTitle>
-          <p className="text-xs text-muted-foreground">Retomadas automáticas — 1º e 2º disparo.</p>
-        </CardHeader>
-        <CardContent className="h-[320px]">
-          {fuPorMes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem dados no período.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={fuPorMes}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="mes" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
-                <Legend />
-                <Line type="monotone" dataKey="1º disparo" stroke={COLORS[0]} strokeWidth={2} />
-                <Line type="monotone" dataKey="2º disparo" stroke={COLORS[1]} strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
+
 
       {/* Automações */}
       <Card>
