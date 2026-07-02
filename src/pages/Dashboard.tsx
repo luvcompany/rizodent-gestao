@@ -373,6 +373,9 @@ const Dashboard = () => {
     if (!filtered.pagamentos.length) return 1;
     const dates = filtered.pagamentos.map((p) => p.data_pagamento).sort();
     const firstDate = new Date(dates[0] + "T12:00:00");
+    // Início do mês de referência (não a data do primeiro pagamento),
+    // para que a média = faturamento / dias úteis decorridos do mês inteiro.
+    const monthStart = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
     const today = new Date();
     today.setHours(12, 0, 0, 0);
     // Lançamentos são feitos com 1 dia de atraso, então consideramos até ontem
@@ -381,7 +384,7 @@ const Dashboard = () => {
     const lastDayMonth = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
     const end = yesterday < lastDayMonth ? yesterday : lastDayMonth;
     let count = 0;
-    const current = new Date(firstDate);
+    const current = new Date(monthStart);
     while (current <= end) {
       const ds = toLocalDateStr(current);
       if (isWorkingDay(current, ds)) count++;
@@ -389,6 +392,8 @@ const Dashboard = () => {
     }
     return Math.max(count, 1);
   }, [filtered.pagamentos, holidaySet]);
+
+
 
   // Total de dias úteis do mês para projeção — exclui domingos e feriados
   // Quando não há pagamentos no período, calcula com base no mês atual real
