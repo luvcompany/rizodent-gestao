@@ -143,11 +143,10 @@ const CrmMetricas = () => {
   }, [from, to]);
 
   const kpis = useMemo(() => {
-    if (!data) return { bots: 0, ia: 0, followups: 0, broadcasts: 0 };
+    if (!data) return { bots: 0, ia: 0, broadcasts: 0 };
     return {
       bots: data.respostas_por_bot.reduce((s, r) => s + Number(r.total), 0),
       ia: data.uso_ia.reduce((s, r) => s + Number(r.total), 0),
-      followups: data.followups.reduce((s, r) => s + Number(r.d1) + Number(r.d2), 0),
       broadcasts: data.broadcasts.reduce((s, r) => s + Number(r.enviados), 0),
     };
   }, [data]);
