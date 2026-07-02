@@ -248,6 +248,24 @@ Deno.serve(async (req) => {
       stageName = stg?.name || null;
     }
 
+    // Detectar se lead já é paciente cadastrado no financeiro (vínculo automático por telefone existe)
+    let pacienteVinculado: { nome: string | null } | null = null;
+    try {
+      const { data: linkRow } = await supabase
+        .from("crm_lead_pacientes")
+        .select("paciente_id")
+        .eq("lead_id", leadId)
+        .maybeSingle();
+      if (linkRow?.paciente_id) {
+        const { data: pac } = await supabase
+          .from("pacientes")
+          .select("nome")
+          .eq("id", linkRow.paciente_id)
+          .maybeSingle();
+        if (pac) pacienteVinculado = { nome: pac.nome || null };
+      }
+    } catch (_) { /* ignore */ }
+
     // Carrega TODAS as mensagens do lead em ordem cronológica (paginado).
     const PAGE = 1000;
     let allMsgs: any[] = [];
