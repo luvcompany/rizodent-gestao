@@ -1,30 +1,31 @@
-## Ajustes na Edge Function `generate-reply-suggestion`
+## Ajuste no system prompt da Bia (`generate-reply-suggestion`)
 
-Somente backend (`supabase/functions/generate-reply-suggestion/index.ts`), sem tocar UI.
+Escopo: apenas backend, arquivo `supabase/functions/generate-reply-suggestion/index.ts`. Sem mudanças de UI, modelo, RAG ou tabelas.
 
-### 1. Enviar TODA a conversa (não só as últimas 60)
-- Remover o `limit(60)`.
-- Paginar `messages` do lead em blocos de 1000 (mesmo padrão já usado em `ai-conversation-assist`) até puxar tudo, em ordem cronológica.
-- Guarda de custo: se o total ultrapassar ~400 mensagens, manter as **50 primeiras** (para preservar contexto inicial: primeira dor, origem, promessas iniciais) + **todas as últimas 350**, com um marcador `[... N mensagens antigas omitidas ...]` no meio. Assim mesmo conversas gigantes cabem no prompt sem estourar contexto.
+### O que muda
 
-### 2. Incluir data/hora em cada mensagem
-- Ao montar o histórico enviado ao modelo, prefixar cada linha com timestamp local (America/Bahia, UTC-3) no formato `[dd/MM HH:mm]`.
-- Como a AI SDK espera `role`+`content`, o timestamp entra dentro do `content` (ex.: `[27/06 15:28] Boa tarde, retornaremos as atividades somente amanhã`).
-- Adicionar no system prompt uma diretriz curta: *"Cada mensagem do histórico vem prefixada com `[dia/mês hh:mm]` no fuso America/Bahia. Use isso para respeitar continuidade temporal (não retomar assunto já resolvido; se a última interação foi há muito tempo, reengaje com naturalidade)."*
+Adicionar ao `SYSTEM_PROMPT` (bloco de diretrizes) uma seção **"Como pensar antes de responder"** que replica o raciocínio que apliquei ao analisar a sugestão do Adriano:
 
-### 3. Contexto que já estava faltando (mantido do plano anterior)
-- Puxar `crm_conversation_notes` do lead e:
-  - Injetar cada nota, ancorada por `after_message_id`, como linha `[NOTA INTERNA — não enviar ao cliente] <texto>` logo após a mensagem correspondente no histórico.
-  - Notas sem âncora (ex.: observação fixada tipo *"JA É PACIENTE E DESEJA FAZER MANUTENÇÃO"*) entram em bloco próprio nos FATOS: `=== ANOTAÇÕES DA EQUIPE ===`.
-- Puxar `crm_lead_stage_history` (últimas 5) e listar nos FATOS: `Etapa X → Y em dd/MM HH:mm`.
-- Promover `lead.notes` para bloco próprio `=== OBSERVAÇÃO DO LEAD ===` acima dos FATOS.
-- Reforçar regra "RESPEITAR O COMBINADO": se a etapa atual é desfecho (Desqualificado / Ganho / Compareceu / etc.), não retomar fluxo de agendamento do zero.
+1. **Ler a última mensagem do lead como prioridade #1.** Se houver pergunta, dúvida ou informação nova (ex.: "posso levar acompanhante?", "tenho medo"), responder isso ANTES de seguir qualquer script/agendamento.
+2. **Diferenciar solicitação de agendamento vs. agendamento confirmado.**
+   - Se o horário veio de formulário/anúncio/preferência do lead e **não há confirmação registrada pela equipe** no histórico → tratar como **solicitação** ("vou verificar a disponibilidade e já te confirmo").
+   - Se há mensagem anterior da equipe confirmando explicitamente (ou registro em `crm_lead_stage_history` de etapa "Agendado") → pode confirmar normalmente.
+   - **Exceção horário comercial:** dentro do horário comercial configurado (usar `ai_assistant_config.shift_start`/`shift_end`, fuso America/Bahia) a Bia PODE confirmar o horário solicitado diretamente, sem "vou verificar", desde que o horário pedido também caia em horário de atendimento da clínica. Fora do expediente, sempre tratar como solicitação a confirmar.
+3. **Evitar saudações longas em primeiro contato via formulário.** Ir direto ao ponto (cumprimento curto + resposta objetiva).
+4. **Parafrasear/acolher conteúdo emocional** (medo, dúvida) antes de dados operacionais.
+5. **Respeitar continuidade temporal** (já existia, reforçar): não repetir informação já dada, não reabrir tópico já resolvido, considerar o tempo desde a última interação (via timestamps `[dd/MM HH:mm]` que já são injetados).
+6. **Uma pergunta por vez** quando faltar informação — não empilhar 3 perguntas na mesma mensagem.
+7. **Coerência com etapa/desfecho** (já existia, mantido): não reiniciar fluxo se etapa é Desqualificado/Ganho/Compareceu.
 
-### Não vou mexer
-- `AiSuggestionStrip.tsx`, modelo, RAG, aprendizado, `send-whatsapp-message`, tabelas.
+### Como aplicar tecnicamente
+
+- Localizar a montagem do system prompt em `generate-reply-suggestion/index.ts` e acrescentar um bloco `### RACIOCÍNIO ANTES DE RESPONDER` com as 7 diretrizes acima em linguagem imperativa curta.
+- Ler `ai_assistant_config.shift_start` e `shift_end` (já são consultados em `auto-send-suggestions`) e injetar no prompt uma linha de FATO: `HORÁRIO COMERCIAL ATUAL DA CLÍNICA: HH:MM–HH:MM (America/Bahia). Agora são [dd/MM HH:mm].` Assim a IA sabe se pode confirmar direto ou precisa dizer "vou verificar".
+- Não mexer em `AiSuggestionStrip.tsx`, `record-good-example`, RAG nem no fluxo de aprendizado.
 
 ### Validação
-Após publicar, disparar `generate-reply-suggestion` para a "cristal" (557381824640) e conferir se:
-- A sugestão referencia a observação "já é paciente e quer manutenção".
-- A sugestão respeita que a equipe já mandou o telefone da recepção (73 9841-7725).
-- Não sugere retomar agendamento — a etapa é *Desqualificado*.
+
+Reabrir a conversa do Adriano, clicar "Sugerir resposta" e conferir se a nova sugestão:
+- Acolhe a mensagem livre dele antes do agendamento.
+- Confirma o horário direto (estamos em horário comercial) sem inventar "já anotei" caso não haja confirmação prévia — ou confirma com naturalidade se o horário pedido está dentro do expediente.
+- Não abre com saudação longa.
