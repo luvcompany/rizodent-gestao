@@ -533,8 +533,25 @@ Use estes casos como guia. Quando houver "Resposta rejeitada", NÃO repita o mes
     const inShift = nowMinutesBA >= parseHMM(shiftStartStr) && nowMinutesBA <= parseHMM(shiftEndStr);
 
 
-    // Primeiro nome do lead
-    const firstName = (lead.name || "").trim().split(/\s+/)[0] || "";
+    // Primeiro nome do lead — remove prefixos/apelidos comuns (MC, DR, DRA, SR, SRA, PR, PRA, PROF, PROFA)
+    const stripNamePrefix = (raw: string): string => {
+      const tokens = (raw || "").trim().split(/\s+/).filter(Boolean);
+      const prefixes = new Set(["MC", "DR", "DR.", "DRA", "DRA.", "SR", "SR.", "SRA", "SRA.", "PR", "PR.", "PRA", "PRA.", "PROF", "PROF.", "PROFA", "PROFA.", "PADRE", "PE", "PE."]);
+      let i = 0;
+      while (i < tokens.length - 1 && prefixes.has(tokens[i].toUpperCase())) i++;
+      return tokens[i] || tokens[0] || "";
+    };
+    const rawFirst = stripNamePrefix(lead.name || "");
+    // Se o "nome" parece um @handle do Instagram (contém _, ., dígitos ou é o próprio username), não usar como nome
+    const looksLikeHandle = (n: string) => !!n && (/[._]/.test(n) || /\d{2,}/.test(n) || n.startsWith("@"));
+    const firstName = looksLikeHandle(rawFirst) ? "" : rawFirst;
+    const nameLooksLikeHandle = looksLikeHandle(lead.name || "") || looksLikeHandle(rawFirst);
+    const isInstagram = !!(lead as any).instagram_user_id;
+
+    // Data de hoje por extenso (America/Bahia)
+    const weekdays = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+    const monthsBR = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+    const todayLabel = `${weekdays[nowBahia.getUTCDay()]}, ${String(nowBahia.getUTCDate()).padStart(2,"0")}/${String(nowBahia.getUTCMonth()+1).padStart(2,"0")}/${nowBahia.getUTCFullYear()} (${monthsBR[nowBahia.getUTCMonth()]})`;
 
     // Bloco de anúncio (espelhar tema quando vier de ad)
     const hasAd = !!((lead as any).titulo_anuncio || (lead as any).descricao_anuncio || (lead as any).nome_anuncio);
@@ -544,21 +561,29 @@ Título: ${(lead as any).titulo_anuncio || "—"}
 Descrição: ${(lead as any).descricao_anuncio || "—"}
 Nome do anúncio: ${(lead as any).nome_anuncio || "—"}
 Origem (source): ${lead.source || "—"}
-Use isso para abrir com acolhimento que conecte com o problema/dor do anúncio (ex.: anúncio sobre "dente faltando / vergonha de sorrir" → "imagino o quanto incomoda, mas fica tranquila(o), a gente resolve"). NUNCA invente conteúdo que não esteja acima e NUNCA cite a palavra "anúncio"/"campanha" ao cliente.`
+Use isso para abrir com acolhimento que conecte com o problema/dor do anúncio (ex.: anúncio sobre "dente faltando / vergonha de sorrir" → "imagino o quanto incomoda, mas fica tranquila(o), a gente resolve"). IMPORTANTE: se o lead PERGUNTAR sobre um serviço DIFERENTE do anúncio (ex.: anúncio de facetas e o lead pergunta sobre aparelho), reconheça AMBOS os temas na resposta — não substitua o anúncio pela pergunta nem vice-versa. NUNCA invente conteúdo que não esteja acima e NUNCA cite a palavra "anúncio"/"campanha" ao cliente.`
+      : "";
+
+    // Bloco paciente vinculado (financeiro)
+    const pacienteBlock = pacienteVinculado
+      ? `\n\n=== PACIENTE JÁ CADASTRADO NO FINANCEIRO ===
+Este lead já é PACIENTE cadastrado (nome no cadastro: ${pacienteVinculado.nome || "—"}). Reconheça isso, NÃO trate como lead novo, NÃO pergunte cidade/serviço do zero. Se ele afirmar "já sou paciente" / "já fiz aí" / "já coloquei prótese/faceta/implante aí", CONFIRME com naturalidade e diga que vai verificar o cadastro/histórico.`
       : "";
 
     // Bloco de FATOS CONFIRMADOS — âncora obrigatória
     const factsBlock = `=== FATOS CONFIRMADOS (use EXATAMENTE, nunca invente nem troque) ===
-Nome do cliente: ${lead.name || "[não informado — pergunte]"}
-Primeiro nome (use na saudação): ${firstName || "[não informado]"}
+Nome do cliente: ${lead.name || "[não informado — pergunte]"}${nameLooksLikeHandle ? " ⚠️ ESTE VALOR PARECE UM @USERNAME do Instagram — NÃO use como nome. Use \"Oi!\" neutro até o lead dizer o nome real." : ""}
+Primeiro nome (use na saudação): ${firstName || "[não informado — use \"Oi!\" neutro]"}
 Cidade/Unidade: ${lead.cidade || "[não informado — pergunte]"}
 Telefone: ${lead.phone || "—"}
 Serviço de interesse: ${lead.servico_interesse || "[não informado — pergunte]"}
 Etapa atual: ${stageName || "—"}
 Endereço da unidade: ${unitAddress || "[NÃO CADASTRADO — NÃO envie endereço; diga que confirma em seguida]"}
+Hoje é: ${todayLabel}
 Hora atual (America/Bahia, UTC-3): ${String(hourBA).padStart(2, "0")}:${String(nowBahia.getUTCMinutes()).padStart(2, "0")}
 Horário comercial da clínica: ${shiftStartStr}–${shiftEndStr} (America/Bahia). AGORA está ${inShift ? "DENTRO" : "FORA"} do expediente.
-Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)${adBlock}${leadNotesBlock}${teamNotesBlock}${stageHistoryBlock}
+Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)
+Canal: ${isInstagram ? "Instagram (Direct)" : "WhatsApp"}${pacienteBlock}${adBlock}${leadNotesBlock}${teamNotesBlock}${stageHistoryBlock}
 
 
 Use SEMPRE o nome e a cidade exatos acima. É PROIBIDO usar outro nome de cliente ou outra cidade.
