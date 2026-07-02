@@ -2,16 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, Sparkles, Send, RefreshCw, Zap } from "lucide-react";
+import { Bot, Sparkles, Send, Zap } from "lucide-react";
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   ResponsiveContainer, Legend,
 } from "recharts";
 
 type UsageData = {
   respostas_por_bot: Array<{ bot_name: string; mes: string; total: number; concluidos: number }>;
   uso_ia: Array<{ mes: string; mode: string; total: number; leads: number }>;
-  followups: Array<{ mes: string; d1: number; d2: number }>;
   automacoes: Array<{ mes: string; action_type: string; enviados: number; total: number }>;
   broadcasts: Array<{ mes: string; campanhas: number; enviados: number }>;
 };
