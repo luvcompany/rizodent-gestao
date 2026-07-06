@@ -175,6 +175,7 @@ export const PublicApp = ({ basename }: { basename: string }) => (
           <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<CrclinLanding />} />
+            <Route path="/.lovable/oauth/consent" element={withRouteSuspense(<OAuthConsent />)} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<AdminLayout />}>
               <Route path="/admin" element={<AdminClientes />} />
