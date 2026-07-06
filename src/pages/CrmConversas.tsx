@@ -73,7 +73,7 @@ type LeadConversation = {
   instagram_profile_pic_url?: string | null;
 };
 
-type PipelineWithRoles = { id: string; name: string; allowed_roles: string[] | null };
+type PipelineWithRoles = { id: string; name: string; allowed_roles: string[] | null; is_instagram?: boolean | null };
 
 // Global cache for leads list — survives component remounts
 const leadsListCache = {
