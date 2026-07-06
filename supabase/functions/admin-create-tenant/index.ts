@@ -136,6 +136,7 @@ Deno.serve(async (req) => {
         tenant_id: tenant.id,
         name: "Funil Principal",
         color: "#6366f1",
+        is_default: true,
       })
       .select()
       .single();
