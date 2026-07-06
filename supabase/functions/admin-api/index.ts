@@ -544,7 +544,9 @@ async function reportBySource(p: URLSearchParams) {
 Deno.serve(async (req) => {
   cors = buildCorsFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
-  if (!authOk(req)) return json({ error: "Unauthorized — provide API key as Bearer token or x-api-key header" }, 401);
+  const resolvedTenant = await resolveTenantFromAuth(req);
+  if (!resolvedTenant) return json({ error: "Unauthorized — provide API key as Bearer token or x-api-key header" }, 401);
+  TENANT_ID = resolvedTenant;
 
   const url = new URL(req.url);
   // Path after /admin-api
