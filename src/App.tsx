@@ -29,6 +29,7 @@ const Relatorios = lazyWithPreload(() => import("./pages/Relatorios"));
 const Marketing = lazyWithPreload(() => import("./pages/Marketing"));
 const CadastroLeads = lazyWithPreload(() => import("./pages/CadastroLeads"));
 const Usuarios = lazyWithPreload(() => import("./pages/Usuarios"));
+const AcessosLog = lazyWithPreload(() => import("./pages/AcessosLog"));
 const TiposProcedimento = lazyWithPreload(() => import("./pages/TiposProcedimento"));
 const RegistroDiario = lazyWithPreload(() => import("./pages/RegistroDiario"));
 const Configuracoes = lazyWithPreload(() => import("./pages/Configuracoes"));
