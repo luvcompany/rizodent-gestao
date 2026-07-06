@@ -306,6 +306,16 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     id: string; status: string; bot_name?: string;
   } | null>(null);
 
+  // Descobre o pipeline de Instagram do tenant via flag `is_instagram`.
+  // FALLBACK: se nenhum pipeline tiver a flag marcada, usa a constante legada
+  // (preserva o comportamento atual da Rizodent enquanto a flag não é populada).
+  const instagramPipelineId = useMemo(() => {
+    const flagged = pipelines.find(p => p.is_instagram);
+    return flagged?.id || INSTAGRAM_PIPELINE_ID;
+  }, [pipelines]);
+
+
+
   // Unified chat hook
   const chat = useChatConversation(selectedLeadId);
   const convNotes = useConversationNotes(selectedLeadId);
