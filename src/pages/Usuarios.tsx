@@ -61,7 +61,6 @@ const Usuarios = () => {
   const [newPassword, setNewPassword] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const isAdmin = userRole === "superadmin";
   const canManageUsers = userRole === "superadmin" || userRole === "crc" || userRole === "gerente";
   const canBlock = userRole === "superadmin" || userRole === "crc" || userRole === "gerente";
 
