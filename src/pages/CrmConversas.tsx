@@ -73,7 +73,7 @@ type LeadConversation = {
   instagram_profile_pic_url?: string | null;
 };
 
-type PipelineWithRoles = { id: string; name: string; allowed_roles: string[] | null };
+type PipelineWithRoles = { id: string; name: string; allowed_roles: string[] | null; is_instagram?: boolean | null };
 
 // Global cache for leads list — survives component remounts
 const leadsListCache = {
@@ -226,7 +226,7 @@ export const prefetchConversasData = async (tenantId: string, userId: string): P
     const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
       fetchAllConversationLeads(tenantId),
       supabase.from("profiles").select("id, nome").eq("tenant_id", tenantId),
-      supabase.from("crm_pipelines").select("id, name, allowed_roles").eq("tenant_id", tenantId).order("created_at"),
+      supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenantId).order("created_at"),
     ]);
     const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
     const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
@@ -306,6 +306,16 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     id: string; status: string; bot_name?: string;
   } | null>(null);
 
+  // Descobre o pipeline de Instagram do tenant via flag `is_instagram`.
+  // FALLBACK: se nenhum pipeline tiver a flag marcada, usa a constante legada
+  // (preserva o comportamento atual da Rizodent enquanto a flag não é populada).
+  const instagramPipelineId = useMemo(() => {
+    const flagged = pipelines.find(p => p.is_instagram);
+    return flagged?.id || INSTAGRAM_PIPELINE_ID;
+  }, [pipelines]);
+
+
+
   // Unified chat hook
   const chat = useChatConversation(selectedLeadId);
   const convNotes = useConversationNotes(selectedLeadId);
@@ -381,7 +391,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
           fetchAllConversationLeads(tenant.id),
           supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
-          supabase.from("crm_pipelines").select("id, name, allowed_roles").eq("tenant_id", tenant.id).order("created_at"),
+          supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenant.id).order("created_at"),
         ]);
         const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
         const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
@@ -408,7 +418,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
           setLoading(false);
         }),
         supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
-        supabase.from("crm_pipelines").select("id, name, allowed_roles").eq("tenant_id", tenant.id).order("created_at"),
+        supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenant.id).order("created_at"),
       ]);
       const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
       const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
@@ -642,7 +652,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   const handleSendTemplate = useCallback(async (template: any) => {
     const ch: "whatsapp" | "instagram" =
-      channel === "instagram" || !!selectedLead?.instagram_user_id || selectedLead?.pipeline_id === INSTAGRAM_PIPELINE_ID
+      channel === "instagram" || !!selectedLead?.instagram_user_id || selectedLead?.pipeline_id === instagramPipelineId
         ? "instagram"
         : "whatsapp";
     await chat.sendTemplate(template, selectedLead?.phone || null, ch);
@@ -1247,7 +1257,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         allMessages={chat.messages}
                         onReply={chat.setReplyTo}
                         onForward={chat.setForwardMsg}
-                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone, channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp")}
+                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone, channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId ? "instagram" : "whatsapp")}
                         onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                         onScrollToMessage={chat.scrollToMessage}
                         igAccountsMap={Object.fromEntries(instagramAccounts.map((a) => [a.id, a.username]))}
@@ -1293,7 +1303,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 </div>
               )}
 
-              {!(channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID) && (
+              {!(channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId) && (
                 <AiSuggestionStrip leadId={selectedLeadId} leadPhone={selectedLead.phone} />
               )}
               <ChatInput
@@ -1309,7 +1319,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
                 lastInboundDmAt={chat.lastInboundDmAt}
-                channel={channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp"}
+                channel={channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId ? "instagram" : "whatsapp"}
               />
 
             </div>

@@ -32,6 +32,7 @@ type Stage = {
   name: string;
   color: string;
   position: number;
+  is_won?: boolean | null;
 };
 
 type Lead = {
@@ -66,6 +67,9 @@ type Pipeline = {
   id: string;
   name: string;
   color?: string;
+  is_default?: boolean | null;
+  is_instagram?: boolean | null;
+  is_posvenda?: boolean | null;
 };
 
 const PRESET_COLORS = [
@@ -665,19 +669,28 @@ export default function CrmKanban() {
 
     // ── Fase 1: pipelines, perfis, etapas, leads e followups em paralelo ────
     const [pipelinesRes, profilesRes, stagesRes, fqRes] = await Promise.all([
-      supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
+      supabase.from("crm_pipelines").select("id, name, color, description, created_at, is_default, is_instagram, is_posvenda").order("created_at"),
       supabase.from("profiles").select("id, nome"),
       targetPipelineId
-        ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
+        ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position, is_won").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
 
     const pList = (pipelinesRes.data as Pipeline[]) || [];
-    const principal = pList.find(pp => /funil principal/i.test(pp.name)) || pList[0];
+    // Identifica pipelines default/pós-venda via flag, com FALLBACK ao regex de nome
+    // (mantém comportamento atual da Rizodent enquanto as flags não são populadas).
+    const principal =
+      pList.find(pp => pp.is_default) ||
+      pList.find(pp => /funil principal/i.test(pp.name)) ||
+      pList[0];
+    const posvendaPipeline =
+      pList.find(pp => pp.is_posvenda) ||
+      pList.find(pp => /p[óo]s.?venda/i.test(pp.name));
     const defaultPipeline = isPosvendaOnly
-      ? (pList.find(pp => /p[óo]s.?venda/i.test(pp.name)) || pList[0])
+      ? (posvendaPipeline || pList[0])
       : principal;
+
 
     let p: Pipeline | undefined;
     if (selectedPipelineId) {
@@ -686,7 +699,8 @@ export default function CrmKanban() {
       p = pList.find(pp => pp.id === pipeline.id) || defaultPipeline;
     } else if (stored && pList.find(pp => pp.id === stored)) {
       const storedPipeline = pList.find(pp => pp.id === stored)!;
-      if (!isPosvendaOnly && /p[óo]s.?venda/i.test(storedPipeline.name)) {
+      const isStoredPosvenda = storedPipeline.is_posvenda || /p[óo]s.?venda/i.test(storedPipeline.name);
+      if (!isPosvendaOnly && isStoredPosvenda) {
         p = defaultPipeline;
       } else {
         p = storedPipeline;
@@ -707,7 +721,7 @@ export default function CrmKanban() {
     if (targetPipelineId === p.id && stagesRes.data) {
       finalStages = (stagesRes.data as Stage[]) || [];
     } else {
-      const s2 = await supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position");
+      const s2 = await supabase.from("crm_stages").select("id, pipeline_id, name, color, position, is_won").eq("pipeline_id", p.id).order("position");
       finalStages = (s2.data as Stage[]) || [];
     }
     const stageLeadChunks = await Promise.all(finalStages.map(s => fetchStageLeads(s.id)));
@@ -810,7 +824,10 @@ export default function CrmKanban() {
 
     // ── Auto-move: leads com pagamento que ainda estão antes de "Contratado" ─
     if (paidLeadIds.size > 0) {
-      const contratadoStage = finalStages.find((s: any) => /contrat/i.test(s.name) && !/n[aã]o/i.test(s.name));
+      // Identifica etapa de ganho via flag `is_won`, com FALLBACK ao regex de nome.
+      const contratadoStage =
+        finalStages.find((s: any) => s.is_won) ||
+        finalStages.find((s: any) => /contrat/i.test(s.name) && !/n[aã]o/i.test(s.name));
       if (contratadoStage) {
         const leadsToMove = finalLeads.filter(l => {
           if (!paidLeadIds.has(l.id)) return false;

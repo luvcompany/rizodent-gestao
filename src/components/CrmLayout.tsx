@@ -68,7 +68,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
   return items;
 };
 
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
+// (Instagram pipeline id agora é resolvido dinamicamente via crm_pipelines.is_instagram — fallback dentro de CrmConversas)
 
 const CrmLayout = () => {
   const navigate = useNavigate();
