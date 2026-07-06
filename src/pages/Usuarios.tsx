@@ -253,13 +253,20 @@ const Usuarios = () => {
                         <TableCell className="text-muted-foreground">{p.email}</TableCell>
                         <TableCell>{p.cargo || "—"}</TableCell>
                         <TableCell>
-                          {role ? (
-                            <Badge variant="outline" className={roleBadgeClass[role.role]}>
-                              {roleLabels[role.role]}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">Sem função</span>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {role ? (
+                              <Badge variant="outline" className={roleBadgeClass[role.role]}>
+                                {roleLabels[role.role]}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">Sem função</span>
+                            )}
+                            {p.is_blocked && (
+                              <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30">
+                                Bloqueado
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
