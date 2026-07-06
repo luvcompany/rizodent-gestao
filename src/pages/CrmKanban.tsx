@@ -32,6 +32,7 @@ type Stage = {
   name: string;
   color: string;
   position: number;
+  is_won?: boolean | null;
 };
 
 type Lead = {
