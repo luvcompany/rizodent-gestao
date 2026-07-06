@@ -30,26 +30,24 @@ Deno.serve(async (req) => {
   if (!auth.ok) return unauthorizedResponse(corsHeaders);
 
   try {
-    const { data: config } = await supabase
-      .from("ai_assistant_config")
-      .select("*")
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!config) return new Response(JSON.stringify({ skipped: "no_config" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    if (config.auto_send_enabled !== true) {
-      return new Response(JSON.stringify({ skipped: "auto_send_disabled" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Per-tenant config cache: never fall back to another tenant's config
+    const configCache = new Map<string, any | null>();
+    async function getTenantConfig(tenantId: string): Promise<any | null> {
+      if (configCache.has(tenantId)) return configCache.get(tenantId) ?? null;
+      const { data } = await supabase
+        .from("ai_assistant_config")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      configCache.set(tenantId, data || null);
+      return data || null;
     }
 
-    const waitMinutes = Math.max(0, Number(config.wait_minutes) || 10);
-    const recoilHours = Math.max(0, Number(config.recoil_hours) || 2);
-    const shiftStart = parseHMM(config.shift_start || "07:29");
-    const shiftEnd = parseHMM(config.shift_end || "14:00");
     const now = new Date();
     const localMin = bahiaTimeOfDay().minutes;
-    const inShift = localMin >= shiftStart && localMin <= shiftEnd;
 
     // Fetch pending reply suggestions (limit batch)
     const { data: pending } = await supabase
@@ -65,13 +63,24 @@ Deno.serve(async (req) => {
       try {
         const { data: lead } = await supabase
           .from("crm_leads")
-          .select("id, phone, last_inbound_at, instagram_user_id")
+          .select("id, tenant_id, phone, last_inbound_at, instagram_user_id")
           .eq("id", s.lead_id)
           .maybeSingle();
         if (!lead || !lead.phone || lead.instagram_user_id) {
           processed.push({ id: s.id, skipped: "no_phone_or_instagram" });
           continue;
         }
+
+        if (!lead.tenant_id) { processed.push({ id: s.id, skipped: "no_config" }); continue; }
+        const config = await getTenantConfig(lead.tenant_id);
+        if (!config) { processed.push({ id: s.id, skipped: "no_config" }); continue; }
+        if (config.auto_send_enabled !== true) { processed.push({ id: s.id, skipped: "auto_send_disabled" }); continue; }
+
+        const waitMinutes = Math.max(0, Number(config.wait_minutes) || 10);
+        const recoilHours = Math.max(0, Number(config.recoil_hours) || 2);
+        const shiftStart = parseHMM(config.shift_start || "07:29");
+        const shiftEnd = parseHMM(config.shift_end || "14:00");
+        const inShift = localMin >= shiftStart && localMin <= shiftEnd;
 
         const lastInbound = lead.last_inbound_at ? new Date(lead.last_inbound_at) : null;
         if (!lastInbound) { processed.push({ id: s.id, skipped: "no_last_inbound" }); continue; }
