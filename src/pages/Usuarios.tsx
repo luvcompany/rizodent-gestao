@@ -62,6 +62,7 @@ const Usuarios = () => {
   const [creating, setCreating] = useState(false);
 
   const isAdmin = userRole === "superadmin";
+  const canBlock = userRole === "superadmin" || userRole === "crc";
 
   const fetchData = async () => {
     setLoading(true);
