@@ -62,6 +62,7 @@ const AdminClienteDetalhe = lazyWithPreload(() => import("./pages/admin/AdminCli
 const AdminLogs = lazyWithPreload(() => import("./pages/admin/AdminLogs"));
 const AdminLogin = lazyWithPreload(() => import("./pages/admin/AdminLogin"));
 const NotFound = lazyWithPreload(() => import("./pages/NotFound"));
+const OAuthConsent = lazyWithPreload(() => import("./pages/OAuthConsent"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
