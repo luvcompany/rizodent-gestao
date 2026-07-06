@@ -136,6 +136,25 @@ const Usuarios = () => {
 
   const getInitials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
+  const handleToggleBlock = async (profile: Profile) => {
+    const willBlock = !profile.is_blocked;
+    const msg = willBlock
+      ? `Tem certeza que deseja bloquear o acesso de ${profile.nome}? Ele não conseguirá mais entrar no sistema.`
+      : `Desbloquear o acesso de ${profile.nome}?`;
+    if (!window.confirm(msg)) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-set-user-blocked", {
+        body: { user_id: profile.id, blocked: willBlock },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(willBlock ? "Usuário bloqueado." : "Usuário desbloqueado.");
+      fetchData();
+    } catch (err: any) {
+      toast.error("Erro: " + (err.message || err));
+    }
+  };
+
   return (
     <div className="animate-fade-in space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
