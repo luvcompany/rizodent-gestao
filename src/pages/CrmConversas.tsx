@@ -652,7 +652,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   const handleSendTemplate = useCallback(async (template: any) => {
     const ch: "whatsapp" | "instagram" =
-      channel === "instagram" || !!selectedLead?.instagram_user_id || selectedLead?.pipeline_id === INSTAGRAM_PIPELINE_ID
+      channel === "instagram" || !!selectedLead?.instagram_user_id || selectedLead?.pipeline_id === instagramPipelineId
         ? "instagram"
         : "whatsapp";
     await chat.sendTemplate(template, selectedLead?.phone || null, ch);
@@ -1257,7 +1257,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         allMessages={chat.messages}
                         onReply={chat.setReplyTo}
                         onForward={chat.setForwardMsg}
-                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone, channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp")}
+                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone, channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId ? "instagram" : "whatsapp")}
                         onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                         onScrollToMessage={chat.scrollToMessage}
                         igAccountsMap={Object.fromEntries(instagramAccounts.map((a) => [a.id, a.username]))}
@@ -1303,7 +1303,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 </div>
               )}
 
-              {!(channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID) && (
+              {!(channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId) && (
                 <AiSuggestionStrip leadId={selectedLeadId} leadPhone={selectedLead.phone} />
               )}
               <ChatInput
@@ -1319,7 +1319,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
                 lastInboundDmAt={chat.lastInboundDmAt}
-                channel={channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === INSTAGRAM_PIPELINE_ID ? "instagram" : "whatsapp"}
+                channel={channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId ? "instagram" : "whatsapp"}
               />
 
             </div>
