@@ -26,6 +26,8 @@ const jsonWith = (cors: Record<string, string>) => (body: any, status = 200) =>
   });
 
 Deno.serve(async (req) => {
+  const corsHeaders = buildCors(req);
+  const json = jsonWith(corsHeaders);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -38,6 +40,22 @@ Deno.serve(async (req) => {
     if (!slug || !email || !password) return json({ error: "Dados incompletos." }, 400);
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+    // Rate limit: bloqueia se houver 10+ falhas de login para este e-mail nos últimos 15 min.
+    // Limite alto o suficiente para nunca travar um usuário legítimo; apenas falhas contam.
+    try {
+      const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { count: failCount } = await admin
+        .from("access_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("email", email)
+        .eq("event", "login_failed")
+        .gte("created_at", since);
+      if ((failCount ?? 0) >= 10) {
+        return json({ error: "Muitas tentativas. Tente novamente em alguns minutos." }, 429);
+      }
+    } catch (_e) { /* fail-open: nunca travar login por erro de log */ }
+
 
     // 1) Resolver tenant pelo slug
     const { data: tenant, error: tErr } = await admin
