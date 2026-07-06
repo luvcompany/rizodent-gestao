@@ -8,12 +8,32 @@ import { safeEqual } from "../_shared/authz.ts";
 
 const TENANT_ID = "00000000-0000-0000-0000-000000000010"; // Rizodent
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
+const ALLOWED_ORIGINS = [
+  "https://crclin.com.br",
+  "https://www.crclin.com.br",
+  "https://app.crclin.com.br",
+  "https://rizodent-gestao.lovable.app",
+  "https://id-preview--776b814b-ba0d-4aab-a78f-ae5953dabe2a.lovable.app",
+];
+// `cors` é reatribuído no início de cada request (Deno.serve) para refletir a Origin permitida.
+let cors: Record<string, string> = {
+  "Access-Control-Allow-Origin": ALLOWED_ORIGINS[0],
+  "Vary": "Origin",
   "Access-Control-Allow-Headers": "authorization, x-api-key, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "X-Admin-API-Version": "media-download-2026-06-22",
 };
+function buildCorsFor(req: Request) {
+  const origin = req.headers.get("origin") || "";
+  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-api-key, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+    "X-Admin-API-Version": "media-download-2026-06-22",
+  };
+}
 const json = (b: any, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
@@ -502,6 +522,7 @@ async function reportBySource(p: URLSearchParams) {
 }
 
 Deno.serve(async (req) => {
+  cors = buildCorsFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!authOk(req)) return json({ error: "Unauthorized — provide API key as Bearer token or x-api-key header" }, 401);
 

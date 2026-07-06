@@ -423,6 +423,20 @@ async function persistMessage(opts: {
   // Espelha no chat unificado (DMs e comentários no mesmo thread do lead)
   if (leadId) {
     const isComment = opts.messageType === "comment";
+    const dedupeId = isComment ? opts.commentId : opts.igMessageId;
+    // Dedupe: mesmo instagram_message_id/comment_id não é inserido de novo.
+    // Só descarta reenvios EXATOS do mesmo ID; IDs diferentes SEMPRE entram.
+    if (dedupeId) {
+      const { data: dup } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("instagram_message_id", dedupeId)
+        .maybeSingle();
+      if (dup?.id) {
+        console.log(`[ig-lite] Duplicate ${isComment ? "comment" : "message"} ${dedupeId} — skipping insert`);
+        return;
+      }
+    }
     const { data: savedMsg } = await supabase.from("messages").insert({
       lead_id: leadId,
       tenant_id: opts.account.tenant_id,

@@ -1,18 +1,27 @@
 // @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-// Note: previous implementation reset the user's password to a random one to log in,
-// which broke the user's real password permanently. We now use generateLink({ magiclink })
-// + verifyOtp to mint a real session WITHOUT touching the password.
+const ALLOWED_ORIGINS = [
+  "https://crclin.com.br",
+  "https://www.crclin.com.br",
+  "https://app.crclin.com.br",
+  "https://rizodent-gestao.lovable.app",
+  "https://id-preview--776b814b-ba0d-4aab-a78f-ae5953dabe2a.lovable.app",
+];
+function buildCors(req: Request) {
+  const origin = req.headers.get("origin") || "";
+  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
 
 Deno.serve(async (req) => {
+  const corsHeaders = buildCors(req);
+  const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
     const URL = Deno.env.get("SUPABASE_URL")!;
