@@ -159,6 +159,7 @@ Deno.serve(async (req: Request) => {
             page_access_token: page.access_token,
             long_lived_token_expires_at: expiresAt,
             is_active: true,
+            tenant_id: tenantId,
           },
           { onConflict: "instagram_account_id" },
         );
