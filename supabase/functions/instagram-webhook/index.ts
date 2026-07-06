@@ -384,6 +384,20 @@ async function persistMessage(opts: {
 
   if (leadId) {
     const isComment = opts.messageType === "comment";
+    const dedupeId = isComment ? opts.commentId : opts.igMessageId;
+    // Dedupe: se a Meta reenviar o mesmo evento (mesmo instagram_message_id/comment_id),
+    // não duplicar. Só descarta em caso de ID igual — IDs diferentes SEMPRE entram.
+    if (dedupeId) {
+      const { data: dup } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("instagram_message_id", dedupeId)
+        .maybeSingle();
+      if (dup?.id) {
+        console.log(`[ig-webhook] Duplicate ${isComment ? "comment" : "message"} ${dedupeId} — skipping insert`);
+        return;
+      }
+    }
     await supabase.from("messages").insert({
       lead_id: leadId,
       tenant_id: opts.account.tenant_id,
