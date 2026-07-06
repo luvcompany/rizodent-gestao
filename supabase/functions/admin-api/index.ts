@@ -41,14 +41,30 @@ function buildCorsFor(req: Request) {
 const json = (b: any, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
-function authOk(req: Request) {
-  const key = Deno.env.get("RIZODENT_ADMIN_API_KEY");
-  if (!key) return false;
+async function resolveTenantFromAuth(req: Request): Promise<string | null> {
   const h = req.headers.get("authorization") || req.headers.get("Authorization") || "";
   const token = h.replace(/^Bearer\s+/i, "").trim();
   const xKey = (req.headers.get("x-api-key") || "").trim();
-  // Comparação de tempo constante (evita timing attack em API key).
-  return safeEqual(token, key) || safeEqual(xKey, key);
+  const provided = token || xKey;
+  if (!provided) return null;
+
+  // 1) Rizodent legacy key — comportamento atual preservado.
+  const rizoKey = Deno.env.get("RIZODENT_ADMIN_API_KEY");
+  if (rizoKey) {
+    if (safeEqual(token, rizoKey) || safeEqual(xKey, rizoKey)) {
+      return RIZODENT_TENANT_ID;
+    }
+  }
+
+  // 2) Chaves per-tenant em tenant_api_keys.
+  const { data } = await admin
+    .from("tenant_api_keys")
+    .select("tenant_id, api_key, active")
+    .eq("api_key", provided)
+    .eq("active", true)
+    .maybeSingle();
+  if (data && (data as any).tenant_id) return (data as any).tenant_id as string;
+  return null;
 }
 
 const URL_BASE = Deno.env.get("SUPABASE_URL")!;
