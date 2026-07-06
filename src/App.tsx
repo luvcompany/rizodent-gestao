@@ -62,6 +62,7 @@ const AdminClienteDetalhe = lazyWithPreload(() => import("./pages/admin/AdminCli
 const AdminLogs = lazyWithPreload(() => import("./pages/admin/AdminLogs"));
 const AdminLogin = lazyWithPreload(() => import("./pages/admin/AdminLogin"));
 const NotFound = lazyWithPreload(() => import("./pages/NotFound"));
+const OAuthConsent = lazyWithPreload(() => import("./pages/OAuthConsent"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -174,6 +175,7 @@ export const PublicApp = ({ basename }: { basename: string }) => (
           <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<CrclinLanding />} />
+            <Route path="/.lovable/oauth/consent" element={withRouteSuspense(<OAuthConsent />)} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<AdminLayout />}>
               <Route path="/admin" element={<AdminClientes />} />
@@ -206,6 +208,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
           <DataPrefetcher />
           <Routes>
             <Route path="/" element={withRouteSuspense(<TenantLogin />)} />
+            <Route path="/.lovable/oauth/consent" element={withRouteSuspense(<OAuthConsent />)} />
             <Route path="/change-password" element={<ProtectedRoute>{withRouteSuspense(<ChangePassword />)}</ProtectedRoute>} />
             <Route
               element={
