@@ -226,6 +226,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/marketing" element={withRouteSuspense(<Marketing />)} />
               <Route path="/leads" element={withRouteSuspense(<CadastroLeads />)} />
               <Route path="/usuarios" element={withRouteSuspense(<Usuarios />)} />
+              <Route path="/acessos" element={withRouteSuspense(<AcessosLog />)} />
               <Route path="/procedimentos" element={withRouteSuspense(<TiposProcedimento />)} />
               <Route path="/registro-diario" element={withRouteSuspense(<RegistroDiario />)} />
               <Route path="/configuracoes" element={withRouteSuspense(<Configuracoes />)} />
