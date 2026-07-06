@@ -178,7 +178,7 @@ const Atendimento = () => {
   // Auto-pick clinic: single active clinic, otherwise first match by city
   useEffect(() => {
     if (clinicaId || clinicas.length === 0) return;
-    const activeClinicas = clinicas.filter((c) => c.ativo !== false);
+    const activeClinicas = clinicas.filter((c) => c.ativa);
     if (activeClinicas.length === 1) {
       setClinicaId(activeClinicas[0].id);
       return;
