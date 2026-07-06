@@ -1944,6 +1944,9 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          is_default: boolean
+          is_instagram: boolean
+          is_posvenda: boolean
           name: string
           tenant_id: string | null
         }
@@ -1953,6 +1956,9 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_default?: boolean
+          is_instagram?: boolean
+          is_posvenda?: boolean
           name: string
           tenant_id?: string | null
         }
@@ -1962,6 +1968,9 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_default?: boolean
+          is_instagram?: boolean
+          is_posvenda?: boolean
           name?: string
           tenant_id?: string | null
         }
@@ -2027,6 +2036,7 @@ export type Database = {
           color: string
           created_at: string
           id: string
+          is_won: boolean
           name: string
           pipeline_id: string
           position: number
@@ -2036,6 +2046,7 @@ export type Database = {
           color?: string
           created_at?: string
           id?: string
+          is_won?: boolean
           name: string
           pipeline_id: string
           position?: number
@@ -2045,6 +2056,7 @@ export type Database = {
           color?: string
           created_at?: string
           id?: string
+          is_won?: boolean
           name?: string
           pipeline_id?: string
           position?: number
@@ -3291,6 +3303,7 @@ export type Database = {
           slug: string
           status: string
           tertiary_color: string
+          timezone: string
           trial_ends_at: string | null
           updated_at: string
         }
@@ -3306,6 +3319,7 @@ export type Database = {
           slug: string
           status?: string
           tertiary_color?: string
+          timezone?: string
           trial_ends_at?: string | null
           updated_at?: string
         }
@@ -3321,6 +3335,7 @@ export type Database = {
           slug?: string
           status?: string
           tertiary_color?: string
+          timezone?: string
           trial_ends_at?: string | null
           updated_at?: string
         }
