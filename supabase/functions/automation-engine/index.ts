@@ -631,6 +631,10 @@ Deno.serve(async (req) => {
       .eq("trigger_type", "before_scheduled")
       .eq("is_active", true);
 
+    console.log(
+      `[BEFORE_SCHEDULED] ${beforeScheduledAutomations?.length || 0} automação(ões) ativa(s) do tipo before_scheduled`,
+    );
+
     for (const auto of beforeScheduledAutomations || []) {
       const config = (auto.action_config || {}) as Record<string, any>;
       const beforeAmount = config.before_amount ?? 1;
