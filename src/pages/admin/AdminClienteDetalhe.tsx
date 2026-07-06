@@ -334,7 +334,8 @@ function ActionsTab({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
     const slug = (data as any)?.slug ?? tenant.slug;
     if (at && rt) {
       const origin = window.location.origin.includes("lovable") ? "https://crclin.com.br" : window.location.origin;
-      const url = `${origin}/${slug}/dashboard?impersonate_at=${encodeURIComponent(at)}&impersonate_rt=${encodeURIComponent(rt)}`;
+      // Tokens transportados no FRAGMENTO (#) — não são enviados ao servidor nem no Referer.
+      const url = `${origin}/${slug}/dashboard#impersonate_at=${encodeURIComponent(at)}&impersonate_rt=${encodeURIComponent(rt)}`;
       window.open(url, "_blank");
       toast.success("Painel do cliente aberto em nova aba");
     }

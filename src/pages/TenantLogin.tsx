@@ -79,9 +79,14 @@ const TenantLogin = () => {
 
   // Handle admin impersonation tokens (must run before any conditional return)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const at = params.get("impersonate_at");
-    const rt = params.get("impersonate_rt");
+    // Tokens vêm no FRAGMENTO da URL (#impersonate_at=...&impersonate_rt=...)
+    // para não vazarem em logs de servidor nem no header Referer.
+    // Fallback: aceita ainda na query string para não quebrar links antigos abertos em cache.
+    const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+    const hashParams = new URLSearchParams(hash);
+    const queryParams = new URLSearchParams(window.location.search);
+    const at = hashParams.get("impersonate_at") || queryParams.get("impersonate_at");
+    const rt = hashParams.get("impersonate_rt") || queryParams.get("impersonate_rt");
     if (at && rt) {
       (async () => {
         const { error } = await supabase.auth.setSession({ access_token: at, refresh_token: rt });
@@ -91,6 +96,7 @@ const TenantLogin = () => {
           const url = new URL(window.location.href);
           url.searchParams.delete("impersonate_at");
           url.searchParams.delete("impersonate_rt");
+          url.hash = "";
           window.history.replaceState({}, "", url.toString());
           const dashboardWarmup = import("./Dashboard")
             .then(({ prefetchDashboardData }) => prefetchDashboardData())
