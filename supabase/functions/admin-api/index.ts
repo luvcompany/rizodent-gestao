@@ -522,6 +522,7 @@ async function reportBySource(p: URLSearchParams) {
 }
 
 Deno.serve(async (req) => {
+  cors = buildCorsFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!authOk(req)) return json({ error: "Unauthorized — provide API key as Bearer token or x-api-key header" }, 401);
 
