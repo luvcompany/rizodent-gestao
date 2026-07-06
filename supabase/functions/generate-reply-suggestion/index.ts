@@ -152,22 +152,6 @@ function parseJsonTolerant(text: string): { reply: string; action: string; actio
   return null;
 }
 
-const DEFAULT_KB = `A Bia é atendente da clínica odontológica Rizodent (interior da Bahia; unidades em Itabuna, Guanambi, Ipiaú e Vitória da Conquista). Objetivo: acolher, tirar dúvidas, tratar objeções e AGENDAR a avaliação gratuita (com raio-x incluso). Tom PT-BR informal, caloroso, humano; mensagens curtas (1-3 linhas); no máximo 1 emoji; nunca dizer que é robô/IA a menos que perguntem.
-
-Regras de ouro: nunca deixe o preço travar (converta em avaliação gratuita + raio-x); ofereça SEMPRE 2 horários fechados; fale de pagamento (cartão, boleto, carnê, entrada baixa); dor = urgência + handoff; pergunte a cidade cedo; não aceitamos convênios externos; avaliação é gratuita e inclui raio-x panorâmico.
-
-Faixas: facetas ~R$350–550/dente; manutenção de aparelho ~R$90/mês. Nunca jogue valor cheio de protocolo (R$9–14 mil) sem antes falar de entrada/parcela.`;
-
-// Endereços oficiais por unidade (texto exato dos templates de agendamento).
-// Se a unidade do lead não estiver aqui, a IA NÃO deve enviar endereço.
-const UNIT_ADDRESSES: Record<string, string> = {
-  "itabuna": "Avenida Cinquentenário, 375, ao lado da Jan e Ju e em frente ao banco Bradesco",
-  "guanambi": "Rua dos Expedicionários, 71 - Centro, ao lado do banco Santander",
-  "vitoria da conquista": "Rua Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens",
-  "conquista": "Rua Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens",
-  "ipiau": "Praça Ruy Barbosa, 122 - Centro, em frente à Praça Ruy Barbosa",
-};
-
 function normalizeCity(s: string | null | undefined): string {
   return (s || "")
     .toLowerCase()
@@ -177,12 +161,29 @@ function normalizeCity(s: string | null | undefined): string {
     .trim();
 }
 
-function resolveUnitAddress(cidade: string | null | undefined, kb: string): string | null {
+async function resolveUnitAddress(
+  supabase: any,
+  tenantId: string | null | undefined,
+  cidade: string | null | undefined,
+  kb: string,
+): Promise<string | null> {
   const key = normalizeCity(cidade);
   if (!key) return null;
-  // 1) Lookup hardcoded table
-  if (UNIT_ADDRESSES[key]) return UNIT_ADDRESSES[key];
-  // 2) Try to extract from KB lines like "Endereço Itabuna: ..." ou "Itabuna: Rua ..."
+  // 1) Lookup na tabela clinicas do tenant do lead
+  if (tenantId) {
+    try {
+      const { data: rows } = await supabase
+        .from("clinicas")
+        .select("cidade, endereco")
+        .eq("tenant_id", tenantId);
+      for (const r of rows || []) {
+        if (r?.endereco && String(r.endereco).trim() && normalizeCity(r.cidade) === key) {
+          return String(r.endereco).trim();
+        }
+      }
+    } catch (_) { /* segue para fallback da KB */ }
+  }
+  // 2) Fallback: extrair da KB linhas tipo "Endereço Itabuna: ..." ou "Itabuna: Rua ..."
   const lines = (kb || "").split(/\r?\n/);
   for (const ln of lines) {
     const m = ln.match(/^\s*(?:endere[çc]o\s+)?([A-Za-zÀ-ÿ\s]+?)\s*[:\-–]\s*(.+)$/i);
@@ -215,10 +216,20 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "lead_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Load active config
+    // Load lead first (needed to scope config by tenant)
+    const { data: lead } = await supabase
+      .from("crm_leads")
+      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (!lead) return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    // Load active config SCOPED TO THE LEAD'S TENANT (never fall back to another tenant's config)
+    if (!lead.tenant_id) return new Response(JSON.stringify({ skipped: "no_config" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     const { data: config } = await supabase
       .from("ai_assistant_config")
       .select("*")
+      .eq("tenant_id", lead.tenant_id)
       .eq("is_active", true)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -229,13 +240,12 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "copilot_disabled" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Load lead (incluindo stage_id para resolver a etapa atual)
-    const { data: lead } = await supabase
-      .from("crm_leads")
-      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
-      .eq("id", leadId)
-      .maybeSingle();
-    if (!lead) return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Resolve tenant's display name for prompt (fallback to a neutral label)
+    let clinicName = "nossa clínica";
+    try {
+      const { data: t } = await supabase.from("tenants").select("name").eq("id", lead.tenant_id).maybeSingle();
+      if (t?.name && String(t.name).trim()) clinicName = String(t.name).trim();
+    } catch (_) { /* keep fallback */ }
 
     // Resolver nome da etapa atual
     let stageName: string | null = null;
@@ -427,9 +437,10 @@ Deno.serve(async (req) => {
       ? `\n\n=== OBSERVAÇÃO DO LEAD (leia com prioridade) ===\n${String(lead.notes).trim().slice(0, 1500)}`
       : "";
 
-    const kb = (config.knowledge_base && String(config.knowledge_base).trim()) || DEFAULT_KB;
+    const kb = (config.knowledge_base && String(config.knowledge_base).trim()) || "";
+    if (!kb) return new Response(JSON.stringify({ skipped: "no_kb" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     const persona = config.assistant_display_name || "Bia";
-    const unitAddress = resolveUnitAddress(lead.cidade, kb);
+    const unitAddress = await resolveUnitAddress(supabase, lead.tenant_id, lead.cidade, kb);
 
     // === 7A: Carrega Diretrizes e Restrições ativas do tenant ===
     let diretrizesBlock = "";
@@ -589,10 +600,10 @@ Canal: ${isInstagram ? "Instagram (Direct)" : "WhatsApp"}${pacienteBlock}${adBlo
 Use SEMPRE o nome e a cidade exatos acima. É PROIBIDO usar outro nome de cliente ou outra cidade.
 Lead ID interno (não mencione ao cliente): ${lead.id}`;
 
-    const systemPrompt = `Você é a "${persona}", atendente HUMANA da Rizodent. Responda em PT-BR informal, caloroso, mensagens curtas (1-3 linhas), no máximo 1 emoji.
+    const systemPrompt = `Você é a "${persona}", atendente HUMANA da ${clinicName}. Responda em PT-BR informal, caloroso, mensagens curtas (1-3 linhas), no máximo 1 emoji.
 
 === IDENTIDADE (regra absoluta) ===
-Você é humana. NUNCA diga que é IA, bot, robô, assistente virtual ou automação — nem mesmo se perguntarem (desconverse: "sou a ${persona}, da equipe da Rizodent 😊"). NUNCA mencione limitações técnicas como "não consigo abrir links", "não consigo ouvir áudio", "não consigo ver vídeo/imagem", "não tenho acesso a", "não consigo acessar". Se chegar um link/vídeo/imagem/áudio que você não interpretou, peça com naturalidade: "Me conta com suas palavras o que você está buscando, que eu te ajudo 😊" — sem citar motivo técnico.
+Você é humana. NUNCA diga que é IA, bot, robô, assistente virtual ou automação — nem mesmo se perguntarem (desconverse: "sou a ${persona}, da equipe da ${clinicName} 😊"). NUNCA mencione limitações técnicas como "não consigo abrir links", "não consigo ouvir áudio", "não consigo ver vídeo/imagem", "não tenho acesso a", "não consigo acessar". Se chegar um link/vídeo/imagem/áudio que você não interpretou, peça com naturalidade: "Me conta com suas palavras o que você está buscando, que eu te ajudo 😊" — sem citar motivo técnico.
 
 === SAUDAÇÃO ===
 Use SEMPRE o "Primeiro nome" dos FATOS CONFIRMADOS na abertura (ex.: "Oi, ${firstName || "[nome]"}!"). Use a "Saudação correta para AGORA" dos FATOS — NUNCA "Bom dia" à tarde/noite. Se não houver primeiro nome, use "Oi!" neutro. Só cumprimente uma vez por janela; se já cumprimentou recentemente, vá direto ao ponto.
