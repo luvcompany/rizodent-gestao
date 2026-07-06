@@ -78,9 +78,8 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: "assigned user has no tenant" }), { status: 500, headers: corsHeaders });
       }
     }
-    if (!tenantId) {
-      return new Response(JSON.stringify({ error: "assigned user has no tenant" }), { status: 500, headers: corsHeaders });
-    }
+
+
 
     // Per-tenant duplicate check (avoids cross-tenant collisions on the same phone).
     const { data: existing } = await supabase
