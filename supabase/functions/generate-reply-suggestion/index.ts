@@ -437,9 +437,10 @@ Deno.serve(async (req) => {
       ? `\n\n=== OBSERVAÇÃO DO LEAD (leia com prioridade) ===\n${String(lead.notes).trim().slice(0, 1500)}`
       : "";
 
-    const kb = (config.knowledge_base && String(config.knowledge_base).trim()) || DEFAULT_KB;
+    const kb = (config.knowledge_base && String(config.knowledge_base).trim()) || "";
+    if (!kb) return new Response(JSON.stringify({ skipped: "no_kb" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     const persona = config.assistant_display_name || "Bia";
-    const unitAddress = resolveUnitAddress(lead.cidade, kb);
+    const unitAddress = await resolveUnitAddress(supabase, lead.tenant_id, lead.cidade, kb);
 
     // === 7A: Carrega Diretrizes e Restrições ativas do tenant ===
     let diretrizesBlock = "";
