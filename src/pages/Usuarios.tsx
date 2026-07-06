@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, Shield, Users, Pencil, KeyRound } from "lucide-react";
+import { UserPlus, Shield, Users, Pencil, KeyRound, Ban, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,7 @@ type Profile = {
   cargo: string | null;
   avatar_url: string | null;
   created_at: string;
+  is_blocked?: boolean | null;
 };
 
 type UserRole = {
@@ -61,6 +62,7 @@ const Usuarios = () => {
   const [creating, setCreating] = useState(false);
 
   const isAdmin = userRole === "superadmin";
+  const canBlock = userRole === "superadmin" || userRole === "crc";
 
   const fetchData = async () => {
     setLoading(true);
@@ -133,6 +135,25 @@ const Usuarios = () => {
   };
 
   const getInitials = (name: string) => name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+
+  const handleToggleBlock = async (profile: Profile) => {
+    const willBlock = !profile.is_blocked;
+    const msg = willBlock
+      ? `Tem certeza que deseja bloquear o acesso de ${profile.nome}? Ele não conseguirá mais entrar no sistema.`
+      : `Desbloquear o acesso de ${profile.nome}?`;
+    if (!window.confirm(msg)) return;
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-set-user-blocked", {
+        body: { user_id: profile.id, blocked: willBlock },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(willBlock ? "Usuário bloqueado." : "Usuário desbloqueado.");
+      fetchData();
+    } catch (err: any) {
+      toast.error("Erro: " + (err.message || err));
+    }
+  };
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -232,13 +253,20 @@ const Usuarios = () => {
                         <TableCell className="text-muted-foreground">{p.email}</TableCell>
                         <TableCell>{p.cargo || "—"}</TableCell>
                         <TableCell>
-                          {role ? (
-                            <Badge variant="outline" className={roleBadgeClass[role.role]}>
-                              {roleLabels[role.role]}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">Sem função</span>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {role ? (
+                              <Badge variant="outline" className={roleBadgeClass[role.role]}>
+                                {roleLabels[role.role]}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">Sem função</span>
+                            )}
+                            {p.is_blocked && (
+                              <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30">
+                                Bloqueado
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
@@ -280,6 +308,20 @@ const Usuarios = () => {
                                 onClick={() => { setPermsUser(p); setPermsOpen(true); }}
                               >
                                 <KeyRound size={14} className="mr-1" /> Permissões
+                              </Button>
+                            )}
+                            {canBlock && p.id !== currentUser?.id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={p.is_blocked ? "text-emerald-500 hover:text-emerald-500" : "text-red-500 hover:text-red-500"}
+                                onClick={() => handleToggleBlock(p)}
+                              >
+                                {p.is_blocked ? (
+                                  <><CheckCircle2 size={14} className="mr-1" /> Desbloquear</>
+                                ) : (
+                                  <><Ban size={14} className="mr-1" /> Bloquear</>
+                                )}
                               </Button>
                             )}
                           </div>
