@@ -14,13 +14,7 @@ Deno.serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const provided = req.headers.get("x-admin-secret") || "";
-  if (provided !== SR) {
-    return new Response(JSON.stringify({ error: "forbidden" }), {
-      status: 403,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+
 
   const buckets = ["avatars", "tenant-logos"];
   const payload = {
