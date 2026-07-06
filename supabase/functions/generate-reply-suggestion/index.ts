@@ -216,10 +216,20 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "lead_id é obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Load active config
+    // Load lead first (needed to scope config by tenant)
+    const { data: lead } = await supabase
+      .from("crm_leads")
+      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (!lead) return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    // Load active config SCOPED TO THE LEAD'S TENANT (never fall back to another tenant's config)
+    if (!lead.tenant_id) return new Response(JSON.stringify({ skipped: "no_config" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     const { data: config } = await supabase
       .from("ai_assistant_config")
       .select("*")
+      .eq("tenant_id", lead.tenant_id)
       .eq("is_active", true)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -230,13 +240,12 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "copilot_disabled" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Load lead (incluindo stage_id para resolver a etapa atual)
-    const { data: lead } = await supabase
-      .from("crm_leads")
-      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
-      .eq("id", leadId)
-      .maybeSingle();
-    if (!lead) return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Resolve tenant's display name for prompt (fallback to a neutral label)
+    let clinicName = "nossa clínica";
+    try {
+      const { data: t } = await supabase.from("tenants").select("name").eq("id", lead.tenant_id).maybeSingle();
+      if (t?.name && String(t.name).trim()) clinicName = String(t.name).trim();
+    } catch (_) { /* keep fallback */ }
 
     // Resolver nome da etapa atual
     let stageName: string | null = null;
