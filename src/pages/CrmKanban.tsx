@@ -824,7 +824,10 @@ export default function CrmKanban() {
 
     // ── Auto-move: leads com pagamento que ainda estão antes de "Contratado" ─
     if (paidLeadIds.size > 0) {
-      const contratadoStage = finalStages.find((s: any) => /contrat/i.test(s.name) && !/n[aã]o/i.test(s.name));
+      // Identifica etapa de ganho via flag `is_won`, com FALLBACK ao regex de nome.
+      const contratadoStage =
+        finalStages.find((s: any) => s.is_won) ||
+        finalStages.find((s: any) => /contrat/i.test(s.name) && !/n[aã]o/i.test(s.name));
       if (contratadoStage) {
         const leadsToMove = finalLeads.filter(l => {
           if (!paidLeadIds.has(l.id)) return false;
