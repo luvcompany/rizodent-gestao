@@ -245,6 +245,15 @@ export default function CrmAutomacoes() {
   const handleSaveAutomation = async () => {
     const isBulkMove = autoForm.trigger_type === "manual_bulk_move";
     const isBulkSend = autoForm.trigger_type === "manual_bulk_send";
+
+    // Validações comuns
+    if (!autoForm.stage_id) { toast.error("Selecione uma etapa antes de salvar"); return; }
+    if (!autoForm.trigger_type) { toast.error("Selecione o evento (gatilho) da automação"); return; }
+    if (!isBulkMove && !autoForm.action_type) {
+      toast.error("Selecione a ação da automação (ex.: Enviar template, Enviar bot)");
+      return;
+    }
+
     if (isBulkMove && !autoForm.action_config?.target_stage_id) {
       toast.error("Selecione a etapa destino para a movimentação em massa");
       return;
@@ -257,6 +266,40 @@ export default function CrmAutomacoes() {
       if (at === "send_audio" && !cfg?.audio_url) { toast.error("Informe a URL do áudio"); return; }
       if (at === "send_file" && !cfg?.file_url) { toast.error("Informe a URL do arquivo"); return; }
     }
+
+    // Validações específicas por trigger
+    const cfgAny = (autoForm.action_config || {}) as any;
+    if (autoForm.trigger_type === "before_scheduled") {
+      const amt = Number(cfgAny.before_amount);
+      if (!amt || amt <= 0) {
+        toast.error("Informe a antecedência (ex.: 2 horas antes)");
+        return;
+      }
+      if (!cfgAny.before_unit) {
+        toast.error("Escolha a unidade de tempo da antecedência");
+        return;
+      }
+      if (!cfgAny.scheduled_type) {
+        toast.error("Escolha o tipo de evento (Agendamento, Tarefa ou Ambos)");
+        return;
+      }
+    }
+    if (autoForm.trigger_type === "no_response") {
+      const amt = Number(cfgAny.no_response_amount);
+      if (!amt || amt <= 0) { toast.error("Informe o tempo sem resposta"); return; }
+      if (!cfgAny.no_response_unit) { toast.error("Escolha a unidade de tempo"); return; }
+    }
+
+    // Validação da ação escolhida (fora do fluxo bulk_send que já cobre)
+    if (!isBulkSend && !isBulkMove) {
+      const at = autoForm.action_type;
+      if (at === "send_template" && !cfgAny.template_id) { toast.error("Selecione um template para a ação"); return; }
+      if (at === "send_bot" && !cfgAny.bot_id) { toast.error("Selecione um bot para a ação"); return; }
+      if (at === "send_audio" && !cfgAny.audio_url) { toast.error("Informe a URL do áudio para a ação"); return; }
+      if (at === "send_file" && !cfgAny.file_url) { toast.error("Informe a URL do arquivo para a ação"); return; }
+      if (at === "move_stage" && !cfgAny.target_stage_id) { toast.error("Selecione a etapa destino para a ação"); return; }
+    }
+
     const payload = {
       stage_id: autoForm.stage_id,
       trigger_type: autoForm.trigger_type,
@@ -264,11 +307,12 @@ export default function CrmAutomacoes() {
       action_config: autoForm.action_config as unknown as import("@/integrations/supabase/types").Json,
       is_active: true,
     };
+    console.log("[Automacoes] Salvando automação:", payload);
     let savedAutomation: Automation | null = null;
     if (autoForm.editId) {
       const { data, error } = await supabase.from("crm_automations").update(payload).eq("id", autoForm.editId).select().single();
       if (error) {
-        console.error("[Automacoes] Update error:", error);
+        console.error("[Automacoes] Update error:", error, "payload:", payload);
         toast.error(`Erro ao salvar automação: ${error.message}`);
         return;
       }
@@ -279,7 +323,7 @@ export default function CrmAutomacoes() {
     } else {
       const { data, error } = await supabase.from("crm_automations").insert(payload).select().single();
       if (error) {
-        console.error("[Automacoes] Insert error:", error);
+        console.error("[Automacoes] Insert error:", error, "payload:", payload);
         toast.error(`Erro ao criar automação: ${error.message}`);
         return;
       }
@@ -288,8 +332,13 @@ export default function CrmAutomacoes() {
         setAutomations(prev => [...prev, data as Automation]);
       }
     }
+    if (!savedAutomation) {
+      toast.error("A automação não foi persistida — tente novamente");
+      return;
+    }
     toast.success("Automação salva");
     setAutoModalOpen(false);
+
 
     // Execute "send to all existing" if checked
     const config = autoForm.action_config;
