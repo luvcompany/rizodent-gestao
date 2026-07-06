@@ -669,19 +669,28 @@ export default function CrmKanban() {
 
     // ── Fase 1: pipelines, perfis, etapas, leads e followups em paralelo ────
     const [pipelinesRes, profilesRes, stagesRes, fqRes] = await Promise.all([
-      supabase.from("crm_pipelines").select("id, name, color, description, created_at").order("created_at"),
+      supabase.from("crm_pipelines").select("id, name, color, description, created_at, is_default, is_instagram, is_posvenda").order("created_at"),
       supabase.from("profiles").select("id, nome"),
       targetPipelineId
-        ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", targetPipelineId).order("position")
+        ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position, is_won").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
       supabase.from("crm_followup_queue").select("lead_id, status").in("status", ["waiting_disparo1", "waiting_disparo2", "paused", "responded"]),
     ]);
 
     const pList = (pipelinesRes.data as Pipeline[]) || [];
-    const principal = pList.find(pp => /funil principal/i.test(pp.name)) || pList[0];
+    // Identifica pipelines default/pós-venda via flag, com FALLBACK ao regex de nome
+    // (mantém comportamento atual da Rizodent enquanto as flags não são populadas).
+    const principal =
+      pList.find(pp => pp.is_default) ||
+      pList.find(pp => /funil principal/i.test(pp.name)) ||
+      pList[0];
+    const posvendaPipeline =
+      pList.find(pp => pp.is_posvenda) ||
+      pList.find(pp => /p[óo]s.?venda/i.test(pp.name));
     const defaultPipeline = isPosvendaOnly
-      ? (pList.find(pp => /p[óo]s.?venda/i.test(pp.name)) || pList[0])
+      ? (posvendaPipeline || pList[0])
       : principal;
+
 
     let p: Pipeline | undefined;
     if (selectedPipelineId) {
