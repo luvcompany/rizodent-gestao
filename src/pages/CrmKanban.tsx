@@ -699,7 +699,8 @@ export default function CrmKanban() {
       p = pList.find(pp => pp.id === pipeline.id) || defaultPipeline;
     } else if (stored && pList.find(pp => pp.id === stored)) {
       const storedPipeline = pList.find(pp => pp.id === stored)!;
-      if (!isPosvendaOnly && /p[óo]s.?venda/i.test(storedPipeline.name)) {
+      const isStoredPosvenda = storedPipeline.is_posvenda || /p[óo]s.?venda/i.test(storedPipeline.name);
+      if (!isPosvendaOnly && isStoredPosvenda) {
         p = defaultPipeline;
       } else {
         p = storedPipeline;
