@@ -175,13 +175,19 @@ const Atendimento = () => {
     }
   }, [location.state, initialPatientLoaded]);
 
-  // Auto-pick clinic from cidade (prefer "Rizodent" clinic for that city)
+  // Auto-pick clinic: single active clinic, otherwise first match by city
   useEffect(() => {
-    if (clinicaId || !cidade || clinicas.length === 0) return;
-    const matches = clinicas.filter((c) => c.cidade === cidade);
-    if (matches.length === 0) return;
-    const preferred = matches.find((c) => /rizodent/i.test(c.nome)) || matches[0];
-    setClinicaId(preferred.id);
+    if (clinicaId || clinicas.length === 0) return;
+    const activeClinicas = clinicas.filter((c) => c.ativa);
+    if (activeClinicas.length === 1) {
+      setClinicaId(activeClinicas[0].id);
+      return;
+    }
+    if (!cidade) return;
+    const matches = activeClinicas.filter((c) => c.cidade === cidade);
+    if (matches.length > 0) {
+      setClinicaId(matches[0].id);
+    }
   }, [cidade, clinicas, clinicaId]);
 
   const formatPhone = (value: string) => {
