@@ -67,6 +67,9 @@ type Pipeline = {
   id: string;
   name: string;
   color?: string;
+  is_default?: boolean | null;
+  is_instagram?: boolean | null;
+  is_posvenda?: boolean | null;
 };
 
 const PRESET_COLORS = [
