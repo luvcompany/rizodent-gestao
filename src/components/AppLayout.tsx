@@ -25,7 +25,7 @@ const navItems: Array<{ to: string; icon: any; label: string; roles?: string[] }
 
 const AppLayout = () => {
   const navigate = useNavigate();
-  const { signOut, profile, user, refreshProfile } = useAuth();
+  const { signOut, profile, user, refreshProfile, userRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
