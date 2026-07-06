@@ -68,15 +68,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Free up email if it belongs to a previously orphaned/deleted tenant user
+    // Free up email if it belongs to a previously orphaned/deleted tenant user.
+    // SAFETY: never delete a user that belongs to a DIFFERENT ACTIVE tenant.
     try {
       const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
       const existingUser = list?.users?.find((u: any) => u.email?.toLowerCase() === String(admin_email).toLowerCase());
       if (existingUser) {
+        const { data: existingProfile } = await admin
+          .from("profiles")
+          .select("tenant_id")
+          .eq("id", existingUser.id)
+          .maybeSingle();
+        const existingTenantId = existingProfile?.tenant_id ?? existingUser.user_metadata?.tenant_id ?? null;
+        if (existingTenantId) {
+          const { data: existingTenant } = await admin
+            .from("tenants")
+            .select("status")
+            .eq("id", existingTenantId)
+            .maybeSingle();
+          if (existingTenant && existingTenant.status === "active") {
+            return json({ error: "E-mail já cadastrado em outra conta" }, 409);
+          }
+        }
         await admin.from("profiles").delete().eq("id", existingUser.id);
         await admin.auth.admin.deleteUser(existingUser.id);
       }
-    } catch (_) { /* ignore */ }
+    } catch (e: any) {
+      // Only swallow non-conflict errors; re-raise nothing else so provisioning stays reliable.
+      if (e?.status === 409) throw e;
+    }
 
     // Create auth user with metadata
     const { data: created, error: uErr } = await admin.auth.admin.createUser({
@@ -92,18 +112,22 @@ Deno.serve(async (req) => {
     if (uErr) throw uErr;
 
     // Ensure profile points to tenant (handle_new_user trigger does it, but enforce)
-    await admin.from("profiles").update({ tenant_id: tenant.id, must_change_password: true }).eq("id", created.user.id);
+    const { error: profErr } = await admin.from("profiles").update({ tenant_id: tenant.id, must_change_password: true }).eq("id", created.user.id);
+    if (profErr) return json({ error: `Falha ao atualizar profile do admin: ${profErr.message}` }, 500);
 
-    // Add admin role for this user (within tenant)
-    await admin.from("user_roles").insert({ user_id: created.user.id, role: "admin", tenant_id: tenant.id });
+    // Add admin role for this user (within tenant). "crc" is the clinic admin role.
+    const { error: roleErr } = await admin.from("user_roles").insert({ user_id: created.user.id, role: "crc", tenant_id: tenant.id });
+    if (roleErr) return json({ error: `Falha ao atribuir papel ao admin: ${roleErr.message}` }, 500);
 
     // Create the clinic record for this tenant (starts empty otherwise)
-    await admin.from("clinicas").insert({
+    const { error: clinErr } = await admin.from("clinicas").insert({
       tenant_id: tenant.id,
       nome: clinic_name,
       cidade: clinic_city || clinic_name,
       ativa: true,
     });
+    if (clinErr) return json({ error: `Falha ao criar clínica: ${clinErr.message}` }, 500);
+
 
     // Seed the default "Funil Principal" (model funnel — same as Rizodent's main funnel)
     const { data: defaultPipeline, error: pErr } = await admin
@@ -130,13 +154,15 @@ Deno.serve(async (req) => {
       { name: "Contratado",     position: 9,  color: "#84cc16" },
       { name: "Desqualificado", position: 10, color: "#ef4444" },
     ];
-    await admin.from("crm_stages").insert(
+    const { error: stagesErr } = await admin.from("crm_stages").insert(
       defaultStages.map((s) => ({
         ...s,
         tenant_id: tenant.id,
         pipeline_id: defaultPipeline.id,
       }))
     );
+    if (stagesErr) return json({ error: `Falha ao criar etapas do funil: ${stagesErr.message}` }, 500);
+
 
     return new Response(JSON.stringify({ tenant, user_id: created.user.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
