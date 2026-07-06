@@ -112,7 +112,38 @@ export default function InstagramAccountsSection() {
       }
 
       const { data: userData } = await supabase.auth.getUser();
-      const state = userData.user?.id ?? crypto.randomUUID();
+      const userId = userData.user?.id;
+      if (!userId) {
+        toast.error("Usuário não autenticado.");
+        setConnecting(false);
+        return;
+      }
+
+      // Descobre o tenant do usuário
+      const { data: profileData, error: profileErr } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", userId)
+        .maybeSingle();
+      const tenantId = profileData?.tenant_id;
+      if (profileErr || !tenantId) {
+        toast.error("Tenant não encontrado para o usuário.");
+        setConnecting(false);
+        return;
+      }
+
+      // Cria um state OAuth atrelado a usuário+tenant (expira em 15 min via default)
+      const { data: stateRow, error: stateErr } = await supabase
+        .from("instagram_oauth_states")
+        .insert({ user_id: userId, tenant_id: tenantId })
+        .select("state")
+        .single();
+      if (stateErr || !stateRow?.state) {
+        toast.error("Falha ao iniciar fluxo OAuth. Tente novamente.");
+        setConnecting(false);
+        return;
+      }
+      const state = stateRow.state as string;
 
       const oauthUrl = new URL("https://www.facebook.com/v25.0/dialog/oauth");
       oauthUrl.searchParams.set("client_id", appId);
