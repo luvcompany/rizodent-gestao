@@ -22,6 +22,7 @@ type Profile = {
   cargo: string | null;
   avatar_url: string | null;
   created_at: string;
+  is_blocked?: boolean | null;
 };
 
 type UserRole = {
