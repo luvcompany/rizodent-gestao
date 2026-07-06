@@ -25,8 +25,8 @@ export default defineTool({
     }
     const sb = supabaseForUser(ctx);
     const { data, error } = await sb
-      .from("crm_lead_notes")
-      .insert({ lead_id, note, created_by: ctx.getUserId() })
+      .from("crm_conversation_notes")
+      .insert({ lead_id, content: note, author_id: ctx.getUserId() })
       .select()
       .maybeSingle();
     if (error) {
