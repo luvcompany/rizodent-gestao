@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
-  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings, ClipboardList, Sun, Moon,
+  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings, ClipboardList, Sun, Moon, ScrollText,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,7 +10,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
-const navItems = [
+const navItems: Array<{ to: string; icon: any; label: string; roles?: string[] }> = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/atendimento", icon: UserPlus, label: "Atendimento" },
   { to: "/pacientes", icon: Users, label: "Pacientes" },
@@ -19,12 +19,13 @@ const navItems = [
   { to: "/crm", icon: Users, label: "CRM" },
   { to: "/procedimentos", icon: Stethoscope, label: "Procedimentos" },
   { to: "/usuarios", icon: Shield, label: "Usuários" },
+  { to: "/acessos", icon: ScrollText, label: "Logs de acesso", roles: ["crc", "gerente", "superadmin"] },
   { to: "/configuracoes", icon: Settings, label: "Configurações" },
 ];
 
 const AppLayout = () => {
   const navigate = useNavigate();
-  const { signOut, profile, user, refreshProfile } = useAuth();
+  const { signOut, profile, user, refreshProfile, userRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -69,7 +70,7 @@ const AppLayout = () => {
         </div>
 
         <nav className="flex-1 space-y-1 p-4">
-          {navItems.map((item) => (
+          {navItems.filter((item) => !item.roles || (userRole && item.roles.includes(userRole))).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
