@@ -832,6 +832,21 @@ Deno.serve(async (req) => {
                 replyToMessageId = replyTarget?.id || null;
               }
 
+              // Dedupe: se a Meta reenviar o MESMO wamid, não duplicar.
+              // Só descarta se o whatsapp_message_id for exatamente igual — mensagens com IDs
+              // diferentes SEMPRE entram.
+              if (msg.id) {
+                const { data: dup } = await supabase
+                  .from("messages")
+                  .select("id")
+                  .eq("whatsapp_message_id", msg.id)
+                  .maybeSingle();
+                if (dup?.id) {
+                  console.log(`[WEBHOOK] Duplicate wamid ${msg.id} — skipping insert (lead=${lead.id})`);
+                  continue;
+                }
+              }
+
               const insertPayload: any = {
                 lead_id: lead.id,
                 tenant_id: tenantId,
