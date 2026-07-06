@@ -88,7 +88,7 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
       const r = await fetch(url);
       const j = await r.json().catch(() => ({}) as any);
       if (!r.ok) {
-        console.warn("[ig-lite] profile fetch failed", { igUserId, fields, status: r.status, body: j });
+        console.warn("[ig-lite] profile fetch failed", { igUserId, fields, status: r.status });
         return null;
       }
       return j as any;
@@ -516,7 +516,8 @@ Deno.serve(async (req: Request) => {
 
     try {
       const payload = JSON.parse(rawBody);
-      console.log("[ig-lite] payload:", JSON.stringify(payload));
+      // LGPD: não logar payload completo (contém texto, sender_id, nomes).
+      console.log(`[ig-lite] payload received: ${Array.isArray(payload?.entry) ? payload.entry.length : 0} entry(ies)`);
 
       const entries = Array.isArray(payload?.entry) ? payload.entry : [];
 
