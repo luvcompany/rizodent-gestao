@@ -42,5 +42,5 @@ verify_jwt = false
 
 # One-shot helper para aplicar limites de upload aos buckets públicos.
 # Idempotente e sem dados sensíveis; deve ser removido após uso.
-[functions._apply-bucket-limits]
+[functions.apply-bucket-limits]
 verify_jwt = false
