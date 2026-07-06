@@ -152,22 +152,6 @@ function parseJsonTolerant(text: string): { reply: string; action: string; actio
   return null;
 }
 
-const DEFAULT_KB = `A Bia é atendente da clínica odontológica Rizodent (interior da Bahia; unidades em Itabuna, Guanambi, Ipiaú e Vitória da Conquista). Objetivo: acolher, tirar dúvidas, tratar objeções e AGENDAR a avaliação gratuita (com raio-x incluso). Tom PT-BR informal, caloroso, humano; mensagens curtas (1-3 linhas); no máximo 1 emoji; nunca dizer que é robô/IA a menos que perguntem.
-
-Regras de ouro: nunca deixe o preço travar (converta em avaliação gratuita + raio-x); ofereça SEMPRE 2 horários fechados; fale de pagamento (cartão, boleto, carnê, entrada baixa); dor = urgência + handoff; pergunte a cidade cedo; não aceitamos convênios externos; avaliação é gratuita e inclui raio-x panorâmico.
-
-Faixas: facetas ~R$350–550/dente; manutenção de aparelho ~R$90/mês. Nunca jogue valor cheio de protocolo (R$9–14 mil) sem antes falar de entrada/parcela.`;
-
-// Endereços oficiais por unidade (texto exato dos templates de agendamento).
-// Se a unidade do lead não estiver aqui, a IA NÃO deve enviar endereço.
-const UNIT_ADDRESSES: Record<string, string> = {
-  "itabuna": "Avenida Cinquentenário, 375, ao lado da Jan e Ju e em frente ao banco Bradesco",
-  "guanambi": "Rua dos Expedicionários, 71 - Centro, ao lado do banco Santander",
-  "vitoria da conquista": "Rua Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens",
-  "conquista": "Rua Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens",
-  "ipiau": "Praça Ruy Barbosa, 122 - Centro, em frente à Praça Ruy Barbosa",
-};
-
 function normalizeCity(s: string | null | undefined): string {
   return (s || "")
     .toLowerCase()
@@ -177,12 +161,29 @@ function normalizeCity(s: string | null | undefined): string {
     .trim();
 }
 
-function resolveUnitAddress(cidade: string | null | undefined, kb: string): string | null {
+async function resolveUnitAddress(
+  supabase: any,
+  tenantId: string | null | undefined,
+  cidade: string | null | undefined,
+  kb: string,
+): Promise<string | null> {
   const key = normalizeCity(cidade);
   if (!key) return null;
-  // 1) Lookup hardcoded table
-  if (UNIT_ADDRESSES[key]) return UNIT_ADDRESSES[key];
-  // 2) Try to extract from KB lines like "Endereço Itabuna: ..." ou "Itabuna: Rua ..."
+  // 1) Lookup na tabela clinicas do tenant do lead
+  if (tenantId) {
+    try {
+      const { data: rows } = await supabase
+        .from("clinicas")
+        .select("cidade, endereco")
+        .eq("tenant_id", tenantId);
+      for (const r of rows || []) {
+        if (r?.endereco && String(r.endereco).trim() && normalizeCity(r.cidade) === key) {
+          return String(r.endereco).trim();
+        }
+      }
+    } catch (_) { /* segue para fallback da KB */ }
+  }
+  // 2) Fallback: extrair da KB linhas tipo "Endereço Itabuna: ..." ou "Itabuna: Rua ..."
   const lines = (kb || "").split(/\r?\n/);
   for (const ln of lines) {
     const m = ln.match(/^\s*(?:endere[çc]o\s+)?([A-Za-zÀ-ÿ\s]+?)\s*[:\-–]\s*(.+)$/i);
