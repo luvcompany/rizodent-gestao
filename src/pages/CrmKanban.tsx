@@ -721,7 +721,7 @@ export default function CrmKanban() {
     if (targetPipelineId === p.id && stagesRes.data) {
       finalStages = (stagesRes.data as Stage[]) || [];
     } else {
-      const s2 = await supabase.from("crm_stages").select("id, pipeline_id, name, color, position").eq("pipeline_id", p.id).order("position");
+      const s2 = await supabase.from("crm_stages").select("id, pipeline_id, name, color, position, is_won").eq("pipeline_id", p.id).order("position");
       finalStages = (s2.data as Stage[]) || [];
     }
     const stageLeadChunks = await Promise.all(finalStages.map(s => fetchStageLeads(s.id)));
