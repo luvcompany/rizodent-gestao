@@ -6,7 +6,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { safeEqual } from "../_shared/authz.ts";
 
-const TENANT_ID = "00000000-0000-0000-0000-000000000010"; // Rizodent
+const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010"; // Rizodent (legacy default)
+// Reatribuído no início de cada request (mesmo padrão do `cors` global).
+// Resolve dinamicamente a partir da chave: RIZODENT_ADMIN_API_KEY -> Rizodent;
+// senão procura em `tenant_api_keys` (active=true) e usa o tenant_id da linha.
+let TENANT_ID: string = RIZODENT_TENANT_ID;
 
 const ALLOWED_ORIGINS = [
   "https://crclin.com.br",
