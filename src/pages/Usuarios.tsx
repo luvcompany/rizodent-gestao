@@ -310,6 +310,20 @@ const Usuarios = () => {
                                 <KeyRound size={14} className="mr-1" /> Permissões
                               </Button>
                             )}
+                            {canBlock && p.id !== currentUser?.id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={p.is_blocked ? "text-emerald-500 hover:text-emerald-500" : "text-red-500 hover:text-red-500"}
+                                onClick={() => handleToggleBlock(p)}
+                              >
+                                {p.is_blocked ? (
+                                  <><CheckCircle2 size={14} className="mr-1" /> Desbloquear</>
+                                ) : (
+                                  <><Ban size={14} className="mr-1" /> Bloquear</>
+                                )}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
