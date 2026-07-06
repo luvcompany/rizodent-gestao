@@ -3045,6 +3045,41 @@ export type Database = {
           },
         ]
       }
+      tenant_api_keys: {
+        Row: {
+          active: boolean
+          api_key: string
+          created_at: string
+          id: string
+          name: string | null
+          tenant_id: string
+        }
+        Insert: {
+          active?: boolean
+          api_key: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          tenant_id: string
+        }
+        Update: {
+          active?: boolean
+          api_key?: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_invoices: {
         Row: {
           amount: number
