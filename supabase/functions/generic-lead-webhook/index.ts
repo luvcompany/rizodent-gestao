@@ -44,14 +44,42 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    // All leads assigned to the central Rizodent user — derive tenant from that profile.
-    const assignedTo = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
-    const { data: assignedProfile } = await supabase
-      .from("profiles").select("tenant_id").eq("id", assignedTo).maybeSingle();
-    const tenantId = (assignedProfile as any)?.tenant_id;
-    if (!tenantId) {
-      return new Response(JSON.stringify({ error: "assigned user has no tenant" }), { status: 500, headers: corsHeaders });
+    // Resolução do tenant:
+    //   1) ?tenant=<slug> na URL OU header x-tenant-slug -> resolve via RPC get_tenant_by_slug.
+    //   2) Fallback LEGADO Rizodent: sem slug, mantém o comportamento antigo
+    //      (tenant derivado do perfil do usuário fixo `assignedTo`). Novos
+    //      clientes devem SEMPRE chamar com `?tenant=<slug>`.
+    const RIZODENT_ASSIGNED_TO = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
+    const slugFromUrl = new URL(req.url).searchParams.get("tenant");
+    const slugFromHeader = req.headers.get("x-tenant-slug");
+    const tenantSlug = (slugFromUrl || slugFromHeader || "").trim();
+
+    let tenantId: string | undefined;
+    let assignedTo: string | null = null;
+
+    if (tenantSlug) {
+      const { data: slugRes } = await supabase.rpc("get_tenant_by_slug", { _slug: tenantSlug });
+      const row = Array.isArray(slugRes) ? slugRes[0] : slugRes;
+      tenantId = row?.id;
+      if (!tenantId) {
+        return new Response(JSON.stringify({ error: "tenant not found for slug" }), { status: 404, headers: corsHeaders });
+      }
+      // Se o slug resolveu para a Rizodent, mantém o assigned_to legado.
+      if (tenantId === "00000000-0000-0000-0000-000000000010") {
+        assignedTo = RIZODENT_ASSIGNED_TO;
+      }
+    } else {
+      // Fallback legado: usuário fixo da Rizodent -> tenant desse perfil.
+      assignedTo = RIZODENT_ASSIGNED_TO;
+      const { data: assignedProfile } = await supabase
+        .from("profiles").select("tenant_id").eq("id", assignedTo).maybeSingle();
+      tenantId = (assignedProfile as any)?.tenant_id;
+      if (!tenantId) {
+        return new Response(JSON.stringify({ error: "assigned user has no tenant" }), { status: 500, headers: corsHeaders });
+      }
     }
+
+
 
     // Per-tenant duplicate check (avoids cross-tenant collisions on the same phone).
     const { data: existing } = await supabase
