@@ -438,8 +438,9 @@ Deno.serve(async (req: Request) => {
     }
     try {
       const payload = JSON.parse(rawBody);
-      console.log("[ig-lite] payload:", JSON.stringify(payload));
+      // LGPD: não logar payload completo (contém texto, sender_id, nomes).
       const entries = Array.isArray(payload?.entry) ? payload.entry : [];
+      console.log(`[ig-webhook] payload received: ${entries.length} entry(ies)`);
 
       for (const entry of entries) {
         const accountId: string = String(entry?.id ?? "");

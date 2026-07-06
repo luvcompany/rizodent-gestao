@@ -3,5 +3,39 @@ project_id = "oybroifaleftwrhnlhqc"
 [functions.admin-create-tenant]
 verify_jwt = true
 
+# Público: emite JWT após validar slug/e-mail/senha; não pode exigir JWT prévio.
 [functions.tenant-login]
+verify_jwt = false
+
+# --- Webhooks e callbacks públicos ---
+# Todas as funções abaixo já rodam como públicas hoje. Este bloco apenas DOCUMENTA
+# a superfície pública explicitamente para auditoria; nenhuma outra função deve
+# ser marcada com verify_jwt = false.
+
+# Recebe callbacks do WhatsApp Cloud API (Meta). Autenticação é feita via
+# x-hub-signature-256 dentro da função, não JWT.
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+# Recebe callbacks do Instagram/Meta. Validação por x-hub-signature-256 na função.
+[functions.instagram-webhook]
+verify_jwt = false
+
+# Recebe callbacks do Instagram (variante lite). Validação por x-hub-signature-256.
+[functions.instagram-lite-webhook]
+verify_jwt = false
+
+# Endpoint para integrações externas (Facebook Ads/n8n/etc.) enviarem leads.
+# Autenticação via segredo compartilhado (x-webhook-secret) dentro da função.
+[functions.generic-lead-webhook]
+verify_jwt = false
+
+# Callback do OAuth do Instagram/Meta — chamado pelo navegador do usuário após
+# autorizar; não pode carregar JWT do app. Validação de CSRF via state.
+[functions.instagram-oauth-callback]
+verify_jwt = false
+
+# Retorna apenas identificadores públicos do Meta App para iniciar OAuth.
+# Não expõe segredos; sem dados sensíveis.
+[functions.get-instagram-app-id]
 verify_jwt = false

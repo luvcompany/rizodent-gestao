@@ -4,6 +4,7 @@
 //         /conversations, /appointments, /tasks, /reports/overview,
 //         /reports/funnel, /reports/by-source
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { safeEqual } from "../_shared/authz.ts";
 
 const TENANT_ID = "00000000-0000-0000-0000-000000000010"; // Rizodent
 
@@ -22,7 +23,8 @@ function authOk(req: Request) {
   const h = req.headers.get("authorization") || req.headers.get("Authorization") || "";
   const token = h.replace(/^Bearer\s+/i, "").trim();
   const xKey = (req.headers.get("x-api-key") || "").trim();
-  return token === key || xKey === key;
+  // Comparação de tempo constante (evita timing attack em API key).
+  return safeEqual(token, key) || safeEqual(xKey, key);
 }
 
 const URL_BASE = Deno.env.get("SUPABASE_URL")!;

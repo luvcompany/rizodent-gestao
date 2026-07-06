@@ -11,6 +11,17 @@
 //   const check = await assertLeadInTenant(supabaseAdmin, leadId, ctx.tenantId);
 //   if (!check.ok) return jsonResponse({ error: check.error }, 403);
 
+
+// Comparação de tempo constante para segredos/API keys. Evita timing attacks
+// que revelam prefixos corretos por diferença de tempo entre === curto e longo.
+export function safeEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 export interface CallerContext {
   ok: true;
   userId: string | null;

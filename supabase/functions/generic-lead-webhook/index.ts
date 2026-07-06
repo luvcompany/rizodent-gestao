@@ -1,21 +1,27 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
+import { safeEqual } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
 };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "POST only" }), { status: 405, headers: corsHeaders });
 
-  // Require shared secret to prevent fake-lead flooding
+  // Require shared secret to prevent fake-lead flooding.
+  // Preferência: header `x-webhook-secret`.
+  // DEPRECATED: preferir header; query string vaza em logs/Referer.
   const expectedSecret = Deno.env.get("WEBHOOK_SECRET");
-  const providedSecret = req.headers.get("x-webhook-secret") || new URL(req.url).searchParams.get("secret");
+  const headerSecret = req.headers.get("x-webhook-secret") || "";
+  const querySecret = new URL(req.url).searchParams.get("secret") || "";
+  const providedSecret = headerSecret || querySecret;
   const auth = req.headers.get("authorization") || "";
-  const isServiceRole = auth === `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const isServiceRole = serviceRoleKey ? safeEqual(auth, `Bearer ${serviceRoleKey}`) : false;
   if (!isServiceRole) {
-    if (!expectedSecret || providedSecret !== expectedSecret) {
+    if (!expectedSecret || !safeEqual(providedSecret, expectedSecret)) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
   }

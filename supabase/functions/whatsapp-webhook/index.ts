@@ -212,7 +212,7 @@ async function downloadAndStoreMedia(
     const metaText = await metaRes.text();
     let metaData: any;
     try { metaData = JSON.parse(metaText); } catch { metaData = metaText; }
-    console.log(`[MEDIA] Resposta da Meta ao buscar mídia: ${JSON.stringify(metaData)}`);
+    console.log(`[MEDIA] Meta response para media_id ${mediaId}: status ${metaRes.status}, mime=${metaData?.mime_type || "n/a"}`);
 
     if (!metaRes.ok) {
       console.error(`[MEDIA] ERRO ao buscar media_id ${mediaId}: status ${metaRes.status}`);
@@ -223,11 +223,11 @@ async function downloadAndStoreMedia(
     const mimeType = metaData.mime_type || "application/octet-stream";
 
     if (!downloadUrl) {
-      console.error(`[MEDIA] Sem URL de download na resposta da Meta: ${JSON.stringify(metaData)}`);
+      console.error(`[MEDIA] Sem URL de download na resposta da Meta para media_id ${mediaId}`);
       return null;
     }
 
-    console.log(`[MEDIA] Fazendo download da URL: ${downloadUrl}`);
+    console.log(`[MEDIA] Fazendo download da mídia (media_id=${mediaId})`);
     const fileRes = await fetch(downloadUrl, {
       headers: { Authorization: `Bearer ${whatsappToken}` },
     });
@@ -260,7 +260,7 @@ async function downloadAndStoreMedia(
     }
 
     const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
-    console.log(`[MEDIA] Upload para Supabase: sucesso, path=${path}, URL=${data.publicUrl}`);
+    console.log(`[MEDIA] Upload para Supabase Storage OK: path=${path}, size=${fileBlob.size}`);
     return data.publicUrl;
   } catch (err: any) {
     console.error(`[MEDIA] ERRO inesperado ao processar media_id ${mediaId}: ${err.message}`, err);
@@ -531,7 +531,7 @@ Deno.serve(async (req) => {
                     continue;
                   }
                   const adData = await adRes.json();
-                  console.log(`[AD-ENRICHMENT] Ad data received:`, JSON.stringify(adData));
+                  console.log(`[AD-ENRICHMENT] Ad data received for ${adSourceId}: name=${adData?.name ? "yes" : "no"}, account_id=${adData?.account_id || "n/a"}`);
 
                   if (!adHeadline && adData.name) adHeadline = adData.name;
                   if (!adSourceUrl && adData.permalink_url) adSourceUrl = adData.permalink_url;
@@ -768,7 +768,7 @@ Deno.serve(async (req) => {
                     console.log(`[WEBHOOK] Race avoided — reusing existing lead ${existing?.id} for ${from}`);
                   } else {
                     lead = newLead;
-                    console.log(`[WEBHOOK] Lead criado: ${leadName} (${from}), pipeline: ${pipelineId}, id: ${newLead?.id}, assigned: ${assignedTo || 'none'}, anuncio: ${adHeadline || 'N/A'}, ad_id: ${adSourceId || 'N/A'}`);
+                    console.log(`[WEBHOOK] Lead criado: id=${newLead?.id}, pipeline=${pipelineId}, assigned=${assignedTo || "none"}, ad_id=${adSourceId || "N/A"}`);
                   }
 
                   // Execute on_create + on_enter + on_create_or_enter automations for the new lead's first stage
@@ -816,7 +816,7 @@ Deno.serve(async (req) => {
               }
               if (Object.keys(updates).length > 0) {
                 await supabase.from("crm_leads").update(updates).eq("id", lead.id);
-                console.log(`[WEBHOOK] Lead ${lead.id} atualizado:`, JSON.stringify(updates));
+                console.log(`[WEBHOOK] Lead ${lead.id} atualizado: campos=${Object.keys(updates).join(",")}`);
                 lead = { ...lead, ...updates };
               }
             }
@@ -854,9 +854,9 @@ Deno.serve(async (req) => {
               const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
 
               if (insertErr) {
-                console.error(`[WEBHOOK] ERRO ao salvar mensagem: ${JSON.stringify(insertErr)}`);
+                console.error(`[WEBHOOK] ERRO ao salvar mensagem lead=${lead.id}: ${insertErr.message || insertErr.code}`);
               } else {
-                console.log(`[WEBHOOK] Mensagem salva: ${JSON.stringify(savedMsg)}`);
+                console.log(`[WEBHOOK] Mensagem salva: id=${savedMsg?.id}, lead=${lead.id}, direction=inbound, type=${msgType}`);
               }
 
               // Build update payload — set first_inbound_at only if not already set
@@ -1307,7 +1307,7 @@ Deno.serve(async (req) => {
               updatePayload.error_reason = reason || failureDetails;
               console.error(`[WEBHOOK] Delivery failed for ${messageId}: ${reason}`);
             } else if (statusValue === "failed") {
-              console.error(`[WEBHOOK] Delivery failed for ${messageId} (sem detalhes Meta): ${JSON.stringify(status)}`);
+              console.error(`[WEBHOOK] Delivery failed for ${messageId} (sem detalhes Meta)`);
               updatePayload.error_reason = "Falha de entrega sem detalhes";
             }
 
