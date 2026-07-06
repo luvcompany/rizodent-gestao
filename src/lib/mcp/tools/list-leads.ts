@@ -39,8 +39,11 @@ export default defineTool({
       .order("updated_at", { ascending: false })
       .limit(limit);
     if (search && search.trim()) {
-      const term = `%${search.trim()}%`;
-      query = query.or(`name.ilike.${term},phone.ilike.${term}`);
+      const sanitized = search.replace(/[\\"(),]/g, " ").trim();
+      if (sanitized) {
+        const term = `%${sanitized}%`;
+        query = query.or(`name.ilike.${term},phone.ilike.${term}`);
+      }
     }
     const { data, error } = await query;
     if (error) {

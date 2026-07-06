@@ -31,8 +31,11 @@ var list_leads_default = defineTool({
     const sb = supabaseForUser(ctx);
     let query = sb.from("crm_leads").select("id, name, phone, stage_id, pipeline_id, created_at, last_inbound_at, last_outbound_at").order("updated_at", { ascending: false }).limit(limit);
     if (search && search.trim()) {
-      const term = `%${search.trim()}%`;
-      query = query.or(`name.ilike.${term},phone.ilike.${term}`);
+      const sanitized = search.replace(/[\\"(),]/g, " ").trim();
+      if (sanitized) {
+        const term = `%${sanitized}%`;
+        query = query.or(`name.ilike.${term},phone.ilike.${term}`);
+      }
     }
     const { data, error } = await query;
     if (error) {
