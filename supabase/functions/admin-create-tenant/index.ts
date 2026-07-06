@@ -154,13 +154,15 @@ Deno.serve(async (req) => {
       { name: "Contratado",     position: 9,  color: "#84cc16" },
       { name: "Desqualificado", position: 10, color: "#ef4444" },
     ];
-    await admin.from("crm_stages").insert(
+    const { error: stagesErr } = await admin.from("crm_stages").insert(
       defaultStages.map((s) => ({
         ...s,
         tenant_id: tenant.id,
         pipeline_id: defaultPipeline.id,
       }))
     );
+    if (stagesErr) return json({ error: `Falha ao criar etapas do funil: ${stagesErr.message}` }, 500);
+
 
     return new Response(JSON.stringify({ tenant, user_id: created.user.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
