@@ -48,6 +48,37 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // Valida `state` contra tabela de estados temporários (CSRF + vínculo a tenant)
+  if (!state) {
+    return new Response(JSON.stringify({ error: "Missing 'state' query parameter" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const { data: stateRow, error: stateErr } = await supabase
+    .from("instagram_oauth_states")
+    .select("tenant_id, user_id, expires_at")
+    .eq("state", state)
+    .maybeSingle();
+  if (stateErr || !stateRow) {
+    console.warn("[instagram-oauth-callback] invalid state:", state, stateErr);
+    return new Response(JSON.stringify({ error: "Invalid or expired state" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (new Date(stateRow.expires_at).getTime() < Date.now()) {
+    await supabase.from("instagram_oauth_states").delete().eq("state", state);
+    return new Response(JSON.stringify({ error: "Expired state" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const tenantId: string = stateRow.tenant_id;
+  // Consumir o state (one-shot)
+  await supabase.from("instagram_oauth_states").delete().eq("state", state);
+
+
   try {
     // 1) Short-lived token
     const stUrl = new URL("https://graph.facebook.com/v25.0/oauth/access_token");
