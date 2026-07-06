@@ -70,7 +70,7 @@ const AppLayout = () => {
         </div>
 
         <nav className="flex-1 space-y-1 p-4">
-          {navItems.map((item) => (
+          {navItems.filter((item) => !item.roles || (userRole && item.roles.includes(userRole))).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
