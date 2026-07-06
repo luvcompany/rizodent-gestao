@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
     }
     const userRole = requestedRole;
 
-    // Procura usuário existente paginando (operação intencional do admin recria limpo)
+    // Procura usuário existente paginando (para verificar se e-mail já existe globalmente)
     let existingUser: any = null;
     for (let page = 1; page <= 20; page++) {
       const { data: list, error: lErr } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
@@ -70,11 +70,50 @@ Deno.serve(async (req) => {
       if (found) { existingUser = found; break; }
       if (!list?.users || list.users.length < 1000) break;
     }
+
     if (existingUser) {
-      await admin.from("user_roles").delete().eq("user_id", existingUser.id);
-      await admin.from("profiles").delete().eq("id", existingUser.id);
-      const { error: dErr } = await admin.auth.admin.deleteUser(existingUser.id);
-      if (dErr) return json({ error: "Falha ao remover usuário existente: " + dErr.message }, 400);
+      // Segurança: só é seguro tocar num usuário existente se ele pertencer ao MESMO tenant.
+      // Caso contrário, um admin de uma clínica poderia sequestrar/apagar conta de outra.
+      const { data: existingProfile } = await admin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", existingUser.id)
+        .maybeSingle();
+      const existingTenantId = existingProfile?.tenant_id ?? existingUser.user_metadata?.tenant_id ?? null;
+
+      if (!existingTenantId || existingTenantId !== tenantId) {
+        return json({ error: "E-mail já cadastrado em outra conta" }, 409);
+      }
+
+      // Mesmo tenant: atualiza senha/metadata e reajusta papel sem deletar a conta de auth
+      const { error: uErr } = await admin.auth.admin.updateUserById(existingUser.id, {
+        password,
+        email_confirm: true,
+        user_metadata: {
+          ...(existingUser.user_metadata ?? {}),
+          nome,
+          tenant_id: tenantId,
+          must_change_password: false,
+        },
+      });
+      if (uErr) return json({ error: "Falha ao atualizar usuário existente: " + uErr.message }, 400);
+
+      await admin
+        .from("profiles")
+        .update({ tenant_id: tenantId, cargo: cargo || null, must_change_password: false })
+        .eq("id", existingUser.id);
+
+      // Reajusta papéis do usuário dentro deste tenant (não toca em papéis de outros tenants)
+      await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", existingUser.id)
+        .eq("tenant_id", tenantId);
+      await admin
+        .from("user_roles")
+        .insert({ user_id: existingUser.id, role: userRole, tenant_id: tenantId });
+
+      return json({ user_id: existingUser.id, updated: true });
     }
 
     // Cria usuário já confirmado
