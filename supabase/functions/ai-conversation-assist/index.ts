@@ -139,32 +139,38 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch config
-    const { data: config } = await supabase
-      .from("ai_assistant_config")
-      .select("*")
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!config) {
-      return new Response(JSON.stringify({ error: "Nenhuma configuração de IA ativa" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Fetch lead
+    // Fetch lead FIRST (needed to scope config by tenant)
     const { data: lead } = await supabase
       .from("crm_leads")
-      .select("id, name, phone, source, tags, cidade, servico_interesse, value, notes")
+      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes")
       .eq("id", leadId)
       .maybeSingle();
 
     if (!lead) {
       return new Response(JSON.stringify({ error: "Lead não encontrado" }), {
         status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!lead.tenant_id) {
+      return new Response(JSON.stringify({ skipped: "no_config" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch config SCOPED TO THE LEAD'S TENANT (never fall back to another tenant's config)
+    const { data: config } = await supabase
+      .from("ai_assistant_config")
+      .select("*")
+      .eq("tenant_id", lead.tenant_id)
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!config) {
+      return new Response(JSON.stringify({ skipped: "no_config" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
