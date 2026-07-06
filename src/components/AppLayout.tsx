@@ -10,7 +10,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
-const navItems = [
+const navItems: Array<{ to: string; icon: any; label: string; roles?: string[] }> = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/atendimento", icon: UserPlus, label: "Atendimento" },
   { to: "/pacientes", icon: Users, label: "Pacientes" },
@@ -19,6 +19,7 @@ const navItems = [
   { to: "/crm", icon: Users, label: "CRM" },
   { to: "/procedimentos", icon: Stethoscope, label: "Procedimentos" },
   { to: "/usuarios", icon: Shield, label: "Usuários" },
+  { to: "/acessos", icon: ScrollText, label: "Logs de acesso", roles: ["crc", "gerente", "superadmin"] },
   { to: "/configuracoes", icon: Settings, label: "Configurações" },
 ];
 
