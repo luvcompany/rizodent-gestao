@@ -61,8 +61,8 @@ const Usuarios = () => {
   const [newPassword, setNewPassword] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const isAdmin = userRole === "superadmin";
-  const canBlock = userRole === "superadmin" || userRole === "crc";
+  const canManageUsers = userRole === "superadmin" || userRole === "crc" || userRole === "gerente";
+  const canBlock = userRole === "superadmin" || userRole === "crc" || userRole === "gerente";
 
   const fetchData = async () => {
     setLoading(true);
@@ -164,8 +164,8 @@ const Usuarios = () => {
         </div>
       </div>
 
-      {/* Create user form - admin only */}
-      {isAdmin && (
+      {/* Create user form - admin or clinic managers only */}
+      {canManageUsers && (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -197,7 +197,7 @@ const Usuarios = () => {
                   <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="crc">CRC</SelectItem>
-                    <SelectItem value="gerente">Gerente</SelectItem>
+                    {userRole === "superadmin" && <SelectItem value="gerente">Gerente</SelectItem>}
                     <SelectItem value="posvenda">Pós-venda</SelectItem>
                   </SelectContent>
                 </Select>
@@ -240,7 +240,7 @@ const Usuarios = () => {
                 <TableBody>
                   {profiles.map((p) => {
                     const role = getUserRole(p.id);
-                    const canEdit = isAdmin || p.id === currentUser?.id;
+                    const canEdit = canManageUsers || p.id === currentUser?.id;
                     return (
                       <TableRow key={p.id}>
                         <TableCell>
@@ -275,7 +275,7 @@ const Usuarios = () => {
                                 <Pencil size={14} className="mr-1" /> Editar
                               </Button>
                             )}
-                            {isAdmin && (
+                            {canManageUsers && (
                               <Dialog open={roleDialogOpen && selectedUserId === p.id} onOpenChange={(o) => { setRoleDialogOpen(o); if (o) { setSelectedUserId(p.id); setSelectedRole(role?.role || "crc"); } }}>
                                 <DialogTrigger asChild>
                                   <Button variant="ghost" size="sm" className="text-primary hover:text-primary">
@@ -291,7 +291,7 @@ const Usuarios = () => {
                                       <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
                                       <SelectContent>
                                         <SelectItem value="crc">CRC</SelectItem>
-                                        <SelectItem value="gerente">Gerente</SelectItem>
+                                        {userRole === "superadmin" && <SelectItem value="gerente">Gerente</SelectItem>}
                                         <SelectItem value="posvenda">Pós-venda</SelectItem>
                                       </SelectContent>
                                     </Select>
@@ -300,7 +300,7 @@ const Usuarios = () => {
                                 </DialogContent>
                               </Dialog>
                             )}
-                            {isAdmin && (
+                            {canManageUsers && (
                               <Button
                                 variant="ghost"
                                 size="sm"
