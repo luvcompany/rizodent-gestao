@@ -39,8 +39,3 @@ verify_jwt = false
 # Não expõe segredos; sem dados sensíveis.
 [functions.get-instagram-app-id]
 verify_jwt = false
-
-# One-shot helper para aplicar limites de upload aos buckets públicos.
-# Idempotente e sem dados sensíveis; deve ser removido após uso.
-[functions.apply-bucket-limits]
-verify_jwt = false
