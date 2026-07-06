@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
       { name: "Agendado",       position: 6,  color: "#c0ee1b" },
       { name: "Não compareceu", position: 7,  color: "#eab308" },
       { name: "Reagendado",     position: 8,  color: "#6366f1" },
-      { name: "Contratado",     position: 9,  color: "#84cc16" },
+      { name: "Contratado",     position: 9,  color: "#84cc16", is_won: true },
       { name: "Desqualificado", position: 10, color: "#ef4444" },
     ];
     const { error: stagesErr } = await admin.from("crm_stages").insert(
