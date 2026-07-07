@@ -164,8 +164,56 @@ Deno.serve(async (req) => {
     );
     if (stagesErr) return json({ error: `Falha ao criar etapas do funil: ${stagesErr.message}` }, 500);
 
+    // ---- Optional seeding (non-fatal): accumulate warnings, never roll back the tenant ----
+    const warnings: string[] = [];
 
-    return new Response(JSON.stringify({ tenant, user_id: created.user.id }), {
+    // 1) AI assistant config — one active row per tenant, empty KB (tenant fills in later)
+    const { error: aiErr } = await admin.from("ai_assistant_config").insert({
+      tenant_id: tenant.id,
+      is_active: true,
+      assistant_display_name: "Assistente",
+      name: `${name} — Assistente`,
+      knowledge_base: "",
+      auto_send_enabled: false,
+      shift_start: "08:00",
+      shift_end: "18:00",
+    });
+    if (aiErr) warnings.push(`ai_assistant_config: ${aiErr.message}`);
+
+    // 2) tipos_procedimento — default dental procedure list
+    const defaultProcs = [
+      { nome: "Avaliação / Consulta", especialidade: "Clínica Geral" },
+      { nome: "Limpeza (Profilaxia)", especialidade: "Clínica Geral" },
+      { nome: "Restauração", especialidade: "Clínica Geral" },
+      { nome: "Extração", especialidade: "Cirurgia" },
+      { nome: "Tratamento de Canal", especialidade: "Endodontia" },
+      { nome: "Clareamento", especialidade: "Estética" },
+      { nome: "Prótese", especialidade: "Prótese" },
+      { nome: "Implante", especialidade: "Implantodontia" },
+      { nome: "Aparelho Ortodôntico", especialidade: "Ortodontia" },
+      { nome: "Facetas", especialidade: "Estética" },
+    ];
+    const { error: procErr } = await admin.from("tipos_procedimento").insert(
+      defaultProcs.map((p) => ({
+        ...p,
+        tenant_id: tenant.id,
+        ativo: true,
+        valor_referencia: 0,
+      })),
+    );
+    if (procErr) warnings.push(`tipos_procedimento: ${procErr.message}`);
+
+    // 3) funnel_channels — map WhatsApp to the default pipeline
+    const { error: chErr } = await admin.from("funnel_channels").insert({
+      tenant_id: tenant.id,
+      pipeline_id: defaultPipeline.id,
+      channel_type: "whatsapp",
+    });
+    if (chErr) warnings.push(`funnel_channels: ${chErr.message}`);
+
+    // 4) crm_quick_replies — intentionally NOT seeded (tenant creates their own)
+
+    return new Response(JSON.stringify({ tenant, user_id: created.user.id, warnings }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
