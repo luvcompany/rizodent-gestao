@@ -111,6 +111,7 @@ export default function CrmConversa() {
   // Fetch lead + profiles in parallel (with profile cache)
   const [leadLoading, setLeadLoading] = useState(true);
   const [phoneCopied, setPhoneCopied] = useState(false);
+  const [nameCopied, setNameCopied] = useState(false);
 
   const copyPhone = async () => {
     if (!lead?.phone) return;
@@ -119,6 +120,17 @@ export default function CrmConversa() {
       setPhoneCopied(true);
       toast.success("Número copiado");
       setTimeout(() => setPhoneCopied(false), 1500);
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  };
+  const copyName = async () => {
+    if (!lead?.name) return;
+    try {
+      await navigator.clipboard.writeText(lead.name);
+      setNameCopied(true);
+      toast.success("Nome copiado");
+      setTimeout(() => setNameCopied(false), 1500);
     } catch {
       toast.error("Não foi possível copiar");
     }
@@ -302,7 +314,18 @@ export default function CrmConversa() {
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-foreground truncate">{lead.name}</div>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="font-semibold text-foreground truncate">{lead.name}</div>
+              <button
+                type="button"
+                onClick={copyName}
+                title="Copiar nome"
+                aria-label="Copiar nome"
+                className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              >
+                {nameCopied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+              </button>
+            </div>
             <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
               {lead.phone && (
                 <span className="inline-flex items-center gap-1">
