@@ -132,6 +132,8 @@ const CadastroLeads = () => {
     setSavingAgendados(true);
     try {
       const payload = {
+        data: dataAgendados,
+        clinica_id: clinicaIdAgendados,
         agendaram: parseInt(agendaram) || 0,
         compareceram: parseInt(compareceram) || 0,
         contrataram: parseInt(contrataram) || 0,
@@ -141,13 +143,16 @@ const CadastroLeads = () => {
         reagendados_contrataram: parseInt(reagendadosContrataram) || 0,
         created_by: user?.id,
       };
-      if (existingIdAgendados) {
-        const { error } = await supabase.from("leads_diarios").update(payload).eq("id", existingIdAgendados);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("leads_diarios").insert({ data: dataAgendados, clinica_id: clinicaIdAgendados, leads_novos: 0, ...payload });
-        if (error) throw error;
-      }
+      // Upsert idempotente (UNIQUE data,clinica_id) — preserva leads_novos existente
+      // (não enviado no payload) e evita erro/duplicação quando "Leads Novos" foi
+      // salvo antes.
+      const { data: up, error } = await supabase
+        .from("leads_diarios")
+        .upsert(payload, { onConflict: "data,clinica_id", ignoreDuplicates: false })
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (up?.id) setExistingIdAgendados(up.id);
       toast.success("Dados de agendados salvos!");
       fetchRegistros();
     } catch (err: any) {
