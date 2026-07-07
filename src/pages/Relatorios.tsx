@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { toLocalDateISO } from "@/lib/utils";
+import { businessDaysBetween } from "@/lib/businessDays";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ const Relatorios = () => {
   // orçamentos removido
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [holidays, setHolidays] = useState<{ data: string; clinica_id: string | null }[]>([]);
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date(); d.setDate(1); return toLocalDateISO(d);
   });
@@ -51,15 +53,17 @@ const Relatorios = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }] = await Promise.all([
         supabase.from("clinicas").select("*").eq("ativa", true),
         supabase.from("pagamentos").select("*, clinicas(nome), pacientes(nome)"),
         supabase.from("tratamentos").select("*, clinicas(nome), pacientes(nome)"),
         supabase.from("pacientes").select("*"),
         supabase.from("leads_diarios").select("*, clinicas(nome)"),
+        (supabase as any).from("dashboard_holidays").select("data, clinica_id"),
       ]);
       setClinicas(cl || []); setPagamentos(pg || []); setTratamentos(tr || []);
       setPacientes(pc || []); setLeadsData(ld || []);
+      setHolidays((hd as any) || []);
       setLoading(false);
     };
     fetchAll();
@@ -175,35 +179,65 @@ const Relatorios = () => {
   }, [filteredPagamentos]);
 
   // ========== PREDICTABILITY ==========
-  const diasUteisMes = useMemo(() => {
-    const refDate = new Date(dateFrom + "T12:00:00");
-    const year = refDate.getFullYear();
-    const month = refDate.getMonth();
-    const totalDays = new Date(year, month + 1, 0).getDate();
-    let count = 0;
-    for (let day = 1; day <= totalDays; day++) {
-      const dow = new Date(year, month, day).getDay();
-      if (dow !== 0) count++;
-    }
-    return count;
+  // Conjunto de feriados aplicáveis à clínica filtrada (YYYY-MM-DD local)
+  const holidaySet = useMemo(() => {
+    const set = new Set<string>();
+    holidays.forEach((h) => {
+      const applies = !h.clinica_id || clinicaFiltro === "todas" || h.clinica_id === clinicaFiltro;
+      if (applies) set.add(h.data);
+    });
+    return set;
+  }, [holidays, clinicaFiltro]);
+
+  // Mês/ano de referência = mês do início do período filtrado
+  const refMonth = useMemo(() => {
+    const d = new Date(dateFrom + "T12:00:00");
+    return new Date(d.getFullYear(), d.getMonth(), 1);
   }, [dateFrom]);
 
-  const diasUteisPassados = useMemo(() => {
+  // O período selecionado é EXATAMENTE o mês corrente? (previsão só faz sentido nele)
+  const isCurrentMonthSelected = useMemo(() => {
+    const now = new Date();
     const start = new Date(dateFrom + "T12:00:00");
-    const today = new Date();
-    const endDate = new Date(dateTo + "T12:00:00");
-    const limit = endDate < today ? endDate : today;
-    let count = 0;
-    const current = new Date(start);
-    while (current <= limit) {
-      if (current.getDay() !== 0) count++;
-      current.setDate(current.getDate() + 1);
-    }
-    return Math.max(count, 1);
+    const end = new Date(dateTo + "T12:00:00");
+    return (
+      start.getFullYear() === now.getFullYear() &&
+      start.getMonth() === now.getMonth() &&
+      start.getDate() === 1 &&
+      end.getFullYear() === now.getFullYear() &&
+      end.getMonth() === now.getMonth()
+    );
   }, [dateFrom, dateTo]);
 
+  // "Ontem" em horário local (lançamentos têm ~1 dia de atraso)
+  const yesterdayLocal = useMemo(() => {
+    const t = new Date();
+    t.setHours(12, 0, 0, 0);
+    t.setDate(t.getDate() - 1);
+    return t;
+  }, []);
+  const yesterdayStr = useMemo(() => toLocalDateISO(yesterdayLocal), [yesterdayLocal]);
+
+  // Dias úteis do MÊS INTEIRO (Seg-Sex=1, Sáb=0.5, Dom=0, feriados=0)
+  const diasUteisMes = useMemo(() => {
+    const firstDay = new Date(refMonth.getFullYear(), refMonth.getMonth(), 1);
+    const lastDay = new Date(refMonth.getFullYear(), refMonth.getMonth() + 1, 0);
+    return Math.max(businessDaysBetween(firstDay, lastDay, holidaySet), 1);
+  }, [refMonth, holidaySet]);
+
+  // Dias úteis DECORRIDOS: do início do período até ONTEM (ou até o dateTo, o que for menor)
+  const diasUteisPassados = useMemo(() => {
+    const start = new Date(dateFrom + "T12:00:00");
+    const endSel = new Date(dateTo + "T12:00:00");
+    const limit = endSel < yesterdayLocal ? endSel : yesterdayLocal;
+    return Math.max(businessDaysBetween(start, limit, holidaySet), 0.5);
+  }, [dateFrom, dateTo, yesterdayLocal, holidaySet]);
+
   const predictability = useMemo(() => {
+    // Numerador ALINHADO com o divisor: pagamentos até ONTEM (mesma janela dos dias úteis decorridos)
+    const pagamentosAteOntem = filteredPagamentos.filter((p) => (p.data_pagamento || "") <= yesterdayStr);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+    const totalContratadoAteOntem = pagamentosAteOntem.reduce((s, p) => s + (Number(p.valor) || 0), 0);
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
       leads: acc.leads + l.leads_novos, agendaram: acc.agendaram + l.agendaram,
       compareceram: acc.compareceram + (l.agendaram - l.faltaram), faltaram: acc.faltaram + l.faltaram,
@@ -211,7 +245,7 @@ const Relatorios = () => {
     }), { leads: 0, agendaram: 0, compareceram: 0, faltaram: 0, contrataram: 0, naoContrataram: 0 });
     const taxaConversao = leadsTotals.leads > 0 ? (leadsTotals.contrataram / leadsTotals.leads) * 100 : 0;
     const ticketMedioPgto = filteredPagamentos.length > 0 ? totalContratado / filteredPagamentos.length : 0;
-    const ticketMedioDiario = totalContratado / diasUteisPassados;
+    const ticketMedioDiario = totalContratadoAteOntem / diasUteisPassados;
     const projecaoMensal = ticketMedioDiario * diasUteisMes;
     const txAgendamento = leadsTotals.leads > 0 ? leadsTotals.agendaram / leadsTotals.leads : 0;
     const txComparecimento = leadsTotals.agendaram > 0 ? leadsTotals.compareceram / leadsTotals.agendaram : 0;
@@ -231,7 +265,7 @@ const Relatorios = () => {
       projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes, projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
       projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
     };
-  }, [filteredPagamentos, filteredLeads, diasUteisMes, diasUteisPassados]);
+  }, [filteredPagamentos, filteredLeads, diasUteisMes, diasUteisPassados, yesterdayStr]);
 
   // ========== FUNNEL ==========
   const funnelReport = useMemo(() => {
@@ -651,7 +685,7 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Previsibilidade</CardTitle>
             <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-              `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${formatCurrency(predictability.projecaoMensal)}`
+              `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${isCurrentMonthSelected ? formatCurrency(predictability.projecaoMensal) : "— (apenas no mês corrente)"}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
@@ -661,13 +695,13 @@ const Relatorios = () => {
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Total Contratado</p><p className="text-xl font-bold text-accent-foreground">{formatCurrency(predictability.totalContratado)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Ticket Médio por Pagamento</p><p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioPgto)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Ticket Médio Diário</p><p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioDiario)}</p></div>
-                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Projeção Mensal ({diasUteisMes} dias úteis)</p><p className="text-xl font-bold text-primary">{formatCurrency(predictability.projecaoMensal)}</p></div>
+                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Projeção Mensal ({diasUteisMes} dias úteis)</p><p className="text-xl font-bold text-primary">{isCurrentMonthSelected ? formatCurrency(predictability.projecaoMensal) : "—"}</p>{!isCurrentMonthSelected && <p className="text-[10px] text-muted-foreground mt-1">Disponível apenas para o mês corrente</p>}</div>
               </div>
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={[
                 { name: "Contratado", value: predictability.totalContratado },
-                { name: "Projeção", value: predictability.projecaoMensal },
+                { name: "Projeção", value: isCurrentMonthSelected ? predictability.projecaoMensal : 0 },
               ]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} />
@@ -704,7 +738,7 @@ const Relatorios = () => {
                           ) : "—"}
                         </TableCell>
                         <TableCell className="text-center">{r.media.toFixed(1)}</TableCell>
-                        <TableCell className="text-center font-medium">{Math.round(r.proj)}</TableCell>
+                        <TableCell className="text-center font-medium">{isCurrentMonthSelected ? Math.round(r.proj) : "—"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
