@@ -64,6 +64,9 @@ const AdminLogs = lazyWithPreload(() => import("./pages/admin/AdminLogs"));
 const AdminLogin = lazyWithPreload(() => import("./pages/admin/AdminLogin"));
 const NotFound = lazyWithPreload(() => import("./pages/NotFound"));
 const OAuthConsent = lazyWithPreload(() => import("./pages/OAuthConsent"));
+const Privacidade = lazyWithPreload(() => import("./pages/legal/Privacidade"));
+const Termos = lazyWithPreload(() => import("./pages/legal/Termos"));
+const ExclusaoDados = lazyWithPreload(() => import("./pages/legal/ExclusaoDados"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -176,6 +179,9 @@ export const PublicApp = ({ basename }: { basename: string }) => (
           <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<CrclinLanding />} />
+            <Route path="/privacidade" element={<Privacidade />} />
+            <Route path="/termos" element={<Termos />} />
+            <Route path="/exclusao-de-dados" element={<ExclusaoDados />} />
             <Route path="/.lovable/oauth/consent" element={withRouteSuspense(<OAuthConsent />)} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<AdminLayout />}>
