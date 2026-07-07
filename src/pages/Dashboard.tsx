@@ -369,54 +369,63 @@ const Dashboard = () => {
   const isWorkingDay = (d: Date, dateStr: string) =>
     d.getDay() !== 0 && !holidaySet.has(dateStr);
 
-  // Dias úteis decorridos no mês (seg-sáb, exclui domingos e feriados) — até hoje
+  // Mês/ano de referência (do início do período filtrado, ou mês atual se vazio)
+  const refMonth = useMemo(() => {
+    const ref = dateRange
+      ? new Date(dateRange.start.getFullYear(), dateRange.start.getMonth(), 1)
+      : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    return ref;
+  }, [dateRange]);
+
+  // O período selecionado é EXATAMENTE o mês corrente? (para exibir previsão)
+  const isCurrentMonthSelected = useMemo(() => {
+    if (!dateRange) return false;
+    const now = new Date();
+    const s = dateRange.start;
+    const e = dateRange.end;
+    return (
+      s.getFullYear() === now.getFullYear() &&
+      s.getMonth() === now.getMonth() &&
+      s.getDate() === 1 &&
+      e.getFullYear() === now.getFullYear() &&
+      e.getMonth() === now.getMonth()
+    );
+  }, [dateRange]);
+
+  // "Ontem" em horário local (lançamentos têm ~1 dia de atraso)
+  const yesterdayLocal = useMemo(() => {
+    const t = new Date();
+    t.setHours(12, 0, 0, 0);
+    t.setDate(t.getDate() - 1);
+    return t;
+  }, []);
+  const yesterdayStr = useMemo(() => toLocalDateStr(yesterdayLocal), [yesterdayLocal]);
+
+  // Dias úteis DECORRIDOS: do início do mês de referência até ONTEM
+  // (Seg-Sex=1, Sáb=0.5, Dom=0, feriados=0)
   const diasUteisPassados = useMemo(() => {
-    if (!filtered.pagamentos.length) return 1;
-    const dates = filtered.pagamentos.map((p) => p.data_pagamento).sort();
-    const firstDate = new Date(dates[0] + "T12:00:00");
-    // Início do mês de referência (não a data do primeiro pagamento),
-    // para que a média = faturamento / dias úteis decorridos do mês inteiro.
-    const monthStart = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
-    const today = new Date();
-    today.setHours(12, 0, 0, 0);
-    // Lançamentos são feitos com 1 dia de atraso, então consideramos até ontem
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const lastDayMonth = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
-    const end = yesterday < lastDayMonth ? yesterday : lastDayMonth;
-    let count = 0;
-    const current = new Date(monthStart);
-    while (current <= end) {
-      const ds = toLocalDateStr(current);
-      if (isWorkingDay(current, ds)) count++;
-      current.setDate(current.getDate() + 1);
-    }
-    return Math.max(count, 1);
-  }, [filtered.pagamentos, holidaySet]);
+    const monthStart = new Date(refMonth.getFullYear(), refMonth.getMonth(), 1);
+    const monthEnd = new Date(refMonth.getFullYear(), refMonth.getMonth() + 1, 0);
+    const end = yesterdayLocal < monthEnd ? yesterdayLocal : monthEnd;
+    return Math.max(businessDaysBetween(monthStart, end, holidaySet), 0.5);
+  }, [refMonth, yesterdayLocal, holidaySet]);
 
-
-
-  // Total de dias úteis do mês para projeção — exclui domingos e feriados
-  // Quando não há pagamentos no período, calcula com base no mês atual real
-  // (em vez de fallback fixo 26 dias).
+  // Total de dias úteis do MÊS INTEIRO (para projeção)
   const diasUteisMes = useMemo(() => {
-    const ref = filtered.pagamentos.length
-      ? new Date(filtered.pagamentos.map((p) => p.data_pagamento).sort()[0] + "T12:00:00")
-      : new Date();
-    const firstDay = new Date(ref.getFullYear(), ref.getMonth(), 1);
-    const lastDay = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
-    let count = 0;
-    const current = new Date(firstDay);
-    while (current <= lastDay) {
-      const ds = toLocalDateStr(current);
-      if (isWorkingDay(current, ds)) count++;
-      current.setDate(current.getDate() + 1);
-    }
-    return Math.max(count, 1);
-  }, [filtered.pagamentos, holidaySet]);
+    const firstDay = new Date(refMonth.getFullYear(), refMonth.getMonth(), 1);
+    const lastDay = new Date(refMonth.getFullYear(), refMonth.getMonth() + 1, 0);
+    return Math.max(businessDaysBetween(firstDay, lastDay, holidaySet), 1);
+  }, [refMonth, holidaySet]);
 
-  // Ticket médio = faturamento / dias com dados
-  const ticketMedio = fatTotal / diasUteisPassados;
+  // Faturamento até ONTEM (mesma janela do divisor) para o Ticket Médio Diário
+  const fatAteOntem = useMemo(() => {
+    return filtered.pagamentos
+      .filter((p) => (p.data_pagamento || "") <= yesterdayStr)
+      .reduce((s, p) => s + Number(p.valor), 0);
+  }, [filtered.pagamentos, yesterdayStr]);
+
+  // Ticket médio diário: numerador e divisor alinhados (até ontem, mesmo mês)
+  const ticketMedio = fatAteOntem / diasUteisPassados;
   const projecaoMensal = ticketMedio * diasUteisMes;
 
   // ===== KPIs CRM (filtrados por período + cidade da clínica) =====
