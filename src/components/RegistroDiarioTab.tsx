@@ -108,22 +108,30 @@ const RegistroDiarioTab = () => {
   const agendEspontaneos = Math.max(vAgendados - vAgendLigacao, 0);
   const reagEspontaneos = Math.max(vReagendados - vReagLigacao, 0);
 
+  // Clamp de percentuais em [0, 100] — evita exibir taxas irreais (>100%)
+  const clampPct = (v: number) => Math.max(0, Math.min(100, v));
+
   // Taxa de atendimento de ligações
-  const taxaAtendimento = vTotalLig > 0 ? (vAtendidas / vTotalLig) * 100 : 0;
+  const taxaAtendimento = clampPct(vTotalLig > 0 ? (vAtendidas / vTotalLig) * 100 : 0);
 
   // Taxa de conversão sobre ligações atendidas
   const totalConvertidosLigacao = vAgendLigacao + vReagLigacao;
-  const taxaConversaoAtendidas = vAtendidas > 0 ? (totalConvertidosLigacao / vAtendidas) * 100 : 0;
+  const taxaConversaoAtendidas = clampPct(vAtendidas > 0 ? (totalConvertidosLigacao / vAtendidas) * 100 : 0);
 
   // Taxa de agendamento por ligação atendida
-  const taxaAgendLigacao = vAtendidas > 0 ? (vAgendLigacao / vAtendidas) * 100 : 0;
+  const taxaAgendLigacao = clampPct(vAtendidas > 0 ? (vAgendLigacao / vAtendidas) * 100 : 0);
 
   // Taxa de reagendamento por ligação atendida
-  const taxaReagLigacao = vAtendidas > 0 ? (vReagLigacao / vAtendidas) * 100 : 0;
+  const taxaReagLigacao = clampPct(vAtendidas > 0 ? (vReagLigacao / vAtendidas) * 100 : 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clinicaId) { toast.error("Selecione uma clínica."); return; }
+    // Validação: a soma dos convertidos por ligação não pode exceder as ligações atendidas
+    if (vAgendLigacao + vReagLigacao > vAtendidas) {
+      toast.error("Agendamentos + Reagendamentos por ligação não podem exceder ligações atendidas.");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -138,15 +146,16 @@ const RegistroDiarioTab = () => {
         created_by: user?.id,
       };
 
-      if (existingId) {
-        const { error } = await supabase.from("registros_diarios_atendimento").update(payload).eq("id", existingId);
-        if (error) throw error;
-        toast.success("Registro atualizado!");
-      } else {
-        const { error } = await supabase.from("registros_diarios_atendimento").insert(payload);
-        if (error) throw error;
-        toast.success("Registro salvo!");
-      }
+      // Gravação idempotente: a tabela tem UNIQUE(data, clinica_id).
+      // Evita erro de constraint em corrida ou quando o "existingId" carregado está desatualizado.
+      const { data: upserted, error } = await supabase
+        .from("registros_diarios_atendimento")
+        .upsert(payload, { onConflict: "data,clinica_id" })
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (upserted?.id) setExistingId(upserted.id);
+      toast.success(existingId ? "Registro atualizado!" : "Registro salvo!");
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
@@ -387,7 +396,7 @@ const RegistroDiarioTab = () => {
                 <TableBody>
                   {registros.map((r) => {
                     const totalConv = r.agendamentos_por_ligacao + r.leads_reagendados_ligacao;
-                    const conv = r.ligacoes_atendidas > 0 ? ((totalConv / r.ligacoes_atendidas) * 100).toFixed(1) : "0.0";
+                    const conv = r.ligacoes_atendidas > 0 ? Math.min(100, (totalConv / r.ligacoes_atendidas) * 100).toFixed(1) : "0.0";
                     return (
                       <TableRow key={r.id}>
                         <TableCell className="font-medium">{format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy")}</TableCell>

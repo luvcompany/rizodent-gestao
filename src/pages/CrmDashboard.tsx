@@ -14,6 +14,22 @@ import {
 import { format, isToday, isPast, startOfDay, endOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+
+// "hoje" em ISO local COM offset do navegador — para não escorregar em BRT/UTC-3
+// quando comparado contra colunas timestamptz (created_at).
+const localIsoWithOffset = (d: Date) => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const tzMin = -d.getTimezoneOffset();
+  const sign = tzMin >= 0 ? "+" : "-";
+  const off = Math.abs(tzMin);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(off / 60))}:${pad(off % 60)}`;
+};
+const todayLocalBounds = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  return { start: localIsoWithOffset(start), end: localIsoWithOffset(end) };
+};
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
@@ -124,7 +140,7 @@ export const prefetchCrmDashboardData = async (
     const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
       fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart).order("due_date").range(f, t)),
       fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd).order("scheduled_date").range(f, t)),
-      supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
+      (() => { const b = todayLocalBounds(); return supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", b.start).lte("created_at", b.end); })(),
       fetchAll<any>((f, t) => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd).range(f, t)),
     ]);
     const refIds = Array.from(new Set([
@@ -194,7 +210,7 @@ export default function CrmDashboard() {
     const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
       fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart).order("due_date").range(f, t)),
       fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd).order("scheduled_date").range(f, t)),
-      supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
+      (() => { const b = todayLocalBounds(); return supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", b.start).lte("created_at", b.end); })(),
       fetchAll<any>((f, t) => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd).range(f, t)),
     ]);
 
@@ -268,7 +284,7 @@ export default function CrmDashboard() {
     const endDate = addDays(today, parseInt(upcomingDays));
     return appointments
       .filter(a => {
-        const d = new Date(a.scheduled_date);
+        const d = new Date(a.scheduled_date + "T12:00:00");
         return (isSameDay(d, today) || isAfter(d, today)) && isBefore(d, endDate);
       })
       .sort((a, b) => {

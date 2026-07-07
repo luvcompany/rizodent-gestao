@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { toLocalDateISO } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bot, Sparkles, Send, Zap } from "lucide-react";
@@ -15,13 +16,14 @@ type UsageData = {
   broadcasts: Array<{ mes: string; campanhas: number; enviados: number }>;
 };
 
+// IMPORTANTE: usar meio-dia LOCAL para não recuar 1 dia/mês em fusos negativos (BRT).
 const fmtMes = (iso: string) => {
-  const d = new Date(iso);
+  const d = new Date(iso + "T12:00:00");
   return d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
 };
 
 const fmtDia = (iso: string) => {
-  const d = new Date(iso);
+  const d = new Date(iso + "T12:00:00");
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 };
 
@@ -137,8 +139,8 @@ const CrmMetricas = () => {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const toIso = to.toISOString().slice(0, 10);
-      const fromIso = from.toISOString().slice(0, 10);
+      const toIso = toLocalDateISO(to);
+      const fromIso = toLocalDateISO(from);
       const { data: res, error } = await (supabase as any).rpc("crm_usage_metrics", {
         p_from: fromIso, p_to: toIso,
       });
