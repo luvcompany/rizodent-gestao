@@ -231,7 +231,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     setSaving(true);
     const finalSource = effectiveSource === "outro" ? (customSource.trim() || "outro") : source;
     const updates = {
-      name: name.trim(),
+      name: name.trim().toUpperCase(),
       phone: phone.trim() || null,
       source: finalSource || null,
       value: value ? parseFloat(value) : null,
