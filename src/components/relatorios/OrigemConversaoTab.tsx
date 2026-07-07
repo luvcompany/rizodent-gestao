@@ -390,15 +390,29 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
             <h3 className="font-semibold text-sm">Tempo médio de atendimento</h3>
             <Clock className="w-4 h-4 text-muted-foreground" />
           </div>
-          <div className="flex items-baseline justify-center gap-3">
-            <div className="text-5xl font-bold tracking-tight">{fmtMinSec(avgAttendanceSec).m}</div>
-            <div className="text-3xl text-muted-foreground">:</div>
-            <div className="text-5xl font-bold tracking-tight">{String(fmtMinSec(avgAttendanceSec).s).padStart(2, "0")}</div>
-          </div>
-          <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
-            <span>minutos</span>
-            <span>segundos</span>
-          </div>
+          {(() => {
+            const d = fmtDuration(avgAttendanceSec);
+            return (
+              <>
+                <div className="flex items-baseline justify-center gap-3">
+                  {d.hasHours && (
+                    <>
+                      <div className="text-5xl font-bold tracking-tight">{d.h}</div>
+                      <div className="text-3xl text-muted-foreground">:</div>
+                    </>
+                  )}
+                  <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
+                  <div className="text-3xl text-muted-foreground">:</div>
+                  <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
+                </div>
+                <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+                  {d.hasHours && <span>horas</span>}
+                  <span>minutos</span>
+                  <span>segundos</span>
+                </div>
+              </>
+            );
+          })()}
           <p className="text-[11px] text-muted-foreground text-center mt-3">
             Do 1º contato do lead até o desfecho (contratado ou não contratado).
           </p>
@@ -409,15 +423,29 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
             <h3 className="font-semibold text-sm">Tempo médio até primeira resposta</h3>
             <MessageSquare className="w-4 h-4 text-muted-foreground" />
           </div>
-          <div className="flex items-baseline justify-center gap-3">
-            <div className="text-5xl font-bold tracking-tight">{fmtMinSec(avgFirstResponseSec).m}</div>
-            <div className="text-3xl text-muted-foreground">:</div>
-            <div className="text-5xl font-bold tracking-tight">{String(fmtMinSec(avgFirstResponseSec).s).padStart(2, "0")}</div>
-          </div>
-          <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
-            <span>minutos</span>
-            <span>segundos</span>
-          </div>
+          {(() => {
+            const d = fmtDuration(avgFirstResponseSec);
+            return (
+              <>
+                <div className="flex items-baseline justify-center gap-3">
+                  {d.hasHours && (
+                    <>
+                      <div className="text-5xl font-bold tracking-tight">{d.h}</div>
+                      <div className="text-3xl text-muted-foreground">:</div>
+                    </>
+                  )}
+                  <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
+                  <div className="text-3xl text-muted-foreground">:</div>
+                  <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
+                </div>
+                <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+                  {d.hasHours && <span>horas</span>}
+                  <span>minutos</span>
+                  <span>segundos</span>
+                </div>
+              </>
+            );
+          })()}
           <p className="text-[11px] text-muted-foreground text-center mt-3">
             Do 1º inbound do lead até a 1ª resposta da equipe.
           </p>
