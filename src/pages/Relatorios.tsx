@@ -39,6 +39,7 @@ const Relatorios = () => {
   // orçamentos removido
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [holidays, setHolidays] = useState<{ data: string; clinica_id: string | null }[]>([]);
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date(); d.setDate(1); return toLocalDateISO(d);
   });
