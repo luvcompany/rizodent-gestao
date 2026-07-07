@@ -331,10 +331,12 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
   const fmtDuration = (sec: number) => {
     const total = Math.max(0, Math.floor(sec || 0));
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    return { h, m, s, hasHours: h > 0 };
+    const d = Math.floor(total / 86400);
+    const remaining = total % 86400;
+    const h = Math.floor(remaining / 3600);
+    const m = Math.floor((remaining % 3600) / 60);
+    const s = remaining % 60;
+    return { d, h, m, s, hasDays: d > 0, hasHours: h > 0 || d > 0 };
   };
 
   // Contratados válidos: leads com appointment status='contracted'.
@@ -436,9 +438,15 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
                 {card.icon}
               </div>
               <div className="flex items-baseline justify-center gap-3">
+                {d.hasDays && (
+                  <>
+                    <div className="text-5xl font-bold tracking-tight">{d.d}</div>
+                    <div className="text-3xl text-muted-foreground">d</div>
+                  </>
+                )}
                 {d.hasHours && (
                   <>
-                    <div className="text-5xl font-bold tracking-tight">{d.h}</div>
+                    <div className="text-5xl font-bold tracking-tight">{d.hasDays ? String(d.h).padStart(2, "0") : d.h}</div>
                     <div className="text-3xl text-muted-foreground">:</div>
                   </>
                 )}
@@ -447,6 +455,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
                 <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
               </div>
               <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+                {d.hasDays && <span>dias</span>}
                 {d.hasHours && <span>horas</span>}
                 <span>minutos</span>
                 <span>segundos</span>
