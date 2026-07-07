@@ -506,7 +506,9 @@ const Dashboard = () => {
   { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
   { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
   { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign },
-  { title: "Previsão Mensal", value: formatCurrency(projecaoMensal), icon: TrendingUp, subtitle: `${diasUteisMes} dias úteis no mês` },
+  ...(isCurrentMonthSelected
+    ? [{ title: "Previsão Mensal", value: formatCurrency(projecaoMensal), icon: TrendingUp, subtitle: `${diasUteisMes} dias úteis no mês` }]
+    : []),
   { title: "Pacientes", value: String(totalPacientes), icon: Users }];
 
 
