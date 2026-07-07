@@ -381,6 +381,76 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
       </Card>
 
+      {/* Indicadores de atendimento */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm">Tempo médio de atendimento</h3>
+            <Clock className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="flex items-baseline justify-center gap-3">
+            <div className="text-5xl font-bold tracking-tight">{fmtMinSec(avgAttendanceSec).m}</div>
+            <div className="text-3xl text-muted-foreground">:</div>
+            <div className="text-5xl font-bold tracking-tight">{String(fmtMinSec(avgAttendanceSec).s).padStart(2, "0")}</div>
+          </div>
+          <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+            <span>minutos</span>
+            <span>segundos</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground text-center mt-3">
+            Do 1º contato do lead até o desfecho (contratado ou não contratado).
+          </p>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm">Tempo médio até primeira resposta</h3>
+            <MessageSquare className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="flex items-baseline justify-center gap-3">
+            <div className="text-5xl font-bold tracking-tight">{fmtMinSec(avgFirstResponseSec).m}</div>
+            <div className="text-3xl text-muted-foreground">:</div>
+            <div className="text-5xl font-bold tracking-tight">{String(fmtMinSec(avgFirstResponseSec).s).padStart(2, "0")}</div>
+          </div>
+          <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+            <span>minutos</span>
+            <span>segundos</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground text-center mt-3">
+            Do 1º inbound do lead até a 1ª resposta da equipe.
+          </p>
+        </Card>
+      </div>
+
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-muted-foreground" />
+            Volume de conversas por hora
+          </h3>
+          <div className="text-2xl font-bold">{totalHourly}</div>
+        </div>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={hourlyVolume} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
+              <XAxis dataKey="hora" tick={{ fontSize: 11 }} interval={0} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6 }}
+                labelStyle={{ color: "hsl(var(--foreground))" }}
+              />
+              <Line type="monotone" dataKey="total" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-2">
+          Novas conversas iniciadas por hora, no fuso horário da clínica ({tz}).
+        </p>
+      </Card>
+
+
+
       {/* Cidade × Origem */}
       <Card className="p-4">
         <h3 className="font-semibold mb-3">Leads por Cidade × Origem</h3>
