@@ -306,10 +306,12 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
   const totalHourly = useMemo(() => hourlyVolume.reduce((s, b) => s + b.total, 0), [hourlyVolume]);
 
-  const fmtMinSec = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return { m, s };
+  const fmtDuration = (sec: number) => {
+    const total = Math.max(0, Math.floor(sec || 0));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return { h, m, s, hasHours: h > 0 };
   };
 
   // Contratados válidos: leads com appointment status='contracted'.
