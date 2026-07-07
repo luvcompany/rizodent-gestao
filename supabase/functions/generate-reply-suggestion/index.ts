@@ -249,7 +249,6 @@ Deno.serve(async (req) => {
       if (t?.name && String(t.name).trim()) clinicName = String(t.name).trim();
       tenantTz = resolveTz((t as any)?.timezone);
     } catch (_) { /* opcional */ }
-    } catch (_) { /* keep fallback */ }
 
     // Resolver nome da etapa atual
     let stageName: string | null = null;
