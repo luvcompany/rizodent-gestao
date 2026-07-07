@@ -215,7 +215,12 @@ const CrclinLanding = () => {
       <footer className="border-t border-slate-800 bg-slate-950">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-6 py-8 text-xs text-slate-300 sm:flex-row">
           <p>© {new Date().getFullYear()} CRClin. Todos os direitos reservados.</p>
-          <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-300">Contato</a>
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+            <a href="/privacidade" className="text-slate-400 hover:text-cyan-300">Política de Privacidade</a>
+            <a href="/termos" className="text-slate-400 hover:text-cyan-300">Termos de Uso</a>
+            <a href="/exclusao-de-dados" className="text-slate-400 hover:text-cyan-300">Exclusão de Dados</a>
+            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-300">Contato</a>
+          </div>
         </div>
       </footer>
 
