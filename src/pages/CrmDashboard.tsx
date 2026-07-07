@@ -14,6 +14,22 @@ import {
 import { format, isToday, isPast, startOfDay, endOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+
+// "hoje" em ISO local COM offset do navegador — para não escorregar em BRT/UTC-3
+// quando comparado contra colunas timestamptz (created_at).
+const localIsoWithOffset = (d: Date) => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const tzMin = -d.getTimezoneOffset();
+  const sign = tzMin >= 0 ? "+" : "-";
+  const off = Math.abs(tzMin);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(off / 60))}:${pad(off % 60)}`;
+};
+const todayLocalBounds = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  return { start: localIsoWithOffset(start), end: localIsoWithOffset(end) };
+};
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
