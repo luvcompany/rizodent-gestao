@@ -136,8 +136,8 @@ export async function applyAppointmentOutcome(args: {
     );
     label = "🤝 Marcado como Contratado";
   } else if (outcome === "not_contracted") {
-    movedStageId = await moveLeadToNaoContratadosPipeline(leadId);
-    label = "❌ Marcado como Não contratou — movido para funil de Não Contratados";
+    movedStageId = await moveLeadToStageInCurrentPipeline(leadId, (n) => n.includes("nao contrat"));
+    label = "❌ Marcado como Não contratou — movido para etapa Não contratado";
   }
 
   await supabase.from("messages").insert({
