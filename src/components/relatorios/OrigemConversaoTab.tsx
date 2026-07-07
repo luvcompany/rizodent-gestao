@@ -252,36 +252,59 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return n ? Math.round(sum / n) : 0;
   }, [leads, msgs]);
 
-  // Tempo médio de atendimento: duração de 1º inbound do lead até o momento em que
-  // a appointment foi marcada como 'contracted' ou 'not_contracted' (updated_at).
-  const avgAttendanceSec = useMemo(() => {
-    const firstInboundByLead = new Map<string, Date>();
+  // Primeiro inbound por lead (base para as duas métricas abaixo)
+  const firstInboundByLeadAll = useMemo(() => {
+    const map = new Map<string, Date>();
     msgs.forEach(m => {
       if (m.direction !== "inbound") return;
       const t = new Date(m.created_at);
-      const cur = firstInboundByLead.get(m.lead_id);
-      if (!cur || t < cur) firstInboundByLead.set(m.lead_id, t);
+      const cur = map.get(m.lead_id);
+      if (!cur || t < cur) map.set(m.lead_id, t);
     });
-    // usar o PRIMEIRO desfecho por lead (updated_at mais antigo entre contracted/not_contracted)
-    const firstOutcomeByLead = new Map<string, Date>();
+    return map;
+  }, [msgs]);
+
+  // Tempo médio até agendamento: 1º inbound → primeiro appointment criado (qualquer status).
+  // Considera SOMENTE leads que efetivamente foram agendados.
+  const avgTimeToScheduleSec = useMemo(() => {
+    const firstApptByLead = new Map<string, Date>();
     appts.forEach(a => {
-      if (a.status !== "contracted" && a.status !== "not_contracted") return;
-      if (!a.updated_at) return;
-      const t = new Date(a.updated_at);
-      const cur = firstOutcomeByLead.get(a.lead_id);
-      if (!cur || t < cur) firstOutcomeByLead.set(a.lead_id, t);
+      if (!a.created_at) return;
+      const t = new Date(a.created_at);
+      const cur = firstApptByLead.get(a.lead_id);
+      if (!cur || t < cur) firstApptByLead.set(a.lead_id, t);
     });
     let sum = 0, n = 0;
-    firstOutcomeByLead.forEach((end, leadId) => {
-      const ib = firstInboundByLead.get(leadId);
+    firstApptByLead.forEach((end, leadId) => {
+      const ib = firstInboundByLeadAll.get(leadId);
       if (!ib) return;
       const diff = (end.getTime() - ib.getTime()) / 1000;
       if (diff <= 0) return;
-      sum += diff;
-      n++;
+      sum += diff; n++;
     });
     return n ? Math.round(sum / n) : 0;
-  }, [appts, msgs]);
+  }, [appts, firstInboundByLeadAll]);
+
+  // Tempo médio até contratação: 1º inbound → momento em que o lead virou 'contracted'
+  // (primeiro appointment com status='contracted', usando updated_at). Só conta contratados.
+  const avgTimeToContractSec = useMemo(() => {
+    const firstContractedByLead = new Map<string, Date>();
+    appts.forEach(a => {
+      if (a.status !== "contracted" || !a.updated_at) return;
+      const t = new Date(a.updated_at);
+      const cur = firstContractedByLead.get(a.lead_id);
+      if (!cur || t < cur) firstContractedByLead.set(a.lead_id, t);
+    });
+    let sum = 0, n = 0;
+    firstContractedByLead.forEach((end, leadId) => {
+      const ib = firstInboundByLeadAll.get(leadId);
+      if (!ib) return;
+      const diff = (end.getTime() - ib.getTime()) / 1000;
+      if (diff <= 0) return;
+      sum += diff; n++;
+    });
+    return n ? Math.round(sum / n) : 0;
+  }, [appts, firstInboundByLeadAll]);
 
   // Volume de conversas por hora (hora local do fuso da clínica) — conta leads
   // distintos que iniciaram conversa (1º inbound) naquela hora.
