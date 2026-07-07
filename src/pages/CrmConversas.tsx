@@ -1178,12 +1178,38 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-foreground text-sm truncate">{selectedLead.name}</div>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="font-semibold text-foreground text-sm truncate">{selectedLead.name}</div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try { await navigator.clipboard.writeText(selectedLead.name); toast.success("Nome copiado"); } catch { toast.error("Não foi possível copiar"); }
+                      }}
+                      title="Copiar nome"
+                      aria-label="Copiar nome"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </div>
                   <div className="text-xs text-muted-foreground flex items-center gap-2">
                     {selectedLead.instagram_username ? (
                       <span>@{selectedLead.instagram_username}</span>
                     ) : selectedLead.phone ? (
-                      <span>{selectedLead.phone}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <span>{selectedLead.phone}</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try { await navigator.clipboard.writeText(selectedLead.phone!); toast.success("Número copiado"); } catch { toast.error("Não foi possível copiar"); }
+                          }}
+                          title="Copiar número"
+                          aria-label="Copiar número"
+                          className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <Copy size={12} />
+                        </button>
+                      </span>
                     ) : null}
                     {currentStage && (
                       <span className="flex items-center gap-1">
