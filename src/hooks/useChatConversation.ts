@@ -325,7 +325,7 @@ export function useChatConversation(leadId: string | null | undefined) {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       if (data && activeLeadRef.current === targetLeadId) {
-        const nextMessages = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
+        const nextMessages = sortChatMessages((data as unknown as ChatMessage[]).map(normalizeOutboundStatus));
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (nextMessages.length !== prev.length || nextMessages.some((message, index) => message.id !== prev[index]?.id || message.status !== prev[index]?.status)) {
