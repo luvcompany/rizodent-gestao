@@ -90,7 +90,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   const [outcomeStep, setOutcomeStep] = useState<Record<string, "init" | "compareceu">>({});
   const [outcomeSaving, setOutcomeSaving] = useState<string | null>(null);
 
-  const handleOutcome = async (apptId: string, outcome: "no_show" | "contracted" | "not_contracted") => {
+  const handleOutcome = async (apptId: string, outcome: "no_show" | "contracted" | "not_contracted" | "rescheduled") => {
     setOutcomeSaving(apptId);
     try {
       await applyAppointmentOutcome({ leadId, appointmentId: apptId, outcome });
@@ -99,7 +99,9 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
           ? "Lead movido para Não compareceu"
           : outcome === "contracted"
           ? "Lead movido para Contratado"
-          : "Lead movido para funil de Não Contratados",
+          : outcome === "rescheduled"
+          ? "Lead movido para Compareceu e agendou"
+          : "Lead movido para etapa Não contratado",
       );
       await Promise.all([fetchAppointments(), checkRescheduleMode()]);
       setOutcomeStep((prev) => {
@@ -468,6 +470,15 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                     Não contratou
                   </Button>
                 </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs w-full gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
+                  disabled={saving}
+                  onClick={() => handleOutcome(appt.id, "rescheduled")}
+                >
+                  <CalendarCheck size={12} /> Agendou
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"

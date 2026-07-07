@@ -105,7 +105,75 @@ async function moveLeadToNaoContratadosPipeline(leadId: string): Promise<string 
   return firstStage.id;
 }
 
-export type AppointmentOutcome = "no_show" | "contracted" | "not_contracted";
+export type AppointmentOutcome = "no_show" | "contracted" | "not_contracted" | "rescheduled";
+
+/**
+ * Move o lead para uma etapa cujo nome combine com `matcher`, procurando
+ * primeiro no pipeline atual e, se não achar, no "Funil Principal" do tenant.
+ */
+async function moveLeadToStageCrossPipeline(
+  leadId: string,
+  matcher: (n: string) => boolean,
+): Promise<string | null> {
+  const { data: lead } = await supabase
+    .from("crm_leads")
+    .select("stage_id, pipeline_id, tenant_id")
+    .eq("id", leadId)
+    .single();
+  if (!lead) return null;
+
+  // Tenta no pipeline atual
+  const { data: currentStages } = await supabase
+    .from("crm_stages")
+    .select("id, name, pipeline_id")
+    .eq("pipeline_id", lead.pipeline_id)
+    .order("position");
+  let target = (currentStages || []).find((s) => matcher(norm(s.name)));
+
+  // Fallback: Funil Principal do tenant
+  if (!target) {
+    const { data: pipelines } = await supabase
+      .from("crm_pipelines")
+      .select("id, name")
+      .eq("tenant_id", (lead as any).tenant_id);
+    const principal = (pipelines || []).find((p: any) => /funil principal/i.test(p.name));
+    if (principal) {
+      const { data: fpStages } = await supabase
+        .from("crm_stages")
+        .select("id, name, pipeline_id")
+        .eq("pipeline_id", (principal as any).id)
+        .order("position");
+      target = (fpStages || []).find((s) => matcher(norm(s.name)));
+    }
+  }
+
+  if (!target || target.id === lead.stage_id) return lead.stage_id;
+
+  const nowIso = new Date().toISOString();
+  const crossPipeline = target.pipeline_id !== lead.pipeline_id;
+  const updatePayload: any = { stage_id: target.id, updated_at: nowIso };
+  if (crossPipeline) updatePayload.pipeline_id = target.pipeline_id;
+  await supabase.from("crm_leads").update(updatePayload).eq("id", leadId);
+
+  const { data: openEntry } = await supabase
+    .from("crm_lead_stage_history")
+    .select("id")
+    .eq("lead_id", leadId)
+    .eq("stage_id", lead.stage_id)
+    .is("exited_at", null)
+    .maybeSingle();
+  if (openEntry) {
+    await supabase.from("crm_lead_stage_history").update({ exited_at: nowIso }).eq("id", openEntry.id);
+  }
+  await supabase.from("crm_lead_stage_history").insert({
+    lead_id: leadId,
+    stage_id: target.id,
+    from_stage_id: lead.stage_id,
+    entered_at: nowIso,
+  } as any);
+
+  return target.id;
+}
 
 /**
  * Aplica o desfecho de um agendamento:
@@ -138,6 +206,12 @@ export async function applyAppointmentOutcome(args: {
   } else if (outcome === "not_contracted") {
     movedStageId = await moveLeadToStageInCurrentPipeline(leadId, (n) => n.includes("nao contrat"));
     label = "❌ Marcado como Não contratou — movido para etapa Não contratado";
+  } else if (outcome === "rescheduled") {
+    movedStageId = await moveLeadToStageCrossPipeline(
+      leadId,
+      (n) => n.includes("compareceu") && n.includes("agendou"),
+    );
+    label = "📅 Compareceu e agendou — movido para etapa Compareceu e agendou";
   }
 
   await supabase.from("messages").insert({
