@@ -40,8 +40,17 @@ Deno.serve(async (req) => {
       return data || null;
     }
 
+    // Cache do timezone por tenant para computar minutos locais em cada lead.
+    const tzCache = new Map<string, string>();
+    async function getTenantTz(tenantId: string): Promise<string> {
+      if (tzCache.has(tenantId)) return tzCache.get(tenantId)!;
+      const { data } = await supabase.from("tenants").select("timezone").eq("id", tenantId).maybeSingle();
+      const tz = resolveTz((data as any)?.timezone);
+      tzCache.set(tenantId, tz);
+      return tz;
+    }
+
     const now = new Date();
-    const localMin = bahiaTimeOfDay().minutes;
 
     // Fetch pending reply suggestions (limit batch)
     const { data: pending } = await supabase
@@ -69,6 +78,9 @@ Deno.serve(async (req) => {
         const config = await getTenantConfig(lead.tenant_id);
         if (!config) { processed.push({ id: s.id, skipped: "no_config" }); continue; }
         if (config.auto_send_enabled !== true) { processed.push({ id: s.id, skipped: "auto_send_disabled" }); continue; }
+
+        const tenantTz = await getTenantTz(lead.tenant_id);
+        const localMin = hmInTz(now, tenantTz);
 
         const waitMinutes = Math.max(0, Number(config.wait_minutes) || 10);
         const recoilHours = Math.max(0, Number(config.recoil_hours) || 2);
