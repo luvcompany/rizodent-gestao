@@ -90,7 +90,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   const [outcomeStep, setOutcomeStep] = useState<Record<string, "init" | "compareceu">>({});
   const [outcomeSaving, setOutcomeSaving] = useState<string | null>(null);
 
-  const handleOutcome = async (apptId: string, outcome: "no_show" | "contracted" | "not_contracted") => {
+  const handleOutcome = async (apptId: string, outcome: "no_show" | "contracted" | "not_contracted" | "rescheduled") => {
     setOutcomeSaving(apptId);
     try {
       await applyAppointmentOutcome({ leadId, appointmentId: apptId, outcome });
