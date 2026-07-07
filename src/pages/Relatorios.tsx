@@ -685,7 +685,7 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Previsibilidade</CardTitle>
             <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-              `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${formatCurrency(predictability.projecaoMensal)}`
+              `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${isCurrentMonthSelected ? formatCurrency(predictability.projecaoMensal) : "— (apenas no mês corrente)"}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
