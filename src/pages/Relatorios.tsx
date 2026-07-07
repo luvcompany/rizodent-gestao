@@ -738,7 +738,7 @@ const Relatorios = () => {
                           ) : "—"}
                         </TableCell>
                         <TableCell className="text-center">{r.media.toFixed(1)}</TableCell>
-                        <TableCell className="text-center font-medium">{Math.round(r.proj)}</TableCell>
+                        <TableCell className="text-center font-medium">{isCurrentMonthSelected ? Math.round(r.proj) : "—"}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
