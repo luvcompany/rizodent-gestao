@@ -407,72 +407,54 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       </Card>
 
       {/* Indicadores de atendimento */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-sm">Tempo médio de atendimento</h3>
-            <Clock className="w-4 h-4 text-muted-foreground" />
-          </div>
-          {(() => {
-            const d = fmtDuration(avgAttendanceSec);
-            return (
-              <>
-                <div className="flex items-baseline justify-center gap-3">
-                  {d.hasHours && (
-                    <>
-                      <div className="text-5xl font-bold tracking-tight">{d.h}</div>
-                      <div className="text-3xl text-muted-foreground">:</div>
-                    </>
-                  )}
-                  <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
-                  <div className="text-3xl text-muted-foreground">:</div>
-                  <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
-                </div>
-                <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
-                  {d.hasHours && <span>horas</span>}
-                  <span>minutos</span>
-                  <span>segundos</span>
-                </div>
-              </>
-            );
-          })()}
-          <p className="text-[11px] text-muted-foreground text-center mt-3">
-            Do 1º contato do lead até o desfecho (contratado ou não contratado).
-          </p>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-sm">Tempo médio até primeira resposta</h3>
-            <MessageSquare className="w-4 h-4 text-muted-foreground" />
-          </div>
-          {(() => {
-            const d = fmtDuration(avgFirstResponseSec);
-            return (
-              <>
-                <div className="flex items-baseline justify-center gap-3">
-                  {d.hasHours && (
-                    <>
-                      <div className="text-5xl font-bold tracking-tight">{d.h}</div>
-                      <div className="text-3xl text-muted-foreground">:</div>
-                    </>
-                  )}
-                  <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
-                  <div className="text-3xl text-muted-foreground">:</div>
-                  <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
-                </div>
-                <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
-                  {d.hasHours && <span>horas</span>}
-                  <span>minutos</span>
-                  <span>segundos</span>
-                </div>
-              </>
-            );
-          })()}
-          <p className="text-[11px] text-muted-foreground text-center mt-3">
-            Do 1º inbound do lead até a 1ª resposta da equipe.
-          </p>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-3">
+        {[
+          {
+            title: "Tempo médio até agendamento",
+            icon: <Clock className="w-4 h-4 text-muted-foreground" />,
+            sec: avgTimeToScheduleSec,
+            hint: "Do 1º contato do lead até o momento em que ele foi agendado (só leads agendados).",
+          },
+          {
+            title: "Tempo médio até contratação",
+            icon: <Award className="w-4 h-4 text-muted-foreground" />,
+            sec: avgTimeToContractSec,
+            hint: "Do 1º contato do lead até virar contratado (só leads contratados).",
+          },
+          {
+            title: "Tempo médio até primeira resposta",
+            icon: <MessageSquare className="w-4 h-4 text-muted-foreground" />,
+            sec: avgFirstResponseSec,
+            hint: "Do 1º inbound do lead até a 1ª resposta da equipe.",
+          },
+        ].map((card) => {
+          const d = fmtDuration(card.sec);
+          return (
+            <Card key={card.title} className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-sm">{card.title}</h3>
+                {card.icon}
+              </div>
+              <div className="flex items-baseline justify-center gap-3">
+                {d.hasHours && (
+                  <>
+                    <div className="text-5xl font-bold tracking-tight">{d.h}</div>
+                    <div className="text-3xl text-muted-foreground">:</div>
+                  </>
+                )}
+                <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
+                <div className="text-3xl text-muted-foreground">:</div>
+                <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
+              </div>
+              <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+                {d.hasHours && <span>horas</span>}
+                <span>minutos</span>
+                <span>segundos</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground text-center mt-3">{card.hint}</p>
+            </Card>
+          );
+        })}
       </div>
 
       <Card className="p-6">
