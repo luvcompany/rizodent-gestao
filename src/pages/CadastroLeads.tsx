@@ -102,18 +102,21 @@ const CadastroLeads = () => {
     setSavingLeads(true);
     try {
       const leadsValue = parseInt(leadsNovos) || 0;
-      if (existingIdLeads) {
-        const { error } = await supabase.from("leads_diarios").update({ leads_novos: leadsValue, created_by: user?.id }).eq("id", existingIdLeads);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("leads_diarios").insert({
-          data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: leadsValue,
-          agendaram: 0, compareceram: 0, contrataram: 0, faltaram: 0,
-          nao_contrataram: 0, remarcados: 0, reagendados_compareceram: 0, reagendados_contrataram: 0,
-          created_by: user?.id,
-        });
-        if (error) throw error;
-      }
+      // Upsert idempotente (UNIQUE data,clinica_id). Evita colisão quando "Agendados"
+      // é salvo antes/depois de "Leads Novos" e o existingId está desatualizado.
+      const { data: up, error } = await supabase
+        .from("leads_diarios")
+        .upsert(
+          {
+            data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: leadsValue,
+            created_by: user?.id,
+          },
+          { onConflict: "data,clinica_id", ignoreDuplicates: false },
+        )
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (up?.id) setExistingIdLeads(up.id);
       toast.success("Leads novos salvos!");
       fetchRegistros();
     } catch (err: any) {
