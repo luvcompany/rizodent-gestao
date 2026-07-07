@@ -48,6 +48,14 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
+  const [tz, setTz] = useState<string>("America/Sao_Paulo");
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("tenants").select("timezone").limit(1).maybeSingle();
+      if (data?.timezone) setTz(data.timezone);
+    })();
+  }, []);
 
   useEffect(() => {
     const range = getDateRangeFromFilter(period);
