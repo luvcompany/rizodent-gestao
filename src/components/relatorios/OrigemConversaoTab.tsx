@@ -14,7 +14,7 @@ type Lead = {
   created_at: string; first_inbound_at: string | null;
   paciente_id: string | null;
 };
-type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string; updated_at: string };
+type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string; updated_at: string; created_at: string };
 type Msg = { lead_id: string; direction: string; created_at: string };
 type Pagamento = { paciente_id: string; tipo: string; data_pagamento: string };
 
@@ -100,7 +100,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         while (true) {
           const { data: aps } = await supabase
             .from("crm_appointments")
-            .select("id,lead_id,scheduled_date,status,updated_at")
+            .select("id,lead_id,scheduled_date,status,updated_at,created_at")
             .gte("scheduled_date", startDate)
             .lte("scheduled_date", endDate)
             .range(aFrom, aFrom + 999);
@@ -119,7 +119,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         while (true) {
           const { data: aps } = await supabase
             .from("crm_appointments")
-            .select("id,lead_id,scheduled_date,status,updated_at")
+            .select("id,lead_id,scheduled_date,status,updated_at,created_at")
             .in("lead_id", chunk)
             .gte("scheduled_date", startDate)
             .lte("scheduled_date", endDate)
@@ -252,36 +252,59 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return n ? Math.round(sum / n) : 0;
   }, [leads, msgs]);
 
-  // Tempo médio de atendimento: duração de 1º inbound do lead até o momento em que
-  // a appointment foi marcada como 'contracted' ou 'not_contracted' (updated_at).
-  const avgAttendanceSec = useMemo(() => {
-    const firstInboundByLead = new Map<string, Date>();
+  // Primeiro inbound por lead (base para as duas métricas abaixo)
+  const firstInboundByLeadAll = useMemo(() => {
+    const map = new Map<string, Date>();
     msgs.forEach(m => {
       if (m.direction !== "inbound") return;
       const t = new Date(m.created_at);
-      const cur = firstInboundByLead.get(m.lead_id);
-      if (!cur || t < cur) firstInboundByLead.set(m.lead_id, t);
+      const cur = map.get(m.lead_id);
+      if (!cur || t < cur) map.set(m.lead_id, t);
     });
-    // usar o PRIMEIRO desfecho por lead (updated_at mais antigo entre contracted/not_contracted)
-    const firstOutcomeByLead = new Map<string, Date>();
+    return map;
+  }, [msgs]);
+
+  // Tempo médio até agendamento: 1º inbound → primeiro appointment criado (qualquer status).
+  // Considera SOMENTE leads que efetivamente foram agendados.
+  const avgTimeToScheduleSec = useMemo(() => {
+    const firstApptByLead = new Map<string, Date>();
     appts.forEach(a => {
-      if (a.status !== "contracted" && a.status !== "not_contracted") return;
-      if (!a.updated_at) return;
-      const t = new Date(a.updated_at);
-      const cur = firstOutcomeByLead.get(a.lead_id);
-      if (!cur || t < cur) firstOutcomeByLead.set(a.lead_id, t);
+      if (!a.created_at) return;
+      const t = new Date(a.created_at);
+      const cur = firstApptByLead.get(a.lead_id);
+      if (!cur || t < cur) firstApptByLead.set(a.lead_id, t);
     });
     let sum = 0, n = 0;
-    firstOutcomeByLead.forEach((end, leadId) => {
-      const ib = firstInboundByLead.get(leadId);
+    firstApptByLead.forEach((end, leadId) => {
+      const ib = firstInboundByLeadAll.get(leadId);
       if (!ib) return;
       const diff = (end.getTime() - ib.getTime()) / 1000;
       if (diff <= 0) return;
-      sum += diff;
-      n++;
+      sum += diff; n++;
     });
     return n ? Math.round(sum / n) : 0;
-  }, [appts, msgs]);
+  }, [appts, firstInboundByLeadAll]);
+
+  // Tempo médio até contratação: 1º inbound → momento em que o lead virou 'contracted'
+  // (primeiro appointment com status='contracted', usando updated_at). Só conta contratados.
+  const avgTimeToContractSec = useMemo(() => {
+    const firstContractedByLead = new Map<string, Date>();
+    appts.forEach(a => {
+      if (a.status !== "contracted" || !a.updated_at) return;
+      const t = new Date(a.updated_at);
+      const cur = firstContractedByLead.get(a.lead_id);
+      if (!cur || t < cur) firstContractedByLead.set(a.lead_id, t);
+    });
+    let sum = 0, n = 0;
+    firstContractedByLead.forEach((end, leadId) => {
+      const ib = firstInboundByLeadAll.get(leadId);
+      if (!ib) return;
+      const diff = (end.getTime() - ib.getTime()) / 1000;
+      if (diff <= 0) return;
+      sum += diff; n++;
+    });
+    return n ? Math.round(sum / n) : 0;
+  }, [appts, firstInboundByLeadAll]);
 
   // Volume de conversas por hora (hora local do fuso da clínica) — conta leads
   // distintos que iniciaram conversa (1º inbound) naquela hora.
@@ -384,72 +407,54 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       </Card>
 
       {/* Indicadores de atendimento */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-sm">Tempo médio de atendimento</h3>
-            <Clock className="w-4 h-4 text-muted-foreground" />
-          </div>
-          {(() => {
-            const d = fmtDuration(avgAttendanceSec);
-            return (
-              <>
-                <div className="flex items-baseline justify-center gap-3">
-                  {d.hasHours && (
-                    <>
-                      <div className="text-5xl font-bold tracking-tight">{d.h}</div>
-                      <div className="text-3xl text-muted-foreground">:</div>
-                    </>
-                  )}
-                  <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
-                  <div className="text-3xl text-muted-foreground">:</div>
-                  <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
-                </div>
-                <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
-                  {d.hasHours && <span>horas</span>}
-                  <span>minutos</span>
-                  <span>segundos</span>
-                </div>
-              </>
-            );
-          })()}
-          <p className="text-[11px] text-muted-foreground text-center mt-3">
-            Do 1º contato do lead até o desfecho (contratado ou não contratado).
-          </p>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-sm">Tempo médio até primeira resposta</h3>
-            <MessageSquare className="w-4 h-4 text-muted-foreground" />
-          </div>
-          {(() => {
-            const d = fmtDuration(avgFirstResponseSec);
-            return (
-              <>
-                <div className="flex items-baseline justify-center gap-3">
-                  {d.hasHours && (
-                    <>
-                      <div className="text-5xl font-bold tracking-tight">{d.h}</div>
-                      <div className="text-3xl text-muted-foreground">:</div>
-                    </>
-                  )}
-                  <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
-                  <div className="text-3xl text-muted-foreground">:</div>
-                  <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
-                </div>
-                <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
-                  {d.hasHours && <span>horas</span>}
-                  <span>minutos</span>
-                  <span>segundos</span>
-                </div>
-              </>
-            );
-          })()}
-          <p className="text-[11px] text-muted-foreground text-center mt-3">
-            Do 1º inbound do lead até a 1ª resposta da equipe.
-          </p>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-3">
+        {[
+          {
+            title: "Tempo médio até agendamento",
+            icon: <Clock className="w-4 h-4 text-muted-foreground" />,
+            sec: avgTimeToScheduleSec,
+            hint: "Do 1º contato do lead até o momento em que ele foi agendado (só leads agendados).",
+          },
+          {
+            title: "Tempo médio até contratação",
+            icon: <Award className="w-4 h-4 text-muted-foreground" />,
+            sec: avgTimeToContractSec,
+            hint: "Do 1º contato do lead até virar contratado (só leads contratados).",
+          },
+          {
+            title: "Tempo médio até primeira resposta",
+            icon: <MessageSquare className="w-4 h-4 text-muted-foreground" />,
+            sec: avgFirstResponseSec,
+            hint: "Do 1º inbound do lead até a 1ª resposta da equipe.",
+          },
+        ].map((card) => {
+          const d = fmtDuration(card.sec);
+          return (
+            <Card key={card.title} className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-sm">{card.title}</h3>
+                {card.icon}
+              </div>
+              <div className="flex items-baseline justify-center gap-3">
+                {d.hasHours && (
+                  <>
+                    <div className="text-5xl font-bold tracking-tight">{d.h}</div>
+                    <div className="text-3xl text-muted-foreground">:</div>
+                  </>
+                )}
+                <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
+                <div className="text-3xl text-muted-foreground">:</div>
+                <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
+              </div>
+              <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+                {d.hasHours && <span>horas</span>}
+                <span>minutos</span>
+                <span>segundos</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground text-center mt-3">{card.hint}</p>
+            </Card>
+          );
+        })}
       </div>
 
       <Card className="p-6">
