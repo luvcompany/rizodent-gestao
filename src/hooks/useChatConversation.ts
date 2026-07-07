@@ -55,6 +55,20 @@ const normalizeOutboundStatus = (message: ChatMessage): ChatMessage => {
   return message;
 };
 
+const sortChatMessages = (list: ChatMessage[]): ChatMessage[] => {
+  // Ordena por created_at; em caso de empate (ou diferença ínfima entre webhook
+  // do lead e disparo automático do bot), inbound vem antes de outbound para que
+  // o card do anúncio apareça acima da resposta automática.
+  return [...list].sort((a, b) => {
+    const ta = new Date(a.created_at).getTime();
+    const tb = new Date(b.created_at).getTime();
+    if (ta !== tb) return ta - tb;
+    const da = a.direction === "inbound" ? 0 : 1;
+    const db = b.direction === "inbound" ? 0 : 1;
+    return da - db;
+  });
+};
+
 export function useChatConversation(leadId: string | null | undefined) {
   const { tenant } = useTenant();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -141,7 +155,7 @@ export function useChatConversation(leadId: string | null | undefined) {
     const isCurrentRequest = () => activeLeadRef.current === targetLeadId && fetchRequestRef.current === requestId;
     const applyMessages = (nextMessages: ChatMessage[]) => {
       if (!isCurrentRequest()) return false;
-      setMessages(nextMessages);
+      setMessages(sortChatMessages(nextMessages));
       setLoading(false);
       return true;
     };
@@ -280,7 +294,7 @@ export function useChatConversation(leadId: string | null | undefined) {
             messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
             return updated;
           }
-          const updated = [...prev, newMsg];
+          const updated = sortChatMessages([...prev, newMsg]);
           messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
           return updated;
         });
@@ -311,7 +325,7 @@ export function useChatConversation(leadId: string | null | undefined) {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
       if (data && activeLeadRef.current === targetLeadId) {
-        const nextMessages = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
+        const nextMessages = sortChatMessages((data as unknown as ChatMessage[]).map(normalizeOutboundStatus));
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (nextMessages.length !== prev.length || nextMessages.some((message, index) => message.id !== prev[index]?.id || message.status !== prev[index]?.status)) {
