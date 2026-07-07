@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
-import { Loader2, TrendingUp, TrendingDown, Award, AlertTriangle } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Award, AlertTriangle, Clock, MessageSquare, BarChart3 } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 type Pipeline = { id: string; name: string };
 type Lead = {
