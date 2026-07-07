@@ -438,9 +438,15 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
                 {card.icon}
               </div>
               <div className="flex items-baseline justify-center gap-3">
+                {d.hasDays && (
+                  <>
+                    <div className="text-5xl font-bold tracking-tight">{d.d}</div>
+                    <div className="text-3xl text-muted-foreground">d</div>
+                  </>
+                )}
                 {d.hasHours && (
                   <>
-                    <div className="text-5xl font-bold tracking-tight">{d.h}</div>
+                    <div className="text-5xl font-bold tracking-tight">{d.hasDays ? String(d.h).padStart(2, "0") : d.h}</div>
                     <div className="text-3xl text-muted-foreground">:</div>
                   </>
                 )}
@@ -449,6 +455,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
                 <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
               </div>
               <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+                {d.hasDays && <span>dias</span>}
                 {d.hasHours && <span>horas</span>}
                 <span>minutos</span>
                 <span>segundos</span>
