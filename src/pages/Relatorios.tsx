@@ -234,7 +234,10 @@ const Relatorios = () => {
   }, [dateFrom, dateTo, yesterdayLocal, holidaySet]);
 
   const predictability = useMemo(() => {
+    // Numerador ALINHADO com o divisor: pagamentos até ONTEM (mesma janela dos dias úteis decorridos)
+    const pagamentosAteOntem = filteredPagamentos.filter((p) => (p.data_pagamento || "") <= yesterdayStr);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+    const totalContratadoAteOntem = pagamentosAteOntem.reduce((s, p) => s + (Number(p.valor) || 0), 0);
     const leadsTotals = filteredLeads.reduce((acc, l) => ({
       leads: acc.leads + l.leads_novos, agendaram: acc.agendaram + l.agendaram,
       compareceram: acc.compareceram + (l.agendaram - l.faltaram), faltaram: acc.faltaram + l.faltaram,
@@ -242,7 +245,7 @@ const Relatorios = () => {
     }), { leads: 0, agendaram: 0, compareceram: 0, faltaram: 0, contrataram: 0, naoContrataram: 0 });
     const taxaConversao = leadsTotals.leads > 0 ? (leadsTotals.contrataram / leadsTotals.leads) * 100 : 0;
     const ticketMedioPgto = filteredPagamentos.length > 0 ? totalContratado / filteredPagamentos.length : 0;
-    const ticketMedioDiario = totalContratado / diasUteisPassados;
+    const ticketMedioDiario = totalContratadoAteOntem / diasUteisPassados;
     const projecaoMensal = ticketMedioDiario * diasUteisMes;
     const txAgendamento = leadsTotals.leads > 0 ? leadsTotals.agendaram / leadsTotals.leads : 0;
     const txComparecimento = leadsTotals.agendaram > 0 ? leadsTotals.compareceram / leadsTotals.agendaram : 0;
