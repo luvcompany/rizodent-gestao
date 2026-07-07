@@ -92,7 +92,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         while (true) {
           const { data: aps } = await supabase
             .from("crm_appointments")
-            .select("id,lead_id,scheduled_date,status")
+            .select("id,lead_id,scheduled_date,status,updated_at")
             .gte("scheduled_date", startDate)
             .lte("scheduled_date", endDate)
             .range(aFrom, aFrom + 999);
@@ -111,7 +111,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         while (true) {
           const { data: aps } = await supabase
             .from("crm_appointments")
-            .select("id,lead_id,scheduled_date,status")
+            .select("id,lead_id,scheduled_date,status,updated_at")
             .in("lead_id", chunk)
             .gte("scheduled_date", startDate)
             .lte("scheduled_date", endDate)
