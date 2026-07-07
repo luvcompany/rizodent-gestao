@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { hmInTz, resolveTz } from "../_shared/tz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,13 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// America/Bahia is UTC-3 fixed (no DST).
-function bahiaTimeOfDay(): { hh: number; mm: number; minutes: number } {
-  const now = new Date();
-  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const localMin = (utcMin - 180 + 24 * 60) % (24 * 60);
-  return { hh: Math.floor(localMin / 60), mm: localMin % 60, minutes: localMin };
-}
 function parseHMM(s: string): number {
   const [h, m] = String(s || "00:00").split(":").map((x) => parseInt(x, 10) || 0);
   return h * 60 + m;
