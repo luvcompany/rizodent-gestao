@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import { PublicApp, TenantApp } from "./App.tsx";
 import "./index.css";
 
-const RESERVED_PATHS = new Set(["", "admin", "change-password", "crclin"]);
+const RESERVED_PATHS = new Set(["", "admin", "change-password", "crclin", "privacidade", "termos", "exclusao-de-dados"]);
 const SUBDOMAIN_SKIP = new Set(["www", "admin", "crclin"]);
 
 function getSubdomainSlug(): string | null {
