@@ -206,6 +206,12 @@ export async function applyAppointmentOutcome(args: {
   } else if (outcome === "not_contracted") {
     movedStageId = await moveLeadToStageInCurrentPipeline(leadId, (n) => n.includes("nao contrat"));
     label = "❌ Marcado como Não contratou — movido para etapa Não contratado";
+  } else if (outcome === "rescheduled") {
+    movedStageId = await moveLeadToStageCrossPipeline(
+      leadId,
+      (n) => n.includes("compareceu") && n.includes("agendou"),
+    );
+    label = "📅 Compareceu e agendou — movido para etapa Compareceu e agendou";
   }
 
   await supabase.from("messages").insert({
