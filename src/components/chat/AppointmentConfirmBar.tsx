@@ -471,6 +471,15 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                   </Button>
                 </div>
                 <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs w-full gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
+                  disabled={saving}
+                  onClick={() => handleOutcome(appt.id, "rescheduled")}
+                >
+                  <CalendarCheck size={12} /> Agendou
+                </Button>
+                <Button
                   variant="ghost"
                   size="sm"
                   className="h-6 text-[11px] w-full"
