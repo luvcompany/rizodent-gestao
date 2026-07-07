@@ -108,18 +108,21 @@ const RegistroDiarioTab = () => {
   const agendEspontaneos = Math.max(vAgendados - vAgendLigacao, 0);
   const reagEspontaneos = Math.max(vReagendados - vReagLigacao, 0);
 
+  // Clamp de percentuais em [0, 100] — evita exibir taxas irreais (>100%)
+  const clampPct = (v: number) => Math.max(0, Math.min(100, v));
+
   // Taxa de atendimento de ligações
-  const taxaAtendimento = vTotalLig > 0 ? (vAtendidas / vTotalLig) * 100 : 0;
+  const taxaAtendimento = clampPct(vTotalLig > 0 ? (vAtendidas / vTotalLig) * 100 : 0);
 
   // Taxa de conversão sobre ligações atendidas
   const totalConvertidosLigacao = vAgendLigacao + vReagLigacao;
-  const taxaConversaoAtendidas = vAtendidas > 0 ? (totalConvertidosLigacao / vAtendidas) * 100 : 0;
+  const taxaConversaoAtendidas = clampPct(vAtendidas > 0 ? (totalConvertidosLigacao / vAtendidas) * 100 : 0);
 
   // Taxa de agendamento por ligação atendida
-  const taxaAgendLigacao = vAtendidas > 0 ? (vAgendLigacao / vAtendidas) * 100 : 0;
+  const taxaAgendLigacao = clampPct(vAtendidas > 0 ? (vAgendLigacao / vAtendidas) * 100 : 0);
 
   // Taxa de reagendamento por ligação atendida
-  const taxaReagLigacao = vAtendidas > 0 ? (vReagLigacao / vAtendidas) * 100 : 0;
+  const taxaReagLigacao = clampPct(vAtendidas > 0 ? (vReagLigacao / vAtendidas) * 100 : 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
