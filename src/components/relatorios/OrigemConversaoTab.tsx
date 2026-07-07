@@ -14,7 +14,7 @@ type Lead = {
   created_at: string; first_inbound_at: string | null;
   paciente_id: string | null;
 };
-type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string; updated_at: string };
+type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string; updated_at: string; created_at: string };
 type Msg = { lead_id: string; direction: string; created_at: string };
 type Pagamento = { paciente_id: string; tipo: string; data_pagamento: string };
 
