@@ -53,15 +53,17 @@ const Relatorios = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }] = await Promise.all([
+      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }] = await Promise.all([
         supabase.from("clinicas").select("*").eq("ativa", true),
         supabase.from("pagamentos").select("*, clinicas(nome), pacientes(nome)"),
         supabase.from("tratamentos").select("*, clinicas(nome), pacientes(nome)"),
         supabase.from("pacientes").select("*"),
         supabase.from("leads_diarios").select("*, clinicas(nome)"),
+        (supabase as any).from("dashboard_holidays").select("data, clinica_id"),
       ]);
       setClinicas(cl || []); setPagamentos(pg || []); setTratamentos(tr || []);
       setPacientes(pc || []); setLeadsData(ld || []);
+      setHolidays((hd as any) || []);
       setLoading(false);
     };
     fetchAll();
