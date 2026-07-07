@@ -396,7 +396,7 @@ const RegistroDiarioTab = () => {
                 <TableBody>
                   {registros.map((r) => {
                     const totalConv = r.agendamentos_por_ligacao + r.leads_reagendados_ligacao;
-                    const conv = r.ligacoes_atendidas > 0 ? ((totalConv / r.ligacoes_atendidas) * 100).toFixed(1) : "0.0";
+                    const conv = r.ligacoes_atendidas > 0 ? Math.min(100, (totalConv / r.ligacoes_atendidas) * 100).toFixed(1) : "0.0";
                     return (
                       <TableRow key={r.id}>
                         <TableCell className="font-medium">{format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy")}</TableCell>
