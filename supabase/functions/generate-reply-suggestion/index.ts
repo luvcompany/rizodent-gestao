@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal } from "../_shared/internalAuth.ts";
+import { localParts, resolveTz } from "../_shared/tz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -242,10 +243,12 @@ Deno.serve(async (req) => {
 
     // Resolve tenant's display name for prompt (fallback to a neutral label)
     let clinicName = "nossa clínica";
+    let tenantTz = resolveTz(null);
     try {
-      const { data: t } = await supabase.from("tenants").select("name").eq("id", lead.tenant_id).maybeSingle();
+      const { data: t } = await supabase.from("tenants").select("name, timezone").eq("id", lead.tenant_id).maybeSingle();
       if (t?.name && String(t.name).trim()) clinicName = String(t.name).trim();
-    } catch (_) { /* keep fallback */ }
+      tenantTz = resolveTz((t as any)?.timezone);
+    } catch (_) { /* opcional */ }
 
     // Resolver nome da etapa atual
     let stageName: string | null = null;
@@ -347,13 +350,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Helper: timestamp local Bahia (UTC-3) no formato [dd/MM HH:mm]
+    // Helper: timestamp local no fuso da clínica no formato [dd/MM HH:mm]
     const fmtBahia = (iso: string) => {
-      const d = new Date(new Date(iso).getTime() - 3 * 60 * 60 * 1000);
-      const dd = String(d.getUTCDate()).padStart(2, "0");
-      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const hh = String(d.getUTCHours()).padStart(2, "0");
-      const mi = String(d.getUTCMinutes()).padStart(2, "0");
+      const p = localParts(new Date(iso), tenantTz);
+      const dd = String(p.day).padStart(2, "0");
+      const mm = String(p.month).padStart(2, "0");
+      const hh = String(p.hour).padStart(2, "0");
+      const mi = String(p.minute).padStart(2, "0");
       return `[${dd}/${mm} ${hh}:${mi}]`;
     };
 
@@ -525,10 +528,10 @@ Use estes casos como guia. Quando houver "Resposta rejeitada", NÃO repita o mes
         }
     } catch (_) { /* RAG opcional */ }
 
-    // Hora local Bahia (UTC-3) para saudação correta
-    const nowBahia = new Date(Date.now() - 3 * 60 * 60 * 1000);
-    const hourBA = nowBahia.getUTCHours();
-    const minBA = nowBahia.getUTCMinutes();
+    // Hora local no fuso da clínica para saudação correta
+    const nowParts = localParts(new Date(), tenantTz);
+    const hourBA = nowParts.hour;
+    const minBA = nowParts.minute;
     const nowMinutesBA = hourBA * 60 + minBA;
     let saudacao = "Boa noite";
     if (hourBA >= 5 && hourBA < 12) saudacao = "Bom dia";
@@ -559,10 +562,10 @@ Use estes casos como guia. Quando houver "Resposta rejeitada", NÃO repita o mes
     const nameLooksLikeHandle = looksLikeHandle(lead.name || "") || looksLikeHandle(rawFirst);
     const isInstagram = !!(lead as any).instagram_user_id;
 
-    // Data de hoje por extenso (America/Bahia)
+    // Data de hoje por extenso (fuso da clínica)
     const weekdays = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
     const monthsBR = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
-    const todayLabel = `${weekdays[nowBahia.getUTCDay()]}, ${String(nowBahia.getUTCDate()).padStart(2,"0")}/${String(nowBahia.getUTCMonth()+1).padStart(2,"0")}/${nowBahia.getUTCFullYear()} (${monthsBR[nowBahia.getUTCMonth()]})`;
+    const todayLabel = `${weekdays[nowParts.weekday]}, ${String(nowParts.day).padStart(2,"0")}/${String(nowParts.month).padStart(2,"0")}/${nowParts.year} (${monthsBR[nowParts.month - 1]})`;
 
     // Bloco de anúncio (espelhar tema quando vier de ad)
     const hasAd = !!((lead as any).titulo_anuncio || (lead as any).descricao_anuncio || (lead as any).nome_anuncio);
@@ -591,8 +594,8 @@ Serviço de interesse: ${lead.servico_interesse || "[não informado — pergunte
 Etapa atual: ${stageName || "—"}
 Endereço da unidade: ${unitAddress || "[NÃO CADASTRADO — NÃO envie endereço; diga que confirma em seguida]"}
 Hoje é: ${todayLabel}
-Hora atual (America/Bahia, UTC-3): ${String(hourBA).padStart(2, "0")}:${String(nowBahia.getUTCMinutes()).padStart(2, "0")}
-Horário comercial da clínica: ${shiftStartStr}–${shiftEndStr} (America/Bahia). AGORA está ${inShift ? "DENTRO" : "FORA"} do expediente.
+Hora atual (${tenantTz}): ${String(hourBA).padStart(2, "0")}:${String(minBA).padStart(2, "0")}
+Horário comercial da clínica: ${shiftStartStr}–${shiftEndStr} (${tenantTz}). AGORA está ${inShift ? "DENTRO" : "FORA"} do expediente.
 Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)
 Canal: ${isInstagram ? "Instagram (Direct)" : "WhatsApp"}${pacienteBlock}${adBlock}${leadNotesBlock}${teamNotesBlock}${stageHistoryBlock}
 
@@ -621,7 +624,7 @@ Se os FATOS trouxerem o bloco "PACIENTE JÁ CADASTRADO NO FINANCEIRO", ou se o l
 Use a linha "Hoje é" dos FATOS como referência. Se o lead menciona uma data solta (ex.: "dia 20", "segunda que vem"), cruze com as notas fixadas/observação do lead antes de assumir. Se há nota do tipo "vai viajar dia 15 e volta em julho", "dia 20" provavelmente é 20 de julho — NÃO assuma que é a semana atual. Se persistir dúvida, confirme o mês em UMA pergunta curta.
 
 === RESPEITAR O COMBINADO E CONTINUIDADE TEMPORAL ===
-Leia TODA a conversa antes de responder. Cada mensagem do histórico vem prefixada com "[dd/mm hh:mm]" no fuso America/Bahia — use isso para respeitar a ordem, não repetir assunto já resolvido e reengajar com naturalidade se a última interação foi há muito tempo. Respeite o que a equipe já combinou (horário, data, valor, condição, telefone passado, encaminhamento para recepção) — NÃO altere, NÃO ofereça agendamento novo se a equipe já direcionou. Se a etapa atual for de desfecho (Desqualificado, Ganho, Compareceu, Perdido, Não contratado, Cliente, Nutrição), NÃO reinicie fluxo de agendamento do zero — apenas dê continuidade ao que já foi combinado. Notas internas (linhas "[NOTA INTERNA DA EQUIPE — NÃO enviar ao cliente]") são direcionadores da equipe: siga-as, mas NUNCA repita seu conteúdo textual para o cliente. Use sempre o nome dos FATOS CONFIRMADOS.
+Leia TODA a conversa antes de responder. Cada mensagem do histórico vem prefixada com "[dd/mm hh:mm]" no fuso ${tenantTz} — use isso para respeitar a ordem, não repetir assunto já resolvido e reengajar com naturalidade se a última interação foi há muito tempo. Respeite o que a equipe já combinou (horário, data, valor, condição, telefone passado, encaminhamento para recepção) — NÃO altere, NÃO ofereça agendamento novo se a equipe já direcionou. Se a etapa atual for de desfecho (Desqualificado, Ganho, Compareceu, Perdido, Não contratado, Cliente, Nutrição), NÃO reinicie fluxo de agendamento do zero — apenas dê continuidade ao que já foi combinado. Notas internas (linhas "[NOTA INTERNA DA EQUIPE — NÃO enviar ao cliente]") são direcionadores da equipe: siga-as, mas NUNCA repita seu conteúdo textual para o cliente. Use sempre o nome dos FATOS CONFIRMADOS.
 
 === ENDEREÇOS ===
 Só envie endereço se estiver no campo "Endereço da unidade" dos FATOS. Se "NÃO CADASTRADO", diga que confirma e retorna — NUNCA invente rua, número, bairro ou ponto de referência.

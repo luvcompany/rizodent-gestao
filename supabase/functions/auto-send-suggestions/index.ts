@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { hmInTz, resolveTz } from "../_shared/tz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,13 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// America/Bahia is UTC-3 fixed (no DST).
-function bahiaTimeOfDay(): { hh: number; mm: number; minutes: number } {
-  const now = new Date();
-  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes();
-  const localMin = (utcMin - 180 + 24 * 60) % (24 * 60);
-  return { hh: Math.floor(localMin / 60), mm: localMin % 60, minutes: localMin };
-}
 function parseHMM(s: string): number {
   const [h, m] = String(s || "00:00").split(":").map((x) => parseInt(x, 10) || 0);
   return h * 60 + m;
@@ -46,8 +40,17 @@ Deno.serve(async (req) => {
       return data || null;
     }
 
+    // Cache do timezone por tenant para computar minutos locais em cada lead.
+    const tzCache = new Map<string, string>();
+    async function getTenantTz(tenantId: string): Promise<string> {
+      if (tzCache.has(tenantId)) return tzCache.get(tenantId)!;
+      const { data } = await supabase.from("tenants").select("timezone").eq("id", tenantId).maybeSingle();
+      const tz = resolveTz((data as any)?.timezone);
+      tzCache.set(tenantId, tz);
+      return tz;
+    }
+
     const now = new Date();
-    const localMin = bahiaTimeOfDay().minutes;
 
     // Fetch pending reply suggestions (limit batch)
     const { data: pending } = await supabase
@@ -75,6 +78,9 @@ Deno.serve(async (req) => {
         const config = await getTenantConfig(lead.tenant_id);
         if (!config) { processed.push({ id: s.id, skipped: "no_config" }); continue; }
         if (config.auto_send_enabled !== true) { processed.push({ id: s.id, skipped: "auto_send_disabled" }); continue; }
+
+        const tenantTz = await getTenantTz(lead.tenant_id);
+        const localMin = hmInTz(now, tenantTz);
 
         const waitMinutes = Math.max(0, Number(config.wait_minutes) || 10);
         const recoilHours = Math.max(0, Number(config.recoil_hours) || 2);
