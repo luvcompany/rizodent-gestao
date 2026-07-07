@@ -140,7 +140,7 @@ export const prefetchCrmDashboardData = async (
     const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
       fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart).order("due_date").range(f, t)),
       fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd).order("scheduled_date").range(f, t)),
-      supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", `${todayStr}T00:00:00`).lte("created_at", `${todayStr}T23:59:59`),
+      (() => { const b = todayLocalBounds(); return supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", b.start).lte("created_at", b.end); })(),
       fetchAll<any>((f, t) => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd).range(f, t)),
     ]);
     const refIds = Array.from(new Set([
