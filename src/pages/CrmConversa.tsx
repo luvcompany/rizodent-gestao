@@ -111,6 +111,7 @@ export default function CrmConversa() {
   // Fetch lead + profiles in parallel (with profile cache)
   const [leadLoading, setLeadLoading] = useState(true);
   const [phoneCopied, setPhoneCopied] = useState(false);
+  const [nameCopied, setNameCopied] = useState(false);
 
   const copyPhone = async () => {
     if (!lead?.phone) return;
@@ -119,6 +120,17 @@ export default function CrmConversa() {
       setPhoneCopied(true);
       toast.success("Número copiado");
       setTimeout(() => setPhoneCopied(false), 1500);
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  };
+  const copyName = async () => {
+    if (!lead?.name) return;
+    try {
+      await navigator.clipboard.writeText(lead.name);
+      setNameCopied(true);
+      toast.success("Nome copiado");
+      setTimeout(() => setNameCopied(false), 1500);
     } catch {
       toast.error("Não foi possível copiar");
     }
