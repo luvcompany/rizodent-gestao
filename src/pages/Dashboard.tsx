@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { useChartTheme } from "@/hooks/useChartTheme";
 import { HolidaysManager, type Holiday } from "@/components/HolidaysManager";
+import { businessDaysBetween } from "@/lib/businessDays";
 
 const DateRangeFilter = lazy(() =>
   import("@/components/ui/date-range-filter").then((m) => ({ default: m.DateRangeFilter }))
