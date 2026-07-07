@@ -124,6 +124,11 @@ const RegistroDiarioTab = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clinicaId) { toast.error("Selecione uma clínica."); return; }
+    // Validação: a soma dos convertidos por ligação não pode exceder as ligações atendidas
+    if (vAgendLigacao + vReagLigacao > vAtendidas) {
+      toast.error("Agendamentos + Reagendamentos por ligação não podem exceder ligações atendidas.");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -138,15 +143,16 @@ const RegistroDiarioTab = () => {
         created_by: user?.id,
       };
 
-      if (existingId) {
-        const { error } = await supabase.from("registros_diarios_atendimento").update(payload).eq("id", existingId);
-        if (error) throw error;
-        toast.success("Registro atualizado!");
-      } else {
-        const { error } = await supabase.from("registros_diarios_atendimento").insert(payload);
-        if (error) throw error;
-        toast.success("Registro salvo!");
-      }
+      // Gravação idempotente: a tabela tem UNIQUE(data, clinica_id).
+      // Evita erro de constraint em corrida ou quando o "existingId" carregado está desatualizado.
+      const { data: upserted, error } = await supabase
+        .from("registros_diarios_atendimento")
+        .upsert(payload, { onConflict: "data,clinica_id" })
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      if (upserted?.id) setExistingId(upserted.id);
+      toast.success(existingId ? "Registro atualizado!" : "Registro salvo!");
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
