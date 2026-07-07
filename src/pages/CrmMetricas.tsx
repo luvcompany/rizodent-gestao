@@ -139,8 +139,8 @@ const CrmMetricas = () => {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const toIso = to.toISOString().slice(0, 10);
-      const fromIso = from.toISOString().slice(0, 10);
+      const toIso = toLocalDateISO(to);
+      const fromIso = toLocalDateISO(from);
       const { data: res, error } = await (supabase as any).rpc("crm_usage_metrics", {
         p_from: fromIso, p_to: toIso,
       });
