@@ -179,32 +179,59 @@ const Relatorios = () => {
   }, [filteredPagamentos]);
 
   // ========== PREDICTABILITY ==========
-  const diasUteisMes = useMemo(() => {
-    const refDate = new Date(dateFrom + "T12:00:00");
-    const year = refDate.getFullYear();
-    const month = refDate.getMonth();
-    const totalDays = new Date(year, month + 1, 0).getDate();
-    let count = 0;
-    for (let day = 1; day <= totalDays; day++) {
-      const dow = new Date(year, month, day).getDay();
-      if (dow !== 0) count++;
-    }
-    return count;
+  // Conjunto de feriados aplicáveis à clínica filtrada (YYYY-MM-DD local)
+  const holidaySet = useMemo(() => {
+    const set = new Set<string>();
+    holidays.forEach((h) => {
+      const applies = !h.clinica_id || clinicaFiltro === "todas" || h.clinica_id === clinicaFiltro;
+      if (applies) set.add(h.data);
+    });
+    return set;
+  }, [holidays, clinicaFiltro]);
+
+  // Mês/ano de referência = mês do início do período filtrado
+  const refMonth = useMemo(() => {
+    const d = new Date(dateFrom + "T12:00:00");
+    return new Date(d.getFullYear(), d.getMonth(), 1);
   }, [dateFrom]);
 
+  // O período selecionado é EXATAMENTE o mês corrente? (previsão só faz sentido nele)
+  const isCurrentMonthSelected = useMemo(() => {
+    const now = new Date();
+    const start = new Date(dateFrom + "T12:00:00");
+    const end = new Date(dateTo + "T12:00:00");
+    return (
+      start.getFullYear() === now.getFullYear() &&
+      start.getMonth() === now.getMonth() &&
+      start.getDate() === 1 &&
+      end.getFullYear() === now.getFullYear() &&
+      end.getMonth() === now.getMonth()
+    );
+  }, [dateFrom, dateTo]);
+
+  // "Ontem" em horário local (lançamentos têm ~1 dia de atraso)
+  const yesterdayLocal = useMemo(() => {
+    const t = new Date();
+    t.setHours(12, 0, 0, 0);
+    t.setDate(t.getDate() - 1);
+    return t;
+  }, []);
+  const yesterdayStr = useMemo(() => toLocalDateISO(yesterdayLocal), [yesterdayLocal]);
+
+  // Dias úteis do MÊS INTEIRO (Seg-Sex=1, Sáb=0.5, Dom=0, feriados=0)
+  const diasUteisMes = useMemo(() => {
+    const firstDay = new Date(refMonth.getFullYear(), refMonth.getMonth(), 1);
+    const lastDay = new Date(refMonth.getFullYear(), refMonth.getMonth() + 1, 0);
+    return Math.max(businessDaysBetween(firstDay, lastDay, holidaySet), 1);
+  }, [refMonth, holidaySet]);
+
+  // Dias úteis DECORRIDOS: do início do período até ONTEM (ou até o dateTo, o que for menor)
   const diasUteisPassados = useMemo(() => {
     const start = new Date(dateFrom + "T12:00:00");
-    const today = new Date();
-    const endDate = new Date(dateTo + "T12:00:00");
-    const limit = endDate < today ? endDate : today;
-    let count = 0;
-    const current = new Date(start);
-    while (current <= limit) {
-      if (current.getDay() !== 0) count++;
-      current.setDate(current.getDate() + 1);
-    }
-    return Math.max(count, 1);
-  }, [dateFrom, dateTo]);
+    const endSel = new Date(dateTo + "T12:00:00");
+    const limit = endSel < yesterdayLocal ? endSel : yesterdayLocal;
+    return Math.max(businessDaysBetween(start, limit, holidaySet), 0.5);
+  }, [dateFrom, dateTo, yesterdayLocal, holidaySet]);
 
   const predictability = useMemo(() => {
     const totalContratado = filteredPagamentos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
