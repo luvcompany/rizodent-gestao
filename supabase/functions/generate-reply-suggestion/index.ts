@@ -350,13 +350,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Helper: timestamp local Bahia (UTC-3) no formato [dd/MM HH:mm]
+    // Helper: timestamp local no fuso da clínica no formato [dd/MM HH:mm]
     const fmtBahia = (iso: string) => {
-      const d = new Date(new Date(iso).getTime() - 3 * 60 * 60 * 1000);
-      const dd = String(d.getUTCDate()).padStart(2, "0");
-      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const hh = String(d.getUTCHours()).padStart(2, "0");
-      const mi = String(d.getUTCMinutes()).padStart(2, "0");
+      const p = localParts(new Date(iso), tenantTz);
+      const dd = String(p.day).padStart(2, "0");
+      const mm = String(p.month).padStart(2, "0");
+      const hh = String(p.hour).padStart(2, "0");
+      const mi = String(p.minute).padStart(2, "0");
       return `[${dd}/${mm} ${hh}:${mi}]`;
     };
 
