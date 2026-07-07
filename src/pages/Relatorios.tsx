@@ -701,7 +701,7 @@ const Relatorios = () => {
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={[
                 { name: "Contratado", value: predictability.totalContratado },
-                { name: "Projeção", value: predictability.projecaoMensal },
+                { name: "Projeção", value: isCurrentMonthSelected ? predictability.projecaoMensal : 0 },
               ]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} />
