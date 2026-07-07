@@ -243,9 +243,12 @@ Deno.serve(async (req) => {
 
     // Resolve tenant's display name for prompt (fallback to a neutral label)
     let clinicName = "nossa clínica";
+    let tenantTz = resolveTz(null);
     try {
-      const { data: t } = await supabase.from("tenants").select("name").eq("id", lead.tenant_id).maybeSingle();
+      const { data: t } = await supabase.from("tenants").select("name, timezone").eq("id", lead.tenant_id).maybeSingle();
       if (t?.name && String(t.name).trim()) clinicName = String(t.name).trim();
+      tenantTz = resolveTz((t as any)?.timezone);
+    } catch (_) { /* opcional */ }
     } catch (_) { /* keep fallback */ }
 
     // Resolver nome da etapa atual
