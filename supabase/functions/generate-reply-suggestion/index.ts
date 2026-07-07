@@ -528,10 +528,10 @@ Use estes casos como guia. Quando houver "Resposta rejeitada", NÃO repita o mes
         }
     } catch (_) { /* RAG opcional */ }
 
-    // Hora local Bahia (UTC-3) para saudação correta
-    const nowBahia = new Date(Date.now() - 3 * 60 * 60 * 1000);
-    const hourBA = nowBahia.getUTCHours();
-    const minBA = nowBahia.getUTCMinutes();
+    // Hora local no fuso da clínica para saudação correta
+    const nowParts = localParts(new Date(), tenantTz);
+    const hourBA = nowParts.hour;
+    const minBA = nowParts.minute;
     const nowMinutesBA = hourBA * 60 + minBA;
     let saudacao = "Boa noite";
     if (hourBA >= 5 && hourBA < 12) saudacao = "Bom dia";
