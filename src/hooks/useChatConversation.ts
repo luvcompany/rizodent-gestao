@@ -153,22 +153,9 @@ export function useChatConversation(leadId: string | null | undefined) {
 
     const requestId = ++fetchRequestRef.current;
     const isCurrentRequest = () => activeLeadRef.current === targetLeadId && fetchRequestRef.current === requestId;
-    const sortMessages = (list: ChatMessage[]): ChatMessage[] => {
-      // Ordena por created_at; em caso de empate (ou diferença ínfima entre
-      // webhook do lead e disparo automático do bot), inbound vem antes de outbound
-      // para que o card do anúncio apareça acima da resposta automática.
-      return [...list].sort((a, b) => {
-        const ta = new Date(a.created_at).getTime();
-        const tb = new Date(b.created_at).getTime();
-        if (ta !== tb) return ta - tb;
-        const da = a.direction === "inbound" ? 0 : 1;
-        const db = b.direction === "inbound" ? 0 : 1;
-        return da - db;
-      });
-    };
     const applyMessages = (nextMessages: ChatMessage[]) => {
       if (!isCurrentRequest()) return false;
-      setMessages(sortMessages(nextMessages));
+      setMessages(sortChatMessages(nextMessages));
       setLoading(false);
       return true;
     };
