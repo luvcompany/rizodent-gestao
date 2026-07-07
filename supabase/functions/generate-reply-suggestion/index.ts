@@ -562,10 +562,10 @@ Use estes casos como guia. Quando houver "Resposta rejeitada", NÃO repita o mes
     const nameLooksLikeHandle = looksLikeHandle(lead.name || "") || looksLikeHandle(rawFirst);
     const isInstagram = !!(lead as any).instagram_user_id;
 
-    // Data de hoje por extenso (America/Bahia)
+    // Data de hoje por extenso (fuso da clínica)
     const weekdays = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
     const monthsBR = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
-    const todayLabel = `${weekdays[nowBahia.getUTCDay()]}, ${String(nowBahia.getUTCDate()).padStart(2,"0")}/${String(nowBahia.getUTCMonth()+1).padStart(2,"0")}/${nowBahia.getUTCFullYear()} (${monthsBR[nowBahia.getUTCMonth()]})`;
+    const todayLabel = `${weekdays[nowParts.weekday]}, ${String(nowParts.day).padStart(2,"0")}/${String(nowParts.month).padStart(2,"0")}/${nowParts.year} (${monthsBR[nowParts.month - 1]})`;
 
     // Bloco de anúncio (espelhar tema quando vier de ad)
     const hasAd = !!((lead as any).titulo_anuncio || (lead as any).descricao_anuncio || (lead as any).nome_anuncio);
