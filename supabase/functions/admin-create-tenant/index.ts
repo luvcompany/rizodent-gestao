@@ -160,6 +160,7 @@ Deno.serve(async (req) => {
         ...s,
         tenant_id: tenant.id,
         pipeline_id: defaultPipeline.id,
+        is_won: (s as any).is_won === true,
       }))
     );
     if (stagesErr) return json({ error: `Falha ao criar etapas do funil: ${stagesErr.message}` }, 500);
