@@ -294,7 +294,7 @@ export function useChatConversation(leadId: string | null | undefined) {
             messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
             return updated;
           }
-          const updated = [...prev, newMsg];
+          const updated = sortChatMessages([...prev, newMsg]);
           messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
           return updated;
         });
