@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
-import { Loader2, TrendingUp, TrendingDown, Award, AlertTriangle } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Award, AlertTriangle, Clock, MessageSquare, BarChart3 } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 type Pipeline = { id: string; name: string };
 type Lead = {
@@ -13,7 +14,7 @@ type Lead = {
   created_at: string; first_inbound_at: string | null;
   paciente_id: string | null;
 };
-type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string };
+type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string; updated_at: string };
 type Msg = { lead_id: string; direction: string; created_at: string };
 type Pagamento = { paciente_id: string; tipo: string; data_pagamento: string };
 
@@ -47,6 +48,14 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
   const [appts, setAppts] = useState<Appointment[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
+  const [tz, setTz] = useState<string>("America/Sao_Paulo");
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("tenants").select("timezone").limit(1).maybeSingle();
+      if (data?.timezone) setTz(data.timezone);
+    })();
+  }, []);
 
   useEffect(() => {
     const range = getDateRangeFromFilter(period);
@@ -91,7 +100,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         while (true) {
           const { data: aps } = await supabase
             .from("crm_appointments")
-            .select("id,lead_id,scheduled_date,status")
+            .select("id,lead_id,scheduled_date,status,updated_at")
             .gte("scheduled_date", startDate)
             .lte("scheduled_date", endDate)
             .range(aFrom, aFrom + 999);
@@ -110,7 +119,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         while (true) {
           const { data: aps } = await supabase
             .from("crm_appointments")
-            .select("id,lead_id,scheduled_date,status")
+            .select("id,lead_id,scheduled_date,status,updated_at")
             .in("lead_id", chunk)
             .gte("scheduled_date", startDate)
             .lte("scheduled_date", endDate)
@@ -213,6 +222,96 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return { total: leads.length, totalAnswered, in1h, sameDay, in24h, notAnswered };
   }, [leads, msgs]);
 
+  // ---- NOVOS INDICADORES (topo) ----
+
+  // Tempo médio até 1ª resposta: média de (1º outbound após 1º inbound) - (1º inbound)
+  const avgFirstResponseSec = useMemo(() => {
+    const firstInboundByLead = new Map<string, Date>();
+    const outboundsByLead = new Map<string, Date[]>();
+    msgs.forEach(m => {
+      const t = new Date(m.created_at);
+      if (m.direction === "inbound") {
+        const cur = firstInboundByLead.get(m.lead_id);
+        if (!cur || t < cur) firstInboundByLead.set(m.lead_id, t);
+      } else if (m.direction === "outbound") {
+        if (!outboundsByLead.has(m.lead_id)) outboundsByLead.set(m.lead_id, []);
+        outboundsByLead.get(m.lead_id)!.push(t);
+      }
+    });
+    let sum = 0, n = 0;
+    leads.forEach(l => {
+      const ib = firstInboundByLead.get(l.id) || (l.first_inbound_at ? new Date(l.first_inbound_at) : null);
+      if (!ib) return;
+      const obs = outboundsByLead.get(l.id) || [];
+      let after: Date | null = null;
+      for (const t of obs) if (t > ib && (!after || t < after)) after = t;
+      if (!after) return;
+      sum += (after.getTime() - ib.getTime()) / 1000;
+      n++;
+    });
+    return n ? Math.round(sum / n) : 0;
+  }, [leads, msgs]);
+
+  // Tempo médio de atendimento: duração de 1º inbound do lead até o momento em que
+  // a appointment foi marcada como 'contracted' ou 'not_contracted' (updated_at).
+  const avgAttendanceSec = useMemo(() => {
+    const firstInboundByLead = new Map<string, Date>();
+    msgs.forEach(m => {
+      if (m.direction !== "inbound") return;
+      const t = new Date(m.created_at);
+      const cur = firstInboundByLead.get(m.lead_id);
+      if (!cur || t < cur) firstInboundByLead.set(m.lead_id, t);
+    });
+    // usar o PRIMEIRO desfecho por lead (updated_at mais antigo entre contracted/not_contracted)
+    const firstOutcomeByLead = new Map<string, Date>();
+    appts.forEach(a => {
+      if (a.status !== "contracted" && a.status !== "not_contracted") return;
+      if (!a.updated_at) return;
+      const t = new Date(a.updated_at);
+      const cur = firstOutcomeByLead.get(a.lead_id);
+      if (!cur || t < cur) firstOutcomeByLead.set(a.lead_id, t);
+    });
+    let sum = 0, n = 0;
+    firstOutcomeByLead.forEach((end, leadId) => {
+      const ib = firstInboundByLead.get(leadId);
+      if (!ib) return;
+      const diff = (end.getTime() - ib.getTime()) / 1000;
+      if (diff <= 0) return;
+      sum += diff;
+      n++;
+    });
+    return n ? Math.round(sum / n) : 0;
+  }, [appts, msgs]);
+
+  // Volume de conversas por hora (hora local do fuso da clínica) — conta leads
+  // distintos que iniciaram conversa (1º inbound) naquela hora.
+  const hourlyVolume = useMemo(() => {
+    const firstInboundByLead = new Map<string, Date>();
+    msgs.forEach(m => {
+      if (m.direction !== "inbound") return;
+      const t = new Date(m.created_at);
+      const cur = firstInboundByLead.get(m.lead_id);
+      if (!cur || t < cur) firstInboundByLead.set(m.lead_id, t);
+    });
+    const buckets = Array.from({ length: 24 }, (_, h) => ({ hora: `${String(h).padStart(2, "0")}h`, total: 0 }));
+    const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "2-digit", hour12: false });
+    firstInboundByLead.forEach(d => {
+      let h = parseInt(fmt.format(d), 10);
+      if (!Number.isFinite(h)) return;
+      if (h === 24) h = 0;
+      buckets[h].total++;
+    });
+    return buckets;
+  }, [msgs, tz]);
+
+  const totalHourly = useMemo(() => hourlyVolume.reduce((s, b) => s + b.total, 0), [hourlyVolume]);
+
+  const fmtMinSec = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return { m, s };
+  };
+
   // Contratados válidos: leads com appointment status='contracted'.
   const contractedLeadIds = useMemo(() => {
     const ids = new Set<string>();
@@ -281,6 +380,76 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         </div>
         {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
       </Card>
+
+      {/* Indicadores de atendimento */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm">Tempo médio de atendimento</h3>
+            <Clock className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="flex items-baseline justify-center gap-3">
+            <div className="text-5xl font-bold tracking-tight">{fmtMinSec(avgAttendanceSec).m}</div>
+            <div className="text-3xl text-muted-foreground">:</div>
+            <div className="text-5xl font-bold tracking-tight">{String(fmtMinSec(avgAttendanceSec).s).padStart(2, "0")}</div>
+          </div>
+          <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+            <span>minutos</span>
+            <span>segundos</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground text-center mt-3">
+            Do 1º contato do lead até o desfecho (contratado ou não contratado).
+          </p>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm">Tempo médio até primeira resposta</h3>
+            <MessageSquare className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="flex items-baseline justify-center gap-3">
+            <div className="text-5xl font-bold tracking-tight">{fmtMinSec(avgFirstResponseSec).m}</div>
+            <div className="text-3xl text-muted-foreground">:</div>
+            <div className="text-5xl font-bold tracking-tight">{String(fmtMinSec(avgFirstResponseSec).s).padStart(2, "0")}</div>
+          </div>
+          <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
+            <span>minutos</span>
+            <span>segundos</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground text-center mt-3">
+            Do 1º inbound do lead até a 1ª resposta da equipe.
+          </p>
+        </Card>
+      </div>
+
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-muted-foreground" />
+            Volume de conversas por hora
+          </h3>
+          <div className="text-2xl font-bold">{totalHourly}</div>
+        </div>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={hourlyVolume} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
+              <XAxis dataKey="hora" tick={{ fontSize: 11 }} interval={0} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6 }}
+                labelStyle={{ color: "hsl(var(--foreground))" }}
+              />
+              <Line type="monotone" dataKey="total" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-2">
+          Novas conversas iniciadas por hora, no fuso horário da clínica ({tz}).
+        </p>
+      </Card>
+
+
 
       {/* Cidade × Origem */}
       <Card className="p-4">
