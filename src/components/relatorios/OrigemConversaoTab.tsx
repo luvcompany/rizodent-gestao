@@ -331,10 +331,12 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
   const fmtDuration = (sec: number) => {
     const total = Math.max(0, Math.floor(sec || 0));
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    return { h, m, s, hasHours: h > 0 };
+    const d = Math.floor(total / 86400);
+    const remaining = total % 86400;
+    const h = Math.floor(remaining / 3600);
+    const m = Math.floor((remaining % 3600) / 60);
+    const s = remaining % 60;
+    return { d, h, m, s, hasDays: d > 0, hasHours: h > 0 || d > 0 };
   };
 
   // Contratados válidos: leads com appointment status='contracted'.
