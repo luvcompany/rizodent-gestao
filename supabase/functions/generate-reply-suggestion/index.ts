@@ -594,8 +594,8 @@ Serviço de interesse: ${lead.servico_interesse || "[não informado — pergunte
 Etapa atual: ${stageName || "—"}
 Endereço da unidade: ${unitAddress || "[NÃO CADASTRADO — NÃO envie endereço; diga que confirma em seguida]"}
 Hoje é: ${todayLabel}
-Hora atual (America/Bahia, UTC-3): ${String(hourBA).padStart(2, "0")}:${String(nowBahia.getUTCMinutes()).padStart(2, "0")}
-Horário comercial da clínica: ${shiftStartStr}–${shiftEndStr} (America/Bahia). AGORA está ${inShift ? "DENTRO" : "FORA"} do expediente.
+Hora atual (${tenantTz}): ${String(hourBA).padStart(2, "0")}:${String(minBA).padStart(2, "0")}
+Horário comercial da clínica: ${shiftStartStr}–${shiftEndStr} (${tenantTz}). AGORA está ${inShift ? "DENTRO" : "FORA"} do expediente.
 Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)
 Canal: ${isInstagram ? "Instagram (Direct)" : "WhatsApp"}${pacienteBlock}${adBlock}${leadNotesBlock}${teamNotesBlock}${stageHistoryBlock}
 
