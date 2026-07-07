@@ -284,7 +284,7 @@ export default function CrmDashboard() {
     const endDate = addDays(today, parseInt(upcomingDays));
     return appointments
       .filter(a => {
-        const d = new Date(a.scheduled_date);
+        const d = new Date(a.scheduled_date + "T12:00:00");
         return (isSameDay(d, today) || isAfter(d, today)) && isBefore(d, endDate);
       })
       .sort((a, b) => {
