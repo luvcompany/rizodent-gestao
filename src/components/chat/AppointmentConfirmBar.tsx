@@ -99,7 +99,9 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
           ? "Lead movido para Não compareceu"
           : outcome === "contracted"
           ? "Lead movido para Contratado"
-          : "Lead movido para funil de Não Contratados",
+          : outcome === "rescheduled"
+          ? "Lead movido para Compareceu e agendou"
+          : "Lead movido para etapa Não contratado",
       );
       await Promise.all([fetchAppointments(), checkRescheduleMode()]);
       setOutcomeStep((prev) => {
