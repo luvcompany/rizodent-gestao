@@ -59,7 +59,7 @@ Deno.serve(async (req: Request) => {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const errorParam = url.searchParams.get("error");
-  const base = frontendBase(req);
+  
 
   if (errorParam) {
     console.error("[wa-oauth-callback] error from Meta:", errorParam, url.searchParams.get("error_description"));
