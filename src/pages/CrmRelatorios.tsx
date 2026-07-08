@@ -141,9 +141,10 @@ export default function CrmRelatorios() {
     supabase.from("crm_pipelines").select("id, name").order("created_at").then(({ data }) => {
       const list = (data || []) as Pipeline[];
       setPipelines(list);
+      // Abre em "Todos os funis" por padrão (bate com a Visão Geral, que conta
+      // todos os pipelines). O seletor da aba permite filtrar um funil específico.
       if (list.length) {
-        const principal = list.find(p => /principal/i.test(p.name)) || list[0];
-        setPipelineId(prev => prev || principal.id);
+        setPipelineId(prev => prev || "todos");
       }
     });
   }, []);
