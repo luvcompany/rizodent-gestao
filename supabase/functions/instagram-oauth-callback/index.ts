@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const errorParam = url.searchParams.get("error");
-  const base = frontendBase(req) || (state && state.startsWith("http") ? "" : "");
+  
 
   if (errorParam) {
     console.error("[instagram-oauth-callback] error from Meta:", errorParam, url.searchParams.get("error_description"));
