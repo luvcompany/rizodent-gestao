@@ -45,7 +45,8 @@ verify_jwt = false
 [functions.get-whatsapp-config]
 verify_jwt = false
 
-# Callback do WhatsApp Embedded Signup — chamado pelo frontend autenticado após
-# o fluxo FB.login. Requer JWT do app.
-[functions.whatsapp-embedded-signup]
-verify_jwt = true
+# Callback OAuth do WhatsApp (redirect-based, sem FB JS SDK). Chamado pelo
+# navegador do usuário após autorizar; não pode carregar JWT do app.
+# Validação de CSRF via state.
+[functions.whatsapp-oauth-callback]
+verify_jwt = false

@@ -8,8 +8,9 @@ Deno.serve((req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const app_id = Deno.env.get("META_APP_ID") ?? "";
   const config_id = Deno.env.get("WHATSAPP_EMBEDDED_CONFIG_ID") ?? "";
+  const redirect_uri = Deno.env.get("WHATSAPP_REDIRECT_URI") ?? "";
   return new Response(
-    JSON.stringify({ app_id, config_id, api_version: "v21.0" }),
+    JSON.stringify({ app_id, config_id, redirect_uri, api_version: "v21.0" }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 });
