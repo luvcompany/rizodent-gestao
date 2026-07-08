@@ -715,6 +715,96 @@ async function reportBySource(tenantId: string, p: URLSearchParams) {
   });
 }
 
+// ===== /reports/clientes-pagantes =====
+// Lista agregada de pacientes que já efetuaram algum pagamento (histórico completo).
+// Somente leitura. Escopo por tenant via clinicas do tenant (mesma regra do /reports/financeiro).
+function normalizePhoneE164BR(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = String(raw).replace(/\D/g, "");
+  if (!digits) return null;
+  return digits.startsWith("55") ? `+${digits}` : `+55${digits}`;
+}
+
+async function reportClientesPagantes(tenantId: string, p: URLSearchParams) {
+  const limit = Math.min(Math.max(parseInt(p.get("limit") || "5000", 10) || 5000, 1), 20000);
+  const offset = Math.max(parseInt(p.get("offset") || "0", 10) || 0, 0);
+
+  const clinRes = await admin.from("clinicas").select("id").eq("tenant_id", tenantId);
+  if (clinRes.error) return json({ error: clinRes.error.message }, 500);
+  const clinicaIds = ((clinRes.data || []) as any[]).map((c) => c.id as string);
+  if (!clinicaIds.length) return json({ data: [], total: 0 });
+
+  const pagamentos = await fetchAllPaged<any>(
+    () => admin.from("pagamentos")
+      .select("paciente_id, valor, data_pagamento, especialidade, id")
+      .in("clinica_id", clinicaIds),
+    "id",
+  );
+
+  type Agg = {
+    valor_total: number;
+    qtd_pagamentos: number;
+    primeira_compra: string;
+    ultima_compra: string;
+    especialidades: Map<string, number>;
+  };
+  const byPaciente = new Map<string, Agg>();
+  for (const pg of pagamentos) {
+    const pid = pg.paciente_id as string | null;
+    if (!pid) continue;
+    const valor = Number(pg.valor) || 0;
+    const data = String(pg.data_pagamento || "").slice(0, 10);
+    let a = byPaciente.get(pid);
+    if (!a) {
+      a = { valor_total: 0, qtd_pagamentos: 0, primeira_compra: data, ultima_compra: data, especialidades: new Map() };
+      byPaciente.set(pid, a);
+    }
+    a.valor_total += valor;
+    a.qtd_pagamentos += 1;
+    if (data && (a.primeira_compra === "" || data < a.primeira_compra)) a.primeira_compra = data;
+    if (data && data > a.ultima_compra) a.ultima_compra = data;
+    const esp = (pg.especialidade || "").trim();
+    if (esp) a.especialidades.set(esp, (a.especialidades.get(esp) || 0) + valor);
+  }
+
+  const pacienteIds = [...byPaciente.keys()];
+  const pacienteById = new Map<string, any>();
+  for (const ids of chunk(pacienteIds, 150)) {
+    const r = await admin.from("pacientes")
+      .select("id, nome, telefone, cidade")
+      .eq("tenant_id", tenantId)
+      .in("id", ids);
+    if (r.error) return json({ error: r.error.message }, 500);
+    (r.data || []).forEach((pc: any) => pacienteById.set(pc.id, pc));
+  }
+
+  const rows: any[] = [];
+  for (const [pid, a] of byPaciente.entries()) {
+    const pac = pacienteById.get(pid);
+    if (!pac) continue; // fora do tenant
+    let servico: string | null = null;
+    let bestVal = -1;
+    for (const [esp, v] of a.especialidades.entries()) {
+      if (v > bestVal) { bestVal = v; servico = esp; }
+    }
+    rows.push({
+      nome: pac.nome || null,
+      telefone: normalizePhoneE164BR(pac.telefone),
+      cidade: pac.cidade || null,
+      valor_total: Math.round(a.valor_total * 100) / 100,
+      qtd_pagamentos: a.qtd_pagamentos,
+      primeira_compra: a.primeira_compra || null,
+      ultima_compra: a.ultima_compra || null,
+      servico,
+    });
+  }
+
+  rows.sort((x, y) => y.valor_total - x.valor_total);
+  const total = rows.length;
+  const paged = rows.slice(offset, offset + limit);
+  return json({ data: paged, total });
+}
+
 Deno.serve(async (req) => {
   cors = buildCorsFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
