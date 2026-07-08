@@ -405,7 +405,7 @@ export default function CrmIntegracoes() {
               <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" /> WhatsApp Business
             </h2>
             <div className="flex items-center gap-2">
-              <WhatsAppEmbeddedSignupButton onConnected={loadWhatsapp} />
+              <WhatsAppEmbeddedSignupButton onConnected={loadEntries} />
               <Button size="sm" onClick={handleNew}>
                 <Plus size={14} className="mr-1" /> Novo Número
               </Button>
