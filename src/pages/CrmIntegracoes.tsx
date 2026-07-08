@@ -22,6 +22,7 @@ import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 import InstagramLiteSection from "@/components/integrations/InstagramLiteSection";
 import InstagramAccountsSection from "@/components/integrations/InstagramAccountsSection";
+import WhatsAppEmbeddedSignupButton from "@/components/integrations/WhatsAppEmbeddedSignupButton";
 
 
 import { useTenant } from "@/contexts/TenantContext";
