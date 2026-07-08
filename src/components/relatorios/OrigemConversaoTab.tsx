@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
-import { Loader2, TrendingUp, TrendingDown, Award, AlertTriangle, Clock, MessageSquare, BarChart3 } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Award, Clock, MessageSquare, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { fetchAllPaged, rangeBahia, dayKeyBahia, asDateParam, classifyOrigemCanonica, normalizeCidade, ORIGENS_CANONICAS } from "@/lib/reportKit";
 
@@ -487,21 +487,6 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       .sort((a, b) => b.rate - a.rate || b.leads - a.leads);
   }, [rpcRows, leads, contractedLeadIds, pagamentos]);
 
-  // City performance: cidade normalizada e SEM omitir leads — toda cidade vira
-  // uma linha (inclusive "Sem cidade"), então a soma bate com o total do período.
-  const cityPerf = useMemo(() => {
-    const byCity = new Map<string, { leads: number; contracted: number }>();
-    leads.forEach(l => {
-      const city = normalizeCidade(l.cidade);
-      const cur = byCity.get(city) || { leads: 0, contracted: 0 };
-      cur.leads++;
-      if (contractedLeadIds.has(l.id)) cur.contracted++;
-      byCity.set(city, cur);
-    });
-    return Array.from(byCity.entries())
-      .map(([city, v]) => ({ city, leads: v.leads, contracted: v.contracted, rate: v.leads ? v.contracted / v.leads : 0 }))
-      .sort((a, b) => b.rate - a.rate || b.leads - a.leads);
-  }, [leads, contractedLeadIds]);
 
   return (
     <div className="space-y-6">
@@ -783,32 +768,6 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           ) : null}
         </Card>
 
-        <Card className="p-4">
-          <h3 className="font-semibold mb-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Performance por Unidade</h3>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cidade</TableHead>
-                <TableHead className="text-right">Leads</TableHead>
-                <TableHead className="text-right">Contratados</TableHead>
-                <TableHead className="text-right">Conversão</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {cityPerf.map((c, i) => (
-                <TableRow key={c.city}>
-                  <TableCell className="font-medium">
-                    {i === 0 && <TrendingUp className="inline w-3 h-3 text-emerald-600 mr-1" />}
-                    {c.city}
-                  </TableCell>
-                  <TableCell className="text-right">{c.leads}</TableCell>
-                  <TableCell className="text-right">{c.contracted}</TableCell>
-                  <TableCell className="text-right font-bold">{(c.rate * 100).toFixed(1)}%</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
       </div>
       </>
       )}
