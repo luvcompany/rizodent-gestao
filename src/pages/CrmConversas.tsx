@@ -1221,7 +1221,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         <button
                           type="button"
                           onClick={async () => {
-                            try { await navigator.clipboard.writeText(selectedLead.phone!); toast.success("Número copiado"); } catch { toast.error("Não foi possível copiar"); }
+                            try {
+                              const phoneToCopy = selectedLead.phone!.replace(/^55/, "");
+                              await navigator.clipboard.writeText(phoneToCopy);
+                              toast.success("Número copiado");
+                            } catch { toast.error("Não foi possível copiar"); }
                           }}
                           title="Copiar número"
                           aria-label="Copiar número"
