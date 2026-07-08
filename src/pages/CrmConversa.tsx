@@ -116,7 +116,8 @@ export default function CrmConversa() {
   const copyPhone = async () => {
     if (!lead?.phone) return;
     try {
-      await navigator.clipboard.writeText(lead.phone);
+      const phoneToCopy = lead.phone.replace(/^55/, "");
+      await navigator.clipboard.writeText(phoneToCopy);
       setPhoneCopied(true);
       toast.success("Número copiado");
       setTimeout(() => setPhoneCopied(false), 1500);
