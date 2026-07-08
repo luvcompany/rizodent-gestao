@@ -880,6 +880,7 @@ Deno.serve(async (req) => {
       if (parts[1] === "funnel") return await reportFunnel(tenantId, p);
       if (parts[1] === "by-source") return await reportBySource(tenantId, p);
       if (parts[1] === "financeiro") return await reportFinanceiro(tenantId, p);
+      if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
     }
     return json({ error: "not_found", path, method: req.method }, 404);
   } catch (e: any) {
