@@ -58,7 +58,7 @@ Deno.serve(async (req: Request) => {
 
   if (errorParam) {
     console.error("[instagram-oauth-callback] error from Meta:", errorParam, url.searchParams.get("error_description"));
-    return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+    return popupResponse("instagram", "error");
   }
   if (!code) {
     return new Response(JSON.stringify({ error: "Missing 'code' query parameter" }), {
@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
     const stJson = await stRes.json();
     if (!stRes.ok || !stJson?.access_token) {
       console.error("[instagram-oauth-callback] short-lived token error:", stJson);
-      return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+      return popupResponse("instagram", "error");
     }
     const shortToken: string = stJson.access_token;
 
@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
     const llJson = await llRes.json();
     if (!llRes.ok || !llJson?.access_token) {
       console.error("[instagram-oauth-callback] long-lived token error:", llJson);
-      return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+      return popupResponse("instagram", "error");
     }
     const longToken: string = llJson.access_token;
     const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
     const pagesJson = await pagesRes.json();
     if (!pagesRes.ok) {
       console.error("[instagram-oauth-callback] me/accounts error:", pagesJson);
-      return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+      return popupResponse("instagram", "error");
     }
 
     const pages: Array<{ id: string; name: string; access_token: string }> = pagesJson?.data ?? [];
@@ -251,11 +251,11 @@ Deno.serve(async (req: Request) => {
     }
 
     if (connected === 0) {
-      return Response.redirect(`${base}/crm/integracoes?instagram=no_accounts&pages=${pages.length}`, 302);
+      return popupResponse("instagram", "error");
     }
-    return Response.redirect(`${base}/crm/integracoes?instagram=connected&count=${connected}`, 302);
+    return popupResponse("instagram", "connected", connected);
   } catch (err) {
     console.error("[instagram-oauth-callback] unexpected error:", err);
-    return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+    return popupResponse("instagram", "error");
   }
 });
