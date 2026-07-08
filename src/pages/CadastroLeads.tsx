@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw, Users } from "lucide-react";
+import { Save, TrendingUp, CalendarDays, Pencil, Trash2, List, RefreshCw, Users, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,6 +15,18 @@ import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
 
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
+
+// Leitura de campo numérico que distingue "não preenchido" de "0 de verdade":
+// - campo vazio => valor null (nunca é coagido para 0);
+// - valor não inteiro ou negativo => invalido (nunca é "consertado" silenciosamente).
+type CampoNum = { valor: number | null; invalido: boolean };
+const lerCampo = (s: string): CampoNum => {
+  const t = s.trim();
+  if (t === "") return { valor: null, invalido: false };
+  const n = Number(t);
+  if (!Number.isInteger(n) || n < 0) return { valor: null, invalido: true };
+  return { valor: n, invalido: false };
+};
 
 const CadastroLeads = () => {
   const { user } = useAuth();
@@ -25,6 +37,7 @@ const CadastroLeads = () => {
   const [clinicaIdLeads, setClinicaIdLeads] = useState("");
   const [leadsNovos, setLeadsNovos] = useState("");
   const [savingLeads, setSavingLeads] = useState(false);
+  const [tentouSalvarLeads, setTentouSalvarLeads] = useState(false);
   const [existingIdLeads, setExistingIdLeads] = useState<string | null>(null);
 
   // Agendados + Reagendados - separate date, clinic
@@ -37,16 +50,78 @@ const CadastroLeads = () => {
   const [reagendadosCompareceram, setReagendadosCompareceram] = useState("");
   const [reagendadosContrataram, setReagendadosContrataram] = useState("");
   const [savingAgendados, setSavingAgendados] = useState(false);
+  const [tentouSalvarAgendados, setTentouSalvarAgendados] = useState(false);
   const [existingIdAgendados, setExistingIdAgendados] = useState<string | null>(null);
 
   const [registros, setRegistros] = useState<LeadWithClinica[]>([]);
 
-  // Calculated fields
-  const faltaram = useMemo(() => Math.max((parseInt(agendaram) || 0) - (parseInt(compareceram) || 0), 0), [agendaram, compareceram]);
-  const naoContrataram = useMemo(() => Math.max((parseInt(compareceram) || 0) - (parseInt(contrataram) || 0), 0), [compareceram, contrataram]);
-  const reagendadosFaltaram = useMemo(() => Math.max((parseInt(remarcados) || 0) - (parseInt(reagendadosCompareceram) || 0), 0), [remarcados, reagendadosCompareceram]);
-  const reagendadosNaoContrataram = useMemo(() => Math.max((parseInt(reagendadosCompareceram) || 0) - (parseInt(reagendadosContrataram) || 0), 0), [reagendadosCompareceram, reagendadosContrataram]);
-  const faltasLiquidas = useMemo(() => Math.max(faltaram - (parseInt(remarcados) || 0) + reagendadosFaltaram, 0), [faltaram, remarcados, reagendadosFaltaram]);
+  // Campos lidos (null = não preenchido; nunca coagido para 0)
+  const cLeadsNovos = lerCampo(leadsNovos);
+  const cAgendaram = lerCampo(agendaram);
+  const cCompareceram = lerCampo(compareceram);
+  const cContrataram = lerCampo(contrataram);
+  const cRemarcados = lerCampo(remarcados);
+  const cReagComp = lerCampo(reagendadosCompareceram);
+  const cReagContr = lerCampo(reagendadosContrataram);
+
+  // Derivados SEM clamp: um valor negativo aqui indica lançamento impossível
+  // (ex.: compareceram > agendados) e gera erro visível que bloqueia o salvamento,
+  // em vez de ser silenciosamente zerado por Math.max(..., 0).
+  const faltaram = cAgendaram.valor !== null && cCompareceram.valor !== null
+    ? cAgendaram.valor - cCompareceram.valor : null;
+  const naoContrataram = cCompareceram.valor !== null && cContrataram.valor !== null
+    ? cCompareceram.valor - cContrataram.valor : null;
+  const reagendadosFaltaram = cRemarcados.valor !== null && cReagComp.valor !== null
+    ? cRemarcados.valor - cReagComp.valor : null;
+  const reagendadosNaoContrataram = cReagComp.valor !== null && cReagContr.valor !== null
+    ? cReagComp.valor - cReagContr.valor : null;
+  // Pode ser negativo de verdade: os reagendados de hoje vêm de faltas de dias
+  // anteriores, então não é limitado às faltas do próprio dia.
+  const faltasLiquidas = faltaram !== null && cRemarcados.valor !== null && reagendadosFaltaram !== null
+    ? faltaram - cRemarcados.valor + reagendadosFaltaram : null;
+
+  // ---- Validação do card "Leads Novos" ----
+  const erroLeadsNovos = cLeadsNovos.invalido
+    ? "Quantidade de leads novos inválida — use um número inteiro maior ou igual a 0."
+    : tentouSalvarLeads && cLeadsNovos.valor === null
+      ? "Quantidade de leads novos não preenchida. Digite 0 se não houve leads novos."
+      : null;
+
+  // ---- Validação do card "Agendados + Reagendados" ----
+  const camposAgendados: { rotulo: string; campo: CampoNum }[] = [
+    { rotulo: "Agendados", campo: cAgendaram },
+    { rotulo: "Compareceram (agendados)", campo: cCompareceram },
+    { rotulo: "Contrataram (agendados)", campo: cContrataram },
+    { rotulo: "Reagendados", campo: cRemarcados },
+    { rotulo: "Compareceram (reagendados)", campo: cReagComp },
+    { rotulo: "Contrataram (reagendados)", campo: cReagContr },
+  ];
+
+  const errosInvalidosAgendados = camposAgendados
+    .filter(({ campo }) => campo.invalido)
+    .map(({ rotulo }) => `${rotulo}: valor inválido — use um número inteiro maior ou igual a 0.`);
+
+  const errosConsistenciaAgendados: string[] = [];
+  if (faltaram !== null && faltaram < 0)
+    errosConsistenciaAgendados.push(`Compareceram (${cCompareceram.valor}) não podem exceder os agendados do dia (${cAgendaram.valor}).`);
+  if (naoContrataram !== null && naoContrataram < 0)
+    errosConsistenciaAgendados.push(`Contrataram (${cContrataram.valor}) não podem exceder os que compareceram (${cCompareceram.valor}).`);
+  if (reagendadosFaltaram !== null && reagendadosFaltaram < 0)
+    errosConsistenciaAgendados.push(`Compareceram (reagendados) (${cReagComp.valor}) não podem exceder os reagendados do dia (${cRemarcados.valor}).`);
+  if (reagendadosNaoContrataram !== null && reagendadosNaoContrataram < 0)
+    errosConsistenciaAgendados.push(`Contrataram (reagendados) (${cReagContr.valor}) não podem exceder os reagendados que compareceram (${cReagComp.valor}).`);
+
+  // Campo vazio ("não preenchido") é diferente de 0: o zero precisa ser digitado.
+  // Esses erros só ficam visíveis depois de uma tentativa de salvar.
+  const errosVaziosAgendados = camposAgendados
+    .filter(({ campo }) => !campo.invalido && campo.valor === null)
+    .map(({ rotulo }) => `${rotulo}: não preenchido. Digite 0 se o valor real for zero.`);
+
+  const errosVisiveisAgendados = [
+    ...errosInvalidosAgendados,
+    ...errosConsistenciaAgendados,
+    ...(tentouSalvarAgendados ? errosVaziosAgendados : []),
+  ];
 
   useEffect(() => {
     supabase.from("clinicas").select("*").eq("ativa", true).then(({ data }) => {
@@ -71,7 +146,7 @@ const CadastroLeads = () => {
     supabase.from("leads_diarios").select("*").eq("data", dataLeads).eq("clinica_id", clinicaIdLeads).maybeSingle()
       .then(({ data: existing }) => {
         if (existing) { setExistingIdLeads(existing.id); setLeadsNovos(String(existing.leads_novos)); }
-        else { setExistingIdLeads(null); setLeadsNovos(""); }
+        else { setExistingIdLeads(null); setLeadsNovos(""); setTentouSalvarLeads(false); }
       });
   }, [clinicaIdLeads, dataLeads]);
 
@@ -86,29 +161,35 @@ const CadastroLeads = () => {
           setCompareceram(String(existing.compareceram));
           setContrataram(String(existing.contrataram));
           setRemarcados(String(existing.remarcados));
-          setReagendadosCompareceram(String((existing as any).reagendados_compareceram || 0));
-          setReagendadosContrataram(String((existing as any).reagendados_contrataram || 0));
+          setReagendadosCompareceram(String((existing as any).reagendados_compareceram ?? 0));
+          setReagendadosContrataram(String((existing as any).reagendados_contrataram ?? 0));
         } else {
           setExistingIdAgendados(null);
           setAgendaram(""); setCompareceram(""); setContrataram("");
           setRemarcados(""); setReagendadosCompareceram(""); setReagendadosContrataram("");
+          setTentouSalvarAgendados(false);
         }
       });
   }, [clinicaIdAgendados, dataAgendados]);
 
   // Save Leads Novos
   const handleSaveLeads = async () => {
+    setTentouSalvarLeads(true);
+    if (!dataLeads) { toast.error("Informe a data."); return; }
     if (!clinicaIdLeads) { toast.error("Selecione uma clínica."); return; }
+    if (cLeadsNovos.invalido || cLeadsNovos.valor === null) {
+      toast.error("Não foi possível salvar: corrija a quantidade de leads novos.");
+      return;
+    }
     setSavingLeads(true);
     try {
-      const leadsValue = parseInt(leadsNovos) || 0;
       // Upsert idempotente (UNIQUE data,clinica_id). Evita colisão quando "Agendados"
       // é salvo antes/depois de "Leads Novos" e o existingId está desatualizado.
       const { data: up, error } = await supabase
         .from("leads_diarios")
         .upsert(
           {
-            data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: leadsValue,
+            data: dataLeads, clinica_id: clinicaIdLeads, leads_novos: cLeadsNovos.valor,
             created_by: user?.id,
           },
           { onConflict: "data,clinica_id", ignoreDuplicates: false },
@@ -118,6 +199,7 @@ const CadastroLeads = () => {
       if (error) throw error;
       if (up?.id) setExistingIdLeads(up.id);
       toast.success("Leads novos salvos!");
+      setTentouSalvarLeads(false);
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
@@ -128,19 +210,37 @@ const CadastroLeads = () => {
 
   // Save Agendados + Reagendados
   const handleSaveAgendados = async () => {
+    setTentouSalvarAgendados(true);
+    if (!dataAgendados) { toast.error("Informe a data."); return; }
     if (!clinicaIdAgendados) { toast.error("Selecione uma clínica."); return; }
+    if (errosInvalidosAgendados.length > 0 || errosConsistenciaAgendados.length > 0 || errosVaziosAgendados.length > 0) {
+      toast.error("Não foi possível salvar: corrija os campos indicados no formulário.");
+      return;
+    }
+    const vAgendaram = cAgendaram.valor;
+    const vCompareceram = cCompareceram.valor;
+    const vContrataram = cContrataram.valor;
+    const vRemarcados = cRemarcados.valor;
+    const vReagComp = cReagComp.valor;
+    const vReagContr = cReagContr.valor;
+    if (vAgendaram === null || vCompareceram === null || vContrataram === null || vRemarcados === null || vReagComp === null || vReagContr === null) {
+      // Inalcançável: campos vazios já foram bloqueados acima (errosVaziosAgendados).
+      return;
+    }
     setSavingAgendados(true);
     try {
       const payload = {
         data: dataAgendados,
         clinica_id: clinicaIdAgendados,
-        agendaram: parseInt(agendaram) || 0,
-        compareceram: parseInt(compareceram) || 0,
-        contrataram: parseInt(contrataram) || 0,
-        faltaram, nao_contrataram: naoContrataram,
-        remarcados: parseInt(remarcados) || 0,
-        reagendados_compareceram: parseInt(reagendadosCompareceram) || 0,
-        reagendados_contrataram: parseInt(reagendadosContrataram) || 0,
+        agendaram: vAgendaram,
+        compareceram: vCompareceram,
+        contrataram: vContrataram,
+        // Derivados garantidos >= 0 pela validação de consistência acima.
+        faltaram: vAgendaram - vCompareceram,
+        nao_contrataram: vCompareceram - vContrataram,
+        remarcados: vRemarcados,
+        reagendados_compareceram: vReagComp,
+        reagendados_contrataram: vReagContr,
         created_by: user?.id,
       };
       // Upsert idempotente (UNIQUE data,clinica_id) — preserva leads_novos existente
@@ -154,6 +254,7 @@ const CadastroLeads = () => {
       if (error) throw error;
       if (up?.id) setExistingIdAgendados(up.id);
       toast.success("Dados de agendados salvos!");
+      setTentouSalvarAgendados(false);
       fetchRegistros();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
@@ -183,7 +284,7 @@ const CadastroLeads = () => {
 
   const getClinicaNome = (r: LeadWithClinica) => r.clinicas?.nome || "—";
 
-  
+
 
   return (
     <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
@@ -228,7 +329,12 @@ const CadastroLeads = () => {
 
           <div className="space-y-2">
             <Label>Quantidade de Leads Novos</Label>
-            <Input type="number" min="0" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
+            <Input type="number" min="0" step="1" placeholder="0" value={leadsNovos} onChange={(e) => setLeadsNovos(e.target.value)} className="bg-secondary border-border" />
+            {erroLeadsNovos && (
+              <p className="text-sm text-destructive flex items-center gap-1.5" role="alert">
+                <AlertCircle size={14} /> {erroLeadsNovos}
+              </p>
+            )}
           </div>
 
           <Button onClick={handleSaveLeads} disabled={savingLeads} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
@@ -282,27 +388,27 @@ const CadastroLeads = () => {
               <div className="space-y-2">
                 <Label>Agendados</Label>
                 <p className="text-xs text-muted-foreground">Total agendado para o dia</p>
-                <Input type="number" min="0" placeholder="0" value={agendaram} onChange={(e) => setAgendaram(e.target.value)} className="bg-secondary border-border" />
+                <Input type="number" min="0" step="1" placeholder="0" value={agendaram} onChange={(e) => setAgendaram(e.target.value)} className="bg-secondary border-border" />
               </div>
               <div className="space-y-2">
                 <Label>Compareceram</Label>
                 <p className="text-xs text-muted-foreground">Quantos vieram à consulta</p>
-                <Input type="number" min="0" placeholder="0" value={compareceram} onChange={(e) => setCompareceram(e.target.value)} className="bg-secondary border-border" />
+                <Input type="number" min="0" step="1" placeholder="0" value={compareceram} onChange={(e) => setCompareceram(e.target.value)} className="bg-secondary border-border" />
               </div>
               <div className="space-y-2">
                 <Label>Contrataram</Label>
                 <p className="text-xs text-muted-foreground">Dos que compareceram, quantos fecharam</p>
-                <Input type="number" min="0" placeholder="0" value={contrataram} onChange={(e) => setContrataram(e.target.value)} className="bg-secondary border-border" />
+                <Input type="number" min="0" step="1" placeholder="0" value={contrataram} onChange={(e) => setContrataram(e.target.value)} className="bg-secondary border-border" />
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
                 <span className="text-sm text-muted-foreground">Faltaram</span>
-                <span className="text-lg font-bold text-destructive">{faltaram}</span>
+                <span className="text-lg font-bold text-destructive">{faltaram ?? "—"}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-muted p-3">
                 <span className="text-sm text-muted-foreground">Não Contrataram</span>
-                <span className="text-lg font-bold text-muted-foreground">{naoContrataram}</span>
+                <span className={`text-lg font-bold ${naoContrataram !== null && naoContrataram < 0 ? "text-destructive" : "text-muted-foreground"}`}>{naoContrataram ?? "—"}</span>
               </div>
             </div>
           </div>
@@ -321,27 +427,27 @@ const CadastroLeads = () => {
               <div className="space-y-2">
                 <Label>Reagendados</Label>
                 <p className="text-xs text-muted-foreground">Total reagendado para o dia</p>
-                <Input type="number" min="0" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
+                <Input type="number" min="0" step="1" placeholder="0" value={remarcados} onChange={(e) => setRemarcados(e.target.value)} className="bg-secondary border-border" />
               </div>
               <div className="space-y-2">
                 <Label>Compareceram</Label>
                 <p className="text-xs text-muted-foreground">Reagendados que vieram</p>
-                <Input type="number" min="0" placeholder="0" value={reagendadosCompareceram} onChange={(e) => setReagendadosCompareceram(e.target.value)} className="bg-secondary border-border" />
+                <Input type="number" min="0" step="1" placeholder="0" value={reagendadosCompareceram} onChange={(e) => setReagendadosCompareceram(e.target.value)} className="bg-secondary border-border" />
               </div>
               <div className="space-y-2">
                 <Label>Contrataram</Label>
                 <p className="text-xs text-muted-foreground">Reagendados que fecharam</p>
-                <Input type="number" min="0" placeholder="0" value={reagendadosContrataram} onChange={(e) => setReagendadosContrataram(e.target.value)} className="bg-secondary border-border" />
+                <Input type="number" min="0" step="1" placeholder="0" value={reagendadosContrataram} onChange={(e) => setReagendadosContrataram(e.target.value)} className="bg-secondary border-border" />
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex items-center justify-between rounded-lg bg-destructive/10 p-3">
                 <span className="text-sm text-muted-foreground">Faltaram (reagendados)</span>
-                <span className="text-lg font-bold text-destructive">{reagendadosFaltaram}</span>
+                <span className="text-lg font-bold text-destructive">{reagendadosFaltaram ?? "—"}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-muted p-3">
                 <span className="text-sm text-muted-foreground">Não Contrataram (reagendados)</span>
-                <span className="text-lg font-bold text-muted-foreground">{reagendadosNaoContrataram}</span>
+                <span className={`text-lg font-bold ${reagendadosNaoContrataram !== null && reagendadosNaoContrataram < 0 ? "text-destructive" : "text-muted-foreground"}`}>{reagendadosNaoContrataram ?? "—"}</span>
               </div>
             </div>
           </div>
@@ -353,23 +459,34 @@ const CadastroLeads = () => {
               <div className="grid gap-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Faltas brutas (agendados)</span>
-                  <span className="font-medium">{faltaram}</span>
+                  <span className="font-medium">{faltaram ?? "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">− Reagendados (recuperados)</span>
-                  <span className="font-medium text-primary">-{parseInt(remarcados) || 0}</span>
+                  <span className="font-medium text-primary">{cRemarcados.valor !== null ? `-${cRemarcados.valor}` : "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">+ Faltaram no reagendamento</span>
-                  <span className="font-medium text-destructive">+{reagendadosFaltaram}</span>
+                  <span className="font-medium text-destructive">{reagendadosFaltaram !== null ? `+${reagendadosFaltaram}` : "—"}</span>
                 </div>
                 <div className="flex justify-between border-t border-border pt-2">
                   <span className="font-semibold">Total de faltas líquidas</span>
-                  <span className="text-lg font-bold text-destructive">{faltasLiquidas}</span>
+                  <span className="text-lg font-bold text-destructive">{faltasLiquidas ?? "—"}</span>
                 </div>
               </div>
             </div>
           </div>
+
+          {errosVisiveisAgendados.length > 0 && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 space-y-1" role="alert">
+              <p className="text-sm font-semibold text-destructive flex items-center gap-1.5">
+                <AlertCircle size={14} /> Corrija antes de salvar:
+              </p>
+              <ul className="list-disc pl-5 text-sm text-destructive space-y-0.5">
+                {errosVisiveisAgendados.map((erro) => (<li key={erro}>{erro}</li>))}
+              </ul>
+            </div>
+          )}
 
           <Button onClick={handleSaveAgendados} disabled={savingAgendados} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
             <Save size={18} className="mr-2" />
@@ -418,8 +535,8 @@ const CadastroLeads = () => {
                       <TableCell className="text-center">{r.contrataram}</TableCell>
                       <TableCell className="text-center">{r.faltaram}</TableCell>
                       <TableCell className="text-center">{r.remarcados}</TableCell>
-                      <TableCell className="text-center">{(r as any).reagendados_compareceram || 0}</TableCell>
-                      <TableCell className="text-center">{(r as any).reagendados_contrataram || 0}</TableCell>
+                      <TableCell className="text-center">{(r as any).reagendados_compareceram ?? 0}</TableCell>
+                      <TableCell className="text-center">{(r as any).reagendados_contrataram ?? 0}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => handleEdit(r)} title="Editar">

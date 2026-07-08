@@ -11,29 +11,16 @@ import {
   Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign,
   AlertCircle, XCircle, Handshake
 } from "lucide-react";
-import { format, isToday, isPast, startOfDay, endOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
+import { format, isToday, isPast, startOfDay, isSameDay, addDays, isAfter, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-
-// "hoje" em ISO local COM offset do navegador — para não escorregar em BRT/UTC-3
-// quando comparado contra colunas timestamptz (created_at).
-const localIsoWithOffset = (d: Date) => {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const tzMin = -d.getTimezoneOffset();
-  const sign = tzMin >= 0 ? "+" : "-";
-  const off = Math.abs(tzMin);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(off / 60))}:${pad(off % 60)}`;
-};
-const todayLocalBounds = () => {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-  return { start: localIsoWithOffset(start), end: localIsoWithOffset(end) };
-};
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 import { useAuth } from "@/contexts/AuthContext";
+// Fundação canônica: datas em America/Bahia (fuso da clínica, não do navegador)
+// e paginação com ORDER BY estável que lança erro em vez de truncar silenciosamente.
+import { fetchAllPaged, rangeBahia, todayBahia } from "@/lib/reportKit";
 
 type Task = {
   id: string;
@@ -80,9 +67,22 @@ const _dashCache: { userId: string | null; data: DashboardCacheData | null; ts: 
 const DASH_CACHE_TTL = 5 * 60_000; // 5 min — navegação volta instantânea
 const DASH_LS_KEY = "crm:dashboard_cache_v2";
 const DASH_LS_TTL = 15 * 60_000;
+// Janela de dados de tarefas/agendamentos: ±60 dias a partir de hoje (explicitada na UI)
+const DASH_WINDOW_DAYS = 60;
 
-export const invalidateDashboardCache = () => {
+/** Invalida o cache em memória E no localStorage (sem userId, limpa o de todos os usuários). */
+export const invalidateDashboardCache = (userId?: string | null) => {
   _dashCache.userId = null; _dashCache.data = null; _dashCache.ts = 0;
+  try {
+    if (userId) {
+      localStorage.removeItem(`${DASH_LS_KEY}:${userId}`);
+    } else {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(`${DASH_LS_KEY}:`)) localStorage.removeItem(k);
+      }
+    }
+  } catch { /* localStorage indisponível */ }
 };
 
 function readDashCache(userId: string | null | undefined): DashboardCacheData | null {
@@ -107,7 +107,71 @@ function writeDashCache(userId: string | null | undefined, data: DashboardCacheD
   try { localStorage.setItem(`${DASH_LS_KEY}:${userId}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
 }
 
-/** Pré-carrega tarefas, agendamentos, leads de hoje e faturamento do mês.
+/** Carrega tarefas, agendamentos, leads de hoje e faturamento do mês.
+ *  Fonte ÚNICA usada pelo prefetch e pela tela (evita divergência entre os dois caminhos).
+ *  Lança erro em qualquer falha de query: erro NUNCA vira zero silencioso nem entra no cache. */
+async function loadDashboardData(
+  userId: string | null | undefined,
+  userRole: string | null | undefined,
+): Promise<DashboardCacheData> {
+  // "Hoje" e mês corrente no fuso da clínica (America/Bahia), não no do navegador
+  const hoje = todayBahia(); // YYYY-MM-DD
+  const [hYear, hMonth] = hoje.split("-").map(Number);
+  const monthStart = `${hoje.slice(0, 7)}-01`;
+  const monthEnd = format(new Date(hYear, hMonth, 0), "yyyy-MM-dd");
+  // Janelas estreitas: tarefas ativas + agendamentos recentes/próximos (±DASH_WINDOW_DAYS dias)
+  const taskWindowStart = format(addDays(new Date(), -DASH_WINDOW_DAYS), "yyyy-MM-dd");
+  const apptWindowStart = taskWindowStart;
+  const apptWindowEnd = format(addDays(new Date(), DASH_WINDOW_DAYS), "yyyy-MM-dd");
+  // Leads de hoje: dia inteiro em America/Bahia, inclusivo até 23:59:59.999
+  const leadsBounds = rangeBahia(hoje, hoje);
+
+  const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
+    fetchAllPaged<Task>(() => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart), "id"),
+    fetchAllPaged<Appointment>(() => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd), "id"),
+    supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso),
+    fetchAllPaged<{ valor: number | string | null }>(() => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd), "id"),
+  ]);
+  if (leadsCountRes.error || leadsCountRes.count === null) {
+    throw new Error(`contagem de leads de hoje falhou: ${leadsCountRes.error?.message ?? "count nulo"}`);
+  }
+
+  // Buscar só os nomes dos leads referenciados (em vez de TODOS os leads)
+  const refIds = Array.from(new Set([
+    ...tasksAll.map((t) => t.lead_id),
+    ...appointmentsAll.map((a) => a.lead_id),
+  ].filter(Boolean)));
+  const nameMap = new Map<string, string>();
+  const CHUNK = 200;
+  for (let i = 0; i < refIds.length; i += CHUNK) {
+    const chunk = refIds.slice(i, i + CHUNK);
+    const { data: leadsChunk } = await supabase.from("crm_leads").select("id, name").in("id", chunk);
+    (leadsChunk || []).forEach((l: any) => nameMap.set(l.id, l.name));
+  }
+
+  const isPrivileged = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+  const tasks = tasksAll
+    .filter((t) => {
+      if (isPrivileged || !userRole) return true;
+      return t.owner_role === userRole || t.assigned_to === userId;
+    })
+    // Paginação é por id (estável); a ordem de exibição por vencimento é aplicada aqui
+    .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  tasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
+
+  const appointments = [...appointmentsAll].sort((a, b) => {
+    const cmp = a.scheduled_date.localeCompare(b.scheduled_date);
+    return cmp !== 0 ? cmp : (a.scheduled_time || "").localeCompare(b.scheduled_time || "");
+  });
+  appointments.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
+
+  // Faturamento do mês = soma direta de TODOS os pagamentos (mesma fonte do Dashboard principal)
+  const faturamentoMes = pagamentosAll.reduce((s, p) => s + Number(p.valor || 0), 0);
+
+  return { tasks, appointments, leadsToday: leadsCountRes.count, faturamentoMes };
+}
+
+/** Pré-carrega os dados do dashboard.
  *  Popula o cache em memória + localStorage para tornar a primeira renderização instantânea. */
 export const prefetchCrmDashboardData = async (
   userId: string | null | undefined,
@@ -117,54 +181,10 @@ export const prefetchCrmDashboardData = async (
   // Cache fresco: nada a fazer.
   if (_dashCache.userId === userId && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return;
   try {
-    const todayStr = format(new Date(), "yyyy-MM-dd");
-    const now = new Date();
-    const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
-    const monthEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
-    const taskWindowStart = format(addDays(new Date(), -60), "yyyy-MM-dd");
-    const apptWindowStart = format(addDays(new Date(), -60), "yyyy-MM-dd");
-    const apptWindowEnd = format(addDays(new Date(), 60), "yyyy-MM-dd");
-    const PAGE = 1000;
-    const fetchAll = async <T,>(build: (from: number, to: number) => any): Promise<T[]> => {
-      const out: T[] = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await build(from, from + PAGE - 1);
-        if (error || !data || data.length === 0) break;
-        out.push(...(data as T[]));
-        if (data.length < PAGE) break;
-        from += PAGE;
-      }
-      return out;
-    };
-    const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
-      fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart).order("due_date").range(f, t)),
-      fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd).order("scheduled_date").range(f, t)),
-      (() => { const b = todayLocalBounds(); return supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", b.start).lte("created_at", b.end); })(),
-      fetchAll<any>((f, t) => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd).range(f, t)),
-    ]);
-    const refIds = Array.from(new Set([
-      ...(tasksAll as any[]).map((t) => t.lead_id),
-      ...(appointmentsAll as any[]).map((a) => a.lead_id),
-    ].filter(Boolean)));
-    const nameMap = new Map<string, string>();
-    const CHUNK = 200;
-    for (let i = 0; i < refIds.length; i += CHUNK) {
-      const chunk = refIds.slice(i, i + CHUNK);
-      const { data: leadsChunk } = await supabase.from("crm_leads").select("id, name").in("id", chunk);
-      (leadsChunk || []).forEach((l: any) => nameMap.set(l.id, l.name));
-    }
-    const isPrivileged = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
-    const rawTasks = (tasksAll as Task[]).filter((t) => {
-      if (isPrivileged || !userRole) return true;
-      return t.owner_role === userRole || t.assigned_to === userId;
-    });
-    rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
-    const rawAppts = appointmentsAll as Appointment[];
-    rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
-    const totalFat = (pagamentosAll as any[]).reduce((s, p) => s + Number(p.valor || 0), 0);
-    writeDashCache(userId, { tasks: rawTasks, appointments: rawAppts, leadsToday: leadsCountRes.count || 0, faturamentoMes: totalFat });
+    const data = await loadDashboardData(userId, userRole);
+    writeDashCache(userId, data);
   } catch (e) {
+    // Erro NÃO entra no cache: a tela refaz o fetch e mostra o estado de erro.
     console.warn("[prefetchCrmDashboardData] falhou:", e);
   }
 };
@@ -180,72 +200,33 @@ export default function CrmDashboard() {
   const [upcomingDays, setUpcomingDays] = useState("7");
   const [leadsToday, setLeadsToday] = useState(() => readDashCache(user?.id)?.leadsToday || 0);
   const [faturamentoMes, setFaturamentoMes] = useState(() => readDashCache(user?.id)?.faturamentoMes || 0);
+  // Estado de erro explícito: falha de query NUNCA vira R$0/0 silencioso
+  const [loadError, setLoadError] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(() => !!readDashCache(user?.id));
 
   const fetchData = useCallback(async () => {
     // Cache de módulo quente (navegação SPA) → pula fetch (só se for do mesmo usuário)
-    if (_dashCache.userId === user?.id && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return;
-    const todayStr = format(new Date(), "yyyy-MM-dd");
-    const now = new Date();
-    const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
-    const monthEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
-    // Janelas estreitas: tarefas ativas + agendamentos recentes/próximos (≈ 60 dias para trás, 60 à frente)
-    const taskWindowStart = format(addDays(new Date(), -60), "yyyy-MM-dd");
-    const apptWindowStart = format(addDays(new Date(), -60), "yyyy-MM-dd");
-    const apptWindowEnd = format(addDays(new Date(), 60), "yyyy-MM-dd");
-
-    const PAGE = 1000;
-    const fetchAll = async <T,>(build: (from: number, to: number) => any): Promise<T[]> => {
-      const out: T[] = [];
-      let from = 0;
-      while (true) {
-        const { data, error } = await build(from, from + PAGE - 1);
-        if (error || !data || data.length === 0) break;
-        out.push(...(data as T[]));
-        if (data.length < PAGE) break;
-        from += PAGE;
-      }
-      return out;
-    };
-
-    const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
-      fetchAll<any>((f, t) => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart).order("due_date").range(f, t)),
-      fetchAll<any>((f, t) => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd).order("scheduled_date").range(f, t)),
-      (() => { const b = todayLocalBounds(); return supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", b.start).lte("created_at", b.end); })(),
-      fetchAll<any>((f, t) => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd).range(f, t)),
-    ]);
-
-    // Buscar só os nomes dos leads referenciados (em vez de TODOS os leads)
-    const refIds = Array.from(new Set([
-      ...(tasksAll as any[]).map(t => t.lead_id),
-      ...(appointmentsAll as any[]).map(a => a.lead_id),
-    ].filter(Boolean)));
-    const nameMap = new Map<string, string>();
-    const CHUNK = 200;
-    for (let i = 0; i < refIds.length; i += CHUNK) {
-      const chunk = refIds.slice(i, i + CHUNK);
-      const { data: leadsChunk } = await supabase.from("crm_leads").select("id, name").in("id", chunk);
-      (leadsChunk || []).forEach((l: any) => nameMap.set(l.id, l.name));
+    if (_dashCache.userId === user?.id && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) {
+      setLoading(false);
+      return;
     }
-
-    const isPrivileged = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
-    const rawTasks = (tasksAll as Task[]).filter((t) => {
-      if (isPrivileged || !userRole) return true;
-      return t.owner_role === userRole || t.assigned_to === user?.id;
-    });
-    rawTasks.forEach((t) => (t.lead_name = nameMap.get(t.lead_id) || "Lead"));
-    setTasks(rawTasks);
-
-    const rawAppts = appointmentsAll as Appointment[];
-    rawAppts.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
-    setAppointments(rawAppts);
-
-    // Faturamento do mês = soma direta de TODOS os pagamentos (mesma fonte do Dashboard principal)
-    const totalFat = pagamentosAll.reduce((s: number, p: any) => s + Number(p.valor || 0), 0);
-
-    writeDashCache(user?.id, { tasks: rawTasks, appointments: rawAppts, leadsToday: leadsCountRes.count || 0, faturamentoMes: totalFat });
-    setLeadsToday(leadsCountRes.count || 0);
-    setFaturamentoMes(totalFat);
-    setLoading(false);
+    try {
+      const data = await loadDashboardData(user?.id, userRole);
+      writeDashCache(user?.id, data);
+      setTasks(data.tasks);
+      setAppointments(data.appointments);
+      setLeadsToday(data.leadsToday);
+      setFaturamentoMes(data.faturamentoMes);
+      setDataLoaded(true);
+      setLoadError(false);
+    } catch (e) {
+      // Erro NÃO entra no cache nem vira zero: mostra estado de erro na tela
+      console.error("[CrmDashboard] fetchData falhou:", e);
+      setLoadError(true);
+      toast.error("Erro ao carregar os dados do dashboard");
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -266,12 +247,13 @@ export default function CrmDashboard() {
     appointments.filter(a => a.scheduled_date === format(selectedDate, "yyyy-MM-dd")),
   [appointments, selectedDate]);
 
-  // Reagendados do MÊS CORRENTE (filtrado por scheduled_date)
+  // Reagendados do MÊS CORRENTE (filtrado por scheduled_date; mês em America/Bahia)
   // Padronizado com Dashboard.tsx: fonte = crm_appointments + is_rescheduled + scheduled_date no período
   const rescheduledCount = useMemo(() => {
-    const now = new Date();
-    const mStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
-    const mEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+    const hoje = todayBahia();
+    const [hYear, hMonth] = hoje.split("-").map(Number);
+    const mStart = `${hoje.slice(0, 7)}-01`;
+    const mEnd = format(new Date(hYear, hMonth, 0), "yyyy-MM-dd");
     return appointments.filter(a =>
       (a as any).is_rescheduled === true &&
       a.scheduled_date >= mStart &&
@@ -293,9 +275,9 @@ export default function CrmDashboard() {
       });
   }, [appointments, upcomingDays]);
 
-  // Agendamentos vencidos sem desfecho
+  // Agendamentos vencidos sem desfecho ("hoje" em America/Bahia)
   const awaitingOutcome = useMemo(() => {
-    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const todayStr = todayBahia();
     return appointments
       .filter(a => a.scheduled_date < todayStr && a.status === "confirmed")
       .sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date));
@@ -307,6 +289,8 @@ export default function CrmDashboard() {
     setOutcomeSaving(appt.id);
     try {
       await applyAppointmentOutcome({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
+      // Invalida o cache: sem isso o agendamento "ressuscita" sem desfecho ao voltar à tela
+      invalidateDashboardCache(user?.id);
       toast.success(
         outcome === "no_show" ? "Marcado como não compareceu"
         : outcome === "contracted" ? "Marcado como contratado"
@@ -331,18 +315,48 @@ export default function CrmDashboard() {
   }, [upcomingAppointments]);
 
   const handleMarkDone = async (task: Task) => {
-    await supabase.from("crm_tasks").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", task.id);
+    const { error } = await supabase.from("crm_tasks").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", task.id);
+    if (error) {
+      toast.error("Erro ao concluir tarefa");
+      return;
+    }
+    // Invalida o cache: sem isso a tarefa concluída "ressuscita" ao voltar à tela
+    invalidateDashboardCache(user?.id);
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: "done" } : t));
   };
+
+  // Rótulo honesto para os cards que seguem o dia selecionado no calendário
+  const diaSelecionadoLabel = isToday(selectedDate) ? "do dia" : `de ${format(selectedDate, "dd/MM")}`;
+  // Janela de dados carregada (a mesma dos fetches), explicitada e imposta no calendário
+  const dataWindowStart = addDays(startOfDay(new Date()), -DASH_WINDOW_DAYS);
+  const dataWindowEnd = addDays(startOfDay(new Date()), DASH_WINDOW_DAYS);
 
   if (loading) {
     return <div className="flex items-center justify-center h-full text-muted-foreground">Carregando...</div>;
   }
 
+  // Falha de carregamento sem nenhum dado para exibir: estado de erro explícito (nunca zeros falsos)
+  if (loadError && !dataLoaded) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+        <AlertTriangle size={32} className="text-destructive" />
+        <p className="text-sm">Não foi possível carregar os dados do dashboard.</p>
+        <Button variant="outline" size="sm" className="gap-1" onClick={() => { setLoading(true); fetchData(); }}>
+          <RefreshCw size={14} /> Tentar novamente
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full -m-6 p-4 overflow-y-auto" style={{ height: "calc(100vh - 4rem)" }}>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-foreground">Dashboard CRM</h1>
+        <div>
+          <h1 className="text-xl font-bold text-foreground">Dashboard CRM</h1>
+          <p className="text-[11px] text-muted-foreground">
+            Tarefas e agendamentos dos últimos {DASH_WINDOW_DAYS} e próximos {DASH_WINDOW_DAYS} dias
+          </p>
+        </div>
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="gap-2">
@@ -351,10 +365,30 @@ export default function CrmDashboard() {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="end">
-            <Calendar mode="single" selected={selectedDate} onSelect={(d) => d && setSelectedDate(d)} locale={ptBR} className="p-3 pointer-events-auto" />
+            <Calendar
+              mode="single"
+              selected={selectedDate}
+              onSelect={(d) => d && setSelectedDate(d)}
+              disabled={{ before: dataWindowStart, after: dataWindowEnd }}
+              locale={ptBR}
+              className="p-3 pointer-events-auto"
+            />
+            <p className="px-3 pb-2 text-center text-[11px] text-muted-foreground">
+              Somente datas dentro da janela de ±{DASH_WINDOW_DAYS} dias
+            </p>
           </PopoverContent>
         </Popover>
       </div>
+
+      {loadError && dataLoaded && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <AlertTriangle size={14} className="shrink-0" />
+          <span>Falha ao atualizar os dados — exibindo a última versão carregada.</span>
+          <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs" onClick={() => fetchData()}>
+            Tentar novamente
+          </Button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
@@ -372,7 +406,7 @@ export default function CrmDashboard() {
             <div className="p-2 rounded-lg bg-primary/10"><ListTodo size={20} className="text-primary" /></div>
             <div>
               <p className="text-2xl font-bold">{todayTasks.length}</p>
-              <p className="text-xs text-muted-foreground">Tarefas do dia</p>
+              <p className="text-xs text-muted-foreground">Tarefas {diaSelecionadoLabel}</p>
             </div>
           </div>
         </Card>
@@ -390,7 +424,7 @@ export default function CrmDashboard() {
             <div className="p-2 rounded-lg bg-green-500/10"><CalendarDays size={20} className="text-green-600" /></div>
             <div>
               <p className="text-2xl font-bold">{dayAppointments.length}</p>
-              <p className="text-xs text-muted-foreground">Agendamentos do dia</p>
+              <p className="text-xs text-muted-foreground">Agendamentos {diaSelecionadoLabel}</p>
             </div>
           </div>
         </Card>
@@ -417,7 +451,7 @@ export default function CrmDashboard() {
             <div className="p-2 rounded-lg bg-purple-500/10"><RefreshCw size={20} className="text-purple-600" /></div>
             <div>
               <p className="text-2xl font-bold">{rescheduledCount}</p>
-              <p className="text-xs text-muted-foreground">Reagendados</p>
+              <p className="text-xs text-muted-foreground">Reagendados no mês</p>
             </div>
           </div>
         </Card>
@@ -593,7 +627,7 @@ export default function CrmDashboard() {
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
               <CalendarDays size={14} className="text-green-600" />
-              Agendamentos do dia
+              Agendamentos — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}
             </h2>
             <Badge variant="outline" className="border-green-500 text-green-600">{dayAppointments.length}</Badge>
           </div>

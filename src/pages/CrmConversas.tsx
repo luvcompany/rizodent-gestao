@@ -60,6 +60,8 @@ type LeadConversation = {
   updated_at: string;
   assigned_to?: string | null;
   last_direction?: string;
+  last_inbound_at?: string | null;
+  last_outbound_at?: string | null;
   imagem_origem?: string | null;
   titulo_anuncio?: string | null;
   descricao_anuncio?: string | null;
@@ -164,6 +166,19 @@ const normalizeLead = (lead: LeadConversation & { last_inbound_at?: string | nul
   ...lead,
   last_direction: getLastDirection(lead),
 });
+
+// Janela de "não lidas": 60 dias por last_inbound_at — a MESMA aplicada nos RPCs
+// get_crm_unread_leads_count / get_crm_unread_leads_count_by_channel (migração
+// 20260708030000_unread_badge_window). Mantém badge da sidebar, abas e lista
+// concordando entre si: leads aguardando resposta há mais de 60 dias não contam
+// como "não lidos".
+const UNREAD_WINDOW_DAYS = 60;
+const UNREAD_WINDOW_MS = UNREAD_WINDOW_DAYS * 86_400_000;
+const UNREAD_WINDOW_LABEL = `últimos ${UNREAD_WINDOW_DAYS} dias`;
+const isUnreadLead = (lead: LeadConversation) =>
+  lead.last_direction === "inbound" &&
+  !!lead.last_inbound_at &&
+  Date.now() - new Date(lead.last_inbound_at).getTime() <= UNREAD_WINDOW_MS;
 
 const sortLeadsByLastActivity = (items: LeadConversation[]) =>
   [...items].sort((a, b) => {
@@ -876,7 +891,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (filters.pipelineId && l.pipeline_id !== filters.pipelineId) return false;
       if (filters.stageId && l.stage_id !== filters.stageId) return false;
       if (filters.assignedTo && l.assigned_to !== filters.assignedTo) return false;
-      if (filters.status === "open" && l.last_direction !== "inbound") return false;
+      // "Aberto" (não lida) usa a mesma janela de 60 dias dos contadores (badge/abas)
+      if (filters.status === "open" && !isUnreadLead(l)) return false;
       if (filters.status === "replied" && l.last_direction !== "outbound") return false;
       if (filters.status === "no_reply" && !!l.last_direction) return false;
       if (filters.tags.length && !filters.tags.some((t) => l.tags?.includes(t))) return false;
@@ -912,12 +928,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   const sortedFiltered = useMemo(() => {
     if (sortMode === "longest_wait") {
-      // Only unread (inbound) leads, sorted by oldest last_inbound_at first
-      const unread = filtered.filter(l => l.last_direction === "inbound");
-      const rest = filtered.filter(l => l.last_direction !== "inbound");
+      // Apenas leads não lidos (inbound dentro da janela de 60 dias — igual aos
+      // contadores), ordenados do last_inbound_at mais antigo para o mais novo
+      const unread = filtered.filter(l => isUnreadLead(l));
+      const rest = filtered.filter(l => !isUnreadLead(l));
       unread.sort((a, b) => {
-        const aTime = (a as any).last_inbound_at ? new Date((a as any).last_inbound_at).getTime() : 0;
-        const bTime = (b as any).last_inbound_at ? new Date((b as any).last_inbound_at).getTime() : 0;
+        const aTime = a.last_inbound_at ? new Date(a.last_inbound_at).getTime() : 0;
+        const bTime = b.last_inbound_at ? new Date(b.last_inbound_at).getTime() : 0;
         return aTime - bTime; // oldest first
       });
       return [...unread, ...rest];
@@ -1040,7 +1057,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     if (!lead) return null;
                     const initials = lead.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
                     const isActive = lead.id === selectedLeadId;
+                    // Menu "Marcar como respondida" segue o estado real (inbound);
+                    // o destaque visual de não lida usa a janela de 60 dias dos contadores.
                     const isInbound = lead.last_direction === "inbound";
+                    const isUnread = isUnreadLead(lead);
                      return (
                       <div
                         key={lead.id}
@@ -1050,7 +1070,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         className={`relative group flex items-start gap-0 border-b border-border transition-colors ${
                           isActive
                             ? "bg-primary/15 border-l-2 border-l-primary"
-                            : isInbound
+                            : isUnread
                               ? "bg-orange-500/15 dark:bg-orange-400/20 border-l-[3px] border-l-orange-500 dark:border-l-orange-400 hover:bg-orange-500/25 dark:hover:bg-orange-400/30"
                               : "hover:bg-secondary/50"
                         }`}>
@@ -1593,6 +1613,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 
+// Contador de não lidas por canal. O RPC aplica a janela de 60 dias por
+// last_inbound_at (migração 20260708030000) — mesma regra do badge da sidebar
+// e do destaque/filtro "Aberto" da lista.
 function useChannelUnreadCount(channel: "whatsapp" | "instagram") {
   const [count, setCount] = useState(0);
 
@@ -1631,7 +1654,10 @@ export default function CrmConversas() {
             <img src={whatsappLogo} alt="" width={16} height={16} className="rounded-full" />
             WhatsApp
             {whatsappUnread > 0 && (
-              <span className="ml-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+              <span
+                title={`Conversas não lidas (${UNREAD_WINDOW_LABEL})`}
+                className="ml-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1"
+              >
                 {whatsappUnread > 99 ? "99+" : whatsappUnread}
               </span>
             )}
@@ -1642,7 +1668,10 @@ export default function CrmConversas() {
             </svg>
             Instagram
             {instagramUnread > 0 && (
-              <span className="ml-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+              <span
+                title={`Conversas não lidas (${UNREAD_WINDOW_LABEL})`}
+                className="ml-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1"
+              >
                 {instagramUnread > 99 ? "99+" : instagramUnread}
               </span>
             )}

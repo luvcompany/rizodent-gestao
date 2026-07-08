@@ -15,7 +15,20 @@ import { format } from "date-fns";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
 import CrmMetricas from "@/pages/CrmMetricas";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, Users, CheckCircle2, XCircle, Target, ArrowDown, ArrowUpDown, ArrowUp, Inbox, AlertTriangle, HelpCircle } from "lucide-react";
+import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, CheckCircle2, XCircle, Target, ArrowDown, ArrowUpDown, ArrowUp, AlertTriangle, Wallet } from "lucide-react";
+import {
+  fetchAllPaged,
+  dayKeyBahia,
+  rangeBahia,
+  asDateParam,
+  normalizeCidade,
+  rptKpisAgendamentos,
+  rptContratados,
+  rptLeadsInativos,
+  type KpisAgendamentos,
+  type ContratadoRow,
+  type LeadsInativos,
+} from "@/lib/reportKit";
 
 // ============================================================================
 // REGRA DE OURO (toda a aba segue esta regra):
@@ -23,25 +36,29 @@ import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingU
 //  - "Agendamentos no período" = COUNT(crm_appointments) com scheduled_date
 //    dentro do período, contados INDIVIDUALMENTE (não por lead). Bate 1:1
 //    com o que o calendário exibe.
-//  - Compareceram = appts com status IN ('contracted','not_contracted')
-//  - Contrataram = appts com status = 'contracted'
-//  - Faltas      = appts com status = 'no_show'
-//  - Pendentes   = appts com status IN ('pending','confirmed')
+//  - Os KPIs oficiais vêm da RPC rpt_kpis_agendamentos (SECURITY DEFINER):
+//    buckets exaustivos e disjuntos (contracted, not_contracted, no_show,
+//    rescheduled, cancelled e pending = catch-all) — o total fecha sem resíduo
+//    e é O MESMO para qualquer usuário do tenant (não depende de RLS).
+//  - Compareceram = contracted + not_contracted + rescheduled
+//    ('rescheduled' = compareceu e saiu com novo agendamento).
+//  - Contratados de verdade = pacientes com 1º pagamento no período
+//    (RPC rpt_contratados, tabela pagamentos) — mostrado lado a lado com os
+//    contratos marcados na consulta, com rótulos honestos.
 //
 //  Separadamente, métricas de ATIVIDADE DA EQUIPE usam created_at:
 //  - "Agendamentos criados no dia" = COUNT(appts) WHERE created_at = dia
 //  - "Novos leads no dia"          = COUNT(leads) WHERE created_at = dia
 //  - "Leads que conversaram"       = DISTINCT lead_id com inbound no dia
+//  Dias sempre calculados em America/Bahia (dayKeyBahia).
 // ============================================================================
 
 // ---------- Tipos ----------
 type Pipeline = { id: string; name: string };
-type Stage = { id: string; name: string; color: string; position: number; pipeline_id: string };
 type Lead = {
   id: string; name: string; pipeline_id: string; stage_id: string; cidade: string | null;
   created_at: string; last_inbound_at: string | null; first_inbound_at: string | null;
 };
-type StageHistory = { lead_id: string; stage_id: string; entered_at: string };
 type Appointment = {
   id: string; lead_id: string; created_at: string;
   scheduled_date: string; status: string;
@@ -51,12 +68,6 @@ type Appointment = {
 type Msg = { id: string; lead_id: string; direction: string; created_at: string };
 
 // ---------- Helpers ----------
-const lower = (s: string | null | undefined) => (s || "").toLowerCase();
-const isAgendStage = (n: string) => /agend/.test(lower(n)) && !/n[aã]o\s*agend/.test(lower(n));
-const isReagendStage = (n: string) => /(reagend|remarc)/.test(lower(n));
-const isContratStage = (n: string) => /contrat/.test(lower(n)) && !/n[aã]o\s*contrat/.test(lower(n));
-const isProtectedStage = (n: string) => isAgendStage(n) || isReagendStage(n) || isContratStage(n);
-
 function fmtDuration(ms: number): string {
   if (!isFinite(ms) || ms <= 0) return "—";
   const s = Math.floor(ms / 1000);
@@ -69,21 +80,22 @@ function fmtDuration(ms: number): string {
   return `${d}d ${h % 24}h`;
 }
 
-async function fetchAllPages<T>(
-  build: (from: number, to: number) => any
-): Promise<T[]> {
-  const PAGE = 1000;
-  const out: T[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await build(from, from + PAGE - 1);
-    if (error || !data || data.length === 0) break;
-    out.push(...(data as T[]));
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return out;
+// Duração em dias corridos (aceita 0 = fechou no mesmo dia).
+function fmtDias(d: number): string {
+  if (!isFinite(d) || d < 0) return "—";
+  if (d < 0.5) return "mesmo dia";
+  const v = Number.isInteger(d) ? String(d) : d.toFixed(1).replace(".", ",");
+  return `${v} ${d >= 1 && d < 2 ? "dia" : "dias"}`;
 }
+
+const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+// Estado de cada RPC canônica: nunca vira zero silencioso — ou carrega,
+// ou mostra o dado, ou mostra o erro.
+type RpcState<T> =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ok"; data: T };
 
 function median(arr: number[]): number {
   if (!arr.length) return 0;
@@ -96,11 +108,8 @@ function mean(arr: number[]): number {
   return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
 
-// Formata uma Date em "YYYY-MM-DD" no horário LOCAL (evita o off-by-one de
-// fuso quando convertemos via toISOString — endOfDay BRT vira o dia seguinte em UTC,
-// fazendo a query lte(scheduled_date, ...) incluir um dia a mais).
-const localDateOnly = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Dia-calendário "YYYY-MM-DD" de uma Date local (date-pickers). Para converter
+// timestamptz ISO em dia local, use dayKeyBahia (America/Bahia) da reportKit.
 const dayKeyFromDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -115,12 +124,17 @@ export default function CrmRelatorios() {
   const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "this_month" });
 
   // Dados
-  const [stages, setStages] = useState<Stage[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);                    // leads relevantes (coorte + atividade)
   const [apptsPeriodo, setApptsPeriodo] = useState<Appointment[]>([]); // appts com scheduled_date no período (= calendário)
   const [apptsCriadosPeriodo, setApptsCriadosPeriodo] = useState<Appointment[]>([]); // appts criados no período (atividade)
   const [messages, setMessages] = useState<Msg[]>([]);
-  const [history, setHistory] = useState<StageHistory[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // RPCs canônicas (SECURITY DEFINER — mesmo número para qualquer usuário do tenant)
+  const [kpisState, setKpisState] = useState<RpcState<KpisAgendamentos>>({ status: "loading" });
+  const [contratadosState, setContratadosState] = useState<RpcState<ContratadoRow[]>>({ status: "loading" });
+  const [inativosState, setInativosState] = useState<RpcState<LeadsInativos>>({ status: "loading" });
 
   // Carregar pipelines (mantido para a aba "Origem & Conversão")
   useEffect(() => {
@@ -136,144 +150,151 @@ export default function CrmRelatorios() {
 
   const range = useMemo(() => getDateRangeFromFilter(period), [period]);
 
+  // Fronteiras do período em America/Bahia (períodos inclusivos: último dia inteiro)
+  const bahiaBounds = useMemo(() => (range ? rangeBahia(range.start, range.end) : null), [range]);
+
   // Carregar dados quando o período muda — SEM filtro de funil (todos os pipelines)
   useEffect(() => {
-    if (!range) return;
+    if (!range || !bahiaBounds) return;
+    let alive = true;
     setLoading(true);
+    setLoadError(null);
 
-    const startISO = range.start.toISOString();
-    const endISO = range.end.toISOString();
-    const startDate = localDateOnly(range.start);
-    const endDate = localDateOnly(range.end);
+    const startISO = bahiaBounds.gteIso;
+    const endISO = bahiaBounds.lteIso;
+    const startDate = asDateParam(range.start);
+    const endDate = asDateParam(range.end);
 
     (async () => {
-      // 1. Stages (todos os pipelines)
-      const stagesRes = await supabase
-        .from("crm_stages")
-        .select("id, name, color, position, pipeline_id")
-        .order("position");
-      const stagesList = (stagesRes.data || []) as Stage[];
-      setStages(stagesList);
+      try {
+        // 1. APPOINTMENTS DO PERÍODO (data marcada no intervalo) — fonte da verdade
+        //    Query equivalente à do CrmCalendario.tsx.
+        const apptsByScheduled = await fetchAllPaged<Appointment>(() =>
+          supabase
+            .from("crm_appointments")
+            .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
+            .gte("scheduled_date", startDate)
+            .lte("scheduled_date", endDate),
+          "id"
+        );
 
-      // 2. APPOINTMENTS DO PERÍODO (data marcada no intervalo) — fonte da verdade
-      //    Query equivalente à do CrmCalendario.tsx.
-      //    Filtramos por pipeline depois (precisamos do lead_id para fazer o filtro).
-      const apptsByScheduled = await fetchAllPages<Appointment>((f, t) =>
-        supabase
-          .from("crm_appointments")
-          .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
-          .gte("scheduled_date", startDate)
-          .lte("scheduled_date", endDate)
-          .range(f, t)
-      );
+        // 2. APPOINTMENTS CRIADOS NO PERÍODO (ação da equipe)
+        const apptsByCreated = await fetchAllPaged<Appointment>(() =>
+          supabase
+            .from("crm_appointments")
+            .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
+            .gte("created_at", startISO)
+            .lte("created_at", endISO),
+          "id"
+        );
 
-      // 3. APPOINTMENTS CRIADOS NO PERÍODO (ação da equipe)
-      const apptsByCreated = await fetchAllPages<Appointment>((f, t) =>
-        supabase
-          .from("crm_appointments")
-          .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
-          .gte("created_at", startISO)
-          .lte("created_at", endISO)
-          .range(f, t)
-      );
+        // Leads envolvidos (qualquer um que apareça em qualquer agendamento do período +
+        // leads criados no período + leads com atividade inbound)
+        const leadIdsFromAppts = new Set<string>();
+        apptsByScheduled.forEach(a => leadIdsFromAppts.add(a.lead_id));
+        apptsByCreated.forEach(a => leadIdsFromAppts.add(a.lead_id));
 
-      // Leads envolvidos (qualquer um que apareça em qualquer agendamento do período +
-      // leads criados no período + leads com atividade inbound)
-      const leadIdsFromAppts = new Set<string>();
-      apptsByScheduled.forEach(a => leadIdsFromAppts.add(a.lead_id));
-      apptsByCreated.forEach(a => leadIdsFromAppts.add(a.lead_id));
-
-      // 4. LEADS criados no período (todos os pipelines)
-      const cohortLeads = await fetchAllPages<Lead>((f, t) =>
-        supabase
-          .from("crm_leads")
-          .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-          .gte("created_at", startISO)
-          .lte("created_at", endISO)
-          .order("created_at")
-          .range(f, t)
-      );
-
-      // 5. LEADS com inbound no período (todos os pipelines)
-      const activityInbound = await fetchAllPages<Lead>((f, t) =>
-        supabase
-          .from("crm_leads")
-          .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-          .gte("last_inbound_at", startISO)
-          .lte("last_inbound_at", endISO)
-          .range(f, t)
-      );
-
-      // 6. LEADS dos appointments do período — SEM filtro de pipeline.
-      //    Leads mudam de funil (ex: "Não contratados", "Pós-venda") e seus
-      //    agendamentos NÃO podem sumir do relatório. Calendário = verdade.
-      let activityByAppt: Lead[] = [];
-      const apptIds = Array.from(leadIdsFromAppts);
-      for (let i = 0; i < apptIds.length; i += 300) {
-        const chunk = apptIds.slice(i, i + 300);
-        const rows = await fetchAllPages<Lead>((f, t) =>
+        // 3. LEADS criados no período (todos os pipelines)
+        const cohortLeads = await fetchAllPaged<Lead>(() =>
           supabase
             .from("crm_leads")
             .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-            .in("id", chunk)
-            .range(f, t)
+            .gte("created_at", startISO)
+            .lte("created_at", endISO),
+          "id"
         );
-        activityByAppt = activityByAppt.concat(rows);
-      }
 
-      const mergedLeads = new Map<string, Lead>();
-      [...cohortLeads, ...activityInbound, ...activityByAppt].forEach(l => mergedLeads.set(l.id, l));
-      const leadsAll = Array.from(mergedLeads.values());
-
-      // NÃO filtramos appts por pipeline: o calendário mostra todos os
-      // agendamentos do período, independente do funil atual do lead.
-      setLeads(leadsAll);
-      setApptsPeriodo(apptsByScheduled);
-      setApptsCriadosPeriodo(apptsByCreated);
-
-      // 7. Mensagens do período (todos os pipelines)
-      let msgRows: Msg[] = [];
-      let mFrom = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("messages")
-          .select("id, lead_id, direction, created_at")
-          .gte("created_at", startISO)
-          .lte("created_at", endISO)
-          .order("created_at")
-          .range(mFrom, mFrom + 999);
-        if (error || !data || data.length === 0) break;
-        msgRows = msgRows.concat(data as any);
-        if (data.length < 1000) break;
-        mFrom += 1000;
-      }
-      setMessages(msgRows);
-
-      // 8. Stage history para coorte (tempo de contratação)
-      const cohortIds = cohortLeads.map(l => l.id);
-      let histRows: StageHistory[] = [];
-      for (let i = 0; i < cohortIds.length; i += 500) {
-        const chunk = cohortIds.slice(i, i + 500);
-        const rows = await fetchAllPages<StageHistory>((f, t) =>
+        // 4. LEADS com inbound no período (todos os pipelines)
+        const activityInbound = await fetchAllPaged<Lead>(() =>
           supabase
-            .from("crm_lead_stage_history")
-            .select("lead_id, stage_id, entered_at")
-            .in("lead_id", chunk)
-            .order("entered_at")
-            .range(f, t)
+            .from("crm_leads")
+            .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+            .gte("last_inbound_at", startISO)
+            .lte("last_inbound_at", endISO),
+          "id"
         );
-        histRows = histRows.concat(rows);
-      }
-      setHistory(histRows);
 
-      setLoading(false);
+        // 5. LEADS dos appointments do período — SEM filtro de pipeline.
+        //    Leads mudam de funil (ex: "Não contratados", "Pós-venda") e seus
+        //    agendamentos NÃO podem sumir do relatório. Calendário = verdade.
+        let activityByAppt: Lead[] = [];
+        const apptIds = Array.from(leadIdsFromAppts);
+        for (let i = 0; i < apptIds.length; i += 300) {
+          const chunk = apptIds.slice(i, i + 300);
+          const rows = await fetchAllPaged<Lead>(() =>
+            supabase
+              .from("crm_leads")
+              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .in("id", chunk),
+            "id"
+          );
+          activityByAppt = activityByAppt.concat(rows);
+        }
+
+        const mergedLeads = new Map<string, Lead>();
+        [...cohortLeads, ...activityInbound, ...activityByAppt].forEach(l => mergedLeads.set(l.id, l));
+        const leadsAll = Array.from(mergedLeads.values());
+
+        // 6. Mensagens do período (todos os pipelines)
+        const msgRows = await fetchAllPaged<Msg>(() =>
+          supabase
+            .from("messages")
+            .select("id, lead_id, direction, created_at")
+            .gte("created_at", startISO)
+            .lte("created_at", endISO),
+          "id"
+        );
+
+        if (!alive) return;
+        // NÃO filtramos appts por pipeline: o calendário mostra todos os
+        // agendamentos do período, independente do funil atual do lead.
+        // Estados só são atualizados com o conjunto COMPLETO — nunca parcial.
+        setLeads(leadsAll);
+        setApptsPeriodo(apptsByScheduled);
+        setApptsCriadosPeriodo(apptsByCreated);
+        setMessages(msgRows);
+      } catch (e: any) {
+        if (!alive) return;
+        setLoadError(e?.message || String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
     })();
-  }, [range]);
+
+    return () => { alive = false; };
+  }, [range, bahiaBounds, reloadKey]);
+
+  // RPCs canônicas (SECURITY DEFINER): KPIs de agendamento, contratados por
+  // 1º pagamento e estoque de leads inativos. Cada uma com estado próprio de
+  // carregamento/erro — se a RPC ainda não existir no banco, o painel mostra
+  // o erro em vez de um zero enganoso.
+  useEffect(() => {
+    if (!range) return;
+    let alive = true;
+    const from = asDateParam(range.start);
+    const to = asDateParam(range.end);
+
+    setKpisState({ status: "loading" });
+    setContratadosState({ status: "loading" });
+    setInativosState({ status: "loading" });
+
+    rptKpisAgendamentos(from, to)
+      .then(data => { if (alive) setKpisState({ status: "ok", data }); })
+      .catch(e => { if (alive) setKpisState({ status: "error", message: e?.message || String(e) }); });
+    rptContratados(from, to)
+      .then(data => { if (alive) setContratadosState({ status: "ok", data }); })
+      .catch(e => { if (alive) setContratadosState({ status: "error", message: e?.message || String(e) }); });
+    rptLeadsInativos()
+      .then(data => { if (alive) setInativosState({ status: "ok", data }); })
+      .catch(e => { if (alive) setInativosState({ status: "error", message: e?.message || String(e) }); });
+
+    return () => { alive = false; };
+  }, [range, reloadKey]);
 
   const inRange = (iso: string | null | undefined): boolean => {
-    if (!iso || !range) return false;
+    if (!iso || !bahiaBounds) return false;
     const d = new Date(iso).getTime();
-    return d >= range.start.getTime() && d <= range.end.getTime();
+    return d >= Date.parse(bahiaBounds.gteIso) && d <= Date.parse(bahiaBounds.lteIso);
   };
 
   // Coorte: leads criados no período (todos os pipelines)
@@ -281,26 +302,25 @@ export default function CrmRelatorios() {
     () => leads.filter(l => inRange(l.created_at)),
     [leads, range]
   );
-  const cohortIds = useMemo(() => new Set(cohort.map(l => l.id)), [cohort]);
-  const stageById = useMemo(() => new Map(stages.map(s => [s.id, s])), [stages]);
-  const contratStage = useMemo(
-    () => stages.find(s => isContratStage(s.name)) ?? (stages.length ? stages[stages.length - 1] : null),
-    [stages]
-  );
-
   // ============= MÉTRICAS DO CALENDÁRIO (regra de ouro) =============
-  // Tudo contado por APPOINTMENT, não por lead.
+  // Tudo contado por APPOINTMENT, não por lead. Buckets EXAUSTIVOS e
+  // DISJUNTOS (mesma regra da RPC rpt_kpis_agendamentos): os 5 status
+  // nomeados + "pendentes" como catch-all — o total fecha sem resíduo.
   const calendario = useMemo(() => {
     const total = apptsPeriodo.length;
     const contrataram = apptsPeriodo.filter(a => a.status === "contracted").length;
     const naoContrataram = apptsPeriodo.filter(a => a.status === "not_contracted").length;
     const faltas = apptsPeriodo.filter(a => a.status === "no_show").length;
-    const pendentes = apptsPeriodo.filter(a => a.status === "pending" || a.status === "confirmed").length;
+    const reagendaram = apptsPeriodo.filter(a => a.status === "rescheduled").length;
     const cancelados = apptsPeriodo.filter(a => a.status === "cancelled").length;
-    const compareceram = contrataram + naoContrataram;
+    // Catch-all: 'confirmed' (estado inicial do app) e qualquer status desconhecido.
+    const NOMEADOS = new Set(["contracted", "not_contracted", "no_show", "rescheduled", "cancelled"]);
+    const pendentes = apptsPeriodo.filter(a => !NOMEADOS.has(a.status)).length;
+    // 'rescheduled' = compareceu e saiu com novo agendamento → conta como comparecimento.
+    const compareceram = contrataram + naoContrataram + reagendaram;
     const desfecho = compareceram + faltas; // appts com decisão (excluindo pendentes/cancelados)
     return {
-      total, contrataram, naoContrataram, faltas, pendentes, cancelados,
+      total, contrataram, naoContrataram, faltas, reagendaram, pendentes, cancelados,
       compareceram, desfecho,
       taxaComparecimento: desfecho > 0 ? (compareceram / desfecho) * 100 : 0,
       taxaContratacao: compareceram > 0 ? (contrataram / compareceram) * 100 : 0,
@@ -327,26 +347,18 @@ export default function CrmRelatorios() {
     return s;
   }, [messages, leads, range]);
 
-  // ============= CONTRATOS DIRETOS (informativo) =============
-  // Leads na etapa Contratado que NÃO têm appointment 'contracted' no período.
-  // Recorrentes do sistema antigo — ficam fora das taxas.
-  const contratosDirectos = useMemo(() => {
-    if (!contratStage) return [] as Lead[];
-    const leadsComContratoNoPeriodo = new Set<string>();
-    apptsPeriodo.forEach(a => { if (a.status === "contracted") leadsComContratoNoPeriodo.add(a.lead_id); });
-    return cohort.filter(l => l.stage_id === contratStage.id && !leadsComContratoNoPeriodo.has(l.id));
-  }, [cohort, contratStage, apptsPeriodo]);
-
   // ============= ATIVIDADE DIÁRIA =============
   const dailyActivity = useMemo(() => {
     if (!range) return { rows: [] as any[], totals: { conversaram: 0, novos: 0, agendamentosCriados: 0, agendamentosDoDia: 0, contratosDoDia: 0 } };
 
+    // O array de dias cobre o período INTEIRO (inclusive dias futuros).
+    // Obs.: este painel consulta via client (sob RLS) — o total de "Agend. do
+    // dia" pode ficar ABAIXO do KPI canônico (RPC SECURITY DEFINER) para
+    // usuários cujo papel não enxerga todos os funis.
     const days: string[] = [];
     const cur = new Date(range.start); cur.setHours(0, 0, 0, 0);
     const end = new Date(range.end);
-    const today = new Date(); today.setHours(23, 59, 59, 999);
-    const endRef = end.getTime() < today.getTime() ? end : today;
-    while (cur.getTime() <= endRef.getTime()) {
+    while (cur.getTime() <= end.getTime()) {
       days.push(dayKeyFromDate(cur));
       cur.setDate(cur.getDate() + 1);
     }
@@ -359,16 +371,16 @@ export default function CrmRelatorios() {
 
     messages.forEach(m => {
       if (m.direction !== "inbound") return;
-      const k = dayKeyFromDate(new Date(m.created_at));
+      const k = dayKeyBahia(m.created_at);
       if (!conversaramByDay.has(k)) conversaramByDay.set(k, new Set());
       conversaramByDay.get(k)!.add(m.lead_id);
     });
     cohort.forEach(l => {
-      const k = dayKeyFromDate(new Date(l.created_at));
+      const k = dayKeyBahia(l.created_at);
       novosByDay.set(k, (novosByDay.get(k) || 0) + 1);
     });
     apptsCriadosPeriodo.forEach(a => {
-      const k = dayKeyFromDate(new Date(a.created_at));
+      const k = dayKeyBahia(a.created_at);
       agendCriadosByDay.set(k, (agendCriadosByDay.get(k) || 0) + 1);
     });
     apptsPeriodo.forEach(a => {
@@ -379,19 +391,14 @@ export default function CrmRelatorios() {
       }
     });
 
-    const rows = days.map(k => {
-      const conv = conversaramByDay.get(k)?.size || 0;
-      const agCriados = agendCriadosByDay.get(k) || 0;
-      return {
-        day: k,
-        conversaram: conv,
-        novos: novosByDay.get(k) || 0,
-        agendamentosCriados: agCriados,
-        agendamentosDoDia: agendDoDiaByDay.get(k) || 0,
-        contratosDoDia: contratosDoDiaByDay.get(k) || 0,
-        taxaConvCriados: conv > 0 ? (agCriados / conv) * 100 : 0,
-      };
-    });
+    const rows = days.map(k => ({
+      day: k,
+      conversaram: conversaramByDay.get(k)?.size || 0,
+      novos: novosByDay.get(k) || 0,
+      agendamentosCriados: agendCriadosByDay.get(k) || 0,
+      agendamentosDoDia: agendDoDiaByDay.get(k) || 0,
+      contratosDoDia: contratosDoDiaByDay.get(k) || 0,
+    }));
 
     const totals = rows.reduce((acc, r) => ({
       conversaram: acc.conversaram + r.conversaram,
@@ -405,19 +412,24 @@ export default function CrmRelatorios() {
   }, [range, messages, cohort, apptsCriadosPeriodo, apptsPeriodo]);
 
   // ============= TEMPO ATÉ CONTRATAÇÃO (coorte) =============
+  // Em DIAS CORRIDOS, comparando dia local (America/Bahia) da entrada do lead
+  // com a data marcada da consulta contratada. Aceita dur = 0 (fechou no mesmo
+  // dia) — parse de 'YYYY-MM-DD' como UTC derrubava esses casos.
   const tempoContratacao = useMemo(() => {
     const contratIds = new Set<string>();
     apptsPeriodo.forEach(a => { if (a.status === "contracted") contratIds.add(a.lead_id); });
 
-    const durations: number[] = [];
+    const durations: number[] = []; // em dias
     cohort.forEach(l => {
       if (!contratIds.has(l.id)) return;
       // Pega o primeiro appointment contratado deste lead
       const aps = apptsPeriodo.filter(a => a.lead_id === l.id && a.status === "contracted");
-      const ts = aps.map(a => new Date(a.scheduled_date).getTime()).sort((a, b) => a - b);
-      if (!ts.length) return;
-      const dur = ts[0] - new Date(l.created_at).getTime();
-      if (dur > 0) durations.push(dur);
+      const firstDay = aps.map(a => a.scheduled_date).sort()[0];
+      if (!firstDay) return;
+      const createdDay = dayKeyBahia(l.created_at);
+      // Ambos 'YYYY-MM-DD' → diferença exata em dias via UTC.
+      const dur = (Date.parse(firstDay) - Date.parse(createdDay)) / 86400000;
+      if (Number.isFinite(dur) && dur >= 0) durations.push(dur);
     });
     return {
       count: durations.length,
@@ -454,12 +466,10 @@ export default function CrmRelatorios() {
     const detalheMap = new Map<number, number>();
 
     apptsPeriodo.forEach(a => {
-      const created = new Date(a.created_at);
-      const createdDay = new Date(created.getFullYear(), created.getMonth(), created.getDate());
-      const [y, m, d] = a.scheduled_date.split("-").map(Number);
-      const scheduledDay = new Date(y, (m || 1) - 1, d || 1);
-      const diffDays = Math.round((scheduledDay.getTime() - createdDay.getTime()) / (1000 * 60 * 60 * 24));
-      if (diffDays < 0) return;
+      // Dia da criação em America/Bahia; scheduled_date já é 'YYYY-MM-DD'.
+      const createdDay = dayKeyBahia(a.created_at);
+      const diffDays = Math.round((Date.parse(a.scheduled_date) - Date.parse(createdDay)) / (1000 * 60 * 60 * 24));
+      if (!Number.isFinite(diffDays) || diffDays < 0) return;
       diffs.push(diffDays);
       detalheMap.set(diffDays, (detalheMap.get(diffDays) || 0) + 1);
       if (diffDays === 0) buckets.mesmoDia++;
@@ -489,10 +499,13 @@ export default function CrmRelatorios() {
       if (!map.has(c)) map.set(c, { agendamentos: 0, comparecimentos: 0, contratacoes: 0, faltas: 0 });
       return map.get(c)!;
     };
-    const cidadeByLead = new Map(leads.map(l => [l.id, (l.cidade || "Sem cidade").trim() || "Sem cidade"]));
+    // normalizeCidade unifica grafias ('VCA' → 'Vitória da Conquista') e
+    // null/vazio → 'Sem cidade' (linha visível, não descartada).
+    const cidadeByLead = new Map(leads.map(l => [l.id, normalizeCidade(l.cidade)]));
 
     apptsPeriodo.forEach(a => {
-      const c = a.lead_cidade?.trim() || cidadeByLead.get(a.lead_id) || "Sem cidade";
+      const direta = normalizeCidade(a.lead_cidade ?? null);
+      const c = direta !== "Sem cidade" ? direta : (cidadeByLead.get(a.lead_id) || "Sem cidade");
       const row = ensure(c);
       row.agendamentos++;
       if (a.status === "contracted" || a.status === "not_contracted") row.comparecimentos++;
@@ -506,20 +519,9 @@ export default function CrmRelatorios() {
   }, [apptsPeriodo, leads]);
 
   // ============= INATIVOS =============
-  const inativos = useMemo(() => {
-    const now = Date.now();
-    const buckets = { d7: 0, d15: 0, d30: 0 };
-    leads.forEach(l => {
-      const st = stageById.get(l.stage_id);
-      if (st && isProtectedStage(st.name)) return;
-      if (!l.last_inbound_at) return;
-      const days = (now - new Date(l.last_inbound_at).getTime()) / (1000 * 60 * 60 * 24);
-      if (days >= 30) buckets.d30++;
-      if (days >= 15) buckets.d15++;
-      if (days >= 7) buckets.d7++;
-    });
-    return buckets;
-  }, [leads, stageById]);
+  // Estoque da BASE INTEIRA via RPC rpt_leads_inativos (não depende do período
+  // selecionado). O memo antigo iterava só os leads carregados do período e
+  // mostrava 4/0/0 quando havia ~3.500 leads parados há 30+ dias.
 
   // ============= TEMPO DE RESPOSTA =============
   const tempoResposta = useMemo(() => {
@@ -608,7 +610,7 @@ export default function CrmRelatorios() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
-              <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all"]} />
+              <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all", "multi"]} />
             </div>
             {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
             <div className="ml-auto text-xs text-muted-foreground">
@@ -616,39 +618,126 @@ export default function CrmRelatorios() {
             </div>
           </Card>
 
-          {/* KPIs do período — espelham o calendário */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-            <KpiCard icon={Calendar} label="Agendamentos" value={calendario.total} accent="blue"
-              hint="Com data marcada no período (= calendário)" />
-            <KpiCard icon={CheckCircle2} label="Compareceram" value={calendario.compareceram} accent="green"
-              hint={`Contratados + Não contratados`} />
-            <KpiCard icon={Target} label="Contrataram" value={calendario.contrataram} accent="emerald"
-              hint={`${calendario.taxaContratacao.toFixed(0)}% dos que compareceram`} />
-            <KpiCard icon={XCircle} label="Não contrataram" value={calendario.naoContrataram} accent="amber" />
-            <KpiCard icon={Ghost} label="Faltas" value={calendario.faltas} accent="red"
-              hint="Status: no_show" />
-            <KpiCard icon={Clock} label="Pendentes" value={calendario.pendentes} accent="indigo"
-              hint="Sem desfecho ainda" />
-            <KpiCard icon={TrendingUp} label="Taxa comparec." value={`${calendario.taxaComparecimento.toFixed(0)}%`} accent="green"
-              hint={`${calendario.compareceram}/${calendario.desfecho} com desfecho`} />
-          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Os KPIs de agendamento, as Contratações e os Leads Inativos vêm do servidor e são iguais para qualquer
+            usuário autorizado do tenant. Os demais painéis (Panorama, Atividade Diária, Tempos, Por Cidade,
+            Tempo de Resposta e Fantasmas) refletem os funis visíveis ao seu usuário — perfis com permissões
+            diferentes podem ver totais diferentes.
+          </p>
+
+          {/* Erro de carregamento dos painéis client-side — nunca parcial silencioso */}
+          {loadError && (
+            <Card className="p-4 border-destructive/50 bg-destructive/5 flex flex-wrap items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+              <div className="flex-1 min-w-[200px]">
+                <p className="text-sm font-medium text-destructive">Falha ao carregar os dados do período</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{loadError} — os números abaixo podem estar desatualizados.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setReloadKey(k => k + 1)}>Tentar novamente</Button>
+            </Card>
+          )}
+
+          {/* KPIs do período — RPC canônica (mesmo número para qualquer usuário do tenant) */}
+          {kpisState.status === "loading" ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+            </div>
+          ) : kpisState.status === "error" ? (
+            <RpcErrorCard
+              title="KPIs de agendamento indisponíveis"
+              message={kpisState.message}
+              onRetry={() => setReloadKey(k => k + 1)}
+            />
+          ) : (() => {
+            const k = kpisState.data;
+            const compareceram = k.contracted + k.not_contracted + k.rescheduled;
+            const desfecho = compareceram + k.no_show;
+            const taxaComparecimento = desfecho > 0 ? (compareceram / desfecho) * 100 : 0;
+            const taxaContratacao = compareceram > 0 ? (k.contracted / compareceram) * 100 : 0;
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+                <KpiCard icon={Calendar} label="Agendamentos" value={k.total} accent="blue"
+                  hint="Com data marcada no período (= calendário)" />
+                <KpiCard icon={CheckCircle2} label="Compareceram" value={compareceram} accent="green"
+                  hint={`${taxaComparecimento.toFixed(0)}% de ${desfecho} com desfecho`} />
+                <KpiCard icon={Target} label="Contratos na consulta" value={k.contracted} accent="emerald"
+                  hint={`${taxaContratacao.toFixed(0)}% dos que compareceram`} />
+                <KpiCard icon={XCircle} label="Não contrataram" value={k.not_contracted} accent="amber" />
+                <KpiCard icon={CalendarIcon} label="Reagendaram" value={k.rescheduled} accent="indigo"
+                  hint="Compareceram e saíram com novo agendamento" />
+                <KpiCard icon={Ghost} label="Faltas" value={k.no_show} accent="red"
+                  hint="Status: no_show" />
+                <KpiCard icon={Clock} label="Pendentes" value={k.pending} accent="indigo"
+                  hint={k.pending_vencidos > 0 ? `⚠ ${k.pending_vencidos} com data já vencida` : "Sem desfecho ainda"} />
+                <KpiCard icon={XCircle} label="Cancelados" value={k.cancelled} accent="red"
+                  hint="Status: cancelled" />
+              </div>
+            );
+          })()}
+
+          {/* Contratações: desfecho da consulta × caixa (fontes diferentes, lado a lado) */}
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Wallet className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold">Contratações do Período</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Duas fontes distintas, lado a lado: o <strong>desfecho marcado na consulta</strong> (status do agendamento)
+              e o <strong>caixa</strong> (pacientes cujo primeiro pagamento caiu no período). O número oficial de
+              contratados é o do caixa.
+            </p>
+            {contratadosState.status === "loading" ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+              </div>
+            ) : contratadosState.status === "error" ? (
+              <RpcErrorCard
+                title="Contratados por pagamento indisponíveis"
+                message={contratadosState.message}
+                onRetry={() => setReloadKey(k => k + 1)}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <StatBox
+                  label="Contratos na consulta"
+                  value={kpisState.status === "ok" ? kpisState.data.contracted : "—"}
+                  color="text-emerald-600"
+                  hint="Agendamentos com status 'contratado' no período (pode ficar desatualizado)"
+                />
+                <StatBox
+                  label="Pacientes com 1º pagamento"
+                  value={contratadosState.data.length}
+                  color="text-primary"
+                  hint="Primeiro pagamento do paciente dentro do período (fonte: caixa)"
+                />
+                <StatBox
+                  label="Recebido desses pacientes"
+                  value={brl.format(contratadosState.data.reduce((s, c) => s + c.valor_total_periodo, 0))}
+                  color="text-emerald-600"
+                  hint="Soma dos pagamentos desses pacientes no período"
+                />
+              </div>
+            )}
+          </Card>
 
           {/* Funil do período */}
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-1">
               <TrendingUp className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold">Funil do Período</h2>
+              <h2 className="text-lg font-semibold">Panorama do Período</h2>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              Atividade real do mês. Cada métrica tem uma definição independente — não é uma coorte estrita.
+              <strong>Não é um funil de coorte:</strong> cada linha tem definição própria e as etapas não são
+              subconjuntos umas das outras (ex.: um agendamento do período pode ser de lead criado antes dele).
+              Leia cada número isoladamente — não calcule "taxas" entre as linhas.
             </p>
 
             <div className="space-y-2">
               <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram.size} color="#6366f1" />
               <FunnelRow label="Agendamentos criados" hint="Ação da equipe — appts criados no período" value={atividadePeriodo.agendamentosCriados} color="#f59e0b" />
               <FunnelRow label="Agendamentos do período" hint="Data marcada para o período (= calendário)" value={calendario.total} color="#3b82f6" />
-              <FunnelRow label="Compareceram" hint="Contratados + Não contratados" value={calendario.compareceram} color="#10b981" />
-              <FunnelRow label="Contrataram" hint="Status final: contracted" value={calendario.contrataram} color="#059669" />
+              <FunnelRow label="Compareceram" hint="Contratados + Não contratados + Reagendaram" value={calendario.compareceram} color="#10b981" />
+              <FunnelRow label="Contratos na consulta" hint="Status final: contracted" value={calendario.contrataram} color="#059669" />
             </div>
 
             <div className="mt-6 border-t pt-4">
@@ -669,6 +758,7 @@ export default function CrmRelatorios() {
             </div>
             <p className="text-sm text-muted-foreground mb-4">
               Por dia: leads que falaram comigo, leads novos, agendamentos <strong>criados</strong> (ação CRC) e agendamentos <strong>marcados</strong> para o dia (espelha o calendário).
+              Inclui os dias futuros do período. Este painel reflete os funis visíveis ao seu usuário — o total de "Agend. do dia" pode diferir do KPI de Agendamentos para perfis com acesso restrito.
             </p>
             {dailyActivity.rows.length === 0 ? (
               <EmptyState icon={Calendar} title="Sem dados no período" />
@@ -713,33 +803,7 @@ export default function CrmRelatorios() {
             )}
           </Card>
 
-          {/* Resultado dos Agendados (espelho do calendário) */}
-          <Card className="p-6">
-            <div className="flex items-center gap-2 mb-1">
-              <Calendar className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold">Resultado dos Agendados</h2>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Quebra dos <strong>{calendario.total}</strong> agendamentos com data no período. Cada agendamento conta uma vez (mesmo lead com 2 agendamentos = 2).
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-              <StatBox label="Agendamentos" value={calendario.total} />
-              <StatBox label="Compareceram" value={calendario.compareceram} color="text-green-600" />
-              <StatBox label="Contrataram" value={calendario.contrataram} color="text-emerald-600" />
-              <StatBox label="Não contrataram" value={calendario.naoContrataram} color="text-orange-500" />
-              <StatBox label="Faltas" value={calendario.faltas} color="text-red-500" />
-              <StatBox label="Pendentes" value={calendario.pendentes} color="text-muted-foreground" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-              <StatBox label="Taxa de comparecimento" value={`${calendario.taxaComparecimento.toFixed(0)}%`} color="text-primary"
-                hint={`${calendario.compareceram} de ${calendario.desfecho} appts com desfecho`} />
-              <StatBox label="Taxa de contratação" value={`${calendario.taxaContratacao.toFixed(0)}%`} color="text-emerald-600"
-                hint={`${calendario.contrataram} contratos / ${calendario.compareceram} comparecimentos`} />
-            </div>
-          </Card>
-
-
-
+          {/* Painel "Resultado dos Agendados" removido: duplicava 1:1 os KPIs acima. */}
 
           {/* Tempos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -748,13 +812,13 @@ export default function CrmRelatorios() {
                 <Clock className="w-5 h-5 text-primary" />
                 <h2 className="text-lg font-semibold">Tempo até Contratação</h2>
               </div>
-              <p className="text-sm text-muted-foreground mb-4">Da entrada do lead até o agendamento contratado no período.</p>
+              <p className="text-sm text-muted-foreground mb-4">Da entrada do lead até a data da consulta contratada, em dias corridos (inclui fechamentos no mesmo dia).</p>
               {tempoContratacao.count > 0 ? (
                 <div className="grid grid-cols-2 gap-3">
-                  <StatBox label="Média" value={fmtDuration(tempoContratacao.media)} />
-                  <StatBox label="Mediana" value={fmtDuration(tempoContratacao.mediana)} />
-                  <StatBox label="Mais rápido" value={fmtDuration(tempoContratacao.min)} color="text-green-600" />
-                  <StatBox label="Mais lento" value={fmtDuration(tempoContratacao.max)} color="text-orange-500" />
+                  <StatBox label="Média" value={fmtDias(tempoContratacao.media)} />
+                  <StatBox label="Mediana" value={fmtDias(tempoContratacao.mediana)} />
+                  <StatBox label="Mais rápido" value={fmtDias(tempoContratacao.min)} color="text-green-600" />
+                  <StatBox label="Mais lento" value={fmtDias(tempoContratacao.max)} color="text-orange-500" />
                   <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
                     Baseado em {tempoContratacao.count} lead(s) contratado(s) no período
                   </div>
@@ -826,24 +890,46 @@ export default function CrmRelatorios() {
             )}
           </Card>
 
-          {/* Inativos */}
+          {/* Inativos — estoque da base inteira (RPC), independe do período selecionado */}
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-1">
               <Bell className="w-5 h-5 text-primary" />
               <h2 className="text-lg font-semibold">Leads Inativos</h2>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">Leads sem responder há X dias. <strong>Exclui</strong> Contratados, Agendados e Reagendados.</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <button onClick={() => navigate("/crm/conversas")} className="text-left">
-                <StatBox label="Sem resposta há +7 dias" value={inativos.d7} color="text-yellow-600" hover />
-              </button>
-              <button onClick={() => navigate("/crm/conversas")} className="text-left">
-                <StatBox label="Sem resposta há +15 dias" value={inativos.d15} color="text-orange-500" hover />
-              </button>
-              <button onClick={() => navigate("/crm/conversas")} className="text-left">
-                <StatBox label="Sem resposta há +30 dias" value={inativos.d30} color="text-red-500" hover />
-              </button>
-            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Estoque atual da <strong>base inteira</strong> (não muda com o período selecionado): leads sem responder há X dias.
+              <strong> Exclui</strong> Contratados, Agendados e Reagendados. Buckets cumulativos (+30 está contido em +15 e +7).
+            </p>
+            {inativosState.status === "loading" ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+              </div>
+            ) : inativosState.status === "error" ? (
+              <RpcErrorCard
+                title="Estoque de leads inativos indisponível"
+                message={inativosState.message}
+                onRetry={() => setReloadKey(k => k + 1)}
+              />
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <button onClick={() => navigate("/crm/conversas")} className="text-left">
+                    <StatBox label="Sem resposta há +7 dias" value={inativosState.data.mais_7_dias} color="text-yellow-600" hover />
+                  </button>
+                  <button onClick={() => navigate("/crm/conversas")} className="text-left">
+                    <StatBox label="Sem resposta há +15 dias" value={inativosState.data.mais_15_dias} color="text-orange-500" hover />
+                  </button>
+                  <button onClick={() => navigate("/crm/conversas")} className="text-left">
+                    <StatBox label="Sem resposta há +30 dias" value={inativosState.data.mais_30_dias} color="text-red-500" hover />
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-3 text-center">
+                  Base considerada: {inativosState.data.base_total} lead(s) fora de etapas protegidas
+                  (Agendado/Reagendado/Contratado), não bloqueados e com ao menos uma mensagem recebida.
+                  "Não contratado" e "Não agendado" contam como inativos.
+                </p>
+              </>
+            )}
           </Card>
 
           {/* Resposta */}
@@ -902,7 +988,7 @@ export default function CrmRelatorios() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
-              <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all"]} />
+              <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all", "multi"]} />
             </div>
             {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
           </Card>
@@ -987,6 +1073,20 @@ function FunnelRow({ label, hint, value, color }: { label: string; hint?: string
   );
 }
 
+// Erro de RPC canônica: sempre visível (nunca vira zero silencioso).
+function RpcErrorCard({ title, message, onRetry }: { title: string; message: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 flex flex-wrap items-center gap-3">
+      <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+      <div className="flex-1 min-w-[200px]">
+        <p className="text-sm font-medium text-destructive">{title}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 break-words">{message}</p>
+      </div>
+      <Button variant="outline" size="sm" onClick={onRetry}>Tentar novamente</Button>
+    </div>
+  );
+}
+
 function StatBox({ label, value, color = "text-foreground", hover = false, hint }: { label: string; value: string | number; color?: string; hover?: boolean; hint?: string }) {
   return (
     <div className={`bg-secondary/40 rounded-lg p-4 text-center ${hover ? "hover:bg-secondary/70 transition cursor-pointer" : ""}`}>
@@ -1001,16 +1101,17 @@ function StatBox({ label, value, color = "text-foreground", hover = false, hint 
 // Aba: Ações por Dia (preservada)
 // ============================================================================
 
+// Feriados nacionais fixos (fallback). Os feriados do tenant (ex.: Independência
+// da Bahia, São João) vêm da tabela dashboard_holidays e são unidos a estes.
 const HOLIDAYS_FIXED: string[] = [
   "01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "12-25",
 ];
-function isWorkingDay(d: Date): boolean {
+function isWorkingDay(d: Date, holidaySet: Set<string>): boolean {
   if (d.getDay() === 0) return false;
   const md = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  return !HOLIDAYS_FIXED.includes(md);
+  if (HOLIDAYS_FIXED.includes(md)) return false;
+  return !holidaySet.has(dayKeyFromDate(d));
 }
-
-type AcoesStage = { id: string; name: string; color: string; position: number };
 
 function AcoesPorDiaTab({
   pipelineId, pipelines, setPipelineId,
@@ -1020,8 +1121,9 @@ function AcoesPorDiaTab({
   setPipelineId: (id: string) => void;
 }) {
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
-  const [stages, setStages] = useState<AcoesStage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const monthStart = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1), [selectedDate]);
   const monthEnd = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999), [selectedDate]);
@@ -1029,58 +1131,70 @@ function AcoesPorDiaTab({
   const [inboundDays, setInboundDays] = useState<{ lead_id: string; created_at: string }[]>([]);
   // Substituímos stage history por appointments (= calendário) para "agendados"
   const [apptsMonth, setApptsMonth] = useState<{ lead_id: string; created_at: string; scheduled_date: string; is_rescheduled: boolean | null }[]>([]);
+  // Feriados do tenant (dashboard_holidays) — dias YYYY-MM-DD
+  const [holidaySet, setHolidaySet] = useState<Set<string>>(() => new Set());
 
+  // Feriados cadastrados pelo tenant (todas as clínicas: dia sem operação do CRC)
   useEffect(() => {
-    supabase.from("crm_stages").select("id, name, color, position").order("position")
-      .then(({ data }) => setStages((data || []) as AcoesStage[]));
+    (supabase as any)
+      .from("dashboard_holidays")
+      .select("data")
+      .then(({ data, error }: { data: { data: string }[] | null; error: { message: string } | null }) => {
+        if (error || !data) return; // fallback: só os feriados nacionais fixos
+        setHolidaySet(new Set(data.map(h => h.data)));
+      });
   }, []);
 
   useEffect(() => {
+    let alive = true;
     setLoading(true);
-    const startISO = monthStart.toISOString();
-    const endISO = monthEnd.toISOString();
+    setLoadError(null);
+    // Fronteiras do mês em America/Bahia
+    const { gteIso: startISO, lteIso: endISO } = rangeBahia(monthStart, monthEnd);
 
     (async () => {
-      // Mensagens inbound do mês — todos os pipelines
-      let msgsAll: any[] = [];
-      let mFrom = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from("messages")
-          .select("lead_id, created_at")
-          .eq("direction", "inbound")
-          .gte("created_at", startISO)
-          .lte("created_at", endISO)
-          .order("created_at")
-          .range(mFrom, mFrom + 999);
-        if (error || !data || data.length === 0) break;
-        msgsAll = msgsAll.concat(data);
-        if (data.length < 1000) break;
-        mFrom += 1000;
+      try {
+        // Mensagens inbound do mês — todos os pipelines
+        const msgsAll = await fetchAllPaged<{ lead_id: string; created_at: string; id?: string }>(() =>
+          supabase
+            .from("messages")
+            .select("id, lead_id, created_at")
+            .eq("direction", "inbound")
+            .gte("created_at", startISO)
+            .lte("created_at", endISO),
+          "id"
+        );
+
+        // Appointments criados no mês — TODOS, sem filtro de pipeline
+        const apptsCreated = await fetchAllPaged<any>(() =>
+          supabase
+            .from("crm_appointments")
+            .select("id, lead_id, created_at, scheduled_date, is_rescheduled")
+            .gte("created_at", startISO)
+            .lte("created_at", endISO),
+          "id"
+        );
+
+        if (!alive) return;
+        setInboundDays(msgsAll);
+        setApptsMonth(apptsCreated);
+      } catch (e: any) {
+        if (!alive) return;
+        setLoadError(e?.message || String(e));
+      } finally {
+        if (alive) setLoading(false);
       }
-
-      // Appointments criados no mês — TODOS, sem filtro de pipeline
-      const apptsCreated = await fetchAllPages<any>((f, t) =>
-        supabase
-          .from("crm_appointments")
-          .select("lead_id, created_at, scheduled_date, is_rescheduled")
-          .gte("created_at", startISO)
-          .lte("created_at", endISO)
-          .range(f, t)
-      );
-
-      setInboundDays(msgsAll);
-      setApptsMonth(apptsCreated);
-      setLoading(false);
     })();
-  }, [monthStart, monthEnd]);
+
+    return () => { alive = false; };
+  }, [monthStart, monthEnd, reloadKey]);
 
   const selectedKey = dayKeyFromDate(selectedDate);
 
   const falaramDia = useMemo(() => {
     const set = new Set<string>();
     inboundDays.forEach(m => {
-      if (dayKeyFromDate(new Date(m.created_at)) === selectedKey) set.add(m.lead_id);
+      if (dayKeyBahia(m.created_at) === selectedKey) set.add(m.lead_id);
     });
     return set;
   }, [inboundDays, selectedKey]);
@@ -1088,14 +1202,14 @@ function AcoesPorDiaTab({
   // Agendamentos criados no dia (não reagendados)
   const agendadosDia = useMemo(() => {
     return apptsMonth.filter(a =>
-      dayKeyFromDate(new Date(a.created_at)) === selectedKey && a.is_rescheduled !== true
+      dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled !== true
     ).length;
   }, [apptsMonth, selectedKey]);
 
   // Reagendamentos criados no dia
   const reagendadosDia = useMemo(() => {
     return apptsMonth.filter(a =>
-      dayKeyFromDate(new Date(a.created_at)) === selectedKey && a.is_rescheduled === true
+      dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled === true
     ).length;
   }, [apptsMonth, selectedKey]);
 
@@ -1103,7 +1217,7 @@ function AcoesPorDiaTab({
   const agendadosDosQueFalaram = useMemo(() => {
     const leadsAgendDia = new Set(
       apptsMonth
-        .filter(a => dayKeyFromDate(new Date(a.created_at)) === selectedKey && a.is_rescheduled !== true)
+        .filter(a => dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled !== true)
         .map(a => a.lead_id)
     );
     let cnt = 0;
@@ -1117,17 +1231,17 @@ function AcoesPorDiaTab({
     const workingDays: string[] = [];
     const cur = new Date(monthStart);
     while (cur.getTime() <= endRef.getTime()) {
-      if (isWorkingDay(cur)) workingDays.push(dayKeyFromDate(cur));
+      if (isWorkingDay(cur, holidaySet)) workingDays.push(dayKeyFromDate(cur));
       cur.setDate(cur.getDate() + 1);
     }
     if (workingDays.length === 0) {
-      return { avgFalaram: 0, avgAgendados: 0, avgReagendados: 0, totalDias: 0 };
+      return { avgFalaram: 0, avgAgendados: 0, avgReagendados: 0, totalDias: 0, falaramTotal: 0, taxaMensal: 0 };
     }
     const workingSet = new Set(workingDays);
 
     const falaramByDay = new Map<string, Set<string>>();
     inboundDays.forEach(m => {
-      const k = dayKeyFromDate(new Date(m.created_at));
+      const k = dayKeyBahia(m.created_at);
       if (!workingSet.has(k)) return;
       if (!falaramByDay.has(k)) falaramByDay.set(k, new Set());
       falaramByDay.get(k)!.add(m.lead_id);
@@ -1135,12 +1249,24 @@ function AcoesPorDiaTab({
     let falaramTotal = 0;
     falaramByDay.forEach(s => { falaramTotal += s.size; });
 
+    // Leads que criaram agendamento (não reagendado) por dia útil — para a taxa
+    // mensal usar a MESMA lógica do card diário: interseção falou ∩ agendou no dia.
+    const agendLeadsByDay = new Map<string, Set<string>>();
     let agendTotal = 0, reagTotal = 0;
     apptsMonth.forEach(a => {
-      const k = dayKeyFromDate(new Date(a.created_at));
+      const k = dayKeyBahia(a.created_at);
       if (!workingSet.has(k)) return;
-      if (a.is_rescheduled === true) reagTotal++;
-      else agendTotal++;
+      if (a.is_rescheduled === true) { reagTotal++; return; }
+      agendTotal++;
+      if (!agendLeadsByDay.has(k)) agendLeadsByDay.set(k, new Set());
+      agendLeadsByDay.get(k)!.add(a.lead_id);
+    });
+
+    let falaramEAgendaramTotal = 0;
+    falaramByDay.forEach((leadsSet, k) => {
+      const ag = agendLeadsByDay.get(k);
+      if (!ag) return;
+      leadsSet.forEach(id => { if (ag.has(id)) falaramEAgendaramTotal++; });
     });
 
     return {
@@ -1148,8 +1274,11 @@ function AcoesPorDiaTab({
       avgAgendados: agendTotal / workingDays.length,
       avgReagendados: reagTotal / workingDays.length,
       totalDias: workingDays.length,
+      falaramTotal,
+      // Mesmo numerador/denominador do card diário (leads distintos, interseção por dia)
+      taxaMensal: falaramTotal > 0 ? (falaramEAgendaramTotal / falaramTotal) * 100 : 0,
     };
-  }, [apptsMonth, inboundDays, monthStart, monthEnd]);
+  }, [apptsMonth, inboundDays, monthStart, monthEnd, holidaySet]);
 
   return (
     <div className="space-y-6">
@@ -1186,6 +1315,17 @@ function AcoesPorDiaTab({
         </div>
       </Card>
 
+      {loadError && (
+        <Card className="p-4 border-destructive/50 bg-destructive/5 flex flex-wrap items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-sm font-medium text-destructive">Falha ao carregar os dados do mês</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{loadError} — os números abaixo podem estar desatualizados.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setReloadKey(k => k + 1)}>Tentar novamente</Button>
+        </Card>
+      )}
+
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <Activity className="w-5 h-5 text-orange-500" />
@@ -1213,10 +1353,11 @@ function AcoesPorDiaTab({
           </div>
         </div>
 
-        {agendadosDosQueFalaram > 0 && falaramDia.size > 0 && (
+        {falaramDia.size > 0 && (
           <div className="rounded-lg bg-secondary/40 p-4 text-center">
-            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendados)</span>
+            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendaram no mesmo dia)</span>
             <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram / falaramDia.size) * 100).toFixed(1)}%</p>
+            <p className="text-xs text-muted-foreground mt-1">{agendadosDosQueFalaram} de {falaramDia.size} lead(s) que falaram no dia</p>
           </div>
         )}
       </Card>
@@ -1227,7 +1368,7 @@ function AcoesPorDiaTab({
           <h2 className="text-lg font-semibold">Média Diária — {format(monthStart, "MMMM/yyyy", { locale: ptBR })}</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Média por dia útil (excluindo domingos e feriados nacionais) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
+          Média por dia útil (excluindo domingos, feriados nacionais e feriados cadastrados no painel) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -1245,10 +1386,11 @@ function AcoesPorDiaTab({
           </div>
         </div>
 
-        {mediasMes.avgFalaram > 0 && (
+        {mediasMes.falaramTotal > 0 && (
           <div className="rounded-lg bg-secondary/40 p-4 text-center">
-            <span className="text-sm text-muted-foreground">Taxa média de conversão mensal</span>
-            <p className="text-3xl font-bold text-primary mt-1">{((mediasMes.avgAgendados / mediasMes.avgFalaram) * 100).toFixed(1)}%</p>
+            <span className="text-sm text-muted-foreground">Taxa média de conversão mensal (falaram → agendaram no mesmo dia)</span>
+            <p className="text-3xl font-bold text-primary mt-1">{mediasMes.taxaMensal.toFixed(1)}%</p>
+            <p className="text-xs text-muted-foreground mt-1">Mesma regra do card diário: leads distintos que falaram e criaram agendamento no mesmo dia útil</p>
           </div>
         )}
       </Card>
