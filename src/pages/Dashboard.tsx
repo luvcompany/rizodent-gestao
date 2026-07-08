@@ -539,9 +539,6 @@ const Dashboard = () => {
   { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
   { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
   { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign, subtitle: "Faturamento ÷ dias úteis do período filtrado (até ontem)" },
-  ...(rpcTicket && rpcTicket.num_pacientes > 0
-    ? [{ title: "Ticket Médio por Paciente", value: formatCurrency(rpcTicket.ticket_por_paciente), icon: DollarSign, subtitle: `${rpcTicket.num_pacientes} pacientes pagantes no período` }]
-    : []),
   ...(isCurrentMonthSelected
     ? [{ title: "Previsão Mensal", value: formatCurrency(projecaoMensal), icon: TrendingUp, subtitle: `${diasUteisMes} dias úteis no mês` }]
     : []),
