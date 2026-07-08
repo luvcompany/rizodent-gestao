@@ -771,7 +771,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
             </Table>
           )}
           <p className="text-[11px] text-muted-foreground mt-2">
-            Faturamento = soma de todos os pagamentos dos pacientes contratados da origem (em qualquer data).
+            Leads e conversão = leads criados no período. Faturamento = caixa recebido no período por origem do paciente (bate com o total do dashboard).
             {ranking.some(r => r.leads < 5) && " * Origem com menos de 5 leads: taxa de conversão pouco confiável (amostra pequena)."}
           </p>
           {rpcRows ? (

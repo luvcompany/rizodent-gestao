@@ -289,6 +289,35 @@ export async function rptFaturamento(
   }));
 }
 
+/** Uma linha por origem canônica: caixa recebido no período atribuído à origem
+ *  do paciente (mesmo total do dashboard, reconciliando os R$ do período). */
+export interface FaturamentoOrigemRow {
+  origem: string;
+  faturamento: number;
+  pacientes: number;
+  pagamentos: number;
+}
+
+/** Faturamento do período por origem canônica do paciente (caixa recebido).
+ *  Fonte única compartilhada entre o Dashboard e a aba Origem & Conversão. */
+export async function rptFaturamentoOrigem(
+  from: Date | string,
+  to: Date | string,
+  clinicaId?: string | null
+): Promise<FaturamentoOrigemRow[]> {
+  const rows = await callRpc<any[]>("rpt_faturamento_origem", {
+    p_from: asDateParam(from),
+    p_to: asDateParam(to),
+    p_clinica_id: clinicaId ?? null,
+  });
+  return (rows ?? []).map((r) => ({
+    origem: r.origem,
+    faturamento: num(r.faturamento),
+    pacientes: num(r.pacientes),
+    pagamentos: num(r.pagamentos),
+  }));
+}
+
 /** Pacientes contratados: primeiro pagamento (global) dentro do período. */
 export async function rptContratados(
   from: Date | string,

@@ -18,6 +18,8 @@ import {
   normalizeCidade,
   classifyOrigemCanonica,
   rptContratados,
+  rptFaturamentoOrigem,
+  type FaturamentoOrigemRow,
 } from "@/lib/reportKit";
 
 const DateRangeFilter = lazy(() =>
@@ -331,6 +333,9 @@ const Dashboard = () => {
   // rótulo honesto na UI.
   const rpcFiltersOk = canalFiltro === "todos" && dateFilter.preset !== "multi";
   const [rpcContratadosCount, setRpcContratadosCount] = useState<number | null>(null);
+  // Faturamento por origem canônica (mesma fonte da aba Origem & Conversão) —
+  // caixa do período por origem do lead do paciente. Reconcilia com o total.
+  const [rpcCanalOrigem, setRpcCanalOrigem] = useState<FaturamentoOrigemRow[] | null>(null);
 
 
   useEffect(() => {
@@ -342,6 +347,16 @@ const Dashboard = () => {
       .catch((e) => console.warn("[Dashboard] rpt_contratados indisponível; usando cálculo local:", e));
     return () => { cancelled = true; };
   }, [rpcFiltersOk, dateFrom, dateTo, clinicaFiltro]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRpcCanalOrigem(null);
+    if (dateFilter.preset === "multi") return; // período contíguo só
+    rptFaturamentoOrigem(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
+      .then((rows) => { if (!cancelled) setRpcCanalOrigem(rows); })
+      .catch((e) => console.warn("[Dashboard] rpt_faturamento_origem indisponível; usando cálculo local:", e));
+    return () => { cancelled = true; };
+  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro]);
 
   // Unique values for filter dropdowns
 
@@ -738,7 +753,13 @@ const Dashboard = () => {
     entry.fat += Number(pg.valor);
     origemMap.set(o, entry);
   });
-  const origemData = Array.from(origemMap.entries()).map(([name, { pacs, fat }]) => ({ name, pacientes: pacs.size, faturamento: fat })).sort((a, b) => b.faturamento - a.faturamento);
+  const origemDataLocal = Array.from(origemMap.entries()).map(([name, { pacs, fat }]) => ({ name, pacientes: pacs.size, faturamento: fat })).sort((a, b) => b.faturamento - a.faturamento);
+  // Fonte preferida: RPC canônica (rpt_faturamento_origem) — origem do LEAD do
+  // paciente (não o campo cru pacientes.origem), mesmos números da aba Origem &
+  // Conversão e mesmo total do dashboard. Fallback: cálculo local por origem crua.
+  const origemData = rpcCanalOrigem
+    ? rpcCanalOrigem.map((r) => ({ name: r.origem, pacientes: r.pacientes, faturamento: r.faturamento })).sort((a, b) => b.faturamento - a.faturamento)
+    : origemDataLocal;
 
   // Chart: Faturamento por Anúncio
   const anuncioMap = new Map<string, number>();
