@@ -89,9 +89,6 @@ export default function WhatsAppAccountsSection({
             >
               <WhatsAppEmbeddedSignupButton onConnected={onReload} />
             </div>
-            <Button variant="ghost" size="sm" onClick={onNew} className="text-muted-foreground">
-              <Plus size={14} className="mr-1" /> Adicionar manualmente
-            </Button>
           </CardContent>
         </Card>
       )}
