@@ -3292,6 +3292,7 @@ export type Database = {
       }
       tenants: {
         Row: {
+          business_hours: Json | null
           created_at: string
           favicon_url: string | null
           id: string
@@ -3308,6 +3309,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          business_hours?: Json | null
           created_at?: string
           favicon_url?: string | null
           id?: string
@@ -3324,6 +3326,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          business_hours?: Json | null
           created_at?: string
           favicon_url?: string | null
           id?: string
@@ -3969,6 +3972,7 @@ export type Database = {
           ticket_por_pagamento: number
         }[]
       }
+      set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
