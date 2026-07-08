@@ -331,7 +331,7 @@ const Dashboard = () => {
   // rótulo honesto na UI.
   const rpcFiltersOk = canalFiltro === "todos" && dateFilter.preset !== "multi";
   const [rpcContratadosCount, setRpcContratadosCount] = useState<number | null>(null);
-  const [rpcTicket, setRpcTicket] = useState<TicketMedio | null>(null);
+
 
   useEffect(() => {
     let cancelled = false;
