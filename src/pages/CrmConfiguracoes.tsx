@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Upload, Bell, CheckCircle2, Ban, RotateCcw, Trash2, MessageSquare } from "lucide-react";
+import { Upload, Bell, CheckCircle2, Ban, RotateCcw, Trash2, MessageSquare, Clock } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -510,18 +510,95 @@ function LixeiraTab() {
 /* ═══════════════════════════════════════════════════
    PÁGINA PRINCIPAL — Configurações CRM
    ═══════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════
+   Horário Comercial (usado pelas métricas de tempo de resposta)
+   ═══════════════════════════════════════════════════ */
+const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+type DiaCfg = { enabled: boolean; open: string; close: string };
+
+function HorarioComercialTab() {
+  const [cfg, setCfg] = useState<DiaCfg[]>(() =>
+    DIAS_SEMANA.map((_, d) => ({ enabled: d >= 1 && d <= 5, open: "07:30", close: "18:00" }))
+  );
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("tenants").select("business_hours").limit(1).maybeSingle();
+      const bh = (data as any)?.business_hours as Record<string, [string, string]> | null;
+      if (bh && typeof bh === "object") {
+        setCfg(DIAS_SEMANA.map((_, d) => {
+          const w = bh[String(d)];
+          return w ? { enabled: true, open: w[0], close: w[1] } : { enabled: false, open: "07:30", close: "18:00" };
+        }));
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const upd = (d: number, patch: Partial<DiaCfg>) =>
+    setCfg((prev) => prev.map((x, i) => (i === d ? { ...x, ...patch } : x)));
+
+  const salvar = async () => {
+    setSaving(true);
+    const bh: Record<string, [string, string]> = {};
+    cfg.forEach((c, d) => { if (c.enabled && c.open && c.close) bh[String(d)] = [c.open, c.close]; });
+    // Escrita via RPC SECURITY DEFINER (a RLS de tenants só permite superadmin no UPDATE direto).
+    const { error } = await supabase.rpc("set_tenant_business_hours" as any, { p_hours: bh } as any);
+    setSaving(false);
+    if (error) { toast.error("Erro ao salvar: " + error.message); return; }
+    toast.success("Horário comercial salvo");
+  };
+
+  if (loading) return <Card className="p-4 text-sm text-muted-foreground">Carregando…</Card>;
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold">Horário Comercial</h3>
+      <p className="text-sm text-muted-foreground">
+        Define o expediente do time de atendimento. As métricas de tempo de resposta contam apenas as horas
+        dentro do expediente — mensagens recebidas à noite ou no fim de semana não penalizam o time.
+      </p>
+      <Card className="p-4 space-y-3 max-w-xl">
+        {cfg.map((c, d) => (
+          <div key={d} className="flex items-center gap-3 flex-wrap">
+            <div className="w-32 flex items-center gap-2">
+              <Switch checked={c.enabled} onCheckedChange={(v) => upd(d, { enabled: v })} />
+              <span className="text-sm">{DIAS_SEMANA[d]}</span>
+            </div>
+            {c.enabled ? (
+              <div className="flex items-center gap-2">
+                <Input type="time" value={c.open} onChange={(e) => upd(d, { open: e.target.value })} className="w-32" />
+                <span className="text-muted-foreground text-sm">às</span>
+                <Input type="time" value={c.close} onChange={(e) => upd(d, { close: e.target.value })} className="w-32" />
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">Fechado</span>
+            )}
+          </div>
+        ))}
+        <Button onClick={salvar} disabled={saving}>
+          <Clock size={16} className="mr-1" /> {saving ? "Salvando…" : "Salvar horário"}
+        </Button>
+      </Card>
+    </div>
+  );
+}
+
 export default function CrmConfiguracoes() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Configurações</h1>
-      <p className="text-muted-foreground">Importação de dados, notificações, leads bloqueados e lixeira.</p>
-      <Tabs defaultValue="import" className="w-full">
+      <p className="text-muted-foreground">Horário comercial, importação de dados, notificações, leads bloqueados e lixeira.</p>
+      <Tabs defaultValue="horario" className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1">
+          <TabsTrigger value="horario"><Clock size={14} className="mr-1" /> Horário</TabsTrigger>
           <TabsTrigger value="import"><Upload size={14} className="mr-1" /> Importação</TabsTrigger>
           <TabsTrigger value="notifications"><Bell size={14} className="mr-1" /> Notificações</TabsTrigger>
           <TabsTrigger value="blocked"><Ban size={14} className="mr-1" /> Bloqueados</TabsTrigger>
           <TabsTrigger value="lixeira"><Trash2 size={14} className="mr-1" /> Lixeira</TabsTrigger>
         </TabsList>
+        <TabsContent value="horario"><HorarioComercialTab /></TabsContent>
         <TabsContent value="import"><ImportTab /></TabsContent>
         <TabsContent value="notifications"><NotificationsTab /></TabsContent>
         <TabsContent value="blocked"><BlockedTab /></TabsContent>
