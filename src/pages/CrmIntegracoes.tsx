@@ -22,6 +22,7 @@ import { format } from "date-fns";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 import InstagramLiteSection from "@/components/integrations/InstagramLiteSection";
 import InstagramAccountsSection from "@/components/integrations/InstagramAccountsSection";
+import WhatsAppEmbeddedSignupButton from "@/components/integrations/WhatsAppEmbeddedSignupButton";
 
 
 import { useTenant } from "@/contexts/TenantContext";
@@ -404,9 +405,12 @@ export default function CrmIntegracoes() {
             <h2 className="font-semibold text-foreground flex items-center gap-2">
               <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" /> WhatsApp Business
             </h2>
-            <Button size="sm" onClick={handleNew}>
-              <Plus size={14} className="mr-1" /> Novo Número
-            </Button>
+            <div className="flex items-center gap-2">
+              <WhatsAppEmbeddedSignupButton onConnected={loadEntries} />
+              <Button size="sm" onClick={handleNew}>
+                <Plus size={14} className="mr-1" /> Novo Número
+              </Button>
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {whatsappEntries.map(entry => {
