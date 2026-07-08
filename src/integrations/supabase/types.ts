@@ -3887,6 +3887,77 @@ export type Database = {
       }
       restore_deleted_lead: { Args: { _backup_id: string }; Returns: string }
       rizodent_infer_cidade: { Args: { p_texto: string }; Returns: string }
+      rpt_classify_origem: {
+        Args: { p_ad_id: string; p_nome_anuncio: string; p_source: string }
+        Returns: string
+      }
+      rpt_contratados: {
+        Args: { p_clinica_id?: string; p_from: string; p_to: string }
+        Returns: {
+          clinica: string
+          nome: string
+          paciente_id: string
+          primeiro_pagamento: string
+          valor_total_periodo: number
+        }[]
+      }
+      rpt_faturamento: {
+        Args: { p_clinica_id?: string; p_from: string; p_to: string }
+        Returns: {
+          clinica: string
+          clinica_id: string
+          dia: string
+          especialidade: string
+          qtd: number
+          tipo: string
+          total: number
+        }[]
+      }
+      rpt_kpis_agendamentos: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          cancelled: number
+          contracted: number
+          no_show: number
+          not_contracted: number
+          pending: number
+          pending_vencidos: number
+          rescheduled: number
+          total: number
+        }[]
+      }
+      rpt_leads_inativos: {
+        Args: never
+        Returns: {
+          base_total: number
+          mais_15_dias: number
+          mais_30_dias: number
+          mais_7_dias: number
+        }[]
+      }
+      rpt_norm_txt: { Args: { p_txt: string }; Returns: string }
+      rpt_origem_conversao: {
+        Args: { p_from: string; p_pipeline_id?: string; p_to: string }
+        Returns: {
+          agendados: number
+          atendidos: number
+          compareceram: number
+          contratados: number
+          faturamento: number
+          leads: number
+          origem: string
+        }[]
+      }
+      rpt_resolve_tenant: { Args: never; Returns: string }
+      rpt_ticket_medio: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          num_pacientes: number
+          num_pagamentos: number
+          ticket_por_paciente: number
+          ticket_por_pagamento: number
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
