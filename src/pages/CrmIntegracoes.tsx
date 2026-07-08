@@ -401,74 +401,16 @@ export default function CrmIntegracoes() {
 
       <div className="flex-1 overflow-y-auto p-6">
         {/* WhatsApp Section */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-foreground flex items-center gap-2">
-              <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" /> WhatsApp Business
-            </h2>
-            <div className="flex items-center gap-2">
-              <WhatsAppEmbeddedSignupButton onConnected={loadEntries} />
-              <Button size="sm" onClick={handleNew}>
-                <Plus size={14} className="mr-1" /> Novo Número
-              </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {whatsappEntries.map(entry => {
-              const c = entry.config;
-              const isConnected = entry.status === "connected";
-              const pName = pipelines.find(p => p.id === c.pipeline_id)?.name;
-              return (
-                <Card key={entry.key} className="cursor-pointer hover:border-primary/30 transition-all" onClick={() => setEditEntry(entry)}>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="p-2 rounded-lg bg-primary/10">
-                        <img src={whatsappLogo} alt="WhatsApp" width={28} height={28} className="rounded-full" />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={entry.status !== "disabled"}
-                          onCheckedChange={() => {}}
-                          onClick={(e) => handleToggleIntegration(entry, e)}
-                        />
-                        {isConnected ? (
-                          <Badge className="bg-green-900/30 text-green-400 border-0"><CheckCircle size={12} className="mr-1" /> Ativo</Badge>
-                        ) : entry.status === "disabled" ? (
-                          <Badge variant="secondary" className="text-muted-foreground"><Power size={12} className="mr-1" /> Desativado</Badge>
-                        ) : (
-                          <Badge variant="secondary" className="text-muted-foreground"><XCircle size={12} className="mr-1" /> Não conectado</Badge>
-                        )}
-                      </div>
-                    </div>
-                    <h3 className={`font-semibold mb-1 ${entry.status === "disabled" ? "text-muted-foreground" : "text-foreground"}`}>{c.display_name || entry.key}</h3>
-                    <p className="text-sm text-muted-foreground">{c.phone_number_id ? `ID: ...${c.phone_number_id.slice(-4)}` : "Não configurado"}</p>
-                    {pName && (
-                      <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                        <GitBranch size={12} /> Funil: {pName}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><FieldStatus value={c.token} /> Token</span>
-                      <span className="flex items-center gap-1"><FieldStatus value={c.phone_number_id} /> Phone ID</span>
-                      <span className="flex items-center gap-1"><FieldStatus value={c.waba_id} /> WABA</span>
-                    </div>
-                    <Button variant="outline" size="sm" className="mt-3 w-full">
-                      <Settings size={14} className="mr-1" /> Configurar
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            {whatsappEntries.length === 0 && (
-              <Card className="cursor-pointer hover:border-primary/30 border-dashed transition-all" onClick={handleNew}>
-                <CardContent className="p-5 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                  <Plus size={24} />
-                  <span className="text-sm">Adicionar número WhatsApp</span>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
+        <WhatsAppAccountsSection
+          entries={whatsappEntries}
+          pipelines={pipelines}
+          onReload={loadEntries}
+          onNew={handleNew}
+          onEdit={(entry) => setEditEntry(entry)}
+          onToggle={handleToggleIntegration}
+          onDelete={handleDelete}
+        />
+
 
         {/* Instagram (Full API) via OAuth */}
         <InstagramAccountsSection />
