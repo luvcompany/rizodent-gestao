@@ -1,16 +1,32 @@
 // @ts-nocheck
-// Admin API for Rizodent tenant — API Key authenticated (Bearer).
+// Admin API multi-tenant do CRClin — autenticada por API Key (Bearer/x-api-key).
 // Routes: /leads, /leads/:id, /leads/:id/messages, /leads/:id/send,
 //         /conversations, /appointments, /tasks, /reports/overview,
-//         /reports/funnel, /reports/by-source
+//         /reports/funnel, /reports/by-source, /reports/financeiro
+// Regras canônicas dos relatórios: datas em America/Bahia (períodos inclusivos),
+// FATURAMENTO = soma de pagamentos por data_pagamento, CONTRATADO = paciente
+// cujo PRIMEIRO pagamento cai no período (nunca crm_leads.value/updated_at).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { safeEqual } from "../_shared/authz.ts";
+import {
+  BAHIA_TZ,
+  addDays,
+  assertDay,
+  businessDaysBetween,
+  chunk,
+  fetchAllPaged,
+  normalizeCidadeKey,
+  rangeBahia,
+  SEM_CIDADE,
+  todayBahia,
+} from "../_shared/reporting.ts";
 
 const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010"; // Rizodent (legacy default)
-// Reatribuído no início de cada request (mesmo padrão do `cors` global).
+// O tenant é resolvido POR REQUEST em resolveTenantFromAuth e passado como
+// parâmetro para cada handler — nunca guardar em variável de módulo (handlers
+// concorrentes de tenants diferentes causariam race condition).
 // Resolve dinamicamente a partir da chave: RIZODENT_ADMIN_API_KEY -> Rizodent;
 // senão procura em `tenant_api_keys` (active=true) e usa o tenant_id da linha.
-let TENANT_ID: string = RIZODENT_TENANT_ID;
 
 const ALLOWED_ORIGINS = [
   "https://crclin.com.br",
@@ -25,7 +41,7 @@ let cors: Record<string, string> = {
   "Vary": "Origin",
   "Access-Control-Allow-Headers": "authorization, x-api-key, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-  "X-Admin-API-Version": "media-download-2026-06-22",
+  "X-Admin-API-Version": "relatorios-canonicos-2026-07-08",
 };
 function buildCorsFor(req: Request) {
   const origin = req.headers.get("origin") || "";
@@ -35,7 +51,7 @@ function buildCorsFor(req: Request) {
     "Vary": "Origin",
     "Access-Control-Allow-Headers": "authorization, x-api-key, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "X-Admin-API-Version": "media-download-2026-06-22",
+    "X-Admin-API-Version": "relatorios-canonicos-2026-07-08",
   };
 }
 const json = (b: any, s = 200) =>
@@ -72,14 +88,18 @@ const SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const admin = createClient(URL_BASE, SR);
 
+// Período em dias-calendário de America/Bahia, INCLUSIVO (o dia `to` entra
+// inteiro, até 23:59:59.999 -03). Default: últimos 30 dias até hoje (Bahia).
+// - fromDay/toDay: para colunas DATE (data_pagamento, scheduled_date).
+// - gteIso/lteIso: fronteiras UTC para colunas timestamptz (created_at, ...).
 function parseRange(p: URLSearchParams) {
-  const from = p.get("from"); const to = p.get("to");
-  const fromD = from ? new Date(from) : new Date(Date.now() - 30 * 86400_000);
-  const toD = to ? new Date(to) : new Date();
-  return { fromISO: fromD.toISOString(), toISO: toD.toISOString() };
+  const toDay = assertDay((p.get("to") || todayBahia()).slice(0, 10));
+  const fromDay = assertDay((p.get("from") || addDays(toDay, -30)).slice(0, 10));
+  const { gteIso, lteIso } = rangeBahia(fromDay, toDay);
+  return { fromDay, toDay, gteIso, lteIso };
 }
 
-async function listLeads(p: URLSearchParams) {
+async function listLeads(tenantId: string, p: URLSearchParams) {
   const limit = Math.min(parseInt(p.get("limit") || "50"), 500);
   const offset = parseInt(p.get("offset") || "0");
   const search = p.get("search");
@@ -87,7 +107,7 @@ async function listLeads(p: URLSearchParams) {
   const pipelineId = p.get("pipeline_id");
   let q = admin.from("crm_leads")
     .select("id,name,phone,source,tags,value,pipeline_id,stage_id,assigned_to,cidade,servico_interesse,score,last_message_at,last_inbound_at,last_outbound_at,created_at,updated_at,is_blocked", { count: "exact" })
-    .eq("tenant_id", TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1);
   if (search) {
@@ -103,31 +123,31 @@ async function listLeads(p: URLSearchParams) {
   return json({ data, count, limit, offset });
 }
 
-async function getLead(id: string) {
+async function getLead(tenantId: string, id: string) {
   const { data, error } = await admin.from("crm_leads").select("*")
-    .eq("tenant_id", TENANT_ID).eq("id", id).maybeSingle();
+    .eq("tenant_id", tenantId).eq("id", id).maybeSingle();
   if (error) return json({ error: error.message }, 500);
   if (!data) return json({ error: "not_found" }, 404);
   return json(data);
 }
 
-async function createLead(body: any) {
-  const payload = { ...body, tenant_id: TENANT_ID };
+async function createLead(tenantId: string, body: any) {
+  const payload = { ...body, tenant_id: tenantId };
   const { data, error } = await admin.from("crm_leads").insert(payload).select().single();
   if (error) return json({ error: error.message }, 400);
   return json(data, 201);
 }
 
-async function updateLead(id: string, body: any) {
+async function updateLead(tenantId: string, id: string, body: any) {
   const { tenant_id, ...rest } = body || {};
   const { data, error } = await admin.from("crm_leads").update(rest)
-    .eq("tenant_id", TENANT_ID).eq("id", id).select().maybeSingle();
+    .eq("tenant_id", tenantId).eq("id", id).select().maybeSingle();
   if (error) return json({ error: error.message }, 400);
   return json(data);
 }
 
-async function deleteLead(id: string) {
-  const { error } = await admin.from("crm_leads").delete().eq("tenant_id", TENANT_ID).eq("id", id);
+async function deleteLead(tenantId: string, id: string) {
+  const { error } = await admin.from("crm_leads").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) return json({ error: error.message }, 400);
   return json({ deleted: true });
 }
@@ -151,13 +171,13 @@ async function signMediaUrl(rawUrl: string | null, expiresIn = 3600): Promise<st
   return data.signedUrl;
 }
 
-async function leadMessages(id: string, p: URLSearchParams) {
+async function leadMessages(tenantId: string, id: string, p: URLSearchParams) {
   const limit = Math.min(parseInt(p.get("limit") || "100"), 500);
   const sign = p.get("sign") !== "false"; // default true
   const expiresIn = Math.min(parseInt(p.get("expires_in") || "3600"), 60 * 60 * 24 * 7);
   const { data, error } = await admin.from("messages")
     .select("id,direction,type,content,media_url,status,transcription,created_at,channel,whatsapp_message_id")
-    .eq("tenant_id", TENANT_ID).eq("lead_id", id)
+    .eq("tenant_id", tenantId).eq("lead_id", id)
     .order("created_at", { ascending: false }).limit(limit);
   if (error) return json({ error: error.message }, 500);
   let rows = (data || []).reverse();
@@ -171,7 +191,28 @@ async function leadMessages(id: string, p: URLSearchParams) {
   return json({ data: rows });
 }
 
-async function mediaSign(p: URLSearchParams, body: any) {
+// Escapa curingas de LIKE/ILIKE (%, _, \) para usar valor literal no padrão.
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+// A mídia só pode ser assinada se pertencer ao tenant da chave: precisa existir
+// uma linha em `messages` do tenant cujo media_url aponte para o mesmo
+// bucket/path (pré-filtro por ILIKE + confirmação exata via parseStorageUrl).
+async function mediaBelongsToTenant(tenantId: string, bucket: string, path: string): Promise<boolean> {
+  const { data, error } = await admin.from("messages")
+    .select("media_url")
+    .eq("tenant_id", tenantId)
+    .ilike("media_url", `%${escapeLike(bucket)}/${escapeLike(path)}%`)
+    .limit(20);
+  if (error) throw new Error(error.message);
+  return (data || []).some((m: any) => {
+    const parsed = parseStorageUrl(m.media_url);
+    return parsed && parsed.bucket === bucket && parsed.path === path;
+  });
+}
+
+async function mediaSign(tenantId: string, p: URLSearchParams, body: any) {
   const url = p.get("url") || body?.url;
   const bucket = p.get("bucket") || body?.bucket;
   const path = p.get("path") || body?.path;
@@ -182,14 +223,19 @@ async function mediaSign(p: URLSearchParams, body: any) {
     if (!parsed) return json({ error: "provide ?url= or ?bucket=&path=" }, 400);
     b = parsed.bucket; pa = parsed.path;
   }
+  // Isolamento de tenant: nunca assinar mídia que não pertença ao tenant da
+  // chave (sem isso, uma 2ª chave per-tenant poderia assinar mídia alheia).
+  if (!(await mediaBelongsToTenant(tenantId, b!, pa!))) {
+    return json({ error: "not_found" }, 404);
+  }
   const { data, error } = await admin.storage.from(b!).createSignedUrl(pa!, expiresIn);
   if (error) return json({ error: error.message }, 400);
   return json({ bucket: b, path: pa, signed_url: data.signedUrl, expires_in: expiresIn });
 }
 
-async function mediaDownload(messageId: string) {
+async function mediaDownload(tenantId: string, messageId: string) {
   const { data: msg, error } = await admin.from("messages")
-    .select("id,media_url,type,tenant_id").eq("tenant_id", TENANT_ID).eq("id", messageId).maybeSingle();
+    .select("id,media_url,type,tenant_id").eq("tenant_id", tenantId).eq("id", messageId).maybeSingle();
   if (error) return json({ error: error.message }, 500);
   if (!msg || !msg.media_url) return json({ error: "not_found" }, 404);
   const parsed = parseStorageUrl(msg.media_url);
@@ -211,7 +257,13 @@ async function mediaDownload(messageId: string) {
   });
 }
 
-async function sendMessage(id: string, body: any) {
+async function sendMessage(tenantId: string, id: string, body: any) {
+  // Isolamento de tenant: o lead precisa pertencer ao tenant da chave antes
+  // do proxy (sem isso, uma 2ª chave per-tenant dispararia WhatsApp em lead alheio).
+  const { data: lead, error: leadErr } = await admin.from("crm_leads")
+    .select("id").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
+  if (leadErr) return json({ error: leadErr.message }, 500);
+  if (!lead) return json({ error: "not_found" }, 404);
   // Proxy to send-whatsapp-message function using service role.
   const res = await fetch(`${URL_BASE}/functions/v1/send-whatsapp-message`, {
     method: "POST",
@@ -226,50 +278,64 @@ async function sendMessage(id: string, body: any) {
   try { return json(JSON.parse(txt), res.status); } catch { return new Response(txt, { status: res.status, headers: cors }); }
 }
 
-async function conversations(p: URLSearchParams) {
+async function conversations(tenantId: string, p: URLSearchParams) {
   const limit = Math.min(parseInt(p.get("limit") || "50"), 200);
   const unreadOnly = p.get("unread") === "true";
   let q = admin.from("crm_leads")
     .select("id,name,phone,last_message_at,last_inbound_at,last_outbound_at,stage_id,assigned_to")
-    .eq("tenant_id", TENANT_ID)
+    .eq("tenant_id", tenantId)
     .not("last_message_at", "is", null)
     .order("last_message_at", { ascending: false })
     .limit(limit);
   const { data, error } = await q;
   if (error) return json({ error: error.message }, 500);
   let list = data || [];
-  if (unreadOnly) list = list.filter((l: any) => l.last_inbound_at && (!l.last_outbound_at || l.last_inbound_at > l.last_outbound_at));
+  if (unreadOnly) {
+    // "Não lido" com janela de 60 dias (mesma semântica da RPC corrigida
+    // crm_unread_leads_count): inbound antigo sem resposta não conta para
+    // sempre como não lido.
+    const cutoffIso = new Date(Date.now() - 60 * 86400_000).toISOString();
+    list = list.filter((l: any) =>
+      l.last_inbound_at &&
+      l.last_inbound_at >= cutoffIso &&
+      (!l.last_outbound_at || l.last_inbound_at > l.last_outbound_at)
+    );
+  }
   return json({ data: list });
 }
 
-async function appointments(method: string, p: URLSearchParams, body: any, id?: string) {
+async function appointments(tenantId: string, method: string, p: URLSearchParams, body: any, id?: string) {
   if (method === "GET") {
-    const { fromISO, toISO } = parseRange(p);
-    const { data, error } = await admin.from("crm_appointments").select("*")
-      .eq("tenant_id", TENANT_ID).gte("scheduled_at", fromISO).lte("scheduled_at", toISO)
-      .order("scheduled_at", { ascending: true });
-    if (error) return json({ error: error.message }, 500);
+    // crm_appointments usa scheduled_date (DATE) — não existe scheduled_at.
+    const { fromDay, toDay } = parseRange(p);
+    const data = await fetchAllPaged<any>(
+      () => admin.from("crm_appointments").select("*")
+        .eq("tenant_id", tenantId).gte("scheduled_date", fromDay).lte("scheduled_date", toDay),
+      "id",
+    );
+    data.sort((a: any, b: any) =>
+      `${a.scheduled_date}T${a.scheduled_time || ""}`.localeCompare(`${b.scheduled_date}T${b.scheduled_time || ""}`));
     return json({ data });
   }
   if (method === "POST") {
     const { data, error } = await admin.from("crm_appointments")
-      .insert({ ...body, tenant_id: TENANT_ID }).select().single();
+      .insert({ ...body, tenant_id: tenantId }).select().single();
     if (error) return json({ error: error.message }, 400);
     return json(data, 201);
   }
   if (method === "PATCH" && id) {
     const { data, error } = await admin.from("crm_appointments").update(body)
-      .eq("tenant_id", TENANT_ID).eq("id", id).select().maybeSingle();
+      .eq("tenant_id", tenantId).eq("id", id).select().maybeSingle();
     if (error) return json({ error: error.message }, 400);
     return json(data);
   }
   return json({ error: "method_not_allowed" }, 405);
 }
 
-async function tasks(method: string, p: URLSearchParams, body: any, id?: string) {
+async function tasks(tenantId: string, method: string, p: URLSearchParams, body: any, id?: string) {
   if (method === "GET") {
     const status = p.get("status");
-    let q = admin.from("crm_tasks").select("*").eq("tenant_id", TENANT_ID)
+    let q = admin.from("crm_tasks").select("*").eq("tenant_id", tenantId)
       .order("scheduled_at", { ascending: true }).limit(500);
     if (status) q = q.eq("status", status);
     const { data, error } = await q;
@@ -278,126 +344,182 @@ async function tasks(method: string, p: URLSearchParams, body: any, id?: string)
   }
   if (method === "POST") {
     const { data, error } = await admin.from("crm_tasks")
-      .insert({ ...body, tenant_id: TENANT_ID }).select().single();
+      .insert({ ...body, tenant_id: tenantId }).select().single();
     if (error) return json({ error: error.message }, 400);
     return json(data, 201);
   }
   if (method === "PATCH" && id) {
     const { data, error } = await admin.from("crm_tasks").update(body)
-      .eq("tenant_id", TENANT_ID).eq("id", id).select().maybeSingle();
+      .eq("tenant_id", tenantId).eq("id", id).select().maybeSingle();
     if (error) return json({ error: error.message }, 400);
     return json(data);
   }
   return json({ error: "method_not_allowed" }, 405);
 }
 
-// ===== /reports/financeiro — replica a lógica do Dashboard.tsx =====
-function toLocalDateStr(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+// ===== Definição canônica de CONTRATADO =====
+// Paciente cujo PRIMEIRO pagamento no tenant (todas as clínicas, sem recorte
+// de período) cai dentro do período. Nunca usa updated_at nem crm_leads.value.
+async function contratadosCanonicos(
+  clinicaIds: string[],
+  fromDay: string,
+  toDay: string,
+): Promise<{ paciente_id: string; clinica_id: string | null; primeiro_pagamento: string }[]> {
+  if (!clinicaIds.length) return [];
+  // pagamentos NÃO tem tenant_id — o escopo vem de clinica_id ∈ clinicas do tenant.
+  const noPeriodo = await fetchAllPaged<any>(
+    () => admin.from("pagamentos")
+      .select("id, paciente_id, clinica_id, data_pagamento, created_at")
+      .in("clinica_id", clinicaIds)
+      .gte("data_pagamento", fromDay).lte("data_pagamento", toDay),
+    "id",
+  );
+  // Primeiro pagamento do período por paciente (desempate determinístico por
+  // data_pagamento, created_at, id — mesmo critério da RPC rpt_contratados).
+  const keyOf = (r: any) => `${r.data_pagamento}|${r.created_at}|${r.id}`;
+  const primeiroPorPaciente = new Map<string, any>();
+  for (const r of noPeriodo) {
+    if (!r.paciente_id) continue;
+    const atual = primeiroPorPaciente.get(r.paciente_id);
+    if (!atual || keyOf(r) < keyOf(atual)) primeiroPorPaciente.set(r.paciente_id, r);
+  }
+  if (!primeiroPorPaciente.size) return [];
+  // Exclui quem já tinha pagamento ANTES do período (em qualquer clínica do tenant).
+  const comPagamentoAnterior = new Set<string>();
+  for (const ids of chunk([...primeiroPorPaciente.keys()], 150)) {
+    const prev = await fetchAllPaged<any>(
+      () => admin.from("pagamentos").select("id, paciente_id")
+        .in("clinica_id", clinicaIds).in("paciente_id", ids)
+        .lt("data_pagamento", fromDay),
+      "id",
+    );
+    for (const r of prev) comPagamentoAnterior.add(r.paciente_id);
+  }
+  const out: { paciente_id: string; clinica_id: string | null; primeiro_pagamento: string }[] = [];
+  for (const [pid, r] of primeiroPorPaciente) {
+    if (comPagamentoAnterior.has(pid)) continue;
+    out.push({ paciente_id: pid, clinica_id: r.clinica_id ?? null, primeiro_pagamento: r.data_pagamento });
+  }
+  return out;
 }
 
-async function reportFinanceiro(p: URLSearchParams) {
-  const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const from = (p.get("from") || toLocalDateStr(firstOfMonth)).slice(0, 10);
-  const to = (p.get("to") || toLocalDateStr(lastOfMonth)).slice(0, 10);
+// ===== /reports/financeiro =====
+async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
+  // Defaults no dia-calendário de America/Bahia (não no relógio UTC do servidor):
+  // mês atual completo; "ontem" também é calculado na Bahia.
+  const hoje = todayBahia();
+  const [hy, hm] = hoje.split("-").map(Number);
+  const firstOfMonth = `${hoje.slice(0, 8)}01`;
+  const lastOfMonth = new Date(Date.UTC(hy, hm, 0)).toISOString().slice(0, 10);
+  const from = assertDay((p.get("from") || firstOfMonth).slice(0, 10));
+  const to = assertDay((p.get("to") || lastOfMonth).slice(0, 10));
   const clinicaId = p.get("clinica");
 
-  // pagamentos
-  let pagQ = admin.from("pagamentos")
-    .select("id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade")
-    .gte("data_pagamento", from).lte("data_pagamento", to).limit(50000);
-  if (clinicaId) pagQ = pagQ.eq("clinica_id", clinicaId);
-
-  // crm_appointments (tenant-scoped) com cidade do lead
-  let aptQ = admin.from("crm_appointments")
-    .select("id, lead_id, scheduled_date, status, is_rescheduled, crm_leads(cidade)")
-    .eq("tenant_id", TENANT_ID)
-    .gte("scheduled_date", `${from}T00:00:00`).lte("scheduled_date", `${to}T23:59:59`).limit(10000);
-
-  const [pagRes, clinRes, pacRes, aptRes, holRes] = await Promise.all([
-    pagQ,
-    admin.from("clinicas").select("id, nome, cidade, ativa").eq("ativa", true),
-    admin.from("pacientes").select("id, origem, nome_anuncio").limit(20000),
-    aptQ,
-    admin.from("dashboard_holidays" as any).select("id, data, descricao, clinica_id"),
-  ]);
-  if (pagRes.error) return json({ error: pagRes.error.message }, 500);
-  const pagamentos = (pagRes.data || []) as any[];
+  // Clínicas do TENANT (inclui inativas para atribuir pagamentos antigos ao
+  // nome real da clínica — nada de strings chumbadas).
+  const clinRes = await admin.from("clinicas")
+    .select("id, nome, cidade, ativa").eq("tenant_id", tenantId);
+  if (clinRes.error) return json({ error: clinRes.error.message }, 500);
   const clinicas = (clinRes.data || []) as any[];
-  const pacientes = (pacRes.data || []) as any[];
-  const appointments = (aptRes.data || []) as any[];
+  const clinicaIds = clinicas.map((c) => c.id as string);
+  // O filtro ?clinica= só vale se a clínica pertencer ao tenant.
+  const pagClinicaIds = clinicaId ? clinicaIds.filter((cid) => cid === clinicaId) : clinicaIds;
+
+  // pagamentos do tenant (a tabela NÃO tem tenant_id — escopo via clinica_id
+  // ∈ clinicas do tenant), paginando além do cap de 1000 linhas do PostgREST.
+  const pagamentos = pagClinicaIds.length
+    ? await fetchAllPaged<any>(
+        () => admin.from("pagamentos")
+          .select("id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade")
+          .in("clinica_id", pagClinicaIds)
+          .gte("data_pagamento", from).lte("data_pagamento", to),
+        "id",
+      )
+    : [];
+
+  // crm_appointments do tenant por scheduled_date (coluna DATE), paginado.
+  const appointments = await fetchAllPaged<any>(
+    () => admin.from("crm_appointments")
+      .select("id, lead_id, scheduled_date, status, is_rescheduled, crm_leads(cidade)")
+      .eq("tenant_id", tenantId)
+      .gte("scheduled_date", from).lte("scheduled_date", to),
+    "id",
+  );
+
+  // feriados do tenant
+  const holRes = await admin.from("dashboard_holidays" as any)
+    .select("id, data, descricao, clinica_id").eq("tenant_id", tenantId);
+  if (holRes.error) return json({ error: holRes.error.message }, 500);
   const holidays = (holRes.data || []) as any[];
 
   const num = (v: any) => Number(v) || 0;
 
-  // KPIs faturamento
-  const fatTotal = pagamentos.reduce((s, p) => s + num(p.valor), 0);
-  const fatNovos = pagamentos.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + num(p.valor), 0);
-  const fatRecorrentes = pagamentos.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + num(p.valor), 0);
+  // KPIs faturamento (soma de pagamentos por data_pagamento — fonte canônica)
+  const fatTotal = pagamentos.reduce((s, pg) => s + num(pg.valor), 0);
+  const fatNovos = pagamentos.filter((pg) => pg.tipo === "primeiro").reduce((s, pg) => s + num(pg.valor), 0);
+  const fatRecorrentes = pagamentos.filter((pg) => pg.tipo === "recorrente").reduce((s, pg) => s + num(pg.valor), 0);
 
-  const pacientesTotalSet = new Set(pagamentos.map((p) => p.paciente_id).filter(Boolean));
-  const novosContratadosSet = new Set(pagamentos.filter((p) => p.tipo === "primeiro").map((p) => p.paciente_id).filter(Boolean));
+  const pacientesTotalSet = new Set(pagamentos.map((pg) => pg.paciente_id).filter(Boolean));
 
-  // ticket_medio (mesma lógica do Dashboard): fatTotal / dias úteis com pagamento
-  // dias úteis = seg-sáb (exclui domingos) - feriados aplicáveis, do 1º pagamento até ontem ou último dia do mês de referência.
+  // pacientes do tenant presentes nos pagamentos do período (por id, em blocos)
+  const pacientes: any[] = [];
+  for (const ids of chunk([...pacientesTotalSet] as string[], 150)) {
+    const r = await admin.from("pacientes").select("id, origem, nome_anuncio")
+      .eq("tenant_id", tenantId).in("id", ids);
+    if (r.error) return json({ error: r.error.message }, 500);
+    pacientes.push(...(r.data || []));
+  }
+
+  // CONTRATADOS (definição canônica): pacientes cujo PRIMEIRO pagamento cai
+  // no período; com ?clinica=, filtra pela clínica do primeiro pagamento.
+  const contratados = await contratadosCanonicos(clinicaIds, from, to);
+  const contratadosNoFiltro = clinicaId
+    ? contratados.filter((c) => c.clinica_id === clinicaId)
+    : contratados;
+
+  // Ticket médio DE VERDADE: por pagamento e por paciente.
+  const ticketPorPagamento = pagamentos.length ? fatTotal / pagamentos.length : 0;
+  const ticketPorPaciente = pacientesTotalSet.size ? fatTotal / pacientesTotalSet.size : 0;
+
+  // Média diária de faturamento (NÃO é ticket médio) — mesma regra do
+  // Dashboard: numerador = pagamentos até ontem (America/Bahia); janela =
+  // início do período até min(ontem, fim do período); domingo = 0,
+  // feriado = 0, sábado = 0,5.
   const holidaySet = new Set<string>();
   holidays.forEach((h: any) => {
     const applies = !h.clinica_id || !clinicaId || h.clinica_id === clinicaId;
     if (applies) holidaySet.add(h.data);
   });
-  const isWorkingDay = (d: Date, ds: string) => d.getDay() !== 0 && !holidaySet.has(ds);
-
-  let diasUteisPassados = 1;
-  if (pagamentos.length) {
-    const dates = pagamentos.map((p) => p.data_pagamento as string).sort();
-    const firstDate = new Date(dates[0] + "T12:00:00");
-    const todayLocal = new Date(); todayLocal.setHours(12, 0, 0, 0);
-    const yesterday = new Date(todayLocal); yesterday.setDate(yesterday.getDate() - 1);
-    const lastDayMonth = new Date(firstDate.getFullYear(), firstDate.getMonth() + 1, 0);
-    const end = yesterday < lastDayMonth ? yesterday : lastDayMonth;
-    let count = 0;
-    const cur = new Date(firstDate);
-    while (cur <= end) {
-      const ds = toLocalDateStr(cur);
-      if (isWorkingDay(cur, ds)) count++;
-      cur.setDate(cur.getDate() + 1);
-    }
-    diasUteisPassados = Math.max(count, 1);
-  }
-  const ticketMedio = fatTotal / diasUteisPassados;
+  const ontem = addDays(hoje, -1);
+  const fimJanela = ontem < to ? ontem : to;
+  const diasUteisPassados = fimJanela >= from ? businessDaysBetween(from, fimJanela, holidaySet) : 0;
+  const fatAteOntem = pagamentos
+    .filter((pg) => pg.data_pagamento <= fimJanela)
+    .reduce((s, pg) => s + num(pg.valor), 0);
+  const faturamentoMedioDiaUtil = diasUteisPassados > 0 ? fatAteOntem / diasUteisPassados : 0;
 
   // por especialidade
   const espMap = new Map<string, { faturamento: number; qtd: number }>();
-  pagamentos.forEach((p) => {
-    const k = p.especialidade || "Sem Especialidade";
+  pagamentos.forEach((pg) => {
+    const k = pg.especialidade || "Sem especialidade";
     const e = espMap.get(k) || { faturamento: 0, qtd: 0 };
-    e.faturamento += num(p.valor); e.qtd += 1;
+    e.faturamento += num(pg.valor); e.qtd += 1;
     espMap.set(k, e);
   });
   const porEspecialidade = Array.from(espMap.entries())
     .map(([especialidade, v]) => ({ especialidade, ...v }))
     .sort((a, b) => b.faturamento - a.faturamento);
 
-  // por clínica (agrupando VCA 01 + VCA 02 como "VCA")
-  const clinicNameFor = (c: any) => {
-    let n = String(c?.nome || "").replace("Clínica ", "").replace("Rizodent ", "");
-    if (n.includes("VCA")) n = "VCA";
-    return n || "Sem Clínica";
-  };
+  // por clínica — nome real vindo da tabela clinicas (sem strings chumbadas)
   const clinicById = new Map<string, any>();
   clinicas.forEach((c) => clinicById.set(c.id, c));
   const clinMap = new Map<string, { faturamento: number; pacientes: Set<string> }>();
-  pagamentos.forEach((p) => {
-    const c = p.clinica_id ? clinicById.get(p.clinica_id) : null;
-    const name = c ? clinicNameFor(c) : "Sem Clínica";
+  pagamentos.forEach((pg) => {
+    const c = pg.clinica_id ? clinicById.get(pg.clinica_id) : null;
+    const name = c?.nome || "Sem clínica";
     const entry = clinMap.get(name) || { faturamento: 0, pacientes: new Set<string>() };
-    entry.faturamento += num(p.valor);
-    if (p.paciente_id) entry.pacientes.add(p.paciente_id);
+    entry.faturamento += num(pg.valor);
+    if (pg.paciente_id) entry.pacientes.add(pg.paciente_id);
     clinMap.set(name, entry);
   });
   const porClinica = Array.from(clinMap.entries())
@@ -406,11 +528,11 @@ async function reportFinanceiro(p: URLSearchParams) {
 
   // por origem (pacientes.origem || 'Outros') — só pacientes que aparecem em pagamentos
   const pacienteById = new Map<string, any>();
-  pacientes.forEach((p) => pacienteById.set(p.id, p));
+  pacientes.forEach((pc) => pacienteById.set(pc.id, pc));
   const pagByPaciente = new Map<string, number>();
-  pagamentos.forEach((p) => {
-    if (!p.paciente_id) return;
-    pagByPaciente.set(p.paciente_id, (pagByPaciente.get(p.paciente_id) || 0) + num(p.valor));
+  pagamentos.forEach((pg) => {
+    if (!pg.paciente_id) return;
+    pagByPaciente.set(pg.paciente_id, (pagByPaciente.get(pg.paciente_id) || 0) + num(pg.valor));
   });
   const origemMap = new Map<string, { pacientes: number; faturamento: number }>();
   pacientesTotalSet.forEach((pid) => {
@@ -427,12 +549,12 @@ async function reportFinanceiro(p: URLSearchParams) {
 
   // por anúncio top 10
   const anuncioMap = new Map<string, { display: string; faturamento: number }>();
-  pacientes.forEach((p) => {
-    if (!p.nome_anuncio) return;
-    const fat = pagByPaciente.get(p.id) || 0;
+  pacientes.forEach((pc) => {
+    if (!pc.nome_anuncio) return;
+    const fat = pagByPaciente.get(pc.id) || 0;
     if (!fat) return;
-    const key = String(p.nome_anuncio).trim().toLowerCase();
-    const entry = anuncioMap.get(key) || { display: String(p.nome_anuncio).trim(), faturamento: 0 };
+    const key = String(pc.nome_anuncio).trim().toLowerCase();
+    const entry = anuncioMap.get(key) || { display: String(pc.nome_anuncio).trim(), faturamento: 0 };
     entry.faturamento += fat;
     anuncioMap.set(key, entry);
   });
@@ -450,14 +572,19 @@ async function reportFinanceiro(p: URLSearchParams) {
   });
   const remarcados = appointments.filter((a) => a.is_rescheduled === true).length;
 
-  // por clínica via crm_leads.cidade
-  const norm = (s: string) => s.toLowerCase();
+  // por clínica via crm_leads.cidade — casamento por chave normalizada com
+  // clinicas.cidade do TENANT (clínica ativa vence se a cidade se repetir);
+  // cidade sem clínica correspondente aparece como veio; nula = "Sem cidade".
+  const clinicByCidade = new Map<string, any>();
+  [...clinicas].sort((a, b) => Number(b.ativa) - Number(a.ativa)).forEach((c) => {
+    const k = normalizeCidadeKey(c.cidade);
+    if (k && !clinicByCidade.has(k)) clinicByCidade.set(k, c);
+  });
   const cidadeToClinica = (cidade: string | null | undefined): string => {
-    const cid = (cidade || "").trim();
-    if (!cid) return "Sem Cidade";
-    const c = clinicas.find((cc: any) => cc.cidade && norm(cc.cidade) === norm(cid));
-    if (c) return clinicNameFor(c);
-    return cid;
+    const k = normalizeCidadeKey(cidade);
+    if (!k) return SEM_CIDADE;
+    const c = clinicByCidade.get(k);
+    return c ? c.nome : String(cidade).trim();
   };
   const aptClinMap = new Map<string, { total: number; por_status: Record<string, number> }>();
   appointments.forEach((a: any) => {
@@ -474,12 +601,16 @@ async function reportFinanceiro(p: URLSearchParams) {
     .sort((a, b) => b.total - a.total);
 
   return json({
-    period: { from, to },
+    period: { from, to, timezone: BAHIA_TZ },
     faturamento: { total: fatTotal, novos: fatNovos, recorrentes: fatRecorrentes },
-    ticket_medio: ticketMedio,
+    // Ticket médio real. O antigo campo "ticket_medio" (número único) era, na
+    // verdade, faturamento por dia útil — ver faturamento_medio_dia_util.
+    ticket_medio: { por_pagamento: ticketPorPagamento, por_paciente: ticketPorPaciente },
+    faturamento_medio_dia_util: faturamentoMedioDiaUtil,
     dias_uteis_passados: diasUteisPassados,
     pacientes_total: pacientesTotalSet.size,
-    novos_contratados: novosContratadosSet.size,
+    // novos_contratados = definição canônica (primeiro pagamento no período)
+    novos_contratados: contratadosNoFiltro.length,
     num_pagamentos: pagamentos.length,
     por_especialidade: porEspecialidade,
     por_clinica: porClinica,
@@ -494,59 +625,103 @@ async function reportFinanceiro(p: URLSearchParams) {
   });
 }
 
-async function reportOverview(p: URLSearchParams) {
-  const { fromISO, toISO } = parseRange(p);
-  const [{ count: leadsCount }, { count: msgsIn }, { count: msgsOut }, { count: aptScheduled }, { count: aptContracted }] = await Promise.all([
-    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", TENANT_ID).gte("created_at", fromISO).lte("created_at", toISO),
-    admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", TENANT_ID).eq("direction", "inbound").gte("created_at", fromISO).lte("created_at", toISO),
-    admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", TENANT_ID).eq("direction", "outbound").gte("created_at", fromISO).lte("created_at", toISO),
-    admin.from("crm_appointments").select("id", { count: "exact", head: true }).eq("tenant_id", TENANT_ID).gte("scheduled_at", fromISO).lte("scheduled_at", toISO),
-    admin.from("crm_appointments").select("id", { count: "exact", head: true }).eq("tenant_id", TENANT_ID).eq("status", "contracted").gte("updated_at", fromISO).lte("updated_at", toISO),
+async function reportOverview(tenantId: string, p: URLSearchParams) {
+  const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
+  const results = await Promise.all([
+    // leads_created EXCLUI leads sintéticos criados pelo trigger
+    // ensure_lead_for_pagamento (source='Retroativo', nascem com
+    // created_at=now() ao lançar pagamento antigo — não são leads novos).
+    // `.or` em vez de `.neq` para não descartar source NULL (lógica ternária SQL).
+    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).or("source.is.null,source.neq.Retroativo").gte("created_at", gteIso).lte("created_at", lteIso),
+    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("source", "Retroativo").gte("created_at", gteIso).lte("created_at", lteIso),
+    admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("direction", "inbound").gte("created_at", gteIso).lte("created_at", lteIso),
+    admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("direction", "outbound").gte("created_at", gteIso).lte("created_at", lteIso),
+    // crm_appointments usa scheduled_date (DATE) — scheduled_at não existe.
+    admin.from("crm_appointments").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("scheduled_date", fromDay).lte("scheduled_date", toDay),
+    // status por scheduled_date (data estável), nunca por updated_at.
+    admin.from("crm_appointments").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "contracted").gte("scheduled_date", fromDay).lte("scheduled_date", toDay),
+    admin.from("clinicas").select("id").eq("tenant_id", tenantId),
   ]);
+  // Nenhum erro pode virar zero silencioso.
+  const failed = results.find((r: any) => r.error);
+  if (failed) return json({ error: (failed as any).error.message }, 500);
+  const [leadsRes, leadsRetroRes, inRes, outRes, schedRes, contrApptRes, clinRes] = results as any[];
+
+  // CONTRATADOS canônicos: pacientes cujo primeiro pagamento cai no período.
+  const clinicaIds = ((clinRes.data || []) as any[]).map((c) => c.id as string);
+  const contratados = await contratadosCanonicos(clinicaIds, fromDay, toDay);
+
   return json({
-    period: { from: fromISO, to: toISO },
-    leads_created: leadsCount ?? 0,
-    messages_inbound: msgsIn ?? 0,
-    messages_outbound: msgsOut ?? 0,
-    appointments_scheduled: aptScheduled ?? 0,
-    appointments_contracted: aptContracted ?? 0,
+    period: { from: fromDay, to: toDay, timezone: BAHIA_TZ },
+    leads_created: leadsRes.count ?? 0,
+    // Leads sintéticos do trigger ensure_lead_for_pagamento, segregados para
+    // não inflar leads_created (não são leads que chegaram no período).
+    leads_retroativos: leadsRetroRes.count ?? 0,
+    messages_inbound: inRes.count ?? 0,
+    messages_outbound: outRes.count ?? 0,
+    appointments_scheduled: schedRes.count ?? 0,
+    // Agendamentos com status "contracted" por scheduled_date no período.
+    appointments_contracted: contrApptRes.count ?? 0,
+    // Definição canônica de fechamento: primeiro pagamento no período.
+    pacientes_contratados: contratados.length,
   });
 }
 
-async function reportFunnel(p: URLSearchParams) {
+async function reportFunnel(tenantId: string, p: URLSearchParams) {
   const pipelineId = p.get("pipeline_id");
-  let stagesQ = admin.from("crm_stages").select("id,name,position,pipeline_id").eq("tenant_id", TENANT_ID).order("position");
+  let stagesQ = admin.from("crm_stages").select("id,name,position,pipeline_id").eq("tenant_id", tenantId).order("position");
   if (pipelineId) stagesQ = stagesQ.eq("pipeline_id", pipelineId);
   const { data: stages, error: sErr } = await stagesQ;
   if (sErr) return json({ error: sErr.message }, 500);
   const out: any[] = [];
   for (const s of stages || []) {
-    const { count } = await admin.from("crm_leads").select("id", { count: "exact", head: true })
-      .eq("tenant_id", TENANT_ID).eq("stage_id", s.id);
+    const { count, error } = await admin.from("crm_leads").select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId).eq("stage_id", s.id);
+    if (error) return json({ error: error.message }, 500);
     out.push({ ...s, leads_count: count ?? 0 });
   }
-  return json({ data: out });
+  return json({
+    data: out,
+    // Rótulo honesto: isto NÃO mede fechamentos de um período.
+    observacao: "Fotografia ATUAL do funil (etapa atual de cada lead), sem período. Para fechamentos use 'pacientes_contratados' em /reports/overview ou 'novos_contratados' em /reports/financeiro (definição canônica: primeiro pagamento do paciente dentro do período).",
+  });
 }
 
-async function reportBySource(p: URLSearchParams) {
-  const { fromISO, toISO } = parseRange(p);
-  const { data, error } = await admin.from("crm_leads").select("source")
-    .eq("tenant_id", TENANT_ID).gte("created_at", fromISO).lte("created_at", toISO);
-  if (error) return json({ error: error.message }, 500);
+async function reportBySource(tenantId: string, p: URLSearchParams) {
+  const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
+  // Paginado — o PostgREST corta em 1000 linhas e truncaria a contagem.
+  const rows = await fetchAllPaged<{ source: string | null }>(
+    () => admin.from("crm_leads").select("id, source")
+      .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
+    "id",
+  );
+  // Leads sintéticos do trigger ensure_lead_for_pagamento (source='Retroativo')
+  // ficam FORA de data/total (created_at deles é a data do lançamento do
+  // pagamento, não a chegada de um lead) — segregados em `retroativos` para a
+  // soma de `data` sempre bater com `total`.
+  const retroativos = rows.filter((r) => r.source === "Retroativo").length;
+  const reais = rows.filter((r) => r.source !== "Retroativo");
   const counts: Record<string, number> = {};
-  for (const r of data || []) {
-    const k = (r as any).source || "Sem origem";
+  for (const r of reais) {
+    const k = r.source || "Sem origem";
     counts[k] = (counts[k] || 0) + 1;
   }
-  return json({ data: Object.entries(counts).map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count) });
+  return json({
+    period: { from: fromDay, to: toDay, timezone: BAHIA_TZ },
+    total: reais.length,
+    retroativos,
+    data: Object.entries(counts).map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count),
+    observacao: "Leads com source='Retroativo' (criados automaticamente ao lançar pagamento de paciente sem lead) são segregados em 'retroativos' e não entram em total/data.",
+  });
 }
 
 Deno.serve(async (req) => {
   cors = buildCorsFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
-  const resolvedTenant = await resolveTenantFromAuth(req);
-  if (!resolvedTenant) return json({ error: "Unauthorized — provide API key as Bearer token or x-api-key header" }, 401);
-  TENANT_ID = resolvedTenant;
+  // Tenant resolvido POR REQUEST e passado por parâmetro (nunca em global
+  // mutável — requests concorrentes de tenants distintos causariam corrida).
+  const tenantId = await resolveTenantFromAuth(req);
+  if (!tenantId) return json({ error: "Unauthorized — provide API key as Bearer token or x-api-key header" }, 401);
 
   const url = new URL(req.url);
   // Path after /admin-api
@@ -561,7 +736,7 @@ Deno.serve(async (req) => {
   try {
     if (parts[0] === undefined || parts[0] === "") {
       return json({
-        name: "Rizodent Admin API",
+        name: "CRClin Admin API",
         endpoints: [
           "GET /leads?search=&stage_id=&pipeline_id=&limit=&offset=",
           "GET /leads/:id",
@@ -590,33 +765,36 @@ Deno.serve(async (req) => {
     if (parts[0] === "leads") {
       const id = parts[1];
       if (!id) {
-        if (req.method === "GET") return await listLeads(p);
-        if (req.method === "POST") return await createLead(body);
+        if (req.method === "GET") return await listLeads(tenantId, p);
+        if (req.method === "POST") return await createLead(tenantId, body);
       } else if (parts[2] === "messages" && req.method === "GET") {
-        return await leadMessages(id, p);
+        return await leadMessages(tenantId, id, p);
       } else if (parts[2] === "send" && req.method === "POST") {
-        return await sendMessage(id, body);
+        return await sendMessage(tenantId, id, body);
       } else {
-        if (req.method === "GET") return await getLead(id);
-        if (req.method === "PATCH") return await updateLead(id, body);
-        if (req.method === "DELETE") return await deleteLead(id);
+        if (req.method === "GET") return await getLead(tenantId, id);
+        if (req.method === "PATCH") return await updateLead(tenantId, id, body);
+        if (req.method === "DELETE") return await deleteLead(tenantId, id);
       }
     }
-    if (parts[0] === "conversations" && req.method === "GET") return await conversations(p);
+    if (parts[0] === "conversations" && req.method === "GET") return await conversations(tenantId, p);
     if (parts[0] === "messages" && parts[1] && parts[2] === "download" && req.method === "GET") {
-      return await mediaDownload(parts[1]);
+      return await mediaDownload(tenantId, parts[1]);
     }
-    if (parts[0] === "media" && parts[1] === "sign") return await mediaSign(p, body);
-    if (parts[0] === "appointments") return await appointments(req.method, p, body, parts[1]);
-    if (parts[0] === "tasks") return await tasks(req.method, p, body, parts[1]);
+    if (parts[0] === "media" && parts[1] === "sign") return await mediaSign(tenantId, p, body);
+    if (parts[0] === "appointments") return await appointments(tenantId, req.method, p, body, parts[1]);
+    if (parts[0] === "tasks") return await tasks(tenantId, req.method, p, body, parts[1]);
     if (parts[0] === "reports") {
-      if (parts[1] === "overview") return await reportOverview(p);
-      if (parts[1] === "funnel") return await reportFunnel(p);
-      if (parts[1] === "by-source") return await reportBySource(p);
-      if (parts[1] === "financeiro") return await reportFinanceiro(p);
+      if (parts[1] === "overview") return await reportOverview(tenantId, p);
+      if (parts[1] === "funnel") return await reportFunnel(tenantId, p);
+      if (parts[1] === "by-source") return await reportBySource(tenantId, p);
+      if (parts[1] === "financeiro") return await reportFinanceiro(tenantId, p);
     }
     return json({ error: "not_found", path, method: req.method }, 404);
   } catch (e: any) {
-    return json({ error: e?.message ?? String(e) }, 500);
+    const msg = e?.message ?? String(e);
+    // Erros de validação de período (parseRange/assertDay/rangeBahia) são 400.
+    const isValidation = /data inválida|'from' é depois de 'to'/.test(msg);
+    return json({ error: msg }, isValidation ? 400 : 500);
   }
 });

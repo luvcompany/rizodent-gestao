@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { businessDaysBetween } from "@/lib/businessDays";
+import { fetchAllPaged, dayKeyBahia, classifyOrigemCanonica, rptContratados, type ContratadoRow } from "@/lib/reportKit";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileBarChart, Download, Share2, MessageCircle, Mail, Calendar, TrendingUp, Filter, DollarSign, Users, Stethoscope, Megaphone, Eye, ArrowLeft, CreditCard, Activity, Clock } from "lucide-react";
+import { FileBarChart, Download, Share2, MessageCircle, Mail, Calendar, TrendingUp, DollarSign, Users, Stethoscope, Megaphone, Eye, ArrowLeft, CreditCard, Activity, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -36,10 +37,14 @@ const Relatorios = () => {
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
-  // orçamentos removido
-  const [leadsData, setLeadsData] = useState<any[]>([]);
+  // orçamentos removido; leads_diarios removido (tabela sem lançamentos desde 18/04/2026)
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [holidays, setHolidays] = useState<{ data: string; clinica_id: string | null }[]>([]);
+  // Pacientes contratados (RPC canônica rpt_contratados: 1º pagamento no período)
+  const [contratados, setContratados] = useState<ContratadoRow[]>([]);
+  const [contratadosLoading, setContratadosLoading] = useState(true);
+  const [contratadosError, setContratadosError] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date(); d.setDate(1); return toLocalDateISO(d);
   });
@@ -53,21 +58,50 @@ const Relatorios = () => {
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: ld }, { data: hd }] = await Promise.all([
-        supabase.from("clinicas").select("*").eq("ativa", true),
-        supabase.from("pagamentos").select("*, clinicas(nome), pacientes(nome)"),
-        supabase.from("tratamentos").select("*, clinicas(nome), pacientes(nome)"),
-        supabase.from("pacientes").select("*"),
-        supabase.from("leads_diarios").select("*, clinicas(nome)"),
-        (supabase as any).from("dashboard_holidays").select("data, clinica_id"),
-      ]);
-      setClinicas(cl || []); setPagamentos(pg || []); setTratamentos(tr || []);
-      setPacientes(pc || []); setLeadsData(ld || []);
-      setHolidays((hd as any) || []);
-      setLoading(false);
+      setFetchError(null);
+      try {
+        // fetchAllPaged: busca TODAS as linhas (PostgREST corta em 1000 sem aviso)
+        const [cl, pg, tr, pc, hd] = await Promise.all([
+          fetchAllPaged<Tables<"clinicas">>(() => supabase.from("clinicas").select("*").eq("ativa", true), "id"),
+          fetchAllPaged<any>(() => supabase.from("pagamentos").select("*, clinicas(nome), pacientes(nome)"), "id"),
+          fetchAllPaged<any>(() => supabase.from("tratamentos").select("*, clinicas(nome), pacientes(nome)"), "id"),
+          fetchAllPaged<any>(() => supabase.from("pacientes").select("*"), "id"),
+          fetchAllPaged<{ data: string; clinica_id: string | null }>(() => (supabase as any).from("dashboard_holidays").select("data, clinica_id"), "id"),
+        ]);
+        setClinicas(cl); setPagamentos(pg); setTratamentos(tr);
+        setPacientes(pc); setHolidays(hd);
+      } catch (e: any) {
+        setFetchError(e?.message || "Erro desconhecido ao carregar os dados");
+        toast.error("Erro ao carregar os dados dos relatórios");
+      } finally {
+        setLoading(false);
+      }
     };
     fetchAll();
   }, []);
+
+  // Pacientes contratados via RPC canônica (mesmo número para qualquer usuário do tenant)
+  useEffect(() => {
+    // evita chamar a RPC com data parcial enquanto o usuário digita no input
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) return;
+    let cancelled = false;
+    (async () => {
+      setContratadosLoading(true);
+      setContratadosError(null);
+      try {
+        const rows = await rptContratados(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro);
+        if (!cancelled) setContratados(rows);
+      } catch (e: any) {
+        if (!cancelled) {
+          setContratados([]);
+          setContratadosError(e?.message || "Erro desconhecido");
+        }
+      } finally {
+        if (!cancelled) setContratadosLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [dateFrom, dateTo, clinicaFiltro]);
 
   const filteredPagamentos = useMemo(() => {
     return pagamentos.filter((p) => {
@@ -77,24 +111,15 @@ const Relatorios = () => {
     });
   }, [pagamentos, clinicaFiltro, dateFrom, dateTo]);
 
-  const filteredLeads = useMemo(() => {
-    return leadsData.filter((l) => {
-      const inClinica = clinicaFiltro === "todas" || l.clinica_id === clinicaFiltro;
-      const inDate = l.data >= dateFrom && l.data <= dateTo;
-      return inClinica && inDate;
-    });
-  }, [leadsData, clinicaFiltro, dateFrom, dateTo]);
-
   const filteredTratamentos = useMemo(() => {
     return tratamentos.filter((t) => {
       const inClinica = clinicaFiltro === "todas" || t.clinica_id === clinicaFiltro;
-      const createdDate = t.created_at?.split("T")[0] || "";
+      // dia local em America/Bahia (created_at é timestamptz UTC)
+      const createdDate = t.created_at ? dayKeyBahia(t.created_at) : "";
       const inDate = createdDate >= dateFrom && createdDate <= dateTo;
       return inClinica && inDate;
     });
   }, [tratamentos, clinicaFiltro, dateFrom, dateTo]);
-
-  const filteredOrcamentos = useMemo(() => [] as any[], []);
 
   // ========== CONTRATADO POR PACIENTE ==========
   const contratadoVsPago = useMemo(() => {
@@ -110,25 +135,29 @@ const Relatorios = () => {
     return { totalContratado, lista };
   }, [pacientes, filteredPagamentos]);
 
-  // ========== PACIENTES CONTRATADOS POR MÊS ==========
-  const pacientesContratadosPorMes = useMemo(() => {
+  // ========== PACIENTES CONTRATADOS POR MÊS (rpt_contratados) ==========
+  // Contratado = paciente cujo PRIMEIRO pagamento (histórico completo) cai no período.
+  // Parcelas recorrentes não contam como novo contrato (antes inflavam ~15-25%).
+  const contratadosResumo = useMemo(() => {
     const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-    const porMes = new Map<string, { mes: string; pacientesSet: Set<string>; valor: number; ordem: string }>();
-    filteredPagamentos.forEach((p) => {
-      if (!p.data_pagamento) return;
-      const [y, m] = String(p.data_pagamento).split("-");
+    const porMes = new Map<string, { mes: string; pacientes: number; valor: number; ordem: string }>();
+    contratados.forEach((c) => {
+      const [y, m] = String(c.primeiro_pagamento || "").split("-");
       if (!y || !m) return;
       const key = `${y}-${m}`;
       const label = `${MESES[parseInt(m, 10) - 1]}/${y.slice(2)}`;
-      const cur = porMes.get(key) || { mes: label, pacientesSet: new Set<string>(), valor: 0, ordem: key };
-      if (p.paciente_id) cur.pacientesSet.add(p.paciente_id);
-      cur.valor += Number(p.valor) || 0;
+      const cur = porMes.get(key) || { mes: label, pacientes: 0, valor: 0, ordem: key };
+      cur.pacientes += 1;
+      cur.valor += c.valor_total_periodo;
       porMes.set(key, cur);
     });
-    const chart = Array.from(porMes.values())
-      .sort((a, b) => a.ordem.localeCompare(b.ordem))
-      .map((r) => ({ mes: r.mes, pacientes: r.pacientesSet.size, valor: r.valor }));
+    const chart = Array.from(porMes.values()).sort((a, b) => a.ordem.localeCompare(b.ordem));
+    const totalValor = contratados.reduce((s, c) => s + c.valor_total_periodo, 0);
+    return { chart, totalPacientes: contratados.length, totalValor };
+  }, [contratados]);
 
+  // ========== PAGAMENTOS DETALHADOS (lista do período) ==========
+  const pagamentosDetalhados = useMemo(() => {
     const lista = [...filteredPagamentos]
       .sort((a, b) => String(b.data_pagamento).localeCompare(String(a.data_pagamento)))
       .map((p) => ({
@@ -143,7 +172,7 @@ const Relatorios = () => {
     const totalPacientes = new Set(lista.map((l) => l.paciente_id).filter(Boolean)).size;
     const totalValor = lista.reduce((s, l) => s + l.valor, 0);
 
-    return { chart, lista, totalPacientes, totalValor };
+    return { lista, totalPacientes, totalValor };
   }, [filteredPagamentos]);
 
   // ========== DAILY REPORT ==========
@@ -183,7 +212,9 @@ const Relatorios = () => {
   const holidaySet = useMemo(() => {
     const set = new Set<string>();
     holidays.forEach((h) => {
-      const applies = !h.clinica_id || clinicaFiltro === "todas" || h.clinica_id === clinicaFiltro;
+      // Feriado global (sem clinica_id) vale sempre; feriado de uma clínica só vale
+      // quando ELA está filtrada (na visão "todas" não zera o dia da rede inteira).
+      const applies = !h.clinica_id || h.clinica_id === clinicaFiltro;
       if (applies) set.add(h.data);
     });
     return set;
@@ -209,15 +240,6 @@ const Relatorios = () => {
     );
   }, [dateFrom, dateTo]);
 
-  // "Ontem" em horário local (lançamentos têm ~1 dia de atraso)
-  const yesterdayLocal = useMemo(() => {
-    const t = new Date();
-    t.setHours(12, 0, 0, 0);
-    t.setDate(t.getDate() - 1);
-    return t;
-  }, []);
-  const yesterdayStr = useMemo(() => toLocalDateISO(yesterdayLocal), [yesterdayLocal]);
-
   // Dias úteis do MÊS INTEIRO (Seg-Sex=1, Sáb=0.5, Dom=0, feriados=0)
   const diasUteisMes = useMemo(() => {
     const firstDay = new Date(refMonth.getFullYear(), refMonth.getMonth(), 1);
@@ -225,60 +247,22 @@ const Relatorios = () => {
     return Math.max(businessDaysBetween(firstDay, lastDay, holidaySet), 1);
   }, [refMonth, holidaySet]);
 
-  // Dias úteis DECORRIDOS: do início do período até ONTEM (ou até o dateTo, o que for menor)
-  const diasUteisPassados = useMemo(() => {
-    const start = new Date(dateFrom + "T12:00:00");
-    const endSel = new Date(dateTo + "T12:00:00");
-    const limit = endSel < yesterdayLocal ? endSel : yesterdayLocal;
-    return Math.max(businessDaysBetween(start, limit, holidaySet), 0.5);
-  }, [dateFrom, dateTo, yesterdayLocal, holidaySet]);
-
   const predictability = useMemo(() => {
-    // Numerador ALINHADO com o divisor: pagamentos até ONTEM (mesma janela dos dias úteis decorridos)
-    const pagamentosAteOntem = filteredPagamentos.filter((p) => (p.data_pagamento || "") <= yesterdayStr);
     const totalContratado = filteredPagamentos.reduce((s, p) => s + (Number(p.valor) || 0), 0);
-    const totalContratadoAteOntem = pagamentosAteOntem.reduce((s, p) => s + (Number(p.valor) || 0), 0);
-    const leadsTotals = filteredLeads.reduce((acc, l) => ({
-      leads: acc.leads + l.leads_novos, agendaram: acc.agendaram + l.agendaram,
-      compareceram: acc.compareceram + (l.agendaram - l.faltaram), faltaram: acc.faltaram + l.faltaram,
-      contrataram: acc.contrataram + l.contrataram, naoContrataram: acc.naoContrataram + l.nao_contrataram,
-    }), { leads: 0, agendaram: 0, compareceram: 0, faltaram: 0, contrataram: 0, naoContrataram: 0 });
-    const taxaConversao = leadsTotals.leads > 0 ? (leadsTotals.contrataram / leadsTotals.leads) * 100 : 0;
+    // Lançamentos atrasam (às vezes mais de 1 dia): a média diária usa somente
+    // os dias úteis até o ÚLTIMO DIA COM LANÇAMENTO, para não diluir a projeção
+    // com dias ainda não lançados.
+    const ultimoDiaLancado = filteredPagamentos.reduce(
+      (max, p) => ((p.data_pagamento || "") > max ? p.data_pagamento : max), ""
+    );
+    const diasUteisLancados = ultimoDiaLancado
+      ? Math.max(businessDaysBetween(new Date(dateFrom + "T12:00:00"), new Date(ultimoDiaLancado + "T12:00:00"), holidaySet), 0.5)
+      : 0;
     const ticketMedioPgto = filteredPagamentos.length > 0 ? totalContratado / filteredPagamentos.length : 0;
-    const ticketMedioDiario = totalContratadoAteOntem / diasUteisPassados;
+    const ticketMedioDiario = diasUteisLancados > 0 ? totalContratado / diasUteisLancados : 0;
     const projecaoMensal = ticketMedioDiario * diasUteisMes;
-    const txAgendamento = leadsTotals.leads > 0 ? leadsTotals.agendaram / leadsTotals.leads : 0;
-    const txComparecimento = leadsTotals.agendaram > 0 ? leadsTotals.compareceram / leadsTotals.agendaram : 0;
-    const txContratacao = leadsTotals.leads > 0 ? leadsTotals.contrataram / leadsTotals.leads : 0;
-    const txNaoContratacao = leadsTotals.leads > 0 ? leadsTotals.naoContrataram / leadsTotals.leads : 0;
-    const mediaDiariaLeads = leadsTotals.leads / diasUteisPassados;
-    const mediaDiariaAgendaram = leadsTotals.agendaram / diasUteisPassados;
-    const mediaDiariaCompareceram = leadsTotals.compareceram / diasUteisPassados;
-    const mediaDiariaContrataram = leadsTotals.contrataram / diasUteisPassados;
-    const mediaDiariaNaoContrataram = leadsTotals.naoContrataram / diasUteisPassados;
-    return {
-      totalContratado, taxaConversao, ticketMedioPgto, ticketMedioDiario, projecaoMensal,
-      leads: leadsTotals.leads, contrataram: leadsTotals.contrataram,
-      txAgendamento, txComparecimento, txContratacao, txNaoContratacao,
-      mediaDiariaLeads, mediaDiariaAgendaram, mediaDiariaCompareceram, mediaDiariaContrataram, mediaDiariaNaoContrataram,
-      projMensalLeads: mediaDiariaLeads * diasUteisMes, projMensalAgendaram: mediaDiariaAgendaram * diasUteisMes,
-      projMensalCompareceram: mediaDiariaCompareceram * diasUteisMes, projMensalContrataram: mediaDiariaContrataram * diasUteisMes,
-      projMensalNaoContrataram: mediaDiariaNaoContrataram * diasUteisMes,
-    };
-  }, [filteredPagamentos, filteredLeads, diasUteisMes, diasUteisPassados, yesterdayStr]);
-
-  // ========== FUNNEL ==========
-  const funnelReport = useMemo(() => {
-    const map = new Map<string, any>();
-    filteredLeads.forEach((l) => {
-      const key = l.data;
-      const entry = map.get(key) || { data: l.data, leads: 0, agendaram: 0, faltaram: 0, contrataram: 0, nao_contrataram: 0 };
-      entry.leads += l.leads_novos; entry.agendaram += l.agendaram; entry.faltaram += l.faltaram;
-      entry.contrataram += l.contrataram; entry.nao_contrataram += l.nao_contrataram;
-      map.set(key, entry);
-    });
-    return Array.from(map.values()).sort((a, b) => b.data.localeCompare(a.data));
-  }, [filteredLeads]);
+    return { totalContratado, ticketMedioPgto, ticketMedioDiario, projecaoMensal, ultimoDiaLancado, diasUteisLancados };
+  }, [filteredPagamentos, diasUteisMes, dateFrom, holidaySet]);
 
   // ========== POR PROCEDIMENTO (VOLUME) ==========
   const procedimentoReport = useMemo(() => {
@@ -323,27 +307,31 @@ const Relatorios = () => {
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }, [filteredPagamentos]);
 
-  // ========== POR ORIGEM / ANÚNCIO (somente contratado) ==========
+  // ========== POR ORIGEM / ANÚNCIO (pacientes e pagamentos DO MESMO período) ==========
   const origemReport = useMemo(() => {
     const contratadoPorPaciente = new Map<string, number>();
     filteredPagamentos.forEach((p) => {
       contratadoPorPaciente.set(p.paciente_id, (contratadoPorPaciente.get(p.paciente_id) || 0) + (Number(p.valor) || 0));
     });
     const origemMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
+    const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
+    // Só entram pacientes COM pagamento no período filtrado — antes o denominador
+    // "Pacientes" era o histórico inteiro, tornando as razões sem sentido.
     pacientes.forEach((p) => {
-      const key = p.origem || "Não informada";
+      const pago = contratadoPorPaciente.get(p.id) || 0;
+      if (pago <= 0) return;
+      const key = classifyOrigemCanonica({ source: p.origem, nome_anuncio: p.nome_anuncio });
       const entry = origemMap.get(key) || { label: key, tipo: "Origem", qtdPacientes: 0, contratado: 0 };
       entry.qtdPacientes += 1;
-      entry.contratado += contratadoPorPaciente.get(p.id) || 0;
+      entry.contratado += pago;
       origemMap.set(key, entry);
-    });
-    const anuncioMap = new Map<string, { label: string; tipo: string; qtdPacientes: number; contratado: number }>();
-    pacientes.filter((p) => p.nome_anuncio && p.nome_anuncio.trim() !== "").forEach((p) => {
-      const key = p.nome_anuncio!;
-      const entry = anuncioMap.get(key) || { label: key, tipo: "Anúncio", qtdPacientes: 0, contratado: 0 };
-      entry.qtdPacientes += 1;
-      entry.contratado += contratadoPorPaciente.get(p.id) || 0;
-      anuncioMap.set(key, entry);
+      if (p.nome_anuncio && p.nome_anuncio.trim() !== "") {
+        const aKey = p.nome_anuncio;
+        const aEntry = anuncioMap.get(aKey) || { label: aKey, tipo: "Anúncio", qtdPacientes: 0, contratado: 0 };
+        aEntry.qtdPacientes += 1;
+        aEntry.contratado += pago;
+        anuncioMap.set(aKey, aEntry);
+      }
     });
     return {
       origens: Array.from(origemMap.values()).sort((a, b) => b.contratado - a.contratado),
@@ -482,20 +470,28 @@ const Relatorios = () => {
 
   if (loading) return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando...</div>;
 
+  if (fetchError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-2 text-center">
+        <p className="text-destructive font-medium">Erro ao carregar os dados dos relatórios</p>
+        <p className="text-sm text-muted-foreground max-w-md">{fetchError}</p>
+      </div>
+    );
+  }
+
   const reportTypes = [
     { key: "atividade", label: "Atividade Recente", desc: "Últimos pagamentos e atualizações com data e horário exatos", icon: Activity },
     { key: "completo", label: "Relatório Completo", desc: "Visão consolidada com todos os dados e métricas", icon: FileBarChart },
-    { key: "contratado", label: "Orçado vs Contratado", desc: "Valores orçados versus contratados com lista de pacientes", icon: DollarSign },
+    { key: "contratado", label: "Faturamento por Paciente", desc: "Total de pagamentos recebidos no período, detalhado por paciente", icon: DollarSign },
     { key: "diario", label: "Relatório Diário", desc: "Faturamento e pagamentos por dia", icon: Calendar },
     { key: "semanal", label: "Relatório Semanal", desc: "Faturamento agrupado por semana", icon: Calendar },
-    { key: "funil", label: "Funil de Leads", desc: "Conversão de leads por etapa do funil", icon: Filter },
-    { key: "previsibilidade", label: "Previsibilidade", desc: "Projeções de faturamento e leads", icon: TrendingUp },
-    { key: "procedimento", label: "Por Procedimento", desc: "Procedimentos mais contratados por volume", icon: Stethoscope },
-    { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor contratado", icon: Users },
-    { key: "especialidade", label: "Por Especialidade", desc: "Quantidade de tratamentos por especialidade", icon: Stethoscope },
-    { key: "origem", label: "Origem / Anúncio", desc: "Performance por canal de origem e anúncio", icon: Megaphone },
+    { key: "previsibilidade", label: "Previsibilidade", desc: "Projeção de faturamento do mês corrente", icon: TrendingUp },
+    { key: "procedimento", label: "Por Procedimento", desc: "Procedimentos mais registrados por volume", icon: Stethoscope },
+    { key: "ranking", label: "Ranking Pacientes", desc: "Top pacientes por valor pago no período", icon: Users },
+    { key: "especialidade", label: "Por Especialidade", desc: "Quantidade e valor de pagamentos por especialidade", icon: Stethoscope },
+    { key: "origem", label: "Origem / Anúncio", desc: "Pagamentos do período por canal de origem e anúncio", icon: Megaphone },
     { key: "pagamentos", label: "Pagamentos", desc: "Detalhamento de todos os pagamentos realizados", icon: CreditCard },
-    { key: "pacientes_mes", label: "Pacientes Contratados/Mês", desc: "Quantidade de pacientes contratados por mês", icon: Users },
+    { key: "pacientes_mes", label: "Pacientes Contratados/Mês", desc: "Novos pacientes (1º pagamento no período) por mês", icon: Users },
     { key: "pagamentos_lista", label: "Pagamentos Detalhados", desc: "Nome do paciente, data do pagamento e valor pago", icon: CreditCard },
   ];
 
@@ -503,7 +499,7 @@ const Relatorios = () => {
     if (selectedReport === "completo") {
       return (
         <div className="space-y-6">
-          {["previsibilidade", "contratado", "funil", "diario", "semanal", "procedimento", "ranking", "especialidade", "origem", "pagamentos"].map((key) => (
+          {["previsibilidade", "contratado", "diario", "semanal", "procedimento", "ranking", "especialidade", "origem", "pagamentos"].map((key) => (
             <div key={key}>{renderSingleReportByKey(key)}</div>
           ))}
         </div>
@@ -517,15 +513,16 @@ const Relatorios = () => {
       case "contratado": return (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><DollarSign size={18} className="text-primary" /> Total Contratado</CardTitle>
-            <ShareButtons title="Total Contratado" data={[{ contratado: contratadoVsPago.totalContratado }]} getSummary={() =>
-              `Total Contratado: ${formatCurrency(contratadoVsPago.totalContratado)}\nPacientes: ${contratadoVsPago.lista.length}`
+            <CardTitle className="text-base flex items-center gap-2"><DollarSign size={18} className="text-primary" /> Faturamento por Paciente</CardTitle>
+            <ShareButtons title="Faturamento por Paciente" data={[{ faturamento: contratadoVsPago.totalContratado }]} getSummary={() =>
+              `Faturamento (pagamentos recebidos): ${formatCurrency(contratadoVsPago.totalContratado)}\nPacientes com pagamento: ${contratadoVsPago.lista.length}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">Soma de todos os pagamentos recebidos no período (novos e recorrentes), por data de pagamento.</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-lg bg-secondary p-4">
-                <p className="text-xs text-muted-foreground">Total Contratado</p>
+                <p className="text-xs text-muted-foreground">Faturamento (pagamentos recebidos)</p>
                 <p className="text-xl font-bold text-accent-foreground">{formatCurrency(contratadoVsPago.totalContratado)}</p>
               </div>
               <div className="rounded-lg bg-secondary p-4">
@@ -535,7 +532,7 @@ const Relatorios = () => {
             </div>
             <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Paciente</TableHead><TableHead>Pago no período</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {contratadoVsPago.lista.map((p) => (
                     <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
@@ -544,7 +541,7 @@ const Relatorios = () => {
                     </TableRow>
                   ))}
                   {contratadoVsPago.lista.length === 0 && (
-                    <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground py-8">Nenhum pagamento contratado no período</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground py-8">Nenhum pagamento no período</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -625,82 +622,36 @@ const Relatorios = () => {
         </Card>
       );
 
-      case "funil": return (
-        <Card className="gradient-card border-border shadow-card">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><Filter size={18} className="text-primary" /> Relatório do Funil</CardTitle>
-            <ShareButtons title="Relatório Funil" data={funnelReport} getSummary={() => {
-              const t = funnelReport.reduce((a, r) => ({ leads: a.leads + r.leads, agendaram: a.agendaram + r.agendaram, contrataram: a.contrataram + r.contrataram }), { leads: 0, agendaram: 0, contrataram: 0 });
-              return `Leads: ${t.leads}\nAgendaram: ${t.agendaram}\nContrataram: ${t.contrataram}\nTaxa: ${t.leads > 0 ? ((t.contrataram / t.leads) * 100).toFixed(1) : 0}%`;
-            }} />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={(() => {
-                const totals = funnelReport.reduce((a, r) => ({ leads: a.leads + r.leads, agendaram: a.agendaram + r.agendaram, compareceram: a.compareceram + (r.agendaram - r.faltaram), contrataram: a.contrataram + r.contrataram, naoContrataram: a.naoContrataram + r.nao_contrataram }), { leads: 0, agendaram: 0, compareceram: 0, contrataram: 0, naoContrataram: 0 });
-                return [
-                  { name: "Leads", value: totals.leads },
-                  { name: "Agendaram", value: totals.agendaram },
-                  { name: "Compareceram", value: totals.compareceram },
-                  { name: "Contrataram", value: totals.contrataram },
-                  { name: "Não Contrataram", value: totals.naoContrataram },
-                ];
-              })()} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
-                <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} />
-                <YAxis stroke={ct.axisColor} allowDecimals={false} />
-                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} />
-                <Bar dataKey="value" fill="hsl(25,100%,50%)" name="Quantidade" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="overflow-x-auto max-h-80 overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead><TableHead>Leads</TableHead><TableHead>Agendaram</TableHead>
-                    <TableHead>Faltaram</TableHead><TableHead>Contrataram</TableHead><TableHead>Não Contrataram</TableHead><TableHead>Taxa</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {funnelReport.map((r) => (
-                    <TableRow key={r.data}>
-                      <TableCell>{new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}</TableCell>
-                      <TableCell>{r.leads}</TableCell>
-                      <TableCell>{r.agendaram}</TableCell>
-                      <TableCell>{r.faltaram}</TableCell>
-                      <TableCell className="text-green-400">{r.contrataram}</TableCell>
-                      <TableCell className="text-red-400">{r.nao_contrataram}</TableCell>
-                      <TableCell><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{r.leads > 0 ? ((r.contrataram / r.leads) * 100).toFixed(1) : 0}%</Badge></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      );
-
       case "previsibilidade": return (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Previsibilidade</CardTitle>
             <ShareButtons title="Relatório Previsibilidade" data={[predictability]} getSummary={() =>
-              `Total Contratado: ${formatCurrency(predictability.totalContratado)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${isCurrentMonthSelected ? formatCurrency(predictability.projecaoMensal) : "— (apenas no mês corrente)"}`
+              `Faturamento no Período: ${formatCurrency(predictability.totalContratado)}\nTicket Médio Diário: ${formatCurrency(predictability.ticketMedioDiario)}\nProjeção Mensal (${diasUteisMes} dias): ${isCurrentMonthSelected ? formatCurrency(predictability.projecaoMensal) : "— (apenas no mês corrente)"}${predictability.ultimoDiaLancado ? `\nLançamentos até ${new Date(predictability.ultimoDiaLancado + "T12:00:00").toLocaleDateString("pt-BR")}` : ""}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">💰 Faturamento</h3>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Total Contratado</p><p className="text-xl font-bold text-accent-foreground">{formatCurrency(predictability.totalContratado)}</p></div>
+                <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Faturamento no Período</p><p className="text-xl font-bold text-accent-foreground">{formatCurrency(predictability.totalContratado)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Ticket Médio por Pagamento</p><p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioPgto)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Ticket Médio Diário</p><p className="text-xl font-bold">{formatCurrency(predictability.ticketMedioDiario)}</p></div>
                 <div className="rounded-lg bg-secondary p-4"><p className="text-xs text-muted-foreground">Projeção Mensal ({diasUteisMes} dias úteis)</p><p className="text-xl font-bold text-primary">{isCurrentMonthSelected ? formatCurrency(predictability.projecaoMensal) : "—"}</p>{!isCurrentMonthSelected && <p className="text-[10px] text-muted-foreground mt-1">Disponível apenas para o mês corrente</p>}</div>
               </div>
+              {predictability.ultimoDiaLancado ? (
+                <p className="text-xs text-muted-foreground mt-3">
+                  Média diária calculada com os dias úteis até o último dia com lançamento
+                  ({new Date(predictability.ultimoDiaLancado + "T12:00:00").toLocaleDateString("pt-BR")} — {predictability.diasUteisLancados.toFixed(1)} dias úteis).
+                  Dias ainda não lançados não diluem a projeção.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-3">Nenhum pagamento lançado no período — sem base para projeção.</p>
+              )}
             </div>
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={[
-                { name: "Contratado", value: predictability.totalContratado },
+                { name: "Faturamento", value: predictability.totalContratado },
                 { name: "Projeção", value: isCurrentMonthSelected ? predictability.projecaoMensal : 0 },
               ]} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
@@ -710,46 +661,6 @@ const Relatorios = () => {
                 <Bar dataKey="value" fill="hsl(120,50%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3">📊 Previsibilidade de Leads</h3>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Etapa</TableHead><TableHead className="text-center">Taxa</TableHead>
-                      <TableHead className="text-center">Média/Dia</TableHead><TableHead className="text-center">Projeção ({diasUteisMes}d)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {[
-                      { etapa: "Leads Novos", taxa: null, media: predictability.mediaDiariaLeads, proj: predictability.projMensalLeads },
-                      { etapa: "Agendaram", taxa: predictability.txAgendamento, media: predictability.mediaDiariaAgendaram, proj: predictability.projMensalAgendaram },
-                      { etapa: "Compareceram", taxa: predictability.txComparecimento, media: predictability.mediaDiariaCompareceram, proj: predictability.projMensalCompareceram },
-                      { etapa: "Contrataram", taxa: predictability.txContratacao, media: predictability.mediaDiariaContrataram, proj: predictability.projMensalContrataram },
-                      { etapa: "Não Contrataram", taxa: predictability.txNaoContratacao, media: predictability.mediaDiariaNaoContrataram, proj: predictability.projMensalNaoContrataram, isNeg: true },
-                    ].map((r) => (
-                      <TableRow key={r.etapa}>
-                        <TableCell className="font-medium">{r.etapa}</TableCell>
-                        <TableCell className="text-center">
-                          {r.taxa !== null ? (
-                            <Badge variant="outline" className={r.isNeg ? "bg-destructive/10 text-destructive border-destructive/30" : "bg-primary/10 text-primary border-primary/30"}>
-                              {(r.taxa * 100).toFixed(1)}%
-                            </Badge>
-                          ) : "—"}
-                        </TableCell>
-                        <TableCell className="text-center">{r.media.toFixed(1)}</TableCell>
-                        <TableCell className="text-center font-medium">{isCurrentMonthSelected ? Math.round(r.proj) : "—"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-            <div className="rounded-lg bg-secondary p-4">
-              <p className="text-xs text-muted-foreground">Taxa de Conversão Geral (Leads → Contratação)</p>
-              <p className="text-xl font-bold">{predictability.taxaConversao.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">{predictability.contrataram} de {predictability.leads} leads</p>
-            </div>
           </CardContent>
         </Card>
       );
@@ -830,24 +741,25 @@ const Relatorios = () => {
       case "especialidade": return (
         <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Tratamentos por Especialidade</CardTitle>
-            <ShareButtons title="Relatório por Especialidade" data={especialidadeReport} getSummary={() =>
-              especialidadeReport.map((r) => `${r.especialidade}: ${r.qtd} tratamentos`).join("\n")
+            <CardTitle className="text-base flex items-center gap-2"><Stethoscope size={18} className="text-primary" /> Pagamentos por Especialidade</CardTitle>
+            <ShareButtons title="Pagamentos por Especialidade" data={especialidadeReport} getSummary={() =>
+              especialidadeReport.map((r) => `${r.especialidade}: ${r.qtd} pagamentos - ${formatCurrency(r.total)}`).join("\n")
             } />
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">Conta pagamentos recebidos (cada parcela é um pagamento), não tratamentos realizados.</p>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={especialidadeReport} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
                 <XAxis dataKey="especialidade" stroke={ct.axisColor} fontSize={11} />
                 <YAxis stroke={ct.axisColor} allowDecimals={false} />
-                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Tratamentos"]} />
-                <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Tratamentos" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Pagamentos"]} />
+                <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Pagamentos" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead className="text-center">Tratamentos</TableHead><TableHead className="text-center">%</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Especialidade</TableHead><TableHead className="text-center">Pagamentos</TableHead><TableHead className="text-center">Faturamento</TableHead><TableHead className="text-center">%</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {especialidadeReport.map((r) => {
                     const total = especialidadeReport.reduce((s, x) => s + x.qtd, 0);
@@ -855,6 +767,7 @@ const Relatorios = () => {
                       <TableRow key={r.especialidade}>
                         <TableCell className="font-medium">{r.especialidade}</TableCell>
                         <TableCell className="text-center font-semibold">{r.qtd}</TableCell>
+                        <TableCell className="text-center">{formatCurrency(r.total)}</TableCell>
                         <TableCell className="text-center"><Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">{total > 0 ? ((r.qtd / total) * 100).toFixed(1) : 0}%</Badge></TableCell>
                       </TableRow>
                     );
@@ -871,10 +784,11 @@ const Relatorios = () => {
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><Megaphone size={18} className="text-primary" /> Por Origem / Anúncio</CardTitle>
             <ShareButtons title="Relatório por Origem" data={[...origemReport.origens, ...origemReport.anuncios]} getSummary={() =>
-              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, Contratado ${formatCurrency(r.contratado)}`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac, Contratado ${formatCurrency(r.contratado)}`).join("\n")}`
+              `ORIGENS:\n${origemReport.origens.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac. pagantes, Pago ${formatCurrency(r.contratado)}`).join("\n")}\n\nANÚNCIOS:\n${origemReport.anuncios.slice(0, 5).map(r => `${r.label}: ${r.qtdPacientes} pac. pagantes, Pago ${formatCurrency(r.contratado)}`).join("\n")}`
             } />
           </CardHeader>
           <CardContent className="space-y-6">
+            <p className="text-xs text-muted-foreground">Somente pacientes com pagamento dentro do período filtrado; valores somam os pagamentos do período.</p>
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">📍 Por Origem</h3>
               <ResponsiveContainer width="100%" height={250}>
@@ -889,7 +803,7 @@ const Relatorios = () => {
               </ResponsiveContainer>
               <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Origem</TableHead><TableHead>Pacientes pagantes</TableHead><TableHead>Pago no período</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {origemReport.origens.map((r) => (
                       <TableRow key={r.label}>
@@ -917,7 +831,7 @@ const Relatorios = () => {
                 </ResponsiveContainer>
                 <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
                   <Table>
-                    <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes</TableHead><TableHead>Contratado</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Anúncio</TableHead><TableHead>Pacientes pagantes</TableHead><TableHead>Pago no período</TableHead></TableRow></TableHeader>
                     <TableBody>
                       {origemReport.anuncios.map((r) => (
                         <TableRow key={r.label}>
@@ -1156,7 +1070,7 @@ const Relatorios = () => {
       }
 
       case "pacientes_mes": {
-        const { chart, totalPacientes, totalValor, lista } = pacientesContratadosPorMes;
+        const { chart, totalPacientes, totalValor } = contratadosResumo;
         return (
           <Card className="gradient-card border-border shadow-card">
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1165,43 +1079,54 @@ const Relatorios = () => {
                 title="Pacientes Contratados por Mês"
                 data={chart}
                 getSummary={() =>
-                  `Pacientes únicos: ${totalPacientes}\nValor total: ${formatCurrency(totalValor)}\n\nPor mês:\n${chart.map((c) => `${c.mes}: ${c.pacientes} pacientes - ${formatCurrency(c.valor)}`).join("\n")}`
+                  `Pacientes contratados (1º pagamento no período): ${totalPacientes}\nValor pago no período por esses pacientes: ${formatCurrency(totalValor)}\n\nPor mês:\n${chart.map((c) => `${c.mes}: ${c.pacientes} pacientes - ${formatCurrency(c.valor)}`).join("\n")}`
                 }
               />
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Pacientes únicos</p>
-                  <p className="text-xl font-bold text-primary">{totalPacientes}</p>
+              {contratadosError ? (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                  <p className="text-sm font-medium text-destructive">Não foi possível carregar os pacientes contratados</p>
+                  <p className="text-xs text-muted-foreground mt-1">{contratadosError}</p>
                 </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Pagamentos</p>
-                  <p className="text-xl font-bold text-primary">{lista.length}</p>
-                </div>
-                <div className="rounded-lg bg-secondary p-4">
-                  <p className="text-xs text-muted-foreground">Valor total</p>
-                  <p className="text-xl font-bold text-accent-foreground">{formatCurrency(totalValor)}</p>
-                </div>
-              </div>
+              ) : contratadosLoading ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">Carregando pacientes contratados...</div>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Contratado = paciente cujo PRIMEIRO pagamento (considerando todo o histórico) cai no período filtrado.
+                    Parcelas recorrentes de pacientes antigos não contam como novo contrato.
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-lg bg-secondary p-4">
+                      <p className="text-xs text-muted-foreground">Pacientes contratados no período</p>
+                      <p className="text-xl font-bold text-primary">{totalPacientes}</p>
+                    </div>
+                    <div className="rounded-lg bg-secondary p-4">
+                      <p className="text-xs text-muted-foreground">Valor pago no período (por esses pacientes)</p>
+                      <p className="text-xl font-bold text-accent-foreground">{formatCurrency(totalValor)}</p>
+                    </div>
+                  </div>
 
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={chart} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
-                  <XAxis dataKey="mes" stroke={ct.axisColor} fontSize={12} />
-                  <YAxis stroke={ct.axisColor} fontSize={12} allowDecimals={false} />
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: any, name) => name === "valor" ? formatCurrency(Number(v)) : `${v} pacientes`} />
-                  <Legend />
-                  <Bar dataKey="pacientes" name="Pacientes" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
-                </BarChart>
-              </ResponsiveContainer>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={chart} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                      <XAxis dataKey="mes" stroke={ct.axisColor} fontSize={12} />
+                      <YAxis stroke={ct.axisColor} fontSize={12} allowDecimals={false} />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: any, name) => name === "valor" ? formatCurrency(Number(v)) : `${v} pacientes`} />
+                      <Legend />
+                      <Bar dataKey="pacientes" name="Pacientes" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </>
+              )}
             </CardContent>
           </Card>
         );
       }
 
       case "pagamentos_lista": {
-        const { lista, totalPacientes, totalValor } = pacientesContratadosPorMes;
+        const { lista, totalPacientes, totalValor } = pagamentosDetalhados;
         return (
           <Card className="gradient-card border-border shadow-card">
             <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

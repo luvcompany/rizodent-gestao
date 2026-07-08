@@ -107,6 +107,8 @@ const CrmLayout = () => {
     const fetchUnread = async () => {
       const seq = ++unreadFetchSeq.current;
       if (!user?.id || seq !== unreadFetchSeq.current) return;
+      // RPC conta leads aguardando resposta com last_inbound_at nos últimos 60 dias
+      // (migração 20260708030000) — mesma janela das abas/lista em Conversas.
       const { data, error } = await (supabase as any).rpc("get_crm_unread_leads_count");
       if (!error && seq === unreadFetchSeq.current) {
         setUnreadCount(Number(data || 0));
@@ -160,7 +162,10 @@ const CrmLayout = () => {
       <item.icon size={18} />
       {item.label}
       {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
-        <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+        <span
+          title="Conversas não lidas (últimos 60 dias)"
+          className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1"
+        >
           {unreadCount > 999 ? "999+" : unreadCount}
         </span>
       )}
