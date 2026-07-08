@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
 
   if (errorParam) {
     console.error("[wa-oauth-callback] error from Meta:", errorParam, url.searchParams.get("error_description"));
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+    return popupResponse("whatsapp", "error");
   }
   if (!code || !state) {
     return new Response(JSON.stringify({ error: "Missing code or state" }), {
@@ -87,11 +87,11 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
   if (stateErr || !stateRow) {
     console.warn("[wa-oauth-callback] invalid state:", state, stateErr);
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+    return popupResponse("whatsapp", "error");
   }
   if (new Date(stateRow.expires_at).getTime() < Date.now()) {
     await supabase.from("whatsapp_oauth_states").delete().eq("state", state);
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+    return popupResponse("whatsapp", "error");
   }
   const tenantId: string = stateRow.tenant_id;
   await supabase.from("whatsapp_oauth_states").delete().eq("state", state);
@@ -107,7 +107,7 @@ Deno.serve(async (req: Request) => {
     const tokJson: any = await tokRes.json().catch(() => ({}));
     if (!tokRes.ok || !tokJson?.access_token) {
       console.error("[wa-oauth-callback] token exchange failed:", tokJson);
-      return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+      return popupResponse("whatsapp", "error");
     }
     const access_token: string = tokJson.access_token;
 
@@ -120,7 +120,7 @@ Deno.serve(async (req: Request) => {
     const dbgJson: any = await dbgRes.json().catch(() => ({}));
     if (!dbgRes.ok) {
       console.error("[wa-oauth-callback] debug_token failed:", dbgJson);
-      return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+      return popupResponse("whatsapp", "error");
     }
     const granular: Array<{ scope: string; target_ids?: string[] }> = dbgJson?.data?.granular_scopes ?? [];
     const wabaIds = new Set<string>();
@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
     console.log(`[wa-oauth-callback] discovered ${wabaIds.size} WABA(s):`, [...wabaIds]);
 
     if (wabaIds.size === 0) {
-      return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+      return popupResponse("whatsapp", "error");
     }
 
     let connected = 0;
@@ -224,11 +224,11 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[wa-oauth-callback] connected ${connected} number(s) for tenant ${tenantId}`);
     if (connected === 0) {
-      return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+      return popupResponse("whatsapp", "error");
     }
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=connected&count=${connected}`, 302);
+    return popupResponse("whatsapp", "connected", connected);
   } catch (err) {
     console.error("[wa-oauth-callback] unexpected error:", err);
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+    return popupResponse("whatsapp", "error");
   }
 });
