@@ -167,8 +167,57 @@ Deno.serve(async (req: Request) => {
         console.error("[instagram-oauth-callback] upsert error:", upErr);
       } else {
         connected += 1;
+
+        // (a) Also register in ig_accounts so the Instagram Lite webhook receives DMs/comments.
+        // Use ignoreDuplicates: do NOT overwrite existing rows (preserves working Lite tokens).
+        const { error: igAccErr } = await supabase
+          .from("ig_accounts")
+          .upsert(
+            {
+              ig_user_id: igId,
+              username: igName,
+              access_token: page.access_token,
+              active: true,
+              tenant_id: tenantId,
+              token_expires_at: expiresAt,
+            },
+            { onConflict: "ig_user_id", ignoreDuplicates: true },
+          );
+        if (igAccErr) {
+          console.warn(`[instagram-oauth-callback] ig_accounts upsert warn for ${igId}:`, igAccErr);
+        }
+
+        // (b) Subscribe the Page to receive Instagram messaging + comments webhooks.
+        try {
+          const subUrl = new URL(`https://graph.facebook.com/v25.0/${page.id}/subscribed_apps`);
+          subUrl.searchParams.set("access_token", page.access_token);
+          subUrl.searchParams.set(
+            "subscribed_fields",
+            [
+              "messages",
+              "messaging_postbacks",
+              "messaging_seen",
+              "message_reactions",
+              "instagram_manage_messages",
+              "instagram_manage_comments",
+              "comments",
+              "mentions",
+              "feed",
+            ].join(","),
+          );
+          const subRes = await fetch(subUrl.toString(), { method: "POST" });
+          const subJson = await subRes.json().catch(() => ({}));
+          if (!subRes.ok) {
+            console.warn(`[instagram-oauth-callback] subscribed_apps failed for page ${page.id}:`, subJson);
+          } else {
+            console.log(`[instagram-oauth-callback] subscribed_apps OK for page ${page.id}`);
+          }
+        } catch (subErr) {
+          console.warn(`[instagram-oauth-callback] subscribed_apps error for page ${page.id}:`, subErr);
+        }
       }
     }
+
 
     console.log(`[instagram-oauth-callback] connected ${connected} account(s), skipped ${skipped.length}`);
     if (skipped.length > 0) {
