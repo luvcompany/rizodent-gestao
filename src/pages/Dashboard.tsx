@@ -336,16 +336,10 @@ const Dashboard = () => {
   useEffect(() => {
     let cancelled = false;
     setRpcContratadosCount(null);
-    setRpcTicket(null);
     if (!rpcFiltersOk) return;
     rptContratados(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcContratadosCount(rows.length); })
       .catch((e) => console.warn("[Dashboard] rpt_contratados indisponível; usando cálculo local:", e));
-    if (clinicaFiltro === "todas") {
-      rptTicketMedio(dateFrom, dateTo)
-        .then((t) => { if (!cancelled) setRpcTicket(t); })
-        .catch((e) => console.warn("[Dashboard] rpt_ticket_medio indisponível:", e));
-    }
     return () => { cancelled = true; };
   }, [rpcFiltersOk, dateFrom, dateTo, clinicaFiltro]);
 
