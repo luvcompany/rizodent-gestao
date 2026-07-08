@@ -3855,6 +3855,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
+      is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
       match_good_examples: {
         Args: {
           filter_cidade?: string
