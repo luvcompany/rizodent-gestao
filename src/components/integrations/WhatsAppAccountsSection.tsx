@@ -62,21 +62,11 @@ export default function WhatsAppAccountsSection({
           <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" /> WhatsApp
         </h2>
         {hasAccounts && (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onNew}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <Plus size={14} className="mr-1" /> Adicionar manualmente
-            </Button>
-            <div
-              className="[&_button]:!bg-[color:var(--wa-green)] [&_button]:!text-white [&_button]:!border-0 [&_button:hover]:!opacity-90"
-              style={{ ["--wa-green" as any]: WA_GREEN }}
-            >
-              <WhatsAppEmbeddedSignupButton onConnected={onReload} />
-            </div>
+          <div
+            className="[&_button]:!bg-[color:var(--wa-green)] [&_button]:!text-white [&_button]:!border-0 [&_button:hover]:!opacity-90"
+            style={{ ["--wa-green" as any]: WA_GREEN }}
+          >
+            <WhatsAppEmbeddedSignupButton onConnected={onReload} />
           </div>
         )}
       </div>
@@ -99,9 +89,6 @@ export default function WhatsAppAccountsSection({
             >
               <WhatsAppEmbeddedSignupButton onConnected={onReload} />
             </div>
-            <Button variant="ghost" size="sm" onClick={onNew} className="text-muted-foreground">
-              <Plus size={14} className="mr-1" /> Adicionar manualmente
-            </Button>
           </CardContent>
         </Card>
       )}
