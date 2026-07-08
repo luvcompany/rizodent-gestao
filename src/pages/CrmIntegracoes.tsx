@@ -400,24 +400,126 @@ export default function CrmIntegracoes() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {/* WhatsApp Section */}
-        <WhatsAppAccountsSection
-          entries={whatsappEntries}
-          pipelines={pipelines}
-          onReload={loadEntries}
-          onNew={handleNew}
-          onEdit={(entry) => setEditEntry(entry)}
-          onToggle={handleToggleIntegration}
-          onDelete={handleDelete}
-        />
+        {(() => {
+          const officialEntries = whatsappEntries.filter(e => e.key.startsWith("whatsapp_es_"));
+          const liteEntries = whatsappEntries.filter(e => !e.key.startsWith("whatsapp_es_"));
+          return (
+            <>
+              {/* WhatsApp (oficial - Embedded Signup) */}
+              <WhatsAppAccountsSection
+                entries={officialEntries}
+                pipelines={pipelines}
+                onReload={loadEntries}
+                onNew={handleNew}
+                onEdit={(entry) => setEditEntry(entry)}
+                onToggle={handleToggleIntegration}
+                onDelete={handleDelete}
+              />
 
+              {/* WhatsApp Lite (manual) */}
+              <div className="mt-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-semibold text-foreground flex items-center gap-2">
+                    <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" />
+                    WhatsApp Lite
+                  </h2>
+                  <Button size="sm" onClick={handleNew}>
+                    <Plus size={14} className="mr-1" /> Novo Número
+                  </Button>
+                </div>
 
-        {/* Instagram (Full API) via OAuth */}
-        <InstagramAccountsSection />
+                {liteEntries.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-6 flex flex-col items-center text-center gap-3">
+                      <div className="p-4 rounded-full bg-muted">
+                        <img src={whatsappLogo} alt="WhatsApp" width={40} height={40} className="rounded-full opacity-70" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-foreground mb-1">Nenhum número manual configurado</h3>
+                        <p className="text-sm text-muted-foreground max-w-md">
+                          Cadastre manualmente um número informando Token, Phone Number ID, WABA e App ID.
+                        </p>
+                      </div>
+                      <Button size="sm" onClick={handleNew}>
+                        <Plus size={14} className="mr-1" /> Novo Número
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {liteEntries.map((entry) => {
+                      const c = entry.config;
+                      const isConnected = entry.status === "connected";
+                      const isDisabled = entry.status === "disabled";
+                      const pName = pipelines.find(p => p.id === c.pipeline_id)?.name;
+                      return (
+                        <Card key={entry.key}>
+                          <CardContent className="p-5">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="p-2 rounded-lg bg-muted">
+                                <img src={whatsappLogo} alt="WhatsApp" width={28} height={28} className="rounded-full" />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={!isDisabled}
+                                  onCheckedChange={() => {}}
+                                  onClick={(e) => handleToggleIntegration(entry, e as unknown as React.MouseEvent)}
+                                />
+                                {isConnected ? (
+                                  <Badge className="bg-green-900/30 text-green-400 border-0">
+                                    <CheckCircle size={12} className="mr-1" /> Ativo
+                                  </Badge>
+                                ) : isDisabled ? (
+                                  <Badge variant="secondary" className="text-muted-foreground">
+                                    <Power size={12} className="mr-1" /> Desativado
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-muted-foreground">
+                                    <XCircle size={12} className="mr-1" /> Não conectado
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <h3 className={`font-semibold text-sm mb-1 truncate ${isDisabled ? "text-muted-foreground" : "text-foreground"}`}>
+                              {c.display_name || entry.key}
+                            </h3>
+                            <p className="text-xs text-muted-foreground font-mono truncate">
+                              ID: {c.phone_number_id ? `••••${c.phone_number_id.slice(-4)}` : "—"}
+                            </p>
+                            {pName && (
+                              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                                <GitBranch size={12} /> Funil: {pName}
+                              </p>
+                            )}
+                            <div className="flex gap-2 mt-3">
+                              <Button size="sm" variant="outline" className="flex-1" onClick={() => setEditEntry(entry)}>
+                                <Settings size={12} className="mr-1" /> Configurar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-destructive hover:text-destructive"
+                                onClick={() => handleDelete(entry)}
+                              >
+                                <Trash2 size={12} className="mr-1" /> Remover
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
+              {/* Instagram (Full API) via OAuth */}
+              <InstagramAccountsSection />
 
-        {/* Instagram Lite */}
-        <InstagramLiteSection />
+              {/* Instagram Lite */}
+              <InstagramLiteSection />
+            </>
+          );
+        })()}
 
         {/* Other Integrations */}
         <h2 className="font-semibold text-foreground mt-6 mb-4">Outros Canais</h2>
