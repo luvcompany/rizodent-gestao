@@ -16,14 +16,40 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const REDIRECT_URI = Deno.env.get("WHATSAPP_REDIRECT_URI") ?? "";
-const FRONTEND_URL = (Deno.env.get("FRONTEND_URL") ?? "").replace(/\/+$/, "");
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
 const API_VERSION = "v21.0";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-function frontendBase(_req: Request): string {
-  return FRONTEND_URL;
+function popupResponse(
+  channel: "instagram" | "whatsapp",
+  status: "connected" | "error",
+  count = 0,
+): Response {
+  const ok = status === "connected";
+  const title = ok ? "Conectado com sucesso" : "Falha ao conectar";
+  const emoji = ok ? "✅" : "❌";
+  const message = ok
+    ? "Conectado com sucesso! Você já pode fechar esta janela."
+    : "Não foi possível concluir a conexão. Feche esta janela e tente novamente.";
+  const payload = JSON.stringify({ type: "oauth_result", channel, status, count });
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${title}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b0b0b;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center}
+.card{max-width:420px}
+.emoji{font-size:64px;margin-bottom:16px}
+h1{font-size:20px;margin:0 0 8px;font-weight:600}
+p{margin:0;color:#bbb;font-size:14px;line-height:1.5}
+</style></head><body><div class="card"><div class="emoji">${emoji}</div><h1>${title}</h1><p>${message}</p></div>
+<script>
+try { if (window.opener) window.opener.postMessage(${payload}, '*'); } catch(e){}
+setTimeout(function(){ try { window.close(); } catch(e){} }, 1200);
+</script></body></html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -33,11 +59,11 @@ Deno.serve(async (req: Request) => {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const errorParam = url.searchParams.get("error");
-  const base = frontendBase(req);
+  
 
   if (errorParam) {
     console.error("[wa-oauth-callback] error from Meta:", errorParam, url.searchParams.get("error_description"));
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+    return popupResponse("whatsapp", "error");
   }
   if (!code || !state) {
     return new Response(JSON.stringify({ error: "Missing code or state" }), {
@@ -61,11 +87,11 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
   if (stateErr || !stateRow) {
     console.warn("[wa-oauth-callback] invalid state:", state, stateErr);
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+    return popupResponse("whatsapp", "error");
   }
   if (new Date(stateRow.expires_at).getTime() < Date.now()) {
     await supabase.from("whatsapp_oauth_states").delete().eq("state", state);
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+    return popupResponse("whatsapp", "error");
   }
   const tenantId: string = stateRow.tenant_id;
   await supabase.from("whatsapp_oauth_states").delete().eq("state", state);
@@ -81,7 +107,7 @@ Deno.serve(async (req: Request) => {
     const tokJson: any = await tokRes.json().catch(() => ({}));
     if (!tokRes.ok || !tokJson?.access_token) {
       console.error("[wa-oauth-callback] token exchange failed:", tokJson);
-      return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+      return popupResponse("whatsapp", "error");
     }
     const access_token: string = tokJson.access_token;
 
@@ -94,7 +120,7 @@ Deno.serve(async (req: Request) => {
     const dbgJson: any = await dbgRes.json().catch(() => ({}));
     if (!dbgRes.ok) {
       console.error("[wa-oauth-callback] debug_token failed:", dbgJson);
-      return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+      return popupResponse("whatsapp", "error");
     }
     const granular: Array<{ scope: string; target_ids?: string[] }> = dbgJson?.data?.granular_scopes ?? [];
     const wabaIds = new Set<string>();
@@ -106,7 +132,7 @@ Deno.serve(async (req: Request) => {
     console.log(`[wa-oauth-callback] discovered ${wabaIds.size} WABA(s):`, [...wabaIds]);
 
     if (wabaIds.size === 0) {
-      return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+      return popupResponse("whatsapp", "error");
     }
 
     let connected = 0;
@@ -198,11 +224,11 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[wa-oauth-callback] connected ${connected} number(s) for tenant ${tenantId}`);
     if (connected === 0) {
-      return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+      return popupResponse("whatsapp", "error");
     }
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=connected&count=${connected}`, 302);
+    return popupResponse("whatsapp", "connected", connected);
   } catch (err) {
     console.error("[wa-oauth-callback] unexpected error:", err);
-    return Response.redirect(`${base}/crm/integracoes?whatsapp=error`, 302);
+    return popupResponse("whatsapp", "error");
   }
 });

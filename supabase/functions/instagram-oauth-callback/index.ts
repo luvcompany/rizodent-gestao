@@ -11,12 +11,38 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const REDIRECT_URI = Deno.env.get("INSTAGRAM_REDIRECT_URI") ?? "";
-const FRONTEND_URL = (Deno.env.get("FRONTEND_URL") ?? "").replace(/\/+$/, "");
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-function frontendBase(_req: Request): string {
-  return FRONTEND_URL;
+function popupResponse(
+  channel: "instagram" | "whatsapp",
+  status: "connected" | "error",
+  count = 0,
+): Response {
+  const ok = status === "connected";
+  const title = ok ? "Conectado com sucesso" : "Falha ao conectar";
+  const emoji = ok ? "✅" : "❌";
+  const message = ok
+    ? "Conectado com sucesso! Você já pode fechar esta janela."
+    : "Não foi possível concluir a conexão. Feche esta janela e tente novamente.";
+  const payload = JSON.stringify({ type: "oauth_result", channel, status, count });
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${title}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b0b0b;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center}
+.card{max-width:420px}
+.emoji{font-size:64px;margin-bottom:16px}
+h1{font-size:20px;margin:0 0 8px;font-weight:600}
+p{margin:0;color:#bbb;font-size:14px;line-height:1.5}
+</style></head><body><div class="card"><div class="emoji">${emoji}</div><h1>${title}</h1><p>${message}</p></div>
+<script>
+try { if (window.opener) window.opener.postMessage(${payload}, '*'); } catch(e){}
+setTimeout(function(){ try { window.close(); } catch(e){} }, 1200);
+</script></body></html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -28,11 +54,11 @@ Deno.serve(async (req: Request) => {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const errorParam = url.searchParams.get("error");
-  const base = frontendBase(req) || (state && state.startsWith("http") ? "" : "");
+  
 
   if (errorParam) {
     console.error("[instagram-oauth-callback] error from Meta:", errorParam, url.searchParams.get("error_description"));
-    return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+    return popupResponse("instagram", "error");
   }
   if (!code) {
     return new Response(JSON.stringify({ error: "Missing 'code' query parameter" }), {
@@ -91,7 +117,7 @@ Deno.serve(async (req: Request) => {
     const stJson = await stRes.json();
     if (!stRes.ok || !stJson?.access_token) {
       console.error("[instagram-oauth-callback] short-lived token error:", stJson);
-      return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+      return popupResponse("instagram", "error");
     }
     const shortToken: string = stJson.access_token;
 
@@ -106,7 +132,7 @@ Deno.serve(async (req: Request) => {
     const llJson = await llRes.json();
     if (!llRes.ok || !llJson?.access_token) {
       console.error("[instagram-oauth-callback] long-lived token error:", llJson);
-      return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+      return popupResponse("instagram", "error");
     }
     const longToken: string = llJson.access_token;
     const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
@@ -118,7 +144,7 @@ Deno.serve(async (req: Request) => {
     const pagesJson = await pagesRes.json();
     if (!pagesRes.ok) {
       console.error("[instagram-oauth-callback] me/accounts error:", pagesJson);
-      return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+      return popupResponse("instagram", "error");
     }
 
     const pages: Array<{ id: string; name: string; access_token: string }> = pagesJson?.data ?? [];
@@ -225,11 +251,11 @@ Deno.serve(async (req: Request) => {
     }
 
     if (connected === 0) {
-      return Response.redirect(`${base}/crm/integracoes?instagram=no_accounts&pages=${pages.length}`, 302);
+      return popupResponse("instagram", "error");
     }
-    return Response.redirect(`${base}/crm/integracoes?instagram=connected&count=${connected}`, 302);
+    return popupResponse("instagram", "connected", connected);
   } catch (err) {
     console.error("[instagram-oauth-callback] unexpected error:", err);
-    return Response.redirect(`${base}/crm/integracoes?instagram=error`, 302);
+    return popupResponse("instagram", "error");
   }
 });
