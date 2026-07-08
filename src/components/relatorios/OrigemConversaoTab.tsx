@@ -6,13 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import { Loader2, TrendingUp, TrendingDown, Award, Clock, MessageSquare, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { fetchAllPaged, rangeBahia, dayKeyBahia, asDateParam, classifyOrigemCanonica, normalizeCidade, ORIGENS_CANONICAS } from "@/lib/reportKit";
+import { fetchAllPaged, rangeBahia, dayKeyBahia, asDateParam, classifyOrigemCanonica, normalizeCidade, ORIGENS_CANONICAS, businessMinutesBetween, loadBusinessHours, type BusinessHours } from "@/lib/reportKit";
 
 type Pipeline = { id: string; name: string };
 type Lead = {
   id: string; name: string; pipeline_id: string; cidade: string | null;
   source: string | null; nome_anuncio: string | null; ad_id: string | null;
   created_at: string; first_inbound_at: string | null;
+  last_inbound_at: string | null; last_outbound_at: string | null;
   paciente_id: string | null;
 };
 type Appointment = { id: string; lead_id: string; scheduled_date: string; status: string; created_at: string };
@@ -79,6 +80,9 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
   const [rpcRows, setRpcRows] = useState<OrigemAggRow[] | null>(null);
   const [rpcAviso, setRpcAviso] = useState<string | null>(null);
   const [tz, setTz] = useState<string>("America/Sao_Paulo");
+  // Horário comercial do time (tenants.business_hours) — as métricas de resposta
+  // contam só o tempo dentro do expediente. null = não configurado (relógio corrido).
+  const [businessHours, setBusinessHours] = useState<BusinessHours | null>(null);
 
   // "todos" (ou vazio, enquanto a página carrega os funis) = sem filtro de funil.
   const pipelineFiltro = pipelineId && pipelineId !== "todos" ? pipelineId : null;
@@ -87,6 +91,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     (async () => {
       const { data } = await supabase.from("tenants").select("timezone").limit(1).maybeSingle();
       if (data?.timezone) setTz(data.timezone);
+      try { setBusinessHours(await loadBusinessHours()); } catch { /* sem config: relógio corrido */ }
     })();
   }, []);
 
@@ -147,7 +152,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         const allLeads = await fetchAllPaged<Lead>(() => {
           let q = supabase
             .from("crm_leads")
-            .select("id,name,pipeline_id,cidade,source,nome_anuncio,ad_id,created_at,first_inbound_at,paciente_id")
+            .select("id,name,pipeline_id,cidade,source,nome_anuncio,ad_id,created_at,first_inbound_at,last_inbound_at,last_outbound_at,paciente_id")
             .gte("created_at", gteIso)
             .lte("created_at", lteIso);
           if (pipelineFiltro) q = q.eq("pipeline_id", pipelineFiltro);
@@ -218,8 +223,11 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return m;
   }, [leads]);
 
-  // Response rates: primeiro outbound APÓS o primeiro inbound (não o primeiro outbound absoluto,
-  // que costuma ser o template inicial enviado antes do lead responder).
+  // Tempo de resposta — contado em HORÁRIO COMERCIAL (tempo fora do expediente não
+  // penaliza). "Respondido" respeita a ação "Marcar como respondida" (que grava
+  // last_outbound_at no lead), então DMs de Instagram respondidos no app contam.
+  // Um lead só é "não respondido" se AINDA aguarda E já passou a carência útil.
+  const GRACE_BMIN = 60; // 1 hora comercial de carência antes de virar "não respondido"
   const responseStats = useMemo(() => {
     const firstInboundByLead = new Map<string, Date>();
     const outboundsByLead = new Map<string, Date[]>();
@@ -233,29 +241,36 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         outboundsByLead.get(m.lead_id)!.push(t);
       }
     });
-    // "Nunca escreveu" (sem nenhum inbound) é separado de "não respondido"
-    // (escreveu e a equipe não respondeu) — antes os dois caíam no mesmo balde.
-    let in1h = 0, sameDay = 0, in24h = 0, notAnswered = 0, neverWrote = 0, totalAnswered = 0;
+    const nowIso = new Date().toISOString();
+    // Buckets de velocidade em minutos COMERCIAIS; "não respondido" = aguardando em atraso.
+    let in1h = 0, sameDay = 0, in4h = 0, notAnswered = 0, neverWrote = 0, totalAnswered = 0;
     const answeredIds = new Set<string>();
     leads.forEach(l => {
       const ib = firstInboundByLead.get(l.id) || (l.first_inbound_at ? new Date(l.first_inbound_at) : null);
       if (!ib) { neverWrote++; return; }
+      // primeiro outbound REGISTRADO após o 1º inbound (resposta com tempo medível)
       const obs = outboundsByLead.get(l.id) || [];
-      // primeiro outbound APÓS o primeiro inbound
       let after: Date | null = null;
-      for (const t of obs) {
-        if (t > ib && (!after || t < after)) after = t;
+      for (const t of obs) if (t > ib && (!after || t < after)) after = t;
+      // marcação manual: last_outbound_at >= last_inbound_at ("Marcar como respondida")
+      const markedAnswered = !!(l.last_outbound_at && l.last_inbound_at &&
+        new Date(l.last_outbound_at) >= new Date(l.last_inbound_at));
+      if (after) {
+        totalAnswered++; answeredIds.add(l.id);
+        const bmin = businessMinutesBetween(ib.toISOString(), after.toISOString(), businessHours);
+        if (bmin <= 60) in1h++;
+        if (bmin <= 240) in4h++;
+        if (dayKeyBahia(ib.toISOString()) === dayKeyBahia(after.toISOString())) sameDay++;
+      } else if (markedAnswered) {
+        // respondido pela equipe (marcado manualmente) — sem tempo medido, mas NÃO é falha
+        totalAnswered++; answeredIds.add(l.id);
+      } else {
+        // aguarda resposta: só conta como "não respondido" após a carência em horário comercial
+        if (businessMinutesBetween(ib.toISOString(), nowIso, businessHours) > GRACE_BMIN) notAnswered++;
       }
-      if (!after) { notAnswered++; return; }
-      totalAnswered++;
-      answeredIds.add(l.id);
-      const diff = after.getTime() - ib.getTime();
-      if (diff <= 3600_000) in1h++;
-      if (after.toDateString() === ib.toDateString()) sameDay++;
-      if (diff <= 86400_000) in24h++;
     });
-    return { total: leads.length, totalAnswered, answeredIds, in1h, sameDay, in24h, notAnswered, neverWrote };
-  }, [leads, msgs]);
+    return { total: leads.length, totalAnswered, answeredIds, in1h, sameDay, in4h, notAnswered, neverWrote };
+  }, [leads, msgs, businessHours]);
 
   // ---- NOVOS INDICADORES (topo) ----
 
@@ -281,11 +296,12 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       let after: Date | null = null;
       for (const t of obs) if (t > ib && (!after || t < after)) after = t;
       if (!after) return;
-      sum += (after.getTime() - ib.getTime()) / 1000;
+      // tempo COMERCIAL (fora do expediente não conta)
+      sum += businessMinutesBetween(ib.toISOString(), after.toISOString(), businessHours) * 60;
       n++;
     });
     return n ? Math.round(sum / n) : 0;
-  }, [leads, msgs]);
+  }, [leads, msgs, businessHours]);
 
   // Primeiro inbound por lead (base para as duas métricas abaixo)
   const firstInboundByLeadAll = useMemo(() => {
@@ -656,14 +672,14 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
       {/* Tempo de Resposta */}
       <Card className="p-4">
-        <h3 className="font-semibold mb-3">Leads Atendidos (Tempo de Resposta)</h3>
+        <h3 className="font-semibold mb-3">Leads Atendidos (Tempo de Resposta{businessHours ? " — horário comercial" : ""})</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="p-3 rounded border bg-card">
             <div className="text-xs text-muted-foreground">Total leads</div>
             <div className="text-2xl font-bold">{responseStats.total}</div>
           </div>
           <div className="p-3 rounded border bg-card">
-            <div className="text-xs text-muted-foreground">Respondidos em ≤1h</div>
+            <div className="text-xs text-muted-foreground">Respondidos em ≤1h{businessHours ? " útil" : ""}</div>
             <div className="text-2xl font-bold text-emerald-600">{responseStats.in1h}</div>
             <div className="text-xs text-muted-foreground">{pct(responseStats.in1h, responseStats.total)}</div>
           </div>
@@ -673,9 +689,9 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
             <div className="text-xs text-muted-foreground">{pct(responseStats.sameDay, responseStats.total)}</div>
           </div>
           <div className="p-3 rounded border bg-card">
-            <div className="text-xs text-muted-foreground">Em 24h</div>
-            <div className="text-2xl font-bold">{responseStats.in24h}</div>
-            <div className="text-xs text-muted-foreground">{pct(responseStats.in24h, responseStats.total)}</div>
+            <div className="text-xs text-muted-foreground">Em ≤4h{businessHours ? " úteis" : ""}</div>
+            <div className="text-2xl font-bold">{responseStats.in4h}</div>
+            <div className="text-xs text-muted-foreground">{pct(responseStats.in4h, responseStats.total)}</div>
           </div>
           <div className="p-3 rounded border bg-card">
             <div className="text-xs text-muted-foreground">Não respondidos</div>
@@ -689,7 +705,10 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground mt-2">
-          "Não respondidos" = leads que escreveram e não receberam resposta da equipe. "Nunca escreveram" = leads sem nenhuma mensagem recebida (não é falha de atendimento).
+          {businessHours
+            ? "Tempos contados só em horário comercial (fora do expediente/fim de semana não penaliza). \"Não respondidos\" = leads aguardando resposta há mais de 1h comercial — respeita a ação \"Marcar como respondida\" (inclui DMs de Instagram respondidos no app)."
+            : "\"Não respondidos\" = leads que escreveram e não receberam resposta da equipe. Configure o horário comercial nas Configurações para os tempos considerarem só o expediente."}
+          {" \"Nunca escreveram\" = leads sem nenhuma mensagem recebida (não é falha de atendimento)."}
         </p>
       </Card>
 

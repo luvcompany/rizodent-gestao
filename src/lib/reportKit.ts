@@ -63,6 +63,55 @@ export function rangeBahia(from: Date | string, to: Date | string): { gteIso: st
 }
 
 // ---------------------------------------------------------------------------
+// Horário comercial (métricas de tempo de resposta / não respondidos)
+// ---------------------------------------------------------------------------
+
+/** Horário comercial por dia da semana (0=domingo..6=sábado): ["HH:MM","HH:MM"].
+ *  Dia ausente = fechado. Vem de tenants.business_hours (jsonb). */
+export type BusinessHours = Record<string, [string, string]>;
+
+function hhmmToMin(s: string): number {
+  const [h, m] = s.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+/** Carrega o horário comercial do tenant (null = não configurado → relógio corrido). */
+export async function loadBusinessHours(): Promise<BusinessHours | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- coluna nova, types.ts pode não conhecer
+  const { data } = await (supabase.from("tenants").select("business_hours").limit(1).maybeSingle() as any);
+  const bh = data?.business_hours;
+  return bh && typeof bh === "object" ? (bh as BusinessHours) : null;
+}
+
+/**
+ * Minutos DENTRO do horário comercial entre dois instantes (America/Bahia).
+ * Tempo fora do expediente / dias fechados não conta — um lead que escreve 19h
+ * e é respondido 7:35 do dia seguinte tem poucos minutos comerciais decorridos.
+ * Sem config (hours = null) devolve o tempo corrido (comportamento antigo).
+ */
+export function businessMinutesBetween(fromIso: string, toIso: string, hours: BusinessHours | null): number {
+  const from = new Date(fromIso).getTime();
+  const to = new Date(toIso).getTime();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 0;
+  if (!hours) return Math.round((to - from) / 60000); // relógio corrido
+  const DAY = 24 * 60 * 60 * 1000;
+  // Desloca -3h: no tempo deslocado, a leitura UTC (dia/DOW/hora) = hora local Bahia.
+  const fromL = from - BAHIA_OFFSET_MS;
+  const toL = to - BAHIA_OFFSET_MS;
+  let total = 0;
+  for (let dayStart = Math.floor(fromL / DAY) * DAY; dayStart <= toL; dayStart += DAY) {
+    const win = hours[String(new Date(dayStart).getUTCDay())];
+    if (!win) continue; // dia fechado
+    const open = dayStart + hhmmToMin(win[0]) * 60000;
+    const close = dayStart + hhmmToMin(win[1]) * 60000;
+    const s = Math.max(open, fromL);
+    const e = Math.min(close, toL);
+    if (e > s) total += e - s;
+  }
+  return Math.round(total / 60000);
+}
+
+// ---------------------------------------------------------------------------
 // Paginação segura (supabase-js limita a 1000 linhas por request)
 // ---------------------------------------------------------------------------
 
