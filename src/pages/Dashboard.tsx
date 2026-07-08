@@ -18,8 +18,6 @@ import {
   normalizeCidade,
   classifyOrigemCanonica,
   rptContratados,
-  rptTicketMedio,
-  type TicketMedio,
 } from "@/lib/reportKit";
 
 const DateRangeFilter = lazy(() =>
@@ -333,21 +331,15 @@ const Dashboard = () => {
   // rótulo honesto na UI.
   const rpcFiltersOk = canalFiltro === "todos" && dateFilter.preset !== "multi";
   const [rpcContratadosCount, setRpcContratadosCount] = useState<number | null>(null);
-  const [rpcTicket, setRpcTicket] = useState<TicketMedio | null>(null);
+
 
   useEffect(() => {
     let cancelled = false;
     setRpcContratadosCount(null);
-    setRpcTicket(null);
     if (!rpcFiltersOk) return;
     rptContratados(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcContratadosCount(rows.length); })
       .catch((e) => console.warn("[Dashboard] rpt_contratados indisponível; usando cálculo local:", e));
-    if (clinicaFiltro === "todas") {
-      rptTicketMedio(dateFrom, dateTo)
-        .then((t) => { if (!cancelled) setRpcTicket(t); })
-        .catch((e) => console.warn("[Dashboard] rpt_ticket_medio indisponível:", e));
-    }
     return () => { cancelled = true; };
   }, [rpcFiltersOk, dateFrom, dateTo, clinicaFiltro]);
 
@@ -547,9 +539,6 @@ const Dashboard = () => {
   { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
   { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
   { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign, subtitle: "Faturamento ÷ dias úteis do período filtrado (até ontem)" },
-  ...(rpcTicket && rpcTicket.num_pacientes > 0
-    ? [{ title: "Ticket Médio por Paciente", value: formatCurrency(rpcTicket.ticket_por_paciente), icon: DollarSign, subtitle: `${rpcTicket.num_pacientes} pacientes pagantes no período` }]
-    : []),
   ...(isCurrentMonthSelected
     ? [{ title: "Previsão Mensal", value: formatCurrency(projecaoMensal), icon: TrendingUp, subtitle: `${diasUteisMes} dias úteis no mês` }]
     : []),
