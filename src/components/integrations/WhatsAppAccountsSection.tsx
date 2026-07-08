@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -54,6 +56,21 @@ export default function WhatsAppAccountsSection({
   onDelete,
 }: Props) {
   const hasAccounts = entries.length > 0;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const waStatus = params.get("whatsapp");
+    if (waStatus === "connected") {
+      const count = params.get("count");
+      toast.success(`WhatsApp conectado! ${count ?? 0} número(s) vinculado(s).`);
+      window.history.replaceState({}, "", window.location.pathname);
+      onReload();
+    } else if (waStatus === "error") {
+      toast.error("Falha ao conectar o WhatsApp. Tente novamente.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mb-6">
