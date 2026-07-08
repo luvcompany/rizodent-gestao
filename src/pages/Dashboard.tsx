@@ -18,8 +18,6 @@ import {
   normalizeCidade,
   classifyOrigemCanonica,
   rptContratados,
-  rptTicketMedio,
-  type TicketMedio,
 } from "@/lib/reportKit";
 
 const DateRangeFilter = lazy(() =>
