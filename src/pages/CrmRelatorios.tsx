@@ -458,41 +458,6 @@ export default function CrmRelatorios() {
     return { count: durations.length, media: mean(durations), mediana: median(durations) };
   }, [cohort, apptsCriadosPeriodo]);
 
-  // ============= ANTECEDÊNCIA DE AGENDAMENTO =============
-  // Distribuição de quantos dias antes o agendamento foi criado.
-  // Usa TODOS os agendamentos com data marcada no período (1 linha por appointment).
-  const distribAgendamento = useMemo(() => {
-    const buckets = { mesmoDia: 0, proximoDia: 0, restanteSemana: 0, semanaSeguinte: 0, maisLonge: 0 };
-    const diffs: number[] = [];
-    const detalheMap = new Map<number, number>();
-
-    apptsPeriodo.forEach(a => {
-      // Dia da criação em America/Bahia; scheduled_date já é 'YYYY-MM-DD'.
-      const createdDay = dayKeyBahia(a.created_at);
-      const diffDays = Math.round((Date.parse(a.scheduled_date) - Date.parse(createdDay)) / (1000 * 60 * 60 * 24));
-      if (!Number.isFinite(diffDays) || diffDays < 0) return;
-      diffs.push(diffDays);
-      detalheMap.set(diffDays, (detalheMap.get(diffDays) || 0) + 1);
-      if (diffDays === 0) buckets.mesmoDia++;
-      else if (diffDays === 1) buckets.proximoDia++;
-      else if (diffDays <= 6) buckets.restanteSemana++;
-      else if (diffDays <= 13) buckets.semanaSeguinte++;
-      else buckets.maisLonge++;
-    });
-
-    const detalhe = Array.from(detalheMap.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([dias, count]) => ({ dias, count }));
-
-    return {
-      total: diffs.length,
-      mediaDias: diffs.length ? diffs.reduce((s, x) => s + x, 0) / diffs.length : 0,
-      medianaDias: median(diffs),
-      buckets,
-      detalhe,
-    };
-  }, [apptsPeriodo]);
-
   // ============= POR CIDADE =============
   const porCidade = useMemo(() => {
     const map = new Map<string, { agendamentos: number; comparecimentos: number; contratacoes: number; faltas: number }>();
@@ -978,79 +943,6 @@ export default function CrmRelatorios() {
 
         <TabsContent value="acoes-dia" className="mt-4">
           <AcoesPorDiaTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
-        </TabsContent>
-
-        <TabsContent value="antecedencia" className="mt-4 space-y-6">
-          <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
-              <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
-              <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all", "multi"]} />
-            </div>
-            {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex items-center gap-2 mb-1">
-              <CalendarIcon className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold">Quando o lead agenda?</h2>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Diferença em dias entre a <strong>criação do agendamento</strong> e a <strong>data marcada</strong>.
-              Considera os {calendario.total} agendamentos do período (1 linha por agendamento).
-            </p>
-
-            {distribAgendamento.total === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento no período.</p>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                  <StatBox label="Mesmo dia" value={distribAgendamento.buckets.mesmoDia} color="text-green-600" />
-                  <StatBox label="Próximo dia" value={distribAgendamento.buckets.proximoDia} color="text-emerald-500" />
-                  <StatBox label="2 a 6 dias" value={distribAgendamento.buckets.restanteSemana} color="text-blue-500" />
-                  <StatBox label="7 a 13 dias" value={distribAgendamento.buckets.semanaSeguinte} color="text-orange-500" />
-                  <StatBox label="14+ dias" value={distribAgendamento.buckets.maisLonge} color="text-red-500" />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-                  <StatBox label="Total de agendamentos" value={distribAgendamento.total} />
-                  <StatBox label="Média de dias" value={distribAgendamento.mediaDias.toFixed(1)} color="text-primary" />
-                  <StatBox label="Mediana de dias" value={distribAgendamento.medianaDias.toFixed(1)} color="text-primary" />
-                </div>
-
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2 uppercase">Detalhamento por dias de antecedência</p>
-                  <div className="border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Dias entre criação e data marcada</TableHead>
-                          <TableHead className="text-right">Agendamentos</TableHead>
-                          <TableHead className="text-right">% do total</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {distribAgendamento.detalhe.map(d => (
-                          <TableRow key={d.dias}>
-                            <TableCell className="font-medium">
-                              {d.dias === 0 ? "Mesmo dia" : d.dias === 1 ? "1 dia depois" : `${d.dias} dias depois`}
-                            </TableCell>
-                            <TableCell className="text-right">{d.count}</TableCell>
-                            <TableCell className="text-right text-muted-foreground">
-                              {((d.count / distribAgendamento.total) * 100).toFixed(1)}%
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              </>
-            )}
-          </Card>
         </TabsContent>
       </Tabs>
     </div>
