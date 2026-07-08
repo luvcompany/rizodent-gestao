@@ -3913,6 +3913,15 @@ export type Database = {
           total: number
         }[]
       }
+      rpt_faturamento_origem: {
+        Args: { p_clinica_id?: string; p_from: string; p_to: string }
+        Returns: {
+          faturamento: number
+          origem: string
+          pacientes: number
+          pagamentos: number
+        }[]
+      }
       rpt_kpis_agendamentos: {
         Args: { p_from: string; p_to: string }
         Returns: {
