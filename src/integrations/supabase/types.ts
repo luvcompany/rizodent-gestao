@@ -3493,6 +3493,191 @@ export type Database = {
           },
         ]
       }
+      whatsapp_call_permissions: {
+        Row: {
+          approved_at: string | null
+          calls_made_today: number
+          consecutive_unanswered: number
+          consumer_phone: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          last_call_at: string | null
+          lead_id: string | null
+          phone_number_id: string
+          raw_payload: Json | null
+          requested_at: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          whatsapp_number_id: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          calls_made_today?: number
+          consecutive_unanswered?: number
+          consumer_phone: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_call_at?: string | null
+          lead_id?: string | null
+          phone_number_id: string
+          raw_payload?: Json | null
+          requested_at?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          whatsapp_number_id?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          calls_made_today?: number
+          consecutive_unanswered?: number
+          consumer_phone?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_call_at?: string | null
+          lead_id?: string | null
+          phone_number_id?: string
+          raw_payload?: Json | null
+          requested_at?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          whatsapp_number_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_call_permissions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_call_permissions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_call_permissions_whatsapp_number_id_fkey"
+            columns: ["whatsapp_number_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_calls: {
+        Row: {
+          answered_by: string | null
+          connected_at: string | null
+          created_at: string
+          direction: string
+          duration_seconds: number | null
+          ended_at: string | null
+          error_message: string | null
+          event: string | null
+          from_phone: string | null
+          ice_candidates: Json
+          id: string
+          initiated_by: string | null
+          lead_id: string | null
+          phone_number_id: string
+          raw_payload: Json | null
+          sdp_answer: string | null
+          sdp_offer: string | null
+          session_data: Json
+          started_at: string | null
+          status: string
+          tenant_id: string
+          to_phone: string | null
+          updated_at: string
+          wa_call_id: string | null
+          whatsapp_number_id: string | null
+        }
+        Insert: {
+          answered_by?: string | null
+          connected_at?: string | null
+          created_at?: string
+          direction: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          error_message?: string | null
+          event?: string | null
+          from_phone?: string | null
+          ice_candidates?: Json
+          id?: string
+          initiated_by?: string | null
+          lead_id?: string | null
+          phone_number_id: string
+          raw_payload?: Json | null
+          sdp_answer?: string | null
+          sdp_offer?: string | null
+          session_data?: Json
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          to_phone?: string | null
+          updated_at?: string
+          wa_call_id?: string | null
+          whatsapp_number_id?: string | null
+        }
+        Update: {
+          answered_by?: string | null
+          connected_at?: string | null
+          created_at?: string
+          direction?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          error_message?: string | null
+          event?: string | null
+          from_phone?: string | null
+          ice_candidates?: Json
+          id?: string
+          initiated_by?: string | null
+          lead_id?: string | null
+          phone_number_id?: string
+          raw_payload?: Json | null
+          sdp_answer?: string | null
+          sdp_offer?: string | null
+          session_data?: Json
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          to_phone?: string | null
+          updated_at?: string
+          wa_call_id?: string | null
+          whatsapp_number_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_calls_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_calls_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_calls_whatsapp_number_id_fkey"
+            columns: ["whatsapp_number_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_numbers: {
         Row: {
           app_id: string | null
