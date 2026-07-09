@@ -47,16 +47,18 @@ Deno.serve(async (req) => {
       if (tRow && PROTECTED.includes(String(tRow.slug).toLowerCase())) {
         return json({ error: "Este cliente é protegido e não pode ser excluído." }, 403);
       }
-      // Collect auth user ids first, then hard-delete all tenant data, then remove auth users
-      const { data: profs } = await admin.from("profiles").select("id").eq("tenant_id", tenant_id);
-      const { error: rpcErr } = await admin.rpc("hard_delete_tenant", { _tenant_id: tenant_id });
+      // hard_delete_tenant returns the union of profile ids AND any auth user with
+      // user_metadata.tenant_id pointing to this tenant (orphans included).
+      const { data: rpcData, error: rpcErr } = await admin.rpc("hard_delete_tenant", { _tenant_id: tenant_id });
       if (rpcErr) return json({ error: rpcErr.message }, 400);
-      for (const p of profs ?? []) {
-        try { await admin.auth.admin.deleteUser(p.id); } catch (_) { /* ignore */ }
+      const userIds: string[] = Array.isArray((rpcData as any)?.user_ids) ? (rpcData as any).user_ids : [];
+      for (const uid of userIds) {
+        try { await admin.auth.admin.deleteUser(uid); } catch (_) { /* ignore */ }
       }
       await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: "tenant_delete" });
-      return json({ ok: true, status: "deleted" });
+      return json({ ok: true, status: "deleted", removed_users: userIds.length });
     }
+
 
 
     if (action === "pause" || action === "activate") {
