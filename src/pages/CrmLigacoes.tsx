@@ -34,7 +34,7 @@ type CallRow = {
   transcription: string | null;
   initiated_by: string | null;
   answered_by: string | null;
-  lead?: { id: string; nome: string | null; telefone: string | null; avatar_url: string | null } | null;
+  lead?: { id: string; name: string | null; phone: string | null } | null;
 };
 
 const FILTERS: { key: CallCategory | "all"; label: string }[] = [
