@@ -19,6 +19,7 @@ import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
 import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
+import { parseCallPermissionReply, formatCallPermissionReply } from "@/lib/callPermissionReply";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
 import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
 import ForwardMessageDialog from "@/components/chat/ForwardMessageDialog";
