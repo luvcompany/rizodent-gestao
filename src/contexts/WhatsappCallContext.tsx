@@ -136,30 +136,34 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [user?.id, tenantId]);
 
 
-  // --- Ringtone
+  // --- Ringtone (entrante) + dial tone (saindo)
   useEffect(() => {
-    if (state.phase === "ringing") playRingtone();
-    else stopRingtone();
-  }, [state.phase]);
+    // Ringtone só toca em "ringing" (entrante aguardando o usuário atender)
+    if (state.phase === "ringing") {
+      if (!ringtoneRef.current) ringtoneRef.current = playIncomingRingtone();
+    } else {
+      ringtoneRef.current?.stop();
+      ringtoneRef.current = null;
+    }
 
-  const playRingtone = () => {
-    try {
-      if (!ringtoneRef.current) {
-        // Ringtone sintético via data URI (tom simples)
-        ringtoneRef.current = new Audio(
-          "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAGAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA",
-        );
-        ringtoneRef.current.loop = true;
-      }
-      void ringtoneRef.current.play().catch(() => { /* autoplay policy */ });
-    } catch { /* ignore */ }
-  };
-  const stopRingtone = () => {
-    try {
-      ringtoneRef.current?.pause();
-      if (ringtoneRef.current) ringtoneRef.current.currentTime = 0;
-    } catch { /* ignore */ }
-  };
+    // Dial tone toca em "connecting" para chamadas outbound (aguardando o remoto atender)
+    const isOutboundConnecting =
+      state.phase === "connecting" && "call" in state && state.call.direction === "outbound";
+    if (isOutboundConnecting) {
+      if (!dialToneRef.current) dialToneRef.current = playOutgoingDialTone();
+    } else {
+      dialToneRef.current?.stop();
+      dialToneRef.current = null;
+    }
+  }, [state.phase, (state as any).call?.direction]);
+
+  useEffect(() => {
+    return () => {
+      ringtoneRef.current?.stop();
+      dialToneRef.current?.stop();
+    };
+  }, []);
+
 
   const acceptCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
