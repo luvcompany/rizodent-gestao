@@ -274,7 +274,9 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
             </Route>
             <Route path="*" element={withRouteSuspense(<NotFound />)} />
           </Routes>
+          </WhatsappCallProvider>
         </AuthProvider>
+
       </TenantProvider>
     </BrowserRouter>
   </Providers>
