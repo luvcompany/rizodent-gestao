@@ -17,6 +17,7 @@ const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const REDIRECT_URI = Deno.env.get("WHATSAPP_REDIRECT_URI") ?? "";
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
+const FRONTEND_URL = Deno.env.get("FRONTEND_URL") ?? "https://crclin.com.br";
 const API_VERSION = "v21.0";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -26,30 +27,9 @@ function popupResponse(
   status: "connected" | "error",
   count = 0,
 ): Response {
-  const ok = status === "connected";
-  const title = ok ? "Conectado com sucesso" : "Falha ao conectar";
-  const emoji = ok ? "✅" : "❌";
-  const message = ok
-    ? "Conectado com sucesso! Você já pode fechar esta janela."
-    : "Não foi possível concluir a conexão. Feche esta janela e tente novamente.";
-  const payload = JSON.stringify({ type: "oauth_result", channel, status, count });
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${title}</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b0b0b;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center}
-.card{max-width:420px}
-.emoji{font-size:64px;margin-bottom:16px}
-h1{font-size:20px;margin:0 0 8px;font-weight:600}
-p{margin:0;color:#bbb;font-size:14px;line-height:1.5}
-</style></head><body><div class="card"><div class="emoji">${emoji}</div><h1>${title}</h1><p>${message}</p></div>
-<script>
-try { if (window.opener) window.opener.postMessage(${payload}, '*'); } catch(e){}
-setTimeout(function(){ try { window.close(); } catch(e){} }, 1200);
-</script></body></html>`;
-  return new Response(html, {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" },
-  });
+  const base = (FRONTEND_URL || "https://crclin.com.br").replace(/\/+$/, "");
+  const qs = new URLSearchParams({ channel, status, count: String(count) });
+  return Response.redirect(`${base}/oauth-close?${qs.toString()}`, 302);
 }
 
 Deno.serve(async (req: Request) => {
