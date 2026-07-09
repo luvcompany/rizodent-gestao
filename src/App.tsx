@@ -9,6 +9,8 @@ import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
+import { WhatsappCallProvider } from "@/contexts/WhatsappCallContext";
+
 
 type PreloadableComponent<T extends ComponentType<any> = ComponentType<any>> = LazyExoticComponent<T> & {
   preload: () => Promise<unknown>;
@@ -214,7 +216,9 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
     <BrowserRouter basename={basename}>
       <TenantProvider slugOverride={slug}>
         <AuthProvider>
+          <WhatsappCallProvider>
           <DataPrefetcher />
+
           <Routes>
             <Route path="/" element={withRouteSuspense(<TenantLogin />)} />
             <Route path="/oauth-close" element={withRouteSuspense(<OAuthClose />)} />
@@ -270,7 +274,9 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
             </Route>
             <Route path="*" element={withRouteSuspense(<NotFound />)} />
           </Routes>
+          </WhatsappCallProvider>
         </AuthProvider>
+
       </TenantProvider>
     </BrowserRouter>
   </Providers>
