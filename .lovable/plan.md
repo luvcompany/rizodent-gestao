@@ -1,46 +1,35 @@
-## Corrigir transcrição de ligações + criar lead automático em ligações recebidas
+## Problema
 
-Duas mudanças pequenas e independentes.
+Quando uma ligação entra e o usuário tem várias abas/janelas abertas, todas tocam o ringtone. Ao atender em uma, as outras continuam tocando até o servidor emitir `completed`/`rejected` — o que não acontece quando a chamada é apenas aceita em outra aba.
 
-### 1) Transcrição das gravações de ligação
+## Solução
 
-Hoje a transcrição usa o modelo configurado em `ai_assistant_config.transcription_model` (padrão Gemini via chat completions com `input_audio`). As gravações de ligação são `audio/webm;codecs=opus` — o Gemini via chat completions falha silenciosamente com esse container e retorna vazio/erro, e o botão fica sem resposta.
+Usar duas camadas de sincronização entre abas do mesmo usuário:
 
-Correção:
-- Quando a origem for uma gravação de ligação (URL do bucket `call-recordings` ou MIME `audio/webm`/`opus`), a edge function `transcribe-audio` passa a usar o endpoint dedicado de STT do Lovable AI Gateway (`/v1/audio/transcriptions` com `openai/gpt-4o-mini-transcribe`), que aceita webm nativamente e é o caminho recomendado para transcrição de áudio real.
-- Áudios normais de conversa (mensagens `type=audio`, que são OGG/Opus do WhatsApp) continuam pelo caminho atual (Gemini) — sem alteração de comportamento para eles.
-- Adicionar logs claros de status/erro do gateway na função para diagnósticos futuros (`console.error` com corpo da resposta).
-- Surfacear o erro real no `toast` do botão (hoje ele apenas mostra "Erro ao transcrever áudio"; passa a mostrar a mensagem retornada quando houver).
+### 1. `BroadcastChannel` local (instantâneo, mesma origem)
 
-### 2) Criar lead automaticamente para ligações recebidas de números fora do CRM
+Criar um canal `wa-call-sync` compartilhado entre todas as abas do navegador. Sempre que uma aba mudar o estado da chamada (aceitar, rejeitar, visualizar/interagir com o modal), ela publica uma mensagem `{ type, callId, tabId }`. As outras abas escutam e reagem:
 
-Hoje, no `whatsapp-webhook`, se o telefone da chamada não bate com nenhum lead do tenant, `leadId` fica `null` e:
-- a ligação é gravada em `whatsapp_calls` sem `lead_id`;
-- nenhuma linha de `messages` é criada, então a conversa não existe.
+- `accepted` / `handling` (usuário clicou em Atender ou Rejeitar em outra aba) → parar ringtone imediatamente e fechar o `IncomingWhatsappCallModal` naquela aba (voltar a `idle`), sem tentar enviar signaling à Meta.
+- `dismissed` (usuário fechou modal ou navegou) → opcional, encerra o toque local.
 
-Correção (só para `direction = 'inbound'` e evento `connect`/`accept`/`terminate`):
-1. Normaliza o telefone remoto pelas mesmas regras já em uso (`+55`, remove 9º dígito).
-2. Se não existe lead com esse telefone no tenant, cria um novo `crm_leads`:
-   - `name`: nome do contato do WhatsApp se vier no payload, senão o próprio telefone formatado (`+55 11 …`).
-   - `phone`: telefone normalizado.
-   - `pipeline_id`: primeiro pipeline do tenant (mesma regra do `generic-lead-webhook`).
-   - `stage_id`: primeira etapa desse pipeline.
-   - `source`: `ligacao_recebida`.
-   - `assigned_to`: usuário `rizodent` do tenant (mesma regra dos webhooks de lead) — quando não achar, deixa `null`.
-   - `tenant_id`.
-3. Usa o `id` do lead criado (ou o existente encontrado) para gravar a `whatsapp_calls`, criar a `messages` do tipo `call` e atualizar `last_message`/`last_message_at` do lead — igual ao fluxo atual.
-4. Guard de idempotência: como o webhook do WhatsApp dispara vários eventos por chamada (`ringing`, `connect`, `terminate`), o passo 2 sempre passa pelo `SELECT` primeiro; só insere se não achou.
+Também emitir `handling` quando a aba ganha foco no modal (mousedown/keydown dentro do modal) para cobrir o cenário “só visualizei”.
 
-Resultado: qualquer ligação recebida abre uma conversa no CRM e aparece tanto em Conversas quanto em Ligações, mesmo se o número for desconhecido.
+### 2. Reforço via realtime do banco (cross-device)
 
-### Arquivos afetados
+Ampliar o handler `postgres_changes` em `WhatsappCallProvider` para tratar mais transições como “essa chamada não é mais minha para tocar”:
 
-- `supabase/functions/transcribe-audio/index.ts` — desvio de rota para webm/call-recordings via `/v1/audio/transcriptions` + logs.
-- `supabase/functions/whatsapp-webhook/index.ts` — bloco de criação automática de lead para chamada `inbound` sem match.
-- `src/components/chat/AudioTranscriptionToggle.tsx` — mostrar mensagem real de erro no `toast`.
+- Se `phase === "ringing"` e chega update com `status in ("accepted","connected","in-progress")` ou `event === "accept"` para a mesma `call.id` → parar ringtone e ir para `idle`. Isso cobre o caso de outra sessão (outro dispositivo/navegador) ter atendido.
 
-### Fora do escopo
+### 3. Identificador de aba
 
-- Não altera fluxo de mensagens (só ligações).
-- Não muda modelo/config global de transcrição — o padrão para áudios normais continua como está.
-- Não altera nenhuma tabela/RLS — só reaproveita as regras já existentes.
+Gerar um `tabId` (uuid) no `WhatsappCallProvider` e incluí-lo em toda mensagem do `BroadcastChannel`, ignorando ecos da própria aba.
+
+## Arquivos afetados
+
+- `src/contexts/WhatsappCallContext.tsx` — criar/gerenciar `BroadcastChannel`, publicar em `acceptCall`/`rejectCall`/`hangupCall`, consumir mensagens para forçar `idle`, ampliar filtros do handler realtime.
+- `src/components/whatsapp-calls/IncomingWhatsappCallModal.tsx` — opcional: emitir `handling` ao interagir (hover/click) via callback recebido do provider, cobrindo o “visualizei em uma aba”.
+
+## Fora de escopo
+
+Sem alterar edge functions, tabela `whatsapp_calls` ou lógica de gravação/áudio.
