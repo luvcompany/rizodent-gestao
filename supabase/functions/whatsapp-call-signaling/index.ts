@@ -124,6 +124,22 @@ Deno.serve(async (req) => {
           .maybeSingle();
         phoneNumberId = def?.phone_number_id || null;
       }
+      // Fallback: procura em integrations
+      if (!phoneNumberId) {
+        const { data: integrations } = await supabase
+          .from("integrations")
+          .select("config, status")
+          .eq("tenant_id", tenantId)
+          .like("key", "whatsapp_%")
+          .neq("status", "disabled");
+        for (const i of integrations || []) {
+          const c = (i.config as any) || {};
+          if (c.phone_number_id && (c.access_token || c.token)) {
+            phoneNumberId = c.phone_number_id;
+            break;
+          }
+        }
+      }
       if (!phoneNumberId) {
         console.error(`[wa-call-signaling] no phone_number_id for tenant=${tenantId}`);
         return new Response(JSON.stringify({ error: "no phone_number_id available" }), {
