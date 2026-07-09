@@ -21,7 +21,136 @@ async function verifyMetaSignature(rawBody: string, signature: string | null): P
   return mismatch === 0;
 }
 
-const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
+// ============ WhatsApp Business Calling API — event handler ============
+// Meta envia eventos de chamada com field="calls".
+// value.calls: [{ id, from, to, event, timestamp, direction, status, session:{sdp_type,sdp}, start_time, duration }]
+async function handleCallsChange(supabase: any, value: any) {
+  const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
+  if (!phoneNumberId) {
+    console.warn("[WEBHOOK-CALLS] payload sem phone_number_id, descartando");
+    return;
+  }
+
+  // Resolver tenant via integrations (mesmo padrão de mensagens)
+  const { data: allIntegrations } = await supabase
+    .from("integrations")
+    .select("id, key, config, status, tenant_id")
+    .like("key", "whatsapp_%");
+  const matched = (allIntegrations || []).find((intg: any) => (intg.config as any)?.phone_number_id === phoneNumberId);
+  if (!matched) {
+    console.warn(`[WEBHOOK-CALLS] nenhuma integração para phone_number_id ${phoneNumberId}`);
+    return;
+  }
+  if (matched.status === "disabled") {
+    console.log(`[WEBHOOK-CALLS] integração ${matched.key} desativada, ignorando`);
+    return;
+  }
+  const tenantId: string = matched.tenant_id;
+
+  // Resolver whatsapp_numbers.id para FK
+  const { data: waNumRow } = await supabase
+    .from("whatsapp_numbers")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  const whatsappNumberId: string | null = waNumRow?.id ?? null;
+
+  const calls = value?.calls || [];
+  for (const call of calls) {
+    const waCallId: string | undefined = call?.id;
+    if (!waCallId) continue;
+
+    const event: string = String(call?.event || "").toLowerCase();
+    const fromPhone: string | null = call?.from ?? null;
+    const toPhone: string | null = call?.to ?? null;
+    const direction: "inbound" | "outbound" =
+      String(call?.direction || "").toUpperCase() === "BUSINESS_INITIATED" ? "outbound" : "inbound";
+
+    // Mapear event -> status
+    let status = "ringing";
+    if (event === "connect") status = "ringing";
+    else if (event === "pre_accept") status = "pre_accepted";
+    else if (event === "accept") status = "accepted";
+    else if (event === "terminate") {
+      // decidir entre completed/missed pelo status/duração
+      const durationSecs = Number(call?.duration || 0);
+      const rawStatus = String(call?.status || "").toLowerCase();
+      if (rawStatus === "rejected") status = "rejected";
+      else if (rawStatus === "failed") status = "failed";
+      else if (rawStatus === "canceled" || rawStatus === "cancelled") status = "canceled";
+      else if (durationSecs > 0) status = "completed";
+      else status = "missed";
+    }
+
+    // Tentar vincular a um lead pelo telefone remoto
+    const remotePhone = direction === "inbound" ? fromPhone : toPhone;
+    let leadId: string | null = null;
+    if (remotePhone) {
+      const normalized = String(remotePhone).replace(/\D/g, "");
+      const { data: leadRow } = await supabase
+        .from("crm_leads")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("phone", normalized)
+        .maybeSingle();
+      leadId = leadRow?.id ?? null;
+    }
+
+    const nowIso = new Date().toISOString();
+    const timestampIso = call?.timestamp ? new Date(Number(call.timestamp) * 1000).toISOString() : nowIso;
+
+    // Extrair SDP se presente
+    const session = call?.session || {};
+    const sdpType = session?.sdp_type;
+    const sdp = session?.sdp;
+
+    // Upsert por wa_call_id
+    const { data: existing } = await supabase
+      .from("whatsapp_calls")
+      .select("id, status, sdp_offer, sdp_answer, started_at")
+      .eq("wa_call_id", waCallId)
+      .maybeSingle();
+
+    const patch: Record<string, any> = {
+      tenant_id: tenantId,
+      whatsapp_number_id: whatsappNumberId,
+      phone_number_id: phoneNumberId,
+      wa_call_id: waCallId,
+      lead_id: leadId,
+      from_phone: fromPhone,
+      to_phone: toPhone,
+      direction,
+      status,
+      event,
+      raw_payload: call,
+    };
+
+    if (sdpType === "offer" && sdp) patch.sdp_offer = sdp;
+    if (sdpType === "answer" && sdp) patch.sdp_answer = sdp;
+
+    if (!existing) {
+      patch.started_at = timestampIso;
+    }
+    if (event === "accept") patch.connected_at = nowIso;
+    if (event === "terminate") {
+      patch.ended_at = nowIso;
+      const dur = Number(call?.duration || 0);
+      if (dur > 0) patch.duration_seconds = dur;
+    }
+
+    if (existing) {
+      const { error } = await supabase.from("whatsapp_calls").update(patch).eq("id", existing.id);
+      if (error) console.error("[WEBHOOK-CALLS] update error:", error);
+      else console.log(`[WEBHOOK-CALLS] updated call ${waCallId} event=${event} status=${status}`);
+    } else {
+      const { error } = await supabase.from("whatsapp_calls").insert(patch);
+      if (error) console.error("[WEBHOOK-CALLS] insert error:", error);
+      else console.log(`[WEBHOOK-CALLS] inserted call ${waCallId} event=${event} status=${status} direction=${direction}`);
+    }
+  }
+}
+
 
 // Mapeia o nome da conta de anúncio (Meta Ad Account) ou pistas no texto do anúncio
 // (título, descrição, mensagem inicial) para a cidade do lead. Permite preencher
