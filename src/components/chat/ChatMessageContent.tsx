@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Mic, File as FileIcon, Image, ExternalLink } from "lucide-react";
+import { Mic, File as FileIcon, Image, ExternalLink, Phone, PhoneIncoming, PhoneMissed, PhoneOff } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
 import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
