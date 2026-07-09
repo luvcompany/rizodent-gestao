@@ -113,6 +113,8 @@ export default function CrmConversa() {
   const [leadLoading, setLeadLoading] = useState(true);
   const [phoneCopied, setPhoneCopied] = useState(false);
   const [nameCopied, setNameCopied] = useState(false);
+  const { initiateCall, state: callState } = useWhatsappCall();
+
 
   const copyPhone = async () => {
     if (!lead?.phone) return;
