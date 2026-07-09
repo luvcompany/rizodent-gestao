@@ -271,11 +271,20 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
+    let cleanupError: string | null = null;
     if (admin && createdTenantId) {
-      await cleanupFailedTenant(admin, createdTenantId, createdUserId);
+      try {
+        await cleanupFailedTenant(admin, createdTenantId, createdUserId);
+      } catch (ce: any) {
+        cleanupError = ce?.message ?? String(ce);
+      }
     }
-    return new Response(JSON.stringify({ error: e?.message ?? String(e) }), {
+    return new Response(JSON.stringify({
+      error: e?.message ?? String(e),
+      cleanup_error: cleanupError,
+    }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
