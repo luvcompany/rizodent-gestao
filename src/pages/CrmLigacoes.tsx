@@ -337,8 +337,8 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
     <div className="mt-4 space-y-4">
       <div className="flex items-center gap-3">
         <Avatar className="h-14 w-14">
-          {call.lead?.avatar_url ? <AvatarImage src={call.lead.avatar_url} /> : null}
           <AvatarFallback>{(name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+
         </Avatar>
         <div className="min-w-0">
           <div className="font-semibold truncate">{name}</div>
