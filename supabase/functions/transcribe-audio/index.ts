@@ -252,7 +252,7 @@ Deno.serve(async (req) => {
         console.error("[transcribe-audio] Lovable STT failed:", e?.message);
         return json({ error: "Erro ao transcrever gravação", detail: e?.message }, 502);
       }
-    }
+    } else if (transcriptionModel.startsWith("openai/")) {
       const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
       if (!OPENAI_API_KEY) {
         return json({ error: "OPENAI_API_KEY não configurada no backend." }, 500);
