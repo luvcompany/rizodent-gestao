@@ -80,6 +80,32 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
             ) {
               return { phase: "ringing", call: row };
             }
+
+            // Outbound: recebeu SDP answer → aplica no peer
+            if (
+              row.direction === "outbound" &&
+              row.sdp_answer &&
+              prev.phase !== "idle" &&
+              "call" in prev &&
+              prev.call.id === row.id &&
+              sessionRef.current
+            ) {
+              sessionRef.current.applyRemoteAnswer(row.sdp_answer).catch((e) =>
+                console.error("[wa-call] applyRemoteAnswer error", e),
+              );
+            }
+
+            // Outbound: consumidor aceitou → active
+            if (
+              row.direction === "outbound" &&
+              (row.event === "accept" || row.status === "accepted" || row.status === "connected") &&
+              prev.phase === "connecting" &&
+              "call" in prev &&
+              prev.call.id === row.id
+            ) {
+              return { phase: "active", call: { ...prev.call, ...row }, startedAt: Date.now() };
+            }
+
             // Terminate remoto durante ringing/active → limpa
             if (
               (row.status === "completed" ||
@@ -106,6 +132,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       supabase.removeChannel(channel);
     };
   }, [user?.id, tenantId]);
+
 
   // --- Ringtone
   useEffect(() => {
