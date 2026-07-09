@@ -3589,6 +3589,7 @@ export type Database = {
           lead_id: string | null
           phone_number_id: string
           raw_payload: Json | null
+          recording_url: string | null
           sdp_answer: string | null
           sdp_offer: string | null
           session_data: Json
@@ -3616,6 +3617,7 @@ export type Database = {
           lead_id?: string | null
           phone_number_id: string
           raw_payload?: Json | null
+          recording_url?: string | null
           sdp_answer?: string | null
           sdp_offer?: string | null
           session_data?: Json
@@ -3643,6 +3645,7 @@ export type Database = {
           lead_id?: string | null
           phone_number_id?: string
           raw_payload?: Json | null
+          recording_url?: string | null
           sdp_answer?: string | null
           sdp_offer?: string | null
           session_data?: Json
