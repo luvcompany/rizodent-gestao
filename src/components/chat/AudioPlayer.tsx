@@ -16,8 +16,27 @@ export default function AudioPlayer({ src }: { src: string }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => setProgress(audio.currentTime);
-    const onMeta = () => setDuration(audio.duration);
+    const onTime = () => {
+      // While we're forcing duration resolution, currentTime jumps huge — ignore.
+      if (isFinite(audio.duration)) setProgress(audio.currentTime);
+    };
+    const onMeta = () => {
+      if (audio.duration === Infinity || isNaN(audio.duration)) {
+        // Workaround: MediaRecorder-produced webm files often report Infinity duration.
+        // Seeking past the end forces the browser to compute the real duration.
+        const onDur = () => {
+          if (isFinite(audio.duration)) {
+            setDuration(audio.duration);
+            audio.currentTime = 0;
+            audio.removeEventListener("durationchange", onDur);
+          }
+        };
+        audio.addEventListener("durationchange", onDur);
+        try { audio.currentTime = 1e9; } catch { /* noop */ }
+      } else {
+        setDuration(audio.duration);
+      }
+    };
     const onEnd = () => {
       setPlaying(false);
       if (currentlyPlayingAudio === audio) currentlyPlayingAudio = null;
