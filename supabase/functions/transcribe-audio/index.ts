@@ -209,15 +209,50 @@ Deno.serve(async (req) => {
     let text = "";
     const isCallRecording = !!callPath || sourceTable === "whatsapp_calls" || mime.toLowerCase().includes("webm");
 
-    if (isCallRecording) {
-      // Gravações de ligação (webm/opus) — usa STT dedicado do Lovable Gateway
+    const downloadTrack = async (url: string): Promise<{ bytes: Uint8Array; mime: string } | null> => {
+      try {
+        const p = extractStoragePath(url, "call-recordings");
+        if (p) {
+          const { data, error } = await admin.storage.from("call-recordings").download(p);
+          if (error || !data) return null;
+          return { bytes: new Uint8Array(await data.arrayBuffer()), mime: data.type || "audio/webm" };
+        }
+        const r = await fetch(url);
+        if (!r.ok) return null;
+        return { bytes: new Uint8Array(await r.arrayBuffer()), mime: r.headers.get("content-type") || "audio/webm" };
+      } catch { return null; }
+    };
+
+    if (isCallRecording && sourceTable === "whatsapp_calls" && agentUrl && leadUrl) {
+      // Diarização: transcreve cada faixa separadamente e monta bloco com falantes
+      try {
+        const [agentTrack, leadTrack] = await Promise.all([downloadTrack(agentUrl), downloadTrack(leadUrl)]);
+        const agentText = agentTrack ? await transcribeWithLovableGatewaySTT(agentTrack.bytes, agentTrack.mime, LOVABLE_API_KEY) : "";
+        const leadText = leadTrack ? await transcribeWithLovableGatewaySTT(leadTrack.bytes, leadTrack.mime, LOVABLE_API_KEY) : "";
+        const parts: string[] = [];
+        if (agentText) parts.push(`🎧 Atendente:\n${agentText}`);
+        if (leadText) parts.push(`👤 Lead:\n${leadText}`);
+        if (parts.length === 0) {
+          text = await transcribeWithLovableGatewaySTT(audioBytes, mime, LOVABLE_API_KEY);
+        } else {
+          text = parts.join("\n\n");
+        }
+      } catch (e: any) {
+        console.error("[transcribe-audio] diarized STT failed, falling back to mix:", e?.message);
+        try {
+          text = await transcribeWithLovableGatewaySTT(audioBytes, mime, LOVABLE_API_KEY);
+        } catch (e2: any) {
+          return json({ error: "Erro ao transcrever gravação", detail: e2?.message }, 502);
+        }
+      }
+    } else if (isCallRecording) {
       try {
         text = await transcribeWithLovableGatewaySTT(audioBytes, mime, LOVABLE_API_KEY);
       } catch (e: any) {
         console.error("[transcribe-audio] Lovable STT failed:", e?.message);
         return json({ error: "Erro ao transcrever gravação", detail: e?.message }, 502);
       }
-    } else if (transcriptionModel.startsWith("openai/")) {
+    }
       const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
       if (!OPENAI_API_KEY) {
         return json({ error: "OPENAI_API_KEY não configurada no backend." }, 500);
