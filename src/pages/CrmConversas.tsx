@@ -22,6 +22,7 @@ import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
+import { parseCallPermissionReply, formatCallPermissionReply } from "@/lib/callPermissionReply";
 import LeadAiAssistPanel from "@/components/chat/LeadAiAssistPanel";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
 import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
