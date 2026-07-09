@@ -122,19 +122,36 @@ Deno.serve(async (req: Request) => {
 
     let connected = 0;
     for (const waba_id of wabaIds) {
-      // 3) Assina webhook da WABA
+      // 3) Assina webhook da WABA — incluindo campo "calls" para WhatsApp Calling API
       try {
         const subRes = await fetch(
           `https://graph.facebook.com/${API_VERSION}/${encodeURIComponent(waba_id)}/subscribed_apps`,
-          { method: "POST", headers: { Authorization: `Bearer ${access_token}` } },
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              subscribed_fields: [
+                "messages",
+                "message_template_status_update",
+                "account_update",
+                "calls",
+              ],
+            }),
+          },
         );
         if (!subRes.ok) {
           const t = await subRes.text().catch(() => "");
           console.warn(`[wa-oauth-callback] subscribed_apps failed for ${waba_id}:`, subRes.status, t);
+        } else {
+          console.log(`[wa-oauth-callback] subscribed_apps OK for ${waba_id} (fields incl. calls)`);
         }
       } catch (e) {
         console.warn(`[wa-oauth-callback] subscribed_apps error for ${waba_id}:`, e);
       }
+
 
       // 4) Lista números da WABA
       const phRes = await fetch(
