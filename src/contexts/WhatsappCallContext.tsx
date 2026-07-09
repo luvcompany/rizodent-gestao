@@ -137,6 +137,20 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
             ) {
               return { phase: "active", call: { ...prev.call, ...row }, startedAt: Date.now() };
             }
+            // Inbound tocando: outra sessão/aba atendeu → silencia local
+            if (
+              row.direction === "inbound" &&
+              (row.event === "accept" ||
+                row.status === "accepted" ||
+                row.status === "connected" ||
+                row.status === "in-progress") &&
+              prev.phase === "ringing" &&
+              prev.call.id === row.id
+            ) {
+              ringtoneRef.current?.stop(); ringtoneRef.current = null;
+              return { phase: "idle" };
+            }
+
 
             // Terminate remoto durante ringing/active → limpa
             if (
