@@ -62,26 +62,96 @@ Deno.serve(async (req) => {
 
     const body = (await req.json()) as Body;
     const { call_id, action, sdp } = body || ({} as Body);
-    if (!call_id || !action) {
-      return new Response(JSON.stringify({ error: "call_id and action required" }), {
+    if (!action) {
+      return new Response(JSON.stringify({ error: "action required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if ((action === "pre_accept" || action === "accept") && !sdp) {
-      return new Response(JSON.stringify({ error: "sdp is required for accept/pre_accept" }), {
+    if ((action === "pre_accept" || action === "accept" || action === "connect") && !sdp) {
+      return new Response(JSON.stringify({ error: "sdp is required for accept/pre_accept/connect" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (action !== "connect" && !call_id) {
+      return new Response(JSON.stringify({ error: "call_id required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Carrega a chamada
-    const { data: call, error: callErr } = await supabase
-      .from("whatsapp_calls")
-      .select("id, tenant_id, phone_number_id, wa_call_id, status, direction")
-      .eq("id", call_id)
+    // Resolve tenant/phone_number_id/wa_call_id conforme o modo
+    let tenantId: string | null = null;
+    let phoneNumberId: string | null = null;
+    let waCallId: string | null = null;
+    let dbCallId: string | null = null;
+
+    // Perfil do usuário
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", userId)
       .maybeSingle();
-    if (callErr || !call) {
+    if (!profile?.tenant_id) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    tenantId = profile.tenant_id;
+
+    if (action === "connect") {
+      const toPhone = (body.to_phone || "").replace(/\D/g, "");
+      if (!toPhone) {
+        return new Response(JSON.stringify({ error: "to_phone required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // phone_number_id: usa o informado ou o default do tenant
+      phoneNumberId = body.phone_number_id || null;
+      if (!phoneNumberId) {
+        const { data: def } = await supabase
+          .from("whatsapp_numbers")
+          .select("phone_number_id")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .order("is_default", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        phoneNumberId = def?.phone_number_id || null;
+      }
+      if (!phoneNumberId) {
+        return new Response(JSON.stringify({ error: "no phone_number_id available" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      // Carrega a chamada existente
+      const { data: call, error: callErr } = await supabase
+        .from("whatsapp_calls")
+        .select("id, tenant_id, phone_number_id, wa_call_id, status, direction")
+        .eq("id", call_id!)
+        .maybeSingle();
+      if (callErr || !call) {
+        return new Response(JSON.stringify({ error: "call not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (call.tenant_id !== tenantId) {
+        return new Response(JSON.stringify({ error: "forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      phoneNumberId = call.phone_number_id;
+      waCallId = call.wa_call_id;
+      dbCallId = call.id;
+    }
+
       return new Response(JSON.stringify({ error: "call not found" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
