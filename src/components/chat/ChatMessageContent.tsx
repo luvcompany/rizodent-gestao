@@ -317,14 +317,14 @@ export default function ChatMessageContent({
       Icon = PhoneIncoming;
     }
     const clean = label.replace(/^📞\s*/, "");
-    const hasRecording = isMediaUrl(message.media_url);
+    const hasRecording = isMediaUrl(resolvedUrl);
     return (
       <div className="flex flex-col gap-1.5">
         <div className={`flex items-center gap-2 text-sm ${color}`}>
           <Icon size={16} className="flex-shrink-0" />
           <span className="whitespace-nowrap">{clean}</span>
         </div>
-        {hasRecording && <AudioPlayer src={message.media_url!} />}
+        {hasRecording && <AudioPlayer src={resolvedUrl!} />}
       </div>
     );
   }
