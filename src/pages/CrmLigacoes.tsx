@@ -185,9 +185,12 @@ export default function CrmLigacoes() {
   return (
     <div className="flex flex-col h-full min-h-0">
       <header className="p-4 md:p-6 border-b bg-background">
-        <div className="flex items-center gap-2 mb-4">
-          <Phone className="text-primary" />
-          <h1 className="text-2xl font-semibold">Ligações</h1>
+        <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Phone className="text-primary" />
+            <h1 className="text-2xl font-semibold">Ligações</h1>
+          </div>
+          <DateRangeFilter value={period} onChange={setPeriod} />
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 md:gap-3 mb-4">
