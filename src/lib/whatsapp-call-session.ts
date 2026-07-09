@@ -271,6 +271,12 @@ export class WhatsappCallSession {
   }
 
   cleanup() {
+    // Dispara upload da gravação em paralelo (não bloqueia UI)
+    if (this.recorder && !this.recordingPromise) {
+      this.recordingPromise = this.stopAndUploadRecording().catch((e) =>
+        console.error("[wa-call] recording upload failed:", e),
+      );
+    }
     try { this.localStream?.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
     try { this.pc?.close(); } catch { /* noop */ }
     this.localStream = null;
