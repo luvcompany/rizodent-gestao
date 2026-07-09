@@ -614,7 +614,8 @@ Endereço da unidade: ${unitAddress || "[NÃO CADASTRADO — NÃO envie endereç
 Hoje é: ${todayLabel}
 Hora atual (${tenantTz}): ${String(hourBA).padStart(2, "0")}:${String(minBA).padStart(2, "0")}
 Horário comercial da clínica: ${shiftStartStr}–${shiftEndStr} (${tenantTz}). AGORA está ${inShift ? "DENTRO" : "FORA"} do expediente.
-Saudação correta para AGORA: "${saudacao}" (use ESTA, nunca outra)
+Saudação correta para AGORA: "${saudacao}" (use ESTA quando for cumprimentar, nunca outra)
+Já cumprimentou HOJE: ${alreadyGreetedToday ? `SIM (última saudação enviada em ${lastGreetingAt}). NÃO repita "Bom dia/Boa tarde/Boa noite/Olá/Oi" — vá direto ao ponto.` : "NÃO — pode cumprimentar normalmente."}
 Canal: ${isInstagram ? "Instagram (Direct)" : "WhatsApp"}${pacienteBlock}${adBlock}${leadNotesBlock}${teamNotesBlock}${stageHistoryBlock}
 
 
