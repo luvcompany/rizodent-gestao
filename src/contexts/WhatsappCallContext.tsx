@@ -276,6 +276,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const rejectCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
     const call = state.call;
+    publishSync({ type: "rejected", callId: call.id });
     try {
       const session = new WhatsappCallSession(call.id);
       await session.reject();
@@ -283,7 +284,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       console.error("[wa-call] reject error:", e);
     }
     setState({ phase: "idle" });
-  }, [state]);
+  }, [state, publishSync]);
 
   const hangupCall = useCallback(async () => {
     const session = sessionRef.current;
