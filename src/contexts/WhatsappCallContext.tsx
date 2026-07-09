@@ -5,6 +5,7 @@ import { WhatsappCallSession } from "@/lib/whatsapp-call-session";
 import { IncomingWhatsappCallModal } from "@/components/whatsapp-calls/IncomingWhatsappCallModal";
 import { ActiveWhatsappCallBar } from "@/components/whatsapp-calls/ActiveWhatsappCallBar";
 import { toast } from "sonner";
+import { playIncomingRingtone, playOutgoingDialTone } from "@/lib/call-tones";
 
 export interface WhatsappCallRow {
   id: string;
