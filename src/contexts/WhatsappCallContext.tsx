@@ -5,6 +5,7 @@ import { WhatsappCallSession } from "@/lib/whatsapp-call-session";
 import { IncomingWhatsappCallModal } from "@/components/whatsapp-calls/IncomingWhatsappCallModal";
 import { ActiveWhatsappCallBar } from "@/components/whatsapp-calls/ActiveWhatsappCallBar";
 import { toast } from "sonner";
+import { playIncomingRingtone, playOutgoingDialTone } from "@/lib/call-tones";
 
 export interface WhatsappCallRow {
   id: string;
@@ -56,7 +57,8 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [muted, setMuted] = useState(false);
   const sessionRef = useRef<WhatsappCallSession | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
+  const ringtoneRef = useRef<{ stop: () => void } | null>(null);
+  const dialToneRef = useRef<{ stop: () => void } | null>(null);
 
   // --- Realtime: escuta whatsapp_calls do tenant
   useEffect(() => {
@@ -119,7 +121,8 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
             ) {
               sessionRef.current?.cleanup();
               sessionRef.current = null;
-              stopRingtone();
+              ringtoneRef.current?.stop(); ringtoneRef.current = null;
+              dialToneRef.current?.stop(); dialToneRef.current = null;
               return { phase: "idle" };
             }
             return prev;
@@ -134,30 +137,34 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [user?.id, tenantId]);
 
 
-  // --- Ringtone
+  // --- Ringtone (entrante) + dial tone (saindo)
   useEffect(() => {
-    if (state.phase === "ringing") playRingtone();
-    else stopRingtone();
-  }, [state.phase]);
+    // Ringtone só toca em "ringing" (entrante aguardando o usuário atender)
+    if (state.phase === "ringing") {
+      if (!ringtoneRef.current) ringtoneRef.current = playIncomingRingtone();
+    } else {
+      ringtoneRef.current?.stop();
+      ringtoneRef.current = null;
+    }
 
-  const playRingtone = () => {
-    try {
-      if (!ringtoneRef.current) {
-        // Ringtone sintético via data URI (tom simples)
-        ringtoneRef.current = new Audio(
-          "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAGAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA",
-        );
-        ringtoneRef.current.loop = true;
-      }
-      void ringtoneRef.current.play().catch(() => { /* autoplay policy */ });
-    } catch { /* ignore */ }
-  };
-  const stopRingtone = () => {
-    try {
-      ringtoneRef.current?.pause();
-      if (ringtoneRef.current) ringtoneRef.current.currentTime = 0;
-    } catch { /* ignore */ }
-  };
+    // Dial tone toca em "connecting" para chamadas outbound (aguardando o remoto atender)
+    const isOutboundConnecting =
+      state.phase === "connecting" && "call" in state && state.call.direction === "outbound";
+    if (isOutboundConnecting) {
+      if (!dialToneRef.current) dialToneRef.current = playOutgoingDialTone();
+    } else {
+      dialToneRef.current?.stop();
+      dialToneRef.current = null;
+    }
+  }, [state.phase, (state as any).call?.direction]);
+
+  useEffect(() => {
+    return () => {
+      ringtoneRef.current?.stop();
+      dialToneRef.current?.stop();
+    };
+  }, []);
+
 
   const acceptCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
