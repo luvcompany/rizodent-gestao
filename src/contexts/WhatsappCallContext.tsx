@@ -62,8 +62,9 @@ type SyncMsg = {
 };
 
 export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
+  const isAuthed = !!user && !authLoading;
   const [state, setState] = useState<CallState>({ phase: "idle" });
   const [muted, setMuted] = useState(false);
   const sessionRef = useRef<WhatsappCallSession | null>(null);
