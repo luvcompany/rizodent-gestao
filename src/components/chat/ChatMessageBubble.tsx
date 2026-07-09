@@ -71,6 +71,7 @@ function getQuotedLabel(msg: Message) {
   if (msg.type === "video") return "🎥 Vídeo";
   if (msg.type === "audio") return "🎤 Áudio";
   if (msg.type === "document") return "📄 Documento";
+  if (msg.type === "call") return msg.content || "📞 Chamada de voz";
   return msg.content || `[${msg.type}]`;
 }
 

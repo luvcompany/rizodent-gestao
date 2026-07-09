@@ -304,6 +304,28 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (insErr) console.error("[wa-call-signaling] insert whatsapp_calls error:", insErr);
 
+      // Registra a chamada como mensagem na conversa
+      if (body.lead_id && returnedWaCallId) {
+        const { error: msgErr } = await supabase.from("messages").insert({
+          lead_id: body.lead_id,
+          tenant_id: tenantId,
+          whatsapp_number_id: waRow?.id || null,
+          channel: "whatsapp",
+          direction: "outbound",
+          type: "call",
+          content: "📞 Chamada de voz",
+          status: "sent",
+          whatsapp_message_id: `call:${returnedWaCallId}`,
+          sender_id: userId,
+        });
+        if (msgErr) console.error("[wa-call-signaling] insert call message error:", msgErr);
+        await supabase.from("crm_leads").update({
+          last_message: "📞 Chamada de voz",
+          last_message_at: new Date().toISOString(),
+          last_outbound_at: new Date().toISOString(),
+        }).eq("id", body.lead_id);
+      }
+
       console.log(`[wa-call-signaling] connect OK wa_call_id=${returnedWaCallId} by user=${userId}`);
       return new Response(JSON.stringify({ ok: true, call_id: inserted?.id, wa_call_id: returnedWaCallId, graph: graphJson }), {
         status: 200,

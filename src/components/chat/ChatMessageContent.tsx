@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Mic, File as FileIcon, Image, ExternalLink } from "lucide-react";
+import { Mic, File as FileIcon, Image, ExternalLink, Phone, PhoneIncoming, PhoneMissed, PhoneOff } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
 import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
@@ -301,6 +301,30 @@ export default function ChatMessageContent({
   const [imgError, setImgError] = useState(false);
   useEffect(() => { setImgError(false); }, [resolvedUrl]);
   const handleImgError = useCallback(() => setImgError(true), []);
+
+  if (message.type === "call") {
+    const label = message.content || "📞 Chamada de voz";
+    // Escolhe ícone e cor pelo texto (é o que a edge function define)
+    const isMissed = /perdida|não atendida/i.test(label);
+    const isRejected = /recusada/i.test(label);
+    const isFailed = /não completada|falhou/i.test(label);
+    const isInbound = /recebida/i.test(label);
+    let Icon = Phone;
+    let color = "text-foreground";
+    if (isMissed || isRejected || isFailed) {
+      Icon = isRejected ? PhoneOff : PhoneMissed;
+      color = "text-destructive";
+    } else if (isInbound) {
+      Icon = PhoneIncoming;
+    }
+    const clean = label.replace(/^📞\s*/, "");
+    return (
+      <div className={`flex items-center gap-2 text-sm ${color}`}>
+        <Icon size={16} className="flex-shrink-0" />
+        <span className="whitespace-nowrap">{clean}</span>
+      </div>
+    );
+  }
 
   if (message.type === "template" || message.content?.startsWith("📋 Template:")) {
     const name = message.type === "template"

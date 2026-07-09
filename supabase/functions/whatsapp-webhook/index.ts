@@ -148,8 +148,64 @@ async function handleCallsChange(supabase: any, value: any) {
       if (error) console.error("[WEBHOOK-CALLS] insert error:", error);
       else console.log(`[WEBHOOK-CALLS] inserted call ${waCallId} event=${event} status=${status} direction=${direction}`);
     }
+
+    // Sincroniza mensagem "call" no thread da conversa
+    if (leadId) {
+      const durSecs = Number(call?.duration || 0);
+      const mm = String(Math.floor(durSecs / 60)).padStart(2, "0");
+      const ss = String(durSecs % 60).padStart(2, "0");
+      let content = "📞 Chamada de voz";
+      if (event === "connect") {
+        content = direction === "inbound" ? "📞 Chamada recebida" : "📞 Chamada de voz";
+      } else if (status === "rejected") {
+        content = "📞 Chamada recusada";
+      } else if (status === "failed") {
+        content = "📞 Chamada não completada";
+      } else if (status === "missed") {
+        content = direction === "inbound" ? "📞 Chamada perdida" : "📞 Chamada não atendida";
+      } else if (status === "completed" || status === "canceled") {
+        content = durSecs > 0 ? `📞 Chamada de voz · ${mm}:${ss}` : "📞 Chamada de voz";
+      }
+
+      const waMsgKey = `call:${waCallId}`;
+      const { data: existingMsg } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("whatsapp_message_id", waMsgKey)
+        .maybeSingle();
+
+      const msgPayload: Record<string, any> = {
+        lead_id: leadId,
+        tenant_id: tenantId,
+        whatsapp_number_id: whatsappNumberId,
+        channel: "whatsapp",
+        direction,
+        type: "call",
+        content,
+        status: "sent",
+        whatsapp_message_id: waMsgKey,
+      };
+
+      if (existingMsg) {
+        await supabase.from("messages").update({ content, status: "sent" }).eq("id", existingMsg.id);
+      } else {
+        const { error: mErr } = await supabase.from("messages").insert(msgPayload);
+        if (mErr) console.error("[WEBHOOK-CALLS] insert call message error:", mErr);
+      }
+
+      // Atualiza preview da lista de conversas
+      const leadUpd: Record<string, any> = {
+        last_message: content,
+        last_message_at: nowIso,
+      };
+      if (direction === "inbound") leadUpd.last_inbound_at = nowIso;
+      else leadUpd.last_outbound_at = nowIso;
+      await supabase.from("crm_leads").update(leadUpd).eq("id", leadId);
+    }
   }
 }
+
+
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
