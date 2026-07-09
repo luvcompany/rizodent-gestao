@@ -20,7 +20,12 @@ function popupResponse(
   status: "connected" | "error",
   count = 0,
 ): Response {
-  const base = (FRONTEND_URL || "https://crclin.com.br").replace(/\/+$/, "");
+  let base = "https://crclin.com.br";
+  try {
+    base = new URL(FRONTEND_URL || "https://crclin.com.br").origin;
+  } catch {
+    base = "https://crclin.com.br";
+  }
   const qs = new URLSearchParams({ channel, status, count: String(count) });
   return Response.redirect(`${base}/oauth-close?${qs.toString()}`, 302);
 }

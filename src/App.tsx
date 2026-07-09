@@ -217,6 +217,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
           <DataPrefetcher />
           <Routes>
             <Route path="/" element={withRouteSuspense(<TenantLogin />)} />
+            <Route path="/oauth-close" element={withRouteSuspense(<OAuthClose />)} />
             <Route path="/.lovable/oauth/consent" element={withRouteSuspense(<OAuthConsent />)} />
             <Route path="/change-password" element={<ProtectedRoute>{withRouteSuspense(<ChangePassword />)}</ProtectedRoute>} />
             <Route
