@@ -109,7 +109,7 @@ export default function CrmLigacoes() {
           id, tenant_id, lead_id, from_phone, to_phone, direction, status,
           started_at, connected_at, ended_at, duration_seconds, error_message,
           recording_url, transcription, initiated_by, answered_by,
-          lead:crm_leads!whatsapp_calls_lead_id_fkey ( id, nome, telefone, avatar_url )
+          lead:crm_leads!whatsapp_calls_lead_id_fkey ( id, name, phone )
         `)
         .order("started_at", { ascending: false, nullsFirst: false })
         .limit(500);
