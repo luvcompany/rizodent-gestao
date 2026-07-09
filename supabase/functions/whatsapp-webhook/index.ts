@@ -336,6 +336,17 @@ Deno.serve(async (req) => {
           const value = change?.value;
           if (!value) continue;
 
+          // ============ CALLS FIELD (WhatsApp Business Calling API) ============
+          if (change?.field === "calls") {
+            try {
+              await handleCallsChange(supabase, value);
+            } catch (e) {
+              console.error("[WEBHOOK-CALLS] error:", e);
+            }
+            continue;
+          }
+
+
           // Find the matching integration by phone_number_id
           const incomingPhoneNumberId = value?.metadata?.phone_number_id;
           let matchedIntegration: any = null;
