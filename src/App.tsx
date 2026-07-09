@@ -183,6 +183,7 @@ export const PublicApp = ({ basename }: { basename: string }) => (
             <Route path="/privacidade" element={<Privacidade />} />
             <Route path="/termos" element={<Termos />} />
             <Route path="/exclusao-de-dados" element={<ExclusaoDados />} />
+            <Route path="/oauth-close" element={<OAuthClose />} />
             <Route path="/.lovable/oauth/consent" element={withRouteSuspense(<OAuthConsent />)} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<AdminLayout />}>
