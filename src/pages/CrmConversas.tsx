@@ -1303,17 +1303,19 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   ) : null;
 
                   if (chat.isSystemMessage(msg)) {
-                    const destName = msg.content?.split("→").pop()?.trim();
+                    const cpr = parseCallPermissionReply(msg.content);
+                    const displayContent = cpr ? formatCallPermissionReply(cpr) : (msg.content || "");
+                    const destName = !cpr ? displayContent.split("→").pop()?.trim() : null;
                     const destStage = destName ? chat.stages.find(s => s.name === destName) : null;
                     return (
                       <div key={msg.id}>
                         {dateSep}
                         {accSep}
                         <ChatActivitySeparator
-                          content={msg.content || ""}
+                          content={displayContent}
                           timestamp={msg.created_at}
                           stageColor={destStage?.color}
-                          onDelete={() => chat.deleteSystemMessage(msg.id)}
+                          onDelete={cpr ? undefined : () => chat.deleteSystemMessage(msg.id)}
                         />
                       </div>
                     );
