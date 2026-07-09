@@ -86,6 +86,12 @@ export class WhatsappCallSession {
       this.cleanup();
       throw new Error(`Signaling error: ${error.message}`);
     }
+    if ((data as any)?.ok === false) {
+      this.cleanup();
+      const err: any = new Error((data as any).user_message || (data as any).code || "call error");
+      err.code = (data as any).code;
+      throw err;
+    }
     if ((data as any)?.error) {
       this.cleanup();
       throw new Error((data as any).error);
