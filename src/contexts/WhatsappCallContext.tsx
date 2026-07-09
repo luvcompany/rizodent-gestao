@@ -233,6 +233,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const acceptCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
     const call = state.call;
+    publishSync({ type: "accepted", callId: call.id });
     setState({ phase: "connecting", call });
     try {
       const session = new WhatsappCallSession(call.id, {
