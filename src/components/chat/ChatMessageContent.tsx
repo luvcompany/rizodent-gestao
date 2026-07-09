@@ -423,6 +423,24 @@ export default function ChatMessageContent({
   useEffect(() => { setImgError(false); }, [resolvedUrl]);
   const handleImgError = useCallback(() => setImgError(true), []);
 
+  // Instagram: reel/story/shared post — render distinctive clickable card
+  const igSpecial = detectInstagramSpecial(message.content);
+  if (igSpecial) {
+    const mediaType: "image" | "video" | null =
+      message.type === "video" ? "video" : message.type === "image" || igSpecial.kind === "story" ? "image" : null;
+    return (
+      <InstagramSpecialCard
+        kind={igSpecial.kind}
+        label={igSpecial.label}
+        caption={igSpecial.caption}
+        mediaUrl={resolvedUrl}
+        mediaType={mediaType}
+        onMediaClick={onMediaClick}
+      />
+    );
+  }
+
+
   if (message.type === "call") {
     const label = message.content || "📞 Chamada de voz";
     const isMissed = /perdida|não atendida/i.test(label);
