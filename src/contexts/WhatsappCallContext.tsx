@@ -230,6 +230,16 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, []);
 
+  // Ao deslogar, aborta qualquer chamada/ringtone em curso.
+  useEffect(() => {
+    if (isAuthed) return;
+    ringtoneRef.current?.stop(); ringtoneRef.current = null;
+    dialToneRef.current?.stop(); dialToneRef.current = null;
+    sessionRef.current?.cleanup?.();
+    sessionRef.current = null;
+    setState((prev) => (prev.phase === "idle" ? prev : { phase: "idle" }));
+  }, [isAuthed]);
+
 
   const acceptCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
