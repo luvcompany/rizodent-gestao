@@ -376,7 +376,7 @@ export default function ChatMessageContent({
           onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
         />
         {message.content?.trim() && (
-          <p className="text-sm whitespace-pre-wrap mt-1">{message.content}</p>
+          <TextWithLinks text={message.content} className="mt-1" />
         )}
       </div>
     );
@@ -409,7 +409,7 @@ export default function ChatMessageContent({
           </div>
         </div>
         {message.content?.trim() && (
-          <p className="text-sm whitespace-pre-wrap mt-1">{message.content}</p>
+          <TextWithLinks text={message.content} className="mt-1" />
         )}
       </div>
     );
@@ -451,7 +451,7 @@ export default function ChatMessageContent({
 
   if (["button", "interactive", "reaction", "contacts", "location", "order", "referral", "system"].includes(message.type)) {
     if (message.content?.trim()) {
-      return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
+      return <TextWithLinks text={message.content} />;
     }
     return <p className="text-sm text-muted-foreground italic">[{message.type}]</p>;
   }
@@ -473,7 +473,7 @@ export default function ChatMessageContent({
           )
         )}
         {message.content?.trim() && (
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          <TextWithLinks text={message.content} />
         )}
       </div>
     );
