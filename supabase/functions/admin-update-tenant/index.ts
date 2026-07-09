@@ -41,6 +41,12 @@ Deno.serve(async (req) => {
     }
 
     if (action === "delete") {
+      // Protected tenants cannot be deleted (safety)
+      const { data: tRow } = await admin.from("tenants").select("slug").eq("id", tenant_id).maybeSingle();
+      const PROTECTED = ["rizodent"];
+      if (tRow && PROTECTED.includes(String(tRow.slug).toLowerCase())) {
+        return json({ error: "Este cliente é protegido e não pode ser excluído." }, 403);
+      }
       // Collect auth user ids first, then hard-delete all tenant data, then remove auth users
       const { data: profs } = await admin.from("profiles").select("id").eq("tenant_id", tenant_id);
       const { error: rpcErr } = await admin.rpc("hard_delete_tenant", { _tenant_id: tenant_id });
@@ -51,6 +57,7 @@ Deno.serve(async (req) => {
       await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: "tenant_delete" });
       return json({ ok: true, status: "deleted" });
     }
+
 
     if (action === "pause" || action === "activate") {
       const status = action === "pause" ? "paused" : "active";
