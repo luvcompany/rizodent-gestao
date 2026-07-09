@@ -252,8 +252,8 @@ export default function CrmLigacoes() {
                   className="flex items-center gap-3 p-3 md:px-6 hover:bg-muted/40 cursor-pointer"
                 >
                   <Avatar className="h-10 w-10 flex-shrink-0">
-                    {c.lead?.avatar_url ? <AvatarImage src={c.lead.avatar_url} /> : null}
                     <AvatarFallback>{(name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
