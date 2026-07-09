@@ -182,17 +182,16 @@ Deno.serve(async (req) => {
     if (clinErr) throw new Error(`Falha ao criar clínica: ${clinErr.message}`);
 
 
-    // Seed the default "Funil Principal" (model funnel — same as Rizodent's main funnel)
-    const { data: defaultPipeline, error: pErr } = await admin
+    // Seed default pipelines: "Funil Principal" (WhatsApp) and "Instagram"
+    // Both come with the same standard stage set — tenant customizes later.
+    // Nothing else is seeded: the new tenant starts with a completely empty system.
+    const { data: pipelinesInserted, error: pErr } = await admin
       .from("crm_pipelines")
-      .insert({
-        tenant_id: tenant.id,
-        name: "Funil Principal",
-        color: "#6366f1",
-        is_default: true,
-      })
-      .select()
-      .single();
+      .insert([
+        { tenant_id: tenant.id, name: "Funil Principal", color: "#6366f1", is_default: true },
+        { tenant_id: tenant.id, name: "Instagram",        color: "#ec4899", is_default: false },
+      ])
+      .select();
     if (pErr) throw pErr;
 
     const defaultStages = [
@@ -208,64 +207,22 @@ Deno.serve(async (req) => {
       { name: "Contratado",     position: 9,  color: "#84cc16", is_won: true },
       { name: "Desqualificado", position: 10, color: "#ef4444" },
     ];
-    const { error: stagesErr } = await admin.from("crm_stages").insert(
+    const stageRows = pipelinesInserted.flatMap((pipe: any) =>
       defaultStages.map((s) => ({
         ...s,
         tenant_id: tenant.id,
-        pipeline_id: defaultPipeline.id,
+        pipeline_id: pipe.id,
         is_won: (s as any).is_won === true,
       }))
     );
-    if (stagesErr) throw new Error(`Falha ao criar etapas do funil: ${stagesErr.message}`);
+    const { error: stagesErr } = await admin.from("crm_stages").insert(stageRows);
+    if (stagesErr) throw new Error(`Falha ao criar etapas dos funis: ${stagesErr.message}`);
 
-    // ---- Optional seeding (non-fatal): accumulate warnings, never roll back the tenant ----
     const warnings: string[] = [];
+    // Nothing else is seeded — no ai_assistant_config, tipos_procedimento,
+    // funnel_channels, quick_replies, bots, automations, holidays, etc.
+    // The client's system starts totally empty and is populated by the tenant itself.
 
-    // 1) AI assistant config — one active row per tenant, empty KB (tenant fills in later)
-    const { error: aiErr } = await admin.from("ai_assistant_config").insert({
-      tenant_id: tenant.id,
-      is_active: true,
-      assistant_display_name: "Assistente",
-      name: `${name} — Assistente`,
-      knowledge_base: "",
-      auto_send_enabled: false,
-      shift_start: "08:00",
-      shift_end: "18:00",
-    });
-    if (aiErr) warnings.push(`ai_assistant_config: ${aiErr.message}`);
-
-    // 2) tipos_procedimento — default dental procedure list
-    const defaultProcs = [
-      { nome: "Avaliação / Consulta", especialidade: "Clínica Geral" },
-      { nome: "Limpeza (Profilaxia)", especialidade: "Clínica Geral" },
-      { nome: "Restauração", especialidade: "Clínica Geral" },
-      { nome: "Extração", especialidade: "Cirurgia" },
-      { nome: "Tratamento de Canal", especialidade: "Endodontia" },
-      { nome: "Clareamento", especialidade: "Estética" },
-      { nome: "Prótese", especialidade: "Prótese" },
-      { nome: "Implante", especialidade: "Implantodontia" },
-      { nome: "Aparelho Ortodôntico", especialidade: "Ortodontia" },
-      { nome: "Facetas", especialidade: "Estética" },
-    ];
-    const { error: procErr } = await admin.from("tipos_procedimento").insert(
-      defaultProcs.map((p) => ({
-        ...p,
-        tenant_id: tenant.id,
-        ativo: true,
-        valor_referencia: 0,
-      })),
-    );
-    if (procErr) warnings.push(`tipos_procedimento: ${procErr.message}`);
-
-    // 3) funnel_channels — map WhatsApp to the default pipeline
-    const { error: chErr } = await admin.from("funnel_channels").insert({
-      tenant_id: tenant.id,
-      pipeline_id: defaultPipeline.id,
-      channel_type: "whatsapp",
-    });
-    if (chErr) warnings.push(`funnel_channels: ${chErr.message}`);
-
-    // 4) crm_quick_replies — intentionally NOT seeded (tenant creates their own)
 
     return new Response(JSON.stringify({ tenant, user_id: created.user.id, warnings }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
