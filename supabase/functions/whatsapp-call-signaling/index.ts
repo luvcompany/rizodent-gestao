@@ -49,14 +49,15 @@ Deno.serve(async (req) => {
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
+    const { data: claims, error: userErr } = await userClient.auth.getClaims(jwt);
+    if (userErr || !claims?.claims?.sub) {
+      console.error("[wa-call-signaling] getClaims failed:", userErr);
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = userData.user.id;
+    const userId = claims.claims.sub as string;
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
