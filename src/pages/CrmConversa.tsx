@@ -27,7 +27,8 @@ import { useConversationNotes } from "@/hooks/useConversationNotes";
 import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
-import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check } from "lucide-react";
+import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check, Phone } from "lucide-react";
+import { useWhatsappCall } from "@/contexts/WhatsappCallContext";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
