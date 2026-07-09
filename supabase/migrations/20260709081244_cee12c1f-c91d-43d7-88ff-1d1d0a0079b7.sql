@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_calls ADD COLUMN IF NOT EXISTS transcription text;
