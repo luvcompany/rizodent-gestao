@@ -5,15 +5,16 @@ import { toast } from "sonner";
 
 interface Props {
   messageId?: string;
+  callId?: string;
   initialTranscription?: string | null;
 }
 
-export default function AudioTranscriptionToggle({ messageId, initialTranscription }: Props) {
+export default function AudioTranscriptionToggle({ messageId, callId, initialTranscription }: Props) {
   const [text, setText] = useState<string | null>(initialTranscription || null);
   const [open, setOpen] = useState(!!initialTranscription);
   const [loading, setLoading] = useState(false);
 
-  if (!messageId) return null;
+  if (!messageId && !callId) return null;
 
   const handleClick = async () => {
     if (text) {
@@ -22,9 +23,10 @@ export default function AudioTranscriptionToggle({ messageId, initialTranscripti
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("transcribe-audio", {
-        body: { message_id: messageId },
-      });
+      const body: Record<string, string> = {};
+      if (callId) body.call_id = callId;
+      else if (messageId) body.message_id = messageId;
+      const { data, error } = await supabase.functions.invoke("transcribe-audio", { body });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       const t = (data as any)?.transcription as string;
