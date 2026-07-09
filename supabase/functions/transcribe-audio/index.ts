@@ -80,6 +80,31 @@ async function transcribeWithOpenAI(
   return (await r.text()).trim();
 }
 
+async function transcribeWithLovableGatewaySTT(
+  audioBytes: Uint8Array,
+  mime: string,
+  apiKey: string,
+): Promise<string> {
+  const ext = mimeToExt(mime);
+  const form = new FormData();
+  const blob = new Blob([audioBytes], { type: mime || "audio/webm" });
+  form.append("file", blob, `audio.${ext}`);
+  form.append("model", "openai/gpt-4o-mini-transcribe");
+  const r = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    console.error("[transcribe-audio] Lovable STT error:", r.status, t);
+    throw new Error(`lovable-stt ${r.status}: ${t.substring(0, 400)}`);
+  }
+  const data = await r.json().catch(() => ({} as any));
+  return String(data?.text || "").trim();
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -177,8 +202,17 @@ Deno.serve(async (req) => {
     const transcriptionModel: string = (cfg as any)?.transcription_model || "google/gemini-2.5-flash";
 
     let text = "";
+    const isCallRecording = !!callPath || sourceTable === "whatsapp_calls" || mime.toLowerCase().includes("webm");
 
-    if (transcriptionModel.startsWith("openai/")) {
+    if (isCallRecording) {
+      // Gravações de ligação (webm/opus) — usa STT dedicado do Lovable Gateway
+      try {
+        text = await transcribeWithLovableGatewaySTT(audioBytes, mime, LOVABLE_API_KEY);
+      } catch (e: any) {
+        console.error("[transcribe-audio] Lovable STT failed:", e?.message);
+        return json({ error: "Erro ao transcrever gravação", detail: e?.message }, 502);
+      }
+    } else if (transcriptionModel.startsWith("openai/")) {
       const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
       if (!OPENAI_API_KEY) {
         return json({ error: "OPENAI_API_KEY não configurada no backend." }, 500);
@@ -191,7 +225,7 @@ Deno.serve(async (req) => {
         return json({ error: "Erro na transcrição OpenAI", detail: e?.message }, 502);
       }
     } else {
-      // Default: Lovable AI Gateway with Gemini (input_audio)
+      // Default: Lovable AI Gateway with Gemini (input_audio) para áudios normais do chat
       const b64 = bytesToBase64(audioBytes);
       const format = mimeToFormat(mime);
       const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -230,6 +264,7 @@ Deno.serve(async (req) => {
       const data = await aiResp.json();
       text = (data?.choices?.[0]?.message?.content || "").trim();
     }
+
     if (!text) return json({ error: "Transcrição vazia" }, 500);
 
     await admin.from(sourceTable).update({ transcription: text }).eq("id", sourceId);

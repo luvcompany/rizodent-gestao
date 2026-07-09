@@ -86,16 +86,80 @@ async function handleCallsChange(supabase: any, value: any) {
     // Tentar vincular a um lead pelo telefone remoto
     const remotePhone = direction === "inbound" ? fromPhone : toPhone;
     let leadId: string | null = null;
+    let normalizedRemote: string | null = null;
     if (remotePhone) {
-      const normalized = String(remotePhone).replace(/\D/g, "");
+      normalizedRemote = String(remotePhone).replace(/\D/g, "");
       const { data: leadRow } = await supabase
         .from("crm_leads")
         .select("id")
         .eq("tenant_id", tenantId)
-        .eq("phone", normalized)
+        .eq("phone", normalizedRemote)
         .maybeSingle();
       leadId = leadRow?.id ?? null;
     }
+
+    // Auto-criar lead para ligações recebidas de números fora do CRM
+    if (!leadId && direction === "inbound" && normalizedRemote) {
+      const { data: pipe } = await supabase
+        .from("crm_pipelines")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const pipelineId: string | null = (pipe as any)?.id ?? null;
+
+      let stageId: string | null = null;
+      if (pipelineId) {
+        const { data: st } = await supabase
+          .from("crm_stages")
+          .select("id")
+          .eq("pipeline_id", pipelineId)
+          .order("position", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        stageId = (st as any)?.id ?? null;
+      }
+
+      // Descobrir usuário rizodent do tenant (fallback: qualquer profile do tenant)
+      let assignedTo: string | null = null;
+      const RIZODENT_ASSIGNED_TO = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
+      const { data: rizProfile } = await supabase
+        .from("profiles")
+        .select("id, tenant_id")
+        .eq("id", RIZODENT_ASSIGNED_TO)
+        .maybeSingle();
+      if ((rizProfile as any)?.tenant_id === tenantId) {
+        assignedTo = RIZODENT_ASSIGNED_TO;
+      }
+
+      if (pipelineId && stageId) {
+        const displayName = `+${normalizedRemote}`;
+        const { data: newLead, error: leadErr } = await supabase
+          .from("crm_leads")
+          .insert({
+            name: displayName,
+            phone: normalizedRemote,
+            pipeline_id: pipelineId,
+            stage_id: stageId,
+            source: "ligacao_recebida",
+            assigned_to: assignedTo,
+            tenant_id: tenantId,
+            tags: [],
+          })
+          .select("id")
+          .single();
+        if (leadErr) {
+          console.error("[WEBHOOK-CALLS] auto-create lead error:", leadErr);
+        } else if (newLead?.id) {
+          leadId = newLead.id;
+          console.log(`[WEBHOOK-CALLS] auto-created lead ${leadId} for inbound call from ${normalizedRemote}`);
+        }
+      } else {
+        console.warn(`[WEBHOOK-CALLS] cannot auto-create lead: pipeline/stage missing for tenant ${tenantId}`);
+      }
+    }
+
 
     const nowIso = new Date().toISOString();
     const timestampIso = call?.timestamp ? new Date(Number(call.timestamp) * 1000).toISOString() : nowIso;
