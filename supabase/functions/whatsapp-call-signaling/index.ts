@@ -13,9 +13,13 @@ const corsHeaders = {
 };
 
 interface Body {
-  call_id: string; // whatsapp_calls.id (uuid)
-  action: "pre_accept" | "accept" | "reject" | "terminate";
-  sdp?: string; // required for pre_accept / accept
+  call_id?: string; // whatsapp_calls.id (uuid) — obrigatório exceto para "connect"
+  action: "pre_accept" | "accept" | "reject" | "terminate" | "connect";
+  sdp?: string; // required for pre_accept / accept / connect
+  // connect (outbound):
+  to_phone?: string; // E.164 sem '+'
+  phone_number_id?: string; // origem
+  lead_id?: string | null;
 }
 
 Deno.serve(async (req) => {
