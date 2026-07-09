@@ -5,6 +5,21 @@ import AudioPlayer from "./AudioPlayer";
 import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
+import { linkify } from "@/lib/linkify";
+import { LinkPreview } from "./LinkPreview";
+
+// Renderiza texto com URLs clicáveis + card de preview para o 1º link
+function TextWithLinks({ text, className }: { text: string; className?: string }) {
+  const { nodes, urls } = linkify(text);
+  const previewUrl = urls[0];
+  return (
+    <div className="min-w-0 max-w-full">
+      <p className={`text-sm whitespace-pre-wrap break-words ${className || ""}`}>{nodes}</p>
+      {previewUrl && <LinkPreview url={previewUrl} />}
+    </div>
+  );
+}
+
 
 type ChatMessage = {
   id?: string;
