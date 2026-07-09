@@ -1,43 +1,53 @@
-## Problema
+## Diagnóstico
 
-Ao excluir um cliente (ex.: Luv Agency), ainda sobra registro no banco:
-- Linha em `tenants` marcada como `status = 'deleted'` com slug renomeado (`deleted-1783575745-luvagency`).
-- Isso ocupa o slug/e-mail e atrapalha recriar o cliente depois com os mesmos dados.
+O bloqueio anterior removeu as políticas permissivas `"Authenticated users can view <tabela>"` de 26 tabelas, mas deixou a política `tenant_isolation` como **RESTRICTIVE**. No Postgres, uma RESTRICTIVE só restringe — ela precisa ser combinada (AND) com pelo menos uma PERMISSIVE que dê acesso. Sem nenhuma PERMISSIVE SELECT, o efeito líquido é "0 linhas visíveis".
 
-Causa raiz:
-1. **Falha na criação** (`admin-create-tenant`): quando algo dá errado no meio da criação, o cleanup tenta apagar a linha em `tenants`, mas se a deleção falha por FK, cai num fallback que **apenas marca como `deleted`** — deixando resíduo permanente. Foi o que ocorreu com Luv Agency.
-2. **Exclusão manual** (`admin-update-tenant` → `hard_delete_tenant`): já apaga tudo corretamente (profiles, user_roles, tenants, auth.users), mas nunca chegou a ser executada nesse tenant específico.
-3. E-mail do admin também pode ficar "preso" em `auth.users` se a criação falhar antes de vincular o profile ao tenant — hoje o `findUserByEmail` limpa isso na próxima tentativa, mas só se o mesmo e-mail for reutilizado.
+Reproduzido como Rizodent (`d9b27aa3…`, tenant `00000000-…-000010`):
+- `profiles`: OK — mostra tenant correto
+- RPC `current_tenant_id()`: retorna `00000000-…-000010` corretamente
+- `GET /rest/v1/pacientes` → 200, corpo `[]`, `Content-Range: */0` mesmo com 520 linhas no banco
 
-## Solução
+Tabelas afetadas (só RESTRICTIVE, sem PERMISSIVE SELECT):
 
-### 1. Limpar o resíduo atual do Luv Agency
-Migration que remove definitivamente o tenant `766c90d2-713f-4a5a-b3a5-25face9cb2b1`:
-- Executa `hard_delete_tenant(...)` no id.
-- Deleta qualquer `auth.users` órfão retornado pela função.
-- Confirma que `tenants`, `profiles`, `user_roles` não têm mais nada com esse id.
+```
+ad_id_mapping                  clinicas *              crm_automation_executions
+crm_automation_queue           crm_automations         crm_broadcast_recipients
+crm_conversation_notes         crm_custom_fields       crm_followup_configs
+crm_followup_queue             crm_lead_custom_values  crm_lead_pacientes
+crm_lead_stage_history         dashboard_holidays      funnel_channels
+leads_diarios                  pacientes               pagamentos
+registros_diarios_atendimento  tipos_procedimento *    tratamentos
+ai_assistant_config            bot_execution_logs      bot_executions
+bot_stage_triggers             bot_versions
+```
+`*` = também tem uma PERMISSIVE "Admins can manage" sem escopo de tenant, que se ficasse sozinha vazaria dados entre tenants — por isso a RESTRICTIVE precisa continuar existindo.
 
-### 2. Corrigir o cleanup de criação falha (`admin-create-tenant`)
-Trocar o fallback "marca como deleted" por **hard delete real**:
-- Chamar `hard_delete_tenant(tenant_id)` (mesma função usada na exclusão manual), que já sabe apagar todas as tabelas dependentes na ordem correta.
-- Deletar o `auth.users` do admin recém-criado (já feito, manter).
-- Se `hard_delete_tenant` falhar por algum motivo inesperado, **retornar erro claro** em vez de deixar linha zumbi no banco — o superadmin precisa saber para agir.
+## Correção
 
-### 3. Reforçar `hard_delete_tenant` (a função do banco)
-Auditar e garantir que ela cobre 100% das tabelas com `tenant_id` (adicionar as que faltarem, como `tenant_subscriptions`, `tenant_invoices`, `tenant_usage`, `tenant_api_keys`, `whatsapp_numbers`, `whatsapp_oauth_states`, `whatsapp_template_logs`, `crm_notifications`, `crm_notification_preferences`, `crm_user_labels`, `crm_lead_label_assignments`, `crm_lead_instagram_identities`, `crm_funnel_custom_reports`, `crm_broadcasts`, `bots`, `plans` (não tem tenant_id — ignorar), `deleted_leads_backup`, `leads_diarios`, `registros_diarios_atendimento`, `pagamentos`, `tratamentos`, `ai_assistant_rules`, `ai_good_examples`, `ai_reply_suggestions`, `crm_lead_stage_history` já está, etc.).
-- Verificar a lista completa via `information_schema` antes de escrever a migration, para nada escapar.
-- Ao final, `RAISE EXCEPTION` se sobrar qualquer linha com aquele `tenant_id` em qualquer tabela pública — assim erros de esquema aparecem imediatamente em vez de deixar resíduo.
+Uma única migration que, para cada tabela acima, cria uma policy **PERMISSIVE FOR SELECT TO authenticated** escopada por tenant. A `tenant_isolation` RESTRICTIVE já existente continua garantindo que ninguém (nem `crc`, nem futuras policies permissivas amplas) consiga sair do próprio tenant.
 
-### 4. Limpeza de e-mails órfãos em `auth.users`
-Na exclusão do tenant (tanto manual quanto no cleanup de falha), garantir que **todos** os `auth.users` que tinham `user_metadata.tenant_id` = tenant deletado sejam apagados, mesmo se o profile não existir mais. Hoje o código só apaga os usuários listados em `profiles` — se o profile já sumiu por FK, o auth.user fica órfão.
+Padrões de escopo:
 
-## O que **não** vai ser preservado
-Cadastro do cliente (nome, slug, e-mail admin, cores, logo, subscription) — apagado definitivamente. Para "recuperar" um cliente, o caminho é restaurar do backup do banco (Cloud → Advanced settings → Export data), não deixar linhas zumbis.
+- Tabelas com coluna `tenant_id` direta → `USING (tenant_id = current_tenant_id())`
+- Tabelas escopadas via `clinicas` (pacientes/pagamentos/tratamentos/leads_diarios/registros_diarios_atendimento usam `clinica_id`) → `USING (EXISTS (SELECT 1 FROM clinicas c WHERE c.id = <tbl>.clinica_id AND c.tenant_id = current_tenant_id()))`
+- `crm_lead_pacientes`, `crm_lead_stage_history`, `crm_lead_custom_values` (escopadas via `crm_leads`) → `USING (EXISTS (SELECT 1 FROM crm_leads l WHERE l.id = <tbl>.lead_id AND l.tenant_id = current_tenant_id()))`
+- `crm_broadcast_recipients` (via `crm_broadcasts.tenant_id`), `bot_execution_logs`/`bot_executions` (via `bots.tenant_id` ou coluna própria), `bot_stage_triggers`/`bot_versions` (via `bots.tenant_id`) → EXISTS equivalente na tabela pai
+- `crm_automation_executions` (via `crm_automation_queue.tenant_id`) → EXISTS na fila
 
-## Detalhes técnicos
+Todas as novas policies têm nome padronizado `<tabela>_tenant_select` para ficar óbvio no `pg_policies` e evitar colisão com nomes antigos.
 
-- Arquivos alterados:
-  - `supabase/functions/admin-create-tenant/index.ts` — substituir `cleanupFailedTenant` por chamada a `hard_delete_tenant` + `auth.admin.deleteUser` do admin.
-  - Migration nova — atualizar `hard_delete_tenant` com todas as tabelas + `RAISE EXCEPTION` de sanidade + limpeza do Luv Agency.
-- Nenhuma mudança de UI: o botão "Excluir" no `AdminPanel` continua igual (e o cliente Rizodent segue protegido, como implementado antes).
-- Após o deploy: recriar "Luv Agency" com os mesmos e-mail/slug deve funcionar sem erro.
+Superadmin já é coberto porque `current_tenant_id()` retorna o `profiles.tenant_id` do superadmin — para permitir superadmin ver tudo, cada `USING` também inclui `has_role(auth.uid(), 'superadmin')`.
+
+## Verificação
+
+1. `SELECT tablename, policyname, permissive, cmd FROM pg_policies WHERE tablename = 'pacientes'` deve mostrar tanto a permissive `pacientes_tenant_select` quanto a restrictive `tenant_isolation`.
+2. Rodar de novo o probe com a sessão do Rizodent:
+   - `GET /rest/v1/pacientes?select=id` deve retornar 520 linhas
+   - Dashboard: KPIs de faturamento, Ticket Médio, Pacientes com pagamento devem sair de zero
+   - Página `/rizodent/pacientes` deve listar os 520
+3. Como LUV Agency, mesmo probe deve continuar retornando apenas os dados do próprio tenant (0 pacientes, 0 pagamentos) — sem vazamento.
+
+## Arquivos
+
+- **Novo:** `supabase/migrations/<timestamp>_restore_permissive_select_tenant.sql`
+- Nenhum código de aplicação muda — o problema é 100% RLS.
