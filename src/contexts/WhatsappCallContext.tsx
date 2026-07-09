@@ -224,7 +224,69 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     sessionRef.current?.setMuted(next);
   }, [muted]);
 
-  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted]);
+  const initiateCall = useCallback(async (params: { toPhone: string; leadId?: string | null; leadName?: string | null; phoneNumberId?: string }) => {
+    if (state.phase !== "idle") {
+      toast.error("Já existe uma chamada em andamento");
+      return;
+    }
+    const toPhone = params.toPhone.replace(/\D/g, "");
+    if (!toPhone) {
+      toast.error("Número inválido");
+      return;
+    }
+    // placeholder para exibir barra imediatamente
+    const placeholder: WhatsappCallRow = {
+      id: "pending",
+      tenant_id: tenantId!,
+      phone_number_id: "",
+      wa_call_id: "",
+      lead_id: params.leadId ?? null,
+      from_phone: null,
+      to_phone: toPhone,
+      direction: "outbound",
+      status: "connecting",
+      event: "connect",
+      sdp_offer: null,
+      sdp_answer: null,
+      started_at: new Date().toISOString(),
+      connected_at: null,
+      ended_at: null,
+      duration_seconds: null,
+    };
+    setState({ phase: "connecting", call: placeholder });
+    try {
+      const session = new WhatsappCallSession("pending", {
+        onRemoteStream: (stream) => {
+          if (audioRef.current) {
+            audioRef.current.srcObject = stream;
+            void audioRef.current.play().catch(() => { /* noop */ });
+          }
+        },
+        onConnectionStateChange: (s) => {
+          if (s === "connected") {
+            setState((prev) => (prev.phase === "connecting" ? { phase: "active", call: prev.call, startedAt: Date.now() } : prev));
+          }
+          if (s === "failed" || s === "disconnected" || s === "closed") {
+            sessionRef.current?.cleanup();
+            sessionRef.current = null;
+            setState({ phase: "idle" });
+          }
+        },
+      });
+      sessionRef.current = session;
+      const { callDbId } = await session.initiate({ toPhone, phoneNumberId: params.phoneNumberId, leadId: params.leadId });
+      setState((prev) => (prev.phase !== "idle" && "call" in prev ? { ...prev, call: { ...prev.call, id: callDbId, to_phone: toPhone } } : prev));
+      toast.success(`Ligando para ${params.leadName || toPhone}...`);
+    } catch (e: any) {
+      console.error("[wa-call] initiate error:", e);
+      toast.error(`Falha ao iniciar chamada: ${e?.message ?? e}`);
+      sessionRef.current?.cleanup();
+      sessionRef.current = null;
+      setState({ phase: "idle" });
+    }
+  }, [state.phase, tenantId]);
+
+  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, initiateCall }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, initiateCall]);
 
   return (
     <WhatsappCallContext.Provider value={value}>
