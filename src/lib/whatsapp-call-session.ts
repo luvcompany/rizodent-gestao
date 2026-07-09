@@ -27,6 +27,10 @@ export class WhatsappCallSession {
     this.handlers = handlers;
   }
 
+  setCallDbId(id: string) {
+    this.callDbId = id;
+  }
+
   getRemoteStream() {
     return this.remoteStream;
   }
