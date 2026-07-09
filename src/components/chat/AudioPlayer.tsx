@@ -113,8 +113,13 @@ export default function AudioPlayer({ src }: { src: string }) {
           {playing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
         </button>
         <div className="flex-1 min-w-0">
-          <div className="h-1.5 bg-muted rounded-full cursor-pointer relative" onClick={seek}>
-            <div className="h-full bg-primary rounded-full transition-all" style={{ width: duration ? `${(progress / duration) * 100}%` : "0%" }} />
+          <div
+            className="h-3 flex items-center cursor-pointer group"
+            onClick={seek}
+          >
+            <div className="h-1.5 w-full bg-muted rounded-full relative group-hover:h-2 transition-all">
+              <div className="h-full bg-primary rounded-full transition-all" style={{ width: duration ? `${(progress / duration) * 100}%` : "0%" }} />
+            </div>
           </div>
           <div className="flex justify-between mt-0.5">
             <span className="text-[10px] text-muted-foreground">{fmt(progress)}</span>
