@@ -80,6 +80,31 @@ async function transcribeWithOpenAI(
   return (await r.text()).trim();
 }
 
+async function transcribeWithLovableGatewaySTT(
+  audioBytes: Uint8Array,
+  mime: string,
+  apiKey: string,
+): Promise<string> {
+  const ext = mimeToExt(mime);
+  const form = new FormData();
+  const blob = new Blob([audioBytes], { type: mime || "audio/webm" });
+  form.append("file", blob, `audio.${ext}`);
+  form.append("model", "openai/gpt-4o-mini-transcribe");
+  const r = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    console.error("[transcribe-audio] Lovable STT error:", r.status, t);
+    throw new Error(`lovable-stt ${r.status}: ${t.substring(0, 400)}`);
+  }
+  const data = await r.json().catch(() => ({} as any));
+  return String(data?.text || "").trim();
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
