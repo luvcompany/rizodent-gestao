@@ -58,14 +58,14 @@ export function rangeBahia(fromDay: string, toDay: string): { gteIso: string; lt
 
 /**
  * Regra única de "dias úteis" do sistema (mesma de src/lib/businessDays.ts):
- * domingo = 0, feriado = 0, sábado = 0,5, seg-sex = 1.
+ * domingo = 0, feriado = 0, sábado = 1, seg-sex = 1.
+ * (Sábado é meio expediente, mas conta como dia inteiro no faturamento.)
  */
 export function businessDayWeight(day: string, holidays: Set<string>): number {
   if (holidays.has(day)) return 0;
   const { y, m, d } = dayParts(day);
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   if (dow === 0) return 0;
-  if (dow === 6) return 0.5;
   return 1;
 }
 
