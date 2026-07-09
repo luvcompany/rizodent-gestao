@@ -5,6 +5,21 @@ import AudioPlayer from "./AudioPlayer";
 import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
+import { linkify } from "@/lib/linkify";
+import { LinkPreview } from "./LinkPreview";
+
+// Renderiza texto com URLs clicáveis + card de preview para o 1º link
+function TextWithLinks({ text, className }: { text: string; className?: string }) {
+  const { nodes, urls } = linkify(text);
+  const previewUrl = urls[0];
+  return (
+    <div className="min-w-0 max-w-full">
+      <p className={`text-sm whitespace-pre-wrap break-words ${className || ""}`}>{nodes}</p>
+      {previewUrl && <LinkPreview url={previewUrl} />}
+    </div>
+  );
+}
+
 
 type ChatMessage = {
   id?: string;
@@ -361,7 +376,7 @@ export default function ChatMessageContent({
           onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
         />
         {message.content?.trim() && (
-          <p className="text-sm whitespace-pre-wrap mt-1">{message.content}</p>
+          <TextWithLinks text={message.content} className="mt-1" />
         )}
       </div>
     );
@@ -394,7 +409,7 @@ export default function ChatMessageContent({
           </div>
         </div>
         {message.content?.trim() && (
-          <p className="text-sm whitespace-pre-wrap mt-1">{message.content}</p>
+          <TextWithLinks text={message.content} className="mt-1" />
         )}
       </div>
     );
@@ -436,7 +451,7 @@ export default function ChatMessageContent({
 
   if (["button", "interactive", "reaction", "contacts", "location", "order", "referral", "system"].includes(message.type)) {
     if (message.content?.trim()) {
-      return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
+      return <TextWithLinks text={message.content} />;
     }
     return <p className="text-sm text-muted-foreground italic">[{message.type}]</p>;
   }
@@ -458,7 +473,7 @@ export default function ChatMessageContent({
           )
         )}
         {message.content?.trim() && (
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          <TextWithLinks text={message.content} />
         )}
       </div>
     );
