@@ -6,11 +6,18 @@ const ALLOWED_ORIGINS = [
   "https://www.crclin.com.br",
   "https://app.crclin.com.br",
   "https://rizodent-gestao.lovable.app",
-  "https://id-preview--776b814b-ba0d-4aab-a78f-ae5953dabe2a.lovable.app",
+];
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/[a-z0-9-]+\.lovable\.app$/i,
+  /^https:\/\/[a-z0-9-]+\.lovableproject\.com$/i,
+  /^https:\/\/[a-z0-9-]+\.lovable\.dev$/i,
 ];
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") || "";
-  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const isAllowed =
+    ALLOWED_ORIGINS.includes(origin) ||
+    ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
+  const allowed = isAllowed ? origin : ALLOWED_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": allowed,
     "Vary": "Origin",
