@@ -8,6 +8,21 @@ const corsHeaders = {
 };
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+async function ensureProfile(admin: any, user: any, tenantId: string, nome?: string, cargo?: string | null, mustChangePassword = true) {
+  const { error } = await admin
+    .from("profiles")
+    .upsert({
+      id: user.id,
+      nome: nome || user.user_metadata?.nome || user.email,
+      email: user.email,
+      tenant_id: tenantId,
+      cargo: cargo || null,
+      must_change_password: mustChangePassword,
+    }, { onConflict: "id" });
+
+  return error;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -35,8 +50,15 @@ Deno.serve(async (req) => {
         user_metadata: { nome: nome || email, tenant_id, must_change_password: true },
       });
       if (error) return json({ error: error.message }, 400);
-      await admin.from("profiles").update({ tenant_id, must_change_password: true }).eq("id", created.user.id);
-      await admin.from("user_roles").insert({ user_id: created.user.id, role: "admin", tenant_id });
+
+      const profErr = await ensureProfile(admin, created.user, tenant_id, nome || email, null, true);
+      if (profErr) return json({ error: `Falha ao criar perfil: ${profErr.message}` }, 500);
+
+      const { error: roleErr } = await admin
+        .from("user_roles")
+        .upsert({ user_id: created.user.id, role: "crc", tenant_id }, { onConflict: "user_id,role" });
+      if (roleErr) return json({ error: `Falha ao atribuir papel: ${roleErr.message}` }, 500);
+
       return json({ user_id: created.user.id });
     }
 
