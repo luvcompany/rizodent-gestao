@@ -88,13 +88,18 @@ export const AdminClientes = () => {
     setTenants(data || []);
   };
 
+  const PROTECTED_SLUGS = ["rizodent"];
+  const isProtected = (t: any) => PROTECTED_SLUGS.includes(String(t?.slug || "").toLowerCase());
+
   const handleDelete = async (t: any) => {
+    if (isProtected(t)) { toast.error("Este cliente é protegido e não pode ser excluído."); return; }
     if (!confirm(`Tem certeza que deseja apagar o cliente "${t.name}"? Essa ação pode ser revertida apenas via banco de dados.`)) return;
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: t.id, action: "delete" } });
     if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao apagar")); return; }
     toast.success(`Cliente ${t.name} removido`);
     load();
   };
+
   useEffect(() => { load(); }, []);
 
   const create = async () => {
