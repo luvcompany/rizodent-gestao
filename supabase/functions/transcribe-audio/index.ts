@@ -134,6 +134,9 @@ Deno.serve(async (req) => {
     let sourceTable: "messages" | "whatsapp_calls" = "messages";
     let sourceId = "";
 
+    let agentUrl: string | null = null;
+    let leadUrl: string | null = null;
+
     if (messageId) {
       const tenantCheck = await assertMessageInTenant(admin, messageId, caller);
       if (!tenantCheck.ok) return json({ error: tenantCheck.error }, tenantCheck.status);
@@ -149,9 +152,7 @@ Deno.serve(async (req) => {
       mediaUrl = msg.media_url;
       existingTranscription = msg.transcription;
       sourceId = msg.id;
-    let agentUrl: string | null = null;
-    let leadUrl: string | null = null;
-    if (callId) {
+    } else if (callId) {
       const { data: call, error: callErr } = await admin
         .from("whatsapp_calls")
         .select("id, tenant_id, recording_url, recording_url_agent, recording_url_lead, transcription")
