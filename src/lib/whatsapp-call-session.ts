@@ -22,6 +22,13 @@ export class WhatsappCallSession {
   private handlers: WhatsappCallSessionHandlers;
   private callDbId: string;
 
+  // Gravação
+  private recorder: MediaRecorder | null = null;
+  private recorderChunks: Blob[] = [];
+  private mixerCtx: AudioContext | null = null;
+  private recordingStartedAt: number | null = null;
+  private recordingPromise: Promise<void> | null = null;
+
   constructor(callDbId: string, handlers: WhatsappCallSessionHandlers = {}) {
     this.callDbId = callDbId;
     this.handlers = handlers;
@@ -33,6 +40,89 @@ export class WhatsappCallSession {
 
   getRemoteStream() {
     return this.remoteStream;
+  }
+
+  /** Inicia gravação mixando microfone local + áudio remoto num único stream. */
+  private startRecordingIfReady() {
+    if (this.recorder || !this.localStream) return;
+    if (this.remoteStream.getAudioTracks().length === 0) return;
+    try {
+      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx: AudioContext = new AC();
+      const dest = ctx.createMediaStreamDestination();
+      ctx.createMediaStreamSource(this.localStream).connect(dest);
+      ctx.createMediaStreamSource(this.remoteStream).connect(dest);
+      this.mixerCtx = ctx;
+
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : (MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "");
+      const rec = mime ? new MediaRecorder(dest.stream, { mimeType: mime }) : new MediaRecorder(dest.stream);
+      this.recorder = rec;
+      this.recorderChunks = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) this.recorderChunks.push(e.data); };
+      rec.start(1000);
+      this.recordingStartedAt = Date.now();
+      console.log("[wa-call] recording started");
+    } catch (e) {
+      console.warn("[wa-call] failed to start recording:", e);
+    }
+  }
+
+  /** Para o recorder, faz upload no bucket e atualiza a mensagem da chamada. */
+  private async stopAndUploadRecording(): Promise<void> {
+    const rec = this.recorder;
+    if (!rec) return;
+    this.recorder = null;
+    const chunks = this.recorderChunks;
+    this.recorderChunks = [];
+    const started = this.recordingStartedAt;
+    this.recordingStartedAt = null;
+
+    const blob: Blob = await new Promise((resolve) => {
+      rec.onstop = () => resolve(new Blob(chunks, { type: rec.mimeType || "audio/webm" }));
+      try { rec.stop(); } catch { resolve(new Blob(chunks, { type: "audio/webm" })); }
+    });
+    try { this.mixerCtx?.close(); } catch { /* noop */ }
+    this.mixerCtx = null;
+
+    if (blob.size < 1000) {
+      console.warn("[wa-call] recording too small, skipping upload");
+      return;
+    }
+
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes.user?.id;
+      if (!uid) return;
+      const { data: prof } = await supabase.from("profiles").select("tenant_id").eq("id", uid).maybeSingle();
+      const tenantId = prof?.tenant_id;
+      if (!tenantId) return;
+      const filename = `${tenantId}/${this.callDbId}-${Date.now()}.webm`;
+      const { error: upErr } = await supabase.storage
+        .from("call-recordings")
+        .upload(filename, blob, { contentType: blob.type || "audio/webm", upsert: true });
+      if (upErr) { console.error("[wa-call] upload error:", upErr); return; }
+
+      const { data: signed } = await supabase.storage
+        .from("call-recordings")
+        .createSignedUrl(filename, 60 * 60 * 24 * 365);
+      const url = signed?.signedUrl || filename;
+
+      await supabase.from("whatsapp_calls").update({ recording_url: url }).eq("id", this.callDbId);
+      // Anexa ao message row da chamada
+      const { data: waCall } = await supabase
+        .from("whatsapp_calls").select("wa_call_id").eq("id", this.callDbId).maybeSingle();
+      if (waCall?.wa_call_id) {
+        await supabase.from("messages")
+          .update({ media_url: url })
+          .eq("whatsapp_message_id", `call:${waCall.wa_call_id}`);
+      }
+      const dur = started ? Math.round((Date.now() - started) / 1000) : null;
+      console.log(`[wa-call] recording uploaded (${dur}s):`, filename);
+    } catch (e) {
+      console.error("[wa-call] upload flow error:", e);
+    }
   }
 
   /** Aceita a chamada: pede mic, cria answer e envia para Meta via edge function. */
