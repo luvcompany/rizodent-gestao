@@ -180,6 +180,26 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [user?.id, tenantId]);
 
+  // --- BroadcastChannel: sincroniza abas do mesmo navegador
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel("wa-call-sync");
+    syncChannelRef.current = ch;
+    ch.onmessage = (ev) => {
+      const msg = ev.data as SyncMsg;
+      if (!msg || msg.tabId === TAB_ID) return;
+      if (msg.type === "handling" || msg.type === "accepted" || msg.type === "rejected" || msg.type === "dismissed") {
+        silenceIfMatches(msg.callId);
+      }
+    };
+    return () => {
+      try { ch.close(); } catch { /* noop */ }
+      if (syncChannelRef.current === ch) syncChannelRef.current = null;
+    };
+  }, [silenceIfMatches]);
+
+
+
 
   // --- Ringtone (entrante) + dial tone (saindo)
   useEffect(() => {
