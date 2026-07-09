@@ -324,7 +324,12 @@ export default function ChatMessageContent({
           <Icon size={16} className="flex-shrink-0" />
           <span className="whitespace-nowrap">{clean}</span>
         </div>
-        {hasRecording && <AudioPlayer src={resolvedUrl!} />}
+        {hasRecording && (
+          <>
+            <AudioPlayer src={resolvedUrl!} />
+            <AudioTranscriptionToggle messageId={message.id} initialTranscription={message.transcription} />
+          </>
+        )}
       </div>
     );
   }
