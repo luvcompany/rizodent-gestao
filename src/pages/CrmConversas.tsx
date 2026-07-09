@@ -22,6 +22,7 @@ import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
+import { parseCallPermissionReply, formatCallPermissionReply } from "@/lib/callPermissionReply";
 import LeadAiAssistPanel from "@/components/chat/LeadAiAssistPanel";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
 import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
@@ -1302,17 +1303,19 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   ) : null;
 
                   if (chat.isSystemMessage(msg)) {
-                    const destName = msg.content?.split("→").pop()?.trim();
+                    const cpr = parseCallPermissionReply(msg.content);
+                    const displayContent = cpr ? formatCallPermissionReply(cpr) : (msg.content || "");
+                    const destName = !cpr ? displayContent.split("→").pop()?.trim() : null;
                     const destStage = destName ? chat.stages.find(s => s.name === destName) : null;
                     return (
                       <div key={msg.id}>
                         {dateSep}
                         {accSep}
                         <ChatActivitySeparator
-                          content={msg.content || ""}
+                          content={displayContent}
                           timestamp={msg.created_at}
                           stageColor={destStage?.color}
-                          onDelete={() => chat.deleteSystemMessage(msg.id)}
+                          onDelete={cpr ? undefined : () => chat.deleteSystemMessage(msg.id)}
                         />
                       </div>
                     );
