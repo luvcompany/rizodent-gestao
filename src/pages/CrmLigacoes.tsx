@@ -14,6 +14,7 @@ import AudioTranscriptionToggle from "@/components/chat/AudioTranscriptionToggle
 import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 
 type CallCategory = "answered" | "missed" | "rejected" | "blocked" | "failed" | "ongoing";
 
@@ -98,6 +99,7 @@ export default function CrmLigacoes() {
   const [directionFilter, setDirectionFilter] = useState<"all" | "inbound" | "outbound">("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CallRow | null>(null);
+  const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "this_month" });
 
   useEffect(() => {
     let cancelled = false;
@@ -109,7 +111,7 @@ export default function CrmLigacoes() {
           id, tenant_id, lead_id, from_phone, to_phone, direction, status,
           started_at, connected_at, ended_at, duration_seconds, error_message,
           recording_url, transcription, initiated_by, answered_by,
-          lead:crm_leads!whatsapp_calls_lead_id_fkey ( id, nome, telefone, avatar_url )
+          lead:crm_leads!whatsapp_calls_lead_id_fkey ( id, name, phone )
         `)
         .order("started_at", { ascending: false, nullsFirst: false })
         .limit(500);
@@ -137,9 +139,20 @@ export default function CrmLigacoes() {
     };
   }, []);
 
+  const dateRange = useMemo(() => getDateRangeFromFilter(period), [period]);
+
+  const dateScoped = useMemo(() => {
+    if (!dateRange) return calls;
+    return calls.filter((c) => {
+      if (!c.started_at) return false;
+      const t = new Date(c.started_at).getTime();
+      return t >= dateRange.start.getTime() && t <= dateRange.end.getTime();
+    });
+  }, [calls, dateRange]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return calls.filter((c) => {
+    return dateScoped.filter((c) => {
       if (directionFilter !== "all" && c.direction !== directionFilter) return false;
       const cat = categorize(c);
       if (filter !== "all" && filter !== cat) return false;
@@ -150,10 +163,10 @@ export default function CrmLigacoes() {
       }
       return true;
     });
-  }, [calls, filter, directionFilter, search]);
+  }, [dateScoped, filter, directionFilter, search]);
 
   const kpis = useMemo(() => {
-    const scoped = calls.filter((c) => {
+    const scoped = dateScoped.filter((c) => {
       if (directionFilter !== "all" && c.direction !== directionFilter) return false;
       return true;
     });
@@ -167,14 +180,17 @@ export default function CrmLigacoes() {
       : 0;
     const rate = total ? Math.round((answered.length / total) * 100) : 0;
     return { total, answered: answered.length, missed, rejected, blocked, avgDur, rate };
-  }, [calls, directionFilter]);
+  }, [dateScoped, directionFilter]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
       <header className="p-4 md:p-6 border-b bg-background">
-        <div className="flex items-center gap-2 mb-4">
-          <Phone className="text-primary" />
-          <h1 className="text-2xl font-semibold">Ligações</h1>
+        <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Phone className="text-primary" />
+            <h1 className="text-2xl font-semibold">Ligações</h1>
+          </div>
+          <DateRangeFilter value={period} onChange={setPeriod} />
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 md:gap-3 mb-4">
