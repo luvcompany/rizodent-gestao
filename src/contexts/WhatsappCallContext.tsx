@@ -197,7 +197,11 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }, 1500);
     } catch (e: any) {
       console.error("[wa-call] accept error:", e);
-      toast.error(`Falha ao atender: ${e?.message ?? e}`);
+      if (e?.code === "no_call_permission") {
+        toast.error("Este contato ainda não autorizou receber ligações.");
+      } else {
+        toast.error(`Falha ao atender: ${e?.message ?? e}`);
+      }
       sessionRef.current?.cleanup();
       sessionRef.current = null;
       setState({ phase: "idle" });
@@ -286,7 +290,13 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       toast.success(`Ligando para ${params.leadName || toPhone}...`);
     } catch (e: any) {
       console.error("[wa-call] initiate error:", e);
-      toast.error(`Falha ao iniciar chamada: ${e?.message ?? e}`);
+      if (e?.code === "no_call_permission") {
+        toast.error("Este contato ainda não autorizou receber ligações.", {
+          description: "Peça para ele aceitar a solicitação de permissão de chamada no WhatsApp e tente novamente.",
+        });
+      } else {
+        toast.error(`Falha ao iniciar chamada: ${e?.message ?? e}`);
+      }
       sessionRef.current?.cleanup();
       sessionRef.current = null;
       setState({ phase: "idle" });

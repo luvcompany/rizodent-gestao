@@ -240,6 +240,23 @@ Deno.serve(async (req) => {
           error_message: `Graph ${graphRes.status}: ${graphText}`,
         }).eq("id", dbCallId);
       }
+
+      // Mapeia erros conhecidos da Graph API para códigos de negócio
+      const graphCode = graphJson?.error?.code;
+      const knownBusinessErrors: Record<number, { code: string; user_message: string }> = {
+        138006: {
+          code: "no_call_permission",
+          user_message: "Este contato ainda não autorizou receber ligações pelo WhatsApp Business.",
+        },
+      };
+      const mapped = typeof graphCode === "number" ? knownBusinessErrors[graphCode] : undefined;
+      if (mapped) {
+        return new Response(
+          JSON.stringify({ ok: false, code: mapped.code, user_message: mapped.user_message, graph_code: graphCode }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
       return new Response(JSON.stringify({ error: "graph api error", status: graphRes.status, details: graphJson ?? graphText }), {
         status: graphRes.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
