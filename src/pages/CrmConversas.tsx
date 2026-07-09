@@ -34,8 +34,9 @@ import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Star, Ban, Copy
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Star, Ban, Copy, Phone
 } from "lucide-react";
+import { useWhatsappCall } from "@/contexts/WhatsappCallContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { isWithinInterval } from "date-fns";
@@ -279,6 +280,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
   const isCrmMobile = useIsCrmMobile();
+  const { initiateCall, state: callState } = useWhatsappCall();
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   // On mobile, force single-panel view: list | chat | lead details.
@@ -1243,6 +1245,25 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     )}
                   </div>
                 </div>
+                {selectedLead.phone && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={callState.phase !== "idle"}
+                    onClick={() =>
+                      initiateCall({
+                        toPhone: selectedLead.phone!,
+                        leadId: selectedLead.id,
+                        leadName: selectedLead.name,
+                      })
+                    }
+                    title="Ligar via WhatsApp"
+                    className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                  >
+                    <Phone size={16} />
+                    <span className="hidden sm:inline">Ligar</span>
+                  </Button>
+                )}
                 <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => isCrmMobile ? setMobileShowDetails(true) : setRightPanelVisible(!rightPanelVisible)}>
                   {(isCrmMobile ? false : rightPanelVisible) ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
