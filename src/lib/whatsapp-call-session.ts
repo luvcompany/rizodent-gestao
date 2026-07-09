@@ -92,6 +92,57 @@ export class WhatsappCallSession {
     }
   }
 
+  /** Inicia uma chamada de saída: cria offer, envia à Meta, aguarda answer via applyRemoteAnswer(). */
+  async initiate(params: { toPhone: string; phoneNumberId?: string; leadId?: string | null }): Promise<{ callDbId: string; waCallId: string | null }> {
+    this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    this.pc = pc;
+    pc.oniceconnectionstatechange = () => console.log("[wa-call] iceConnectionState:", pc.iceConnectionState);
+    pc.onconnectionstatechange = () => {
+      console.log("[wa-call] connectionState:", pc.connectionState);
+      this.handlers.onConnectionStateChange?.(pc.connectionState);
+    };
+    pc.ontrack = (ev) => {
+      ev.streams[0]?.getTracks().forEach((t) => {
+        if (!this.remoteStream.getTracks().find((x) => x.id === t.id)) this.remoteStream.addTrack(t);
+      });
+      this.handlers.onRemoteStream?.(this.remoteStream);
+    };
+
+    this.localStream.getTracks().forEach((t) => pc.addTrack(t, this.localStream!));
+
+    const offer = await pc.createOffer({ offerToReceiveAudio: true });
+    await pc.setLocalDescription(offer);
+    await this.waitForIceGathering(pc);
+    const finalSdp = pc.localDescription?.sdp;
+    if (!finalSdp) throw new Error("Falha ao gerar SDP offer");
+
+    const { data, error } = await supabase.functions.invoke("whatsapp-call-signaling", {
+      body: {
+        action: "connect",
+        sdp: finalSdp,
+        to_phone: params.toPhone,
+        phone_number_id: params.phoneNumberId,
+        lead_id: params.leadId ?? null,
+      },
+    });
+    if (error) { this.cleanup(); throw new Error(`Signaling error: ${error.message}`); }
+    if ((data as any)?.error) { this.cleanup(); throw new Error((data as any).error); }
+
+    const callDbId = (data as any).call_id as string;
+    const waCallId = (data as any).wa_call_id ?? null;
+    if (callDbId) this.callDbId = callDbId;
+    return { callDbId, waCallId };
+  }
+
+  /** Aplica o SDP answer recebido via webhook (para outbound). */
+  async applyRemoteAnswer(sdpAnswer: string): Promise<void> {
+    if (!this.pc) throw new Error("PeerConnection não iniciada");
+    if (this.pc.currentRemoteDescription) return; // já aplicado
+    await this.pc.setRemoteDescription({ type: "answer", sdp: sdpAnswer });
+  }
+
   /** Rejeita a chamada sem abrir mídia. */
   async reject(): Promise<void> {
     await supabase.functions.invoke("whatsapp-call-signaling", {
