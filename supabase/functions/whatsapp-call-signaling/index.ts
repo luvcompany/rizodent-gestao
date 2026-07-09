@@ -180,11 +180,13 @@ Deno.serve(async (req) => {
       waToken = cfg.access_token || cfg.token || "";
     }
     if (!waToken) {
+      console.error(`[wa-call-signaling] no token for tenant=${tenantId} phone_number_id=${phoneNumberId}`);
       return new Response(JSON.stringify({ error: "no WhatsApp token for this phone_number_id" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    console.log(`[wa-call-signaling] token resolved (len=${waToken.length})`);
 
     // Monta body para Graph API
     const graphBody: Record<string, any> = {
