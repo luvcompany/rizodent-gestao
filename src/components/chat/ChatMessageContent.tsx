@@ -304,7 +304,6 @@ export default function ChatMessageContent({
 
   if (message.type === "call") {
     const label = message.content || "📞 Chamada de voz";
-    // Escolhe ícone e cor pelo texto (é o que a edge function define)
     const isMissed = /perdida|não atendida/i.test(label);
     const isRejected = /recusada/i.test(label);
     const isFailed = /não completada|falhou/i.test(label);
@@ -318,10 +317,14 @@ export default function ChatMessageContent({
       Icon = PhoneIncoming;
     }
     const clean = label.replace(/^📞\s*/, "");
+    const hasRecording = isMediaUrl(message.media_url);
     return (
-      <div className={`flex items-center gap-2 text-sm ${color}`}>
-        <Icon size={16} className="flex-shrink-0" />
-        <span className="whitespace-nowrap">{clean}</span>
+      <div className="flex flex-col gap-1.5">
+        <div className={`flex items-center gap-2 text-sm ${color}`}>
+          <Icon size={16} className="flex-shrink-0" />
+          <span className="whitespace-nowrap">{clean}</span>
+        </div>
+        {hasRecording && <AudioPlayer src={message.media_url!} />}
       </div>
     );
   }
