@@ -565,7 +565,13 @@ export function useChatConversation(leadId: string | null | undefined) {
 
 
   // ─── Helpers ───
-  const isSystemMessage = useCallback((msg: ChatMessage) => msg.type === "system" || msg.status === "system", []);
+  const isSystemMessage = useCallback((msg: ChatMessage) => {
+    if (msg.type === "system" || msg.status === "system") return true;
+    // Respostas de permissão de ligação do WhatsApp são renderizadas como sistema
+    const c = (msg.content || "").trim();
+    if (c.startsWith("{") && c.includes("call_permission_reply")) return true;
+    return false;
+  }, []);
 
   const deleteSystemMessage = useCallback(async (messageId: string) => {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
