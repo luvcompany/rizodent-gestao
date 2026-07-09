@@ -52,8 +52,41 @@ async function ensureEmailAvailable(admin: any, email: string) {
   if (deleteErr) throw deleteErr;
 }
 
+async function cleanupFailedTenant(admin: any, tenantId: string | null, userId: string | null) {
+  if (userId) {
+    await admin.auth.admin.deleteUser(userId).catch(() => null);
+  }
+  if (!tenantId) return;
+
+  const tenantTables = [
+    "funnel_channels",
+    "tipos_procedimento",
+    "ai_assistant_config",
+    "crm_stages",
+    "crm_pipelines",
+    "clinicas",
+    "tenant_subscriptions",
+    "user_roles",
+    "profiles",
+  ];
+
+  for (const table of tenantTables) {
+    await admin.from(table).delete().eq("tenant_id", tenantId).catch(() => null);
+  }
+  await admin.from("tenants").delete().eq("id", tenantId).catch(async () => {
+    await admin
+      .from("tenants")
+      .update({ status: "deleted", slug: `failed-${Date.now()}-${tenantId}`.slice(0, 63) })
+      .eq("id", tenantId);
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  let admin: any = null;
+  let createdTenantId: string | null = null;
+  let createdUserId: string | null = null;
 
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -70,7 +103,7 @@ Deno.serve(async (req) => {
     if (claimsErr || !claimsData?.claims) return json({ error: "Unauthorized" }, 401);
     const userId = claimsData.claims.sub;
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+    admin = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", userId).eq("role", "superadmin").maybeSingle();
     if (!roleRow) return new Response(JSON.stringify({ error: "Forbidden — superadmin only" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -111,6 +144,7 @@ Deno.serve(async (req) => {
       logo_url, favicon_url, status: "active",
     }).select().single();
     if (tErr) throw tErr;
+    createdTenantId = tenant.id;
 
     // Create subscription if plan provided
     if (plan_id) {
@@ -132,14 +166,15 @@ Deno.serve(async (req) => {
       },
     });
     if (uErr) throw uErr;
+    createdUserId = created.user.id;
 
     // Ensure profile points to tenant (handle_new_user trigger does it, but enforce)
     const { error: profErr } = await admin.from("profiles").update({ tenant_id: tenant.id, must_change_password: true }).eq("id", created.user.id);
-    if (profErr) return json({ error: `Falha ao atualizar profile do admin: ${profErr.message}` }, 500);
+    if (profErr) throw new Error(`Falha ao atualizar profile do admin: ${profErr.message}`);
 
     // Add admin role for this user (within tenant). "crc" is the clinic admin role.
     const { error: roleErr } = await admin.from("user_roles").insert({ user_id: created.user.id, role: "crc", tenant_id: tenant.id });
-    if (roleErr) return json({ error: `Falha ao atribuir papel ao admin: ${roleErr.message}` }, 500);
+    if (roleErr) throw new Error(`Falha ao atribuir papel ao admin: ${roleErr.message}`);
 
     // Create the clinic record for this tenant (starts empty otherwise)
     const { error: clinErr } = await admin.from("clinicas").insert({
@@ -148,7 +183,7 @@ Deno.serve(async (req) => {
       cidade: clinic_city || clinic_name,
       ativa: true,
     });
-    if (clinErr) return json({ error: `Falha ao criar clínica: ${clinErr.message}` }, 500);
+    if (clinErr) throw new Error(`Falha ao criar clínica: ${clinErr.message}`);
 
 
     // Seed the default "Funil Principal" (model funnel — same as Rizodent's main funnel)
@@ -185,7 +220,7 @@ Deno.serve(async (req) => {
         is_won: (s as any).is_won === true,
       }))
     );
-    if (stagesErr) return json({ error: `Falha ao criar etapas do funil: ${stagesErr.message}` }, 500);
+    if (stagesErr) throw new Error(`Falha ao criar etapas do funil: ${stagesErr.message}`);
 
     // ---- Optional seeding (non-fatal): accumulate warnings, never roll back the tenant ----
     const warnings: string[] = [];
@@ -240,6 +275,9 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
+    if (admin && createdTenantId) {
+      await cleanupFailedTenant(admin, createdTenantId, createdUserId);
+    }
     return new Response(JSON.stringify({ error: e?.message ?? String(e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
