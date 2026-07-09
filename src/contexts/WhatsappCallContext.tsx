@@ -38,6 +38,7 @@ interface Ctx {
   hangupCall: () => Promise<void>;
   toggleMute: () => void;
   muted: boolean;
+  initiateCall: (params: { toPhone: string; leadId?: string | null; leadName?: string | null; phoneNumberId?: string }) => Promise<void>;
 }
 
 const WhatsappCallContext = createContext<Ctx | null>(null);
