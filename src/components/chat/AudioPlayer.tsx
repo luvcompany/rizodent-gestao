@@ -16,8 +16,27 @@ export default function AudioPlayer({ src }: { src: string }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => setProgress(audio.currentTime);
-    const onMeta = () => setDuration(audio.duration);
+    const onTime = () => {
+      // While we're forcing duration resolution, currentTime jumps huge — ignore.
+      if (isFinite(audio.duration)) setProgress(audio.currentTime);
+    };
+    const onMeta = () => {
+      if (audio.duration === Infinity || isNaN(audio.duration)) {
+        // Workaround: MediaRecorder-produced webm files often report Infinity duration.
+        // Seeking past the end forces the browser to compute the real duration.
+        const onDur = () => {
+          if (isFinite(audio.duration)) {
+            setDuration(audio.duration);
+            audio.currentTime = 0;
+            audio.removeEventListener("durationchange", onDur);
+          }
+        };
+        audio.addEventListener("durationchange", onDur);
+        try { audio.currentTime = 1e9; } catch { /* noop */ }
+      } else {
+        setDuration(audio.duration);
+      }
+    };
     const onEnd = () => {
       setPlaying(false);
       if (currentlyPlayingAudio === audio) currentlyPlayingAudio = null;
@@ -94,8 +113,13 @@ export default function AudioPlayer({ src }: { src: string }) {
           {playing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
         </button>
         <div className="flex-1 min-w-0">
-          <div className="h-1.5 bg-muted rounded-full cursor-pointer relative" onClick={seek}>
-            <div className="h-full bg-primary rounded-full transition-all" style={{ width: duration ? `${(progress / duration) * 100}%` : "0%" }} />
+          <div
+            className="h-3 flex items-center cursor-pointer group"
+            onClick={seek}
+          >
+            <div className="h-1.5 w-full bg-muted rounded-full relative group-hover:h-2 transition-all">
+              <div className="h-full bg-primary rounded-full transition-all" style={{ width: duration ? `${(progress / duration) * 100}%` : "0%" }} />
+            </div>
           </div>
           <div className="flex justify-between mt-0.5">
             <span className="text-[10px] text-muted-foreground">{fmt(progress)}</span>
