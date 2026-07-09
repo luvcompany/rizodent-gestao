@@ -144,8 +144,8 @@ export default function CrmLigacoes() {
       const cat = categorize(c);
       if (filter !== "all" && filter !== cat) return false;
       if (q) {
-        const name = (c.lead?.nome || "").toLowerCase();
-        const phone = (c.from_phone || "") + " " + (c.to_phone || "") + " " + (c.lead?.telefone || "");
+        const name = (c.lead?.name || "").toLowerCase();
+        const phone = (c.from_phone || "") + " " + (c.to_phone || "") + " " + (c.lead?.phone || "");
         if (!name.includes(q) && !phone.includes(q)) return false;
       }
       return true;
