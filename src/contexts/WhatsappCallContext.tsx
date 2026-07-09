@@ -62,8 +62,9 @@ type SyncMsg = {
 };
 
 export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
+  const isAuthed = !!user && !authLoading;
   const [state, setState] = useState<CallState>({ phase: "idle" });
   const [muted, setMuted] = useState(false);
   const sessionRef = useRef<WhatsappCallSession | null>(null);
@@ -229,6 +230,16 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, []);
 
+  // Ao deslogar, aborta qualquer chamada/ringtone em curso.
+  useEffect(() => {
+    if (isAuthed) return;
+    ringtoneRef.current?.stop(); ringtoneRef.current = null;
+    dialToneRef.current?.stop(); dialToneRef.current = null;
+    sessionRef.current?.cleanup?.();
+    sessionRef.current = null;
+    setState((prev) => (prev.phase === "idle" ? prev : { phase: "idle" }));
+  }, [isAuthed]);
+
 
   const acceptCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
@@ -376,7 +387,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {children}
       {/* Áudio remoto invisível */}
       <audio ref={audioRef} autoPlay playsInline hidden />
-      {state.phase === "ringing" && (
+      {isAuthed && state.phase === "ringing" && (
         <IncomingWhatsappCallModal
           call={state.call}
           onAccept={acceptCall}
@@ -384,7 +395,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
           onInteract={() => publishSync({ type: "handling", callId: state.call.id })}
         />
       )}
-      {(state.phase === "connecting" || state.phase === "active") && (
+      {isAuthed && (state.phase === "connecting" || state.phase === "active") && (
         <ActiveWhatsappCallBar
           call={state.call}
           startedAt={state.phase === "active" ? state.startedAt : null}

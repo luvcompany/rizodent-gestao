@@ -1,35 +1,20 @@
 ## Problema
 
-Quando uma ligação entra e o usuário tem várias abas/janelas abertas, todas tocam o ringtone. Ao atender em uma, as outras continuam tocando até o servidor emitir `completed`/`rejected` — o que não acontece quando a chamada é apenas aceita em outra aba.
+O `WhatsappCallProvider` está montado no `TenantApp` acima das rotas, então o listener realtime de ligações e o modal de chamada rodam mesmo na tela de login (`/`), fazendo o ringtone tocar sem usuário autenticado.
 
-## Solução
+## Correção
 
-Usar duas camadas de sincronização entre abas do mesmo usuário:
+Gatear o provider pelo estado de auth em `src/contexts/WhatsappCallContext.tsx`:
 
-### 1. `BroadcastChannel` local (instantâneo, mesma origem)
+1. Ler `useAuth()` (user, loading) e `useTenant()` dentro do provider.
+2. Se `!user` (ou `authLoading`): não abrir canal realtime, não subscrever `postgres_changes` de `whatsapp_calls`, não tocar ringtone, não renderizar `IncomingWhatsappCallModal` nem `ActiveWhatsappCallBar`. Retornar um contexto "idle" com no-ops.
+3. Ao deslogar (user vira null), garantir cleanup: parar ringtone corrente, fechar `BroadcastChannel` de sync, remover channel do Supabase e resetar estado para `idle`.
+4. Só (re)inicializar as subscriptions quando `user?.id` e `tenant?.id` estiverem presentes — usar esses ids como deps do `useEffect` de setup.
 
-Criar um canal `wa-call-sync` compartilhado entre todas as abas do navegador. Sempre que uma aba mudar o estado da chamada (aceitar, rejeitar, visualizar/interagir com o modal), ela publica uma mensagem `{ type, callId, tabId }`. As outras abas escutam e reagem:
+Nenhuma mudança em rotas, no `App.tsx` ou em outros componentes. Comportamento pós-login permanece idêntico (sync entre abas, modal, aceitar/rejeitar).
 
-- `accepted` / `handling` (usuário clicou em Atender ou Rejeitar em outra aba) → parar ringtone imediatamente e fechar o `IncomingWhatsappCallModal` naquela aba (voltar a `idle`), sem tentar enviar signaling à Meta.
-- `dismissed` (usuário fechou modal ou navegou) → opcional, encerra o toque local.
+## Validação
 
-Também emitir `handling` quando a aba ganha foco no modal (mousedown/keydown dentro do modal) para cobrir o cenário “só visualizei”.
-
-### 2. Reforço via realtime do banco (cross-device)
-
-Ampliar o handler `postgres_changes` em `WhatsappCallProvider` para tratar mais transições como “essa chamada não é mais minha para tocar”:
-
-- Se `phase === "ringing"` e chega update com `status in ("accepted","connected","in-progress")` ou `event === "accept"` para a mesma `call.id` → parar ringtone e ir para `idle`. Isso cobre o caso de outra sessão (outro dispositivo/navegador) ter atendido.
-
-### 3. Identificador de aba
-
-Gerar um `tabId` (uuid) no `WhatsappCallProvider` e incluí-lo em toda mensagem do `BroadcastChannel`, ignorando ecos da própria aba.
-
-## Arquivos afetados
-
-- `src/contexts/WhatsappCallContext.tsx` — criar/gerenciar `BroadcastChannel`, publicar em `acceptCall`/`rejectCall`/`hangupCall`, consumir mensagens para forçar `idle`, ampliar filtros do handler realtime.
-- `src/components/whatsapp-calls/IncomingWhatsappCallModal.tsx` — opcional: emitir `handling` ao interagir (hover/click) via callback recebido do provider, cobrindo o “visualizei em uma aba”.
-
-## Fora de escopo
-
-Sem alterar edge functions, tabela `whatsapp_calls` ou lógica de gravação/áudio.
+- Abrir `/` deslogado → nenhum canal `whatsapp_calls` em Network, nenhum ringtone ao chegar chamada.
+- Login → subscription inicia; chamada de teste toca normalmente.
+- Logout → ringtone (se tocando) para imediatamente e subscription é removida.
