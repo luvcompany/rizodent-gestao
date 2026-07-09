@@ -1,10 +1,11 @@
 import { toLocalDateISO } from "@/lib/utils";
 
 /**
- * Regra de "dias úteis" única do sistema:
+ * Regra de "dias úteis" única do sistema (para faturamento/previsibilidade):
  *  - Domingo (getDay() === 0) => 0
  *  - Feriado (data local 'YYYY-MM-DD' presente no Set) => 0
- *  - Sábado (getDay() === 6) => 0.5 (meio dia)
+ *  - Sábado (getDay() === 6) => 1 (conta como dia inteiro no faturamento,
+ *    ainda que operacionalmente seja meio expediente)
  *  - Demais dias (Seg-Sex) => 1
  */
 export function businessDayWeight(date: Date, holidays: Set<string>): number {
@@ -12,7 +13,6 @@ export function businessDayWeight(date: Date, holidays: Set<string>): number {
   if (holidays.has(key)) return 0;
   const dow = date.getDay();
   if (dow === 0) return 0;
-  if (dow === 6) return 0.5;
   return 1;
 }
 
