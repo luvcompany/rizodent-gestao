@@ -50,12 +50,42 @@ export const useWhatsappCall = () => {
   return ctx;
 };
 
+// ID desta aba — usado para ignorar ecos no BroadcastChannel
+const TAB_ID = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+  ? crypto.randomUUID()
+  : Math.random().toString(36).slice(2);
+
+type SyncMsg = {
+  type: "handling" | "accepted" | "rejected" | "dismissed";
+  callId: string;
+  tabId: string;
+};
+
 export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
   const [state, setState] = useState<CallState>({ phase: "idle" });
   const [muted, setMuted] = useState(false);
   const sessionRef = useRef<WhatsappCallSession | null>(null);
+  const syncChannelRef = useRef<BroadcastChannel | null>(null);
+
+  const publishSync = useCallback((msg: Omit<SyncMsg, "tabId">) => {
+    try {
+      syncChannelRef.current?.postMessage({ ...msg, tabId: TAB_ID } satisfies SyncMsg);
+    } catch (e) {
+      console.warn("[wa-call] sync publish error", e);
+    }
+  }, []);
+
+  // Silencia local (para a mesma call.id) quando outra aba assume/dismissa
+  const silenceIfMatches = useCallback((callId: string) => {
+    setState((prev) => {
+      if (prev.phase === "ringing" && prev.call.id === callId) {
+        return { phase: "idle" };
+      }
+      return prev;
+    });
+  }, []);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ringtoneRef = useRef<{ stop: () => void } | null>(null);
   const dialToneRef = useRef<{ stop: () => void } | null>(null);
