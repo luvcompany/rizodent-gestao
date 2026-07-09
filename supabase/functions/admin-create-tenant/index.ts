@@ -54,7 +54,7 @@ async function ensureEmailAvailable(admin: any, email: string) {
 
 async function cleanupFailedTenant(admin: any, tenantId: string | null, userId: string | null) {
   if (userId) {
-    await admin.auth.admin.deleteUser(userId).catch(() => null);
+    try { await admin.auth.admin.deleteUser(userId); } catch { /* best effort cleanup */ }
   }
   if (!tenantId) return;
 
@@ -71,14 +71,16 @@ async function cleanupFailedTenant(admin: any, tenantId: string | null, userId: 
   ];
 
   for (const table of tenantTables) {
-    await admin.from(table).delete().eq("tenant_id", tenantId).catch(() => null);
+    try { await admin.from(table).delete().eq("tenant_id", tenantId); } catch { /* best effort cleanup */ }
   }
-  await admin.from("tenants").delete().eq("id", tenantId).catch(async () => {
+  try {
+    await admin.from("tenants").delete().eq("id", tenantId);
+  } catch {
     await admin
       .from("tenants")
       .update({ status: "deleted", slug: `failed-${Date.now()}-${tenantId}`.slice(0, 63) })
       .eq("id", tenantId);
-  });
+  }
 }
 
 Deno.serve(async (req) => {
