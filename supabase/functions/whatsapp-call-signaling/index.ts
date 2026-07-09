@@ -152,38 +152,29 @@ Deno.serve(async (req) => {
       dbCallId = call.id;
     }
 
-      return new Response(JSON.stringify({ error: "call not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Verifica que o usuário pertence ao tenant da chamada
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", userId)
-      .maybeSingle();
-    if (!profile || profile.tenant_id !== call.tenant_id) {
-      return new Response(JSON.stringify({ error: "forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     // Resolve token WhatsApp do tenant pelo phone_number_id
-    const { data: integrations } = await supabase
-      .from("integrations")
-      .select("config, status")
-      .eq("tenant_id", call.tenant_id)
-      .like("key", "whatsapp_%")
-      .neq("status", "disabled");
-    const intg = (integrations || []).find((i: any) => {
-      const c = (i.config as any) || {};
-      return c.phone_number_id === call.phone_number_id && (c.access_token || c.token);
-    });
-    const cfg = (intg?.config as any) || {};
-    const waToken: string = cfg.access_token || cfg.token || "";
+    const { data: waNum } = await supabase
+      .from("whatsapp_numbers")
+      .select("token")
+      .eq("tenant_id", tenantId)
+      .eq("phone_number_id", phoneNumberId)
+      .maybeSingle();
+    let waToken: string = waNum?.token || "";
+    if (!waToken) {
+      // fallback: integrations legado
+      const { data: integrations } = await supabase
+        .from("integrations")
+        .select("config, status")
+        .eq("tenant_id", tenantId)
+        .like("key", "whatsapp_%")
+        .neq("status", "disabled");
+      const intg = (integrations || []).find((i: any) => {
+        const c = (i.config as any) || {};
+        return c.phone_number_id === phoneNumberId && (c.access_token || c.token);
+      });
+      const cfg = (intg?.config as any) || {};
+      waToken = cfg.access_token || cfg.token || "";
+    }
     if (!waToken) {
       return new Response(JSON.stringify({ error: "no WhatsApp token for this phone_number_id" }), {
         status: 400,
@@ -194,14 +185,19 @@ Deno.serve(async (req) => {
     // Monta body para Graph API
     const graphBody: Record<string, any> = {
       messaging_product: "whatsapp",
-      call_id: call.wa_call_id,
       action,
     };
-    if (action === "pre_accept" || action === "accept") {
-      graphBody.session = { sdp_type: "answer", sdp };
+    if (action === "connect") {
+      graphBody.to = body.to_phone!.replace(/\D/g, "");
+      graphBody.session = { sdp_type: "offer", sdp };
+    } else {
+      graphBody.call_id = waCallId;
+      if (action === "pre_accept" || action === "accept") {
+        graphBody.session = { sdp_type: "answer", sdp };
+      }
     }
 
-    const url = `https://graph.facebook.com/${API_VERSION}/${encodeURIComponent(call.phone_number_id)}/calls`;
+    const url = `https://graph.facebook.com/${API_VERSION}/${encodeURIComponent(phoneNumberId!)}/calls`;
     const graphRes = await fetch(url, {
       method: "POST",
       headers: {
@@ -216,13 +212,62 @@ Deno.serve(async (req) => {
 
     if (!graphRes.ok) {
       console.error(`[wa-call-signaling] Graph API error ${graphRes.status}: ${graphText}`);
-      // atualizar status
-      await supabase.from("whatsapp_calls").update({
-        status: "failed",
-        error_message: `Graph ${graphRes.status}: ${graphText}`,
-      }).eq("id", call.id);
+      if (dbCallId) {
+        await supabase.from("whatsapp_calls").update({
+          status: "failed",
+          error_message: `Graph ${graphRes.status}: ${graphText}`,
+        }).eq("id", dbCallId);
+      }
       return new Response(JSON.stringify({ error: "graph api error", status: graphRes.status, details: graphJson ?? graphText }), {
         status: graphRes.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Para "connect", cria/upserta linha em whatsapp_calls com o wa_call_id retornado
+    if (action === "connect") {
+      const returnedWaCallId: string | null =
+        graphJson?.messaging?.calls?.[0]?.id ||
+        graphJson?.calls?.[0]?.id ||
+        graphJson?.id ||
+        null;
+      if (!returnedWaCallId) {
+        console.error("[wa-call-signaling] connect ok but no wa_call_id in response:", graphText);
+      }
+
+      // Descobre whatsapp_number_id
+      const { data: waRow } = await supabase
+        .from("whatsapp_numbers")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("phone_number_id", phoneNumberId)
+        .maybeSingle();
+
+      const { data: inserted, error: insErr } = await supabase
+        .from("whatsapp_calls")
+        .insert({
+          tenant_id: tenantId,
+          whatsapp_number_id: waRow?.id || null,
+          phone_number_id: phoneNumberId,
+          wa_call_id: returnedWaCallId,
+          lead_id: body.lead_id || null,
+          from_phone: null,
+          to_phone: graphBody.to,
+          direction: "outbound",
+          status: "ringing",
+          event: "connect",
+          sdp_offer: sdp,
+          initiated_by: userId,
+          started_at: new Date().toISOString(),
+          raw_payload: graphJson,
+        })
+        .select("id")
+        .maybeSingle();
+      if (insErr) console.error("[wa-call-signaling] insert whatsapp_calls error:", insErr);
+
+      console.log(`[wa-call-signaling] connect OK wa_call_id=${returnedWaCallId} by user=${userId}`);
+      return new Response(JSON.stringify({ ok: true, call_id: inserted?.id, wa_call_id: returnedWaCallId, graph: graphJson }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -244,11 +289,11 @@ Deno.serve(async (req) => {
       patch.status = "completed";
       patch.ended_at = new Date().toISOString();
     }
-    if (Object.keys(patch).length > 0) {
-      await supabase.from("whatsapp_calls").update(patch).eq("id", call.id);
+    if (Object.keys(patch).length > 0 && dbCallId) {
+      await supabase.from("whatsapp_calls").update(patch).eq("id", dbCallId);
     }
 
-    console.log(`[wa-call-signaling] ${action} OK wa_call_id=${call.wa_call_id} by user=${userId}`);
+    console.log(`[wa-call-signaling] ${action} OK wa_call_id=${waCallId} by user=${userId}`);
     return new Response(JSON.stringify({ ok: true, graph: graphJson }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
