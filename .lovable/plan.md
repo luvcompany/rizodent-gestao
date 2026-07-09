@@ -1,49 +1,43 @@
-## Objetivo
-Adicionar UMA rota nova, aditiva e somente leitura, ao edge function `supabase/functions/admin-api/index.ts`: `GET /reports/clientes-pagantes`. Exporta a lista de pacientes que já efetuaram algum pagamento, agregada por paciente.
+## Problema
 
-## Autenticação
-Reutiliza exatamente o mesmo middleware que `/leads`, `/reports/financeiro` etc. já usam nesse arquivo (`Authorization: Bearer <RIZODENT_ADMIN_API_KEY>` + resolução do `tenant_id`). Nenhuma alteração no handler de auth.
+Ao excluir um cliente (ex.: Luv Agency), ainda sobra registro no banco:
+- Linha em `tenants` marcada como `status = 'deleted'` com slug renomeado (`deleted-1783575745-luvagency`).
+- Isso ocupa o slug/e-mail e atrapalha recriar o cliente depois com os mesmos dados.
 
-## Fontes de dados (mesmas do /reports/financeiro)
-- `pagamentos` — a tabela NÃO tem `tenant_id`; o escopo por tenant é feito via `clinica_id ∈ clinicas do tenant` (padrão idêntico ao que o `/reports/financeiro` já faz).
-  - Colunas usadas: `paciente_id`, `valor` (numeric), `data_pagamento` (date), `especialidade` (text, opcional), `clinica_id`.
-- `pacientes` (filtrado por `tenant_id`): `id`, `nome`, `telefone`, `cidade`.
-- `clinicas` (filtrado por `tenant_id`): apenas para obter os `clinica_id` válidos do tenant.
+Causa raiz:
+1. **Falha na criação** (`admin-create-tenant`): quando algo dá errado no meio da criação, o cleanup tenta apagar a linha em `tenants`, mas se a deleção falha por FK, cai num fallback que **apenas marca como `deleted`** — deixando resíduo permanente. Foi o que ocorreu com Luv Agency.
+2. **Exclusão manual** (`admin-update-tenant` → `hard_delete_tenant`): já apaga tudo corretamente (profiles, user_roles, tenants, auth.users), mas nunca chegou a ser executada nesse tenant específico.
+3. E-mail do admin também pode ficar "preso" em `auth.users` se a criação falhar antes de vincular o profile ao tenant — hoje o `findUserByEmail` limpa isso na próxima tentativa, mas só se o mesmo e-mail for reutilizado.
 
-Não usamos `crm_leads` para o telefone: a coluna `pacientes.telefone` é NOT NULL e é a fonte canônica do cadastro do paciente. Assim evitamos duplicação e divergência lead↔paciente.
+## Solução
 
-## Algoritmo
-1. Buscar `clinicas` do tenant → array `clinicaIds`.
-2. `fetchAllPaged` em `pagamentos` filtrando por `clinica_id ∈ clinicaIds` (sem filtro de data — queremos histórico completo). Selecionar apenas `paciente_id, valor, data_pagamento, especialidade`.
-3. Agregar em memória por `paciente_id`:
-   - `valor_total` = soma de `valor`
-   - `qtd_pagamentos` = count
-   - `primeira_compra` = min(`data_pagamento`)
-   - `ultima_compra` = max(`data_pagamento`)
-   - `servico` = especialidade com maior `valor_total` acumulado desse paciente (fallback: primeira não-nula; se todas nulas → `null`).
-4. Buscar `pacientes` do tenant em blocos (`chunk` de 150 ids, mesmo padrão já usado no arquivo): `id, nome, telefone, cidade`. Pacientes que não vierem no join (ex.: pagamento órfão) são descartados — garante escopo de tenant.
-5. Montar array final, aplicar telefone via `normalizePhoneE164` simples: strip não-dígitos, prefixar `+55` se faltar (implementação local no arquivo, sem tocar em `src/lib/phoneUtils`).
-6. Ordenar por `valor_total` desc.
-7. Aplicar `limit` (default 5000, cap 20000) e `offset` (default 0) por `URLSearchParams`.
-8. Retornar `{ data, total }` onde `total` é o tamanho ANTES da paginação.
+### 1. Limpar o resíduo atual do Luv Agency
+Migration que remove definitivamente o tenant `766c90d2-713f-4a5a-b3a5-25face9cb2b1`:
+- Executa `hard_delete_tenant(...)` no id.
+- Deleta qualquer `auth.users` órfão retornado pela função.
+- Confirma que `tenants`, `profiles`, `user_roles` não têm mais nada com esse id.
 
-## Resposta
-```json
-{
-  "data": [
-    { "nome": "...", "telefone": "+55...", "cidade": "...", "valor_total": 0, "qtd_pagamentos": 0, "primeira_compra": "YYYY-MM-DD", "ultima_compra": "YYYY-MM-DD", "servico": "..." }
-  ],
-  "total": 0
-}
-```
+### 2. Corrigir o cleanup de criação falha (`admin-create-tenant`)
+Trocar o fallback "marca como deleted" por **hard delete real**:
+- Chamar `hard_delete_tenant(tenant_id)` (mesma função usada na exclusão manual), que já sabe apagar todas as tabelas dependentes na ordem correta.
+- Deletar o `auth.users` do admin recém-criado (já feito, manter).
+- Se `hard_delete_tenant` falhar por algum motivo inesperado, **retornar erro claro** em vez de deixar linha zumbi no banco — o superadmin precisa saber para agir.
 
-## Garantias de não-regressão
-- Nenhum `INSERT/UPDATE/DELETE`, nenhuma migração, nenhuma mudança de RLS.
-- Nenhuma rota, helper ou constante existente é alterada — só adiciono um `if (path === "/reports/clientes-pagantes" && method === "GET")` no router e uma função nova `reportClientesPagantes(tenantId, params)`.
-- Adiciono `"GET /reports/clientes-pagantes?limit=&offset="` no bloco de documentação `/` (mesma seção onde `/reports/financeiro` está listada) — puramente cosmético.
-- Reuso os helpers já importados no arquivo (`fetchAllPaged`, `chunk`), sem novos imports pesados.
-- Nenhuma mudança em `supabase/config.toml` (a function já está deployada com `verify_jwt = false` + validação por API key no código).
+### 3. Reforçar `hard_delete_tenant` (a função do banco)
+Auditar e garantir que ela cobre 100% das tabelas com `tenant_id` (adicionar as que faltarem, como `tenant_subscriptions`, `tenant_invoices`, `tenant_usage`, `tenant_api_keys`, `whatsapp_numbers`, `whatsapp_oauth_states`, `whatsapp_template_logs`, `crm_notifications`, `crm_notification_preferences`, `crm_user_labels`, `crm_lead_label_assignments`, `crm_lead_instagram_identities`, `crm_funnel_custom_reports`, `crm_broadcasts`, `bots`, `plans` (não tem tenant_id — ignorar), `deleted_leads_backup`, `leads_diarios`, `registros_diarios_atendimento`, `pagamentos`, `tratamentos`, `ai_assistant_rules`, `ai_good_examples`, `ai_reply_suggestions`, `crm_lead_stage_history` já está, etc.).
+- Verificar a lista completa via `information_schema` antes de escrever a migration, para nada escapar.
+- Ao final, `RAISE EXCEPTION` se sobrar qualquer linha com aquele `tenant_id` em qualquer tabela pública — assim erros de esquema aparecem imediatamente em vez de deixar resíduo.
 
-## Observações
-- Sem filtro de período por design: "todos que já contrataram" é histórico completo. Se depois quiser `?from=&to=`, é aditivo também.
-- Performance: o join é feito em memória, mas `pagamentos` já é paginado; o `chunk(150)` em `pacientes.in('id', ...)` é o mesmo teto usado hoje em `/reports/financeiro`.
+### 4. Limpeza de e-mails órfãos em `auth.users`
+Na exclusão do tenant (tanto manual quanto no cleanup de falha), garantir que **todos** os `auth.users` que tinham `user_metadata.tenant_id` = tenant deletado sejam apagados, mesmo se o profile não existir mais. Hoje o código só apaga os usuários listados em `profiles` — se o profile já sumiu por FK, o auth.user fica órfão.
+
+## O que **não** vai ser preservado
+Cadastro do cliente (nome, slug, e-mail admin, cores, logo, subscription) — apagado definitivamente. Para "recuperar" um cliente, o caminho é restaurar do backup do banco (Cloud → Advanced settings → Export data), não deixar linhas zumbis.
+
+## Detalhes técnicos
+
+- Arquivos alterados:
+  - `supabase/functions/admin-create-tenant/index.ts` — substituir `cleanupFailedTenant` por chamada a `hard_delete_tenant` + `auth.admin.deleteUser` do admin.
+  - Migration nova — atualizar `hard_delete_tenant` com todas as tabelas + `RAISE EXCEPTION` de sanidade + limpeza do Luv Agency.
+- Nenhuma mudança de UI: o botão "Excluir" no `AdminPanel` continua igual (e o cliente Rizodent segue protegido, como implementado antes).
+- Após o deploy: recriar "Luv Agency" com os mesmos e-mail/slug deve funcionar sem erro.
