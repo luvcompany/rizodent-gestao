@@ -85,7 +85,7 @@ function formatDuration(seconds: number | null): string {
 }
 
 function displayName(c: CallRow): string {
-  if (c.lead?.nome) return c.lead.nome;
+  if (c.lead?.name) return c.lead.name;
   const phone = c.direction === "inbound" ? c.from_phone : c.to_phone;
   return phone || "Desconhecido";
 }
