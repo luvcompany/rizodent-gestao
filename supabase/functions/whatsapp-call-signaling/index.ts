@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
 
     const body = (await req.json()) as Body;
     const { call_id, action, sdp } = body || ({} as Body);
+    console.log(`[wa-call-signaling] request action=${action} user=${userId} to=${body?.to_phone ?? "-"} pnid=${body?.phone_number_id ?? "-"} lead=${body?.lead_id ?? "-"} sdp_len=${sdp?.length ?? 0}`);
     if (!action) {
       return new Response(JSON.stringify({ error: "action required" }), {
         status: 400,
