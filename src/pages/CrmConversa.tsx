@@ -353,6 +353,25 @@ export default function CrmConversa() {
               )}
             </div>
           </div>
+          {lead.phone && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={callState.phase !== "idle"}
+              onClick={() =>
+                initiateCall({
+                  toPhone: lead.phone!,
+                  leadId: lead.id,
+                  leadName: lead.name,
+                })
+              }
+              title="Ligar via WhatsApp"
+              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+            >
+              <Phone size={16} />
+              <span className="hidden sm:inline">Ligar</span>
+            </Button>
+          )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" title="Bloquear lead">
