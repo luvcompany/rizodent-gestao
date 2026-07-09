@@ -53,35 +53,29 @@ async function ensureEmailAvailable(admin: any, email: string) {
 }
 
 async function cleanupFailedTenant(admin: any, tenantId: string | null, userId: string | null) {
+  // Always try to delete the auth user we just created (may be null if we didn't reach that step)
   if (userId) {
-    try { await admin.auth.admin.deleteUser(userId); } catch { /* best effort cleanup */ }
+    try { await admin.auth.admin.deleteUser(userId); } catch { /* best effort */ }
   }
   if (!tenantId) return;
 
-  const tenantTables = [
-    "funnel_channels",
-    "tipos_procedimento",
-    "ai_assistant_config",
-    "crm_stages",
-    "crm_pipelines",
-    "clinicas",
-    "tenant_subscriptions",
-    "user_roles",
-    "profiles",
-  ];
-
-  for (const table of tenantTables) {
-    try { await admin.from(table).delete().eq("tenant_id", tenantId); } catch { /* best effort cleanup */ }
-  }
+  // Use the same hard-delete used by the admin panel — removes ALL rows for this tenant
+  // across every public table, and returns the list of auth user ids to purge as well.
   try {
-    await admin.from("tenants").delete().eq("id", tenantId);
-  } catch {
-    await admin
-      .from("tenants")
-      .update({ status: "deleted", slug: `failed-${Date.now()}-${tenantId}`.slice(0, 63) })
-      .eq("id", tenantId);
+    const { data, error } = await admin.rpc("hard_delete_tenant", { _tenant_id: tenantId });
+    if (error) throw error;
+    const userIds: string[] = Array.isArray((data as any)?.user_ids) ? (data as any).user_ids : [];
+    for (const uid of userIds) {
+      if (uid === userId) continue;
+      try { await admin.auth.admin.deleteUser(uid); } catch { /* best effort */ }
+    }
+  } catch (err) {
+    // Do NOT silently leave a zombie tenant row — surface the failure to the caller/logs.
+    console.error("[admin-create-tenant] cleanupFailedTenant hard_delete_tenant failed:", err);
+    throw err;
   }
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -277,11 +271,20 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
+    let cleanupError: string | null = null;
     if (admin && createdTenantId) {
-      await cleanupFailedTenant(admin, createdTenantId, createdUserId);
+      try {
+        await cleanupFailedTenant(admin, createdTenantId, createdUserId);
+      } catch (ce: any) {
+        cleanupError = ce?.message ?? String(ce);
+      }
     }
-    return new Response(JSON.stringify({ error: e?.message ?? String(e) }), {
+    return new Response(JSON.stringify({
+      error: e?.message ?? String(e),
+      cleanup_error: cleanupError,
+    }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
