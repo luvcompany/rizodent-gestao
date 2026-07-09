@@ -69,6 +69,20 @@ export default function WhatsAppAccountsSection({
       toast.error("Falha ao conectar o WhatsApp. Tente novamente.");
       window.history.replaceState({}, "", window.location.pathname);
     }
+
+    const onMessage = (ev: MessageEvent) => {
+      const d = ev.data;
+      if (!d || typeof d !== "object" || d.type !== "oauth_result") return;
+      if (d.channel !== "whatsapp") return;
+      if (d.status === "connected") {
+        toast.success(`WhatsApp conectado! ${d.count ?? 0} número(s) vinculado(s).`);
+        onReload();
+      } else {
+        toast.error("Falha ao conectar o WhatsApp. Tente novamente.");
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

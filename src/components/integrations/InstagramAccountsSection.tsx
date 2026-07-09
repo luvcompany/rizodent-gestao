@@ -95,6 +95,20 @@ export default function InstagramAccountsSection() {
       toast.error("Falha ao conectar com o Instagram. Tente novamente.");
       window.history.replaceState({}, "", window.location.pathname);
     }
+
+    const onMessage = (ev: MessageEvent) => {
+      const d = ev.data;
+      if (!d || typeof d !== "object" || d.type !== "oauth_result") return;
+      if (d.channel !== "instagram") return;
+      if (d.status === "connected") {
+        toast.success(`Instagram conectado! ${d.count ?? 0} conta(s) vinculada(s).`);
+        load();
+      } else {
+        toast.error("Falha ao conectar com o Instagram. Tente novamente.");
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
   }, []);
 
   const handleConnect = async () => {
