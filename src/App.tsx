@@ -67,6 +67,7 @@ const OAuthConsent = lazyWithPreload(() => import("./pages/OAuthConsent"));
 const Privacidade = lazyWithPreload(() => import("./pages/legal/Privacidade"));
 const Termos = lazyWithPreload(() => import("./pages/legal/Termos"));
 const ExclusaoDados = lazyWithPreload(() => import("./pages/legal/ExclusaoDados"));
+const OAuthClose = lazyWithPreload(() => import("./pages/OAuthClose"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
