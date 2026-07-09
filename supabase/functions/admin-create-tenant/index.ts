@@ -8,6 +8,50 @@ const corsHeaders = {
 };
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+async function findUserByEmail(admin: any, email: string) {
+  const target = String(email || "").trim().toLowerCase();
+  if (!target) return null;
+
+  const perPage = 1000;
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const found = data?.users?.find((u: any) => u.email?.toLowerCase() === target);
+    if (found) return found;
+    if (!data?.users || data.users.length < perPage) break;
+  }
+
+  return null;
+}
+
+async function ensureEmailAvailable(admin: any, email: string) {
+  const existingUser = await findUserByEmail(admin, email);
+  if (!existingUser) return;
+
+  const { data: existingProfile } = await admin
+    .from("profiles")
+    .select("tenant_id")
+    .eq("id", existingUser.id)
+    .maybeSingle();
+  const existingTenantId = existingProfile?.tenant_id ?? existingUser.user_metadata?.tenant_id ?? null;
+
+  if (existingTenantId) {
+    const { data: existingTenant } = await admin
+      .from("tenants")
+      .select("status")
+      .eq("id", existingTenantId)
+      .maybeSingle();
+
+    if (existingTenant?.status === "active") {
+      return json({ error: "Este e-mail já pertence a um cliente ativo. Use outro e-mail para o primeiro usuário." }, 409);
+    }
+  }
+
+  await admin.from("profiles").delete().eq("id", existingUser.id);
+  const { error: deleteErr } = await admin.auth.admin.deleteUser(existingUser.id);
+  if (deleteErr) throw deleteErr;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -32,27 +76,35 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { name, slug, primary_color, secondary_color, tertiary_color, logo_url, favicon_url, plan_id, admin_email, admin_password, admin_name, clinic_name, clinic_city } = body;
+    const cleanEmail = String(admin_email || "").trim().toLowerCase();
+    const cleanSlug = String(slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
 
-    if (!name || !slug || !admin_email || !admin_password) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!name || !cleanSlug || !cleanEmail || !admin_password) {
+      return json({ error: "Preencha nome, slug, e-mail e senha temporária." }, 400);
     }
     if (!clinic_name) {
-      return new Response(JSON.stringify({ error: "Informe o nome da clínica" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ error: "Informe o nome da clínica" }, 400);
+    }
+    if (String(admin_password).length < 6) {
+      return json({ error: "A senha temporária precisa ter pelo menos 6 caracteres." }, 400);
     }
 
+    const emailAvailability = await ensureEmailAvailable(admin, cleanEmail);
+    if (emailAvailability) return emailAvailability;
+
     // Free up slug if it belongs to a previously deleted tenant
-    const { data: existing } = await admin.from("tenants").select("id, status, slug").eq("slug", slug).maybeSingle();
+    const { data: existing } = await admin.from("tenants").select("id, status, slug").eq("slug", cleanSlug).maybeSingle();
     if (existing) {
       if (existing.status === "deleted") {
         await admin.from("tenants").update({ slug: `deleted-${Date.now()}-${existing.slug}`.slice(0, 63) }).eq("id", existing.id);
       } else {
-        return json({ error: `Slug "${slug}" já está em uso por outro cliente ativo.` }, 400);
+        return json({ error: `Slug "${cleanSlug}" já está em uso por outro cliente ativo.` }, 400);
       }
     }
 
     // Create tenant
     const { data: tenant, error: tErr } = await admin.from("tenants").insert({
-      name, slug,
+      name, slug: cleanSlug,
       primary_color: primary_color || "#3b82f6",
       secondary_color: secondary_color || "#fb923c",
       tertiary_color: tertiary_color || "#fed7aa",
@@ -68,39 +120,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Free up email if it belongs to a previously orphaned/deleted tenant user.
-    // SAFETY: never delete a user that belongs to a DIFFERENT ACTIVE tenant.
-    try {
-      const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-      const existingUser = list?.users?.find((u: any) => u.email?.toLowerCase() === String(admin_email).toLowerCase());
-      if (existingUser) {
-        const { data: existingProfile } = await admin
-          .from("profiles")
-          .select("tenant_id")
-          .eq("id", existingUser.id)
-          .maybeSingle();
-        const existingTenantId = existingProfile?.tenant_id ?? existingUser.user_metadata?.tenant_id ?? null;
-        if (existingTenantId) {
-          const { data: existingTenant } = await admin
-            .from("tenants")
-            .select("status")
-            .eq("id", existingTenantId)
-            .maybeSingle();
-          if (existingTenant && existingTenant.status === "active") {
-            return json({ error: "E-mail já cadastrado em outra conta" }, 409);
-          }
-        }
-        await admin.from("profiles").delete().eq("id", existingUser.id);
-        await admin.auth.admin.deleteUser(existingUser.id);
-      }
-    } catch (e: any) {
-      // Only swallow non-conflict errors; re-raise nothing else so provisioning stays reliable.
-      if (e?.status === 409) throw e;
-    }
-
     // Create auth user with metadata
     const { data: created, error: uErr } = await admin.auth.admin.createUser({
-      email: admin_email,
+      email: cleanEmail,
       password: admin_password,
       email_confirm: true,
       user_metadata: {
