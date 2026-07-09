@@ -34,7 +34,7 @@ type CallRow = {
   transcription: string | null;
   initiated_by: string | null;
   answered_by: string | null;
-  lead?: { id: string; nome: string | null; telefone: string | null; avatar_url: string | null } | null;
+  lead?: { id: string; name: string | null; phone: string | null } | null;
 };
 
 const FILTERS: { key: CallCategory | "all"; label: string }[] = [
@@ -85,7 +85,7 @@ function formatDuration(seconds: number | null): string {
 }
 
 function displayName(c: CallRow): string {
-  if (c.lead?.nome) return c.lead.nome;
+  if (c.lead?.name) return c.lead.name;
   const phone = c.direction === "inbound" ? c.from_phone : c.to_phone;
   return phone || "Desconhecido";
 }
@@ -144,8 +144,8 @@ export default function CrmLigacoes() {
       const cat = categorize(c);
       if (filter !== "all" && filter !== cat) return false;
       if (q) {
-        const name = (c.lead?.nome || "").toLowerCase();
-        const phone = (c.from_phone || "") + " " + (c.to_phone || "") + " " + (c.lead?.telefone || "");
+        const name = (c.lead?.name || "").toLowerCase();
+        const phone = (c.from_phone || "") + " " + (c.to_phone || "") + " " + (c.lead?.phone || "");
         if (!name.includes(q) && !phone.includes(q)) return false;
       }
       return true;
@@ -252,8 +252,8 @@ export default function CrmLigacoes() {
                   className="flex items-center gap-3 p-3 md:px-6 hover:bg-muted/40 cursor-pointer"
                 >
                   <Avatar className="h-10 w-10 flex-shrink-0">
-                    {c.lead?.avatar_url ? <AvatarImage src={c.lead.avatar_url} /> : null}
                     <AvatarFallback>{(name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -337,8 +337,8 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
     <div className="mt-4 space-y-4">
       <div className="flex items-center gap-3">
         <Avatar className="h-14 w-14">
-          {call.lead?.avatar_url ? <AvatarImage src={call.lead.avatar_url} /> : null}
           <AvatarFallback>{(name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+
         </Avatar>
         <div className="min-w-0">
           <div className="font-semibold truncate">{name}</div>
