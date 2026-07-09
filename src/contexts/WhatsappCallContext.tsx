@@ -57,7 +57,8 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [muted, setMuted] = useState(false);
   const sessionRef = useRef<WhatsappCallSession | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
+  const ringtoneRef = useRef<{ stop: () => void } | null>(null);
+  const dialToneRef = useRef<{ stop: () => void } | null>(null);
 
   // --- Realtime: escuta whatsapp_calls do tenant
   useEffect(() => {
