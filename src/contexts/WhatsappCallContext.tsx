@@ -271,7 +271,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       sessionRef.current = null;
       setState({ phase: "idle" });
     }
-  }, [state]);
+  }, [state, publishSync]);
 
   const rejectCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
