@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
 
     const body = (await req.json()) as Body;
     const { call_id, action, sdp } = body || ({} as Body);
+    console.log(`[wa-call-signaling] request action=${action} user=${userId} to=${body?.to_phone ?? "-"} pnid=${body?.phone_number_id ?? "-"} lead=${body?.lead_id ?? "-"} sdp_len=${sdp?.length ?? 0}`);
     if (!action) {
       return new Response(JSON.stringify({ error: "action required" }), {
         status: 400,
@@ -124,11 +125,13 @@ Deno.serve(async (req) => {
         phoneNumberId = def?.phone_number_id || null;
       }
       if (!phoneNumberId) {
+        console.error(`[wa-call-signaling] no phone_number_id for tenant=${tenantId}`);
         return new Response(JSON.stringify({ error: "no phone_number_id available" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      console.log(`[wa-call-signaling] connect resolved phone_number_id=${phoneNumberId} tenant=${tenantId}`);
     } else {
       // Carrega a chamada existente
       const { data: call, error: callErr } = await supabase
@@ -177,11 +180,13 @@ Deno.serve(async (req) => {
       waToken = cfg.access_token || cfg.token || "";
     }
     if (!waToken) {
+      console.error(`[wa-call-signaling] no token for tenant=${tenantId} phone_number_id=${phoneNumberId}`);
       return new Response(JSON.stringify({ error: "no WhatsApp token for this phone_number_id" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    console.log(`[wa-call-signaling] token resolved (len=${waToken.length})`);
 
     // Monta body para Graph API
     const graphBody: Record<string, any> = {
