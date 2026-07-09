@@ -19,6 +19,23 @@ const navItems = [
   { to: "/admin/logs", icon: ShieldAlert, label: "Logs & Acesso" },
 ];
 
+const getFunctionErrorMessage = async (data: unknown, error: unknown, fallback = "Erro ao processar") => {
+  const dataError = (data as any)?.error;
+  if (dataError) return String(dataError);
+
+  const context = (error as any)?.context;
+  if (context?.json) {
+    try {
+      const body = await context.clone().json();
+      if (body?.error) return String(body.error);
+    } catch {
+      // Keep the original function error message below.
+    }
+  }
+
+  return (error as any)?.message || fallback;
+};
+
 export const AdminLayout = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
@@ -74,7 +91,7 @@ export const AdminClientes = () => {
   const handleDelete = async (t: any) => {
     if (!confirm(`Tem certeza que deseja apagar o cliente "${t.name}"? Essa ação pode ser revertida apenas via banco de dados.`)) return;
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: t.id, action: "delete" } });
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message || "Erro ao apagar"); return; }
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao apagar")); return; }
     toast.success(`Cliente ${t.name} removido`);
     load();
   };
@@ -87,7 +104,7 @@ export const AdminClientes = () => {
     setLoading(true);
     const { data, error } = await supabase.functions.invoke("admin-create-tenant", { body: form });
     setLoading(false);
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message || "Erro"); return; }
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao criar cliente")); return; }
     toast.success(`Cliente ${form.name} criado! Link: ${form.slug}.crclin.com.br`);
     setOpen(false);
     setForm({ name: "", slug: "", primary_color: "#f97316", secondary_color: "#fb923c", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "" });
