@@ -238,6 +238,20 @@ Deno.serve(async (req: Request) => {
           const subJson = await subRes.json().catch(() => ({}));
           if (!subRes.ok) {
             console.warn(`[instagram-oauth-callback] subscribed_apps failed for page ${page.id}:`, subJson);
+            const missingMessagingPermission = subJson?.error?.code === 200
+              && String(subJson?.error?.message || "").includes("pages_messaging");
+            if (missingMessagingPermission) {
+              const fallbackUrl = new URL(`https://graph.facebook.com/v25.0/${page.id}/subscribed_apps`);
+              fallbackUrl.searchParams.set("access_token", page.access_token);
+              fallbackUrl.searchParams.set("subscribed_fields", ["feed", "mention"].join(","));
+              const fallbackRes = await fetch(fallbackUrl.toString(), { method: "POST" });
+              const fallbackJson = await fallbackRes.json().catch(() => ({}));
+              if (!fallbackRes.ok) {
+                console.warn(`[instagram-oauth-callback] subscribed_apps fallback failed for page ${page.id}:`, fallbackJson);
+              } else {
+                console.log(`[instagram-oauth-callback] subscribed_apps fallback OK for page ${page.id}:`, fallbackJson);
+              }
+            }
           } else {
             console.log(`[instagram-oauth-callback] subscribed_apps OK for page ${page.id}:`, subJson);
           }
