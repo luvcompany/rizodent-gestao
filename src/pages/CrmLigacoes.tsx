@@ -99,6 +99,7 @@ export default function CrmLigacoes() {
   const [directionFilter, setDirectionFilter] = useState<"all" | "inbound" | "outbound">("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CallRow | null>(null);
+  const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "this_month" });
 
   useEffect(() => {
     let cancelled = false;
