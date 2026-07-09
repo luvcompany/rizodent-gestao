@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Mic, File as FileIcon, Image, ExternalLink, Phone, PhoneIncoming, PhoneMissed, PhoneOff } from "lucide-react";
+import { Mic, File as FileIcon, Image, ExternalLink, Phone, PhoneIncoming, PhoneMissed, PhoneOff, Film, BookOpen, Share2 } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
 import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
@@ -7,6 +7,112 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
 import { linkify } from "@/lib/linkify";
 import { LinkPreview } from "./LinkPreview";
+
+// Detecta conteúdo especial do Instagram (reel, story reply, shared post)
+type IgSpecialKind = "reel" | "story" | "share";
+function detectInstagramSpecial(content: string | null | undefined): { kind: IgSpecialKind; label: string; caption: string | null } | null {
+  if (!content) return null;
+  const trimmed = content.trim();
+  const patterns: { kind: IgSpecialKind; regex: RegExp; label: string }[] = [
+    { kind: "reel", regex: /^🎬\s*Reel compartilhado/i, label: "Reel compartilhado" },
+    { kind: "story", regex: /^📖\s*(Resposta a story|Menção em story)/i, label: "Resposta a story" },
+    { kind: "share", regex: /^🔗\s*Publicação compartilhada/i, label: "Publicação compartilhada" },
+  ];
+  for (const p of patterns) {
+    const m = trimmed.match(p.regex);
+    if (m) {
+      const label = (m[1] as string) || p.label;
+      const rest = trimmed.replace(p.regex, "").trim();
+      const caption = rest
+        .replace(/^https?:\/\/\S+/i, "")
+        .replace(/^\n?💬\s*/, "")
+        .trim();
+      return { kind: p.kind, label, caption: caption || null };
+    }
+  }
+  return null;
+}
+
+function InstagramSpecialCard({
+  kind,
+  label,
+  caption,
+  mediaUrl,
+  mediaType,
+  onMediaClick,
+}: {
+  kind: IgSpecialKind;
+  label: string;
+  caption: string | null;
+  mediaUrl: string | null;
+  mediaType: "image" | "video" | null;
+  onMediaClick?: (url: string, type: "image" | "video") => void;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const Icon = kind === "reel" ? Film : kind === "story" ? BookOpen : Share2;
+  const isInstagramLink = mediaUrl ? /instagram\.com\//i.test(mediaUrl) : false;
+  const canPreview = !!mediaUrl && !imgError && !isInstagramLink;
+
+  return (
+    <div className="flex flex-col gap-2 max-w-[280px]">
+      <div className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: "#E1306C" }}>
+        <Icon size={12} />
+        <span>{label}</span>
+      </div>
+      {canPreview && mediaType === "video" && (
+        <div
+          className="relative cursor-pointer rounded-lg overflow-hidden bg-black/5"
+          onClick={() => onMediaClick?.(mediaUrl!, "video")}
+        >
+          <video
+            src={mediaUrl!}
+            preload="metadata"
+            className="w-full max-h-64 object-cover"
+            onError={() => setImgError(true)}
+          />
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center">
+              <span className="text-foreground text-lg ml-0.5">▶</span>
+            </div>
+          </div>
+        </div>
+      )}
+      {canPreview && mediaType === "image" && (
+        <img
+          src={mediaUrl!}
+          alt={label}
+          className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+          onError={() => setImgError(true)}
+          onClick={() => onMediaClick?.(mediaUrl!, "image")}
+        />
+      )}
+      {(!canPreview || isInstagramLink) && (
+        <div className="rounded-lg border border-border bg-muted/40 p-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <Icon size={20} className="flex-shrink-0" />
+          <span className="flex-1">
+            {imgError
+              ? "Mídia indisponível (expirada no Instagram)"
+              : mediaUrl
+                ? "Abrir no Instagram"
+                : "Mídia não disponível"}
+          </span>
+        </div>
+      )}
+      {mediaUrl && (
+        <a
+          href={mediaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          <ExternalLink size={12} /> Abrir mídia
+        </a>
+      )}
+      {caption && <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>}
+    </div>
+  );
+}
 
 // Renderiza texto com URLs clicáveis + card de preview para o 1º link
 function TextWithLinks({ text, className }: { text: string; className?: string }) {
