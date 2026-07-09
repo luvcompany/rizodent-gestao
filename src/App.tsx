@@ -9,6 +9,8 @@ import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
+import { WhatsappCallProvider } from "@/contexts/WhatsappCallContext";
+
 
 type PreloadableComponent<T extends ComponentType<any> = ComponentType<any>> = LazyExoticComponent<T> & {
   preload: () => Promise<unknown>;
