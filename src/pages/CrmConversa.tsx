@@ -27,7 +27,8 @@ import { useConversationNotes } from "@/hooks/useConversationNotes";
 import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
-import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check } from "lucide-react";
+import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check, Phone } from "lucide-react";
+import { useWhatsappCall } from "@/contexts/WhatsappCallContext";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 import { useChatConversation } from "@/hooks/useChatConversation";
@@ -112,6 +113,8 @@ export default function CrmConversa() {
   const [leadLoading, setLeadLoading] = useState(true);
   const [phoneCopied, setPhoneCopied] = useState(false);
   const [nameCopied, setNameCopied] = useState(false);
+  const { initiateCall, state: callState } = useWhatsappCall();
+
 
   const copyPhone = async () => {
     if (!lead?.phone) return;
@@ -350,6 +353,25 @@ export default function CrmConversa() {
               )}
             </div>
           </div>
+          {lead.phone && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={callState.phase !== "idle"}
+              onClick={() =>
+                initiateCall({
+                  toPhone: lead.phone!,
+                  leadId: lead.id,
+                  leadName: lead.name,
+                })
+              }
+              title="Ligar via WhatsApp"
+              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+            >
+              <Phone size={16} />
+              <span className="hidden sm:inline">Ligar</span>
+            </Button>
+          )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" title="Bloquear lead">
