@@ -139,9 +139,20 @@ export default function CrmLigacoes() {
     };
   }, []);
 
+  const dateRange = useMemo(() => getDateRangeFromFilter(period), [period]);
+
+  const dateScoped = useMemo(() => {
+    if (!dateRange) return calls;
+    return calls.filter((c) => {
+      if (!c.started_at) return false;
+      const t = new Date(c.started_at).getTime();
+      return t >= dateRange.start.getTime() && t <= dateRange.end.getTime();
+    });
+  }, [calls, dateRange]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return calls.filter((c) => {
+    return dateScoped.filter((c) => {
       if (directionFilter !== "all" && c.direction !== directionFilter) return false;
       const cat = categorize(c);
       if (filter !== "all" && filter !== cat) return false;
@@ -152,10 +163,10 @@ export default function CrmLigacoes() {
       }
       return true;
     });
-  }, [calls, filter, directionFilter, search]);
+  }, [dateScoped, filter, directionFilter, search]);
 
   const kpis = useMemo(() => {
-    const scoped = calls.filter((c) => {
+    const scoped = dateScoped.filter((c) => {
       if (directionFilter !== "all" && c.direction !== directionFilter) return false;
       return true;
     });
@@ -169,7 +180,7 @@ export default function CrmLigacoes() {
       : 0;
     const rate = total ? Math.round((answered.length / total) * 100) : 0;
     return { total, answered: answered.length, missed, rejected, blocked, avgDur, rate };
-  }, [calls, directionFilter]);
+  }, [dateScoped, directionFilter]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
