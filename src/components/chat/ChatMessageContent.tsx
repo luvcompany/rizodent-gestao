@@ -525,7 +525,7 @@ export default function ChatMessageContent({
     return (
       <div>
         <div className="relative cursor-pointer" onClick={() => onMediaClick?.(resolvedUrl!, "video")}>
-          <video src={resolvedUrl!} className="rounded mb-1 max-w-full max-h-64" />
+          <video src={resolvedUrl!} preload="metadata" className="rounded mb-1 max-w-full max-h-64" />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center">
               <span className="text-foreground text-lg ml-0.5">▶</span>
