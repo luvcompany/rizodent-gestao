@@ -216,7 +216,9 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
     <BrowserRouter basename={basename}>
       <TenantProvider slugOverride={slug}>
         <AuthProvider>
+          <WhatsappCallProvider>
           <DataPrefetcher />
+
           <Routes>
             <Route path="/" element={withRouteSuspense(<TenantLogin />)} />
             <Route path="/oauth-close" element={withRouteSuspense(<OAuthClose />)} />
