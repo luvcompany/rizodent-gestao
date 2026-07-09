@@ -202,6 +202,10 @@ async function handleCallsChange(supabase: any, value: any) {
       else leadUpd.last_outbound_at = nowIso;
       await supabase.from("crm_leads").update(leadUpd).eq("id", leadId);
     }
+  }
+}
+
+
 
 const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
 
