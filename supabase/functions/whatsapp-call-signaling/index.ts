@@ -125,11 +125,13 @@ Deno.serve(async (req) => {
         phoneNumberId = def?.phone_number_id || null;
       }
       if (!phoneNumberId) {
+        console.error(`[wa-call-signaling] no phone_number_id for tenant=${tenantId}`);
         return new Response(JSON.stringify({ error: "no phone_number_id available" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      console.log(`[wa-call-signaling] connect resolved phone_number_id=${phoneNumberId} tenant=${tenantId}`);
     } else {
       // Carrega a chamada existente
       const { data: call, error: callErr } = await supabase
