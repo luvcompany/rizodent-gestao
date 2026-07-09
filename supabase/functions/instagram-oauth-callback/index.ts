@@ -11,6 +11,9 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const REDIRECT_URI = Deno.env.get("INSTAGRAM_REDIRECT_URI") ?? "";
+const META_APP_ID_V2 = Deno.env.get("META_APP_ID_V2") ?? "";
+const META_APP_SECRET_V2 = Deno.env.get("META_APP_SECRET_V2") ?? "";
+const REDIRECT_URI_V2 = Deno.env.get("INSTAGRAM_REDIRECT_URI_V2") ?? "";
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL") ?? "https://crclin.com.br";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -91,11 +94,26 @@ Deno.serve(async (req: Request) => {
 
 
   try {
+    const { data: tenantRow } = await supabase
+      .from("tenants")
+      .select("meta_app_version")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const appVersion = (tenantRow as any)?.meta_app_version === "v1" ? "v1" : "v2";
+    const appId = appVersion === "v2" ? META_APP_ID_V2 : META_APP_ID;
+    const appSecret = appVersion === "v2" ? META_APP_SECRET_V2 : META_APP_SECRET;
+    const redirectUri = appVersion === "v2" ? REDIRECT_URI_V2 : REDIRECT_URI;
+
+    if (!appId || !appSecret || !redirectUri) {
+      console.error("[instagram-oauth-callback] Missing META secrets for app version", appVersion);
+      return popupResponse("instagram", "error");
+    }
+
     // 1) Short-lived token
     const stUrl = new URL("https://graph.facebook.com/v25.0/oauth/access_token");
-    stUrl.searchParams.set("client_id", META_APP_ID);
-    stUrl.searchParams.set("client_secret", META_APP_SECRET);
-    stUrl.searchParams.set("redirect_uri", REDIRECT_URI);
+    stUrl.searchParams.set("client_id", appId);
+    stUrl.searchParams.set("client_secret", appSecret);
+    stUrl.searchParams.set("redirect_uri", redirectUri);
     stUrl.searchParams.set("code", code);
 
     const stRes = await fetch(stUrl.toString());
@@ -109,8 +127,8 @@ Deno.serve(async (req: Request) => {
     // 2) Long-lived token (60 days)
     const llUrl = new URL("https://graph.facebook.com/v25.0/oauth/access_token");
     llUrl.searchParams.set("grant_type", "fb_exchange_token");
-    llUrl.searchParams.set("client_id", META_APP_ID);
-    llUrl.searchParams.set("client_secret", META_APP_SECRET);
+    llUrl.searchParams.set("client_id", appId);
+    llUrl.searchParams.set("client_secret", appSecret);
     llUrl.searchParams.set("fb_exchange_token", shortToken);
 
     const llRes = await fetch(llUrl.toString());
@@ -207,21 +225,35 @@ Deno.serve(async (req: Request) => {
             [
               "messages",
               "messaging_postbacks",
-              "messaging_seen",
+              "message_reads",
               "message_reactions",
-              "instagram_manage_messages",
-              "instagram_manage_comments",
-              "comments",
-              "mentions",
+              "message_echoes",
+              "message_deliveries",
+              "message_mention",
               "feed",
+              "mention",
             ].join(","),
           );
           const subRes = await fetch(subUrl.toString(), { method: "POST" });
           const subJson = await subRes.json().catch(() => ({}));
           if (!subRes.ok) {
             console.warn(`[instagram-oauth-callback] subscribed_apps failed for page ${page.id}:`, subJson);
+            const missingMessagingPermission = subJson?.error?.code === 200
+              && String(subJson?.error?.message || "").includes("pages_messaging");
+            if (missingMessagingPermission) {
+              const fallbackUrl = new URL(`https://graph.facebook.com/v25.0/${page.id}/subscribed_apps`);
+              fallbackUrl.searchParams.set("access_token", page.access_token);
+              fallbackUrl.searchParams.set("subscribed_fields", ["feed", "mention"].join(","));
+              const fallbackRes = await fetch(fallbackUrl.toString(), { method: "POST" });
+              const fallbackJson = await fallbackRes.json().catch(() => ({}));
+              if (!fallbackRes.ok) {
+                console.warn(`[instagram-oauth-callback] subscribed_apps fallback failed for page ${page.id}:`, fallbackJson);
+              } else {
+                console.log(`[instagram-oauth-callback] subscribed_apps fallback OK for page ${page.id}:`, fallbackJson);
+              }
+            }
           } else {
-            console.log(`[instagram-oauth-callback] subscribed_apps OK for page ${page.id}`);
+            console.log(`[instagram-oauth-callback] subscribed_apps OK for page ${page.id}:`, subJson);
           }
         } catch (subErr) {
           console.warn(`[instagram-oauth-callback] subscribed_apps error for page ${page.id}:`, subErr);
