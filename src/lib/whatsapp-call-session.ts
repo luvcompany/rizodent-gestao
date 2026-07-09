@@ -205,6 +205,7 @@ export class WhatsappCallSession {
         if (!this.remoteStream.getTracks().find((x) => x.id === t.id)) this.remoteStream.addTrack(t);
       });
       this.handlers.onRemoteStream?.(this.remoteStream);
+      this.startRecordingIfReady();
     };
 
     this.localStream.getTracks().forEach((t) => pc.addTrack(t, this.localStream!));
