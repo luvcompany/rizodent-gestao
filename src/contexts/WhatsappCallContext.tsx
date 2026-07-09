@@ -50,12 +50,42 @@ export const useWhatsappCall = () => {
   return ctx;
 };
 
+// ID desta aba — usado para ignorar ecos no BroadcastChannel
+const TAB_ID = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+  ? crypto.randomUUID()
+  : Math.random().toString(36).slice(2);
+
+type SyncMsg = {
+  type: "handling" | "accepted" | "rejected" | "dismissed";
+  callId: string;
+  tabId: string;
+};
+
 export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
   const [state, setState] = useState<CallState>({ phase: "idle" });
   const [muted, setMuted] = useState(false);
   const sessionRef = useRef<WhatsappCallSession | null>(null);
+  const syncChannelRef = useRef<BroadcastChannel | null>(null);
+
+  const publishSync = useCallback((msg: Omit<SyncMsg, "tabId">) => {
+    try {
+      syncChannelRef.current?.postMessage({ ...msg, tabId: TAB_ID } satisfies SyncMsg);
+    } catch (e) {
+      console.warn("[wa-call] sync publish error", e);
+    }
+  }, []);
+
+  // Silencia local (para a mesma call.id) quando outra aba assume/dismissa
+  const silenceIfMatches = useCallback((callId: string) => {
+    setState((prev) => {
+      if (prev.phase === "ringing" && prev.call.id === callId) {
+        return { phase: "idle" };
+      }
+      return prev;
+    });
+  }, []);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ringtoneRef = useRef<{ stop: () => void } | null>(null);
   const dialToneRef = useRef<{ stop: () => void } | null>(null);
@@ -107,6 +137,20 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
             ) {
               return { phase: "active", call: { ...prev.call, ...row }, startedAt: Date.now() };
             }
+            // Inbound tocando: outra sessão/aba atendeu → silencia local
+            if (
+              row.direction === "inbound" &&
+              (row.event === "accept" ||
+                row.status === "accepted" ||
+                row.status === "connected" ||
+                row.status === "in-progress") &&
+              prev.phase === "ringing" &&
+              prev.call.id === row.id
+            ) {
+              ringtoneRef.current?.stop(); ringtoneRef.current = null;
+              return { phase: "idle" };
+            }
+
 
             // Terminate remoto durante ringing/active → limpa
             if (
@@ -135,6 +179,26 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       supabase.removeChannel(channel);
     };
   }, [user?.id, tenantId]);
+
+  // --- BroadcastChannel: sincroniza abas do mesmo navegador
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel("wa-call-sync");
+    syncChannelRef.current = ch;
+    ch.onmessage = (ev) => {
+      const msg = ev.data as SyncMsg;
+      if (!msg || msg.tabId === TAB_ID) return;
+      if (msg.type === "handling" || msg.type === "accepted" || msg.type === "rejected" || msg.type === "dismissed") {
+        silenceIfMatches(msg.callId);
+      }
+    };
+    return () => {
+      try { ch.close(); } catch { /* noop */ }
+      if (syncChannelRef.current === ch) syncChannelRef.current = null;
+    };
+  }, [silenceIfMatches]);
+
+
 
 
   // --- Ringtone (entrante) + dial tone (saindo)
@@ -169,6 +233,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const acceptCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
     const call = state.call;
+    publishSync({ type: "accepted", callId: call.id });
     setState({ phase: "connecting", call });
     try {
       const session = new WhatsappCallSession(call.id, {
@@ -206,11 +271,12 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       sessionRef.current = null;
       setState({ phase: "idle" });
     }
-  }, [state]);
+  }, [state, publishSync]);
 
   const rejectCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
     const call = state.call;
+    publishSync({ type: "rejected", callId: call.id });
     try {
       const session = new WhatsappCallSession(call.id);
       await session.reject();
@@ -218,7 +284,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       console.error("[wa-call] reject error:", e);
     }
     setState({ phase: "idle" });
-  }, [state]);
+  }, [state, publishSync]);
 
   const hangupCall = useCallback(async () => {
     const session = sessionRef.current;
@@ -311,7 +377,12 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {/* Áudio remoto invisível */}
       <audio ref={audioRef} autoPlay playsInline hidden />
       {state.phase === "ringing" && (
-        <IncomingWhatsappCallModal call={state.call} onAccept={acceptCall} onReject={rejectCall} />
+        <IncomingWhatsappCallModal
+          call={state.call}
+          onAccept={acceptCall}
+          onReject={rejectCall}
+          onInteract={() => publishSync({ type: "handling", callId: state.call.id })}
+        />
       )}
       {(state.phase === "connecting" || state.phase === "active") && (
         <ActiveWhatsappCallBar

@@ -9,6 +9,7 @@ interface Props {
   call: WhatsappCallRow;
   onAccept: () => void;
   onReject: () => void;
+  onInteract?: () => void;
 }
 
 function formatPhone(p: string | null): string {
@@ -19,7 +20,7 @@ function formatPhone(p: string | null): string {
   return `+${d}`;
 }
 
-export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onReject }) => {
+export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onReject, onInteract }) => {
   const [leadName, setLeadName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,7 +42,11 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
   const initials = (leadName || "?").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in"
+      onMouseDown={onInteract}
+      onKeyDown={onInteract}
+    >
       <div className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-2xl p-6 flex flex-col items-center gap-5">
         <div className="text-xs uppercase tracking-wider text-muted-foreground animate-pulse">
           Chamada WhatsApp recebida
