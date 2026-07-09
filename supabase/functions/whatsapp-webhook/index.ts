@@ -151,6 +151,10 @@ async function handleCallsChange(supabase: any, value: any) {
   }
 }
 
+const MEDIA_TYPES = new Set(["image", "audio", "document", "video", "sticker"]);
+
+
+
 
 // Mapeia o nome da conta de anúncio (Meta Ad Account) ou pistas no texto do anúncio
 // (título, descrição, mensagem inicial) para a cidade do lead. Permite preencher
