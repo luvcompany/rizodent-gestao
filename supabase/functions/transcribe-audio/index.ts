@@ -149,15 +149,19 @@ Deno.serve(async (req) => {
       mediaUrl = msg.media_url;
       existingTranscription = msg.transcription;
       sourceId = msg.id;
-    } else if (callId) {
+    let agentUrl: string | null = null;
+    let leadUrl: string | null = null;
+    if (callId) {
       const { data: call, error: callErr } = await admin
         .from("whatsapp_calls")
-        .select("id, tenant_id, recording_url, transcription")
+        .select("id, tenant_id, recording_url, recording_url_agent, recording_url_lead, transcription")
         .eq("id", callId)
         .maybeSingle();
       if (callErr || !call) return json({ error: "Ligação não encontrada" }, 404);
       if (!caller.isSuperadmin && call.tenant_id !== caller.tenantId) return json({ error: "Sem permissão para esta ligação" }, 403);
       mediaUrl = call.recording_url;
+      agentUrl = (call as any).recording_url_agent || null;
+      leadUrl = (call as any).recording_url_lead || null;
       existingTranscription = call.transcription;
       sourceTable = "whatsapp_calls";
       sourceId = call.id;
