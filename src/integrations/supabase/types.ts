@@ -3590,6 +3590,8 @@ export type Database = {
           phone_number_id: string
           raw_payload: Json | null
           recording_url: string | null
+          recording_url_agent: string | null
+          recording_url_lead: string | null
           sdp_answer: string | null
           sdp_offer: string | null
           session_data: Json
@@ -3619,6 +3621,8 @@ export type Database = {
           phone_number_id: string
           raw_payload?: Json | null
           recording_url?: string | null
+          recording_url_agent?: string | null
+          recording_url_lead?: string | null
           sdp_answer?: string | null
           sdp_offer?: string | null
           session_data?: Json
@@ -3648,6 +3652,8 @@ export type Database = {
           phone_number_id?: string
           raw_payload?: Json | null
           recording_url?: string | null
+          recording_url_agent?: string | null
+          recording_url_lead?: string | null
           sdp_answer?: string | null
           sdp_offer?: string | null
           session_data?: Json

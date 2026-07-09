@@ -134,6 +134,9 @@ Deno.serve(async (req) => {
     let sourceTable: "messages" | "whatsapp_calls" = "messages";
     let sourceId = "";
 
+    let agentUrl: string | null = null;
+    let leadUrl: string | null = null;
+
     if (messageId) {
       const tenantCheck = await assertMessageInTenant(admin, messageId, caller);
       if (!tenantCheck.ok) return json({ error: tenantCheck.error }, tenantCheck.status);
@@ -152,12 +155,14 @@ Deno.serve(async (req) => {
     } else if (callId) {
       const { data: call, error: callErr } = await admin
         .from("whatsapp_calls")
-        .select("id, tenant_id, recording_url, transcription")
+        .select("id, tenant_id, recording_url, recording_url_agent, recording_url_lead, transcription")
         .eq("id", callId)
         .maybeSingle();
       if (callErr || !call) return json({ error: "Ligação não encontrada" }, 404);
       if (!caller.isSuperadmin && call.tenant_id !== caller.tenantId) return json({ error: "Sem permissão para esta ligação" }, 403);
       mediaUrl = call.recording_url;
+      agentUrl = (call as any).recording_url_agent || null;
+      leadUrl = (call as any).recording_url_lead || null;
       existingTranscription = call.transcription;
       sourceTable = "whatsapp_calls";
       sourceId = call.id;
@@ -204,8 +209,43 @@ Deno.serve(async (req) => {
     let text = "";
     const isCallRecording = !!callPath || sourceTable === "whatsapp_calls" || mime.toLowerCase().includes("webm");
 
-    if (isCallRecording) {
-      // Gravações de ligação (webm/opus) — usa STT dedicado do Lovable Gateway
+    const downloadTrack = async (url: string): Promise<{ bytes: Uint8Array; mime: string } | null> => {
+      try {
+        const p = extractStoragePath(url, "call-recordings");
+        if (p) {
+          const { data, error } = await admin.storage.from("call-recordings").download(p);
+          if (error || !data) return null;
+          return { bytes: new Uint8Array(await data.arrayBuffer()), mime: data.type || "audio/webm" };
+        }
+        const r = await fetch(url);
+        if (!r.ok) return null;
+        return { bytes: new Uint8Array(await r.arrayBuffer()), mime: r.headers.get("content-type") || "audio/webm" };
+      } catch { return null; }
+    };
+
+    if (isCallRecording && sourceTable === "whatsapp_calls" && agentUrl && leadUrl) {
+      // Diarização: transcreve cada faixa separadamente e monta bloco com falantes
+      try {
+        const [agentTrack, leadTrack] = await Promise.all([downloadTrack(agentUrl), downloadTrack(leadUrl)]);
+        const agentText = agentTrack ? await transcribeWithLovableGatewaySTT(agentTrack.bytes, agentTrack.mime, LOVABLE_API_KEY) : "";
+        const leadText = leadTrack ? await transcribeWithLovableGatewaySTT(leadTrack.bytes, leadTrack.mime, LOVABLE_API_KEY) : "";
+        const parts: string[] = [];
+        if (agentText) parts.push(`🎧 Atendente:\n${agentText}`);
+        if (leadText) parts.push(`👤 Lead:\n${leadText}`);
+        if (parts.length === 0) {
+          text = await transcribeWithLovableGatewaySTT(audioBytes, mime, LOVABLE_API_KEY);
+        } else {
+          text = parts.join("\n\n");
+        }
+      } catch (e: any) {
+        console.error("[transcribe-audio] diarized STT failed, falling back to mix:", e?.message);
+        try {
+          text = await transcribeWithLovableGatewaySTT(audioBytes, mime, LOVABLE_API_KEY);
+        } catch (e2: any) {
+          return json({ error: "Erro ao transcrever gravação", detail: e2?.message }, 502);
+        }
+      }
+    } else if (isCallRecording) {
       try {
         text = await transcribeWithLovableGatewaySTT(audioBytes, mime, LOVABLE_API_KEY);
       } catch (e: any) {
