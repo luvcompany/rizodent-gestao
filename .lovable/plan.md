@@ -1,50 +1,81 @@
-## Erro amigável quando o lead não permite ligação
+## Página de Ligações (histórico estilo WhatsApp)
 
-Hoje qualquer erro da Graph API vira um `Signaling error: Edge Function returned a non-2xx status code` porque o `supabase.functions.invoke` engole o corpo em respostas 4xx. Vou tratar o código `138006` (`No approved call permission`) como um caso de negócio, não como erro técnico.
+Criar uma nova página no CRM com o histórico completo de todas as ligações de voz do WhatsApp, com filtros por tipo (atendidas, perdidas, recusadas, bloqueadas) e player de áudio da gravação nas ligações atendidas.
 
-### 1. `supabase/functions/whatsapp-call-signaling/index.ts`
+### Onde vai aparecer
+- Novo item na sidebar do CRM: **Ligações** (ícone de telefone), entre "Conversas" e "Calendário".
+- Rota: `/crm/ligacoes`.
 
-No bloco `if (!graphRes.ok)` (linha ~235), antes de retornar 4xx genérico:
+### Layout da página
 
-- Extrair `graphJson?.error?.code` e `error_subcode`.
-- Mapear códigos conhecidos para um `code` interno:
-  - `138006` → `no_call_permission`
-  - (deixar aberto para futuros: `138007` etc.)
-- Para códigos mapeados, responder **HTTP 200** com body `{ ok: false, code: "no_call_permission", user_message: "Este contato ainda não autorizou receber ligações pelo WhatsApp." }` e ainda atualizar `whatsapp_calls` com `status='failed'` + `error_message`.
-- Demais erros: manter o retorno 4xx/5xx atual.
+Cabeçalho com título "Ligações" e filtros:
+- **Abas de tipo** (chips no topo): Todas · Atendidas · Perdidas · Recusadas · Bloqueadas · Não completadas
+- **Campo de busca** por nome do lead ou telefone
+- **Filtro de data** (presets de calendário já usados em outros lugares do CRM)
+- **Filtro por direção**: Todas / Recebidas / Realizadas
 
-Motivo do 200: `functions.invoke` só popula `data` quando o status é 2xx; usar 200 garante que o frontend leia o `code`.
+Lista principal (uma linha por ligação, ordenada da mais recente para a mais antiga):
 
-### 2. `src/lib/whatsapp-call-session.ts`
-
-Nos dois `invoke` (`connect` e `accept/pre_accept`), depois de checar `error`, checar também:
-
-```ts
-if ((data as any)?.ok === false) {
-  const err: any = new Error((data as any).user_message || (data as any).code);
-  err.code = (data as any).code;
-  this.cleanup();
-  throw err;
-}
+```text
+[avatar/ícone]  Nome do lead                          14:32
+                📞↙ Recebida · 02:14                  hoje
+────────────────────────────────────────────────────────
+[avatar]        João Silva                            11:07
+                📞↗ Perdida                           hoje
+────────────────────────────────────────────────────────
+[avatar]        Maria (novo lead)                     ontem
+                🚫 Bloqueada pelo cliente
 ```
 
-Manter o comportamento atual para `data.error`.
+Cada linha mostra:
+- Nome do lead (ou telefone se não houver lead vinculado)
+- Ícone + rótulo do tipo (recebida/realizada, atendida/perdida/recusada/bloqueada, não completada, falhou)
+- Duração formatada (mm:ss) quando atendida
+- Horário/data relativa
+- Botão "Abrir conversa" à direita → leva para `/crm/conversa/:leadId`
 
-### 3. `src/contexts/WhatsappCallContext.tsx`
+### Detalhes ao clicar
 
-No `catch` de `initiate` (linha 288-289) e `accept` (199-200):
+Clique na linha abre um painel lateral (Sheet) com:
+- Dados do lead (nome, telefone, foto se houver)
+- Direção, status, início, conexão, fim, duração
+- Quem iniciou / quem atendeu (usuário do CRM)
+- Mensagem de erro (quando aplicável — por exemplo o "sem permissão de ligação aprovada")
+- **Player de áudio** com a gravação (quando atendida e houver `recording_url`), com controle de velocidade 1x-2x e botão de transcrever, iguais aos áudios da conversa
+- Botão "Ir para a conversa"
+- Botão "Ligar de volta" (só quando dentro da janela de 24h e o lead permite ligações)
 
-```ts
-if (e?.code === "no_call_permission") {
-  toast.error("Este contato ainda não autorizou receber ligações pelo WhatsApp Business.", {
-    description: "Peça para ele responder à solicitação de permissão de chamada e tente novamente.",
-  });
-} else {
-  toast.error(`Falha ao iniciar chamada: ${e?.message ?? e}`);
-}
-```
+### Classificação dos tipos
+
+A tabela `whatsapp_calls` já tem `status`, `direction`, `duration_seconds` e `error_message`. A categoria é derivada assim:
+- **Atendida**: `status = 'completed'` e `duration_seconds > 0`
+- **Perdida**: `direction = 'inbound'` e `status in ('missed','no_answer','ringing_timeout')` ou `duration_seconds = 0`
+- **Recusada**: `status = 'rejected'`
+- **Bloqueada**: `error_message` contém "No Approved Call Permission" / `error_subcode = 2593090` — mesmo sinal usado no toast atual
+- **Não completada / Falhou**: `status in ('failed','error')` sem enquadrar em bloqueada
+- **Em andamento**: `status in ('ringing','connecting','connected')` — mostradas separadas no topo com badge "Ao vivo"
+
+### KPIs no topo
+
+Cards resumo do período filtrado:
+- Total de ligações
+- Taxa de atendimento (atendidas ÷ total)
+- Tempo médio de atendimento
+- Perdidas / Recusadas / Bloqueadas (contadores)
+
+### Detalhes técnicos
+
+- **Nova página**: `src/pages/CrmLigacoes.tsx`, registrada em `src/App.tsx` como rota preguiçosa, com prefetch igual às outras.
+- **Item de menu**: adicionar em `src/components/CrmLayout.tsx` entre Conversas e Calendário, com ícone `Phone` do lucide.
+- **Fonte de dados**: `SELECT` em `whatsapp_calls` com `LEFT JOIN` implícito via query separada para `crm_leads` (nome, telefone, avatar) usando o `lead_id`, ordenado por `started_at DESC`, paginado (50 por página, scroll infinito).
+- **Realtime**: subscrição no canal `postgres_changes` de `whatsapp_calls` para atualizar a lista quando entram chamadas novas ou terminam (mesmo padrão usado hoje pelo `WhatsappCallContext`).
+- **Storage da gravação**: reutilizar o `recording_url` já persistido em `whatsapp_calls` e o mesmo bucket privado `call-recordings` — a URL assinada de 1 ano gerada no upload já cobre a exibição. Se estiver expirada, o front regenera via função utilitária existente `getSignedMediaUrl`.
+- **Transcrição**: reaproveitar `AudioTranscriptionToggle` + edge function `transcribe-audio`. Como a transcrição hoje é indexada por `messages.id`, adicionar a coluna `transcription text` em `whatsapp_calls` (migration) e o botão passa a gravar/ler direto ali; sem impacto em outros lugares.
+- **Permissões**: RLS já existente em `whatsapp_calls` (por `tenant_id`) cobre a visualização; a página só lista o que o usuário já vê.
+- **Sem mudança no fluxo de ligação** em si — a página é somente leitura sobre dados que já são gravados.
 
 ### Fora do escopo
 
-- Enviar automaticamente o template de permissão de ligação (`call_permission_request`) — pode virar próximo passo.
-- UI persistente indicando "sem permissão" no header da conversa.
+- Não altera o pop-up de chamada atual, nem o WhatsappCallContext.
+- Não altera as bolhas de "📞 Chamada de voz" já exibidas dentro da conversa (elas continuam funcionando; a página nova é a visão consolidada de tudo).
+- Não expõe áudio de ligações não atendidas (elas nunca têm gravação).

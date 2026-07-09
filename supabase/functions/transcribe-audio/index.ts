@@ -13,10 +13,10 @@ const json = (body: any, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function extractStoragePath(url: string): string | null {
+function extractStoragePath(url: string, bucket: string): string | null {
   if (!url) return null;
-  const pub = "/storage/v1/object/public/chat-media/";
-  const sig = "/storage/v1/object/sign/chat-media/";
+  const pub = `/storage/v1/object/public/${bucket}/`;
+  const sig = `/storage/v1/object/sign/${bucket}/`;
   let i = url.indexOf(pub);
   if (i !== -1) return url.substring(i + pub.length).split("?")[0];
   i = url.indexOf(sig);
@@ -100,39 +100,67 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const messageId = body.message_id as string | undefined;
+    const callId = body.call_id as string | undefined;
     const force = !!body.force;
-    if (!messageId) return json({ error: "message_id é obrigatório" }, 400);
+    if (!messageId && !callId) return json({ error: "message_id ou call_id é obrigatório" }, 400);
 
-    // Tenant ownership check (IDOR guard)
-    const tenantCheck = await assertMessageInTenant(admin, messageId, caller);
-    if (!tenantCheck.ok) return json({ error: tenantCheck.error }, tenantCheck.status);
+    let mediaUrl: string | null = null;
+    let existingTranscription: string | null = null;
+    let sourceTable: "messages" | "whatsapp_calls" = "messages";
+    let sourceId = "";
 
-    const { data: msg, error: msgErr } = await admin
-      .from("messages")
-      .select("id, type, media_url, transcription")
-      .eq("id", messageId)
-      .maybeSingle();
+    if (messageId) {
+      const tenantCheck = await assertMessageInTenant(admin, messageId, caller);
+      if (!tenantCheck.ok) return json({ error: tenantCheck.error }, tenantCheck.status);
 
-    if (msgErr || !msg) return json({ error: "Mensagem não encontrada" }, 404);
-    if (msg.type !== "audio") return json({ error: "Mensagem não é um áudio" }, 400);
-    if (msg.transcription && !force) {
-      return json({ transcription: msg.transcription, cached: true });
+      const { data: msg, error: msgErr } = await admin
+        .from("messages")
+        .select("id, type, media_url, transcription")
+        .eq("id", messageId)
+        .maybeSingle();
+
+      if (msgErr || !msg) return json({ error: "Mensagem não encontrada" }, 404);
+      if (msg.type !== "audio" && msg.type !== "call") return json({ error: "Mensagem não é um áudio" }, 400);
+      mediaUrl = msg.media_url;
+      existingTranscription = msg.transcription;
+      sourceId = msg.id;
+    } else if (callId) {
+      const { data: call, error: callErr } = await admin
+        .from("whatsapp_calls")
+        .select("id, tenant_id, recording_url, transcription")
+        .eq("id", callId)
+        .maybeSingle();
+      if (callErr || !call) return json({ error: "Ligação não encontrada" }, 404);
+      if (!caller.isSuperadmin && call.tenant_id !== caller.tenantId) return json({ error: "Sem permissão para esta ligação" }, 403);
+      mediaUrl = call.recording_url;
+      existingTranscription = call.transcription;
+      sourceTable = "whatsapp_calls";
+      sourceId = call.id;
     }
-    if (!msg.media_url) return json({ error: "Áudio sem URL de mídia" }, 400);
 
-    // Download audio bytes
-    const path = extractStoragePath(msg.media_url);
+    if (existingTranscription && !force) {
+      return json({ transcription: existingTranscription, cached: true });
+    }
+    if (!mediaUrl) return json({ error: "Áudio sem URL de mídia" }, 400);
+
+    // Download audio bytes — try call-recordings first, then chat-media, else external
     let audioBytes: Uint8Array | null = null;
     let mime = "audio/ogg";
+    const callPath = extractStoragePath(mediaUrl, "call-recordings");
+    const chatPath = callPath ? null : extractStoragePath(mediaUrl, "chat-media");
 
-    if (path) {
-      const { data: fileData, error: dlErr } = await admin.storage.from("chat-media").download(path);
+    if (callPath) {
+      const { data: fileData, error: dlErr } = await admin.storage.from("call-recordings").download(callPath);
+      if (dlErr || !fileData) return json({ error: `Falha ao baixar gravação: ${dlErr?.message}` }, 500);
+      audioBytes = new Uint8Array(await fileData.arrayBuffer());
+      mime = fileData.type || "audio/webm";
+    } else if (chatPath) {
+      const { data: fileData, error: dlErr } = await admin.storage.from("chat-media").download(chatPath);
       if (dlErr || !fileData) return json({ error: `Falha ao baixar áudio: ${dlErr?.message}` }, 500);
       audioBytes = new Uint8Array(await fileData.arrayBuffer());
       mime = fileData.type || mime;
     } else {
-      // External URL fallback
-      const r = await fetch(msg.media_url);
+      const r = await fetch(mediaUrl);
       if (!r.ok) return json({ error: "Falha ao baixar áudio externo" }, 500);
       audioBytes = new Uint8Array(await r.arrayBuffer());
       mime = r.headers.get("content-type") || mime;
@@ -204,7 +232,7 @@ Deno.serve(async (req) => {
     }
     if (!text) return json({ error: "Transcrição vazia" }, 500);
 
-    await admin.from("messages").update({ transcription: text }).eq("id", messageId);
+    await admin.from(sourceTable).update({ transcription: text }).eq("id", sourceId);
 
     return json({ transcription: text, cached: false });
   } catch (e: any) {

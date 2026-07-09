@@ -3597,6 +3597,7 @@ export type Database = {
           status: string
           tenant_id: string
           to_phone: string | null
+          transcription: string | null
           updated_at: string
           wa_call_id: string | null
           whatsapp_number_id: string | null
@@ -3625,6 +3626,7 @@ export type Database = {
           status?: string
           tenant_id: string
           to_phone?: string | null
+          transcription?: string | null
           updated_at?: string
           wa_call_id?: string | null
           whatsapp_number_id?: string | null
@@ -3653,6 +3655,7 @@ export type Database = {
           status?: string
           tenant_id?: string
           to_phone?: string | null
+          transcription?: string | null
           updated_at?: string
           wa_call_id?: string | null
           whatsapp_number_id?: string | null

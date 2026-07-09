@@ -5,7 +5,7 @@ import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
   Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
-  Activity,
+  Activity, Phone,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
@@ -43,6 +43,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
     { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
     { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
     { to: "/crm/calendario", icon: CalendarDays, label: "Calendário", badgeKey: "tasks" },
+    { to: "/crm/ligacoes", icon: Phone, label: "Ligações" },
   ];
   if (role === "posvenda") {
     items.push({ to: "/crm/posvenda", icon: Heart, label: "Pós-Venda" });
