@@ -1,81 +1,46 @@
-## Página de Ligações (histórico estilo WhatsApp)
+## Corrigir transcrição de ligações + criar lead automático em ligações recebidas
 
-Criar uma nova página no CRM com o histórico completo de todas as ligações de voz do WhatsApp, com filtros por tipo (atendidas, perdidas, recusadas, bloqueadas) e player de áudio da gravação nas ligações atendidas.
+Duas mudanças pequenas e independentes.
 
-### Onde vai aparecer
-- Novo item na sidebar do CRM: **Ligações** (ícone de telefone), entre "Conversas" e "Calendário".
-- Rota: `/crm/ligacoes`.
+### 1) Transcrição das gravações de ligação
 
-### Layout da página
+Hoje a transcrição usa o modelo configurado em `ai_assistant_config.transcription_model` (padrão Gemini via chat completions com `input_audio`). As gravações de ligação são `audio/webm;codecs=opus` — o Gemini via chat completions falha silenciosamente com esse container e retorna vazio/erro, e o botão fica sem resposta.
 
-Cabeçalho com título "Ligações" e filtros:
-- **Abas de tipo** (chips no topo): Todas · Atendidas · Perdidas · Recusadas · Bloqueadas · Não completadas
-- **Campo de busca** por nome do lead ou telefone
-- **Filtro de data** (presets de calendário já usados em outros lugares do CRM)
-- **Filtro por direção**: Todas / Recebidas / Realizadas
+Correção:
+- Quando a origem for uma gravação de ligação (URL do bucket `call-recordings` ou MIME `audio/webm`/`opus`), a edge function `transcribe-audio` passa a usar o endpoint dedicado de STT do Lovable AI Gateway (`/v1/audio/transcriptions` com `openai/gpt-4o-mini-transcribe`), que aceita webm nativamente e é o caminho recomendado para transcrição de áudio real.
+- Áudios normais de conversa (mensagens `type=audio`, que são OGG/Opus do WhatsApp) continuam pelo caminho atual (Gemini) — sem alteração de comportamento para eles.
+- Adicionar logs claros de status/erro do gateway na função para diagnósticos futuros (`console.error` com corpo da resposta).
+- Surfacear o erro real no `toast` do botão (hoje ele apenas mostra "Erro ao transcrever áudio"; passa a mostrar a mensagem retornada quando houver).
 
-Lista principal (uma linha por ligação, ordenada da mais recente para a mais antiga):
+### 2) Criar lead automaticamente para ligações recebidas de números fora do CRM
 
-```text
-[avatar/ícone]  Nome do lead                          14:32
-                📞↙ Recebida · 02:14                  hoje
-────────────────────────────────────────────────────────
-[avatar]        João Silva                            11:07
-                📞↗ Perdida                           hoje
-────────────────────────────────────────────────────────
-[avatar]        Maria (novo lead)                     ontem
-                🚫 Bloqueada pelo cliente
-```
+Hoje, no `whatsapp-webhook`, se o telefone da chamada não bate com nenhum lead do tenant, `leadId` fica `null` e:
+- a ligação é gravada em `whatsapp_calls` sem `lead_id`;
+- nenhuma linha de `messages` é criada, então a conversa não existe.
 
-Cada linha mostra:
-- Nome do lead (ou telefone se não houver lead vinculado)
-- Ícone + rótulo do tipo (recebida/realizada, atendida/perdida/recusada/bloqueada, não completada, falhou)
-- Duração formatada (mm:ss) quando atendida
-- Horário/data relativa
-- Botão "Abrir conversa" à direita → leva para `/crm/conversa/:leadId`
+Correção (só para `direction = 'inbound'` e evento `connect`/`accept`/`terminate`):
+1. Normaliza o telefone remoto pelas mesmas regras já em uso (`+55`, remove 9º dígito).
+2. Se não existe lead com esse telefone no tenant, cria um novo `crm_leads`:
+   - `name`: nome do contato do WhatsApp se vier no payload, senão o próprio telefone formatado (`+55 11 …`).
+   - `phone`: telefone normalizado.
+   - `pipeline_id`: primeiro pipeline do tenant (mesma regra do `generic-lead-webhook`).
+   - `stage_id`: primeira etapa desse pipeline.
+   - `source`: `ligacao_recebida`.
+   - `assigned_to`: usuário `rizodent` do tenant (mesma regra dos webhooks de lead) — quando não achar, deixa `null`.
+   - `tenant_id`.
+3. Usa o `id` do lead criado (ou o existente encontrado) para gravar a `whatsapp_calls`, criar a `messages` do tipo `call` e atualizar `last_message`/`last_message_at` do lead — igual ao fluxo atual.
+4. Guard de idempotência: como o webhook do WhatsApp dispara vários eventos por chamada (`ringing`, `connect`, `terminate`), o passo 2 sempre passa pelo `SELECT` primeiro; só insere se não achou.
 
-### Detalhes ao clicar
+Resultado: qualquer ligação recebida abre uma conversa no CRM e aparece tanto em Conversas quanto em Ligações, mesmo se o número for desconhecido.
 
-Clique na linha abre um painel lateral (Sheet) com:
-- Dados do lead (nome, telefone, foto se houver)
-- Direção, status, início, conexão, fim, duração
-- Quem iniciou / quem atendeu (usuário do CRM)
-- Mensagem de erro (quando aplicável — por exemplo o "sem permissão de ligação aprovada")
-- **Player de áudio** com a gravação (quando atendida e houver `recording_url`), com controle de velocidade 1x-2x e botão de transcrever, iguais aos áudios da conversa
-- Botão "Ir para a conversa"
-- Botão "Ligar de volta" (só quando dentro da janela de 24h e o lead permite ligações)
+### Arquivos afetados
 
-### Classificação dos tipos
-
-A tabela `whatsapp_calls` já tem `status`, `direction`, `duration_seconds` e `error_message`. A categoria é derivada assim:
-- **Atendida**: `status = 'completed'` e `duration_seconds > 0`
-- **Perdida**: `direction = 'inbound'` e `status in ('missed','no_answer','ringing_timeout')` ou `duration_seconds = 0`
-- **Recusada**: `status = 'rejected'`
-- **Bloqueada**: `error_message` contém "No Approved Call Permission" / `error_subcode = 2593090` — mesmo sinal usado no toast atual
-- **Não completada / Falhou**: `status in ('failed','error')` sem enquadrar em bloqueada
-- **Em andamento**: `status in ('ringing','connecting','connected')` — mostradas separadas no topo com badge "Ao vivo"
-
-### KPIs no topo
-
-Cards resumo do período filtrado:
-- Total de ligações
-- Taxa de atendimento (atendidas ÷ total)
-- Tempo médio de atendimento
-- Perdidas / Recusadas / Bloqueadas (contadores)
-
-### Detalhes técnicos
-
-- **Nova página**: `src/pages/CrmLigacoes.tsx`, registrada em `src/App.tsx` como rota preguiçosa, com prefetch igual às outras.
-- **Item de menu**: adicionar em `src/components/CrmLayout.tsx` entre Conversas e Calendário, com ícone `Phone` do lucide.
-- **Fonte de dados**: `SELECT` em `whatsapp_calls` com `LEFT JOIN` implícito via query separada para `crm_leads` (nome, telefone, avatar) usando o `lead_id`, ordenado por `started_at DESC`, paginado (50 por página, scroll infinito).
-- **Realtime**: subscrição no canal `postgres_changes` de `whatsapp_calls` para atualizar a lista quando entram chamadas novas ou terminam (mesmo padrão usado hoje pelo `WhatsappCallContext`).
-- **Storage da gravação**: reutilizar o `recording_url` já persistido em `whatsapp_calls` e o mesmo bucket privado `call-recordings` — a URL assinada de 1 ano gerada no upload já cobre a exibição. Se estiver expirada, o front regenera via função utilitária existente `getSignedMediaUrl`.
-- **Transcrição**: reaproveitar `AudioTranscriptionToggle` + edge function `transcribe-audio`. Como a transcrição hoje é indexada por `messages.id`, adicionar a coluna `transcription text` em `whatsapp_calls` (migration) e o botão passa a gravar/ler direto ali; sem impacto em outros lugares.
-- **Permissões**: RLS já existente em `whatsapp_calls` (por `tenant_id`) cobre a visualização; a página só lista o que o usuário já vê.
-- **Sem mudança no fluxo de ligação** em si — a página é somente leitura sobre dados que já são gravados.
+- `supabase/functions/transcribe-audio/index.ts` — desvio de rota para webm/call-recordings via `/v1/audio/transcriptions` + logs.
+- `supabase/functions/whatsapp-webhook/index.ts` — bloco de criação automática de lead para chamada `inbound` sem match.
+- `src/components/chat/AudioTranscriptionToggle.tsx` — mostrar mensagem real de erro no `toast`.
 
 ### Fora do escopo
 
-- Não altera o pop-up de chamada atual, nem o WhatsappCallContext.
-- Não altera as bolhas de "📞 Chamada de voz" já exibidas dentro da conversa (elas continuam funcionando; a página nova é a visão consolidada de tudo).
-- Não expõe áudio de ligações não atendidas (elas nunca têm gravação).
+- Não altera fluxo de mensagens (só ligações).
+- Não muda modelo/config global de transcrição — o padrão para áudios normais continua como está.
+- Não altera nenhuma tabela/RLS — só reaproveita as regras já existentes.
