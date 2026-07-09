@@ -150,6 +150,7 @@ export class WhatsappCallSession {
         }
       });
       this.handlers.onRemoteStream?.(this.remoteStream);
+      this.startRecordingIfReady();
     };
 
     // 3) Adiciona faixas locais
