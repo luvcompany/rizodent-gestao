@@ -121,7 +121,8 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
             ) {
               sessionRef.current?.cleanup();
               sessionRef.current = null;
-              stopRingtone();
+              ringtoneRef.current?.stop(); ringtoneRef.current = null;
+              dialToneRef.current?.stop(); dialToneRef.current = null;
               return { phase: "idle" };
             }
             return prev;
