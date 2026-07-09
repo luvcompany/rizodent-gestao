@@ -387,7 +387,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {children}
       {/* Áudio remoto invisível */}
       <audio ref={audioRef} autoPlay playsInline hidden />
-      {state.phase === "ringing" && (
+      {isAuthed && state.phase === "ringing" && (
         <IncomingWhatsappCallModal
           call={state.call}
           onAccept={acceptCall}
@@ -395,7 +395,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
           onInteract={() => publishSync({ type: "handling", callId: state.call.id })}
         />
       )}
-      {(state.phase === "connecting" || state.phase === "active") && (
+      {isAuthed && (state.phase === "connecting" || state.phase === "active") && (
         <ActiveWhatsappCallBar
           call={state.call}
           startedAt={state.phase === "active" ? state.startedAt : null}
