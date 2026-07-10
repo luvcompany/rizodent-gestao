@@ -35,7 +35,7 @@ import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
-  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Star, Ban, Copy, Phone
+  Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Star, Ban, Copy, Phone, BellRing
 } from "lucide-react";
 import { useWhatsappCall } from "@/contexts/WhatsappCallContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
@@ -281,7 +281,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
   const isCrmMobile = useIsCrmMobile();
-  const { initiateCall, state: callState } = useWhatsappCall();
+  const { initiateCall, requestCallPermission, state: callState } = useWhatsappCall();
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   // On mobile, force single-panel view: list | chat | lead details.
@@ -1263,6 +1263,18 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   >
                     <Phone size={16} />
                     <span className="hidden sm:inline">Ligar</span>
+                  </Button>
+                )}
+                {selectedLead.phone && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => requestCallPermission({ toPhone: selectedLead.phone!, leadId: selectedLead.id })}
+                    title="Solicitar permissão de ligação (o cliente aprova com 1 toque no WhatsApp)"
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <BellRing size={16} />
+                    <span className="hidden lg:inline">Permissão</span>
                   </Button>
                 )}
                 <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
