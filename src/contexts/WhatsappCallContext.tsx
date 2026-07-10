@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { WhatsappCallSession } from "@/lib/whatsapp-call-session";
 import { IncomingWhatsappCallModal } from "@/components/whatsapp-calls/IncomingWhatsappCallModal";
+import { MinimizedIncomingCall } from "@/components/whatsapp-calls/MinimizedIncomingCall";
 import { ActiveWhatsappCallBar } from "@/components/whatsapp-calls/ActiveWhatsappCallBar";
 import { toast } from "sonner";
 import { playIncomingRingtone, playOutgoingDialTone } from "@/lib/call-tones";
@@ -20,6 +21,7 @@ export interface WhatsappCallRow {
   event: string | null;
   sdp_offer: string | null;
   sdp_answer: string | null;
+  answered_by: string | null;
   started_at: string | null;
   connected_at: string | null;
   ended_at: string | null;
@@ -28,7 +30,8 @@ export interface WhatsappCallRow {
 
 type CallState =
   | { phase: "idle" }
-  | { phase: "ringing"; call: WhatsappCallRow }
+  // minimized: chamada recolhida no canto (silenciada, sem tela cheia)
+  | { phase: "ringing"; call: WhatsappCallRow; minimized: boolean }
   | { phase: "connecting"; call: WhatsappCallRow }
   | { phase: "active"; call: WhatsappCallRow; startedAt: number };
 
@@ -39,6 +42,8 @@ interface Ctx {
   hangupCall: () => Promise<void>;
   toggleMute: () => void;
   muted: boolean;
+  minimizeIncoming: () => void;
+  restoreIncoming: () => void;
   initiateCall: (params: { toPhone: string; leadId?: string | null; leadName?: string | null; phoneNumberId?: string }) => Promise<void>;
 }
 
@@ -69,6 +74,10 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [muted, setMuted] = useState(false);
   const sessionRef = useRef<WhatsappCallSession | null>(null);
   const syncChannelRef = useRef<BroadcastChannel | null>(null);
+  // Calls que ESTE dispositivo já tentou atender e falhou: ao liberar o claim
+  // (answered_by=null) o eco realtime volta para cá e re-dispararia o toque; este
+  // set impede o loop LOCAL, mas os OUTROS dispositivos (sem o id no set) re-tocam.
+  const failedCallIds = useRef<Set<string>>(new Set());
 
   const publishSync = useCallback((msg: Omit<SyncMsg, "tabId">) => {
     try {
@@ -109,9 +118,11 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
               row.direction === "inbound" &&
               (row.status === "ringing" || row.event === "connect") &&
               row.sdp_offer &&
+              !row.answered_by && // já reivindicada por um dispositivo? não re-toca
+              !failedCallIds.current.has(row.id) && // já falhei nela aqui? não re-toca local
               prev.phase === "idle"
             ) {
-              return { phase: "ringing", call: row };
+              return { phase: "ringing", call: row, minimized: false };
             }
 
             // Outbound: recebeu SDP answer → aplica no peer
@@ -138,10 +149,14 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
             ) {
               return { phase: "active", call: { ...prev.call, ...row }, startedAt: Date.now() };
             }
-            // Inbound tocando: outra sessão/aba atendeu → silencia local
+            // Inbound tocando: outro dispositivo/aba reivindicou (answered_by) ou
+            // atendeu → fecha a notificação local IMEDIATAMENTE. O answered_by é
+            // gravado no clique de atender (antes do WebRTC), então os demais
+            // computadores param de tocar na hora, sem esperar o SDP/ICE.
             if (
               row.direction === "inbound" &&
-              (row.event === "accept" ||
+              (row.answered_by ||
+                row.event === "accept" ||
                 row.status === "accepted" ||
                 row.status === "connected" ||
                 row.status === "in-progress") &&
@@ -204,8 +219,8 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // --- Ringtone (entrante) + dial tone (saindo)
   useEffect(() => {
-    // Ringtone só toca em "ringing" (entrante aguardando o usuário atender)
-    if (state.phase === "ringing") {
+    // Ringtone só toca em "ringing" NÃO minimizado (minimizar = silenciar).
+    if (state.phase === "ringing" && !state.minimized) {
       if (!ringtoneRef.current) ringtoneRef.current = playIncomingRingtone();
     } else {
       ringtoneRef.current?.stop();
@@ -221,7 +236,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       dialToneRef.current?.stop();
       dialToneRef.current = null;
     }
-  }, [state.phase, (state as any).call?.direction]);
+  }, [state.phase, (state as any).call?.direction, (state as any).minimized]);
 
   useEffect(() => {
     return () => {
@@ -241,11 +256,39 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [isAuthed]);
 
 
+  const minimizeIncoming = useCallback(() => {
+    setState((prev) => (prev.phase === "ringing" && !prev.minimized ? { ...prev, minimized: true } : prev));
+  }, []);
+  const restoreIncoming = useCallback(() => {
+    setState((prev) => (prev.phase === "ringing" && prev.minimized ? { ...prev, minimized: false } : prev));
+  }, []);
+
   const acceptCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
     const call = state.call;
     publishSync({ type: "accepted", callId: call.id });
     setState({ phase: "connecting", call });
+    // CLAIM ARBITRADO: grava answered_by ANTES do WebRTC (mic/ICE levam ~3s), com
+    // compare-and-swap via .is('answered_by', null) — o Postgres serializa e só UM
+    // dispositivo vence (evita dois atenderem a mesma call). O vencedor segue; o
+    // perdedor (0 linhas) volta a idle. Assim os outros param de tocar na hora.
+    if (user?.id) {
+      try {
+        const { data: claimed, error: claimErr } = await supabase.from("whatsapp_calls")
+          .update({ answered_by: user.id } as any)
+          .eq("id", call.id).eq("status", "ringing").is("answered_by", null)
+          .select("id");
+        if (claimErr) {
+          console.warn("[wa-call] claim error", claimErr);
+        } else if (!claimed || claimed.length === 0) {
+          // Perdeu a corrida ou a call já saiu de 'ringing' → outro dispositivo assumiu.
+          setState((prev) => (prev.phase === "connecting" && "call" in prev && prev.call.id === call.id ? { phase: "idle" } : prev));
+          return;
+        }
+      } catch (e) {
+        console.warn("[wa-call] claim exception", e);
+      }
+    }
     try {
       const session = new WhatsappCallSession(call.id, {
         onRemoteStream: (stream) => {
@@ -278,11 +321,20 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       } else {
         toast.error(`Falha ao atender: ${e?.message ?? e}`);
       }
+      // Marca como "já falhei aqui" ANTES de liberar — assim o eco do release NÃO
+      // re-dispara o toque neste dispositivo (evita loop tocar→falhar→tocar), mas os
+      // outros (sem o id no set) voltam a tocar e podem atender.
+      failedCallIds.current.add(call.id);
+      // Libera o claim se a call ainda estiver 'ringing' (no-op se o edge já a aceitou).
+      supabase.from("whatsapp_calls")
+        .update({ answered_by: null } as any)
+        .eq("id", call.id).eq("status", "ringing")
+        .then(({ error }) => { if (error) console.warn("[wa-call] claim release error", error); });
       sessionRef.current?.cleanup();
       sessionRef.current = null;
       setState({ phase: "idle" });
     }
-  }, [state, publishSync]);
+  }, [state, publishSync, user?.id]);
 
   const rejectCall = useCallback(async () => {
     if (state.phase !== "ringing") return;
@@ -336,6 +388,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       event: "connect",
       sdp_offer: null,
       sdp_answer: null,
+      answered_by: null,
       started_at: new Date().toISOString(),
       connected_at: null,
       ended_at: null,
@@ -380,19 +433,28 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [state.phase, tenantId]);
 
-  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, initiateCall }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, initiateCall]);
+  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall]);
 
   return (
     <WhatsappCallContext.Provider value={value}>
       {children}
       {/* Áudio remoto invisível */}
       <audio ref={audioRef} autoPlay playsInline hidden />
-      {isAuthed && state.phase === "ringing" && (
+      {isAuthed && state.phase === "ringing" && !state.minimized && (
         <IncomingWhatsappCallModal
           call={state.call}
           onAccept={acceptCall}
           onReject={rejectCall}
+          onMinimize={minimizeIncoming}
           onInteract={() => publishSync({ type: "handling", callId: state.call.id })}
+        />
+      )}
+      {isAuthed && state.phase === "ringing" && state.minimized && (
+        <MinimizedIncomingCall
+          call={state.call}
+          onAccept={acceptCall}
+          onReject={rejectCall}
+          onExpand={restoreIncoming}
         />
       )}
       {isAuthed && (state.phase === "connecting" || state.phase === "active") && (

@@ -1,4 +1,4 @@
-import { Phone, PhoneOff } from "lucide-react";
+import { Phone, PhoneOff, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { WhatsappCallRow } from "@/contexts/WhatsappCallContext";
@@ -9,6 +9,7 @@ interface Props {
   call: WhatsappCallRow;
   onAccept: () => void;
   onReject: () => void;
+  onMinimize?: () => void;
   onInteract?: () => void;
 }
 
@@ -20,7 +21,7 @@ function formatPhone(p: string | null): string {
   return `+${d}`;
 }
 
-export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onReject, onInteract }) => {
+export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onReject, onMinimize, onInteract }) => {
   const [leadName, setLeadName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,12 +43,26 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
   const initials = (leadName || "?").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
 
   return (
+    // Fundo com leve escurecimento mas SEM bloquear o CRM (pointer-events-none);
+    // só o card recebe cliques. Assim a chamada chama atenção sem travar a tela.
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in pointer-events-none"
       onMouseDown={onInteract}
       onKeyDown={onInteract}
     >
-      <div className="w-full max-w-sm rounded-2xl bg-card border border-border shadow-2xl p-6 flex flex-col items-center gap-5">
+      <div className="pointer-events-auto relative w-full max-w-sm rounded-2xl bg-card border border-border shadow-2xl p-6 flex flex-col items-center gap-5">
+        {onMinimize && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMinimize}
+            aria-label="Minimizar chamada"
+            title="Minimizar (silencia e recolhe no canto)"
+            className="absolute right-2 top-2 h-8 w-8 text-muted-foreground"
+          >
+            <Minus className="h-4 w-4" />
+          </Button>
+        )}
         <div className="text-xs uppercase tracking-wider text-muted-foreground animate-pulse">
           Chamada WhatsApp recebida
         </div>
@@ -65,6 +80,8 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
             size="lg"
             variant="destructive"
             onClick={onReject}
+            aria-label="Recusar chamada"
+            title="Recusar"
             className="h-14 w-14 rounded-full p-0"
           >
             <PhoneOff className="h-6 w-6" />
@@ -72,6 +89,8 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
           <Button
             size="lg"
             onClick={onAccept}
+            aria-label="Atender chamada"
+            title="Atender"
             className="h-14 w-14 rounded-full p-0 bg-green-600 hover:bg-green-700"
           >
             <Phone className="h-6 w-6" />
