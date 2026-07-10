@@ -28,7 +28,7 @@ import { useConversationNotes } from "@/hooks/useConversationNotes";
 import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
-import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check, Phone } from "lucide-react";
+import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check, Phone, BellRing } from "lucide-react";
 import { useWhatsappCall } from "@/contexts/WhatsappCallContext";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
@@ -114,7 +114,7 @@ export default function CrmConversa() {
   const [leadLoading, setLeadLoading] = useState(true);
   const [phoneCopied, setPhoneCopied] = useState(false);
   const [nameCopied, setNameCopied] = useState(false);
-  const { initiateCall, state: callState } = useWhatsappCall();
+  const { initiateCall, requestCallPermission, state: callState } = useWhatsappCall();
 
 
   const copyPhone = async () => {
@@ -371,6 +371,18 @@ export default function CrmConversa() {
             >
               <Phone size={16} />
               <span className="hidden sm:inline">Ligar</span>
+            </Button>
+          )}
+          {lead.phone && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => requestCallPermission({ toPhone: lead.phone!, leadId: lead.id })}
+              title="Solicitar permissão de ligação (o cliente aprova com 1 toque no WhatsApp)"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <BellRing size={16} />
+              <span className="hidden lg:inline">Permissão</span>
             </Button>
           )}
           <AlertDialog>
