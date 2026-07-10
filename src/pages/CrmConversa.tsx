@@ -354,10 +354,13 @@ export default function CrmConversa() {
               )}
             </div>
           </div>
+          {/* Ações do lead — sempre compactas (ícone + tooltip) p/ não estourar o header em telas/painéis estreitos */}
+          <div className="flex items-center gap-1 shrink-0">
           {lead.phone && (
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
+              className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
               disabled={callState.phase !== "idle"}
               onClick={() =>
                 initiateCall({
@@ -367,29 +370,27 @@ export default function CrmConversa() {
                 })
               }
               title="Ligar via WhatsApp"
-              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+              aria-label="Ligar via WhatsApp"
             >
               <Phone size={16} />
-              <span className="hidden sm:inline">Ligar</span>
             </Button>
           )}
           {lead.phone && (
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
               onClick={() => requestCallPermission({ toPhone: lead.phone!, leadId: lead.id })}
               title="Solicitar permissão de ligação (o cliente aprova com 1 toque no WhatsApp)"
-              className="text-muted-foreground hover:text-foreground"
+              aria-label="Solicitar permissão de ligação"
             >
               <BellRing size={16} />
-              <span className="hidden lg:inline">Permissão</span>
             </Button>
           )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" title="Bloquear lead">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Bloquear lead" aria-label="Bloquear lead">
                 <Ban size={16} />
-                <span className="hidden sm:inline">Bloquear</span>
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -420,6 +421,7 @@ export default function CrmConversa() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          </div>
         </div>
 
         {/* Notes Bar */}
