@@ -13,13 +13,14 @@ const corsHeaders = {
 };
 
 interface Body {
-  call_id?: string; // whatsapp_calls.id (uuid) — obrigatório exceto para "connect"
-  action: "pre_accept" | "accept" | "reject" | "terminate" | "connect";
+  call_id?: string; // whatsapp_calls.id (uuid) — obrigatório exceto para "connect"/"request_permission"
+  action: "pre_accept" | "accept" | "reject" | "terminate" | "connect" | "request_permission";
   sdp?: string; // required for pre_accept / accept / connect
-  // connect (outbound):
+  // connect (outbound) / request_permission:
   to_phone?: string; // E.164 sem '+'
   phone_number_id?: string; // origem
   lead_id?: string | null;
+  permission_text?: string; // texto opcional do pedido de permissão
 }
 
 Deno.serve(async (req) => {
@@ -76,8 +77,14 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (action !== "connect" && !call_id) {
+    if (action !== "connect" && action !== "request_permission" && !call_id) {
       return new Response(JSON.stringify({ error: "call_id required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (action === "request_permission" && !body?.to_phone) {
+      return new Response(JSON.stringify({ error: "to_phone required for request_permission" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -103,7 +110,7 @@ Deno.serve(async (req) => {
     }
     tenantId = profile.tenant_id;
 
-    if (action === "connect") {
+    if (action === "connect" || action === "request_permission") {
       const toPhone = (body.to_phone || "").replace(/\D/g, "");
       if (!toPhone) {
         return new Response(JSON.stringify({ error: "to_phone required" }), {
@@ -203,6 +210,90 @@ Deno.serve(async (req) => {
       });
     }
     console.log(`[wa-call-signaling] token resolved (len=${waToken.length})`);
+
+    // === Pedido de permissão de ligação (mensagem interativa nativa) ===
+    // O cliente recebe no WhatsApp uma mensagem com botão "Permitir" — 1 toque
+    // autoriza (temporário 7 dias ou permanente). Meta: /messages, não /calls.
+    if (action === "request_permission") {
+      const toPhone = (body.to_phone || "").replace(/\D/g, "");
+      const permText = (body.permission_text || "Podemos te ligar pelo WhatsApp para agilizar seu atendimento?").slice(0, 1024);
+      const msgUrl = `https://graph.facebook.com/${API_VERSION}/${encodeURIComponent(phoneNumberId!)}/messages`;
+      const permRes = await fetch(msgUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${waToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: toPhone,
+          type: "interactive",
+          interactive: {
+            type: "call_permission_request",
+            action: { name: "call_permission_request" },
+            body: { text: permText },
+          },
+        }),
+      });
+      const permText2 = await permRes.text();
+      let permJson: any = null;
+      try { permJson = JSON.parse(permText2); } catch { /* ignore */ }
+      if (!permRes.ok) {
+        console.error(`[wa-call-signaling] permission request error ${permRes.status}: ${permText2}`);
+        const errObj = permJson?.error;
+        // 138002 / limite de solicitações → mensagem amigável
+        const friendly = /call permission|138\d{3}|already|limit/i.test(permText2)
+          ? "Não foi possível enviar agora (limite: 1 pedido por 24h / conversa precisa estar ativa)."
+          : (errObj?.message || "Falha ao enviar o pedido de permissão.");
+        return new Response(JSON.stringify({ ok: false, code: "permission_request_failed", user_message: friendly, details: permJson ?? permText2 }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // whatsapp_number_id (uuid) do phone_number_id, para vincular
+      const { data: waRowP } = await supabase
+        .from("whatsapp_numbers").select("id").eq("tenant_id", tenantId).eq("phone_number_id", phoneNumberId).maybeSingle();
+
+      // Registra/atualiza a solicitação (status 'requested'); a resposta do cliente
+      // atualiza para accepted/rejected via trigger em messages.
+      await supabase.from("whatsapp_call_permissions").upsert({
+        tenant_id: tenantId,
+        whatsapp_number_id: waRowP?.id || null,
+        phone_number_id: phoneNumberId,
+        consumer_phone: toPhone,
+        lead_id: body.lead_id ?? null,
+        status: "requested",
+        requested_at: new Date().toISOString(),
+        raw_payload: permJson ?? null,
+      } as any, { onConflict: "tenant_id,consumer_phone" });
+
+      // Registra na conversa (se houver lead)
+      if (body.lead_id) {
+        const waMsgId = permJson?.messages?.[0]?.id || null;
+        await supabase.from("messages").insert({
+          lead_id: body.lead_id,
+          tenant_id: tenantId,
+          whatsapp_number_id: waRowP?.id || null,
+          channel: "whatsapp",
+          direction: "outbound",
+          type: "text",
+          content: "📞 Solicitação de permissão de ligação enviada",
+          status: "sent",
+          whatsapp_message_id: waMsgId,
+          sender_id: userId,
+        });
+        await supabase.from("crm_leads").update({
+          last_message: "📞 Solicitação de permissão de ligação",
+          last_message_at: new Date().toISOString(),
+          last_outbound_at: new Date().toISOString(),
+        }).eq("id", body.lead_id);
+      }
+
+      console.log(`[wa-call-signaling] permission request sent to ${toPhone} by user=${userId}`);
+      return new Response(JSON.stringify({ ok: true, message: "permission_requested" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Monta body para Graph API
     const graphBody: Record<string, any> = {

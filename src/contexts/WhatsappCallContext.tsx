@@ -45,6 +45,7 @@ interface Ctx {
   minimizeIncoming: () => void;
   restoreIncoming: () => void;
   initiateCall: (params: { toPhone: string; leadId?: string | null; leadName?: string | null; phoneNumberId?: string }) => Promise<void>;
+  requestCallPermission: (params: { toPhone: string; leadId?: string | null; phoneNumberId?: string }) => Promise<void>;
 }
 
 const WhatsappCallContext = createContext<Ctx | null>(null);
@@ -364,6 +365,30 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     sessionRef.current?.setMuted(next);
   }, [muted]);
 
+  // Envia o pedido NATIVO de permissão de ligação (mensagem com botão "Permitir"
+  // no WhatsApp do cliente — 1 toque autoriza). O edge action=request_permission
+  // dispara via Graph API; a resposta é registrada por trigger no banco.
+  const requestCallPermission = useCallback(async (params: { toPhone: string; leadId?: string | null; phoneNumberId?: string }) => {
+    const toPhone = (params.toPhone || "").replace(/\D/g, "");
+    if (!toPhone) { toast.error("Número inválido"); return; }
+    try {
+      const { data, error } = await supabase.functions.invoke("whatsapp-call-signaling", {
+        body: { action: "request_permission", to_phone: toPhone, lead_id: params.leadId ?? null, phone_number_id: params.phoneNumberId },
+      });
+      if (error) throw new Error(error.message);
+      if ((data as any)?.ok === false) {
+        toast.error((data as any).user_message || "Não foi possível enviar o pedido de permissão.");
+        return;
+      }
+      toast.success("Pedido de permissão enviado!", {
+        description: "O cliente aprova com 1 toque no WhatsApp. Assim que ele permitir, é só ligar.",
+      });
+    } catch (e: any) {
+      console.error("[wa-call] request permission error:", e);
+      toast.error(`Falha ao solicitar permissão: ${e?.message ?? e}`);
+    }
+  }, []);
+
   const initiateCall = useCallback(async (params: { toPhone: string; leadId?: string | null; leadName?: string | null; phoneNumberId?: string }) => {
     if (state.phase !== "idle") {
       toast.error("Já existe uma chamada em andamento");
@@ -422,7 +447,11 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       console.error("[wa-call] initiate error:", e);
       if (e?.code === "no_call_permission") {
         toast.error("Este contato ainda não autorizou receber ligações.", {
-          description: "Peça para ele aceitar a solicitação de permissão de chamada no WhatsApp e tente novamente.",
+          description: "Envie o pedido de permissão — ele aprova com 1 toque no WhatsApp.",
+          action: {
+            label: "Solicitar permissão",
+            onClick: () => { void requestCallPermission({ toPhone: params.toPhone, leadId: params.leadId, phoneNumberId: params.phoneNumberId }); },
+          },
         });
       } else {
         toast.error(`Falha ao iniciar chamada: ${e?.message ?? e}`);
@@ -431,9 +460,9 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       sessionRef.current = null;
       setState({ phase: "idle" });
     }
-  }, [state.phase, tenantId]);
+  }, [state.phase, tenantId, requestCallPermission]);
 
-  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall]);
+  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission]);
 
   return (
     <WhatsappCallContext.Provider value={value}>
