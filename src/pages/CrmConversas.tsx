@@ -1246,10 +1246,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     )}
                   </div>
                 </div>
+                {/* Ações do lead — sempre compactas (ícone + tooltip) p/ não estourar o header em telas/painéis estreitos */}
+                <div className="flex items-center gap-1 shrink-0">
                 {selectedLead.phone && (
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon"
+                    className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
                     disabled={callState.phase !== "idle"}
                     onClick={() =>
                       initiateCall({
@@ -1259,28 +1262,28 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       })
                     }
                     title="Ligar via WhatsApp"
-                    className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                    aria-label="Ligar via WhatsApp"
                   >
                     <Phone size={16} />
-                    <span className="hidden sm:inline">Ligar</span>
                   </Button>
                 )}
                 {selectedLead.phone && (
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
                     onClick={() => requestCallPermission({ toPhone: selectedLead.phone!, leadId: selectedLead.id })}
                     title="Solicitar permissão de ligação (o cliente aprova com 1 toque no WhatsApp)"
-                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Solicitar permissão de ligação"
                   >
                     <BellRing size={16} />
-                    <span className="hidden lg:inline">Permissão</span>
                   </Button>
                 )}
                 <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => isCrmMobile ? setMobileShowDetails(true) : setRightPanelVisible(!rightPanelVisible)}>
+                <Button variant="ghost" size="icon" className="h-8 w-8" title={rightPanelVisible ? "Ocultar detalhes" : "Mostrar detalhes"} aria-label={rightPanelVisible ? "Ocultar detalhes" : "Mostrar detalhes"} onClick={() => isCrmMobile ? setMobileShowDetails(true) : setRightPanelVisible(!rightPanelVisible)}>
                   {(isCrmMobile ? false : rightPanelVisible) ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>
+                </div>
               </div>
 
 

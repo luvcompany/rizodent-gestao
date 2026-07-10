@@ -462,6 +462,72 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [state.phase, tenantId, requestCallPermission]);
 
+  // initiateCall muda de identidade a cada fase da chamada; guardamos numa ref
+  // para a subscription de permissão (abaixo) não re-inscrever a cada mudança.
+  const initiateCallRef = useRef(initiateCall);
+  useEffect(() => { initiateCallRef.current = initiateCall; }, [initiateCall]);
+
+  // --- Realtime: resposta do cliente ao pedido de permissão de ligação.
+  // whatsapp_call_permissions é atualizada por trigger (record_call_permission_reply)
+  // quando o cliente aceita/recusa no WhatsApp. Sem este aviso, só dava pra saber
+  // abrindo a conversa — agora o time é notificado na hora, em qualquer tela.
+  useEffect(() => {
+    if (!user || !tenantId) return;
+    const channel = supabase
+      .channel(`wa-call-perms-${tenantId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "whatsapp_call_permissions", filter: `tenant_id=eq.${tenantId}` },
+        (payload) => {
+          const row = payload.new as {
+            id?: string; status?: string; lead_id?: string | null; consumer_phone?: string | null;
+          } | null;
+          // Só a resposta do cliente interessa; "requested" é o nosso próprio envio.
+          if (!row || (row.status !== "accepted" && row.status !== "rejected")) return;
+          void (async () => {
+            let name: string | null = null;
+            if (row.lead_id) {
+              const { data } = await supabase
+                .from("crm_leads").select("name").eq("id", row.lead_id).maybeSingle();
+              name = (data as { name?: string | null } | null)?.name ?? null;
+            }
+            const who = name || row.consumer_phone || "O cliente";
+            const toastId = `perm-${row.id ?? row.consumer_phone}-${row.status}`;
+            if (row.status === "accepted") {
+              toast.success(`✅ ${who} autorizou receber ligações`, {
+                id: toastId,
+                description: "Já pode ligar pelo WhatsApp.",
+                duration: 12000,
+                action: row.consumer_phone
+                  ? {
+                      label: "Ligar agora",
+                      onClick: () => {
+                        void initiateCallRef.current({
+                          toPhone: row.consumer_phone!,
+                          leadId: row.lead_id ?? null,
+                          leadName: name,
+                        });
+                      },
+                    }
+                  : undefined,
+              });
+            } else {
+              toast(`📵 ${who} recusou receber ligações`, {
+                id: toastId,
+                description: "Ele não vai receber chamadas por enquanto.",
+                duration: 12000,
+              });
+            }
+          })();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, tenantId]);
+
   const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission]);
 
   return (
