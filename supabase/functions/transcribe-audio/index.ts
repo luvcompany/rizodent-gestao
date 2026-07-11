@@ -277,18 +277,42 @@ Deno.serve(async (req) => {
     };
 
     if (isCallRecording && sourceTable === "whatsapp_calls" && agentUrl && leadUrl) {
-      // Diarização: transcreve cada faixa separadamente e monta bloco com falantes
+      // Diarização com interleave por timestamps: cada canal vai ao Gemini
+      // pedindo segmentos {start,text}, depois intercalamos por tempo.
       try {
         const [agentTrack, leadTrack] = await Promise.all([downloadTrack(agentUrl), downloadTrack(leadUrl)]);
-        const agentText = agentTrack ? await transcribeWithLovableGatewaySTT(agentTrack.bytes, agentTrack.mime, LOVABLE_API_KEY) : "";
-        const leadText = leadTrack ? await transcribeWithLovableGatewaySTT(leadTrack.bytes, leadTrack.mime, LOVABLE_API_KEY) : "";
-        const parts: string[] = [];
-        if (agentText) parts.push(`🎧 Atendente:\n${agentText}`);
-        if (leadText) parts.push(`👤 Lead:\n${leadText}`);
-        if (parts.length === 0) {
+        const [agentSegs, leadSegs] = await Promise.all([
+          agentTrack ? transcribeChannelWithTimestamps(agentTrack.bytes, agentTrack.mime, LOVABLE_API_KEY, "Atendente") : Promise.resolve([]),
+          leadTrack ? transcribeChannelWithTimestamps(leadTrack.bytes, leadTrack.mime, LOVABLE_API_KEY, "Lead") : Promise.resolve([]),
+        ]);
+
+        type Seg = { start: number; text: string; who: "Atendente" | "Lead" };
+        const merged: Seg[] = [
+          ...agentSegs.map((s) => ({ ...s, who: "Atendente" as const })),
+          ...leadSegs.map((s) => ({ ...s, who: "Lead" as const })),
+        ].sort((a, b) => a.start - b.start);
+
+        if (merged.length === 0) {
+          // Fallback: STT simples no mix
           text = await transcribeWithLovableGatewaySTT(audioBytes, mime, LOVABLE_API_KEY);
         } else {
-          text = parts.join("\n\n");
+          // Agrupa falas consecutivas do mesmo falante
+          const lines: string[] = [];
+          let curWho: "Atendente" | "Lead" | null = null;
+          let buf: string[] = [];
+          const flush = () => {
+            if (curWho && buf.length) {
+              const icon = curWho === "Atendente" ? "🎧" : "👤";
+              lines.push(`${icon} ${curWho}: ${buf.join(" ").replace(/\s+/g, " ").trim()}`);
+            }
+            buf = [];
+          };
+          for (const s of merged) {
+            if (s.who !== curWho) { flush(); curWho = s.who; }
+            buf.push(s.text);
+          }
+          flush();
+          text = lines.join("\n\n");
         }
       } catch (e: any) {
         console.error("[transcribe-audio] diarized STT failed, falling back to mix:", e?.message);
