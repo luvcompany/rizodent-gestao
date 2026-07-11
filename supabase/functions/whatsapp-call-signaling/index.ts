@@ -253,15 +253,16 @@ Deno.serve(async (req) => {
       const { data: waRowP } = await supabase
         .from("whatsapp_numbers").select("id").eq("tenant_id", tenantId).eq("phone_number_id", phoneNumberId).maybeSingle();
 
-      // Registra/atualiza a solicitação (status 'requested'); a resposta do cliente
-      // atualiza para accepted/rejected via trigger em messages.
+      // Registra/atualiza a solicitação (status 'pending' — valor aceito pelo CHECK
+      // da coluna; 'requested' era inválido e a gravação falhava silenciosamente). A
+      // resposta do cliente atualiza para 'approved'/'denied' via trigger em messages.
       await supabase.from("whatsapp_call_permissions").upsert({
         tenant_id: tenantId,
         whatsapp_number_id: waRowP?.id || null,
         phone_number_id: phoneNumberId,
         consumer_phone: toPhone,
         lead_id: body.lead_id ?? null,
-        status: "requested",
+        status: "pending",
         requested_at: new Date().toISOString(),
         raw_payload: permJson ?? null,
       } as any, { onConflict: "tenant_id,consumer_phone" });

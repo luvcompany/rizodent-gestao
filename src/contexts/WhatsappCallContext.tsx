@@ -482,8 +482,9 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
           const row = payload.new as {
             id?: string; status?: string; lead_id?: string | null; consumer_phone?: string | null;
           } | null;
-          // Só a resposta do cliente interessa; "requested" é o nosso próprio envio.
-          if (!row || (row.status !== "accepted" && row.status !== "rejected")) return;
+          // Só a resposta do cliente interessa (approved/denied). Os demais status
+          // (pending/expired/revoked) não geram notificação.
+          if (!row || (row.status !== "approved" && row.status !== "denied")) return;
           void (async () => {
             let name: string | null = null;
             if (row.lead_id) {
@@ -493,7 +494,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
             }
             const who = name || row.consumer_phone || "O cliente";
             const toastId = `perm-${row.id ?? row.consumer_phone}-${row.status}`;
-            if (row.status === "accepted") {
+            if (row.status === "approved") {
               toast.success(`✅ ${who} autorizou receber ligações`, {
                 id: toastId,
                 description: "Já pode ligar pelo WhatsApp.",
