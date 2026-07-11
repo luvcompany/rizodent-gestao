@@ -8,6 +8,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,7 +23,7 @@ import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
-import { parseCallPermissionReply, formatCallPermissionReply } from "@/lib/callPermissionReply";
+import { parseCallPermissionReply, formatCallPermissionReply, formatCallPermissionPreview } from "@/lib/callPermissionReply";
 import LeadAiAssistPanel from "@/components/chat/LeadAiAssistPanel";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
 import ChatReplyPreview from "@/components/chat/ChatReplyPreview";
@@ -1116,7 +1117,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-xs text-muted-foreground truncate mt-0.5">{lead.last_message || "Sem mensagens"}</p>
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">{formatCallPermissionPreview(lead.last_message) ?? (lead.last_message || "Sem mensagens")}</p>
                           </div>
                         </button>
                         {/* Context menu */}
@@ -1249,35 +1250,48 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 {/* Ações do lead — sempre compactas (ícone + tooltip) p/ não estourar o header em telas/painéis estreitos */}
                 <div className="flex items-center gap-1 shrink-0">
                 {selectedLead.phone && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
-                    disabled={callState.phase !== "idle"}
-                    onClick={() =>
-                      initiateCall({
-                        toPhone: selectedLead.phone!,
-                        leadId: selectedLead.id,
-                        leadName: selectedLead.name,
-                      })
-                    }
-                    title="Ligar via WhatsApp"
-                    aria-label="Ligar via WhatsApp"
-                  >
-                    <Phone size={16} />
-                  </Button>
+                  <Tooltip delayDuration={200}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                        disabled={callState.phase !== "idle"}
+                        onClick={() =>
+                          initiateCall({
+                            toPhone: selectedLead.phone!,
+                            leadId: selectedLead.id,
+                            leadName: selectedLead.name,
+                          })
+                        }
+                        aria-label="Ligar via WhatsApp"
+                      >
+                        <Phone size={16} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-emerald-600" /> Ligar via WhatsApp</span>
+                    </TooltipContent>
+                  </Tooltip>
                 )}
                 {selectedLead.phone && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                    onClick={() => requestCallPermission({ toPhone: selectedLead.phone!, leadId: selectedLead.id })}
-                    title="Solicitar permissão de ligação (o cliente aprova com 1 toque no WhatsApp)"
-                    aria-label="Solicitar permissão de ligação"
-                  >
-                    <BellRing size={16} />
-                  </Button>
+                  <Tooltip delayDuration={200}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => requestCallPermission({ toPhone: selectedLead.phone!, leadId: selectedLead.id })}
+                        aria-label="Solicitar permissão de ligação"
+                      >
+                        <BellRing size={16} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[220px]">
+                      <span className="flex items-center gap-1.5 font-medium"><BellRing size={14} /> Solicitar permissão de ligação</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">O cliente aprova com 1 toque no WhatsApp</span>
+                    </TooltipContent>
+                  </Tooltip>
                 )}
                 <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
                 <Button variant="ghost" size="icon" className="h-8 w-8" title={rightPanelVisible ? "Ocultar detalhes" : "Mostrar detalhes"} aria-label={rightPanelVisible ? "Ocultar detalhes" : "Mostrar detalhes"} onClick={() => isCrmMobile ? setMobileShowDetails(true) : setRightPanelVisible(!rightPanelVisible)}>

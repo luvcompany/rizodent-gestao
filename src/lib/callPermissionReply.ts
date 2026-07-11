@@ -31,3 +31,16 @@ export function formatCallPermissionReply(reply: CallPermissionReply): string {
   if (reply.is_permanent) return "📞 Cliente autorizou ligações permanentemente";
   return "📞 Cliente autorizou receber ligações";
 }
+
+// Texto legível para o preview da lista de conversas (senão vaza JSON cru quando a
+// última mensagem é uma resposta/pedido de permissão de ligação). Retorna null se
+// o conteúdo não for um desses casos — aí o chamador usa o texto original.
+export function formatCallPermissionPreview(content?: string | null): string | null {
+  const reply = parseCallPermissionReply(content);
+  if (reply) return formatCallPermissionReply(reply);
+  const t = (content || "").trim();
+  if (t.startsWith("{") && t.includes("call_permission_request")) {
+    return "📞 Solicitação de permissão de ligação enviada";
+  }
+  return null;
+}
