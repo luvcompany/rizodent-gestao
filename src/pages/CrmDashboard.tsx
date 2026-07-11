@@ -391,67 +391,67 @@ export default function CrmDashboard() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10"><DollarSign size={20} className="text-primary" /></div>
-            <div>
-              <p className="text-xl font-bold">{faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</p>
-              <p className="text-xs text-muted-foreground">Faturamento do mês</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><DollarSign size={20} className="text-primary" /></div>
+            <div className="min-w-0">
+              <p className="text-xl font-bold leading-tight truncate" title={faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}>{faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</p>
+              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Faturamento do mês</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10"><ListTodo size={20} className="text-primary" /></div>
-            <div>
-              <p className="text-2xl font-bold">{todayTasks.length}</p>
-              <p className="text-xs text-muted-foreground">Tarefas {diaSelecionadoLabel}</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><ListTodo size={20} className="text-primary" /></div>
+            <div className="min-w-0">
+              <p className="text-2xl font-bold leading-tight truncate">{todayTasks.length}</p>
+              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Tarefas {diaSelecionadoLabel}</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-destructive/10"><AlertTriangle size={20} className="text-destructive" /></div>
-            <div>
-              <p className="text-2xl font-bold">{overdueTasks.length}</p>
-              <p className="text-xs text-muted-foreground">Tarefas atrasadas</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-destructive/10 shrink-0"><AlertTriangle size={20} className="text-destructive" /></div>
+            <div className="min-w-0">
+              <p className="text-2xl font-bold leading-tight truncate">{overdueTasks.length}</p>
+              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Tarefas atrasadas</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-green-500/10"><CalendarDays size={20} className="text-green-600" /></div>
-            <div>
-              <p className="text-2xl font-bold">{dayAppointments.length}</p>
-              <p className="text-xs text-muted-foreground">Agendamentos {diaSelecionadoLabel}</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-green-500/10 shrink-0"><CalendarDays size={20} className="text-green-600" /></div>
+            <div className="min-w-0">
+              <p className="text-2xl font-bold leading-tight truncate">{dayAppointments.length}</p>
+              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Agendamentos {diaSelecionadoLabel}</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-orange-500/10"><Bell size={20} className="text-orange-600" /></div>
-            <div>
-              <p className="text-2xl font-bold">{pendingConfirmations.length}</p>
-              <p className="text-xs text-muted-foreground">Confirmações pendentes</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-orange-500/10 shrink-0"><Bell size={20} className="text-orange-600" /></div>
+            <div className="min-w-0">
+              <p className="text-2xl font-bold leading-tight truncate">{pendingConfirmations.length}</p>
+              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Confirmações pendentes</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10"><Users size={20} className="text-blue-600" /></div>
-            <div>
-              <p className="text-2xl font-bold">{leadsToday}</p>
-              <p className="text-xs text-muted-foreground">Leads hoje</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-blue-500/10 shrink-0"><Users size={20} className="text-blue-600" /></div>
+            <div className="min-w-0">
+              <p className="text-2xl font-bold leading-tight truncate">{leadsToday}</p>
+              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Leads hoje</p>
             </div>
           </div>
         </Card>
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-purple-500/10"><RefreshCw size={20} className="text-purple-600" /></div>
-            <div>
-              <p className="text-2xl font-bold">{rescheduledCount}</p>
-              <p className="text-xs text-muted-foreground">Reagendados no mês</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-purple-500/10 shrink-0"><RefreshCw size={20} className="text-purple-600" /></div>
+            <div className="min-w-0">
+              <p className="text-2xl font-bold leading-tight truncate">{rescheduledCount}</p>
+              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Reagendados no mês</p>
             </div>
           </div>
         </Card>

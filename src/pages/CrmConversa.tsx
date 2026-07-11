@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -354,45 +355,65 @@ export default function CrmConversa() {
               )}
             </div>
           </div>
-          {/* Ações do lead — sempre compactas (ícone + tooltip) p/ não estourar o header em telas/painéis estreitos */}
+          {/* Ações do lead — ícone compacto + tooltip (ícone+nome no hover) p/ não estourar o header em telas/painéis estreitos */}
           <div className="flex items-center gap-1 shrink-0">
           {lead.phone && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
-              disabled={callState.phase !== "idle"}
-              onClick={() =>
-                initiateCall({
-                  toPhone: lead.phone!,
-                  leadId: lead.id,
-                  leadName: lead.name,
-                })
-              }
-              title="Ligar via WhatsApp"
-              aria-label="Ligar via WhatsApp"
-            >
-              <Phone size={16} />
-            </Button>
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                  disabled={callState.phase !== "idle"}
+                  onClick={() =>
+                    initiateCall({
+                      toPhone: lead.phone!,
+                      leadId: lead.id,
+                      leadName: lead.name,
+                    })
+                  }
+                  aria-label="Ligar via WhatsApp"
+                >
+                  <Phone size={16} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-emerald-600" /> Ligar via WhatsApp</span>
+              </TooltipContent>
+            </Tooltip>
           )}
           {lead.phone && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => requestCallPermission({ toPhone: lead.phone!, leadId: lead.id })}
-              title="Solicitar permissão de ligação (o cliente aprova com 1 toque no WhatsApp)"
-              aria-label="Solicitar permissão de ligação"
-            >
-              <BellRing size={16} />
-            </Button>
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={() => requestCallPermission({ toPhone: lead.phone!, leadId: lead.id })}
+                  aria-label="Solicitar permissão de ligação"
+                >
+                  <BellRing size={16} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px]">
+                <span className="flex items-center gap-1.5 font-medium"><BellRing size={14} /> Solicitar permissão de ligação</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">O cliente aprova com 1 toque no WhatsApp</span>
+              </TooltipContent>
+            </Tooltip>
           )}
           <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Bloquear lead" aria-label="Bloquear lead">
-                <Ban size={16} />
-              </Button>
-            </AlertDialogTrigger>
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" aria-label="Bloquear lead">
+                    <Ban size={16} />
+                  </Button>
+                </AlertDialogTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                <span className="inline-flex items-center gap-1.5"><Ban size={14} className="text-destructive" /> Bloquear lead</span>
+              </TooltipContent>
+            </Tooltip>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Bloquear este lead?</AlertDialogTitle>

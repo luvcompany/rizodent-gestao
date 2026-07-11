@@ -922,34 +922,34 @@ const Dashboard = () => {
           <p className="text-xs text-muted-foreground">"Leads que chegaram" = total bruto (todas as origens). "Origem anúncio" segue a mesma regra do gráfico acima (classificação canônica de origem).</p>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-primary">{crmLeadsCount}</p>
-              <p className="text-xs text-muted-foreground mt-1">Leads que chegaram</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0">
+              <p className="text-2xl font-bold text-primary leading-tight truncate">{crmLeadsCount}</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-tight">Leads que chegaram</p>
             </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center" title="Mesma regra do gráfico: classificação canônica de origem (ad_id ou source de anúncio)">
-              <p className="text-2xl font-bold text-blue-500">{totalLeadsNoPeriodo}</p>
-              <p className="text-xs text-muted-foreground mt-1">Origem anúncio</p>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0" title="Mesma regra do gráfico: classificação canônica de origem (ad_id ou source de anúncio)">
+              <p className="text-2xl font-bold text-blue-500 leading-tight truncate">{totalLeadsNoPeriodo}</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-tight">Origem anúncio</p>
             </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center" title="Leads distintos com pelo menos uma consulta (não reagendada) no período">
-              <p className="text-2xl font-bold text-foreground">{crmAgendados}</p>
-              <p className="text-xs text-muted-foreground mt-1">Leads agendados</p>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0" title="Leads distintos com pelo menos uma consulta (não reagendada) no período">
+              <p className="text-2xl font-bold text-foreground leading-tight truncate">{crmAgendados}</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-tight">Leads agendados</p>
             </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center" title="Consultas (não leads) com presença registrada">
-              <p className="text-2xl font-bold text-green-600">{crmCompareceram}</p>
-              <p className="text-xs text-muted-foreground mt-1">Compareceram</p>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0" title="Consultas (não leads) com presença registrada">
+              <p className="text-2xl font-bold text-green-600 leading-tight truncate">{crmCompareceram}</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-tight">Compareceram</p>
             </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center" title="Consultas (não leads) com falta registrada">
-              <p className="text-2xl font-bold text-red-500">{crmFaltaram}</p>
-              <p className="text-xs text-muted-foreground mt-1">Faltaram</p>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0" title="Consultas (não leads) com falta registrada">
+              <p className="text-2xl font-bold text-red-500 leading-tight truncate">{crmFaltaram}</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-tight">Faltaram</p>
             </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-emerald-600">{novosContratados}</p>
-              <p className="text-xs text-muted-foreground mt-1">Novos contratados</p>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0">
+              <p className="text-2xl font-bold text-emerald-600 leading-tight truncate">{novosContratados}</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-tight">Novos contratados</p>
             </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30">
-              <p className="text-2xl font-bold text-primary">{taxaConversao.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Conversão (Agendados → Contrato)</p>
+            <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30 min-w-0">
+              <p className="text-2xl font-bold text-primary leading-tight truncate">{taxaConversao.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-tight">Conversão (Agendados → Contrato)</p>
             </div>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3 italic">
