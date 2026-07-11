@@ -15,6 +15,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
+import CallPermissionsPanel from "@/components/ligacoes/CallPermissionsPanel";
 
 type CallCategory = "answered" | "missed" | "rejected" | "blocked" | "failed" | "ongoing";
 
@@ -100,6 +101,7 @@ export default function CrmLigacoes() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CallRow | null>(null);
   const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "this_month" });
+  const [view, setView] = useState<"ligacoes" | "permissoes">("ligacoes");
 
   useEffect(() => {
     let cancelled = false;
@@ -185,14 +187,34 @@ export default function CrmLigacoes() {
   return (
     <div className="flex flex-col h-full min-h-0">
       <header className="p-4 md:p-6 border-b bg-background">
-        <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <div className="flex items-center gap-2">
             <Phone className="text-primary" />
             <h1 className="text-2xl font-semibold">Ligações</h1>
           </div>
-          <DateRangeFilter value={period} onChange={setPeriod} />
+          {view === "ligacoes" && <DateRangeFilter value={period} onChange={setPeriod} />}
         </div>
 
+        <div className="flex gap-4 border-b mb-4">
+          {([
+            { key: "ligacoes", label: "Ligações" },
+            { key: "permissoes", label: "Permissões" },
+          ] as const).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setView(t.key)}
+              className={`relative pb-2 text-sm font-medium transition-colors ${
+                view === t.key ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+              {view === t.key && <span className="absolute -bottom-px left-0 right-0 h-0.5 rounded-full bg-primary" />}
+            </button>
+          ))}
+        </div>
+
+        {view === "ligacoes" && (
+        <>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 md:gap-3 mb-4">
           <KpiCard label="Total" value={kpis.total} />
           <KpiCard label="Atendidas" value={kpis.answered} tone="success" />
@@ -242,8 +264,11 @@ export default function CrmLigacoes() {
             ))}
           </div>
         </div>
+        </>
+        )}
       </header>
 
+      {view === "ligacoes" ? (
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-8 text-center text-muted-foreground text-sm">Carregando ligações…</div>
@@ -308,6 +333,11 @@ export default function CrmLigacoes() {
           </ul>
         )}
       </div>
+      ) : (
+        <div className="flex-1 min-h-0">
+          <CallPermissionsPanel />
+        </div>
+      )}
 
       <Sheet open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
