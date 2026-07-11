@@ -104,6 +104,59 @@ async function transcribeWithLovableGatewaySTT(
   return String(data?.text || "").trim();
 }
 
+// Transcreve um canal com timestamps usando Gemini (áudio -> JSON de segmentos).
+// Retorna array [{ start: number (segundos), text: string }].
+async function transcribeChannelWithTimestamps(
+  audioBytes: Uint8Array,
+  mime: string,
+  apiKey: string,
+  speakerLabel: string,
+): Promise<Array<{ start: number; text: string }>> {
+  const b64 = bytesToBase64(audioBytes);
+  const format = mimeToFormat(mime);
+  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "system",
+          content:
+            "Você transcreve áudio em português brasileiro segmentando por trechos de fala contínua. " +
+            "Responda APENAS um JSON válido no formato {\"segments\":[{\"start\":<segundos desde o início do áudio, número>,\"text\":\"<transcrição do trecho>\"}]}. " +
+            "Um novo segmento a cada pausa perceptível ou mudança de frase. Sem comentários, sem markdown, sem texto extra. " +
+            "Se não houver fala, responda {\"segments\":[]}.",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `Transcreva este áudio (falante: ${speakerLabel}) com timestamps por segmento:` },
+            { type: "input_audio", input_audio: { data: b64, format } },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`gemini-ts ${resp.status}: ${t.substring(0, 300)}`);
+  }
+  const data = await resp.json();
+  let raw: string = (data?.choices?.[0]?.message?.content || "").trim();
+  // Remove cercas de código eventuais
+  raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/g, "").trim();
+  try {
+    const parsed = JSON.parse(raw);
+    const segs = Array.isArray(parsed?.segments) ? parsed.segments : [];
+    return segs
+      .map((s: any) => ({ start: Number(s?.start) || 0, text: String(s?.text || "").trim() }))
+      .filter((s: any) => s.text.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
