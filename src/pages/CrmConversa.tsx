@@ -358,7 +358,7 @@ export default function CrmConversa() {
           </div>
           {/* Ações do lead — ícone compacto + tooltip (ícone+nome no hover) p/ não estourar o header em telas/painéis estreitos */}
           <div className="flex items-center gap-1 shrink-0">
-          {lead.phone && (
+          {getLeadChannel(lead) !== "instagram" && lead.phone && (
             <Tooltip delayDuration={200}>
               <TooltipTrigger asChild>
                 <Button
@@ -383,7 +383,7 @@ export default function CrmConversa() {
               </TooltipContent>
             </Tooltip>
           )}
-          {lead.phone && (
+          {getLeadChannel(lead) !== "instagram" && lead.phone && (
             <Tooltip delayDuration={200}>
               <TooltipTrigger asChild>
                 <Button
@@ -666,6 +666,7 @@ export default function CrmConversa() {
           linkAnuncio={lead.link_anuncio}
           adAccountId={(lead as any).ad_account_id}
           adAccountName={(lead as any).ad_account_name}
+          isInstagram={getLeadChannel(lead) === "instagram"}
           onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
         />
 
@@ -702,7 +703,7 @@ export default function CrmConversa() {
         <LeadCustomFields leadId={lead.id} />
 
         {/* Follow Up Panel */}
-        <LeadFollowUpPanel leadId={lead.id} />
+        {getLeadChannel(lead) !== "instagram" && <LeadFollowUpPanel leadId={lead.id} />}
 
         {/* Notes input */}
         <div className="p-4 border-b border-border">

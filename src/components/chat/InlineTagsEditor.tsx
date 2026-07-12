@@ -31,10 +31,9 @@ type Props = {
   adAccountId?: string | null;
   adAccountName?: string | null;
   pipelineId?: string | null;
+  isInstagram?: boolean;
   onUpdated: (updates: Record<string, any>) => void;
 };
-
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const SOURCE_OPTIONS_DEFAULT = [
   { value: "anúncio", label: "Anúncio" },
@@ -64,9 +63,9 @@ function sourceToDropdown(source: string | null, options: { value: string; label
 }
 
 export default function InlineTagsEditor({
-  leadId, tags, source, adId, imagemOrigem, nomeAnuncio, descricaoAnuncio, linkAnuncio, adAccountId, adAccountName, pipelineId, onUpdated,
+  leadId, tags, source, adId, imagemOrigem, nomeAnuncio, descricaoAnuncio, linkAnuncio, adAccountId, adAccountName, pipelineId, isInstagram, onUpdated,
 }: Props) {
-  const isInstagramLead = pipelineId === INSTAGRAM_PIPELINE_ID;
+  const isInstagramLead = !!isInstagram;
   const SOURCE_OPTIONS = isInstagramLead ? SOURCE_OPTIONS_INSTAGRAM : SOURCE_OPTIONS_DEFAULT;
   const [newTag, setNewTag] = useState("");
   const [customSource, setCustomSource] = useState("");

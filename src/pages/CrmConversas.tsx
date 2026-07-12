@@ -1262,7 +1262,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 </div>
                 {/* Ações do lead — sempre compactas (ícone + tooltip) p/ não estourar o header em telas/painéis estreitos */}
                 <div className="flex items-center gap-1 shrink-0">
-                {selectedLead.phone && (
+                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
                   <Tooltip delayDuration={200}>
                     <TooltipTrigger asChild>
                       <Button
@@ -1287,7 +1287,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     </TooltipContent>
                   </Tooltip>
                 )}
-                {selectedLead.phone && (
+                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
                   <Tooltip delayDuration={200}>
                     <TooltipTrigger asChild>
                       <Button
@@ -1568,6 +1568,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   adAccountId={(selectedLead as any).ad_account_id}
                   adAccountName={(selectedLead as any).ad_account_name}
                   pipelineId={selectedLead.pipeline_id}
+                  isInstagram={getLeadChannel(selectedLead) === "instagram"}
                   onUpdated={(updates) => {
                     setSelectedLead((prev) => prev ? { ...prev, ...updates } as any : prev);
                     setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
@@ -1608,7 +1609,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
                 
 
-                <LeadFollowUpPanel leadId={selectedLead.id} />
+                {getLeadChannel(selectedLead) !== "instagram" && <LeadFollowUpPanel leadId={selectedLead.id} />}
 
                 {/* Notes input */}
                 <div className="p-4 border-b border-border">

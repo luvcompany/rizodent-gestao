@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getLeadChannel } from "@/lib/leadChannel";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,8 @@ type Lead = {
   ad_account_id?: string | null;
   ad_account_name?: string | null;
   pipeline_id?: string | null;
+  instagram_user_id?: string | null;
+  active_channel?: string | null;
 };
 
 type AdOption = {
@@ -52,7 +55,6 @@ type Props = {
   onLeadDeleted: () => void;
 };
 
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const SOURCE_OPTIONS_DEFAULT = [
   { value: "whatsapp", label: "WhatsApp" },
@@ -101,7 +103,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
   const [loadingAds, setLoadingAds] = useState(false);
   const [showAdSelector, setShowAdSelector] = useState(false);
 
-  const isInstagramLead = lead.pipeline_id === INSTAGRAM_PIPELINE_ID;
+  const isInstagramLead = getLeadChannel(lead) === "instagram";
   const SOURCE_OPTIONS = isInstagramLead ? SOURCE_OPTIONS_INSTAGRAM : SOURCE_OPTIONS_DEFAULT;
   const isKnownSource = SOURCE_OPTIONS.some((o) => o.value === source);
   const effectiveSource = isKnownSource ? source : (SOURCE_OPTIONS.some((o) => o.value === "outro") ? "outro" : "");
