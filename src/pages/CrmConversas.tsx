@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLeadLabels } from "@/hooks/useLeadLabels";
+import { getLeadChannel } from "@/lib/leadChannel";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -52,6 +53,7 @@ type LeadConversation = {
   name: string;
   phone: string | null;
   instagram_user_id?: string | null;
+  active_channel?: string | null;
   last_message: string | null;
   last_message_at: string | null;
   tags: string[] | null;
@@ -146,13 +148,12 @@ const SidePanelFallback = () => (
     <div className="h-24 rounded-lg bg-secondary/40 animate-pulse" />
   </div>
 );
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 const CONVERSATION_PAGE_SIZE = 1000;
 const CONVERSATION_MAX_PAGES = 6; // ~6k leads; suficiente p/ base atual (~4.3k) sem páginas extras
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
 // Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
 // porque os filtros derivam opções deles).
-const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name";
+const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name";
 // Colunas completas p/ o lead selecionado (inclui notes/value).
 const LEAD_SELECT_COLS = LEAD_LIST_COLS + ", value, notes";
 
@@ -338,13 +339,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     return () => { cancelled = true; };
   }, []);
 
-  // Descobre o pipeline de Instagram do tenant via flag `is_instagram`.
-  // FALLBACK: se nenhum pipeline tiver a flag marcada, usa a constante legada
-  // (preserva o comportamento atual da Rizodent enquanto a flag não é populada).
-  const instagramPipelineId = useMemo(() => {
-    const flagged = pipelines.find(p => p.is_instagram);
-    return flagged?.id || INSTAGRAM_PIPELINE_ID;
-  }, [pipelines]);
 
 
 
@@ -683,10 +677,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   }, [selectedLead, handleSaveNotes]);
 
   const handleSendTemplate = useCallback(async (template: any) => {
-    const ch: "whatsapp" | "instagram" =
-      channel === "instagram" || !!selectedLead?.instagram_user_id || selectedLead?.pipeline_id === instagramPipelineId
-        ? "instagram"
-        : "whatsapp";
+    const ch: "whatsapp" | "instagram" = getLeadChannel(selectedLead);
     await chat.sendTemplate(template, selectedLead?.phone || null, ch);
   }, [chat, selectedLead, channel]);
 
@@ -842,8 +833,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (pipelineFilter && l.pipeline_id !== pipelineFilter) return false;
       if (excludePipelines && excludePipelines.includes(l.pipeline_id)) return false;
       // Channel-based filtering (tenant-agnostic): IG leads have instagram_user_id
-      if (channelFilter === "instagram" && !l.instagram_user_id) return false;
-      if (channelFilter === "whatsapp" && l.instagram_user_id) return false;
+      if (channelFilter === "instagram" && getLeadChannel(l) !== "instagram") return false;
+      if (channelFilter === "whatsapp" && getLeadChannel(l) !== "whatsapp") return false;
       const normalizedSearch = search.trim().toLowerCase();
       if (normalizedSearch) {
         const searchDigits = normalizedSearch.replace(/\D/g, "");
@@ -1382,7 +1373,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         allMessages={chat.messages}
                         onReply={chat.setReplyTo}
                         onForward={chat.setForwardMsg}
-                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone, channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId ? "instagram" : "whatsapp")}
+                        onReact={(m, emoji) => chat.handleReact(m, emoji, selectedLead.phone, getLeadChannel(selectedLead))}
                         onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                         onScrollToMessage={chat.scrollToMessage}
                         igAccountsMap={Object.fromEntries(instagramAccounts.map((a) => [a.id, a.username]))}
@@ -1428,7 +1419,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 </div>
               )}
 
-              {!(channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId) && (
+              {getLeadChannel(selectedLead) !== "instagram" && (
                 <AiSuggestionStrip leadId={selectedLeadId} leadPhone={selectedLead.phone} />
               )}
               <ChatInput
@@ -1444,7 +1435,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
                 lastInboundDmAt={chat.lastInboundDmAt}
-                channel={channel === "instagram" || !!selectedLead.instagram_user_id || selectedLead.pipeline_id === instagramPipelineId ? "instagram" : "whatsapp"}
+                channel={getLeadChannel(selectedLead)}
               />
 
             </div>
