@@ -1434,6 +1434,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 replyTo={chat.replyTo}
                 onReplySent={() => chat.setReplyTo(null)}
                 lastInboundAt={chat.lastInboundAt}
+                lastInboundWaAt={chat.lastInboundWaAt}
                 lastInboundDmAt={chat.lastInboundDmAt}
                 channel={getLeadChannel(selectedLead)}
               />

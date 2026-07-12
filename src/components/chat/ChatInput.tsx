@@ -54,12 +54,14 @@ type ChatInputProps = {
   replyTo?: ReplyMessage | null;
   onReplySent?: () => void;
   lastInboundAt?: string | null;
+  /** Última inbound do WhatsApp (channel='whatsapp') — usada na janela de 24h do WhatsApp. */
+  lastInboundWaAt?: string | null;
   /** For Instagram: timestamp of the last inbound DM specifically (comments don't open the 24h window). */
   lastInboundDmAt?: string | null;
   channel?: "whatsapp" | "instagram";
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt, lastInboundDmAt, channel = "whatsapp" }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt, lastInboundWaAt, lastInboundDmAt, channel = "whatsapp" }: ChatInputProps) {
   const isInstagram = channel === "instagram";
   const sendFnName = isInstagram ? "instagram-send-message" : "send-whatsapp-message";
 
@@ -484,15 +486,17 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   }, []);
 
   const windowInfo = useMemo(() => {
-    if (!lastInboundAt) return { expired: true, remaining: "" };
-    const inboundTime = new Date(lastInboundAt).getTime();
+    // Janela do WhatsApp: só inbound do WhatsApp abre a sessão de 24h na Meta.
+    const waInbound = lastInboundWaAt ?? null;
+    if (!waInbound) return { expired: true, remaining: "" };
+    const inboundTime = new Date(waInbound).getTime();
     const expiresAt = inboundTime + 24 * 60 * 60 * 1000;
     const diff = expiresAt - now;
     if (diff <= 0) return { expired: true, remaining: "" };
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     return { expired: false, remaining: `${hours}h ${mins.toString().padStart(2, "0")}m` };
-  }, [lastInboundAt, now]);
+  }, [lastInboundWaAt, now]);
 
   // Instagram DM window: only actual DMs (not comments) keep the 24h window open.
   const igDmWindowInfo = useMemo(() => {

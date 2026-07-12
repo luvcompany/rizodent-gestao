@@ -572,6 +572,7 @@ export default function CrmConversa() {
               onMessageError={chat.handleMessageError}
               onMessageSuccess={chat.handleMessageSuccess}
               lastInboundAt={chat.lastInboundAt}
+              lastInboundWaAt={chat.lastInboundWaAt}
               lastInboundDmAt={chat.lastInboundDmAt}
               channel={getLeadChannel(lead)}
             />
