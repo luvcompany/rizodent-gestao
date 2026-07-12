@@ -30,6 +30,7 @@ import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
 import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check, Phone, BellRing } from "lucide-react";
+import { getLeadChannel } from "@/lib/leadChannel";
 import { useWhatsappCall } from "@/contexts/WhatsappCallContext";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
@@ -159,7 +160,7 @@ export default function CrmConversa() {
         }
         return await supabase
           .from("crm_leads")
-          .select("id, name, phone, instagram_user_id, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
+          .select("id, name, phone, instagram_user_id, active_channel, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
           .eq("id", id)
           .single();
       });
@@ -237,7 +238,7 @@ export default function CrmConversa() {
   }, [lead, handleSaveNotes]);
 
   const handleSendTemplate = useCallback(async (template: any) => {
-    const ch: "whatsapp" | "instagram" = lead?.instagram_user_id ? "instagram" : "whatsapp";
+    const ch: "whatsapp" | "instagram" = getLeadChannel(lead);
     await chat.sendTemplate(template, lead?.phone || null, ch);
   }, [chat, lead]);
 
@@ -507,7 +508,7 @@ export default function CrmConversa() {
                   allMessages={chat.messages}
                   onReply={chat.setReplyTo}
                   onForward={chat.setForwardMsg}
-                  onReact={(m, emoji) => chat.handleReact(m, emoji, lead.phone, lead.instagram_user_id ? "instagram" : "whatsapp")}
+                  onReact={(m, emoji) => chat.handleReact(m, emoji, lead.phone, getLeadChannel(lead))}
                   onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                   onScrollToMessage={chat.scrollToMessage}
                   igAccountsMap={igAccountsMap}
@@ -556,7 +557,7 @@ export default function CrmConversa() {
                 </Button>
               </div>
             )}
-            {!lead.instagram_user_id && (
+            {getLeadChannel(lead) !== "instagram" && (
               <AiSuggestionStrip leadId={id} leadPhone={lead.phone} />
             )}
             <ChatInput
@@ -572,7 +573,7 @@ export default function CrmConversa() {
               onMessageSuccess={chat.handleMessageSuccess}
               lastInboundAt={chat.lastInboundAt}
               lastInboundDmAt={chat.lastInboundDmAt}
-              channel={lead.instagram_user_id ? "instagram" : "whatsapp"}
+              channel={getLeadChannel(lead)}
             />
           </>
         )}
