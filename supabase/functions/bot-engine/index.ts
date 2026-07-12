@@ -14,6 +14,36 @@ const normalizeReply = (value: string | null | undefined) =>
     .trim()
     .toLowerCase();
 
+// Heurística leve para detectar se uma resposta parece um nome completo real
+// (nome + sobrenome) e não uma pergunta/saudação/mensagem qualquer.
+function isLikelyFullName(raw: string | null | undefined): boolean {
+  const text = String(raw || "").normalize("NFKC").trim();
+  if (!text) return false;
+  if (text.length < 4 || text.length > 80) return false;
+  if (/[?!¿¡]/.test(text)) return false;
+  if (/\d/.test(text)) return false;
+  if (/https?:\/\/|www\./i.test(text)) return false;
+  if (/[@#$%&*+=<>{}\[\]\/\\|]/.test(text)) return false;
+
+  const lower = text.toLowerCase();
+  const badPhrases = [
+    "olá", "ola", "oi", "bom dia", "boa tarde", "boa noite",
+    "informa", "preço", "preco", "valor", "valores", "quero", "posso",
+    "como", "quando", "onde", "porque", "por que", "porq", "obrigad",
+    "sim", "não", "nao", "talvez", "tudo bem", "tudo bom", "beleza",
+    "ainda", "aguard", "espero", "gostaria", "queria saber",
+  ];
+  if (badPhrases.some((p) => lower.includes(p))) return false;
+
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return false;
+  const alphaWord = /^[\p{L}'’\-]{2,}$/u;
+  const validWords = words.filter((w) => alphaWord.test(w));
+  if (validWords.length < 2) return false;
+
+  return true;
+}
+
 function resolveInteractiveOption(
   currentNode: any,
   replyText: string,
@@ -478,6 +508,56 @@ Deno.serve(async (req) => {
 
       // If the current node has saveToField, store the reply under that name
       const currentNode = nodes.find((n: any) => n.id === execution.current_node_id);
+
+      // Input validation (ex: nome completo). Se falhar, re-pergunta e mantém waiting_reply
+      // até esgotar tentativas. Aplica só quando NÃO é interação com botão/menu.
+      const validateAs = currentNode?.data?.validateAs as string | undefined;
+      const isInteractiveReply = !!replyOptionId
+        || (currentNode && (currentNode.type === "send_text" || currentNode.type === "send_menu"));
+      if (validateAs && validateAs !== "none" && !isInteractiveReply) {
+        let valid = true;
+        if (validateAs === "full_name") valid = isLikelyFullName(replyText);
+
+        if (!valid) {
+          const attemptsKey = `__invalid_attempts_${execution.current_node_id}`;
+          const attempts = Number((variables as any)[attemptsKey] || 0) + 1;
+          const MAX_ATTEMPTS = 2;
+
+          if (attempts <= MAX_ATTEMPTS) {
+            const promptMsg =
+              (currentNode?.data?.invalidReplyMessage as string) ||
+              "Só pra confirmar, me diga seu nome completo (nome e sobrenome), por favor 🙂";
+            if (lead?.phone) {
+              const skipMark = (execution as any).bots?.mark_as_read === false;
+              await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+                lead_id: leadId,
+                to: lead.phone,
+                type: "text",
+                message: promptMsg,
+              }, skipMark);
+            }
+            const newTimeoutAt = calculateTimeoutAt(currentNode?.data);
+            (variables as any)[attemptsKey] = attempts;
+            await supabase.from("bot_executions").update({
+              status: "waiting_reply",
+              variables,
+              timeout_at: newTimeoutAt,
+            }).eq("id", execution.id);
+            console.log(`[bot-engine] Invalid ${validateAs} (attempt ${attempts}/${MAX_ATTEMPTS}) at node ${execution.current_node_id}, re-prompted`);
+            return json({ success: true, waiting: true, reason: "re_prompted_invalid_reply" });
+          }
+
+          // Excedeu tentativas: encerra a execução para intervenção humana
+          console.log(`[bot-engine] Invalid ${validateAs} exhausted at node ${execution.current_node_id}, completing`);
+          await supabase.from("bot_executions").update({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            timeout_at: null,
+          }).eq("id", execution.id);
+          return json({ completed: true, reason: `${validateAs}_validation_exhausted` });
+        }
+      }
+
       if (currentNode?.data?.saveToField) {
         variables[currentNode.data.saveToField] = replyText || "";
       }
