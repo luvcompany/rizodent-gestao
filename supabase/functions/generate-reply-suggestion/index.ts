@@ -68,7 +68,7 @@ async function transcribeAudio(mediaUrl: string, supabase: any, apiKey: string):
   return (j?.choices?.[0]?.message?.content || "").trim() || null;
 }
 
-function parseJsonTolerant(text: string): { reply: string; action: string; action_reason?: string } | null {
+function parseJsonTolerant(text: string): { reply: string; action: string; action_reason?: string; suggested_date?: string; suggested_time?: string } | null {
   if (!text) return null;
   const original = text.trim();
   // strip ``` or ''' fences anywhere
@@ -78,7 +78,19 @@ function parseJsonTolerant(text: string): { reply: string; action: string; actio
     try {
       const o = JSON.parse(s);
       if (o && typeof o.reply === "string" && o.reply.trim()) {
-        return { reply: o.reply, action: o.action === "handoff" ? "handoff" : "reply", action_reason: o.action_reason };
+        const action = o.action === "handoff" ? "handoff" : o.action === "schedule" ? "schedule" : "reply";
+        const out: { reply: string; action: string; action_reason?: string; suggested_date?: string; suggested_time?: string } =
+          { reply: o.reply, action, action_reason: o.action_reason };
+        // action='schedule' carrega um sub-objeto com data/hora propostas.
+        if (action === "schedule" && o.schedule && typeof o.schedule === "object") {
+          const d = String(o.schedule.suggested_date || "").trim();
+          const tm = String(o.schedule.suggested_time || "").trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(d)) out.suggested_date = d;
+          if (/^\d{1,2}:\d{2}$/.test(tm)) out.suggested_time = tm.padStart(5, "0");
+          // Sem data/hora válidas não há o que confirmar — degrada para reply (seguro).
+          if (!out.suggested_date || !out.suggested_time) out.action = "reply";
+        }
+        return out;
       }
     } catch (_) { /* noop */ }
     return null;
@@ -703,9 +715,15 @@ Rode este checklist mentalmente e, se qualquer item falhar, REESCREVA a resposta
 Gere a PRÓXIMA mensagem a enviar AGORA ao paciente. Decida a ação:
 - action="reply" → resposta direta.
 - action="handoff" → dor forte/urgência, reclamação, pedido de humano, ou negociação de preço complexa.
+- action="schedule" → o cliente SOLICITOU um dia + horário CONCRETOS para a avaliação/consulta e dá para propor o agendamento agora. Use SOMENTE quando TODAS forem verdadeiras:
+  1. A última mensagem (ou o combinado recente) traz um DIA e uma HORA concretos (ex.: "pode ser terça às 14h", "amanhã 9h", "dia 20 às 15:30"). Interesse vago ("quero marcar", "quais horários?") NÃO é schedule → use reply perguntando o melhor dia/horário.
+  2. AGORA está DENTRO do horário comercial (ver FATOS "AGORA está DENTRO/FORA do expediente"). Se estiver FORA, use reply dizendo que vai verificar a agenda e retorna — NÃO proponha schedule.
+  3. O lead NÃO está em etapa de desfecho/fechada (Contratado, Compareceu, Não compareceu, Desqualificado, etc.) — nesses casos use reply, sem reabrir agendamento.
+  Ao usar schedule, converta o dia pedido para uma data absoluta YYYY-MM-DD usando a linha "Hoje é" dos FATOS (ex.: se hoje é quinta 12/07/2026 e o cliente pede "terça", a data é 17/07/2026, a PRÓXIMA terça). A hora é "HH:MM" 24h. O campo "reply" deve conter a confirmação natural que você enviaria (ex.: "perfeito, ${firstName || "tudo bem"}, tô te confirmando pra terça (17/07) às 14h 🧡"). A CIDADE e o modelo de mensagem NÃO são sua responsabilidade — o operador cuida disso no painel.
 
-Responda SOMENTE com JSON válido:
-{"reply":"...","action":"reply"|"handoff","action_reason":"motivo curto"}`;
+Responda SOMENTE com JSON válido (uma linha):
+- reply/handoff: {"reply":"...","action":"reply"|"handoff","action_reason":"motivo curto"}
+- schedule: {"reply":"...","action":"schedule","action_reason":"motivo curto","schedule":{"suggested_date":"YYYY-MM-DD","suggested_time":"HH:MM"}}`;
 
     // Injeta os FATOS como primeira mensagem do usuário, antes do histórico real.
     const anchoredHistory: Array<{ role: "user" | "assistant"; content: string }> = [
@@ -780,7 +798,7 @@ Responda SOMENTE com JSON válido:
       parsed = parseJsonTolerant(aiText);
       // Retry uma vez se veio vazio ou sem JSON parseável
       if (!parsed || !parsed.reply.trim()) {
-        const reinforcement = `IMPORTANTE: sua última resposta veio vazia ou fora do formato. Responda AGORA somente com um objeto JSON em uma única linha, sem markdown, sem cercas de código, sem texto antes ou depois. Exemplo exato de formato: {"reply":"texto da mensagem","action":"reply","action_reason":"curto"}`;
+        const reinforcement = `IMPORTANTE: sua última resposta veio vazia ou fora do formato. Responda AGORA somente com um objeto JSON em uma única linha, sem markdown, sem cercas de código, sem texto antes ou depois. Exemplo de formato: {"reply":"texto da mensagem","action":"reply","action_reason":"curto"} — e, se for agendamento com dia e hora concretos: {"reply":"...","action":"schedule","action_reason":"curto","schedule":{"suggested_date":"YYYY-MM-DD","suggested_time":"HH:MM"}}`;
         aiText = await callModel(reinforcement);
         parsed = parseJsonTolerant(aiText);
       }
@@ -814,6 +832,8 @@ Responda SOMENTE com JSON válido:
       action_reason: parsed.action_reason || null,
       status: "pending",
       model: usedModel,
+      suggested_date: parsed.suggested_date || null,
+      suggested_time: parsed.suggested_time || null,
     };
     const { data: row, error: insErr } = await supabase
       .from("ai_reply_suggestions")
