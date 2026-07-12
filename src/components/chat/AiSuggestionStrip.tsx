@@ -206,7 +206,7 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       .update({ status: "discarded", decided_at: new Date().toISOString(), decided_by: user?.id || null })
       .eq("id", suggestion.id);
     setSuggestion(null);
-    toast.success("Marcada como ruim — a Bia vai aprender a evitar respostas assim.");
+    toast.success("Descartada. Dica: para a Bia aprender o certo, edite a resposta e envie — ela aprende com a correção.");
   };
 
 

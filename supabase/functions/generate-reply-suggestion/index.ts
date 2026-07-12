@@ -622,6 +622,25 @@ Canal: ${isInstagram ? "Instagram (Direct)" : "WhatsApp"}${pacienteBlock}${adBlo
 Use SEMPRE o nome e a cidade exatos acima. É PROIBIDO usar outro nome de cliente ou outra cidade.
 Lead ID interno (não mencione ao cliente): ${lead.id}`;
 
+    // === Camada aditiva: instruções configuráveis da clínica (tela de IA / CrmIaConfig) ===
+    // A base abaixo define as regras DURAS (identidade humana, anti-alucinação, saudação,
+    // 1-3 linhas). Aqui aplicamos o que o cliente configurou na tela de IA, SEM sobrepor
+    // essas regras duras nem as RESTRIÇÕES (que vêm logo depois e vencem tudo). Se nada
+    // estiver configurado, o bloco fica vazio e o prompt permanece idêntico ao anterior.
+    const cfgParts: string[] = [];
+    const cfgSystem = String((config as any).system_prompt || "").trim();
+    const cfgCustom = String((config as any).custom_instructions || "").trim();
+    const cfgTone = String((config as any).tone || "").trim();
+    const cfgLang = String((config as any).language || "").trim();
+    if (cfgSystem) cfgParts.push(`Contexto/orientação da clínica: ${cfgSystem}`);
+    if (cfgTone) cfgParts.push(`Tom desejado pela clínica: ${cfgTone} — respeitando sempre as regras acima (nunca soe robótico nem quebre a naturalidade humana; continue com mensagens curtas de 1-3 linhas).`);
+    if (cfgCustom) cfgParts.push(`Instruções específicas da clínica: ${cfgCustom}`);
+    // Só reforça idioma se o cliente pediu explicitamente algo diferente de português.
+    if (cfgLang && !/^pt|portug/i.test(cfgLang)) cfgParts.push(`Idioma das respostas: ${cfgLang}.`);
+    const clinicConfigBlock = cfgParts.length
+      ? `\n\n=== INSTRUÇÕES DA CLÍNICA (configuráveis na tela de IA — não sobrepõem as regras acima nem as RESTRIÇÕES) ===\n${cfgParts.join("\n")}`
+      : "";
+
     const systemPrompt = `Você é a "${persona}", atendente HUMANA da ${clinicName}. Responda em PT-BR informal, caloroso, mensagens curtas (1-3 linhas), no máximo 1 emoji.
 
 === IDENTIDADE (regra absoluta) ===
@@ -651,7 +670,7 @@ Só envie endereço se estiver no campo "Endereço da unidade" dos FATOS. Se "N�
 === ESPELHAR ANÚNCIO E MÚLTIPLOS SERVIÇOS ===
 Quando houver bloco "ANÚNCIO DE ORIGEM" nos FATOS, ABRA reconhecendo com empatia o tema/dor antes de perguntar. Linguagem humana, sem citar "anúncio"/"campanha". Se o lead perguntar sobre um serviço DIFERENTE do anúncio, reconheça AMBOS ("vi que você se interessou por [serviço do anúncio] e também está pensando em [serviço perguntado] — vamos ver os dois juntos, tá?"). NÃO ignore nenhum dos dois.
 
-${restricoesBlock}${diretrizesBlock}
+${clinicConfigBlock}${restricoesBlock}${diretrizesBlock}
 
 === BASE DE CONHECIMENTO ===
 ${kb}${examplesBlock}

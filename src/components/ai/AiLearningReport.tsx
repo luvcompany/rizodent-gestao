@@ -128,6 +128,7 @@ export default function AiLearningReport() {
     const { data: u } = await supabase.auth.getUser();
     const { data: lead } = await supabase.from("crm_leads").select("tenant_id").eq("id", add.leadId).maybeSingle();
 
+    // 1) Registra no histórico de sugestões (alimenta este relatório).
     const payload: any = {
       lead_id: add.leadId,
       tenant_id: (lead as any)?.tenant_id ?? null,
@@ -140,10 +141,39 @@ export default function AiLearningReport() {
       decided_at: new Date().toISOString(),
       model: "manual",
     };
-    const { error } = await supabase.from("ai_reply_suggestions" as any).insert(payload);
+    const { data: inserted, error } = await supabase
+      .from("ai_reply_suggestions" as any)
+      .insert(payload)
+      .select("id")
+      .maybeSingle();
+    if (error) { setAdd({ ...add, saving: false }); return toast.error("Falha ao adicionar: " + error.message); }
+
+    // 2) Alimenta de fato o aprendizado da Bia (ai_good_examples, com embedding) —
+    //    só faz sentido para exemplos com resposta ideal (aprovadas e corrigidas).
+    //    Descartadas puras não têm "resposta correta", então só ficam no histórico.
+    let learnMsg = "Exemplo adicionado ao histórico.";
+    let learnedOk = false;
+    if (add.kind === "approved" || add.kind === "edited") {
+      const idealReply = add.kind === "edited" ? add.final.trim() : add.suggested.trim();
+      const rejectedReply = add.kind === "edited" ? add.suggested.trim() : undefined;
+      const { data: rec, error: recErr } = await supabase.functions.invoke("record-good-example", {
+        body: {
+          lead_id: add.leadId,
+          ideal_reply: idealReply,
+          rejected_reply: rejectedReply,
+          source_suggestion_id: (inserted as any)?.id || null,
+          source: add.kind === "edited" ? "human_correction" : "manual_approved",
+        },
+      });
+      if (recErr) learnMsg = "Salvo no histórico, mas o aprendizado falhou: " + recErr.message;
+      else if ((rec as any)?.ok && (rec as any)?.embedded) { learnedOk = true; learnMsg = "A Bia aprendeu com este exemplo."; }
+      else if ((rec as any)?.ok) { learnedOk = true; learnMsg = "Exemplo salvo — a indexação para busca fica pronta em instantes."; }
+      else if ((rec as any)?.skipped === "no_context") learnMsg = "Salvo no histórico, mas o lead não tem mensagens recentes para dar contexto — a Bia não indexou este exemplo.";
+    } else {
+      learnMsg = "Descartada registrada no histórico. Exemplos 'a evitar' só orientam a Bia quando vêm com a versão correta (use 'Corrigida').";
+    }
     setAdd({ ...add, saving: false });
-    if (error) return toast.error("Falha ao adicionar: " + error.message);
-    toast.success("Exemplo adicionado. A Bia aprenderá em instantes.");
+    if (learnedOk) toast.success(learnMsg); else toast.message(learnMsg);
     setAdd(null);
     load();
   };
@@ -211,7 +241,7 @@ export default function AiLearningReport() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar exemplo</DialogTitle>
-            <DialogDescription>As alterações serão reprocessadas pela Bia.</DialogDescription>
+            <DialogDescription>Corrige o texto salvo neste histórico. Para (re)ensinar a Bia com este caso, use "Adicionar" como "Corrigida".</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>

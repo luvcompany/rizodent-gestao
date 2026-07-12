@@ -327,8 +327,9 @@ export default function CrmIaConfig() {
             <CardHeader>
               <CardTitle className="text-base">Instruções da IA (System Prompt)</CardTitle>
               <CardDescription>
-                Estas instruções são enviadas a cada análise. Descreva o contexto da clínica, regras de atendimento,
-                produtos/serviços e o que a IA deve evitar.
+                Estas instruções são aplicadas nas análises e também nas sugestões de resposta da Bia. Descreva o
+                contexto da clínica, regras de atendimento, produtos/serviços e o que a IA deve evitar. Elas
+                complementam a base — sem substituir as regras de segurança e anti-alucinação, nem as Restrições.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
