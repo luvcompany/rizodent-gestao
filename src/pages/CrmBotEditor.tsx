@@ -54,6 +54,7 @@ function BotEditorInner() {
   const [botDescription, setBotDescription] = useState("");
   const [botStatus, setBotStatus] = useState("draft");
   const [markAsRead, setMarkAsRead] = useState(true);
+  const [channels, setChannels] = useState<string[]>(["whatsapp"]);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
@@ -107,10 +108,11 @@ function BotEditorInner() {
       setBotDescription(data.description || "");
       setBotStatus(data.status);
       setMarkAsRead((data as any).mark_as_read !== false);
+      setChannels(Array.isArray((data as any).channels) && (data as any).channels.length ? (data as any).channels : ["whatsapp"]);
       const flow = data.flow_json as any;
       if (flow?.nodes) setNodes(flow.nodes);
       if (flow?.edges) setEdges(flow.edges);
-      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name, botDescription: data.description || "", markAsRead: (data as any).mark_as_read !== false });
+      lastSavedRef.current = JSON.stringify({ nodes: flow?.nodes || [], edges: flow?.edges || [], botName: data.name, botDescription: data.description || "", markAsRead: (data as any).mark_as_read !== false, channels: (Array.isArray((data as any).channels) && (data as any).channels.length ? (data as any).channels : ["whatsapp"]) });
       setLoading(false);
       // Init history
       historyRef.current = [{ nodes: flow?.nodes || [], edges: flow?.edges || [] }];
@@ -127,9 +129,9 @@ function BotEditorInner() {
 
   useEffect(() => {
     if (loading) return;
-    const current = JSON.stringify({ nodes, edges, botName, botDescription, markAsRead });
+    const current = JSON.stringify({ nodes, edges, botName, botDescription, markAsRead, channels });
     setIsDirty(current !== lastSavedRef.current);
-  }, [nodes, edges, botName, botDescription, markAsRead, loading]);
+  }, [nodes, edges, botName, botDescription, markAsRead, channels, loading]);
 
   const handleDeleteEdge = useCallback(
     (edgeId: string) => {
@@ -290,6 +292,7 @@ function BotEditorInner() {
       description: botDescription,
       flow_json: { nodes, edges },
       mark_as_read: markAsRead,
+      channels,
     } as any).eq("id", id);
 
     if (error) { setSaving(false); toast.error("Erro ao salvar"); return; }
@@ -310,11 +313,11 @@ function BotEditorInner() {
     }).eq("id", id);
 
     setBotStatus("published");
-    lastSavedRef.current = JSON.stringify({ nodes, edges, botName, botDescription, markAsRead });
+    lastSavedRef.current = JSON.stringify({ nodes, edges, botName, botDescription, markAsRead, channels });
     setIsDirty(false);
     setSaving(false);
     toast.success(`Bot salvo e publicado! Versão ${newVersion}`);
-  }, [id, botName, botDescription, nodes, edges, isDirty, markAsRead]);
+  }, [id, botName, botDescription, nodes, edges, isDirty, markAsRead, channels]);
 
   const handleHighlightNode = useCallback((nodeId: string | null) => {
     setHighlightedNodeId(nodeId);
@@ -358,6 +361,28 @@ function BotEditorInner() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-secondary/40" title="Em quais canais este bot pode rodar. O bot só executa se o lead for do canal marcado.">
+            <span className="text-xs text-muted-foreground mr-1">Canais:</span>
+            {([
+              { key: "whatsapp", label: "WhatsApp" },
+              { key: "instagram", label: "Instagram" },
+            ] as const).map((c) => {
+              const on = channels.includes(c.key);
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => setChannels((prev) => {
+                    const next = prev.includes(c.key) ? prev.filter((x) => x !== c.key) : [...prev, c.key];
+                    return next.length ? next : prev; // sempre ao menos 1 canal
+                  })}
+                  className={`text-xs px-2 py-0.5 rounded-md border transition-colors ${on ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:bg-muted"}`}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
           <TooltipProvider delayDuration={200}>
             <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-border bg-secondary/40">
               <Switch

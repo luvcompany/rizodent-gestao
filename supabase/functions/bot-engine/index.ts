@@ -618,6 +618,61 @@ async function sendViaWhatsApp(
   }
 }
 
+// ===== Send message via the instagram-send-message edge (canal Instagram) =====
+// Recebe o MESMO payload dos nós (type/message/media_url/interactive) e traduz
+// para a API do instagram-send-message. IG DM não tem lista/botão nativo aqui,
+// então menus (type=interactive) são renderizados como texto numerado.
+async function sendViaInstagram(
+  supabaseUrl: string,
+  serviceKey: string,
+  authHeader: string,
+  leadId: string,
+  payload: Record<string, any>,
+) {
+  const url = `${supabaseUrl}/functions/v1/instagram-send-message`;
+  const type = payload.type;
+  let body: Record<string, any> | null = null;
+
+  if (type === "image" || type === "video" || type === "audio") {
+    if (!payload.media_url) return {};
+    body = { lead_id: leadId, message_type: type, media_url: payload.media_url, message: payload.message || undefined };
+  } else if (type === "interactive") {
+    const lines: string[] = [];
+    if (payload.header) lines.push(String(payload.header));
+    if (payload.body) lines.push(String(payload.body));
+    const opts: string[] = [];
+    (payload.sections || []).forEach((s: any) => (s.rows || []).forEach((r: any) => opts.push(r.title || "")));
+    (payload.buttons || []).forEach((b: any) => opts.push(b.reply?.title || b.title || ""));
+    opts.filter(Boolean).forEach((o, i) => lines.push(`${i + 1}. ${o}`));
+    if (payload.footer) lines.push(String(payload.footer));
+    const msg = lines.filter(Boolean).join("\n");
+    if (!msg) return {};
+    body = { lead_id: leadId, message: msg, message_type: "dm" };
+  } else {
+    // text, template (fallback de texto) e demais com conteúdo textual
+    const msg = payload.message || payload.text || payload.body || "";
+    if (!msg) return {};
+    body = { lead_id: leadId, message: String(msg), message_type: "dm" };
+  }
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: authHeader, apikey: serviceKey },
+      body: JSON.stringify(body),
+    });
+    const result = await resp.json();
+    if (!resp.ok) {
+      console.error("instagram-send-message error:", JSON.stringify(result));
+      return { error: result?.error || "instagram_send_failed", details: result };
+    }
+    return result;
+  } catch (err: any) {
+    console.error("instagram-send-message call error:", err);
+    return { error: err.message };
+  }
+}
+
 // ===== Flow execution engine =====
 async function executeFlow(
   supabase: any,
@@ -653,9 +708,23 @@ async function executeFlow(
     .eq("id", executionId)
     .single();
   const { data: botRow } = execRow?.bot_id
-    ? await supabase.from("bots").select("mark_as_read").eq("id", execRow.bot_id).single()
+    ? await supabase.from("bots").select("mark_as_read, channels").eq("id", execRow.bot_id).single()
     : { data: null } as any;
   const skipMarkAsRead = botRow ? botRow.mark_as_read === false : false;
+
+  // Canal do lead + gate por bot.channels (escolha de canal por bot). WhatsApp = tem
+  // phone; Instagram = tem instagram_user_id. Se o bot não roda no canal do lead, não
+  // executa (default '{whatsapp}' preserva os bots atuais).
+  const leadChannel = (lead as any).instagram_user_id ? "instagram" : "whatsapp";
+  const botChannels: string[] = Array.isArray((botRow as any)?.channels) && (botRow as any).channels.length
+    ? (botRow as any).channels
+    : ["whatsapp"];
+  if (!botChannels.includes(leadChannel)) {
+    await supabase.from("bot_executions")
+      .update({ status: "completed", completed_at: new Date().toISOString() })
+      .eq("id", executionId);
+    return { reason: `channel_not_enabled:${leadChannel}` };
+  }
 
   while (currentNodeId && stepsExecuted < MAX_STEPS) {
     stepsExecuted++;
@@ -832,7 +901,9 @@ async function executeNode(
   };
 
   const sendAndAssert = async (payload: Record<string, any>, context: string) => {
-    const result = await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, payload, skipMarkAsRead);
+    const result = lead.instagram_user_id
+      ? await sendViaInstagram(supabaseUrl, serviceKey, authHeader, lead.id, payload)
+      : await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, payload, skipMarkAsRead);
     if (result?.error) {
       const details = result?.details ? ` ${JSON.stringify(result.details)}` : "";
       throw new Error(`${context}: ${result.error}${details}`);
@@ -962,7 +1033,7 @@ async function executeNode(
 
       // Otherwise send as plain text
       const text = replaceVars(data.text || "");
-      if (text && lead.phone) {
+      if (text && (lead.phone || lead.instagram_user_id)) {
         await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
@@ -979,7 +1050,7 @@ async function executeNode(
 
     case "send_image": {
       const caption = replaceVars(data.caption || "");
-      if (data.imageUrl && lead.phone) {
+      if (data.imageUrl && (lead.phone || lead.instagram_user_id)) {
         await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
@@ -992,7 +1063,7 @@ async function executeNode(
     }
 
     case "send_audio": {
-      if (data.audioUrl && lead.phone) {
+      if (data.audioUrl && (lead.phone || lead.instagram_user_id)) {
         await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
@@ -1021,7 +1092,7 @@ async function executeNode(
 
     case "send_video": {
       const caption = replaceVars(data.caption || "");
-      if (data.videoUrl && lead.phone) {
+      if (data.videoUrl && (lead.phone || lead.instagram_user_id)) {
         await sendAndAssert({
           lead_id: lead.id,
           to: lead.phone,
@@ -1144,7 +1215,7 @@ async function executeNode(
     }
 
     case "send_menu": {
-      if (lead.phone) {
+      if (lead.phone || lead.instagram_user_id) {
         const menuBody = replaceVars(data.bodyText || data.body || data.text || "Escolha uma opção:");
         const buttons = data.buttons || [];
         const listSections = data.listSections || [];
