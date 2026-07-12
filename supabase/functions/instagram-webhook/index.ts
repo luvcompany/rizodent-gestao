@@ -33,8 +33,6 @@ async function verifyMetaSignature(rawBody: string, signature: string | null, ap
 }
 
 
-const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
-const RIZODENT_INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -52,10 +50,8 @@ const pipelineCache = new Map<string, string>();
 
 async function resolveInstagramPipeline(tenantId: string): Promise<string | null> {
   if (pipelineCache.has(tenantId)) return pipelineCache.get(tenantId)!;
-  if (tenantId === RIZODENT_TENANT_ID) {
-    pipelineCache.set(tenantId, RIZODENT_INSTAGRAM_PIPELINE_ID);
-    return RIZODENT_INSTAGRAM_PIPELINE_ID;
-  }
+  // Genérico p/ qualquer tenant: a RPC garante/retorna o funil de Instagram (flag
+  // is_instagram). Sem caso especial hardcoded da Rizodent.
   const { data, error } = await supabase.rpc("ensure_instagram_pipeline", { _tenant_id: tenantId });
   if (error || !data) {
     console.error("[ig-lite] ensure_instagram_pipeline failed", { tenantId, error });
@@ -423,6 +419,34 @@ async function persistMessage(opts: {
         last_inbound_at: new Date().toISOString(),
       })
       .eq("id", leadId);
+
+    // Bot multi-passo no Instagram: se há uma execução esperando resposta (DM, não
+    // comentário), aciona o "continue" no bot-engine (espelha o whatsapp-webhook).
+    // O bot-engine só executa se bots.channels incluir 'instagram' (gate por canal).
+    if (!isComment) {
+      try {
+        const { data: exec } = await supabase
+          .from("bot_executions")
+          .select("id")
+          .eq("lead_id", leadId)
+          .eq("status", "waiting_reply")
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if ((exec as any)?.id) {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+          console.log(`[ig-webhook] Bot execution ${(exec as any).id} waiting for reply — triggering continue (lead ${leadId})`);
+          await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+            body: JSON.stringify({ leadId, trigger: "continue", executionId: (exec as any).id, replyText: finalContent || "" }),
+          }).catch((e) => console.error("[ig-webhook] bot-engine continue error", e));
+        }
+      } catch (e) {
+        console.error("[ig-webhook] bot continue check error", e);
+      }
+    }
   }
 }
 
