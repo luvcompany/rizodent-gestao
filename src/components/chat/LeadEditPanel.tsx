@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getLeadChannel } from "@/lib/leadChannel";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +108,70 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
   const SOURCE_OPTIONS = isInstagramLead ? SOURCE_OPTIONS_INSTAGRAM : SOURCE_OPTIONS_DEFAULT;
   const isKnownSource = SOURCE_OPTIONS.some((o) => o.value === source);
   const effectiveSource = isKnownSource ? source : (SOURCE_OPTIONS.some((o) => o.value === "outro") ? "outro" : "");
+
+  // ─── Transferência IG → WhatsApp (abre a conversa no WhatsApp via template) ───
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [loadingTransfer, setLoadingTransfer] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const [transferTemplates, setTransferTemplates] = useState<{ name: string; language: string | null; body_text: string | null }[]>([]);
+  const [clinicName, setClinicName] = useState("");
+
+  const loadTransferData = async () => {
+    setLoadingTransfer(true);
+    try {
+      const { data: t } = await supabase.from("tenants").select("id, name").limit(1).maybeSingle();
+      setClinicName((t as any)?.name || "");
+      const { data: tpls } = await supabase
+        .from("crm_whatsapp_templates")
+        .select("name, language, body_text")
+        .eq("tenant_id", (t as any)?.id)
+        .eq("status", "APPROVED")
+        .order("created_at", { ascending: false });
+      setTransferTemplates((tpls as any) || []);
+    } finally {
+      setLoadingTransfer(false);
+    }
+  };
+
+  const doTransfer = async (template: { name: string; language: string | null }) => {
+    if (transferring) return;
+    setTransferring(true);
+    try {
+      if (phone.trim() !== (lead.phone || "")) {
+        await supabase.from("crm_leads").update({ phone: phone.trim() }).eq("id", lead.id);
+      }
+      const { data: res, error: rpcErr } = await supabase.rpc("transfer_lead_to_whatsapp" as any, { p_lead_id: lead.id });
+      if (rpcErr || (res as any)?.error) {
+        const code = (res as any)?.error;
+        toast.error(code === "no_phone" ? "Preencha o telefone antes de transferir." : `Falha na transferência: ${code || rpcErr?.message}`);
+        return;
+      }
+      const { data: sent, error: sendErr } = await supabase.functions.invoke("send-whatsapp-message", {
+        body: {
+          lead_id: lead.id,
+          to: phone.trim(),
+          type: "template",
+          template_name: template.name,
+          template_language: template.language || "pt_BR",
+          template_components: [{ type: "body", parameters: [
+            { type: "text", text: (lead.name || "cliente").trim() },
+            { type: "text", text: (clinicName || "nossa clínica").trim() },
+          ] }],
+        },
+      });
+      if (sendErr || (sent as any)?.error) {
+        toast.warning("Canal trocado para WhatsApp, mas o modelo não foi enviado: " + ((sent as any)?.user_message || (sent as any)?.error || sendErr?.message || "erro"));
+      } else {
+        toast.success((res as any)?.merged ? "Transferido para o WhatsApp (cards mesclados)!" : "Transferido para o WhatsApp!");
+      }
+      setTransferOpen(false);
+      onLeadUpdated({ ...lead, phone: phone.trim(), active_channel: "whatsapp" } as Lead);
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao transferir");
+    } finally {
+      setTransferring(false);
+    }
+  };
 
   useEffect(() => {
     if (editOpen) {
@@ -312,34 +377,43 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
               <div className="flex gap-2">
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5511999999999" />
                 {isInstagramLead && phone.trim() && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    title="Enviar mensagem via WhatsApp"
-                    onClick={async () => {
-                      const text = window.prompt("Mensagem WhatsApp para enviar:");
-                      if (!text || !text.trim()) return;
-                      try {
-                        // Save phone first if changed
-                        if (phone.trim() !== (lead.phone || "")) {
-                          await supabase.from("crm_leads").update({ phone: phone.trim() }).eq("id", lead.id);
-                        }
-                        const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-                          body: { lead_id: lead.id, to: phone.trim(), message: text, type: "text" },
-                        });
-                        if (error || (data as any)?.error) {
-                          toast.error((data as any)?.user_message || (data as any)?.error || error?.message || "Erro ao enviar");
-                          return;
-                        }
-                        toast.success("Mensagem WhatsApp enviada");
-                      } catch (e: any) {
-                        toast.error(e?.message || "Erro ao enviar");
-                      }
-                    }}
-                  >
-                    <MessageCircle size={14} className="mr-1" /> WhatsApp
-                  </Button>
+                  <Popover open={transferOpen} onOpenChange={(o) => { setTransferOpen(o); if (o) void loadTransferData(); }}>
+                    <PopoverTrigger asChild>
+                      <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" title="Transferir o atendimento para o WhatsApp">
+                        <Send size={14} className="mr-1" /> Transferir p/ WhatsApp
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-80">
+                      <div className="text-sm font-medium mb-1">Transferir para o WhatsApp</div>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Abre a conversa no WhatsApp com um modelo aprovado (a Meta exige modelo para iniciar). O card e o histórico continuam os mesmos.
+                      </p>
+                      {loadingTransfer ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground py-2"><Loader2 size={14} className="animate-spin" /> Carregando modelos…</div>
+                      ) : transferTemplates.length === 0 ? (
+                        <p className="text-xs text-amber-600 dark:text-amber-500">
+                          Nenhum modelo aprovado. Crie e aprove um modelo de boas-vindas em <strong>Modelos</strong> para habilitar a transferência.
+                        </p>
+                      ) : (
+                        <div className="space-y-1">
+                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Modelo de abertura</div>
+                          {transferTemplates.map((t) => (
+                            <button
+                              key={t.name}
+                              type="button"
+                              disabled={transferring}
+                              onClick={() => doTransfer(t)}
+                              className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted border border-border disabled:opacity-50"
+                            >
+                              <div className="font-medium truncate">{t.name}</div>
+                              {t.body_text && <div className="text-[11px] text-muted-foreground line-clamp-2">{t.body_text}</div>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {transferring && <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2"><Loader2 size={14} className="animate-spin" /> Transferindo…</div>}
+                    </PopoverContent>
+                  </Popover>
                 )}
               </div>
               {isInstagramLead && (
