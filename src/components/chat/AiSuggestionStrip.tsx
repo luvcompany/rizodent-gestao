@@ -6,16 +6,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Check, X, Loader2, AlertTriangle, Send, ThumbsDown } from "lucide-react";
 import { toast } from "sonner";
+import ScheduleSuggestionCard from "./ScheduleSuggestionCard";
 
 type Suggestion = {
   id: string;
   lead_id: string;
   suggested_text: string;
-  action: "reply" | "handoff";
+  action: "reply" | "handoff" | "schedule";
   action_reason: string | null;
   status: string;
   created_at: string;
   model: string | null;
+  suggested_date?: string | null;
+  suggested_time?: string | null;
 };
 
 // Registro global de gerações em andamento por lead. Persiste quando o usuário troca de conversa
@@ -224,6 +227,19 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
           Sugerir resposta ({assistantName})
         </Button>
       </div>
+    );
+  }
+
+  // Sugestão de agendamento: card dedicado (human-in-the-loop) que cria o agendamento
+  // e prepara o modelo de confirmação da cidade para o operador enviar.
+  if (suggestion.action === "schedule") {
+    return (
+      <ScheduleSuggestionCard
+        suggestion={suggestion}
+        leadPhone={leadPhone}
+        assistantName={assistantName}
+        onDone={() => loadPending(leadId)}
+      />
     );
   }
 
