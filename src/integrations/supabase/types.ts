@@ -4208,6 +4208,7 @@ export type Database = {
       show_trgm: { Args: { "": string }; Returns: string[] }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
+      transfer_lead_to_whatsapp: { Args: { p_lead_id: string }; Returns: Json }
       update_whatsapp_template_sharing: {
         Args: {
           _owner_role: Database["public"]["Enums"]["app_role"]
