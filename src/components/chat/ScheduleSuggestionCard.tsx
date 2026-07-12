@@ -95,7 +95,7 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
     return () => { alive = false; };
   }, [templateName]);
 
-  const dateLabel = useMemo(() => (date ? format(date, "EEEE, dd/MM/yyyy", { locale: ptBR }) : ""), [date]);
+  const dateLabel = useMemo(() => (date ? capitalize(format(date, "EEEE, dd/MM/yyyy", { locale: ptBR })) : ""), [date]);
 
   const confirmSchedule = async () => {
     if (!date) { toast.error("Selecione a data do agendamento"); return; }
@@ -127,29 +127,15 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
   const sendTemplate = async () => {
     if (!templateName) { toast.error("Selecione o modelo de agendamento"); return; }
     if (!leadPhone) { toast.error("Lead sem telefone para enviar o modelo"); return; }
-    if (!date) { toast.error("Data do agendamento ausente"); return; }
     setSending(true);
     try {
-      // IMPORTANTE (variáveis): nos modelos de agendamento, {{1}} = DATA e {{2}} = HORA
-      // (endereço/link são fixos no corpo/botão). Passamos os parâmetros EXPLÍCITOS para
-      // NÃO cair no auto-preenchimento genérico (que poria o nome do lead no {{1}}).
-      const dateParam = capitalize(format(date, "EEEE, dd/MM/yyyy", { locale: ptBR }));
-      const timeParam = time;
-      // Convenção: modelo de agendamento tem 2 variáveis (data, hora). Se soubermos que
-      // é 1 só, mandamos data+hora juntas. Corpo desconhecido → assume a convenção (2).
-      const varCount = (templateBody.match(/\{\{\s*\d+\s*\}\}/g) || []).length;
-      const parameters = varCount === 1
-        ? [{ type: "text", text: `${dateParam} às ${timeParam}` }]
-        : [{ type: "text", text: dateParam }, { type: "text", text: timeParam }];
+      // As variáveis do modelo são preenchidas pelo PRÓPRIO servidor a partir do
+      // agendamento recém-criado, na convenção real destes modelos: {{1}} = nome do
+      // lead e {{2}} = data+hora. É o MESMO preenchimento já usado pelo compositor e
+      // pelas automações (não reinventamos aqui) — por isso enviamos sem componentes
+      // explícitos e deixamos o servidor resolver.
       const { error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: {
-          lead_id: suggestion.lead_id,
-          to: leadPhone,
-          type: "template",
-          template_name: templateName,
-          template_language: "pt_BR",
-          template_components: [{ type: "body", parameters }],
-        },
+        body: { lead_id: suggestion.lead_id, to: leadPhone, type: "template", template_name: templateName, template_language: "pt_BR" },
       });
       if (error) throw error;
       await closeSuggestion("scheduled");
@@ -266,7 +252,7 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
                     {templateBody}
                   </p>
                 )}
-                <p className="text-[10px] text-muted-foreground mt-1">As variáveis do modelo ({"{{1}}/{{2}}"}) são preenchidas automaticamente com os dados do agendamento.</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Variáveis preenchidas automaticamente: {"{{1}}"} = nome do paciente, {"{{2}}"} = data e hora do agendamento.</p>
               </>
             ) : (
               <p className="text-muted-foreground">Sem modelo configurado para esta cidade — envie a confirmação manualmente pelo compositor.</p>

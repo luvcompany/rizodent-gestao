@@ -28,17 +28,18 @@ export function appointmentTemplateName(clinica: ClinicaLike): string {
 }
 
 // Corpo padrão do modelo de agendamento (GENÉRICO — nenhum dado da Rizodent hardcoded).
-// Convenção de variáveis: {{1}} = DATA, {{2}} = HORA (iguais aos modelos existentes).
-// Endereço e nome da unidade são FIXADOS no corpo (não são variáveis de runtime);
-// o link de localização vira o botão "Ver localização".
+// Convenção de variáveis IGUAL à dos modelos existentes e ao preenchimento automático
+// do servidor (buildTemplateFallbacks): {{1}} = NOME do lead, {{2}} = DATA+HORA.
+// O endereço/nome da unidade ficam FIXOS no corpo (não são variáveis de runtime) e o
+// link de localização vira o botão "Ver localização".
 export function buildAppointmentTemplateBody(clinica: ClinicaLike): string {
   const nome = (clinica.nome || "nossa clínica").trim();
   const endereco = (clinica.endereco || "").trim();
   const enderecoLine = endereco ? `\n📍 ${endereco}\n` : "\n";
   return (
-    `Olá! Seu agendamento na ${nome} está confirmado 🧡\n` +
+    `Olá, {{1}}! Seu agendamento na ${nome} está confirmado 🧡\n` +
     enderecoLine +
-    `\n🗓️ Data: {{1}}\n🕐 Horário: {{2}}\n\n` +
+    `\n📅 {{2}}\n\n` +
     `Qualquer imprevisto, é só nos avisar por aqui. Estaremos te esperando!`
   );
 }
