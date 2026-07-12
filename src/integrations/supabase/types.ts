@@ -604,6 +604,7 @@ export type Database = {
       }
       bots: {
         Row: {
+          channels: string[]
           created_at: string
           created_by: string | null
           current_version: number
@@ -619,6 +620,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          channels?: string[]
           created_at?: string
           created_by?: string | null
           current_version?: number
@@ -634,6 +636,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          channels?: string[]
           created_at?: string
           created_by?: string | null
           current_version?: number
@@ -1677,6 +1680,7 @@ export type Database = {
       }
       crm_leads: {
         Row: {
+          active_channel: string | null
           ad_account_id: string | null
           ad_account_name: string | null
           ad_id: string | null
@@ -1722,6 +1726,7 @@ export type Database = {
           whatsapp_number_id: string | null
         }
         Insert: {
+          active_channel?: string | null
           ad_account_id?: string | null
           ad_account_name?: string | null
           ad_id?: string | null
@@ -1767,6 +1772,7 @@ export type Database = {
           whatsapp_number_id?: string | null
         }
         Update: {
+          active_channel?: string | null
           ad_account_id?: string | null
           ad_account_name?: string | null
           ad_id?: string | null
@@ -2036,6 +2042,7 @@ export type Database = {
           color: string
           created_at: string
           id: string
+          is_lost: boolean
           is_won: boolean
           name: string
           pipeline_id: string
@@ -2046,6 +2053,7 @@ export type Database = {
           color?: string
           created_at?: string
           id?: string
+          is_lost?: boolean
           is_won?: boolean
           name: string
           pipeline_id: string
@@ -2056,6 +2064,7 @@ export type Database = {
           color?: string
           created_at?: string
           id?: string
+          is_lost?: boolean
           is_won?: boolean
           name?: string
           pipeline_id?: string
@@ -3504,7 +3513,7 @@ export type Database = {
           id: string
           last_call_at: string | null
           lead_id: string | null
-          phone_number_id: string
+          phone_number_id: string | null
           raw_payload: Json | null
           requested_at: string
           status: string
@@ -3522,7 +3531,7 @@ export type Database = {
           id?: string
           last_call_at?: string | null
           lead_id?: string | null
-          phone_number_id: string
+          phone_number_id?: string | null
           raw_payload?: Json | null
           requested_at?: string
           status?: string
@@ -3540,7 +3549,7 @@ export type Database = {
           id?: string
           last_call_at?: string | null
           lead_id?: string | null
-          phone_number_id?: string
+          phone_number_id?: string | null
           raw_payload?: Json | null
           requested_at?: string
           status?: string
@@ -3981,6 +3990,7 @@ export type Database = {
       get_lead_for_conversation: {
         Args: { _lead_id: string }
         Returns: {
+          active_channel: string | null
           ad_account_id: string | null
           ad_account_name: string | null
           ad_id: string | null
