@@ -14,34 +14,70 @@ const normalizeReply = (value: string | null | undefined) =>
     .trim()
     .toLowerCase();
 
-// Heurística leve para detectar se uma resposta parece um nome completo real
-// (nome + sobrenome) e não uma pergunta/saudação/mensagem qualquer.
-function isLikelyFullName(raw: string | null | undefined): boolean {
+// Extrai um nome de pessoa da resposta do lead usando Lovable AI.
+// Retorna { name: string | null, confidence: "high"|"medium"|"low" }.
+// Nunca lança erro — em caso de falha retorna { name: null, confidence: "low" }.
+async function extractFullNameWithAI(
+  raw: string | null | undefined,
+): Promise<{ name: string | null; confidence: "high" | "medium" | "low" }> {
   const text = String(raw || "").normalize("NFKC").trim();
-  if (!text) return false;
-  if (text.length < 4 || text.length > 80) return false;
-  if (/[?!¿¡]/.test(text)) return false;
-  if (/\d/.test(text)) return false;
-  if (/https?:\/\/|www\./i.test(text)) return false;
-  if (/[@#$%&*+=<>{}\[\]\/\\|]/.test(text)) return false;
+  if (!text) return { name: null, confidence: "low" };
+  if (text.length > 240) return { name: null, confidence: "low" };
 
-  const lower = text.toLowerCase();
-  const badPhrases = [
-    "olá", "ola", "oi", "bom dia", "boa tarde", "boa noite",
-    "informa", "preço", "preco", "valor", "valores", "quero", "posso",
-    "como", "quando", "onde", "porque", "por que", "porq", "obrigad",
-    "sim", "não", "nao", "talvez", "tudo bem", "tudo bom", "beleza",
-    "ainda", "aguard", "espero", "gostaria", "queria saber",
-  ];
-  if (badPhrases.some((p) => lower.includes(p))) return false;
+  const apiKey = Deno.env.get("LOVABLE_API_KEY") || "";
+  if (!apiKey) {
+    console.warn("[bot-engine] LOVABLE_API_KEY ausente — extração de nome desabilitada");
+    return { name: null, confidence: "low" };
+  }
 
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length < 2) return false;
-  const alphaWord = /^[\p{L}'’\-]{2,}$/u;
-  const validWords = words.filter((w) => alphaWord.test(w));
-  if (validWords.length < 2) return false;
+  try {
+    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Você extrai o NOME PRÓPRIO de uma pessoa a partir de uma mensagem em português (Brasil). " +
+              "Responda SOMENTE com JSON válido no formato: " +
+              `{"name": string|null, "confidence": "high"|"medium"|"low"}. ` +
+              "Regras: (1) Se a mensagem contiver um nome de pessoa (ex.: \"Meu nome é João\", \"Sou a Ana Silva\", \"João\", \"Maria das Dores\"), retorne o nome com capitalização correta e confidence high se vier completo (nome + sobrenome) ou medium se for só primeiro nome. " +
+              "(2) Se for uma pergunta, saudação, pedido de informação ou qualquer texto sem nome próprio (ex.: \"Olá\", \"Quero informações\", \"Quanto custa?\", \"Bom dia\"), retorne {\"name\": null, \"confidence\": \"low\"}. " +
+              "(3) NUNCA invente nomes.",
+          },
+          { role: "user", content: text },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0,
+      }),
+    });
 
-  return true;
+    if (!resp.ok) {
+      console.warn(`[bot-engine] extractFullNameWithAI HTTP ${resp.status}`);
+      return { name: null, confidence: "low" };
+    }
+
+    const data = await resp.json();
+    const content = data?.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content);
+    const name = typeof parsed?.name === "string" ? parsed.name.trim() : null;
+    const confidence = ["high", "medium", "low"].includes(parsed?.confidence)
+      ? parsed.confidence
+      : "low";
+
+    if (!name || name.length < 2 || name.length > 80) {
+      return { name: null, confidence: "low" };
+    }
+    return { name, confidence };
+  } catch (err) {
+    console.warn("[bot-engine] extractFullNameWithAI error:", err);
+    return { name: null, confidence: "low" };
+  }
 }
 
 function resolveInteractiveOption(
