@@ -14,6 +14,36 @@ const normalizeReply = (value: string | null | undefined) =>
     .trim()
     .toLowerCase();
 
+// Heurística leve para detectar se uma resposta parece um nome completo real
+// (nome + sobrenome) e não uma pergunta/saudação/mensagem qualquer.
+function isLikelyFullName(raw: string | null | undefined): boolean {
+  const text = String(raw || "").normalize("NFKC").trim();
+  if (!text) return false;
+  if (text.length < 4 || text.length > 80) return false;
+  if (/[?!¿¡]/.test(text)) return false;
+  if (/\d/.test(text)) return false;
+  if (/https?:\/\/|www\./i.test(text)) return false;
+  if (/[@#$%&*+=<>{}\[\]\/\\|]/.test(text)) return false;
+
+  const lower = text.toLowerCase();
+  const badPhrases = [
+    "olá", "ola", "oi", "bom dia", "boa tarde", "boa noite",
+    "informa", "preço", "preco", "valor", "valores", "quero", "posso",
+    "como", "quando", "onde", "porque", "por que", "porq", "obrigad",
+    "sim", "não", "nao", "talvez", "tudo bem", "tudo bom", "beleza",
+    "ainda", "aguard", "espero", "gostaria", "queria saber",
+  ];
+  if (badPhrases.some((p) => lower.includes(p))) return false;
+
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return false;
+  const alphaWord = /^[\p{L}'’\-]{2,}$/u;
+  const validWords = words.filter((w) => alphaWord.test(w));
+  if (validWords.length < 2) return false;
+
+  return true;
+}
+
 function resolveInteractiveOption(
   currentNode: any,
   replyText: string,

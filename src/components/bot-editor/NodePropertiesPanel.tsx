@@ -761,7 +761,8 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           </div>
         );
 
-      case "wait_reply":
+      case "wait_reply": {
+        const validateAs = (node.data.validateAs as string) || "none";
         return (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">Salva a resposta do lead em uma variável para uso em mensagens e condições futuras.</p>
@@ -772,8 +773,36 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               onChange={(v) => update("saveToField", v)}
             />
 
+            <div className="border-t border-border pt-3">
+              <Label className="text-xs">Validar resposta como</Label>
+              <Select value={validateAs} onValueChange={(v) => update("validateAs", v)}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma</SelectItem>
+                  <SelectItem value="full_name">Nome completo</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Se ativado, respostas que parecem perguntas ou saudações não avançam o fluxo — o bot re-pergunta até 2 vezes.
+              </p>
+            </div>
+
+            {validateAs !== "none" && (
+              <div>
+                <Label className="text-xs">Mensagem de re-pergunta</Label>
+                <VariableTextarea
+                  extraVariables={botVariables}
+                  value={(node.data.invalidReplyMessage as string) || ""}
+                  onChange={(v) => update("invalidReplyMessage", v)}
+                  rows={2}
+                  placeholder="Ex: Só pra confirmar, me diga seu nome completo (nome e sobrenome), por favor 🙂"
+                  className="mt-1"
+                />
+              </div>
+            )}
           </div>
         );
+      }
 
       case "schedule": {
         const msgType = (node.data.messageType as string) || "text";
