@@ -19,7 +19,7 @@ import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
 import AutomationModal from "@/components/automation/AutomationModal";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
-type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number };
+type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number; is_won?: boolean; is_lost?: boolean };
 type Automation = {
   id: string; stage_id: string; trigger_type: string; action_type: string;
   action_config: Record<string, unknown>; is_active: boolean;
@@ -730,6 +730,39 @@ export default function CrmAutomacoes() {
                                             />
                                           ))}
                                         </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <button
+                                          className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted"
+                                          title="Tipo da etapa (Ganho / Perda / Aberta) — usado na Análise de Funil"
+                                        >
+                                          {stage.is_won ? <span className="text-emerald-600 dark:text-emerald-500">Ganho</span>
+                                            : stage.is_lost ? <span className="text-destructive">Perda</span>
+                                            : <span className="text-muted-foreground">Aberta</span>}
+                                        </button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-36 p-1" align="end">
+                                        {([
+                                          { key: "aberta", label: "Aberta", won: false, lost: false },
+                                          { key: "ganho", label: "Ganho", won: true, lost: false },
+                                          { key: "perda", label: "Perda", won: false, lost: true },
+                                        ] as const).map((opt) => {
+                                          const active = opt.won === !!stage.is_won && opt.lost === !!stage.is_lost;
+                                          return (
+                                            <button
+                                              key={opt.key}
+                                              onClick={async () => {
+                                                setStages(prev => prev.map(s => s.id === stage.id ? { ...s, is_won: opt.won, is_lost: opt.lost } : s));
+                                                await supabase.from("crm_stages").update({ is_won: opt.won, is_lost: opt.lost } as any).eq("id", stage.id);
+                                              }}
+                                              className={`w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted ${active ? "bg-muted font-medium" : ""}`}
+                                            >
+                                              {opt.label}
+                                            </button>
+                                          );
+                                        })}
                                       </PopoverContent>
                                     </Popover>
                                     <button onClick={() => openDeleteStage(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
