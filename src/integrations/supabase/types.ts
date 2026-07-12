@@ -354,7 +354,9 @@ export type Database = {
           model: string | null
           outcome: string | null
           status: string
+          suggested_date: string | null
           suggested_text: string
+          suggested_time: string | null
           tenant_id: string | null
           trigger_message_id: string | null
           was_edited: boolean
@@ -371,7 +373,9 @@ export type Database = {
           model?: string | null
           outcome?: string | null
           status?: string
+          suggested_date?: string | null
           suggested_text: string
+          suggested_time?: string | null
           tenant_id?: string | null
           trigger_message_id?: string | null
           was_edited?: boolean
@@ -388,7 +392,9 @@ export type Database = {
           model?: string | null
           outcome?: string | null
           status?: string
+          suggested_date?: string | null
           suggested_text?: string
+          suggested_time?: string | null
           tenant_id?: string | null
           trigger_message_id?: string | null
           was_edited?: boolean
@@ -663,31 +669,37 @@ export type Database = {
       }
       clinicas: {
         Row: {
+          appointment_template_name: string | null
           ativa: boolean
           cidade: string
           created_at: string
           endereco: string | null
           id: string
+          location_link: string | null
           nome: string
           telefone: string | null
           tenant_id: string | null
         }
         Insert: {
+          appointment_template_name?: string | null
           ativa?: boolean
           cidade: string
           created_at?: string
           endereco?: string | null
           id?: string
+          location_link?: string | null
           nome: string
           telefone?: string | null
           tenant_id?: string | null
         }
         Update: {
+          appointment_template_name?: string | null
           ativa?: boolean
           cidade?: string
           created_at?: string
           endereco?: string | null
           id?: string
+          location_link?: string | null
           nome?: string
           telefone?: string | null
           tenant_id?: string | null
