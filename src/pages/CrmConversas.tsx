@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useLeadLabels } from "@/hooks/useLeadLabels";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -324,6 +325,18 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [activeExecution, setActiveExecution] = useState<{
     id: string; status: string; bot_name?: string;
   } | null>(null);
+
+  // Fontes p/ os filtros de etiqueta e de pagamento (aplicados no `filtered` abaixo).
+  // A view crm_leads_com_pagamento retorna os lead_id com pagamento (escopo por RLS).
+  const { labelsByLead } = useLeadLabels();
+  const [leadsWithPagamento, setLeadsWithPagamento] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from("crm_leads_com_pagamento").select("lead_id").then(({ data }) => {
+      if (!cancelled) setLeadsWithPagamento(new Set((data || []).map((r: any) => r.lead_id)));
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Descobre o pipeline de Instagram do tenant via flag `is_instagram`.
   // FALLBACK: se nenhum pipeline tiver a flag marcada, usa a constante legada
@@ -900,6 +913,15 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (filters.status === "replied" && l.last_direction !== "outbound") return false;
       if (filters.status === "no_reply" && !!l.last_direction) return false;
       if (filters.tags.length && !filters.tags.some((t) => l.tags?.includes(t))) return false;
+      if (filters.hasPagamento) {
+        const hasPag = leadsWithPagamento.has(l.id);
+        if (filters.hasPagamento === "yes" && !hasPag) return false;
+        if (filters.hasPagamento === "no" && hasPag) return false;
+      }
+      if (filters.labelIds?.length) {
+        const leadLabelIds = labelsByLead(l.id).map((x) => x.id);
+        if (!filters.labelIds.some((id) => leadLabelIds.includes(id))) return false;
+      }
       if (filters.source) {
         if (filters.source === "anuncio") {
           const s = (l.source || "").toLowerCase();
@@ -925,7 +947,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       }
       return true;
     });
-  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap, inaccessiblePipelineIds, messageMatchLeadIds]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap, inaccessiblePipelineIds, messageMatchLeadIds, leadsWithPagamento, labelsByLead]);
 
   // Sorting
   const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");

@@ -1082,6 +1082,7 @@ export default function CrmKanban() {
         if (range && !isWithinInterval(d, { start: range.start, end: range.end })) return false;
       }
       if (kanbanFilters.stageId && l.stage_id !== kanbanFilters.stageId) return false;
+      if (kanbanFilters.assignedTo && l.assigned_to !== kanbanFilters.assignedTo) return false;
       if (kanbanFilters.tags.length && !kanbanFilters.tags.some((t) => l.tags?.includes(t))) return false;
       if (kanbanFilters.source) {
         if (kanbanFilters.source === "anuncio") {
