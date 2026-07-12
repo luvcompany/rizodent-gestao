@@ -118,6 +118,14 @@ export function useChatConversation(leadId: string | null | undefined) {
       ?.created_at || null;
   }, [messages]);
 
+  // Última inbound do WhatsApp — para a janela de 24h do WhatsApp. Um lead transferido
+  // do Instagram tem inbounds de IG que NÃO abrem sessão de WhatsApp na Meta, então a
+  // janela do WhatsApp deve olhar só inbounds channel='whatsapp' (senão liberaria texto
+  // livre e a Meta recusaria — força usar template para reabrir).
+  const lastInboundWaAt = useMemo(() => {
+    return [...messages].reverse().find((m) => m.direction === "inbound" && (m as any).channel === "whatsapp")?.created_at || null;
+  }, [messages]);
+
   // ─── Cache stages globally ───
   const stagesLoadedRef = useRef(false);
 
@@ -597,6 +605,7 @@ export function useChatConversation(leadId: string | null | undefined) {
     filteredTemplates,
     activityToasts,
     lastInboundAt,
+    lastInboundWaAt,
     lastInboundDmAt,
 
     // Refs
