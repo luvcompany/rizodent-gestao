@@ -38,6 +38,10 @@ function parseDate(d?: string | null): Date | undefined {
   return new Date(d + "T12:00:00");
 }
 
+function capitalize(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
 export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistantName, onDone }: Props) {
   const [date, setDate] = useState<Date | undefined>(parseDate(suggestion.suggested_date));
   const [time, setTime] = useState<string>((suggestion.suggested_time || "09:00").slice(0, 5));
@@ -123,10 +127,29 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
   const sendTemplate = async () => {
     if (!templateName) { toast.error("Selecione o modelo de agendamento"); return; }
     if (!leadPhone) { toast.error("Lead sem telefone para enviar o modelo"); return; }
+    if (!date) { toast.error("Data do agendamento ausente"); return; }
     setSending(true);
     try {
+      // IMPORTANTE (variáveis): nos modelos de agendamento, {{1}} = DATA e {{2}} = HORA
+      // (endereço/link são fixos no corpo/botão). Passamos os parâmetros EXPLÍCITOS para
+      // NÃO cair no auto-preenchimento genérico (que poria o nome do lead no {{1}}).
+      const dateParam = capitalize(format(date, "EEEE, dd/MM/yyyy", { locale: ptBR }));
+      const timeParam = time;
+      // Convenção: modelo de agendamento tem 2 variáveis (data, hora). Se soubermos que
+      // é 1 só, mandamos data+hora juntas. Corpo desconhecido → assume a convenção (2).
+      const varCount = (templateBody.match(/\{\{\s*\d+\s*\}\}/g) || []).length;
+      const parameters = varCount === 1
+        ? [{ type: "text", text: `${dateParam} às ${timeParam}` }]
+        : [{ type: "text", text: dateParam }, { type: "text", text: timeParam }];
       const { error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: { lead_id: suggestion.lead_id, to: leadPhone, type: "template", template_name: templateName, template_language: "pt_BR" },
+        body: {
+          lead_id: suggestion.lead_id,
+          to: leadPhone,
+          type: "template",
+          template_name: templateName,
+          template_language: "pt_BR",
+          template_components: [{ type: "body", parameters }],
+        },
       });
       if (error) throw error;
       await closeSuggestion("scheduled");
