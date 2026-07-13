@@ -153,7 +153,7 @@ const CONVERSATION_MAX_PAGES = 6; // ~6k leads; suficiente p/ base atual (~4.3k)
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
 // Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
 // porque os filtros derivam opções deles).
-const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name";
+const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, is_blocked";
 // Colunas completas p/ o lead selecionado (inclui notes/value).
 const LEAD_SELECT_COLS = LEAD_LIST_COLS + ", value, notes";
 
@@ -492,7 +492,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         .from("crm_leads")
         .select(LEAD_LIST_COLS)
         .eq("tenant_id", tenant.id)
-        .eq("is_blocked", false)
+        // Busca explícita inclui bloqueados — senão o usuário procura e não acha.
         .or(orParts.join(","))
         .limit(50);
       if (error || !data?.length) return;
@@ -536,7 +536,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
           .from("crm_leads")
           .select(LEAD_LIST_COLS)
           .eq("tenant_id", tenant.id)
-          .eq("is_blocked", false)
+          // Busca por conteúdo de mensagem também retorna bloqueados.
           .in("id", missing.slice(0, 100));
         if (cancelled || !leadRows?.length) return;
         setLeads((prev) => {
@@ -1108,7 +1108,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
+                              <span className="font-medium text-sm text-foreground truncate flex items-center gap-1.5">
+                                {(lead as any).is_blocked && (
+                                  <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 shrink-0" title="Lead bloqueado — só aparece na busca">Bloqueado</Badge>
+                                )}
+                                <span className="truncate">{lead.name}</span>
+                              </span>
                               <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Última mensagem">
                                 {(() => {
                                   const ts = lead.last_message_at || lead.created_at;
