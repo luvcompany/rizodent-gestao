@@ -492,7 +492,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         .from("crm_leads")
         .select(LEAD_LIST_COLS)
         .eq("tenant_id", tenant.id)
-        .eq("is_blocked", false)
+        // Busca explícita inclui bloqueados — senão o usuário procura e não acha.
         .or(orParts.join(","))
         .limit(50);
       if (error || !data?.length) return;
