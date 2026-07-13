@@ -28,7 +28,10 @@ async function fetchAllRows<T = any>(buildQuery: () => any, pageSize = PAGE_SIZE
   for (let from = 0; from < maxRows; from += pageSize) {
     const to = Math.min(from + pageSize - 1, maxRows - 1);
     const { data, error } = await buildQuery().range(from, to);
-    if (error) throw new Error(error.message);
+    // NÃO lançar: um erro de query numa seção não pode abortar o motor inteiro
+    // (era o que fazia o follow-up e outras automações pararem). Loga e retorna
+    // o que já foi buscado; o próximo tick do cron tenta de novo.
+    if (error) { console.error("[fetchAllRows] erro de query (retornando parcial):", error.message); break; }
     if (!data || data.length === 0) break;
     rows.push(...data);
     if (data.length < pageSize) break;
@@ -786,6 +789,15 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Fecha o try das seções anteriores: uma exceção em QUALQUER seção acima
+    // (reengajamento, no-show, before_scheduled, etc.) NÃO pode mais impedir o
+    // follow-up (no_response) de rodar — era essa a causa do follow-up ter parado.
+    } catch (preNoResponseErr: any) {
+      console.error("[AUTOMATION-ENGINE] seção anterior ao no_response falhou (seguindo p/ follow-up):", preNoResponseErr?.message || preNoResponseErr);
+    }
+
+    // no_response (follow-up) em bloco isolado — reusa o catch externo (~linha 945).
+    try {
     // =========================================================
     // 6. NO_RESPONSE — leads without inbound reply for X time
     // =========================================================
