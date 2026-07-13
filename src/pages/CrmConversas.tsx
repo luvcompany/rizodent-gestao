@@ -1108,7 +1108,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-sm text-foreground truncate">{lead.name}</span>
+                              <span className="font-medium text-sm text-foreground truncate flex items-center gap-1.5">
+                                {(lead as any).is_blocked && (
+                                  <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 shrink-0" title="Lead bloqueado — só aparece na busca">Bloqueado</Badge>
+                                )}
+                                <span className="truncate">{lead.name}</span>
+                              </span>
                               <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Última mensagem">
                                 {(() => {
                                   const ts = lead.last_message_at || lead.created_at;
