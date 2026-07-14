@@ -72,10 +72,11 @@ async function uploadText(supabase: any, path: string, text: string, contentType
 }
 
 async function backupTable(supabase: any, stamp: string, t: TableInfo): Promise<{ rows: number; parts: number }> {
-  let from = 0;
   let total = 0;
   let part = 0;
   let buffer: string[] = [];
+  const col = t.orderBy;
+  let cursor: any = null; // keyset: último valor de `col` já lido
 
   const flush = async () => {
     if (buffer.length === 0) return;
@@ -85,21 +86,31 @@ async function backupTable(supabase: any, stamp: string, t: TableInfo): Promise<
     buffer = [];
   };
 
-  const MAX_ROWS = 2_000_000; // trava de segurança
-  while (from < MAX_ROWS) {
-    let q = supabase.from(t.name).select("*").range(from, from + PAGE_SIZE - 1);
-    if (t.orderBy) q = q.order(t.orderBy, { ascending: true });
+  // Paginação por KEYSET (cursor `col > último`) em vez de OFFSET: O(página) por
+  // consulta, independente da profundidade. OFFSET profundo (ex.: range(114000,…))
+  // varre todas as linhas anteriores e estourava o compute em tabelas grandes.
+  // Requer coluna de ordenação estável; a RPC garante 'id' (único) ou
+  // 'created_at' (só em tabelas pequenas => 1 página, sem cruzar fronteira).
+  const MAX_PAGES = 5000; // trava de segurança (5M linhas)
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let q = supabase.from(t.name).select("*").limit(PAGE_SIZE);
+    if (col) {
+      q = q.order(col, { ascending: true });
+      if (cursor !== null && cursor !== undefined) q = q.gt(col, cursor);
+    } else {
+      q = q.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+    }
     const { data, error } = await q;
     if (error) {
-      console.error(`[daily-backup] erro lendo ${t.name} (range ${from}):`, error.message);
+      console.error(`[daily-backup] erro lendo ${t.name} (page ${page}):`, error.message);
       break; // não aborta o backup inteiro
     }
     if (!data || data.length === 0) break;
     for (const row of data) buffer.push(JSON.stringify(row));
     total += data.length;
+    if (col) cursor = data[data.length - 1][col];
     if (buffer.length >= ROWS_PER_PART) await flush();
     if (data.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
   }
   await flush();
   return { rows: total, parts: part };
