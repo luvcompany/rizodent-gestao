@@ -98,6 +98,152 @@ Deno.serve(async (req) => {
     no_response: 0,
   };
 
+  // ===== FOLLOW-UP (no_response) RODA PRIMEIRO =====
+  // A seção de bot_timeout pode consumir todo o tempo da função processando
+  // execuções de bot travadas (chamando o bot-engine, até 15s cada), estourando
+  // o limite ANTES do follow-up. Rodando o no_response primeiro ele sempre executa.
+  try {
+    // =========================================================
+    // 6. NO_RESPONSE — leads without inbound reply for X time
+    // =========================================================
+    const { data: noResponseAutomations } = await supabase
+      .from("crm_automations")
+      .select("*")
+      .eq("trigger_type", "no_response")
+      .eq("is_active", true);
+
+    const noResponseUnitsMs: Record<string, number> = {
+      minutes: 60 * 1000,
+      hours: 60 * 60 * 1000,
+      days: 24 * 60 * 60 * 1000,
+      weeks: 7 * 24 * 60 * 60 * 1000,
+    };
+
+    for (const auto of noResponseAutomations || []) {
+      const config = (auto.action_config || {}) as Record<string, any>;
+      const amount = config.no_response_amount || 1;
+      const unit = config.no_response_unit || "hours";
+      const thresholdMs = amount * (noResponseUnitsMs[unit] || 3600000);
+      const nowMs = Date.now();
+
+      const leads = await fetchAllRows(() =>
+        supabase
+          .from("crm_leads")
+          .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
+          .eq("stage_id", auto.stage_id)
+          .not("automation_paused", "is", true)
+          .order("id"),
+      );
+
+      for (const lead of leads || []) {
+        if (!(await passesConditions(supabase, lead.id, config))) continue;
+        // "Sem resposta" = o LEAD não respondeu à NOSSA última mensagem por X tempo.
+        // Requisitos:
+        //  1) O lead já enviou pelo menos uma mensagem (temos com quem falar).
+        //  2) NÓS já enviamos algo depois da última mensagem dele (SDR ou automação/bot
+        //     respondeu). Se ainda não respondemos, não faz sentido "follow-up" —
+        //     o pendente é responder, não cobrar retorno do lead.
+        //  3) Passou X tempo desde a nossa última mensagem sem retorno do lead.
+        const lastInboundMs = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
+        const lastOutboundMs = lead.last_outbound_at ? new Date(lead.last_outbound_at).getTime() : 0;
+
+        if (!lastInboundMs) continue;
+        if (lastOutboundMs <= lastInboundMs) {
+          // Ainda não respondemos ao lead — não disparar follow-up.
+          continue;
+        }
+
+        const referenceTime = lastOutboundMs;
+
+        const { data: currentStageEntry } = await supabase
+          .from("crm_lead_stage_history")
+          .select("entered_at")
+          .eq("lead_id", lead.id)
+          .eq("stage_id", auto.stage_id)
+          .is("exited_at", null)
+          .order("entered_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        // Fallback: if no stage history exists, use lead.updated_at (last stage change)
+        // or created_at as the cycle marker — never 0, which would make ALL prior sends
+        // appear to belong to the "current cycle".
+        const currentStageEnteredAt = currentStageEntry?.entered_at
+          ? new Date(currentStageEntry.entered_at).getTime()
+          : new Date(lead.updated_at || lead.created_at).getTime();
+
+        // Trigger fires when elapsed time is GREATER THAN OR EQUAL to threshold
+        const elapsed = nowMs - referenceTime;
+        if (elapsed < thresholdMs) continue;
+
+        // Check for duplicate — must match automation_id + lead_id + action_type (so config changes allow re-fire)
+        const { data: existing } = await supabase
+          .from("crm_automation_queue")
+          .select("id, created_at")
+          .eq("automation_id", auto.id)
+          .eq("lead_id", lead.id)
+          .eq("action_type", auto.action_type)
+          .in("status", ["sent"])
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        // If already sent in the current stage cycle and the lead hasn't replied since, skip
+        if (existing && existing.length > 0) {
+          const sentAt = new Date(existing[0].created_at).getTime();
+          const alreadyProcessedCurrentStageCycle = sentAt >= currentStageEnteredAt;
+          const leadRepliedAfterLastSend = referenceTime > sentAt;
+
+          if (alreadyProcessedCurrentStageCycle && !leadRepliedAfterLastSend) {
+            console.log(
+              `[AUTOMATION-ENGINE] no_response skipping lead ${lead.id}, automation ${auto.id}, sentAt=${existing[0].created_at}, stageEnteredAt=${currentStageEntry?.entered_at || "n/a"}, referenceTime=${new Date(referenceTime).toISOString()}`,
+            );
+            continue;
+          }
+        }
+
+        console.log(
+          `[AUTOMATION-ENGINE] no_response FIRING for lead ${lead.id}, automation ${auto.id}, elapsed=${Math.round(elapsed / 1000)}s, threshold=${Math.round(thresholdMs / 1000)}s`,
+        );
+
+        // Commercial-hours guard: if outside window, enqueue for next opening instead of sending now
+        const nextWindow = nextCommercialFireAt();
+        if (nextWindow) {
+          console.log(`[AUTOMATION-ENGINE] no_response auto ${auto.id} lead ${lead.id}: outside commercial hours, deferring to ${nextWindow}`);
+          await supabase.from("crm_automation_queue").insert({
+            automation_id: auto.id,
+            lead_id: lead.id,
+            action_type: auto.action_type,
+            action_config: config,
+            scheduled_at: nextWindow,
+            status: "pending",
+            layer_index: 0,
+          });
+          if (!results.no_response) results.no_response = 0;
+          results.no_response++;
+          continue;
+        }
+
+        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+
+        await supabase.from("crm_automation_queue").insert({
+          automation_id: auto.id,
+          lead_id: lead.id,
+          action_type: auto.action_type,
+          action_config: config,
+          scheduled_at: new Date().toISOString(),
+          status: "sent",
+          layer_index: 0,
+        });
+
+
+        if (!results.no_response) results.no_response = 0;
+        results.no_response++;
+      }
+    }
+  } catch (eNoResp: any) {
+    console.error("[AUTOMATION-ENGINE] no_response (follow-up) error:", eNoResp?.message || eNoResp);
+  }
+
   try {
     // =========================================================
     // 0a. TIME WINDOW EXPIRED — stop active bots started by expired send_bot windows
@@ -669,11 +815,18 @@ Deno.serve(async (req) => {
       // Pending appointments (e.g. pre-scheduled by bot, awaiting human confirmation)
       // must NOT trigger this automation until a CRC confirms them.
       if (scheduledType === "appointment" || scheduledType === "both") {
+        // PERF: só agendamentos recentes/futuros. Sem este filtro, buscava TODOS os
+        // agendamentos confirmados (centenas, a maioria já passada) + 1 SELECT por
+        // agendamento a cada minuto — o que estourava o tempo da função e fazia o
+        // follow-up (que roda depois) nunca chegar a executar. Um agendamento passado
+        // nunca cai na janela "X antes", então filtrá-los é seguro.
+        const beforeSchedFloor = new Date(now - beforeMs - 2 * 86400000).toISOString().split("T")[0];
         const appointments = await fetchAllRows(() =>
           supabase
             .from("crm_appointments")
             .select("id, lead_id, scheduled_date, scheduled_time")
             .eq("status", "confirmed")
+            .gte("scheduled_date", beforeSchedFloor)
             .order("id"),
         );
 
@@ -786,153 +939,6 @@ Deno.serve(async (req) => {
           await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
           results.before_scheduled++;
         }
-      }
-    }
-
-    // Fecha o try das seções anteriores: uma exceção em QUALQUER seção acima
-    // (reengajamento, no-show, before_scheduled, etc.) NÃO pode mais impedir o
-    // follow-up (no_response) de rodar — era essa a causa do follow-up ter parado.
-    } catch (preNoResponseErr: any) {
-      console.error("[AUTOMATION-ENGINE] seção anterior ao no_response falhou (seguindo p/ follow-up):", preNoResponseErr?.message || preNoResponseErr);
-    }
-
-    // no_response (follow-up) em bloco isolado — reusa o catch externo (~linha 945).
-    try {
-    // =========================================================
-    // 6. NO_RESPONSE — leads without inbound reply for X time
-    // =========================================================
-    const { data: noResponseAutomations } = await supabase
-      .from("crm_automations")
-      .select("*")
-      .eq("trigger_type", "no_response")
-      .eq("is_active", true);
-
-    const noResponseUnitsMs: Record<string, number> = {
-      minutes: 60 * 1000,
-      hours: 60 * 60 * 1000,
-      days: 24 * 60 * 60 * 1000,
-      weeks: 7 * 24 * 60 * 60 * 1000,
-    };
-
-    for (const auto of noResponseAutomations || []) {
-      const config = (auto.action_config || {}) as Record<string, any>;
-      const amount = config.no_response_amount || 1;
-      const unit = config.no_response_unit || "hours";
-      const thresholdMs = amount * (noResponseUnitsMs[unit] || 3600000);
-      const nowMs = Date.now();
-
-      const leads = await fetchAllRows(() =>
-        supabase
-          .from("crm_leads")
-          .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
-          .eq("stage_id", auto.stage_id)
-          .not("automation_paused", "is", true)
-          .order("id"),
-      );
-
-      for (const lead of leads || []) {
-        if (!(await passesConditions(supabase, lead.id, config))) continue;
-        // "Sem resposta" = o LEAD não respondeu à NOSSA última mensagem por X tempo.
-        // Requisitos:
-        //  1) O lead já enviou pelo menos uma mensagem (temos com quem falar).
-        //  2) NÓS já enviamos algo depois da última mensagem dele (SDR ou automação/bot
-        //     respondeu). Se ainda não respondemos, não faz sentido "follow-up" —
-        //     o pendente é responder, não cobrar retorno do lead.
-        //  3) Passou X tempo desde a nossa última mensagem sem retorno do lead.
-        const lastInboundMs = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
-        const lastOutboundMs = lead.last_outbound_at ? new Date(lead.last_outbound_at).getTime() : 0;
-
-        if (!lastInboundMs) continue;
-        if (lastOutboundMs <= lastInboundMs) {
-          // Ainda não respondemos ao lead — não disparar follow-up.
-          continue;
-        }
-
-        const referenceTime = lastOutboundMs;
-
-        const { data: currentStageEntry } = await supabase
-          .from("crm_lead_stage_history")
-          .select("entered_at")
-          .eq("lead_id", lead.id)
-          .eq("stage_id", auto.stage_id)
-          .is("exited_at", null)
-          .order("entered_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        // Fallback: if no stage history exists, use lead.updated_at (last stage change)
-        // or created_at as the cycle marker — never 0, which would make ALL prior sends
-        // appear to belong to the "current cycle".
-        const currentStageEnteredAt = currentStageEntry?.entered_at
-          ? new Date(currentStageEntry.entered_at).getTime()
-          : new Date(lead.updated_at || lead.created_at).getTime();
-
-        // Trigger fires when elapsed time is GREATER THAN OR EQUAL to threshold
-        const elapsed = nowMs - referenceTime;
-        if (elapsed < thresholdMs) continue;
-
-        // Check for duplicate — must match automation_id + lead_id + action_type (so config changes allow re-fire)
-        const { data: existing } = await supabase
-          .from("crm_automation_queue")
-          .select("id, created_at")
-          .eq("automation_id", auto.id)
-          .eq("lead_id", lead.id)
-          .eq("action_type", auto.action_type)
-          .in("status", ["sent"])
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        // If already sent in the current stage cycle and the lead hasn't replied since, skip
-        if (existing && existing.length > 0) {
-          const sentAt = new Date(existing[0].created_at).getTime();
-          const alreadyProcessedCurrentStageCycle = sentAt >= currentStageEnteredAt;
-          const leadRepliedAfterLastSend = referenceTime > sentAt;
-
-          if (alreadyProcessedCurrentStageCycle && !leadRepliedAfterLastSend) {
-            console.log(
-              `[AUTOMATION-ENGINE] no_response skipping lead ${lead.id}, automation ${auto.id}, sentAt=${existing[0].created_at}, stageEnteredAt=${currentStageEntry?.entered_at || "n/a"}, referenceTime=${new Date(referenceTime).toISOString()}`,
-            );
-            continue;
-          }
-        }
-
-        console.log(
-          `[AUTOMATION-ENGINE] no_response FIRING for lead ${lead.id}, automation ${auto.id}, elapsed=${Math.round(elapsed / 1000)}s, threshold=${Math.round(thresholdMs / 1000)}s`,
-        );
-
-        // Commercial-hours guard: if outside window, enqueue for next opening instead of sending now
-        const nextWindow = nextCommercialFireAt();
-        if (nextWindow) {
-          console.log(`[AUTOMATION-ENGINE] no_response auto ${auto.id} lead ${lead.id}: outside commercial hours, deferring to ${nextWindow}`);
-          await supabase.from("crm_automation_queue").insert({
-            automation_id: auto.id,
-            lead_id: lead.id,
-            action_type: auto.action_type,
-            action_config: config,
-            scheduled_at: nextWindow,
-            status: "pending",
-            layer_index: 0,
-          });
-          if (!results.no_response) results.no_response = 0;
-          results.no_response++;
-          continue;
-        }
-
-        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
-
-        await supabase.from("crm_automation_queue").insert({
-          automation_id: auto.id,
-          lead_id: lead.id,
-          action_type: auto.action_type,
-          action_config: config,
-          scheduled_at: new Date().toISOString(),
-          status: "sent",
-          layer_index: 0,
-        });
-
-
-        if (!results.no_response) results.no_response = 0;
-        results.no_response++;
       }
     }
 
