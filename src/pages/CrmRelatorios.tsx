@@ -697,7 +697,7 @@ export default function CrmRelatorios() {
             </p>
 
             <div className="space-y-2">
-              <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram.size} color="#6366f1" />
+              <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram} color="#6366f1" />
               <FunnelRow label="Agendamentos criados" hint="Ação da equipe — appts criados no período" value={atividadePeriodo.agendamentosCriados} color="#f59e0b" />
               <FunnelRow label="Agendamentos do período" hint="Data marcada para o período (= calendário)" value={calendario.total} color="#3b82f6" />
               <FunnelRow label="Compareceram" hint="Contratados + Não contratados + Reagendaram" value={calendario.compareceram} color="#10b981" />
