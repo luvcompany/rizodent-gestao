@@ -8,11 +8,13 @@ import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Camera, Loader2, Save, Building2, Plus, Trash2, User, Send, Pencil, CheckCircle2, X, MapPin } from "lucide-react";
+import { Camera, Loader2, Save, Building2, Plus, Trash2, User, Send, Pencil, CheckCircle2, X, MapPin, Database, Download, RotateCcw, RefreshCw, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { generateAndSubmitAppointmentTemplate } from "@/lib/appointmentTemplateBlueprint";
 
 export default function Configuracoes() {
+  const { userRole } = useAuth();
+  const isAdmin = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
@@ -24,9 +26,11 @@ export default function Configuracoes() {
         <TabsList>
           <TabsTrigger value="perfil"><User size={14} className="mr-1" /> Meu perfil</TabsTrigger>
           <TabsTrigger value="clinicas"><Building2 size={14} className="mr-1" /> Clínicas</TabsTrigger>
+          {isAdmin && <TabsTrigger value="backups"><Database size={14} className="mr-1" /> Backups</TabsTrigger>}
         </TabsList>
         <TabsContent value="perfil"><PerfilTab /></TabsContent>
         <TabsContent value="clinicas"><ClinicasTab /></TabsContent>
+        {isAdmin && <TabsContent value="backups"><BackupsTab /></TabsContent>}
       </Tabs>
     </div>
   );
@@ -349,6 +353,242 @@ function ClinicasTab() {
             </div>
           )}
         </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+type BackupManifest = {
+  stamp: string;
+  total_rows?: number;
+  finished_at?: string;
+  updated_at?: string;
+  errors?: string[];
+  tables?: Record<string, { rows: number; parts: number }>;
+};
+
+// Tabelas cuja restauração re-dispara triggers/automações (recriar linhas as
+// trata como "entrada" no funil). Restaurar essas exige mais cuidado.
+const RESTORE_SENSITIVE = new Set(["crm_leads", "messages", "crm_lead_stage_history"]);
+
+function BackupsTab() {
+  const [dates, setDates] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [manifests, setManifests] = useState<Record<string, BackupManifest | null>>({});
+  const [loadingManifest, setLoadingManifest] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [restorePanel, setRestorePanel] = useState<{ date: string; table: string; rows: number } | null>(null);
+  const [restoreMode, setRestoreMode] = useState<"insert_missing" | "overwrite">("insert_missing");
+  const [restoring, setRestoring] = useState(false);
+
+  const invoke = async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke("daily-backup", { body });
+    if (error) throw new Error(error.message || "Erro na função de backup");
+    if (data?.error) throw new Error(data.error);
+    return data;
+  };
+
+  const loadDates = async () => {
+    setLoading(true);
+    try {
+      const d = await invoke({ action: "list" });
+      setDates(d.backups || []);
+    } catch (e: any) {
+      toast.error("Erro ao listar backups: " + e.message);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { loadDates(); }, []);
+
+  const runNow = async () => {
+    setRunning(true);
+    try {
+      await invoke({ action: "run" });
+      toast.success("Backup iniciado. Ele roda em segundo plano e aparece na lista em alguns minutos.");
+      setTimeout(loadDates, 8000);
+    } catch (e: any) {
+      toast.error("Erro ao iniciar backup: " + e.message);
+    } finally { setRunning(false); }
+  };
+
+  const toggleExpand = async (date: string) => {
+    if (expanded === date) { setExpanded(null); return; }
+    setExpanded(date);
+    setRestorePanel(null);
+    if (!(date in manifests)) {
+      setLoadingManifest(true);
+      try {
+        const d = await invoke({ action: "manifest", date });
+        setManifests((m) => ({ ...m, [date]: d.manifest }));
+      } catch (e: any) {
+        toast.error("Erro ao carregar conteúdo: " + e.message);
+        setManifests((m) => ({ ...m, [date]: null }));
+      } finally { setLoadingManifest(false); }
+    }
+  };
+
+  const downloadTable = async (date: string, table: string) => {
+    setDownloading(`${date}/${table}`);
+    try {
+      const d = await invoke({ action: "files", date, table });
+      const files: { name: string; url: string }[] = d.files || [];
+      if (files.length === 0) { toast.error("Nenhum arquivo encontrado"); return; }
+      for (const f of files) {
+        const a = document.createElement("a");
+        a.href = f.url; a.download = f.name; a.target = "_blank";
+        document.body.appendChild(a); a.click(); a.remove();
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      toast.success(`${files.length} arquivo(s) de ${table} baixado(s)`);
+    } catch (e: any) {
+      toast.error("Erro ao baixar: " + e.message);
+    } finally { setDownloading(null); }
+  };
+
+  const doRestore = async () => {
+    if (!restorePanel) return;
+    const { date, table } = restorePanel;
+    setRestoring(true);
+    try {
+      let fromPart = 0, total = 0, failed = 0;
+      while (true) {
+        const d = await invoke({ action: "restore", date, table, mode: restoreMode, fromPart });
+        total += d.restored || 0; failed += d.failed_rows || 0;
+        if (d.partial) { fromPart = d.next_part; toast.info(`Restaurando ${table}… ${total} linhas`); }
+        else break;
+      }
+      toast.success(`Restauração de ${table} concluída: ${total} linha(s)${failed ? `, ${failed} com falha` : ""}.`);
+      setRestorePanel(null);
+    } catch (e: any) {
+      toast.error("Erro na restauração: " + e.message);
+    } finally { setRestoring(false); }
+  };
+
+  const fmt = (n?: number) => (n ?? 0).toLocaleString("pt-BR");
+
+  return (
+    <div className="space-y-6 mt-4">
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg">Backups do sistema</CardTitle>
+              <CardDescription>Cópias diárias de todos os dados (leads, conversas, agendamentos, configurações). Retenção de 30 dias.</CardDescription>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button size="sm" variant="outline" onClick={loadDates} disabled={loading} title="Atualizar lista">
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              </Button>
+              <Button size="sm" onClick={runNow} disabled={running} className="gradient-orange text-primary-foreground">
+                {running ? <Loader2 className="animate-spin mr-1" size={14} /> : <Database className="mr-1" size={14} />}
+                Fazer backup agora
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-muted-foreground"><Loader2 className="inline animate-spin mr-2" size={14} /> Carregando…</div>
+          ) : dates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum backup ainda. Clique em “Fazer backup agora” ou aguarde o backup automático (diário, 03:00).</p>
+          ) : (
+            <div className="space-y-2">
+              {dates.map((date) => {
+                const man = manifests[date];
+                const isOpen = expanded === date;
+                return (
+                  <div key={date} className="rounded-lg border border-border bg-secondary/30">
+                    <button className="w-full flex items-center justify-between gap-2 p-3 text-left" onClick={() => toggleExpand(date)}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isOpen ? <ChevronDown size={16} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={16} className="shrink-0 text-muted-foreground" />}
+                        <span className="font-semibold text-foreground">{date}</span>
+                        {man?.finished_at ? (
+                          <span className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12} /> completo</span>
+                        ) : man ? (
+                          <span className="text-xs text-amber-600">parcial</span>
+                        ) : null}
+                      </div>
+                      {man?.total_rows != null && <span className="text-xs text-muted-foreground shrink-0">{fmt(man.total_rows)} linhas</span>}
+                    </button>
+
+                    {isOpen && (
+                      <div className="border-t border-border/60 p-3 space-y-2">
+                        {loadingManifest && !man ? (
+                          <div className="text-xs text-muted-foreground"><Loader2 className="inline animate-spin mr-1" size={12} /> Carregando conteúdo…</div>
+                        ) : !man ? (
+                          <p className="text-xs text-muted-foreground">Manifesto indisponível para este backup.</p>
+                        ) : (
+                          <>
+                            <div className="grid grid-cols-1 gap-1">
+                              {Object.entries(man.tables || {})
+                                .filter(([, v]) => v.rows > 0)
+                                .sort((a, b) => b[1].rows - a[1].rows)
+                                .map(([table, v]) => (
+                                  <div key={table} className="flex items-center justify-between gap-2 rounded-md bg-background/50 px-2 py-1.5">
+                                    <div className="min-w-0 flex items-center gap-2 text-xs">
+                                      <span className="font-mono text-foreground truncate">{table}</span>
+                                      <span className="text-muted-foreground shrink-0">{fmt(v.rows)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" title="Baixar" disabled={downloading === `${date}/${table}`}
+                                        onClick={() => downloadTable(date, table)}>
+                                        {downloading === `${date}/${table}` ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                                      </Button>
+                                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-amber-600 hover:text-amber-700" title="Restaurar"
+                                        onClick={() => { setRestoreMode("insert_missing"); setRestorePanel({ date, table, rows: v.rows }); }}>
+                                        <RotateCcw size={12} />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+
+                            {restorePanel && restorePanel.date === date && (
+                              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+                                <div className="flex items-center gap-1.5 text-sm font-medium text-amber-700">
+                                  <AlertTriangle size={14} /> Restaurar <span className="font-mono">{restorePanel.table}</span> ({fmt(restorePanel.rows)} linhas) do backup {date}
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="flex items-start gap-2 text-xs cursor-pointer">
+                                    <input type="radio" checked={restoreMode === "insert_missing"} onChange={() => setRestoreMode("insert_missing")} className="mt-0.5" />
+                                    <span><b>Recuperar apagados</b> — reinsere apenas linhas que não existem mais. Não altera os dados atuais. (recomendado)</span>
+                                  </label>
+                                  <label className="flex items-start gap-2 text-xs cursor-pointer">
+                                    <input type="radio" checked={restoreMode === "overwrite"} onChange={() => setRestoreMode("overwrite")} className="mt-0.5" />
+                                    <span><b>Sobrescrever</b> — repõe as linhas ao estado do backup, <b>descartando alterações feitas depois</b>.</span>
+                                  </label>
+                                </div>
+                                {RESTORE_SENSITIVE.has(restorePanel.table) && (
+                                  <p className="text-[11px] text-amber-700/90 leading-snug">
+                                    Atenção: restaurar esta tabela pode re-disparar automações. Para recuperação completa do banco, use os backups gerenciados do Supabase.
+                                  </p>
+                                )}
+                                <div className="flex gap-2 pt-1">
+                                  <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={() => setRestorePanel(null)} disabled={restoring}>Cancelar</Button>
+                                  <Button size="sm" className="h-7 text-xs flex-1 bg-amber-600 hover:bg-amber-700 text-white" onClick={doRestore} disabled={restoring}>
+                                    {restoring ? <><Loader2 size={12} className="animate-spin mr-1" /> Restaurando…</> : "Confirmar restauração"}
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-base">Recuperação de desastre (recomendado)</CardTitle>
+          <CardDescription>Estes backups são um snapshot lógico complementar. Para restauração point-in-time do banco inteiro, ative os backups gerenciados do Supabase (plano Pro): painel Supabase → Database → Backups (Daily backups + PITR).</CardDescription>
+        </CardHeader>
       </Card>
     </div>
   );
