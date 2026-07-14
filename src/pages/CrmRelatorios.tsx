@@ -169,88 +169,89 @@ export default function CrmRelatorios() {
 
     (async () => {
       try {
-        // 1. APPOINTMENTS DO PERÍODO (data marcada no intervalo) — fonte da verdade
-        //    Query equivalente à do CrmCalendario.tsx.
-        const apptsByScheduled = await fetchAllPaged<Appointment>(() =>
-          supabase
-            .from("crm_appointments")
-            .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
-            .gte("scheduled_date", startDate)
-            .lte("scheduled_date", endDate),
-          "id"
-        );
+        // Rodamos as consultas base em PARALELO — antes eram sequenciais,
+        // e com ~12k mensagens/mês a página levava 20s+ só esperando fila
+        // (o usuário reportava a aba como "não carregando").
+        const [
+          apptsByScheduled,
+          apptsByCreated,
+          cohortLeads,
+          activityInbound,
+          msgRows,
+        ] = await Promise.all([
+          fetchAllPaged<Appointment>(() =>
+            supabase
+              .from("crm_appointments")
+              .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
+              .gte("scheduled_date", startDate)
+              .lte("scheduled_date", endDate),
+            "id"
+          ),
+          fetchAllPaged<Appointment>(() =>
+            supabase
+              .from("crm_appointments")
+              .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
+              .gte("created_at", startISO)
+              .lte("created_at", endISO),
+            "id"
+          ),
+          fetchAllPaged<Lead>(() =>
+            supabase
+              .from("crm_leads")
+              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .gte("created_at", startISO)
+              .lte("created_at", endISO),
+            "id"
+          ),
+          fetchAllPaged<Lead>(() =>
+            supabase
+              .from("crm_leads")
+              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .gte("last_inbound_at", startISO)
+              .lte("last_inbound_at", endISO),
+            "id"
+          ),
+          fetchAllPaged<Msg>(() =>
+            supabase
+              .from("messages")
+              .select("id, lead_id, direction, created_at")
+              .gte("created_at", startISO)
+              .lte("created_at", endISO),
+            "id"
+          ),
+        ]);
 
-        // 2. APPOINTMENTS CRIADOS NO PERÍODO (ação da equipe)
-        const apptsByCreated = await fetchAllPaged<Appointment>(() =>
-          supabase
-            .from("crm_appointments")
-            .select("id, lead_id, created_at, scheduled_date, status, is_rescheduled, lead_cidade")
-            .gte("created_at", startISO)
-            .lte("created_at", endISO),
-          "id"
-        );
-
-        // Leads envolvidos (qualquer um que apareça em qualquer agendamento do período +
-        // leads criados no período + leads com atividade inbound)
+        // Leads envolvidos em qualquer agendamento do período — só dá pra
+        // consultar depois que os dois lotes de appointments retornaram.
         const leadIdsFromAppts = new Set<string>();
         apptsByScheduled.forEach(a => leadIdsFromAppts.add(a.lead_id));
         apptsByCreated.forEach(a => leadIdsFromAppts.add(a.lead_id));
 
-        // 3. LEADS criados no período (todos os pipelines)
-        const cohortLeads = await fetchAllPaged<Lead>(() =>
-          supabase
-            .from("crm_leads")
-            .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-            .gte("created_at", startISO)
-            .lte("created_at", endISO),
-          "id"
-        );
-
-        // 4. LEADS com inbound no período (todos os pipelines)
-        const activityInbound = await fetchAllPaged<Lead>(() =>
-          supabase
-            .from("crm_leads")
-            .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-            .gte("last_inbound_at", startISO)
-            .lte("last_inbound_at", endISO),
-          "id"
-        );
-
-        // 5. LEADS dos appointments do período — SEM filtro de pipeline.
-        //    Leads mudam de funil (ex: "Não contratados", "Pós-venda") e seus
-        //    agendamentos NÃO podem sumir do relatório. Calendário = verdade.
-        let activityByAppt: Lead[] = [];
+        // Sem filtro de pipeline: leads mudam de funil e não podem sumir
+        // do relatório (Calendário = verdade). Chunks em paralelo.
         const apptIds = Array.from(leadIdsFromAppts);
-        for (let i = 0; i < apptIds.length; i += 300) {
-          const chunk = apptIds.slice(i, i + 300);
-          const rows = await fetchAllPaged<Lead>(() =>
-            supabase
-              .from("crm_leads")
-              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
-              .in("id", chunk),
-            "id"
-          );
-          activityByAppt = activityByAppt.concat(rows);
-        }
+        const chunks: string[][] = [];
+        for (let i = 0; i < apptIds.length; i += 300) chunks.push(apptIds.slice(i, i + 300));
+        const activityByApptGroups = await Promise.all(
+          chunks.map(chunk =>
+            fetchAllPaged<Lead>(() =>
+              supabase
+                .from("crm_leads")
+                .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+                .in("id", chunk),
+              "id"
+            )
+          )
+        );
+        const activityByAppt = activityByApptGroups.flat();
 
         const mergedLeads = new Map<string, Lead>();
         [...cohortLeads, ...activityInbound, ...activityByAppt].forEach(l => mergedLeads.set(l.id, l));
         const leadsAll = Array.from(mergedLeads.values());
 
-        // 6. Mensagens do período (todos os pipelines)
-        const msgRows = await fetchAllPaged<Msg>(() =>
-          supabase
-            .from("messages")
-            .select("id, lead_id, direction, created_at")
-            .gte("created_at", startISO)
-            .lte("created_at", endISO),
-          "id"
-        );
-
         if (!alive) return;
         // NÃO filtramos appts por pipeline: o calendário mostra todos os
         // agendamentos do período, independente do funil atual do lead.
-        // Estados só são atualizados com o conjunto COMPLETO — nunca parcial.
         setLeads(leadsAll);
         setApptsPeriodo(apptsByScheduled);
         setApptsCriadosPeriodo(apptsByCreated);
