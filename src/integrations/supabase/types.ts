@@ -4156,6 +4156,10 @@ export type Database = {
           dia: string
         }[]
       }
+      rpt_crm_message_period_count: {
+        Args: { p_from: string; p_to: string }
+        Returns: number
+      }
       rpt_crm_response_times: {
         Args: { p_from: string; p_to: string }
         Returns: {
