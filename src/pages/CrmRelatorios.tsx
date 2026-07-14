@@ -66,7 +66,8 @@ type Appointment = {
   is_rescheduled?: boolean | null;
   lead_cidade?: string | null;
 };
-type Msg = { id: string; lead_id: string; direction: string; created_at: string };
+type MessageActivityDay = { dia: string; conversaram: number };
+type ResponseTimes = { leadMs: number; crcMs: number; nLead: number; nCrc: number };
 
 // ---------- Helpers ----------
 function fmtDuration(ms: number): string {
@@ -90,6 +91,11 @@ function fmtDias(d: number): string {
 }
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function asNumber(v: unknown): number {
+  const n = typeof v === "string" ? Number(v) : Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
 
 // Estado de cada RPC canônica: nunca vira zero silencioso — ou carrega,
 // ou mostra o dado, ou mostra o erro.
@@ -128,7 +134,9 @@ export default function CrmRelatorios() {
   const [leads, setLeads] = useState<Lead[]>([]);                    // leads relevantes (coorte + atividade)
   const [apptsPeriodo, setApptsPeriodo] = useState<Appointment[]>([]); // appts com scheduled_date no período (= calendário)
   const [apptsCriadosPeriodo, setApptsCriadosPeriodo] = useState<Appointment[]>([]); // appts criados no período (atividade)
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messageActivity, setMessageActivity] = useState<MessageActivityDay[]>([]);
+  const [messagePeriodCount, setMessagePeriodCount] = useState(0);
+  const [responseTimes, setResponseTimes] = useState<ResponseTimes>({ leadMs: 0, crcMs: 0, nLead: 0, nCrc: 0 });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -177,7 +185,9 @@ export default function CrmRelatorios() {
           apptsByCreated,
           cohortLeads,
           activityInbound,
-          msgRows,
+          messageActivityRes,
+          messagePeriodCountRes,
+          responseTimesRes,
         ] = await Promise.all([
           fetchAllPaged<Appointment>(() =>
             supabase
@@ -211,15 +221,20 @@ export default function CrmRelatorios() {
               .lte("last_inbound_at", endISO),
             "id"
           ),
-          fetchAllPaged<Msg>(() =>
-            supabase
-              .from("messages")
-              .select("id, lead_id, direction, created_at")
-              .gte("created_at", startISO)
-              .lte("created_at", endISO),
-            "id"
-          ),
+          (supabase.rpc as any)("rpt_crm_message_activity", { p_from: startISO, p_to: endISO }),
+          (supabase.rpc as any)("rpt_crm_message_period_count", { p_from: startISO, p_to: endISO }),
+          (supabase.rpc as any)("rpt_crm_response_times", { p_from: startISO, p_to: endISO }),
         ]);
+
+        if (messageActivityRes.error) throw new Error(`rpt_crm_message_activity: ${messageActivityRes.error.message}`);
+        if (messagePeriodCountRes.error) throw new Error(`rpt_crm_message_period_count: ${messagePeriodCountRes.error.message}`);
+        if (responseTimesRes.error) throw new Error(`rpt_crm_response_times: ${responseTimesRes.error.message}`);
+
+        const activityRows = ((messageActivityRes.data ?? []) as Record<string, unknown>[]).map((r) => ({
+          dia: String(r.dia),
+          conversaram: asNumber(r.conversaram),
+        }));
+        const responseRow = ((responseTimesRes.data ?? []) as Record<string, unknown>[])[0] ?? {};
 
         // Leads envolvidos em qualquer agendamento do período — só dá pra
         // consultar depois que os dois lotes de appointments retornaram.
@@ -255,7 +270,14 @@ export default function CrmRelatorios() {
         setLeads(leadsAll);
         setApptsPeriodo(apptsByScheduled);
         setApptsCriadosPeriodo(apptsByCreated);
-        setMessages(msgRows);
+        setMessageActivity(activityRows);
+        setMessagePeriodCount(asNumber(messagePeriodCountRes.data));
+        setResponseTimes({
+          leadMs: asNumber(responseRow.lead_ms),
+          crcMs: asNumber(responseRow.crc_ms),
+          nLead: asNumber(responseRow.n_lead),
+          nCrc: asNumber(responseRow.n_crc),
+        });
       } catch (e: any) {
         if (!alive) return;
         setLoadError(e?.message || String(e));
@@ -338,17 +360,8 @@ export default function CrmRelatorios() {
     };
   }, [cohort, apptsCriadosPeriodo]);
 
-  // Conversaram: leads com inbound no período (distintos)
-  const leadsQueConversaram = useMemo(() => {
-    const s = new Set<string>();
-    messages.forEach(m => {
-      if (m.direction === "inbound") s.add(m.lead_id);
-    });
-    leads.forEach(l => {
-      if (inRange(l.first_inbound_at) || inRange(l.last_inbound_at)) s.add(l.id);
-    });
-    return s;
-  }, [messages, leads, range]);
+  // Conversaram: leads distintos com mensagem inbound no período (agregado no backend)
+  const leadsQueConversaram = messagePeriodCount;
 
   // ============= ATIVIDADE DIÁRIA =============
   const dailyActivity = useMemo(() => {
@@ -366,17 +379,14 @@ export default function CrmRelatorios() {
       cur.setDate(cur.getDate() + 1);
     }
 
-    const conversaramByDay = new Map<string, Set<string>>();
+    const conversaramByDay = new Map<string, number>();
     const novosByDay = new Map<string, number>();
     const agendCriadosByDay = new Map<string, number>(); // criados no dia (ação CRC)
     const agendDoDiaByDay = new Map<string, number>();   // com data marcada para o dia
     const contratosDoDiaByDay = new Map<string, number>(); // contratados no dia (marcados)
 
-    messages.forEach(m => {
-      if (m.direction !== "inbound") return;
-      const k = dayKeyBahia(m.created_at);
-      if (!conversaramByDay.has(k)) conversaramByDay.set(k, new Set());
-      conversaramByDay.get(k)!.add(m.lead_id);
+    messageActivity.forEach((r) => {
+      conversaramByDay.set(r.dia, r.conversaram);
     });
     cohort.forEach(l => {
       const k = dayKeyBahia(l.created_at);
@@ -396,7 +406,7 @@ export default function CrmRelatorios() {
 
     const rows = days.map(k => ({
       day: k,
-      conversaram: conversaramByDay.get(k)?.size || 0,
+      conversaram: conversaramByDay.get(k) || 0,
       novos: novosByDay.get(k) || 0,
       agendamentosCriados: agendCriadosByDay.get(k) || 0,
       agendamentosDoDia: agendDoDiaByDay.get(k) || 0,
@@ -412,7 +422,7 @@ export default function CrmRelatorios() {
     }), { conversaram: 0, novos: 0, agendamentosCriados: 0, agendamentosDoDia: 0, contratosDoDia: 0 });
 
     return { rows, totals };
-  }, [range, messages, cohort, apptsCriadosPeriodo, apptsPeriodo]);
+  }, [range, messageActivity, cohort, apptsCriadosPeriodo, apptsPeriodo]);
 
   // ============= TEMPO ATÉ CONTRATAÇÃO (coorte) =============
   // Em DIAS CORRIDOS, comparando dia local (America/Bahia) da entrada do lead
@@ -493,26 +503,8 @@ export default function CrmRelatorios() {
 
   // ============= TEMPO DE RESPOSTA =============
   const tempoResposta = useMemo(() => {
-    const byLead = new Map<string, Msg[]>();
-    messages.forEach(m => {
-      if (!byLead.has(m.lead_id)) byLead.set(m.lead_id, []);
-      byLead.get(m.lead_id)!.push(m);
-    });
-    const respLead: number[] = [];
-    const respCRC: number[] = [];
-    byLead.forEach(arr => {
-      arr.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-      for (let i = 1; i < arr.length; i++) {
-        const prev = arr[i - 1], cur = arr[i];
-        if (prev.direction === cur.direction) continue;
-        const diff = new Date(cur.created_at).getTime() - new Date(prev.created_at).getTime();
-        if (diff <= 0 || diff > 7 * 24 * 60 * 60 * 1000) continue;
-        if (prev.direction === "outbound" && cur.direction === "inbound") respLead.push(diff);
-        if (prev.direction === "inbound" && cur.direction === "outbound") respCRC.push(diff);
-      }
-    });
-    return { lead: mean(respLead), crc: mean(respCRC), nLead: respLead.length, nCRC: respCRC.length };
-  }, [messages]);
+    return { lead: responseTimes.leadMs, crc: responseTimes.crcMs, nLead: responseTimes.nLead, nCRC: responseTimes.nCrc };
+  }, [responseTimes]);
 
   // ============= FANTASMAS =============
   const fantasmas = useMemo(() => {
@@ -705,7 +697,7 @@ export default function CrmRelatorios() {
             </p>
 
             <div className="space-y-2">
-              <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram.size} color="#6366f1" />
+              <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram} color="#6366f1" />
               <FunnelRow label="Agendamentos criados" hint="Ação da equipe — appts criados no período" value={atividadePeriodo.agendamentosCriados} color="#f59e0b" />
               <FunnelRow label="Agendamentos do período" hint="Data marcada para o período (= calendário)" value={calendario.total} color="#3b82f6" />
               <FunnelRow label="Compareceram" hint="Contratados + Não contratados + Reagendaram" value={calendario.compareceram} color="#10b981" />

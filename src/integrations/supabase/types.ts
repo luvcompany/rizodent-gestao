@@ -4149,6 +4149,26 @@ export type Database = {
           valor_total_periodo: number
         }[]
       }
+      rpt_crm_message_activity: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          conversaram: number
+          dia: string
+        }[]
+      }
+      rpt_crm_message_period_count: {
+        Args: { p_from: string; p_to: string }
+        Returns: number
+      }
+      rpt_crm_response_times: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          crc_ms: number
+          lead_ms: number
+          n_crc: number
+          n_lead: number
+        }[]
+      }
       rpt_faturamento: {
         Args: { p_clinica_id?: string; p_from: string; p_to: string }
         Returns: {
