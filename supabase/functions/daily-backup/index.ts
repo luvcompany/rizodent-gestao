@@ -185,7 +185,8 @@ Deno.serve(async (req) => {
   if (!auth.ok) return unauthorizedResponse(corsHeaders);
   if (auth.via === "user_jwt") {
     const { data: role } = await supabase
-      .from("user_roles").select("role").eq("user_id", auth.userId).in("role", ["crc", "gerente"]).maybeSingle();
+      .from("user_roles").select("role").eq("user_id", auth.userId)
+      .in("role", ["crc", "gerente", "superadmin"]).maybeSingle();
     if (!role) return unauthorizedResponse(corsHeaders);
   }
 
@@ -221,6 +222,92 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 30);
     if (error) return json({ error: error.message }, 400);
     return json({ ok: true, url: data.signedUrl });
+  }
+
+  // Manifesto (conteúdo) de um backup específico
+  if (action === "manifest") {
+    const date = String(body.date || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "date obrigatório" }, 400);
+    try {
+      const { data } = await supabase.storage.from(BUCKET).download(`${date}/_manifest.json`);
+      if (!data) return json({ ok: true, manifest: null });
+      return json({ ok: true, manifest: JSON.parse(await data.text()) });
+    } catch (_) {
+      return json({ ok: true, manifest: null });
+    }
+  }
+
+  // Lista os arquivos (partes) de uma tabela num backup, com URLs assinadas p/ download
+  if (action === "files") {
+    const date = String(body.date || "");
+    const table = String(body.table || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !table) return json({ error: "date e table obrigatórios" }, 400);
+    const { data: files } = await supabase.storage.from(BUCKET).list(date, { limit: 10000 });
+    const parts = (files || [])
+      .map((f: any) => f.name)
+      .filter((n: string) => n.startsWith(`${table}.`) && n.endsWith(".ndjson"))
+      .sort();
+    const out: { name: string; url: string }[] = [];
+    for (const name of parts) {
+      const { data } = await supabase.storage.from(BUCKET).createSignedUrl(`${date}/${name}`, 60 * 30);
+      if (data?.signedUrl) out.push({ name, url: data.signedUrl });
+    }
+    return json({ ok: true, files: out });
+  }
+
+  // RESTAURAÇÃO por tabela (upsert por 'id'). Retoma por parte quando não cabe
+  // no orçamento de tempo. Modo 'insert_missing' (padrão) só recupera linhas
+  // apagadas; 'overwrite' sobrescreve as existentes com o estado do backup.
+  if (action === "restore") {
+    const date = String(body.date || "");
+    const table = String(body.table || "");
+    const mode = body.mode === "overwrite" ? "overwrite" : "insert_missing";
+    const fromPart = Number.isInteger(body.fromPart) ? body.fromPart : 0;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !table) return json({ error: "date e table obrigatórios" }, 400);
+
+    const all = await listTables(supabase);
+    const info = all.find((t) => t.name === table);
+    if (!info) return json({ error: "tabela não permitida para restauração" }, 400);
+    if (info.orderBy !== "id") return json({ error: "restauração suportada apenas para tabelas com chave 'id'" }, 400);
+
+    const { data: files } = await supabase.storage.from(BUCKET).list(date, { limit: 10000 });
+    const parts = (files || [])
+      .map((f: any) => f.name)
+      .filter((n: string) => n.startsWith(`${table}.`) && n.endsWith(".ndjson"))
+      .sort();
+    if (parts.length === 0) return json({ error: `Nenhum arquivo de ${table} no backup ${date}` }, 404);
+
+    const startR = Date.now();
+    const R_BUDGET = 90_000;
+    const BATCH = 500;
+    let restored = 0;
+    let failedRows = 0;
+    const errors: string[] = [];
+    let p = fromPart;
+    for (; p < parts.length; p++) {
+      if (p > fromPart && Date.now() - startR > R_BUDGET) break; // parcial → retoma
+      const { data: blob, error: dErr } = await supabase.storage.from(BUCKET).download(`${date}/${parts[p]}`);
+      if (dErr || !blob) { errors.push(`${parts[p]}: ${dErr?.message || "download falhou"}`); continue; }
+      const text = await blob.text();
+      const rows = text.split("\n").filter(Boolean)
+        .map((l: string) => { try { return JSON.parse(l); } catch { return null; } })
+        .filter(Boolean);
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const chunk = rows.slice(i, i + BATCH);
+        const opts = mode === "insert_missing"
+          ? { onConflict: "id", ignoreDuplicates: true }
+          : { onConflict: "id" };
+        const { error } = await supabase.from(table).upsert(chunk, opts);
+        if (error) { failedRows += chunk.length; if (errors.length < 20) errors.push(`${parts[p]}[${i}]: ${error.message}`); }
+        else restored += chunk.length;
+      }
+    }
+    const partial = p < parts.length;
+    console.log(`[daily-backup] restore ${table} (${date}, ${mode}): ${restored} linhas, ${failedRows} falhas, partial=${partial}`);
+    return json({
+      ok: true, date, table, mode, restored, failed_rows: failedRows,
+      errors: errors.slice(0, 20), partial, next_part: partial ? p : null, total_parts: parts.length,
+    });
   }
 
   // action === 'run'
