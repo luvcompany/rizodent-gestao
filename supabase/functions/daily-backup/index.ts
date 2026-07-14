@@ -38,7 +38,13 @@ const BUCKET = Deno.env.get("BACKUP_BUCKET") || "crm-backups";
 const RETENTION_DAYS = Math.max(Number(Deno.env.get("BACKUP_RETENTION_DAYS") || "30"), 1);
 const PAGE_SIZE = 1000;
 const ROWS_PER_PART = 8000; // ~5-8 MB por arquivo; limita o pico de memória
-const TIME_BUDGET_MS = 90_000; // por invocação; ao estourar, encadeia o restante
+// Limites POR INVOCAÇÃO (o restante é encadeado). Processar dezenas de tabelas
+// numa só invocação acumulava memória no isolate (o GC do V8 não libera os
+// buffers rápido o bastante) e estourava o WORKER_RESOURCE_LIMIT perto das
+// tabelas grandes. Manter cada leva pequena mantém o pico de memória baixo.
+const TIME_BUDGET_MS = 60_000; // tempo por leva
+const ROWS_BUDGET = 25_000; // linhas por leva
+const MAX_TABLES_PER_BATCH = 6; // tabelas por leva
 
 // Tabelas que NÃO entram no export (segredos de infra / estado efêmero de OAuth).
 const BLOCKLIST = new Set<string>([
@@ -243,16 +249,24 @@ Deno.serve(async (req) => {
   const doneTables: Record<string, any> = {};
   const errors: string[] = [];
   const remaining: string[] = [];
+  let cumRows = 0;
 
   for (let i = 0; i < queue.length; i++) {
-    // sempre processa ao menos 1; depois respeita o orçamento de tempo
-    if (i > 0 && Date.now() - start > TIME_BUDGET_MS) {
+    // sempre processa ao menos 1; depois respeita os orçamentos da leva
+    const overBudget = i > 0 && (
+      Date.now() - start > TIME_BUDGET_MS ||
+      cumRows >= ROWS_BUDGET ||
+      i >= MAX_TABLES_PER_BATCH
+    );
+    if (overBudget) {
       for (let j = i; j < queue.length; j++) remaining.push(queue[j].name);
       break;
     }
     const t = queue[i];
     try {
-      doneTables[t.name] = await backupTable(supabase, stamp, t);
+      const r = await backupTable(supabase, stamp, t);
+      doneTables[t.name] = r;
+      cumRows += r.rows;
     } catch (e: any) {
       console.error(`[daily-backup] falha em ${t.name}:`, e?.message || e);
       errors.push(`${t.name}: ${e?.message || e}`);
