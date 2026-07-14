@@ -3836,6 +3836,13 @@ export type Database = {
     }
     Functions: {
       admin_tenant_metrics: { Args: { _tenant_id: string }; Returns: Json }
+      backup_list_tables: {
+        Args: never
+        Returns: {
+          order_col: string
+          table_name: string
+        }[]
+      }
       can_access_instagram_account: {
         Args: { _account_id: string }
         Returns: boolean
