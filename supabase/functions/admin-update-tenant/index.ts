@@ -54,6 +54,26 @@ Deno.serve(async (req) => {
       return json({ tenant: data });
     }
 
+    // -------- UPLOAD DE LOGO/FAVICON (via service role — ignora RLS do Storage) --------
+    if (action === "upload_logo") {
+      const kind = String(patch?.kind ?? "logo");
+      const ext = (String(patch?.ext ?? "png").replace(/[^a-z0-9]/gi, "").toLowerCase()) || "png";
+      const b64 = String(patch?.data_base64 ?? "");
+      const contentType = String(patch?.content_type ?? "image/png");
+      if (!b64) return json({ error: "Sem dados de imagem." }, 400);
+      let bytes: Uint8Array;
+      try {
+        bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      } catch (_) {
+        return json({ error: "Imagem inválida (base64)." }, 400);
+      }
+      const path = `${tenant_id}/${kind}-${Date.now()}.${ext}`;
+      const { error: upErr } = await admin.storage.from("tenant-logos").upload(path, bytes, { upsert: true, contentType });
+      if (upErr) return json({ error: upErr.message }, 400);
+      const { data: pub } = admin.storage.from("tenant-logos").getPublicUrl(path);
+      return json({ ok: true, url: pub.publicUrl });
+    }
+
     // -------- EXCLUIR (SOFT → Lixeira) --------
     if (action === "delete") {
       const { data: tRow } = await admin.from("tenants").select("slug").eq("id", tenant_id).maybeSingle();

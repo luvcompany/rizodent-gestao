@@ -231,14 +231,12 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
   const [form, setForm] = useState({ nome: "", email: "", password: "", role: "crc" });
 
   const load = async () => {
-    const { data: profs } = await supabase.from("profiles")
-      .select("id, nome, email, cargo, is_blocked, last_login_at, must_change_password")
-      .eq("tenant_id", tenant.id).order("created_at", { ascending: false });
-    // O PAPEL vem de user_roles (não de profiles.cargo, que é o cargo/título livre).
-    const { data: roles } = await (supabase as any).from("user_roles")
-      .select("user_id, role").eq("tenant_id", tenant.id);
-    const roleMap = new Map((roles ?? []).map((r: any) => [r.user_id, r.role]));
-    setUsers(((profs as any) ?? []).map((p: any) => ({ ...p, role: roleMap.get(p.id) ?? null })));
+    // RPC SECURITY DEFINER: retorna perfis + PAPEL (de user_roles) num só lugar,
+    // server-side — não depende do RLS do cliente ler user_roles (que estava
+    // devolvendo vazio e fazendo o papel "voltar" para CRC).
+    const { data, error } = await (supabase as any).rpc("admin_tenant_users", { _tenant_id: tenant.id });
+    if (error) { toast.error(await getFunctionErrorMessage(null, error, "Erro ao carregar usuários")); return; }
+    setUsers((data as any) ?? []);
   };
   useEffect(() => { load(); }, [tenant.id]);
 
@@ -375,16 +373,25 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
   const [saving, setSaving] = useState(false);
 
   const upload = async (f: File, kind: "logo" | "logo_dark" | "favicon") => {
-    // Sanitiza: o nome ORIGINAL (espaços/acentos, ex.: "Logo Cliente.png") quebra
-    // a chave do Storage. Usamos só kind + timestamp + extensão.
+    if (f.size > 5 * 1024 * 1024) { toast.error("Imagem muito grande (máx. 5MB)."); return; }
     const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
-    const path = `${tenant.id}/${kind}-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("tenant-logos").upload(path, f, { upsert: true, contentType: f.type || undefined });
-    if (error) { toast.error("Falha no upload: " + error.message); return; }
-    const { data } = supabase.storage.from("tenant-logos").getPublicUrl(path);
-    if (kind === "logo") setLogo(data.publicUrl);
-    else if (kind === "logo_dark") setLogoDark(data.publicUrl);
-    else setFavicon(data.publicUrl);
+    // Upload via edge function (service role) — não depende do RLS do Storage do
+    // navegador, que estava bloqueando ("new row violates row-level security").
+    const dataUrl: string = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result));
+      r.onerror = () => rej(new Error("Falha ao ler o arquivo"));
+      r.readAsDataURL(f);
+    });
+    const b64 = dataUrl.split(",")[1] || "";
+    const { data, error } = await supabase.functions.invoke("admin-update-tenant", {
+      body: { tenant_id: tenant.id, action: "upload_logo", patch: { kind, ext, data_base64: b64, content_type: f.type || "image/png" } },
+    });
+    if (error || (data as any)?.error) { toast.error("Falha no upload: " + await getFunctionErrorMessage(data, error, "erro")); return; }
+    const url = (data as any).url as string;
+    if (kind === "logo") setLogo(url);
+    else if (kind === "logo_dark") setLogoDark(url);
+    else setFavicon(url);
     toast.success("Imagem enviada — clique em Salvar para aplicar.");
   };
 
