@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin, Star, X, Pencil } from "lucide-react";
+import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin, Star, X } from "lucide-react";
 
 const CIDADES = ["Vitória da Conquista", "Guanambi", "Ipiaú", "Itabuna"];
 const EMPTY_CITY_VALUE = "none";
