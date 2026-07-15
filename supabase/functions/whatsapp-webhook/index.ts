@@ -902,7 +902,17 @@ Deno.serve(async (req) => {
             // não dependam mais da Graph API (evita falhas por token expirado, rate limit, etc.)
             if (referral && adSourceId && (adAccountName || adAccountId || adHeadline)) {
               try {
-                const inferredCidadeForCache = inferCidadeFromAdAccount(adAccountName, adHeadline, adBody, content);
+                let inferredCidadeForCache: string | null = null;
+                try {
+                  inferredCidadeForCache = await resolveCidade({
+                    supabase,
+                    tenantId: matchedIntegration?.tenant_id,
+                    adAccountId,
+                    adId: adSourceId,
+                    pageId: null,
+                    adAccountName,
+                  });
+                } catch (_e) { inferredCidadeForCache = null; }
                 await supabase.from("ad_id_mapping").upsert({
                   ad_id: adSourceId,
                   ad_account_id: adAccountId,
@@ -1003,9 +1013,11 @@ Deno.serve(async (req) => {
                     if (adSourceId) insertData.ad_id = adSourceId;
                     if (adAccountId) insertData.ad_account_id = adAccountId;
                     if (adAccountName) insertData.ad_account_name = adAccountName;
-                    // Tenta inferir cidade pelo nome da conta; se a conta não veio (Graph API falhou),
-                    // usa título/descrição/conteúdo da primeira mensagem como pista (ex: "[Guanambi]").
-                    const inferredCidade = inferCidadeFromAdAccount(adAccountName, adHeadline, adBody, content);
+                    // Resolução determinística de cidade via ad_account_map (defensiva: nunca trava o insert).
+                    let inferredCidade: string | null = null;
+                    try {
+                      inferredCidade = await resolveCidade({ supabase, tenantId, adAccountId, adId: adSourceId, pageId: null, adAccountName });
+                    } catch (_e) { inferredCidade = null; }
                     if (inferredCidade) insertData.cidade = inferredCidade;
                   }
 
@@ -1066,16 +1078,21 @@ Deno.serve(async (req) => {
                 if (adAccountId) updates.ad_account_id = adAccountId;
                 if (adAccountName) updates.ad_account_name = adAccountName;
                 // Preencher cidade automaticamente apenas se o lead ainda não tiver cidade definida (preserva alteração manual)
-                const inferredCidade = inferCidadeFromAdAccount(adAccountName, adHeadline, adBody, content);
+                let inferredCidade: string | null = null;
+                try {
+                  inferredCidade = await resolveCidade({ supabase, tenantId, adAccountId, adId: adSourceId, pageId: null, adAccountName });
+                } catch (_e) { inferredCidade = null; }
                 if (inferredCidade) {
-                  const { data: leadCidadeRow } = await supabase
-                    .from("crm_leads")
-                    .select("cidade")
-                    .eq("id", lead.id)
-                    .maybeSingle();
-                  if (!leadCidadeRow?.cidade) {
-                    updates.cidade = inferredCidade;
-                  }
+                  try {
+                    const { data: leadCidadeRow } = await supabase
+                      .from("crm_leads")
+                      .select("cidade")
+                      .eq("id", lead.id)
+                      .maybeSingle();
+                    if (!leadCidadeRow?.cidade) {
+                      updates.cidade = inferredCidade;
+                    }
+                  } catch (_e) { /* engole — não bloqueia update do lead */ }
                 }
                 if (!lead.source || lead.source === "whatsapp") updates.source = "facebook_ad";
               }
