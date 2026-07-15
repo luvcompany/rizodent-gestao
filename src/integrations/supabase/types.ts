@@ -71,6 +71,50 @@ export type Database = {
         }
         Relationships: []
       }
+      ad_account_map: {
+        Row: {
+          ad_account_id: string | null
+          ad_id_suffix: string | null
+          ativo: boolean
+          cidade: string
+          clinica_id: string | null
+          created_at: string
+          id: string
+          page_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          ad_id_suffix?: string | null
+          ativo?: boolean
+          cidade: string
+          clinica_id?: string | null
+          created_at?: string
+          id?: string
+          page_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          ad_id_suffix?: string | null
+          ativo?: boolean
+          cidade?: string
+          clinica_id?: string | null
+          created_at?: string
+          id?: string
+          page_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_account_map_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ad_id_mapping: {
         Row: {
           ad_account_id: string | null
@@ -4110,6 +4154,7 @@ export type Database = {
       }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
+      map_source_to_origem: { Args: { src: string }; Returns: string }
       match_good_examples: {
         Args: {
           filter_cidade?: string
