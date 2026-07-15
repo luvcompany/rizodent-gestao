@@ -800,6 +800,7 @@ Deno.serve(async (req) => {
                   const adData = await adRes.json();
                   console.log(`[AD-ENRICHMENT] Ad data received for ${adSourceId}: name=${adData?.name ? "yes" : "no"}, account_id=${adData?.account_id || "n/a"}`);
 
+                  if (!adName && adData?.name) adName = String(adData.name);
                   if (!adHeadline && adData.name) adHeadline = adData.name;
                   if (!adSourceUrl && adData.permalink_url) adSourceUrl = adData.permalink_url;
 
