@@ -429,31 +429,63 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                 </p>
               )}
             </div>
+            {/* Origem: automática (webhook + gatilho). Edição manual só como exceção. */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Origem</label>
-              <Select value={effectiveSource} onValueChange={(v) => { setSource(v); if (v !== "outro") setCustomSource(""); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a origem" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SOURCE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {effectiveSource === "outro" && (
-                <Input
-                  className="mt-2"
-                  value={customSource}
-                  onChange={(e) => setCustomSource(e.target.value)}
-                  placeholder="Especifique a origem..."
-                />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-muted-foreground">Origem</label>
+                <button
+                  type="button"
+                  onClick={() => setEditSource((v) => !v)}
+                  className="text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+                  title="Corrigir manualmente (exceção)"
+                >
+                  <Pencil size={10} /> {editSource ? "cancelar" : "corrigir"}
+                </button>
+              </div>
+              {!editSource ? (
+                <div className="text-sm text-foreground">
+                  {source
+                    ? (SOURCE_OPTIONS.find((o) => o.value === source)?.label || source)
+                    : <span className="text-muted-foreground italic">Automática (aguardando)</span>}
+                </div>
+              ) : (
+                <>
+                  <Select value={effectiveSource} onValueChange={(v) => { setSource(v); if (v !== "outro") setCustomSource(""); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a origem" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SOURCE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {effectiveSource === "outro" && (
+                    <Input
+                      className="mt-2"
+                      value={customSource}
+                      onChange={(e) => setCustomSource(e.target.value)}
+                      placeholder="Especifique a origem..."
+                    />
+                  )}
+                </>
               )}
             </div>
 
-            {/* Ad linking */}
+            {/* Anúncio vinculado: automático via webhook. Edição manual só como exceção. */}
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Vincular a Anúncio</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-muted-foreground">Anúncio</label>
+                <button
+                  type="button"
+                  onClick={() => setEditAd((v) => !v)}
+                  className="text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+                  title="Corrigir manualmente (exceção)"
+                >
+                  <Pencil size={10} /> {editAd ? "cancelar" : "corrigir"}
+                </button>
+              </div>
+
               {adId ? (
                 <div className="border rounded-md p-2 space-y-2">
                   <div className="flex items-start gap-2">
@@ -473,12 +505,14 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                         <p className="text-xs text-muted-foreground line-clamp-2">{descricaoAnuncio}</p>
                       )}
                     </div>
-                    <Button size="sm" variant="ghost" onClick={handleUnlinkAd} className="shrink-0 text-destructive hover:text-destructive">
-                      <Unlink size={14} />
-                    </Button>
+                    {editAd && (
+                      <Button size="sm" variant="ghost" onClick={handleUnlinkAd} className="shrink-0 text-destructive hover:text-destructive" title="Desvincular">
+                        <Unlink size={14} />
+                      </Button>
+                    )}
                   </div>
                 </div>
-              ) : (
+              ) : editAd ? (
                 <>
                   <Button size="sm" variant="outline" onClick={handleOpenAdSelector} className="w-full">
                     <Link2 size={14} className="mr-1" /> Selecionar anúncio
@@ -522,6 +556,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                     </div>
                   )}
                 </>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">Automático (aguardando anúncio de origem)</p>
               )}
             </div>
 
