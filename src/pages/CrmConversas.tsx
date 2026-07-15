@@ -149,7 +149,7 @@ const SidePanelFallback = () => (
   </div>
 );
 const CONVERSATION_PAGE_SIZE = 1000;
-const CONVERSATION_MAX_PAGES = 6; // ~6k leads; suficiente p/ base atual (~4.3k) sem páginas extras
+const CONVERSATION_MAX_PAGES = 50; // teto de SEGURANÇA (loop para antes ao receber página incompleta)
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
 // Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
 // porque os filtros derivam opções deles).
@@ -280,6 +280,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(!canUseInitialCache && !_lsData);
+  const [fullyLoaded, setFullyLoaded] = useState<boolean>(canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
@@ -410,9 +411,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setProfiles(leadsListCache.profiles || []);
       setPipelines(leadsListCache.pipelines || []);
       setLoading(false);
+      setFullyLoaded(true);
       // Só refaz fetch em background se o cache estiver com mais de 60s — evita roundtrip a cada navegação.
       const cacheAge = Date.now() - leadsListCache.timestamp;
       if (cacheAge < LEADS_BG_REFRESH_AFTER) return;
+      setFullyLoaded(false);
       (async () => {
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
           fetchAllConversationLeads(tenant.id),
@@ -430,10 +433,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         setLeads(rawLeads);
         setProfiles(profs);
         setPipelines(pipes);
+        setFullyLoaded(true);
       })();
       return;
     }
 
+    setFullyLoaded(false);
     const fetchLeads = async () => {
       // First-paint rápido: mostra a UI assim que profiles + pipelines + 1ª página de leads chegam.
       let firstPainted = false;
@@ -460,6 +465,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setProfiles(profs);
       setPipelines(pipes);
       if (!firstPainted) setLoading(false);
+      setFullyLoaded(true);
     };
     fetchLeads();
   }, [tenant.id, cacheKey]);
@@ -1008,7 +1014,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     channel={channel}
                     instagramAccounts={instagramAccounts}
                   />
-                   <span className="text-xs text-muted-foreground">{sortedFiltered.length}</span>
+                   <span className="text-xs text-muted-foreground">{sortedFiltered.length}{!fullyLoaded ? "…" : ""}</span>
                    <DropdownMenu>
                      <DropdownMenuTrigger asChild>
                        <Button variant="ghost" size="icon" className="h-7 w-7">
