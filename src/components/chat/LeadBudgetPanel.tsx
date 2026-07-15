@@ -348,21 +348,39 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         <span className="text-xs font-medium text-muted-foreground uppercase">Orçamento & Valor</span>
       </div>
 
-      {/* City selector */}
+      {/* Cidade: automática via webhook/gatilho. Edição manual só como exceção. */}
       <div className="mb-3">
-        <div className="flex items-center gap-1 mb-1">
-          <MapPin size={12} className="text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Cidade</span>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-1">
+            <MapPin size={12} className="text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Cidade</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditCidade((v) => !v)}
+            className="text-[11px] text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+            title="Corrigir manualmente (exceção)"
+          >
+            <Pencil size={10} /> {editCidade ? "cancelar" : "corrigir"}
+          </button>
         </div>
-        <select
-          value={cidade}
-          onChange={(e) => void handleCidadeChange(e.target.value)}
-          disabled={savingCity}
-          className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <option value={EMPTY_CITY_VALUE}>Sem localização</option>
-          {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
-        </select>
+        {!editCidade ? (
+          <div className="text-sm text-foreground">
+            {cidade === EMPTY_CITY_VALUE
+              ? <span className="text-muted-foreground italic">Automática (aguardando)</span>
+              : cidade}
+          </div>
+        ) : (
+          <select
+            value={cidade}
+            onChange={(e) => void handleCidadeChange(e.target.value)}
+            disabled={savingCity}
+            className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value={EMPTY_CITY_VALUE}>Sem localização</option>
+            {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
+          </select>
+        )}
       </div>
 
       {linkedPacientes.length > 0 ? (
