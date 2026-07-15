@@ -751,6 +751,7 @@ Deno.serve(async (req) => {
                 if (cached) {
                   if (!adAccountId && cached.ad_account_id) adAccountId = cached.ad_account_id;
                   if (!adAccountName && cached.ad_account_name) adAccountName = cached.ad_account_name;
+                  if (!adName && (cached as any).ad_name) adName = (cached as any).ad_name;
                   if (!adHeadline && cached.ad_headline) adHeadline = cached.ad_headline;
                   if (!adBody && cached.ad_body) adBody = cached.ad_body;
                   console.log(`[AD-CACHE] HIT ad_id=${adSourceId} => account=${adAccountName}`);
