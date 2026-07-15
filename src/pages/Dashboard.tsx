@@ -789,7 +789,12 @@ const Dashboard = () => {
     const key = p.nome_anuncio.trim().toLowerCase();
     if (!anuncioDisplayNames.has(key)) anuncioDisplayNames.set(key, p.nome_anuncio.trim());
   });
-  const anuncioData = Array.from(anuncioMap.entries()).map(([key, value]) => ({ name: anuncioDisplayNames.get(key) || key, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
+  const anuncioDataLocal = Array.from(anuncioMap.entries()).map(([key, value]) => ({ name: anuncioDisplayNames.get(key) || key, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
+  // Fonte preferida: RPC canônica (rpt_faturamento_anuncio) — nome real do
+  // criativo (ad_name → nome_anuncio → ad_headline). Fallback: cálculo local.
+  const anuncioData = rpcAnuncio
+    ? rpcAnuncio.map((r) => ({ name: r.anuncio, value: Number(r.faturamento) })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6)
+    : anuncioDataLocal;
 
 
 
