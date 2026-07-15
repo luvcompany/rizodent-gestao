@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { resolveCidade } from "../_shared/resolveCidade.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,7 +43,7 @@ Deno.serve(async (req) => {
     // Get all leads with ad_id but missing ad_account_id
     const { data: leads, error: leadsErr } = await supabase
       .from("crm_leads")
-      .select("id, ad_id, ad_account_id")
+      .select("id, ad_id, ad_account_id, tenant_id")
       .not("ad_id", "is", null)
       .is("ad_account_id", null)
       .limit(500);
