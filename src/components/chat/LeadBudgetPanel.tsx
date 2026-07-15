@@ -500,43 +500,9 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                   </select>
                 </div>
               )}
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Origem do Lead</label>
-                <select
-                  value={newOrigem}
-                  onChange={(e) => {
-                    setNewOrigem(e.target.value);
-                    setNewNomeAnuncio("");
-                    setNewOrigemOutros("");
-                  }}
-                  className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
-                >
-                  <option value={EMPTY_ORIGEM_VALUE}>Selecione</option>
-                  {ORIGENS.map((o) => (<option key={o} value={o}>{o}</option>))}
-                </select>
-              </div>
-              {newOrigem === "Anúncio" && (
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Nome do Anúncio</label>
-                  <Input
-                    value={newNomeAnuncio}
-                    onChange={(e) => setNewNomeAnuncio(e.target.value)}
-                    placeholder="Ex: Campanha Implante Jan"
-                    className="h-8 text-xs"
-                  />
-                </div>
-              )}
-              {newOrigem === "Outros" && (
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">De onde veio o lead?</label>
-                  <Input
-                    value={newOrigemOutros}
-                    onChange={(e) => setNewOrigemOutros(e.target.value)}
-                    placeholder="Descreva a origem"
-                    className="h-8 text-xs"
-                  />
-                </div>
-              )}
+              <p className="text-[11px] text-muted-foreground italic">
+                Origem, cidade e anúncio são propagados automaticamente do lead para o paciente ao vincular.
+              </p>
             </div>
           </div>
           <DialogFooter>
