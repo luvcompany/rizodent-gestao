@@ -736,6 +736,7 @@ Deno.serve(async (req) => {
 
             let adAccountId: string | null = null;
             let adAccountName: string | null = null;
+            let adName: string | null = null;
 
             // 🔑 CACHE: tenta buscar metadados do anúncio no cache local antes de chamar a Graph API
             // Isso garante que mesmo se a Graph API falhar (token expirado, rate limit, permissão),
