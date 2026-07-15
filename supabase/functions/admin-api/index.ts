@@ -612,8 +612,8 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
       const m = lead?.ad_id ? adMap.get(lead.ad_id) : null;
       let display: string;
       if (m && m.ad_name) display = String(m.ad_name).trim();
-      else if (m && m.ad_headline) display = String(m.ad_headline).trim();
       else if (lead?.nome_anuncio && String(lead.nome_anuncio).trim()) display = String(lead.nome_anuncio).trim();
+      else if (m && m.ad_headline) display = String(m.ad_headline).trim();
       else if (pac?.nome_anuncio && String(pac.nome_anuncio).trim()) display = String(pac.nome_anuncio).trim();
       else if (isAdSource(lead?.source)) display = "Anúncio (não identificado)";
       else display = "Sem anúncio / outro";
@@ -625,7 +625,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     porAnuncio = Array.from(anuncioMap.values())
       .map((v) => ({ anuncio: v.display, faturamento: v.faturamento, pacientes: v.pacientes.size }))
       .sort((a, b) => b.faturamento - a.faturamento).slice(0, 20);
-  } catch (_e) { console.error("[POR_ANUNCIO_ERR]", (_e as any)?.message, (_e as any)?.stack);
+  } catch (_e) {
     const anuncioMap = new Map<string, { display: string; faturamento: number }>();
     pacientes.forEach((pc: any) => {
       if (!pc.nome_anuncio) return;
