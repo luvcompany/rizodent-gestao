@@ -3359,6 +3359,7 @@ export type Database = {
         Row: {
           business_hours: Json | null
           created_at: string
+          deleted_at: string | null
           favicon_url: string | null
           id: string
           logo_url: string | null
@@ -3376,6 +3377,7 @@ export type Database = {
         Insert: {
           business_hours?: Json | null
           created_at?: string
+          deleted_at?: string | null
           favicon_url?: string | null
           id?: string
           logo_url?: string | null
@@ -3393,6 +3395,7 @@ export type Database = {
         Update: {
           business_hours?: Json | null
           created_at?: string
+          deleted_at?: string | null
           favicon_url?: string | null
           id?: string
           logo_url?: string | null
