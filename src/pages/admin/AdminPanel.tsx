@@ -10,6 +10,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Building2, CreditCard, BarChart3, Receipt, LogOut, Plus, Loader2, ShieldAlert, Trash2, LayoutDashboard, Users, MessageSquare, TrendingUp, DollarSign, Pencil, RefreshCw } from "lucide-react";
+import { BrandColorField } from "@/components/admin/BrandColorField";
+import { BrandPreview } from "@/components/admin/BrandPreview";
 
 const navItems = [
   { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -145,7 +147,7 @@ export const AdminClientes = () => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", primary_color: "#f97316", secondary_color: "#fb923c", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "", plan_id: "" });
+  const [form, setForm] = useState({ name: "", slug: "", primary_color: "#2563eb", secondary_color: "#6366f1", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "", plan_id: "" });
 
   const load = async () => {
     const q = (supabase as any).from("tenants").select("*").order("created_at", { ascending: false });
@@ -202,9 +204,9 @@ export const AdminClientes = () => {
     const { data, error } = await supabase.functions.invoke("admin-create-tenant", { body });
     setLoading(false);
     if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao criar cliente")); return; }
-    toast.success(`Cliente ${form.name} criado! Link: ${form.slug}.crclin.com.br`);
+    toast.success(`Cliente ${form.name} criado! Link: crclin.com.br/${form.slug}`);
     setOpen(false);
-    setForm({ name: "", slug: "", primary_color: "#f97316", secondary_color: "#fb923c", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "", plan_id: "" });
+    setForm({ name: "", slug: "", primary_color: "#2563eb", secondary_color: "#6366f1", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "", plan_id: "" });
     load();
   };
 
@@ -232,7 +234,7 @@ export const AdminClientes = () => {
                 <div className="flex h-10 w-10 items-center justify-center rounded font-bold" style={{ background: t.primary_color }}>{t.name[0]}</div>}
               <div>
                 <p className="font-semibold">{t.name}</p>
-                <p className="text-xs text-slate-400">{t.slug}.crclin.com.br · criado em {new Date(t.created_at).toLocaleDateString("pt-BR")}</p>
+                <p className="text-xs text-slate-400">crclin.com.br/{t.slug} · criado em {new Date(t.created_at).toLocaleDateString("pt-BR")}</p>
               </div>
             </Link>
             <div className="flex items-center gap-2">
@@ -259,7 +261,7 @@ export const AdminClientes = () => {
           <DialogHeader><DialogTitle>Novo cliente</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Nome da clínica/empresa</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div><Label>Slug (subdomínio)</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} placeholder="ex: clinicaxyz" /></div>
+            <div><Label>Slug (identificador na URL)</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} placeholder="ex: clinicaxyz" />{form.slug && <p className="mt-1 text-xs text-slate-500">Acesso: <span className="font-mono text-cyan-300">crclin.com.br/{form.slug}</span></p>}</div>
             <div>
               <Label>Plano</Label>
               <select value={form.plan_id} onChange={(e) => setForm({ ...form, plan_id: e.target.value })} className="mt-1 flex h-10 w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100">
@@ -269,10 +271,11 @@ export const AdminClientes = () => {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Cor principal</Label><Input type="color" value={form.primary_color} onChange={(e) => setForm({ ...form, primary_color: e.target.value })} className="h-10 w-full p-1 bg-slate-800 border-slate-700" /></div>
-              <div><Label>Cor secundária</Label><Input type="color" value={form.secondary_color} onChange={(e) => setForm({ ...form, secondary_color: e.target.value })} className="h-10 w-full p-1 bg-slate-800 border-slate-700" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <BrandColorField label="Cor principal" value={form.primary_color} onChange={(v) => setForm({ ...form, primary_color: v })} />
+              <BrandColorField label="Cor secundária" value={form.secondary_color} onChange={(v) => setForm({ ...form, secondary_color: v })} />
             </div>
+            <div><p className="mb-1 text-xs font-semibold text-slate-400">Prévia da interface do cliente</p><BrandPreview primary={form.primary_color} secondary={form.secondary_color} name={form.name || "Clínica"} /></div>
             <div className="border-t border-slate-800 pt-3"><p className="mb-2 text-sm font-semibold">Clínica principal</p></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Nome da clínica</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.clinic_name} onChange={(e) => setForm({ ...form, clinic_name: e.target.value })} placeholder="ex: Clínica Centro" /></div>
