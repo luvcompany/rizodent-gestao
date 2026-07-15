@@ -3357,11 +3357,13 @@ export type Database = {
       }
       tenants: {
         Row: {
+          branding_version: number
           business_hours: Json | null
           created_at: string
           deleted_at: string | null
           favicon_url: string | null
           id: string
+          logo_dark_url: string | null
           logo_url: string | null
           meta_app_version: string
           name: string
@@ -3375,11 +3377,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          branding_version?: number
           business_hours?: Json | null
           created_at?: string
           deleted_at?: string | null
           favicon_url?: string | null
           id?: string
+          logo_dark_url?: string | null
           logo_url?: string | null
           meta_app_version?: string
           name: string
@@ -3393,11 +3397,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          branding_version?: number
           business_hours?: Json | null
           created_at?: string
           deleted_at?: string | null
           favicon_url?: string | null
           id?: string
+          logo_dark_url?: string | null
           logo_url?: string | null
           meta_app_version?: string
           name?: string
@@ -3882,6 +3888,22 @@ export type Database = {
       }
     }
     Functions: {
+      admin_all_tenants_usage: {
+        Args: never
+        Returns: {
+          lead_limit: number
+          leads_month: number
+          message_limit: number
+          messages_month: number
+          name: string
+          plan_name: string
+          status: string
+          tenant_id: string
+          user_limit: number
+          users: number
+        }[]
+      }
+      admin_platform_metrics: { Args: never; Returns: Json }
       admin_tenant_metrics: { Args: { _tenant_id: string }; Returns: Json }
       backup_list_tables: {
         Args: never
@@ -4048,6 +4070,7 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: string
       }
+      generate_tenant_invoices: { Args: never; Returns: number }
       get_crm_unread_leads_count: { Args: never; Returns: number }
       get_crm_unread_leads_count_by_channel: {
         Args: { _channel: string }
@@ -4128,11 +4151,16 @@ export type Database = {
       get_tenant_by_slug: {
         Args: { _slug: string }
         Returns: {
+          branding_version: number
+          favicon_url: string
           id: string
+          logo_dark_url: string
           logo_url: string
           name: string
           primary_color: string
+          secondary_color: string
           slug: string
+          tertiary_color: string
         }[]
       }
       get_tenant_by_whatsapp_phone_number_id: {
