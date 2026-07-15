@@ -81,26 +81,47 @@ export const AdminClientes = () => {
   const [tenants, setTenants] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [form, setForm] = useState({ name: "", slug: "", primary_color: "#f97316", secondary_color: "#fb923c", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "" });
 
   const load = async () => {
-    const { data } = await (supabase as any).from("tenants").select("*").neq("status", "deleted").order("created_at", { ascending: false });
+    const q = (supabase as any).from("tenants").select("*").order("created_at", { ascending: false });
+    const { data } = showTrash ? await q.eq("status", "deleted") : await q.neq("status", "deleted");
     setTenants(data || []);
   };
 
   const PROTECTED_SLUGS = ["rizodent"];
   const isProtected = (t: any) => PROTECTED_SLUGS.includes(String(t?.slug || "").toLowerCase());
 
+  // "Excluir" = soft-delete (vai para a Lixeira, reversível).
   const handleDelete = async (t: any) => {
     if (isProtected(t)) { toast.error("Este cliente é protegido e não pode ser excluído."); return; }
-    if (!confirm(`Tem certeza que deseja apagar o cliente "${t.name}"? Essa ação pode ser revertida apenas via banco de dados.`)) return;
+    if (!confirm(`Enviar "${t.name}" para a Lixeira? O acesso é bloqueado na hora, mas os dados ficam guardados e você pode restaurar depois.`)) return;
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: t.id, action: "delete" } });
-    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao apagar")); return; }
-    toast.success(`Cliente ${t.name} removido`);
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao excluir")); return; }
+    toast.success(`"${t.name}" movido para a Lixeira`);
     load();
   };
 
-  useEffect(() => { load(); }, []);
+  const handleRestore = async (t: any) => {
+    const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: t.id, action: "restore" } });
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao restaurar")); return; }
+    toast.success(`"${t.name}" restaurado`);
+    load();
+  };
+
+  const handleHardDelete = async (t: any) => {
+    if (isProtected(t)) { toast.error("Este cliente é protegido e não pode ser excluído."); return; }
+    const typed = prompt(`EXCLUSÃO DEFINITIVA e irreversível de "${t.name}" (apaga todos os dados e usuários).\n\nPara confirmar, digite o nome do cliente:`);
+    if (typed === null) return;
+    if (typed.trim() !== String(t.name).trim()) { toast.error("Nome não confere. Exclusão cancelada."); return; }
+    const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: t.id, action: "hard_delete", confirm_name: typed } });
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao excluir definitivamente")); return; }
+    toast.success(`"${t.name}" excluído definitivamente`);
+    load();
+  };
+
+  useEffect(() => { load(); }, [showTrash]);
 
   const create = async () => {
     if (!form.name || !form.slug || !form.admin_email || !form.admin_password || !form.clinic_name) {
@@ -120,10 +141,16 @@ export const AdminClientes = () => {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Clientes</h1>
-          <p className="text-sm text-slate-400">Gerencie todos os clientes da plataforma CRClin.</p>
+          <h1 className="text-2xl font-bold">{showTrash ? "Lixeira" : "Clientes"}</h1>
+          <p className="text-sm text-slate-400">{showTrash ? "Clientes excluídos — restaure ou apague em definitivo." : "Gerencie todos os clientes da plataforma CRClin."}</p>
         </div>
-        <Button onClick={() => setOpen(true)} className="bg-gradient-to-r from-orange-500 to-amber-400 text-slate-950 hover:opacity-90"><Plus size={16} /> Novo cliente</Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border border-slate-800 p-0.5">
+            <button onClick={() => setShowTrash(false)} className={`rounded px-3 py-1.5 text-sm ${!showTrash ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>Ativos</button>
+            <button onClick={() => setShowTrash(true)} className={`flex items-center gap-1 rounded px-3 py-1.5 text-sm ${showTrash ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}><Trash2 size={13} /> Lixeira</button>
+          </div>
+          {!showTrash && <Button onClick={() => setOpen(true)} className="bg-gradient-to-r from-orange-500 to-amber-400 text-slate-950 hover:opacity-90"><Plus size={16} /> Novo cliente</Button>}
+        </div>
       </div>
 
       <div className="grid gap-3">
@@ -139,12 +166,21 @@ export const AdminClientes = () => {
             </Link>
             <div className="flex items-center gap-2">
               <Badge variant={t.status === "active" ? "default" : "secondary"}>{t.status}</Badge>
-              <Button asChild size="sm" variant="outline"><Link to={`/admin/clientes/${t.id}`}>Gerenciar</Link></Button>
-              <Button size="sm" variant="outline" disabled={isProtected(t)} title={isProtected(t) ? "Cliente protegido" : undefined} className="border-red-900 text-red-400 hover:bg-red-950 disabled:opacity-40" onClick={() => handleDelete(t)}><Trash2 size={14} /></Button>
+              {showTrash ? (
+                <>
+                  <Button size="sm" variant="outline" className="border-emerald-800 text-emerald-400 hover:bg-emerald-950" onClick={() => handleRestore(t)}>Restaurar</Button>
+                  <Button size="sm" variant="outline" disabled={isProtected(t)} title={isProtected(t) ? "Cliente protegido" : "Excluir definitivamente"} className="border-red-900 text-red-400 hover:bg-red-950 disabled:opacity-40" onClick={() => handleHardDelete(t)}><Trash2 size={14} /></Button>
+                </>
+              ) : (
+                <>
+                  <Button asChild size="sm" variant="outline"><Link to={`/admin/clientes/${t.id}`}>Gerenciar</Link></Button>
+                  <Button size="sm" variant="outline" disabled={isProtected(t)} title={isProtected(t) ? "Cliente protegido" : "Enviar para a Lixeira"} className="border-red-900 text-red-400 hover:bg-red-950 disabled:opacity-40" onClick={() => handleDelete(t)}><Trash2 size={14} /></Button>
+                </>
+              )}
             </div>
           </Card>
         ))}
-        {tenants.length === 0 && <p className="text-slate-500">Nenhum cliente ainda.</p>}
+        {tenants.length === 0 && <p className="text-slate-500">{showTrash ? "A Lixeira está vazia." : "Nenhum cliente ainda."}</p>}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>

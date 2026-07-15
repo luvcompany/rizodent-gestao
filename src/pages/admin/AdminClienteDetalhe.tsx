@@ -183,9 +183,9 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
         <DialogContent className="bg-slate-900 text-slate-100 border-slate-800">
           <DialogHeader><DialogTitle>Novo usuário</DialogTitle></DialogHeader>
           <div className="space-y-2">
-            <div><Label>Nome</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
-            <div><Label>E-mail</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-            <div><Label>Senha temporária</Label><Input value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
+            <div><Label>Nome</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
+            <div><Label>E-mail</Label><Input type="email" className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+            <div><Label>Senha temporária</Label><Input type="password" minLength={6} className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Mínimo 6 caracteres" /></div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
@@ -201,7 +201,7 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
       <Dialog open={!!reset} onOpenChange={(v) => !v && setReset(null)}>
         <DialogContent className="bg-slate-900 text-slate-100 border-slate-800">
           <DialogHeader><DialogTitle>Redefinir senha</DialogTitle></DialogHeader>
-          <Input placeholder="Nova senha temporária" value={reset?.password ?? ""} onChange={(e) => setReset(reset ? { ...reset, password: e.target.value } : null)} />
+          <Input type="password" minLength={6} className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" placeholder="Nova senha (mínimo 6 caracteres)" value={reset?.password ?? ""} onChange={(e) => setReset(reset ? { ...reset, password: e.target.value } : null)} />
           <DialogFooter>
             <Button variant="ghost" onClick={() => setReset(null)}>Cancelar</Button>
             <Button onClick={async () => {
@@ -313,15 +313,19 @@ function SettingsTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
 }
 
 function ActionsTab({ tenant, onChanged }: { tenant: Tenant; onChanged: () => void }) {
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  const [hardOpen, setHardOpen] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  const isDeleted = tenant.status === "deleted";
+  const isProtected = String(tenant.slug).toLowerCase() === "rizodent";
 
-  const action = async (act: "pause" | "activate" | "delete") => {
-    if (act === "delete" && !confirm(`Marcar ${tenant.name} como excluído? O acesso será bloqueado.`)) return;
+  const call = async (body: any, okMsg: string) => {
     setBusy(true);
-    const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: tenant.id, action: act } });
+    const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body });
     setBusy(false);
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
-    toast.success("OK"); onChanged();
+    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return false; }
+    toast.success(okMsg); onChanged(); return true;
   };
 
   const impersonate = async () => {
@@ -334,29 +338,72 @@ function ActionsTab({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
     const slug = (data as any)?.slug ?? tenant.slug;
     if (at && rt) {
       const origin = window.location.origin.includes("lovable") ? "https://crclin.com.br" : window.location.origin;
-      // Tokens transportados no FRAGMENTO (#) — não são enviados ao servidor nem no Referer.
       const url = `${origin}/${slug}/dashboard#impersonate_at=${encodeURIComponent(at)}&impersonate_rt=${encodeURIComponent(rt)}`;
       window.open(url, "_blank");
       toast.success("Painel do cliente aberto em nova aba");
     }
   };
 
+  const doHardDelete = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: tenant.id, action: "hard_delete", confirm_name: confirmName } });
+    setBusy(false);
+    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+    toast.success("Cliente excluído definitivamente");
+    setHardOpen(false);
+    navigate("/admin");
+  };
+
   return (
     <div className="space-y-3 max-w-xl">
-      <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100">
-        <p className="font-semibold mb-1"><LogIn size={14} className="inline mr-1" /> Impersonar</p>
-        <p className="text-sm text-slate-400 mb-3">Acesse o painel deste cliente em uma nova aba.</p>
-        <Button onClick={impersonate} disabled={busy}>Abrir como cliente</Button>
-      </Card>
-      <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100">
-        <p className="font-semibold mb-3">Status do cliente</p>
-        <div className="flex gap-2">
-          {tenant.status !== "active" && <Button onClick={() => action("activate")} disabled={busy}><PlayCircle size={14} /> Ativar</Button>}
-          {tenant.status === "active" && <Button variant="outline" onClick={() => action("pause")} disabled={busy}><PauseCircle size={14} /> Pausar</Button>}
-          <Button variant="destructive" onClick={() => action("delete")} disabled={busy}><Trash2 size={14} /> Excluir</Button>
-        </div>
-        <p className="mt-2 text-xs text-slate-500">Pausa e exclusão bloqueiam logins imediatamente.</p>
-      </Card>
+      {!isDeleted && (
+        <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100">
+          <p className="font-semibold mb-1"><LogIn size={14} className="inline mr-1" /> Impersonar</p>
+          <p className="text-sm text-slate-400 mb-3">Acesse o painel deste cliente em uma nova aba.</p>
+          <Button onClick={impersonate} disabled={busy}>Abrir como cliente</Button>
+        </Card>
+      )}
+
+      {isDeleted ? (
+        <Card className="border-amber-900/50 bg-amber-950/20 p-5 text-slate-100">
+          <p className="font-semibold mb-1 text-amber-300"><Trash2 size={14} className="inline mr-1" /> Cliente na Lixeira</p>
+          <p className="text-sm text-slate-400 mb-3">Este cliente está excluído, mas os dados continuam guardados. Você pode restaurá-lo ou excluí-lo em definitivo.</p>
+          <div className="flex gap-2">
+            <Button onClick={() => call({ tenant_id: tenant.id, action: "restore" }, "Cliente restaurado")} disabled={busy}><PlayCircle size={14} /> Restaurar</Button>
+            <Button variant="destructive" onClick={() => setHardOpen(true)} disabled={busy || isProtected} title={isProtected ? "Cliente protegido" : undefined}><Trash2 size={14} /> Excluir definitivamente</Button>
+          </div>
+        </Card>
+      ) : (
+        <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100">
+          <p className="font-semibold mb-3">Status do cliente</p>
+          <div className="flex gap-2">
+            {tenant.status !== "active" && <Button onClick={() => call({ tenant_id: tenant.id, action: "activate" }, "Cliente ativado")} disabled={busy}><PlayCircle size={14} /> Ativar</Button>}
+            {tenant.status === "active" && <Button variant="outline" onClick={() => call({ tenant_id: tenant.id, action: "pause" }, "Cliente pausado")} disabled={busy}><PauseCircle size={14} /> Pausar</Button>}
+            <Button variant="outline" className="border-red-900 text-red-400 hover:bg-red-950 disabled:opacity-40" disabled={busy || isProtected} title={isProtected ? "Cliente protegido" : undefined}
+              onClick={() => { if (confirm(`Enviar "${tenant.name}" para a Lixeira? O acesso é bloqueado na hora, mas os dados ficam guardados e você pode restaurar depois.`)) call({ tenant_id: tenant.id, action: "delete" }, "Cliente movido para a Lixeira"); }}>
+              <Trash2 size={14} /> Excluir (Lixeira)
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">"Excluir" é reversível (vai para a Lixeira). A exclusão permanente é feita de lá.</p>
+        </Card>
+      )}
+
+      <Dialog open={hardOpen} onOpenChange={(v) => { if (!v) { setHardOpen(false); setConfirmName(""); } }}>
+        <DialogContent className="bg-slate-900 text-slate-100 border-slate-800">
+          <DialogHeader><DialogTitle className="text-red-400">Excluir definitivamente</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-slate-300">Isto apaga <b>permanentemente</b> todos os dados de <b>{tenant.name}</b> (leads, conversas, agendamentos, usuários). <b>Não pode ser desfeito.</b></p>
+            <p className="text-xs text-slate-400">Para confirmar, digite o nome do cliente: <span className="font-mono text-slate-200">{tenant.name}</span></p>
+            <Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder="Digite o nome exato do cliente" />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setHardOpen(false); setConfirmName(""); }}>Cancelar</Button>
+            <Button variant="destructive" disabled={busy || confirmName.trim() !== tenant.name.trim()} onClick={doHardDelete}>
+              {busy && <Loader2 className="mr-2 animate-spin" size={14} />} Excluir definitivamente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
