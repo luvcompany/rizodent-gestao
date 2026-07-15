@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
       for (const token of tokens) {
         try {
           const adRes = await fetch(
-            `https://graph.facebook.com/v25.0/${adId}?fields=account_id&access_token=${token}`
+            `https://graph.facebook.com/v25.0/${adId}?fields=account_id,name&access_token=${token}`
           );
 
           if (!adRes.ok) {
