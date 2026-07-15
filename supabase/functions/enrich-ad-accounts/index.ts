@@ -213,6 +213,7 @@ Deno.serve(async (req) => {
               ad_id: adId,
               ad_account_id: accountId,
               ad_account_name: accountName,
+              ...(adName ? { ad_name: adName } : {}),
               ...(cidadeInferida ? { cidade: cidadeInferida } : {}),
               updated_at: new Date().toISOString(),
             }, { onConflict: "ad_id" });
