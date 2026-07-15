@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
       for (const token of tokens) {
         try {
           const adRes = await fetch(
-            `https://graph.facebook.com/v25.0/${adId}?fields=account_id&access_token=${token}`
+            `https://graph.facebook.com/v25.0/${adId}?fields=account_id,name&access_token=${token}`
           );
 
           if (!adRes.ok) {
@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
           }
 
           const accountId = adData.account_id;
+          const adName: string | null = adData?.name ? String(adData.name) : null;
           let accountName = accountCache.get(accountId) || null;
 
           if (!accountName) {
@@ -212,6 +213,7 @@ Deno.serve(async (req) => {
               ad_id: adId,
               ad_account_id: accountId,
               ad_account_name: accountName,
+              ...(adName ? { ad_name: adName } : {}),
               ...(cidadeInferida ? { cidade: cidadeInferida } : {}),
               updated_at: new Date().toISOString(),
             }, { onConflict: "ad_id" });

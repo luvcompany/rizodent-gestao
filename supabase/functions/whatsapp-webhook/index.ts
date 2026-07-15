@@ -736,6 +736,7 @@ Deno.serve(async (req) => {
 
             let adAccountId: string | null = null;
             let adAccountName: string | null = null;
+            let adName: string | null = null;
 
             // 🔑 CACHE: tenta buscar metadados do anúncio no cache local antes de chamar a Graph API
             // Isso garante que mesmo se a Graph API falhar (token expirado, rate limit, permissão),
@@ -750,6 +751,7 @@ Deno.serve(async (req) => {
                 if (cached) {
                   if (!adAccountId && cached.ad_account_id) adAccountId = cached.ad_account_id;
                   if (!adAccountName && cached.ad_account_name) adAccountName = cached.ad_account_name;
+                  if (!adName && (cached as any).ad_name) adName = (cached as any).ad_name;
                   if (!adHeadline && cached.ad_headline) adHeadline = cached.ad_headline;
                   if (!adBody && cached.ad_body) adBody = cached.ad_body;
                   console.log(`[AD-CACHE] HIT ad_id=${adSourceId} => account=${adAccountName}`);
@@ -798,6 +800,7 @@ Deno.serve(async (req) => {
                   const adData = await adRes.json();
                   console.log(`[AD-ENRICHMENT] Ad data received for ${adSourceId}: name=${adData?.name ? "yes" : "no"}, account_id=${adData?.account_id || "n/a"}`);
 
+                  if (!adName && adData?.name) adName = String(adData.name);
                   if (!adHeadline && adData.name) adHeadline = adData.name;
                   if (!adSourceUrl && adData.permalink_url) adSourceUrl = adData.permalink_url;
 
@@ -917,12 +920,13 @@ Deno.serve(async (req) => {
                   ad_id: adSourceId,
                   ad_account_id: adAccountId,
                   ad_account_name: adAccountName,
+                  ...(adName ? { ad_name: adName } : {}),
                   ad_headline: adHeadline,
                   ad_body: adBody,
                   cidade: inferredCidadeForCache,
                   updated_at: new Date().toISOString(),
                 }, { onConflict: "ad_id" });
-                console.log(`[AD-CACHE] UPSERT ad_id=${adSourceId} account=${adAccountName} cidade=${inferredCidadeForCache}`);
+                console.log(`[AD-CACHE] UPSERT ad_id=${adSourceId} name=${adName} account=${adAccountName} cidade=${inferredCidadeForCache}`);
               } catch (upErr: any) {
                 console.log(`[AD-CACHE] erro upsert: ${upErr.message}`);
               }
