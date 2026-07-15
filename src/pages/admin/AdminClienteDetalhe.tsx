@@ -12,12 +12,48 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Loader2, Users, Image as ImageIcon, Settings2, LogIn,
   PauseCircle, PlayCircle, Trash2, Shield, BarChart3, Plus, KeyRound, UserX, UserCheck,
+  Mail, ScrollText, AlertTriangle, ChevronLeft, ChevronRight, Eye,
 } from "lucide-react";
+
+/**
+ * Helper local para extrair a mensagem de erro de edge functions.
+ * Espelha o `getFunctionErrorMessage` de AdminPanel.tsx (que não é exportado).
+ */
+const getFunctionErrorMessage = async (data: unknown, error: unknown, fallback = "Erro ao processar") => {
+  const dataError = (data as any)?.error;
+  if (dataError) return String(dataError);
+  const context = (error as any)?.context;
+  if (context?.json) {
+    try {
+      const body = await context.clone().json();
+      if (body?.error) return String(body.error);
+    } catch {
+      /* mantém a mensagem original abaixo */
+    }
+  }
+  return (error as any)?.message || fallback;
+};
+
+const ROLES: { value: string; label: string }[] = [
+  { value: "crc", label: "CRC" },
+  { value: "gerente", label: "Gerente" },
+  { value: "posvenda", label: "Pós-venda" },
+];
+const roleLabel = (r: string | null | undefined) =>
+  ROLES.find((x) => x.value === r)?.label ?? (r || "—");
+
+const inputDark =
+  "bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500";
+const selectDark =
+  "h-9 rounded-md border border-slate-700 bg-slate-800 px-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-cyan-500";
 
 type Tenant = {
   id: string; slug: string; name: string; logo_url: string | null;
+  logo_dark_url?: string | null;
   favicon_url: string | null; primary_color: string; secondary_color: string;
   tertiary_color: string; status: string; created_at: string;
+  timezone?: string | null; trial_ends_at?: string | null;
+  branding_version?: number | null;
 };
 type Profile = {
   id: string; nome: string; email: string; cargo: string | null;
@@ -27,6 +63,11 @@ type Metrics = {
   leads_total: number; leads_month: number;
   messages_in_month: number; messages_out_month: number;
   users_total: number; users_active_30d: number; ai_calls_month: number;
+};
+type Usage = {
+  tenant_id: string; name: string; status: string; plan_name: string | null;
+  user_limit: number | null; lead_limit: number | null; message_limit: number | null;
+  users: number; leads_month: number; messages_month: number;
 };
 
 export default function AdminClienteDetalhe() {
@@ -75,12 +116,14 @@ export default function AdminClienteDetalhe() {
           <TabsTrigger value="users"><Users size={14} className="mr-1" /> Usuários</TabsTrigger>
           <TabsTrigger value="branding"><ImageIcon size={14} className="mr-1" /> Branding</TabsTrigger>
           <TabsTrigger value="settings"><Settings2 size={14} className="mr-1" /> Configurações</TabsTrigger>
+          <TabsTrigger value="logs"><ScrollText size={14} className="mr-1" /> Logs</TabsTrigger>
           <TabsTrigger value="actions"><Shield size={14} className="mr-1" /> Acesso & Ações</TabsTrigger>
         </TabsList>
         <TabsContent value="overview"><OverviewTab tenant={tenant} /></TabsContent>
         <TabsContent value="users"><UsersTab tenant={tenant} /></TabsContent>
         <TabsContent value="branding"><BrandingTab tenant={tenant} onSaved={load} /></TabsContent>
         <TabsContent value="settings"><SettingsTab tenant={tenant} onSaved={load} /></TabsContent>
+        <TabsContent value="logs"><LogsTab tenant={tenant} /></TabsContent>
         <TabsContent value="actions"><ActionsTab tenant={tenant} onChanged={load} /></TabsContent>
       </Tabs>
     </div>
@@ -97,28 +140,82 @@ function MetricCard({ label, value, hint }: { label: string; value: any; hint?: 
   );
 }
 
+function UsageBar({ label, used, limit }: { label: string; used: number; limit: number | null | undefined }) {
+  const hasLimit = typeof limit === "number" && limit > 0;
+  const pct = hasLimit ? Math.min(100, Math.round((used / (limit as number)) * 100)) : 0;
+  const over = hasLimit && pct >= 80;
+  const full = hasLimit && used >= (limit as number);
+  const barColor = full ? "bg-red-500" : over ? "bg-amber-500" : "bg-cyan-500";
+  return (
+    <Card className="border-slate-800 bg-slate-900/40 p-4 text-slate-100">
+      <div className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
+        {over && (
+          <span className={`inline-flex items-center gap-1 text-xs ${full ? "text-red-400" : "text-amber-400"}`}>
+            <AlertTriangle size={12} /> {full ? "Limite atingido" : "Perto do limite"}
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-lg font-bold">
+        {used.toLocaleString("pt-BR")}
+        <span className="text-sm font-normal text-slate-500">
+          {" / "}{hasLimit ? (limit as number).toLocaleString("pt-BR") : "ilimitado"}
+        </span>
+      </p>
+      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+        <div className={`h-full ${barColor} transition-all`} style={{ width: `${hasLimit ? pct : 0}%` }} />
+      </div>
+      {hasLimit && <p className="mt-1 text-xs text-slate-500">{pct}% do plano</p>}
+    </Card>
+  );
+}
+
 function OverviewTab({ tenant }: { tenant: Tenant }) {
   const [m, setM] = useState<Metrics | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.functions.invoke("admin-tenant-metrics", { body: { tenant_id: tenant.id } });
-      if (error) toast.error(error.message);
-      setM(data as Metrics);
+      setLoading(true);
+      const [metricsRes, usageRes] = await Promise.all([
+        supabase.functions.invoke("admin-tenant-metrics", { body: { tenant_id: tenant.id } }),
+        (supabase as any).rpc("admin_all_tenants_usage"),
+      ]);
+      if (metricsRes.error) toast.error(await getFunctionErrorMessage(metricsRes.data, metricsRes.error, "Erro ao carregar métricas"));
+      setM(metricsRes.data as Metrics);
+      if (usageRes.error) toast.error(usageRes.error.message);
+      const row = ((usageRes.data as Usage[]) ?? []).find((r) => r.tenant_id === tenant.id) ?? null;
+      setUsage(row);
       setLoading(false);
     })();
   }, [tenant.id]);
 
   if (loading) return <div className="text-slate-400"><Loader2 className="inline animate-spin" /> Calculando...</div>;
   return (
-    <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-      <MetricCard label="Leads totais" value={m?.leads_total} />
-      <MetricCard label="Leads no mês" value={m?.leads_month} />
-      <MetricCard label="Mensagens recebidas (mês)" value={m?.messages_in_month} />
-      <MetricCard label="Mensagens enviadas (mês)" value={m?.messages_out_month} />
-      <MetricCard label="Usuários totais" value={m?.users_total} />
-      <MetricCard label="Ativos (30d)" value={m?.users_active_30d} hint="Login nos últimos 30 dias" />
-      <MetricCard label="Chamadas de IA (mês)" value={m?.ai_calls_month} />
+    <div className="space-y-5">
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-slate-300">
+          Uso vs. limite do plano {usage?.plan_name ? <span className="text-slate-500">· {usage.plan_name}</span> : <span className="text-slate-500">· sem plano</span>}
+        </h3>
+        <div className="grid gap-3 md:grid-cols-3">
+          <UsageBar label="Usuários" used={usage?.users ?? m?.users_total ?? 0} limit={usage?.user_limit} />
+          <UsageBar label="Leads no mês" used={usage?.leads_month ?? m?.leads_month ?? 0} limit={usage?.lead_limit} />
+          <UsageBar label="Mensagens no mês" used={usage?.messages_month ?? ((m?.messages_in_month ?? 0) + (m?.messages_out_month ?? 0))} limit={usage?.message_limit} />
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-slate-300">Métricas gerais</h3>
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+          <MetricCard label="Leads totais" value={m?.leads_total} />
+          <MetricCard label="Leads no mês" value={m?.leads_month} />
+          <MetricCard label="Mensagens recebidas (mês)" value={m?.messages_in_month} />
+          <MetricCard label="Mensagens enviadas (mês)" value={m?.messages_out_month} />
+          <MetricCard label="Usuários totais" value={m?.users_total} />
+          <MetricCard label="Ativos (30d)" value={m?.users_active_30d} hint="Login nos últimos 30 dias" />
+          <MetricCard label="Chamadas de IA (mês)" value={m?.ai_calls_month} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -127,7 +224,8 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
   const [users, setUsers] = useState<Profile[]>([]);
   const [open, setOpen] = useState(false);
   const [reset, setReset] = useState<{ id: string; password: string } | null>(null);
-  const [form, setForm] = useState({ nome: "", email: "", password: "" });
+  const [emailEdit, setEmailEdit] = useState<{ id: string; email: string } | null>(null);
+  const [form, setForm] = useState({ nome: "", email: "", password: "", role: "crc" });
 
   const load = async () => {
     const { data } = await supabase.from("profiles")
@@ -139,7 +237,7 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
 
   const call = async (body: any) => {
     const { data, error } = await supabase.functions.invoke("admin-manage-user", { body });
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return false; }
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error)); return false; }
     return true;
   };
 
@@ -148,10 +246,11 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
       <div className="flex justify-end">
         <Button onClick={() => setOpen(true)}><Plus size={14} /> Novo usuário</Button>
       </div>
-      <div className="overflow-hidden rounded-lg border border-slate-800">
+      <div className="overflow-x-auto rounded-lg border border-slate-800">
         <table className="w-full text-sm">
           <thead className="bg-slate-900/60 text-slate-400"><tr>
             <th className="p-3 text-left">Nome</th><th className="p-3 text-left">E-mail</th>
+            <th className="p-3 text-left">Papel</th>
             <th className="p-3 text-left">Último login</th><th className="p-3 text-left">Status</th>
             <th className="p-3 text-right">Ações</th>
           </tr></thead>
@@ -160,21 +259,37 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
               <tr key={u.id} className="border-t border-slate-800">
                 <td className="p-3">{u.nome}</td>
                 <td className="p-3 text-slate-400">{u.email}</td>
+                <td className="p-3">
+                  <select
+                    className={selectDark}
+                    value={ROLES.some((r) => r.value === u.cargo) ? (u.cargo as string) : "crc"}
+                    title="Trocar papel do usuário"
+                    onChange={async (e) => {
+                      const role = e.target.value;
+                      if (await call({ action: "set_role", user_id: u.id, role })) { toast.success(`Papel alterado para ${roleLabel(role)}`); load(); }
+                    }}
+                  >
+                    {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                </td>
                 <td className="p-3 text-slate-400">{u.last_login_at ? new Date(u.last_login_at).toLocaleString("pt-BR") : "Nunca"}</td>
                 <td className="p-3">{u.is_blocked ? <Badge variant="destructive">Bloqueado</Badge> : <Badge>Ativo</Badge>}</td>
-                <td className="p-3 text-right space-x-1">
-                  <Button size="sm" variant="ghost" onClick={() => setReset({ id: u.id, password: "" })}><KeyRound size={14} /></Button>
-                  {u.is_blocked
-                    ? <Button size="sm" variant="ghost" onClick={async () => { if (await call({ action: "unblock", user_id: u.id })) { toast.success("Desbloqueado"); load(); } }}><UserCheck size={14} /></Button>
-                    : <Button size="sm" variant="ghost" onClick={async () => { if (await call({ action: "block", user_id: u.id })) { toast.success("Bloqueado"); load(); } }}><UserX size={14} /></Button>}
-                  <Button size="sm" variant="ghost" onClick={async () => {
-                    if (!confirm(`Excluir ${u.email}?`)) return;
-                    if (await call({ action: "delete", user_id: u.id })) { toast.success("Excluído"); load(); }
-                  }}><Trash2 size={14} /></Button>
+                <td className="p-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" title="Trocar e-mail" onClick={() => setEmailEdit({ id: u.id, email: u.email })}><Mail size={14} /></Button>
+                    <Button size="sm" variant="ghost" title="Redefinir senha" onClick={() => setReset({ id: u.id, password: "" })}><KeyRound size={14} /></Button>
+                    {u.is_blocked
+                      ? <Button size="sm" variant="ghost" title="Desbloquear" onClick={async () => { if (await call({ action: "unblock", user_id: u.id })) { toast.success("Desbloqueado"); load(); } }}><UserCheck size={14} /></Button>
+                      : <Button size="sm" variant="ghost" title="Bloquear" onClick={async () => { if (await call({ action: "block", user_id: u.id })) { toast.success("Bloqueado"); load(); } }}><UserX size={14} /></Button>}
+                    <Button size="sm" variant="ghost" title="Excluir usuário" onClick={async () => {
+                      if (!confirm(`Excluir ${u.email}?`)) return;
+                      if (await call({ action: "delete", user_id: u.id })) { toast.success("Excluído"); load(); }
+                    }}><Trash2 size={14} /></Button>
+                  </div>
                 </td>
               </tr>
             ))}
-            {users.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-500">Nenhum usuário.</td></tr>}
+            {users.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-slate-500">Nenhum usuário.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -183,15 +298,21 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
         <DialogContent className="bg-slate-900 text-slate-100 border-slate-800">
           <DialogHeader><DialogTitle>Novo usuário</DialogTitle></DialogHeader>
           <div className="space-y-2">
-            <div><Label>Nome</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
-            <div><Label>E-mail</Label><Input type="email" className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-            <div><Label>Senha temporária</Label><Input type="password" minLength={6} className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Mínimo 6 caracteres" /></div>
+            <div><Label>Nome</Label><Input className={inputDark} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
+            <div><Label>E-mail</Label><Input type="email" className={inputDark} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+            <div>
+              <Label>Papel</Label>
+              <select className={`${selectDark} w-full`} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+            <div><Label>Senha temporária</Label><Input type="password" minLength={6} className={inputDark} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Mínimo 6 caracteres" /></div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={async () => {
               if (await call({ action: "create", tenant_id: tenant.id, ...form })) {
-                toast.success("Usuário criado"); setOpen(false); setForm({ nome: "", email: "", password: "" }); load();
+                toast.success("Usuário criado"); setOpen(false); setForm({ nome: "", email: "", password: "", role: "crc" }); load();
               }
             }}>Criar</Button>
           </DialogFooter>
@@ -201,7 +322,7 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
       <Dialog open={!!reset} onOpenChange={(v) => !v && setReset(null)}>
         <DialogContent className="bg-slate-900 text-slate-100 border-slate-800">
           <DialogHeader><DialogTitle>Redefinir senha</DialogTitle></DialogHeader>
-          <Input type="password" minLength={6} className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" placeholder="Nova senha (mínimo 6 caracteres)" value={reset?.password ?? ""} onChange={(e) => setReset(reset ? { ...reset, password: e.target.value } : null)} />
+          <Input type="password" minLength={6} className={inputDark} placeholder="Nova senha (mínimo 6 caracteres)" value={reset?.password ?? ""} onChange={(e) => setReset(reset ? { ...reset, password: e.target.value } : null)} />
           <DialogFooter>
             <Button variant="ghost" onClick={() => setReset(null)}>Cancelar</Button>
             <Button onClick={async () => {
@@ -213,102 +334,343 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!emailEdit} onOpenChange={(v) => !v && setEmailEdit(null)}>
+        <DialogContent className="bg-slate-900 text-slate-100 border-slate-800">
+          <DialogHeader><DialogTitle>Trocar e-mail</DialogTitle></DialogHeader>
+          <Input type="email" className={inputDark} placeholder="novo@email.com" value={emailEdit?.email ?? ""} onChange={(e) => setEmailEdit(emailEdit ? { ...emailEdit, email: e.target.value } : null)} />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEmailEdit(null)}>Cancelar</Button>
+            <Button onClick={async () => {
+              if (!emailEdit?.email) return;
+              if (await call({ action: "set_email", user_id: emailEdit.id, email: emailEdit.email })) {
+                toast.success("E-mail alterado"); setEmailEdit(null); load();
+              }
+            }}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void }) {
   const [logo, setLogo] = useState(tenant.logo_url ?? "");
+  const [logoDark, setLogoDark] = useState(tenant.logo_dark_url ?? "");
   const [favicon, setFavicon] = useState(tenant.favicon_url ?? "");
   const [primary, setPrimary] = useState(tenant.primary_color);
   const [secondary, setSecondary] = useState(tenant.secondary_color ?? "#fb923c");
   const [tertiary, setTertiary] = useState(tenant.tertiary_color ?? "#ffedd5");
   const [saving, setSaving] = useState(false);
 
-  const upload = async (f: File, kind: "logo" | "favicon") => {
+  const upload = async (f: File, kind: "logo" | "logo_dark" | "favicon") => {
     const path = `${tenant.id}/${kind}-${Date.now()}-${f.name}`;
     const { error } = await supabase.storage.from("tenant-logos").upload(path, f, { upsert: true });
     if (error) { toast.error(error.message); return; }
     const { data } = supabase.storage.from("tenant-logos").getPublicUrl(path);
-    if (kind === "logo") setLogo(data.publicUrl); else setFavicon(data.publicUrl);
+    if (kind === "logo") setLogo(data.publicUrl);
+    else if (kind === "logo_dark") setLogoDark(data.publicUrl);
+    else setFavicon(data.publicUrl);
   };
 
   const save = async () => {
     setSaving(true);
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", {
       body: { tenant_id: tenant.id, action: "update", patch: {
-        logo_url: logo || null, favicon_url: favicon || null,
+        logo_url: logo || null, logo_dark_url: logoDark || null, favicon_url: favicon || null,
         primary_color: primary, secondary_color: secondary, tertiary_color: tertiary,
       } },
     });
     setSaving(false);
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao salvar branding")); return; }
     toast.success("Branding salvo"); onSaved();
   };
 
   return (
-    <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-4 max-w-xl">
-      <div>
-        <Label>Logo</Label>
-        <div className="flex items-center gap-3 mt-1">
-          {logo && <img src={logo} alt="" className="h-12 w-12 rounded object-contain bg-slate-800" />}
-          <Input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "logo")} />
-        </div>
-      </div>
-      <div>
-        <Label>Favicon</Label>
-        <div className="flex items-center gap-3 mt-1">
-          {favicon && <img src={favicon} alt="" className="h-8 w-8 rounded object-contain bg-slate-800" />}
-          <Input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "favicon")} />
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-4">
         <div>
-          <Label>Cor primária</Label>
-          <Input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} className="h-10 w-full p-1" />
+          <Label>Logo (fundo claro)</Label>
+          <div className="flex items-center gap-3 mt-1">
+            {logo && <img src={logo} alt="" className="h-12 w-12 rounded object-contain bg-slate-800" />}
+            <Input type="file" accept="image/*" className={inputDark} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "logo")} />
+          </div>
+          <Input className={`${inputDark} mt-2`} placeholder="ou cole a URL da logo" value={logo} onChange={(e) => setLogo(e.target.value)} />
         </div>
         <div>
-          <Label>Cor secundária</Label>
-          <Input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="h-10 w-full p-1" />
+          <Label>Logo (fundo escuro)</Label>
+          <div className="flex items-center gap-3 mt-1">
+            {logoDark && <img src={logoDark} alt="" className="h-12 w-12 rounded object-contain bg-slate-950" />}
+            <Input type="file" accept="image/*" className={inputDark} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "logo_dark")} />
+          </div>
+          <Input className={`${inputDark} mt-2`} placeholder="ou cole a URL da logo escura" value={logoDark} onChange={(e) => setLogoDark(e.target.value)} />
+          <p className="mt-1 text-xs text-slate-500">Usada em áreas de fundo escuro (ex.: cabeçalho invertido). Opcional.</p>
         </div>
         <div>
-          <Label>Cor terciária</Label>
-          <Input type="color" value={tertiary} onChange={(e) => setTertiary(e.target.value)} className="h-10 w-full p-1" />
+          <Label>Favicon</Label>
+          <div className="flex items-center gap-3 mt-1">
+            {favicon && <img src={favicon} alt="" className="h-8 w-8 rounded object-contain bg-slate-800" />}
+            <Input type="file" accept="image/*" className={inputDark} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "favicon")} />
+          </div>
+          <Input className={`${inputDark} mt-2`} placeholder="ou cole a URL do favicon" value={favicon} onChange={(e) => setFavicon(e.target.value)} />
         </div>
-      </div>
-      <div className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 p-3">
-        <span className="text-xs text-slate-400">Pré-visualização:</span>
-        <span className="h-6 w-6 rounded" style={{ background: primary }} />
-        <span className="h-6 w-6 rounded" style={{ background: secondary }} />
-        <span className="h-6 w-6 rounded" style={{ background: tertiary }} />
-      </div>
-      <Button onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin" size={14} />} Salvar</Button>
-    </Card>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label>Cor primária</Label>
+            <Input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} className="h-10 w-full p-1" />
+            <Input className={`${inputDark} mt-1 font-mono text-xs`} value={primary} onChange={(e) => setPrimary(e.target.value)} />
+          </div>
+          <div>
+            <Label>Cor secundária</Label>
+            <Input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="h-10 w-full p-1" />
+            <Input className={`${inputDark} mt-1 font-mono text-xs`} value={secondary} onChange={(e) => setSecondary(e.target.value)} />
+          </div>
+          <div>
+            <Label>Cor terciária</Label>
+            <Input type="color" value={tertiary} onChange={(e) => setTertiary(e.target.value)} className="h-10 w-full p-1" />
+            <Input className={`${inputDark} mt-1 font-mono text-xs`} value={tertiary} onChange={(e) => setTertiary(e.target.value)} />
+          </div>
+        </div>
+        <Button onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin" size={14} />} Salvar</Button>
+      </Card>
+
+      {/* Pré-visualização real */}
+      <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-4">
+        <p className="flex items-center gap-2 text-sm font-semibold text-slate-300"><Eye size={14} /> Pré-visualização</p>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">Paleta:</span>
+          <span className="h-6 w-6 rounded border border-slate-700" style={{ background: primary }} title={primary} />
+          <span className="h-6 w-6 rounded border border-slate-700" style={{ background: secondary }} title={secondary} />
+          <span className="h-6 w-6 rounded border border-slate-700" style={{ background: tertiary }} title={tertiary} />
+        </div>
+
+        {/* Cartão de exemplo pintado com as cores escolhidas */}
+        <div className="rounded-lg border p-4" style={{ background: tertiary, borderColor: secondary }}>
+          <div className="flex items-center gap-2">
+            {(logo || tenant.logo_url) && <img src={logo || tenant.logo_url || ""} alt="" className="h-8 w-8 rounded object-contain bg-white/60" />}
+            <span className="font-bold" style={{ color: primary }}>{tenant.name}</span>
+          </div>
+          <p className="mt-2 text-sm" style={{ color: primary }}>
+            Exemplo de como os botões e destaques aparecem no painel do cliente.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button type="button" className="rounded-md px-3 py-1.5 text-sm font-semibold text-white" style={{ background: primary }}>
+              Botão primário
+            </button>
+            <button type="button" className="rounded-md px-3 py-1.5 text-sm font-semibold text-white" style={{ background: secondary }}>
+              Secundário
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500">A pré-visualização usa os valores atuais dos campos, mesmo antes de salvar.</p>
+      </Card>
+    </div>
   );
 }
 
 function SettingsTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void }) {
   const [name, setName] = useState(tenant.name);
   const [slug, setSlug] = useState(tenant.slug);
+  const [timezone, setTimezone] = useState(tenant.timezone ?? "America/Sao_Paulo");
+  const [trial, setTrial] = useState(tenant.trial_ends_at ? tenant.trial_ends_at.slice(0, 10) : "");
   const [saving, setSaving] = useState(false);
 
+  // Planos / assinatura
+  const [plans, setPlans] = useState<any[]>([]);
+  const [currentSub, setCurrentSub] = useState<any | null>(null);
+  const [planId, setPlanId] = useState<string>("");
+  const [savingPlan, setSavingPlan] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: pl } = await (supabase as any).from("plans").select("*").order("monthly_price");
+      setPlans(pl || []);
+      const { data: sub } = await (supabase as any).from("tenant_subscriptions")
+        .select("*").eq("tenant_id", tenant.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
+      setCurrentSub(sub || null);
+      setPlanId(sub?.plan_id ?? "");
+    })();
+  }, [tenant.id]);
+
+  const slugClean = slug.trim().toLowerCase();
+  const slugValid = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slugClean);
+  const slugChanged = slugClean !== tenant.slug;
+
   const save = async () => {
+    if (!slugValid) { toast.error("Slug inválido. Use apenas letras minúsculas, números e hífens."); return; }
     setSaving(true);
+    const patch: any = {
+      name,
+      slug: slugClean,
+      timezone: timezone || null,
+      trial_ends_at: trial ? new Date(`${trial}T00:00:00`).toISOString() : null,
+    };
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", {
-      body: { tenant_id: tenant.id, action: "update", patch: { name, slug } },
+      body: { tenant_id: tenant.id, action: "update", patch },
     });
     setSaving(false);
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao salvar")); return; }
     toast.success("Salvo"); onSaved();
   };
 
+  const savePlan = async () => {
+    if (!planId) { toast.error("Selecione um plano."); return; }
+    const plan = plans.find((p) => p.id === planId);
+    setSavingPlan(true);
+    const row: any = {
+      tenant_id: tenant.id,
+      plan_id: planId,
+      status: "active",
+      amount: plan ? Number(plan.monthly_price) : null,
+      updated_at: new Date().toISOString(),
+    };
+    if (currentSub?.id) row.id = currentSub.id; // atualiza a assinatura existente (upsert por PK)
+    else row.started_at = new Date().toISOString();
+    const { error } = await (supabase as any).from("tenant_subscriptions").upsert(row);
+    setSavingPlan(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Plano atualizado");
+    const { data: sub } = await (supabase as any).from("tenant_subscriptions")
+      .select("*").eq("tenant_id", tenant.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
+    setCurrentSub(sub || null);
+    setPlanId(sub?.plan_id ?? planId);
+  };
+
   return (
-    <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-3 max-w-xl">
-      <div><Label>Nome</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
-      <div><Label>Slug</Label><Input value={slug} onChange={(e) => setSlug(e.target.value)} /></div>
-      <Button onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin" size={14} />} Salvar</Button>
-      <p className="text-xs text-slate-500">Integrações (WhatsApp, Instagram, IA) podem ser editadas via Impersonação na aba ao lado.</p>
-    </Card>
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-3">
+        <p className="text-sm font-semibold text-slate-300">Dados gerais</p>
+        <div><Label>Nome</Label><Input className={inputDark} value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div>
+          <Label>Slug (subdomínio)</Label>
+          <Input className={`${inputDark} font-mono`} value={slug} onChange={(e) => setSlug(e.target.value)} />
+          {!slugValid ? (
+            <p className="mt-1 text-xs text-red-400">Use apenas letras minúsculas, números e hífens (ex.: minha-clinica).</p>
+          ) : (
+            <p className="mt-1 text-xs text-slate-400">
+              Vai virar: <span className="font-mono text-cyan-300">{slugClean}.crclin.com.br</span>
+            </p>
+          )}
+          {slugChanged && slugValid && (
+            <p className="mt-1 flex items-center gap-1 text-xs text-amber-400">
+              <AlertTriangle size={12} /> Trocar o slug muda a URL de acesso do cliente. Links antigos deixarão de funcionar.
+            </p>
+          )}
+        </div>
+        <div>
+          <Label>Fuso horário</Label>
+          <Input className={inputDark} value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/Sao_Paulo" />
+        </div>
+        <div>
+          <Label>Fim do período de teste (trial)</Label>
+          <Input type="date" className={inputDark} value={trial} onChange={(e) => setTrial(e.target.value)} />
+          <p className="mt-1 text-xs text-slate-500">Deixe em branco para remover o trial.</p>
+        </div>
+        <Button onClick={save} disabled={saving || !slugValid}>{saving && <Loader2 className="mr-2 animate-spin" size={14} />} Salvar</Button>
+        <p className="text-xs text-slate-500">Integrações (WhatsApp, Instagram, IA) podem ser editadas via Impersonação na aba "Acesso & Ações".</p>
+      </Card>
+
+      <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-3">
+        <p className="text-sm font-semibold text-slate-300">Plano / assinatura</p>
+        <div>
+          <Label>Plano atual</Label>
+          <p className="text-sm text-slate-400">
+            {currentSub
+              ? <>{plans.find((p) => p.id === currentSub.plan_id)?.name ?? "—"} · <span className="capitalize">{currentSub.status}</span></>
+              : "Sem assinatura registrada"}
+          </p>
+        </div>
+        <div>
+          <Label>Trocar plano</Label>
+          <select className={`${selectDark} w-full`} value={planId} onChange={(e) => setPlanId(e.target.value)}>
+            <option value="">Selecione um plano…</option>
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>{p.name} — R$ {Number(p.monthly_price).toFixed(2)}/mês</option>
+            ))}
+          </select>
+          {planId && (() => {
+            const p = plans.find((x) => x.id === planId);
+            return p ? (
+              <p className="mt-1 text-xs text-slate-500">
+                {p.user_limit} usuários · {Number(p.lead_limit).toLocaleString("pt-BR")} leads · {Number(p.message_limit).toLocaleString("pt-BR")} mensagens/mês
+              </p>
+            ) : null;
+          })()}
+        </div>
+        <Button onClick={savePlan} disabled={savingPlan || !planId || planId === currentSub?.plan_id}>
+          {savingPlan && <Loader2 className="mr-2 animate-spin" size={14} />} Aplicar plano
+        </Button>
+        <p className="text-xs text-slate-500">A troca grava direto em tenant_subscriptions.</p>
+      </Card>
+    </div>
+  );
+}
+
+function LogsTab({ tenant }: { tenant: Tenant }) {
+  const PAGE = 20;
+  const [rows, setRows] = useState<any[]>([]);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const from = page * PAGE;
+      const to = from + PAGE; // busca 1 a mais para saber se há próxima página
+      const { data, error } = await (supabase as any).from("access_logs")
+        .select("id, event, context, email, ip, user_agent, created_at")
+        .eq("tenant_id", tenant.id)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      if (error) toast.error(error.message);
+      const list = (data as any[]) ?? [];
+      setHasMore(list.length > PAGE);
+      setRows(list.slice(0, PAGE));
+      setLoading(false);
+    })();
+  }, [tenant.id, page]);
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-lg border border-slate-800">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-900/60 text-slate-400"><tr>
+            <th className="p-3 text-left">Quando</th>
+            <th className="p-3 text-left">Evento</th>
+            <th className="p-3 text-left">Contexto</th>
+            <th className="p-3 text-left">Usuário</th>
+            <th className="p-3 text-left">IP</th>
+          </tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} className="p-6 text-center text-slate-500"><Loader2 className="inline animate-spin" size={14} /> Carregando...</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={5} className="p-6 text-center text-slate-500">Nenhum registro de acesso.</td></tr>
+            ) : rows.map((l) => (
+              <tr key={l.id} className="border-t border-slate-800">
+                <td className="p-3 text-slate-400 whitespace-nowrap">{l.created_at ? new Date(l.created_at).toLocaleString("pt-BR") : "—"}</td>
+                <td className="p-3"><Badge variant="secondary">{l.event}</Badge></td>
+                <td className="p-3 text-slate-400">{l.context ?? "—"}</td>
+                <td className="p-3 text-slate-400">{l.email ?? "—"}</td>
+                <td className="p-3 text-slate-500 font-mono text-xs">{l.ip ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-slate-500">Página {page + 1}</span>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" disabled={page === 0 || loading} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+            <ChevronLeft size={14} /> Anterior
+          </Button>
+          <Button size="sm" variant="outline" disabled={!hasMore || loading} onClick={() => setPage((p) => p + 1)}>
+            Próxima <ChevronRight size={14} />
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -324,7 +686,7 @@ function ActionsTab({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
     setBusy(true);
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body });
     setBusy(false);
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return false; }
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error)); return false; }
     toast.success(okMsg); onChanged(); return true;
   };
 
@@ -332,7 +694,7 @@ function ActionsTab({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
     setBusy(true);
     const { data, error } = await supabase.functions.invoke("admin-impersonate", { body: { tenant_id: tenant.id } });
     setBusy(false);
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error)); return; }
     const at = (data as any)?.access_token;
     const rt = (data as any)?.refresh_token;
     const slug = (data as any)?.slug ?? tenant.slug;
@@ -348,7 +710,7 @@ function ActionsTab({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
     setBusy(true);
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", { body: { tenant_id: tenant.id, action: "hard_delete", confirm_name: confirmName } });
     setBusy(false);
-    if (error || (data as any)?.error) { toast.error((data as any)?.error || error?.message); return; }
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao excluir definitivamente")); return; }
     toast.success("Cliente excluído definitivamente");
     setHardOpen(false);
     navigate("/admin");
@@ -394,7 +756,7 @@ function ActionsTab({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
           <div className="space-y-2">
             <p className="text-sm text-slate-300">Isto apaga <b>permanentemente</b> todos os dados de <b>{tenant.name}</b> (leads, conversas, agendamentos, usuários). <b>Não pode ser desfeito.</b></p>
             <p className="text-xs text-slate-400">Para confirmar, digite o nome do cliente: <span className="font-mono text-slate-200">{tenant.name}</span></p>
-            <Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder="Digite o nome exato do cliente" />
+            <Input className={inputDark} value={confirmName} onChange={(e) => setConfirmName(e.target.value)} placeholder="Digite o nome exato do cliente" />
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => { setHardOpen(false); setConfirmName(""); }}>Cancelar</Button>

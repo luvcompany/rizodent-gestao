@@ -9,7 +9,12 @@ interface TenantBranding {
   slug: string | null;
   name: string;
   logo_url: string | null;
+  logo_dark_url: string | null;
   primary_color: string | null;
+  secondary_color: string | null;
+  tertiary_color: string | null;
+  favicon_url: string | null;
+  branding_version: number;
 }
 
 const DEFAULT_TENANT: TenantBranding = {
@@ -17,10 +22,17 @@ const DEFAULT_TENANT: TenantBranding = {
   slug: null,
   name: "CRClin",
   logo_url: crclinLogo,
+  logo_dark_url: null,
   primary_color: null,
+  secondary_color: null,
+  tertiary_color: null,
+  favicon_url: null,
+  branding_version: 1,
 };
 const TENANT_CACHE_TTL = 60 * 60_000;
-const TENANT_CACHE_KEY = "crm:tenant_cache_v1";
+// v2: cache schema now carries secondary/tertiary colors, favicon, dark logo and branding_version.
+// Bumping the key drops any v1 payload that lacks the new fields.
+const TENANT_CACHE_KEY = "crm:tenant_cache_v2";
 
 const TenantContext = createContext<{ tenant: TenantBranding; loading: boolean }>({
   tenant: DEFAULT_TENANT,
@@ -32,23 +44,32 @@ interface ProviderProps {
   slugOverride?: string | null;
 }
 
-/** Convert "#rrggbb" or "rgb()" to "h s% l%" string for Tailwind hsl(var(--x)) usage. */
-function hexToHslTriplet(input: string): string | null {
+/** Convert "#rrggbb" / "#rgb" to {r,g,b} (0-255), or null when invalid. */
+function hexToRgb(input: string): { r: number; g: number; b: number } | null {
   if (!input) return null;
-  let r = 0, g = 0, b = 0;
   const hex = input.trim().replace("#", "");
   if (/^[0-9a-fA-F]{6}$/.test(hex)) {
-    r = parseInt(hex.slice(0, 2), 16);
-    g = parseInt(hex.slice(2, 4), 16);
-    b = parseInt(hex.slice(4, 6), 16);
-  } else if (/^[0-9a-fA-F]{3}$/.test(hex)) {
-    r = parseInt(hex[0] + hex[0], 16);
-    g = parseInt(hex[1] + hex[1], 16);
-    b = parseInt(hex[2] + hex[2], 16);
-  } else {
-    return null;
+    return {
+      r: parseInt(hex.slice(0, 2), 16),
+      g: parseInt(hex.slice(2, 4), 16),
+      b: parseInt(hex.slice(4, 6), 16),
+    };
   }
-  const rN = r / 255, gN = g / 255, bN = b / 255;
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    return {
+      r: parseInt(hex[0] + hex[0], 16),
+      g: parseInt(hex[1] + hex[1], 16),
+      b: parseInt(hex[2] + hex[2], 16),
+    };
+  }
+  return null;
+}
+
+/** Convert "#rrggbb" or "#rgb" to "h s% l%" string for Tailwind hsl(var(--x)) usage. */
+function hexToHslTriplet(input: string): string | null {
+  const rgb = hexToRgb(input);
+  if (!rgb) return null;
+  const rN = rgb.r / 255, gN = rgb.g / 255, bN = rgb.b / 255;
   const max = Math.max(rN, gN, bN), min = Math.min(rN, gN, bN);
   let h = 0, s = 0;
   const l = (max + min) / 2;
@@ -65,44 +86,159 @@ function hexToHslTriplet(input: string): string | null {
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
-function applyPrimaryColor(hex: string | null) {
+/**
+ * Pick a readable foreground ("h s% l%" triplet) for a given background hex,
+ * using WCAG relative luminance. Light backgrounds get near-black text,
+ * dark backgrounds get white text.
+ */
+function foregroundTripletFor(hex: string | null): string | null {
+  const rgb = hexToRgb(hex || "");
+  if (!rgb) return null;
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const luminance = 0.2126 * lin(rgb.r) + 0.7152 * lin(rgb.g) + 0.0722 * lin(rgb.b);
+  // Threshold ~0.4 gives good contrast for typical brand colors.
+  return luminance > 0.4 ? "0 0% 10%" : "0 0% 100%";
+}
+
+/**
+ * Apply the full tenant theme to CSS custom properties: primary (+ derived
+ * gradient/shadow/accent/ring), secondary, tertiary and their luminance-based
+ * foregrounds. Passing null clears every property back to the stylesheet default.
+ */
+function applyTenantTheme(branding: {
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  tertiary_color?: string | null;
+} | null) {
   const root = document.documentElement;
-  if (!hex) {
+
+  // --- Primary ---
+  const primary = branding?.primary_color || null;
+  if (!primary) {
     root.style.removeProperty("--primary");
+    root.style.removeProperty("--primary-foreground");
     root.style.removeProperty("--accent");
     root.style.removeProperty("--ring");
     root.style.removeProperty("--gradient-orange");
     root.style.removeProperty("--shadow-orange");
     root.style.removeProperty("--tenant-primary");
-    return;
+  } else {
+    const triplet = hexToHslTriplet(primary);
+    if (triplet) {
+      root.style.setProperty("--primary", triplet);
+      root.style.setProperty("--accent", triplet);
+      root.style.setProperty("--ring", triplet);
+      root.style.setProperty(
+        "--gradient-orange",
+        `linear-gradient(135deg, hsl(${triplet}) 0%, hsl(${triplet} / 0.85) 100%)`
+      );
+      // shadow uses the same hue with reduced alpha
+      const [h, s] = triplet.split(" ");
+      const sNum = s.replace("%", "");
+      root.style.setProperty(
+        "--shadow-orange",
+        `0 4px 20px -4px hsla(${h}, ${sNum}%, 50%, 0.3)`
+      );
+      root.style.setProperty("--tenant-primary", primary);
+      const fg = foregroundTripletFor(primary);
+      if (fg) root.style.setProperty("--primary-foreground", fg);
+      else root.style.removeProperty("--primary-foreground");
+    }
   }
-  const triplet = hexToHslTriplet(hex);
-  if (!triplet) return;
-  root.style.setProperty("--primary", triplet);
-  root.style.setProperty("--accent", triplet);
-  root.style.setProperty("--ring", triplet);
-  root.style.setProperty(
-    "--gradient-orange",
-    `linear-gradient(135deg, hsl(${triplet}) 0%, hsl(${triplet} / 0.85) 100%)`
-  );
-  // shadow uses the same hue with reduced alpha
-  const [h, s] = triplet.split(" ");
-  const sNum = s.replace("%", "");
-  root.style.setProperty(
-    "--shadow-orange",
-    `0 4px 20px -4px hsla(${h}, ${sNum}%, 50%, 0.3)`
-  );
-  root.style.setProperty("--tenant-primary", hex);
+
+  // --- Secondary ---
+  const secondary = branding?.secondary_color || null;
+  if (!secondary) {
+    root.style.removeProperty("--secondary");
+    root.style.removeProperty("--secondary-foreground");
+    root.style.removeProperty("--tenant-secondary");
+  } else {
+    const triplet = hexToHslTriplet(secondary);
+    if (triplet) {
+      root.style.setProperty("--secondary", triplet);
+      root.style.setProperty("--tenant-secondary", secondary);
+      const fg = foregroundTripletFor(secondary);
+      if (fg) root.style.setProperty("--secondary-foreground", fg);
+      else root.style.removeProperty("--secondary-foreground");
+    }
+  }
+
+  // --- Tertiary ---
+  const tertiary = branding?.tertiary_color || null;
+  if (!tertiary) {
+    root.style.removeProperty("--tertiary");
+    root.style.removeProperty("--tertiary-foreground");
+    root.style.removeProperty("--tenant-tertiary");
+  } else {
+    const triplet = hexToHslTriplet(tertiary);
+    if (triplet) {
+      root.style.setProperty("--tertiary", triplet);
+      root.style.setProperty("--tenant-tertiary", tertiary);
+      const fg = foregroundTripletFor(tertiary);
+      if (fg) root.style.setProperty("--tertiary-foreground", fg);
+      else root.style.removeProperty("--tertiary-foreground");
+    }
+  }
 }
 
-function readTenantCache(slug: string | null) {
+// Capture the app's original favicon href once so we can restore it when a
+// tenant has no custom favicon (e.g. main domain / impersonating back out).
+let defaultFaviconHref: string | null = null;
+let defaultFaviconCaptured = false;
+
+function ensureFaviconLink(): HTMLLinkElement {
+  let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  if (!defaultFaviconCaptured) {
+    defaultFaviconHref = link.getAttribute("href");
+    defaultFaviconCaptured = true;
+  }
+  return link;
+}
+
+function applyFavicon(url: string | null) {
+  const link = ensureFaviconLink();
+  const next = url || defaultFaviconHref;
+  if (next) link.setAttribute("href", next);
+  else link.removeAttribute("href");
+}
+
+/** Normalize an RPC/cached row into a full TenantBranding (defensive about missing new fields). */
+function normalizeTenant(data: any, slug: string): TenantBranding {
+  return {
+    id: data.id ?? null,
+    slug: data.slug ?? slug,
+    name: data.name ?? "CRClin",
+    logo_url: data.logo_url || crclinLogo,
+    logo_dark_url: data.logo_dark_url ?? null,
+    primary_color: data.primary_color ?? null,
+    secondary_color: data.secondary_color ?? null,
+    tertiary_color: data.tertiary_color ?? null,
+    favicon_url: data.favicon_url ?? null,
+    branding_version:
+      typeof data.branding_version === "number" ? data.branding_version : 1,
+  };
+}
+
+function readTenantCache(slug: string | null): TenantBranding | null {
   if (!slug) return null;
   try {
     const raw = localStorage.getItem(`${TENANT_CACHE_KEY}:${slug}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (Date.now() - parsed.ts > TENANT_CACHE_TTL) return null;
-    return parsed.data as TenantBranding;
+    const data = parsed.data as TenantBranding;
+    // Validate that the payload carries the current branding schema; a payload
+    // without branding_version predates the new fields and must be ignored.
+    if (!data || typeof data.branding_version !== "number") return null;
+    return data;
   } catch {
     return null;
   }
@@ -110,8 +246,19 @@ function readTenantCache(slug: string | null) {
 
 function writeTenantCache(slug: string, data: TenantBranding) {
   try {
-    localStorage.setItem(`${TENANT_CACHE_KEY}:${slug}`, JSON.stringify({ data, ts: Date.now() }));
+    localStorage.setItem(
+      `${TENANT_CACHE_KEY}:${slug}`,
+      // Persist branding_version alongside the payload so a later change bumped
+      // by the admin (higher version) overwrites the entry and re-applies theme.
+      JSON.stringify({ data, ts: Date.now(), branding_version: data.branding_version })
+    );
   } catch {}
+}
+
+function applyBranding(tenant: TenantBranding) {
+  applyTenantTheme(tenant);
+  applyFavicon(tenant.favicon_url);
+  document.title = tenant.name;
 }
 
 export const TenantProvider = ({ children, slugOverride = null }: ProviderProps) => {
@@ -120,37 +267,32 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
 
   useEffect(() => {
     if (!slugOverride) {
-      applyPrimaryColor(null);
+      applyTenantTheme(null);
+      applyFavicon(null);
       setLoading(false);
       return;
     }
     const cached = readTenantCache(slugOverride);
     if (cached) {
       setTenant(cached);
-      applyPrimaryColor(cached.primary_color || null);
-      document.title = cached.name;
+      applyBranding(cached);
       setLoading(false);
     }
     (async () => {
       const { data: rows } = await (supabase as any).rpc("get_tenant_by_slug", { _slug: slugOverride });
       const data = Array.isArray(rows) ? rows[0] : rows;
       if (data) {
-        const nextTenant = {
-          id: data.id,
-          slug: data.slug,
-          name: data.name,
-          logo_url: data.logo_url || crclinLogo,
-          primary_color: data.primary_color,
-        };
+        const nextTenant = normalizeTenant(data, slugOverride);
         setTenant(nextTenant);
         writeTenantCache(slugOverride, nextTenant);
-        applyPrimaryColor(data.primary_color || null);
-        document.title = data.name;
+        applyBranding(nextTenant);
       } else {
-        const fallbackTenant = { ...DEFAULT_TENANT, slug: slugOverride, logo_url: crclinLogo };
+        const fallbackTenant: TenantBranding = { ...DEFAULT_TENANT, slug: slugOverride, logo_url: crclinLogo };
         setTenant(fallbackTenant);
         writeTenantCache(slugOverride, fallbackTenant);
-        applyPrimaryColor(null);
+        applyTenantTheme(null);
+        applyFavicon(null);
+        document.title = fallbackTenant.name;
       }
       setLoading(false);
     })();
