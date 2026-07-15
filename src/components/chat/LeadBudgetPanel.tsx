@@ -296,17 +296,12 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       }
     }
 
-    const origemFinal = newOrigem === EMPTY_ORIGEM_VALUE ? null : newOrigem;
-    const nomeAnuncioFinal =
-      origemFinal === "Anúncio" ? (newNomeAnuncio.trim() || null)
-      : origemFinal === "Outros" ? (newOrigemOutros.trim() || null)
-      : null;
-
+    // Origem/anúncio: propagação automática via gatilho no banco
+    // (propagate_lead_to_paciente). Não gravamos aqui.
     const { data, error } = await supabase.from("pacientes").insert({
       nome: nomeFinal,
       telefone: stripCountryCode(lead.phone || ""),
       cidade: normalizedCity,
-      origem: origemFinal,
     }).select("id").single();
     if (error || !data) { toast.error("Erro ao criar paciente"); return; }
 
@@ -315,23 +310,12 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       lead_id: lead.id, paciente_id: data.id, is_primary: isFirst,
     });
 
-    // Update lead with origem info if provided
-    if (origemFinal || nomeAnuncioFinal) {
-      await supabase.from("crm_leads").update({
-        ...(origemFinal ? { source: origemFinal } : {}),
-        ...(nomeAnuncioFinal ? { nome_anuncio: nomeAnuncioFinal } : {}),
-      }).eq("id", lead.id);
-    }
-
     if (isFirst) onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
     await fetchAllLinks();
 
     setLinkOpen(false);
     setDuplicateOpen(false);
     setNewPersonName("");
-    setNewOrigem(EMPTY_ORIGEM_VALUE);
-    setNewNomeAnuncio("");
-    setNewOrigemOutros("");
     toast.success("Paciente criado e vinculado!");
 
     navigate("/atendimento", {
@@ -340,8 +324,6 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
         pacienteNome: nomeFinal,
         pacienteTelefone: stripCountryCode(lead.phone || ""),
         pacienteCidade: normalizedCity,
-        pacienteOrigem: origemFinal,
-        pacienteNomeAnuncio: nomeAnuncioFinal,
       },
     });
   };
