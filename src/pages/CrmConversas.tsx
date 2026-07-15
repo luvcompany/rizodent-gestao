@@ -411,9 +411,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setProfiles(leadsListCache.profiles || []);
       setPipelines(leadsListCache.pipelines || []);
       setLoading(false);
+      setFullyLoaded(true);
       // Só refaz fetch em background se o cache estiver com mais de 60s — evita roundtrip a cada navegação.
       const cacheAge = Date.now() - leadsListCache.timestamp;
       if (cacheAge < LEADS_BG_REFRESH_AFTER) return;
+      setFullyLoaded(false);
       (async () => {
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
           fetchAllConversationLeads(tenant.id),
@@ -431,10 +433,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         setLeads(rawLeads);
         setProfiles(profs);
         setPipelines(pipes);
+        setFullyLoaded(true);
       })();
       return;
     }
 
+    setFullyLoaded(false);
     const fetchLeads = async () => {
       // First-paint rápido: mostra a UI assim que profiles + pipelines + 1ª página de leads chegam.
       let firstPainted = false;
@@ -461,6 +465,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       setProfiles(profs);
       setPipelines(pipes);
       if (!firstPainted) setLoading(false);
+      setFullyLoaded(true);
     };
     fetchLeads();
   }, [tenant.id, cacheKey]);
