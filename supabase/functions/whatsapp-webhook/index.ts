@@ -920,12 +920,13 @@ Deno.serve(async (req) => {
                   ad_id: adSourceId,
                   ad_account_id: adAccountId,
                   ad_account_name: adAccountName,
+                  ...(adName ? { ad_name: adName } : {}),
                   ad_headline: adHeadline,
                   ad_body: adBody,
                   cidade: inferredCidadeForCache,
                   updated_at: new Date().toISOString(),
                 }, { onConflict: "ad_id" });
-                console.log(`[AD-CACHE] UPSERT ad_id=${adSourceId} account=${adAccountName} cidade=${inferredCidadeForCache}`);
+                console.log(`[AD-CACHE] UPSERT ad_id=${adSourceId} name=${adName} account=${adAccountName} cidade=${inferredCidadeForCache}`);
               } catch (upErr: any) {
                 console.log(`[AD-CACHE] erro upsert: ${upErr.message}`);
               }
