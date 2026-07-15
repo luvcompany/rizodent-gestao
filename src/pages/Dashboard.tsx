@@ -19,7 +19,9 @@ import {
   classifyOrigemCanonica,
   rptContratados,
   rptFaturamentoOrigem,
+  rptFaturamentoAnuncio,
   type FaturamentoOrigemRow,
+  type FaturamentoAnuncioRow,
 } from "@/lib/reportKit";
 
 const DateRangeFilter = lazy(() =>
