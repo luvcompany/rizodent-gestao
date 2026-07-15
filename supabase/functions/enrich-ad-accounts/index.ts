@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
           }
 
           const accountId = adData.account_id;
+          const adName: string | null = adData?.name ? String(adData.name) : null;
           let accountName = accountCache.get(accountId) || null;
 
           if (!accountName) {
