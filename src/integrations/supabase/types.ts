@@ -4233,6 +4233,15 @@ export type Database = {
           total: number
         }[]
       }
+      rpt_faturamento_anuncio: {
+        Args: { p_clinica_id?: string; p_from: string; p_to: string }
+        Returns: {
+          anuncio: string
+          faturamento: number
+          pacientes: number
+          pagamentos: number
+        }[]
+      }
       rpt_faturamento_origem: {
         Args: { p_clinica_id?: string; p_from: string; p_to: string }
         Returns: {

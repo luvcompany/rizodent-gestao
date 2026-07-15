@@ -367,6 +367,34 @@ export async function rptFaturamentoOrigem(
   }));
 }
 
+/** Uma linha por anúncio: caixa recebido no período atribuído ao criativo
+ *  real (ad_name → nome_anuncio → ad_headline), com buckets de fallback. */
+export interface FaturamentoAnuncioRow {
+  anuncio: string;
+  faturamento: number;
+  pacientes: number;
+  pagamentos: number;
+}
+
+/** Faturamento do período por anúncio real (mesma lógica da admin-api). */
+export async function rptFaturamentoAnuncio(
+  from: Date | string,
+  to: Date | string,
+  clinicaId?: string | null
+): Promise<FaturamentoAnuncioRow[]> {
+  const rows = await callRpc<any[]>("rpt_faturamento_anuncio", {
+    p_from: asDateParam(from),
+    p_to: asDateParam(to),
+    p_clinica_id: clinicaId ?? null,
+  });
+  return (rows ?? []).map((r) => ({
+    anuncio: r.anuncio,
+    faturamento: num(r.faturamento),
+    pacientes: num(r.pacientes),
+    pagamentos: num(r.pagamentos),
+  }));
+}
+
 /** Pacientes contratados: primeiro pagamento (global) dentro do período. */
 export async function rptContratados(
   from: Date | string,
