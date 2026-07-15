@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UserPlus, Shield, Users, Pencil, KeyRound, Ban, CheckCircle2 } from "lucide-react";
+import { UserPlus, Shield, Users, Pencil, KeyRound, Ban, CheckCircle2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -60,6 +60,10 @@ const Usuarios = () => {
   const [newRole, setNewRole] = useState("crc");
   const [newPassword, setNewPassword] = useState("");
   const [creating, setCreating] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetUser, setResetUser] = useState<Profile | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   const canManageUsers = userRole === "superadmin" || userRole === "crc" || userRole === "gerente";
   const canBlock = userRole === "superadmin" || userRole === "crc" || userRole === "gerente";
@@ -155,6 +159,37 @@ const Usuarios = () => {
     }
   };
 
+  const openResetDialog = (profile: Profile) => {
+    setResetUser(profile);
+    setResetPassword("");
+    setResetOpen(true);
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetUser) return;
+    if (!resetPassword || resetPassword.length < 6) {
+      toast.error("A senha deve ter no mínimo 6 caracteres.");
+      return;
+    }
+    setResetting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("tenant-reset-user-password", {
+        body: { user_id: resetUser.id, password: resetPassword },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Senha de ${resetUser.nome} redefinida com sucesso.`);
+      setResetOpen(false);
+      setResetUser(null);
+      setResetPassword("");
+    } catch (err: any) {
+      toast.error("Erro: " + (err.message || err));
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div className="animate-fade-in space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -241,6 +276,8 @@ const Usuarios = () => {
                   {profiles.map((p) => {
                     const role = getUserRole(p.id);
                     const canEdit = canManageUsers || p.id === currentUser?.id;
+                    const targetRole = (role?.role as string) || "";
+                    const canResetPassword = canManageUsers && ["crc", "gerente", "superadmin"].includes(targetRole);
                     return (
                       <TableRow key={p.id}>
                         <TableCell>
@@ -310,6 +347,16 @@ const Usuarios = () => {
                                 <KeyRound size={14} className="mr-1" /> Permissões
                               </Button>
                             )}
+                            {canResetPassword && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-primary hover:text-primary"
+                                onClick={() => openResetDialog(p)}
+                              >
+                                <Lock size={14} className="mr-1" /> Redefinir senha
+                              </Button>
+                            )}
                             {canBlock && p.id !== currentUser?.id && (
                               <Button
                                 variant="ghost"
@@ -360,6 +407,47 @@ const Usuarios = () => {
           userRole={(getUserRole(permsUser.id)?.role as any) || null}
         />
       )}
+
+      {/* Reset password dialog */}
+      <Dialog
+        open={resetOpen}
+        onOpenChange={(o) => {
+          setResetOpen(o);
+          if (!o) { setResetUser(null); setResetPassword(""); }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Redefinir senha{resetUser ? ` — ${resetUser.nome}` : ""}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleResetPassword} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label>Nova senha</Label>
+              <Input
+                type="password"
+                placeholder="Mínimo 6 caracteres"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                className="bg-secondary border-border"
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
+              <p className="text-xs text-muted-foreground">
+                O usuário poderá entrar com a nova senha imediatamente.
+              </p>
+            </div>
+            <Button
+              type="submit"
+              disabled={resetting}
+              className="w-full gradient-orange text-primary-foreground font-semibold"
+            >
+              <Lock size={16} className="mr-2" />
+              {resetting ? "Redefinindo..." : "Redefinir senha"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
