@@ -273,7 +273,12 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
                     title="Trocar papel do usuário"
                     onChange={async (e) => {
                       const role = e.target.value;
-                      if (await call({ action: "set_role", user_id: u.id, role })) { toast.success(`Papel alterado para ${roleLabel(role)}`); load(); }
+                      // Atualização otimista: o seletor muda na hora (sem "voltar" enquanto recarrega).
+                      setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, role } : x)));
+                      if (await call({ action: "set_role", user_id: u.id, role })) {
+                        toast.success(`Papel alterado para ${roleLabel(role)}`);
+                      }
+                      load(); // sincroniza com o banco (reverte se algo falhou)
                     }}
                   >
                     {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
