@@ -149,7 +149,7 @@ const SidePanelFallback = () => (
   </div>
 );
 const CONVERSATION_PAGE_SIZE = 1000;
-const CONVERSATION_MAX_PAGES = 6; // ~6k leads; suficiente p/ base atual (~4.3k) sem páginas extras
+const CONVERSATION_MAX_PAGES = 50; // teto de SEGURANÇA (loop para antes ao receber página incompleta)
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
 // Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
 // porque os filtros derivam opções deles).
