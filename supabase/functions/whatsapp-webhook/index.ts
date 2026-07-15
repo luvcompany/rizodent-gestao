@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCidade } from "../_shared/resolveCidade.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
