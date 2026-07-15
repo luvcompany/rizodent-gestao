@@ -1014,7 +1014,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     channel={channel}
                     instagramAccounts={instagramAccounts}
                   />
-                   <span className="text-xs text-muted-foreground">{sortedFiltered.length}</span>
+                   <span className="text-xs text-muted-foreground">{sortedFiltered.length}{!fullyLoaded ? "…" : ""}</span>
                    <DropdownMenu>
                      <DropdownMenuTrigger asChild>
                        <Button variant="ghost" size="icon" className="h-7 w-7">
