@@ -625,7 +625,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     porAnuncio = Array.from(anuncioMap.values())
       .map((v) => ({ anuncio: v.display, faturamento: v.faturamento, pacientes: v.pacientes.size }))
       .sort((a, b) => b.faturamento - a.faturamento).slice(0, 20);
-  } catch (_e) {
+  } catch (_e) { console.error("[POR_ANUNCIO_ERR]", (_e as any)?.message, (_e as any)?.stack);
     const anuncioMap = new Map<string, { display: string; faturamento: number }>();
     pacientes.forEach((pc: any) => {
       if (!pc.nome_anuncio) return;
