@@ -8,6 +8,11 @@ const corsHeaders = {
 };
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+// Slugs que quebrariam o roteamento (têm que bater com RESERVED_PATHS/SUBDOMAIN_SKIP em src/main.tsx)
+const RESERVED_SLUGS = new Set(["", "admin", "change-password", "crclin", "privacidade", "termos", "exclusao-de-dados", "oauth-close", "www", "app", "api"]);
+const PROTECTED = ["rizodent"];
+const normalizeSlug = (s: string) => String(s || "").toLowerCase().trim().replace(/[^a-z0-9-]/g, "");
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -26,41 +31,75 @@ Deno.serve(async (req) => {
     const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", user.id).eq("role", "superadmin").maybeSingle();
     if (!roleRow) return json({ error: "Forbidden" }, 403);
 
-    const { tenant_id, action, patch } = await req.json();
+    const { tenant_id, action, patch, confirm_name } = await req.json();
     if (!tenant_id || !action) return json({ error: "tenant_id and action required" }, 400);
 
+    // -------- EDITAR --------
     if (action === "update") {
       const allowed: any = {};
-      const fields = ["name", "slug", "primary_color", "secondary_color", "tertiary_color", "logo_url", "favicon_url", "status"];
+      const fields = ["name", "primary_color", "secondary_color", "tertiary_color", "logo_url", "logo_dark_url", "favicon_url", "status", "timezone", "business_hours", "trial_ends_at"];
       for (const f of fields) if (patch?.[f] !== undefined) allowed[f] = patch[f];
-      if (allowed.slug) allowed.slug = String(allowed.slug).toLowerCase().replace(/[^a-z0-9-]/g, "");
+      if (patch?.slug !== undefined) {
+        const slug = normalizeSlug(patch.slug);
+        if (!slug) return json({ error: "Slug inválido (vazio após normalização). Use letras, números e hífen." }, 400);
+        if (RESERVED_SLUGS.has(slug)) return json({ error: `O slug "${slug}" é reservado e deixaria o cliente inacessível. Escolha outro.` }, 400);
+        const { data: clash } = await admin.from("tenants").select("id").eq("slug", slug).neq("id", tenant_id).maybeSingle();
+        if (clash) return json({ error: `O slug "${slug}" já está em uso por outro cliente.` }, 400);
+        allowed.slug = slug;
+      }
+      if (Object.keys(allowed).length === 0) return json({ error: "Nada para atualizar." }, 400);
       const { data, error } = await admin.from("tenants").update(allowed).eq("id", tenant_id).select().single();
       if (error) return json({ error: error.message }, 400);
       await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: "tenant_update", metadata: allowed });
       return json({ tenant: data });
     }
 
+    // -------- EXCLUIR (SOFT → Lixeira) --------
     if (action === "delete") {
-      // Protected tenants cannot be deleted (safety)
       const { data: tRow } = await admin.from("tenants").select("slug").eq("id", tenant_id).maybeSingle();
-      const PROTECTED = ["rizodent"];
       if (tRow && PROTECTED.includes(String(tRow.slug).toLowerCase())) {
         return json({ error: "Este cliente é protegido e não pode ser excluído." }, 403);
       }
-      // hard_delete_tenant returns the union of profile ids AND any auth user with
-      // user_metadata.tenant_id pointing to this tenant (orphans included).
+      const { error } = await admin.from("tenants").update({ status: "deleted", deleted_at: new Date().toISOString() }).eq("id", tenant_id);
+      if (error) return json({ error: error.message }, 400);
+      await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: "tenant_soft_delete" });
+      return json({ ok: true, status: "deleted" });
+    }
+
+    // -------- RESTAURAR (da Lixeira) --------
+    if (action === "restore") {
+      const { error } = await admin.from("tenants").update({ status: "active", deleted_at: null }).eq("id", tenant_id);
+      if (error) return json({ error: error.message }, 400);
+      await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: "tenant_restore" });
+      return json({ ok: true, status: "active" });
+    }
+
+    // -------- EXCLUIR DEFINITIVAMENTE (purga irreversível) --------
+    if (action === "hard_delete") {
+      const { data: tRow } = await admin.from("tenants").select("slug, name").eq("id", tenant_id).maybeSingle();
+      if (!tRow) return json({ error: "Cliente não encontrado." }, 404);
+      if (PROTECTED.includes(String(tRow.slug).toLowerCase())) {
+        return json({ error: "Este cliente é protegido e não pode ser excluído." }, 403);
+      }
+      // Confirmação forte: precisa digitar exatamente o nome do cliente.
+      if (!confirm_name || String(confirm_name).trim() !== String(tRow.name).trim()) {
+        return json({ error: "Confirmação inválida: digite exatamente o nome do cliente para excluir definitivamente." }, 400);
+      }
       const { data: rpcData, error: rpcErr } = await admin.rpc("hard_delete_tenant", { _tenant_id: tenant_id });
       if (rpcErr) return json({ error: rpcErr.message }, 400);
       const userIds: string[] = Array.isArray((rpcData as any)?.user_ids) ? (rpcData as any).user_ids : [];
-      for (const uid of userIds) {
-        try { await admin.auth.admin.deleteUser(uid); } catch (_) { /* ignore */ }
-      }
-      await admin.from("access_logs").insert({ user_id: user.id, tenant_id, context: "admin", event: "tenant_delete" });
-      return json({ ok: true, status: "deleted", removed_users: userIds.length });
+      for (const uid of userIds) { try { await admin.auth.admin.deleteUser(uid); } catch (_) { /* ignore */ } }
+      // Limpa arquivos órfãos do Storage (logos/favicons do tenant).
+      try {
+        const { data: objs } = await admin.storage.from("tenant-logos").list(tenant_id);
+        if (objs?.length) await admin.storage.from("tenant-logos").remove(objs.map((o: any) => `${tenant_id}/${o.name}`));
+      } catch (_) { /* bucket pode não existir */ }
+      // Loga SEM tenant_id (o tenant já não existe → evita violar FK).
+      await admin.from("access_logs").insert({ user_id: user.id, tenant_id: null, context: "admin", event: "tenant_hard_delete", metadata: { tenant_id, name: tRow.name, removed_users: userIds.length } });
+      return json({ ok: true, hard_deleted: true, removed_users: userIds.length });
     }
 
-
-
+    // -------- PAUSAR / ATIVAR --------
     if (action === "pause" || action === "activate") {
       const status = action === "pause" ? "paused" : "active";
       const { error } = await admin.from("tenants").update({ status }).eq("id", tenant_id);
