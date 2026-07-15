@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { BrandColorField } from "@/components/admin/BrandColorField";
+import { BrandPreview } from "@/components/admin/BrandPreview";
 import {
   ArrowLeft, Loader2, Users, Image as ImageIcon, Settings2, LogIn,
   PauseCircle, PlayCircle, Trash2, Shield, BarChart3, Plus, KeyRound, UserX, UserCheck,
@@ -58,6 +60,7 @@ type Tenant = {
 type Profile = {
   id: string; nome: string; email: string; cargo: string | null;
   is_blocked: boolean; last_login_at: string | null; must_change_password: boolean;
+  role?: string | null;
 };
 type Metrics = {
   leads_total: number; leads_month: number;
@@ -103,7 +106,7 @@ export default function AdminClienteDetalhe() {
           <div>
             <h1 className="text-2xl font-bold">{tenant.name}</h1>
             <p className="text-sm text-slate-400">
-              <Link to={`/${tenant.slug}`} target="_blank" className="hover:underline">{tenant.slug}.crclin.com.br</Link>
+              <Link to={`/${tenant.slug}`} target="_blank" className="hover:underline">crclin.com.br/{tenant.slug}</Link>
               {" · "}<Badge variant={tenant.status === "active" ? "default" : "secondary"}>{tenant.status}</Badge>
             </p>
           </div>
@@ -228,10 +231,14 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
   const [form, setForm] = useState({ nome: "", email: "", password: "", role: "crc" });
 
   const load = async () => {
-    const { data } = await supabase.from("profiles")
+    const { data: profs } = await supabase.from("profiles")
       .select("id, nome, email, cargo, is_blocked, last_login_at, must_change_password")
       .eq("tenant_id", tenant.id).order("created_at", { ascending: false });
-    setUsers((data as any) ?? []);
+    // O PAPEL vem de user_roles (não de profiles.cargo, que é o cargo/título livre).
+    const { data: roles } = await (supabase as any).from("user_roles")
+      .select("user_id, role").eq("tenant_id", tenant.id);
+    const roleMap = new Map((roles ?? []).map((r: any) => [r.user_id, r.role]));
+    setUsers(((profs as any) ?? []).map((p: any) => ({ ...p, role: roleMap.get(p.id) ?? null })));
   };
   useEffect(() => { load(); }, [tenant.id]);
 
@@ -262,7 +269,7 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
                 <td className="p-3">
                   <select
                     className={selectDark}
-                    value={ROLES.some((r) => r.value === u.cargo) ? (u.cargo as string) : "crc"}
+                    value={ROLES.some((r) => r.value === u.role) ? (u.role as string) : "crc"}
                     title="Trocar papel do usuário"
                     onChange={async (e) => {
                       const role = e.target.value;
@@ -413,50 +420,19 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
           </div>
           <Input className={`${inputDark} mt-2`} placeholder="ou cole a URL do favicon" value={favicon} onChange={(e) => setFavicon(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Cor principal</Label>
-            <Input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} className="h-10 w-full p-1" />
-            <Input className={`${inputDark} mt-1 font-mono text-xs`} value={primary} onChange={(e) => setPrimary(e.target.value)} />
-          </div>
-          <div>
-            <Label>Cor secundária</Label>
-            <Input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="h-10 w-full p-1" />
-            <Input className={`${inputDark} mt-1 font-mono text-xs`} value={secondary} onChange={(e) => setSecondary(e.target.value)} />
-          </div>
+        <div className="grid grid-cols-2 gap-4">
+          <BrandColorField label="Cor principal" value={primary} onChange={setPrimary} />
+          <BrandColorField label="Cor secundária" value={secondary} onChange={setSecondary} />
         </div>
         <p className="text-xs text-slate-500">A cor principal pinta botões e destaques; a secundária compõe o gradiente. O restante da interface fica neutro (claro).</p>
         <Button onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin" size={14} />} Salvar</Button>
       </Card>
 
-      {/* Pré-visualização real */}
-      <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-4">
-        <p className="flex items-center gap-2 text-sm font-semibold text-slate-300"><Eye size={14} /> Pré-visualização</p>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400">Paleta:</span>
-          <span className="h-6 w-6 rounded border border-slate-700" style={{ background: primary }} title={primary} />
-          <span className="h-6 w-6 rounded border border-slate-700" style={{ background: secondary }} title={secondary} />
-        </div>
-
-        {/* Cartão de exemplo pintado com as cores escolhidas (fundo neutro, como no app real) */}
-        <div className="rounded-lg border p-4" style={{ background: "#f8fafc", borderColor: secondary }}>
-          <div className="flex items-center gap-2">
-            {(logo || tenant.logo_url) && <img src={logo || tenant.logo_url || ""} alt="" className="h-8 w-8 rounded object-contain bg-white/60" />}
-            <span className="font-bold" style={{ color: primary }}>{tenant.name}</span>
-          </div>
-          <p className="mt-2 text-sm" style={{ color: primary }}>
-            Exemplo de como os botões e destaques aparecem no painel do cliente.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <button type="button" className="rounded-md px-3 py-1.5 text-sm font-semibold text-white" style={{ background: primary }}>
-              Botão primário
-            </button>
-            <button type="button" className="rounded-md px-3 py-1.5 text-sm font-semibold text-white" style={{ background: secondary }}>
-              Secundário
-            </button>
-          </div>
-        </div>
-        <p className="text-xs text-slate-500">A pré-visualização usa os valores atuais dos campos, mesmo antes de salvar.</p>
+      {/* Pré-visualização REAL da interface do cliente */}
+      <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-3">
+        <p className="flex items-center gap-2 text-sm font-semibold text-slate-300"><Eye size={14} /> Como fica a interface do cliente</p>
+        <BrandPreview primary={primary} secondary={secondary} name={tenant.name} logoUrl={logo || tenant.logo_url} />
+        <p className="text-xs text-slate-500">Usa os valores atuais dos campos, mesmo antes de salvar.</p>
       </Card>
     </div>
   );
@@ -536,13 +512,13 @@ function SettingsTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
         <p className="text-sm font-semibold text-slate-300">Dados gerais</p>
         <div><Label>Nome</Label><Input className={inputDark} value={name} onChange={(e) => setName(e.target.value)} /></div>
         <div>
-          <Label>Slug (subdomínio)</Label>
+          <Label>Slug (identificador na URL)</Label>
           <Input className={`${inputDark} font-mono`} value={slug} onChange={(e) => setSlug(e.target.value)} />
           {!slugValid ? (
             <p className="mt-1 text-xs text-red-400">Use apenas letras minúsculas, números e hífens (ex.: minha-clinica).</p>
           ) : (
             <p className="mt-1 text-xs text-slate-400">
-              Vai virar: <span className="font-mono text-cyan-300">{slugClean}.crclin.com.br</span>
+              Acesso: <span className="font-mono text-cyan-300">crclin.com.br/{slugClean}</span>
             </p>
           )}
           {slugChanged && slugValid && (
