@@ -104,6 +104,11 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
   const [loadingAds, setLoadingAds] = useState(false);
   const [showAdSelector, setShowAdSelector] = useState(false);
 
+  // Origem/Anúncio agora são preenchidos automaticamente (webhook + gatilho).
+  // Mantemos edição manual apenas como exceção sob demanda.
+  const [editSource, setEditSource] = useState(false);
+  const [editAd, setEditAd] = useState(false);
+
   const isInstagramLead = getLeadChannel(lead) === "instagram";
   const SOURCE_OPTIONS = isInstagramLead ? SOURCE_OPTIONS_INSTAGRAM : SOURCE_OPTIONS_DEFAULT;
   const isKnownSource = SOURCE_OPTIONS.some((o) => o.value === source);
