@@ -338,6 +338,7 @@ const Dashboard = () => {
   // Faturamento por origem canônica (mesma fonte da aba Origem & Conversão) —
   // caixa do período por origem do lead do paciente. Reconcilia com o total.
   const [rpcCanalOrigem, setRpcCanalOrigem] = useState<FaturamentoOrigemRow[] | null>(null);
+  const [rpcAnuncio, setRpcAnuncio] = useState<FaturamentoAnuncioRow[] | null>(null);
 
 
   useEffect(() => {
@@ -357,6 +358,16 @@ const Dashboard = () => {
     rptFaturamentoOrigem(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcCanalOrigem(rows); })
       .catch((e) => console.warn("[Dashboard] rpt_faturamento_origem indisponível; usando cálculo local:", e));
+    return () => { cancelled = true; };
+  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRpcAnuncio(null);
+    if (dateFilter.preset === "multi") return; // período contíguo só
+    rptFaturamentoAnuncio(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
+      .then((rows) => { if (!cancelled) setRpcAnuncio(rows); })
+      .catch((e) => console.warn("[Dashboard] rpt_faturamento_anuncio indisponível; usando cálculo local:", e));
     return () => { cancelled = true; };
   }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro]);
 
