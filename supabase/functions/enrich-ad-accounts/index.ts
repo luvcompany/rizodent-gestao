@@ -96,10 +96,12 @@ Deno.serve(async (req) => {
 
     // Deduplicate ad_ids to avoid redundant API calls
     const adIdSet = new Map<string, string[]>(); // ad_id -> lead_ids
+    const leadTenantMap = new Map<string, string>(); // lead_id -> tenant_id
     for (const lead of leads) {
       if (!lead.ad_id) continue;
       if (!adIdSet.has(lead.ad_id)) adIdSet.set(lead.ad_id, []);
       adIdSet.get(lead.ad_id)!.push(lead.id);
+      if ((lead as any).tenant_id) leadTenantMap.set(lead.id, (lead as any).tenant_id);
     }
 
     console.log(`[ENRICH] ${adIdSet.size} unique ad_ids to query`);
@@ -148,21 +150,6 @@ Deno.serve(async (req) => {
             } catch (_) { /* skip */ }
           }
 
-          // Inferir cidade a partir do nome da conta
-          const inferCidade = (acc: string | null): string | null => {
-            const a = (acc || "").toUpperCase();
-            if (!a) return null;
-            if (a.includes("GUANAMBI")) return "Guanambi";
-            if (a.includes("ITABUNA")) return "Itabuna";
-            if (a.includes("IPIA")) return "Ipiaú";
-            if (a.includes("VCA") || a.includes("VITÓRIA") || a.includes("VITORIA") || a.includes("CONQUISTA"))
-              return "Vitória da Conquista";
-            return null;
-          };
-          const cidadeInferida = inferCidade(accountName);
-
-          console.log(`[ENRICH] Ad ${adId} => account ${accountId} (${accountName}) cidade=${cidadeInferida}, updating ${leadIds.length} leads`);
-
           // Update leads (preenche cidade só se ainda estiver vazia)
           const leadUpdate: any = {
             ad_account_id: accountId,
@@ -180,14 +167,43 @@ Deno.serve(async (req) => {
             enrichedCount += leadIds.length;
           }
 
-          // Preencher cidade nos leads que estão sem cidade
-          if (cidadeInferida) {
-            await supabase
-              .from("crm_leads")
-              .update({ cidade: cidadeInferida })
-              .in("id", leadIds)
-              .is("cidade", null);
+          // Resolução determinística de cidade via ad_account_map (por tenant).
+          // Defensiva: qualquer erro é engolido, não bloqueia o enrich.
+          const tenantsForAd = new Set<string>();
+          for (const lid of leadIds) {
+            const t = leadTenantMap.get(lid);
+            if (t) tenantsForAd.add(t);
           }
+          // Mantemos apenas o primeiro tenant resolvido para logar; o mapping global usa esse valor.
+          let cidadeInferida: string | null = null;
+          for (const tId of tenantsForAd) {
+            let cidadeTenant: string | null = null;
+            try {
+              cidadeTenant = await resolveCidade({
+                supabase,
+                tenantId: tId,
+                adAccountId: accountId,
+                adId,
+                pageId: null,
+                adAccountName: accountName,
+              });
+            } catch (_e) { cidadeTenant = null; }
+            if (cidadeTenant) {
+              if (!cidadeInferida) cidadeInferida = cidadeTenant;
+              try {
+                const tenantLeadIds = leadIds.filter((lid) => leadTenantMap.get(lid) === tId);
+                if (tenantLeadIds.length > 0) {
+                  await supabase
+                    .from("crm_leads")
+                    .update({ cidade: cidadeTenant })
+                    .in("id", tenantLeadIds)
+                    .is("cidade", null);
+                }
+              } catch (_e) { /* engole */ }
+            }
+          }
+
+          console.log(`[ENRICH] Ad ${adId} => account ${accountId} (${accountName}) cidade=${cidadeInferida}, updated ${leadIds.length} leads`);
 
           // Atualizar ad_id_mapping (cache global de anúncios)
           await supabase
