@@ -360,7 +360,6 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
   const [favicon, setFavicon] = useState(tenant.favicon_url ?? "");
   const [primary, setPrimary] = useState(tenant.primary_color);
   const [secondary, setSecondary] = useState(tenant.secondary_color ?? "#fb923c");
-  const [tertiary, setTertiary] = useState(tenant.tertiary_color ?? "#ffedd5");
   const [saving, setSaving] = useState(false);
 
   const upload = async (f: File, kind: "logo" | "logo_dark" | "favicon") => {
@@ -378,7 +377,7 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", {
       body: { tenant_id: tenant.id, action: "update", patch: {
         logo_url: logo || null, logo_dark_url: logoDark || null, favicon_url: favicon || null,
-        primary_color: primary, secondary_color: secondary, tertiary_color: tertiary,
+        primary_color: primary, secondary_color: secondary,
       } },
     });
     setSaving(false);
@@ -414,9 +413,9 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
           </div>
           <Input className={`${inputDark} mt-2`} placeholder="ou cole a URL do favicon" value={favicon} onChange={(e) => setFavicon(e.target.value)} />
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>Cor primária</Label>
+            <Label>Cor principal</Label>
             <Input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} className="h-10 w-full p-1" />
             <Input className={`${inputDark} mt-1 font-mono text-xs`} value={primary} onChange={(e) => setPrimary(e.target.value)} />
           </div>
@@ -425,12 +424,8 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
             <Input type="color" value={secondary} onChange={(e) => setSecondary(e.target.value)} className="h-10 w-full p-1" />
             <Input className={`${inputDark} mt-1 font-mono text-xs`} value={secondary} onChange={(e) => setSecondary(e.target.value)} />
           </div>
-          <div>
-            <Label>Cor terciária</Label>
-            <Input type="color" value={tertiary} onChange={(e) => setTertiary(e.target.value)} className="h-10 w-full p-1" />
-            <Input className={`${inputDark} mt-1 font-mono text-xs`} value={tertiary} onChange={(e) => setTertiary(e.target.value)} />
-          </div>
         </div>
+        <p className="text-xs text-slate-500">A cor principal pinta botões e destaques; a secundária compõe o gradiente. O restante da interface fica neutro (claro).</p>
         <Button onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin" size={14} />} Salvar</Button>
       </Card>
 
@@ -441,11 +436,10 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
           <span className="text-xs text-slate-400">Paleta:</span>
           <span className="h-6 w-6 rounded border border-slate-700" style={{ background: primary }} title={primary} />
           <span className="h-6 w-6 rounded border border-slate-700" style={{ background: secondary }} title={secondary} />
-          <span className="h-6 w-6 rounded border border-slate-700" style={{ background: tertiary }} title={tertiary} />
         </div>
 
-        {/* Cartão de exemplo pintado com as cores escolhidas */}
-        <div className="rounded-lg border p-4" style={{ background: tertiary, borderColor: secondary }}>
+        {/* Cartão de exemplo pintado com as cores escolhidas (fundo neutro, como no app real) */}
+        <div className="rounded-lg border p-4" style={{ background: "#f8fafc", borderColor: secondary }}>
           <div className="flex items-center gap-2">
             {(logo || tenant.logo_url) && <img src={logo || tenant.logo_url || ""} alt="" className="h-8 w-8 rounded object-contain bg-white/60" />}
             <span className="font-bold" style={{ color: primary }}>{tenant.name}</span>

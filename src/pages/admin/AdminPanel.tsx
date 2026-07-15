@@ -269,10 +269,9 @@ export const AdminClientes = () => {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div><Label>Cor primária</Label><Input type="color" value={form.primary_color} onChange={(e) => setForm({ ...form, primary_color: e.target.value })} className="h-10 w-full p-1 bg-slate-800 border-slate-700" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Cor principal</Label><Input type="color" value={form.primary_color} onChange={(e) => setForm({ ...form, primary_color: e.target.value })} className="h-10 w-full p-1 bg-slate-800 border-slate-700" /></div>
               <div><Label>Cor secundária</Label><Input type="color" value={form.secondary_color} onChange={(e) => setForm({ ...form, secondary_color: e.target.value })} className="h-10 w-full p-1 bg-slate-800 border-slate-700" /></div>
-              <div><Label>Cor terciária</Label><Input type="color" value={form.tertiary_color} onChange={(e) => setForm({ ...form, tertiary_color: e.target.value })} className="h-10 w-full p-1 bg-slate-800 border-slate-700" /></div>
             </div>
             <div className="border-t border-slate-800 pt-3"><p className="mb-2 text-sm font-semibold">Clínica principal</p></div>
             <div className="grid grid-cols-2 gap-3">
