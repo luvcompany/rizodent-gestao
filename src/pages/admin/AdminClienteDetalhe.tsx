@@ -375,13 +375,17 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
   const [saving, setSaving] = useState(false);
 
   const upload = async (f: File, kind: "logo" | "logo_dark" | "favicon") => {
-    const path = `${tenant.id}/${kind}-${Date.now()}-${f.name}`;
-    const { error } = await supabase.storage.from("tenant-logos").upload(path, f, { upsert: true });
-    if (error) { toast.error(error.message); return; }
+    // Sanitiza: o nome ORIGINAL (espaços/acentos, ex.: "Logo Cliente.png") quebra
+    // a chave do Storage. Usamos só kind + timestamp + extensão.
+    const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+    const path = `${tenant.id}/${kind}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("tenant-logos").upload(path, f, { upsert: true, contentType: f.type || undefined });
+    if (error) { toast.error("Falha no upload: " + error.message); return; }
     const { data } = supabase.storage.from("tenant-logos").getPublicUrl(path);
     if (kind === "logo") setLogo(data.publicUrl);
     else if (kind === "logo_dark") setLogoDark(data.publicUrl);
     else setFavicon(data.publicUrl);
+    toast.success("Imagem enviada — clique em Salvar para aplicar.");
   };
 
   const save = async () => {
