@@ -197,6 +197,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
       setAdAccountId(lead.ad_account_id || "");
       setAdAccountName(lead.ad_account_name || "");
       setShowAdSelector(false);
+      setEditSource(false);
+      setEditAd(false);
     }
   }, [editOpen, lead]);
 
