@@ -148,9 +148,15 @@ const TenantLogin = () => {
               // Logo PRÓPRIA do cliente (upload no bucket tenant-logos)
               <img src={tenant.logo_url} alt={tenant.name} className="h-12 max-w-56 object-contain" />
             ) : (
-              // Sem logo própria → ícone limpo do CRClin (o balão colorido fica bom no fundo claro;
-              // as logos com wordmark têm o "CR" em branco e somem no card branco).
-              <img src={crclinIcon} alt="CRClin" className="h-14 w-14 object-contain" />
+              // Sem logo própria → lockup CRClin (ícone + wordmark) legível em qualquer fundo:
+              // "CR" escuro (some se fosse branco no card claro) + "Clin" em gradiente.
+              <div className="flex items-center gap-2.5">
+                <img src={crclinIcon} alt="" className="h-11 w-11 object-contain" />
+                <span className="text-2xl font-extrabold leading-none tracking-tight">
+                  <span className="text-foreground">CR</span>
+                  <span className="bg-gradient-to-r from-sky-500 to-indigo-500 bg-clip-text text-transparent">Clin</span>
+                </span>
+              </div>
             )}
             <div className="text-center">
               <h1 className="text-xl font-bold">Acesso da equipe — {tenant.name}</h1>
