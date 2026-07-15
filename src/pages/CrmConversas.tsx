@@ -280,6 +280,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(!canUseInitialCache && !_lsData);
+  const [fullyLoaded, setFullyLoaded] = useState<boolean>(canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
