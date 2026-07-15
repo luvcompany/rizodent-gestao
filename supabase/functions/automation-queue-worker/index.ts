@@ -13,6 +13,31 @@ const corsHeaders = {
 const BATCH_LIMIT = 60;
 const PARALLEL = 8;
 
+// Ações que ENVIAM mensagem ao paciente — só podem sair no horário comercial.
+// move_stage / add_tag / notify_* são internas e podem rodar a qualquer hora.
+const MESSAGE_ACTIONS = new Set(["send_template", "send_bot", "send_audio", "send_file"]);
+
+// Janela comercial (BR = UTC-3): seg–sáb 08:00–20:00 local.
+// Retorna ISO do próximo horário permitido, ou null se JÁ estamos na janela.
+function nextCommercialFireAt(now: Date = new Date()): string | null {
+  const BR_OFFSET_MS = -3 * 60 * 60 * 1000; // UTC-3
+  const brNow = new Date(now.getTime() + BR_OFFSET_MS);
+  const dow = brNow.getUTCDay(); // 0=Dom..6=Sáb
+  const hour = brNow.getUTCHours();
+  const inWindow = dow >= 1 && dow <= 6 && hour >= 8 && hour < 20;
+  if (inWindow) return null;
+  const next = new Date(brNow);
+  if (dow >= 1 && dow <= 6 && hour < 8) {
+    // Hoje mais tarde — cai para as 08:00 de hoje
+  } else {
+    // Depois das 20:00, ou domingo: avança até o próximo seg–sáb
+    next.setUTCDate(next.getUTCDate() + 1);
+    while (next.getUTCDay() === 0) next.setUTCDate(next.getUTCDate() + 1);
+  }
+  next.setUTCHours(8, 0, 0, 0);
+  return new Date(next.getTime() - BR_OFFSET_MS).toISOString();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -28,7 +53,7 @@ Deno.serve(async (req) => {
   }
 
 
-  const stats = { processed: 0, sent: 0, failed: 0, skipped: 0 };
+  const stats = { processed: 0, sent: 0, failed: 0, skipped: 0, deferred: 0 };
 
   try {
     // 1. Recover items stuck in "processing" for > 10 min back to pending
@@ -55,6 +80,25 @@ Deno.serve(async (req) => {
 
     const processOne = async (item: any) => {
       stats.processed++;
+
+      // GUARD DE HORÁRIO COMERCIAL: envios de mensagem fora da janela (seg–sáb
+      // 08–20 BR) são REAGENDADOS para o próximo dia útil às 08:00, em vez de
+      // sair na madrugada. Cobre o re-enqueue do watchdog (que roda 00:00 BR) e
+      // qualquer outra fonte. Ações internas (move_stage etc.) não são afetadas.
+      if (MESSAGE_ACTIONS.has(item.action_type)) {
+        const nextWindow = nextCommercialFireAt();
+        if (nextWindow) {
+          await supabase
+            .from("crm_automation_queue")
+            .update({ scheduled_at: nextWindow, updated_at: new Date().toISOString() })
+            .eq("id", item.id)
+            .eq("status", "pending");
+          console.log(`[queue-worker] item ${item.id} (${item.action_type}) fora do horário — reagendado para ${nextWindow}`);
+          stats.deferred++;
+          return;
+        }
+      }
+
       // Reserve atomically: only proceed if we can flip pending -> processing
       const { data: reserved, error: reserveErr } = await supabase
         .from("crm_automation_queue")
