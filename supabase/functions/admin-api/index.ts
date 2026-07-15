@@ -547,21 +547,98 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     .map(([origem, v]) => ({ origem, ...v }))
     .sort((a, b) => b.faturamento - a.faturamento);
 
-  // por anúncio top 10
-  const anuncioMap = new Map<string, { display: string; faturamento: number }>();
-  pacientes.forEach((pc) => {
-    if (!pc.nome_anuncio) return;
-    const fat = pagByPaciente.get(pc.id) || 0;
-    if (!fat) return;
-    const key = String(pc.nome_anuncio).trim().toLowerCase();
-    const entry = anuncioMap.get(key) || { display: String(pc.nome_anuncio).trim(), faturamento: 0 };
-    entry.faturamento += fat;
-    anuncioMap.set(key, entry);
-  });
-  const porAnuncio = Array.from(anuncioMap.values())
-    .map((v) => ({ anuncio: v.display, faturamento: v.faturamento }))
-    .sort((a, b) => b.faturamento - a.faturamento)
-    .slice(0, 10);
+  // por anúncio — atribuição por paciente -> lead -> ad_id (nome real do criativo), tenant-scoped
+  let porAnuncio: any[] = [];
+  try {
+    const pacientesComFat = [...pacientesTotalSet].filter((pid) => (pagByPaciente.get(pid) || 0) > 0);
+    // 1) todos os vínculos (paginado: fan-out 1:N pode passar de 1000 linhas)
+    const allLinks: any[] = [];
+    for (const ids of chunk(pacientesComFat, 150)) {
+      let from = 0; const PAGE = 1000;
+      while (true) {
+        const { data, error } = await admin.from("crm_lead_pacientes")
+          .select("paciente_id, lead_id, is_primary, created_at")
+          .in("paciente_id", ids)
+          .order("paciente_id", { ascending: true }).order("is_primary", { ascending: false })
+          .order("created_at", { ascending: true }).order("lead_id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        allLinks.push(...(data || []));
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+    }
+    // 2) leads VÁLIDOS do tenant (barreira de segurança)
+    const allLeadIds = [...new Set(allLinks.map((r) => r.lead_id).filter(Boolean))];
+    const leadById = new Map<string, any>();
+    for (const ids of chunk(allLeadIds, 150)) {
+      const { data, error } = await admin.from("crm_leads")
+        .select("id, ad_id, nome_anuncio, source").eq("tenant_id", tenantId).in("id", ids);
+      if (error) throw new Error(error.message);
+      (data || []).forEach((l: any) => leadById.set(l.id, l));
+    }
+    // 3) melhor lead por paciente SÓ entre leads do tenant (desempate global determinístico; created_at NULL perde)
+    const leadByPaciente = new Map<string, any>();
+    for (const link of allLinks) {
+      const lead = leadById.get(link.lead_id);
+      if (!lead) continue;
+      const cur = leadByPaciente.get(link.paciente_id);
+      if (!cur) { leadByPaciente.set(link.paciente_id, { link, lead }); continue; }
+      const a = link, b = cur.link;
+      let win = (a.is_primary ? 1 : 0) - (b.is_primary ? 1 : 0);
+      if (win === 0) { const at = a.created_at || "9999", bt = b.created_at || "9999"; win = at < bt ? 1 : at > bt ? -1 : 0; }
+      if (win === 0) win = String(a.lead_id) < String(b.lead_id) ? 1 : -1;
+      if (win > 0) leadByPaciente.set(link.paciente_id, { link, lead });
+    }
+    // 4) ad_id_mapping TENANT-SCOPED (não vazar nome de criativo entre clientes concorrentes)
+    const adIds = [...new Set(Array.from(leadByPaciente.values()).map((x) => x.lead?.ad_id).filter(Boolean))];
+    const adMap = new Map<string, any>();
+    for (const ids of chunk(adIds, 150)) {
+      const { data, error } = await admin.from("ad_id_mapping")
+        .select("ad_id, ad_name, ad_headline, tenant_id").eq("tenant_id", tenantId).in("ad_id", ids);
+      if (error) throw new Error(error.message);
+      (data || []).forEach((m: any) => adMap.set(m.ad_id, m));
+    }
+    // 5) origem por token (evita falso-positivo de substring)
+    const AD_TOKENS = new Set(["facebook","instagram","messenger","whatsapp","meta","tiktok","fb","ig","wpp","ad","ads","cpc","ppc","paid"]);
+    const isAdSource = (s: any) => !!s && String(s).toLowerCase().split(/[^a-z0-9]+/).some((t) => AD_TOKENS.has(t));
+    const anuncioMap = new Map<string, { display: string; faturamento: number; pacientes: Set<string> }>();
+    for (const pid of pacientesComFat) {
+      const fat = pagByPaciente.get(pid) || 0;
+      if (!fat) continue;
+      const picked = leadByPaciente.get(pid);
+      const lead = picked?.lead;
+      const pac = pacienteById.get(pid);
+      const m = lead?.ad_id ? adMap.get(lead.ad_id) : null;
+      let display: string;
+      if (m && m.ad_name) display = String(m.ad_name).trim();
+      else if (m && m.ad_headline) display = String(m.ad_headline).trim();
+      else if (lead?.nome_anuncio && String(lead.nome_anuncio).trim()) display = String(lead.nome_anuncio).trim();
+      else if (pac?.nome_anuncio && String(pac.nome_anuncio).trim()) display = String(pac.nome_anuncio).trim();
+      else if (isAdSource(lead?.source)) display = "Anúncio (não identificado)";
+      else display = "Sem anúncio / outro";
+      const key = display.toLowerCase();
+      const entry = anuncioMap.get(key) || { display, faturamento: 0, pacientes: new Set<string>() };
+      entry.faturamento += fat; entry.pacientes.add(pid);
+      anuncioMap.set(key, entry);
+    }
+    porAnuncio = Array.from(anuncioMap.values())
+      .map((v) => ({ anuncio: v.display, faturamento: v.faturamento, pacientes: v.pacientes.size }))
+      .sort((a, b) => b.faturamento - a.faturamento).slice(0, 20);
+  } catch (_e) {
+    const anuncioMap = new Map<string, { display: string; faturamento: number }>();
+    pacientes.forEach((pc: any) => {
+      if (!pc.nome_anuncio) return;
+      const fat = pagByPaciente.get(pc.id) || 0;
+      if (!fat) return;
+      const key = String(pc.nome_anuncio).trim().toLowerCase();
+      const entry = anuncioMap.get(key) || { display: String(pc.nome_anuncio).trim(), faturamento: 0 };
+      entry.faturamento += fat; anuncioMap.set(key, entry);
+    });
+    porAnuncio = Array.from(anuncioMap.values())
+      .map((v) => ({ anuncio: v.display, faturamento: v.faturamento }))
+      .sort((a, b) => b.faturamento - a.faturamento).slice(0, 10);
+  }
 
   // agendamentos
   const total = appointments.length;
