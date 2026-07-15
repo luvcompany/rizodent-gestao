@@ -8,7 +8,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import logoFallback from "@/assets/logo-rizodent.webp";
+import crclinIcon from "@/assets/crclin-icon.png";
 
 const TenantLogin = () => {
   const navigate = useNavigate();
@@ -144,10 +144,13 @@ const TenantLogin = () => {
       <div className="w-full max-w-md animate-fade-in">
         <div className="gradient-card rounded-2xl border border-border p-8 shadow-card">
           <div className="mb-8 flex flex-col items-center gap-4">
-            {tenant.logo_url ? (
+            {tenant.logo_url && tenant.logo_url.includes("tenant-logos") ? (
+              // Logo PRÓPRIA do cliente (upload no bucket tenant-logos)
               <img src={tenant.logo_url} alt={tenant.name} className="h-12 max-w-56 object-contain" />
             ) : (
-              <img src={logoFallback} alt={tenant.name} className="h-12 object-contain invert" />
+              // Sem logo própria → ícone limpo do CRClin (o balão colorido fica bom no fundo claro;
+              // as logos com wordmark têm o "CR" em branco e somem no card branco).
+              <img src={crclinIcon} alt="CRClin" className="h-14 w-14 object-contain" />
             )}
             <div className="text-center">
               <h1 className="text-xl font-bold">Acesso da equipe — {tenant.name}</h1>
