@@ -111,103 +111,50 @@ function foregroundTripletFor(hex: string | null): string | null {
 function applyTenantTheme(branding: {
   primary_color?: string | null;
   secondary_color?: string | null;
-  tertiary_color?: string | null;
 } | null) {
   const root = document.documentElement;
-
-  // --- Primary ---
   const primary = branding?.primary_color || null;
-  if (!primary) {
-    root.style.removeProperty("--primary");
-    root.style.removeProperty("--primary-foreground");
-    root.style.removeProperty("--accent");
-    root.style.removeProperty("--ring");
-    root.style.removeProperty("--gradient-orange");
-    root.style.removeProperty("--shadow-orange");
-    root.style.removeProperty("--tenant-primary");
-  } else {
-    const triplet = hexToHslTriplet(primary);
-    if (triplet) {
-      root.style.setProperty("--primary", triplet);
-      root.style.setProperty("--accent", triplet);
-      root.style.setProperty("--ring", triplet);
-      root.style.setProperty(
-        "--gradient-orange",
-        `linear-gradient(135deg, hsl(${triplet}) 0%, hsl(${triplet} / 0.85) 100%)`
-      );
-      // shadow uses the same hue with reduced alpha
-      const [h, s] = triplet.split(" ");
-      const sNum = s.replace("%", "");
-      root.style.setProperty(
-        "--shadow-orange",
-        `0 4px 20px -4px hsla(${h}, ${sNum}%, 50%, 0.3)`
-      );
-      root.style.setProperty("--tenant-primary", primary);
-      const fg = foregroundTripletFor(primary);
-      if (fg) root.style.setProperty("--primary-foreground", fg);
-      else root.style.removeProperty("--primary-foreground");
-    }
-  }
-
-  // --- Secondary ---
   const secondary = branding?.secondary_color || null;
-  if (!secondary) {
-    root.style.removeProperty("--secondary");
-    root.style.removeProperty("--secondary-foreground");
+
+  // IMPORTANTE: NÃO sobrescrever os tokens neutros do shadcn (--secondary,
+  // --secondary-foreground, --tertiary). Eles são usados como fundo de inputs e
+  // botões secundários; pintá-los com a cor da marca deixava as caixas de texto
+  // laranja. A marca é aplicada só via --primary (+ derivados) e no gradiente.
+  root.style.removeProperty("--secondary");
+  root.style.removeProperty("--secondary-foreground");
+  root.style.removeProperty("--tertiary");
+  root.style.removeProperty("--tertiary-foreground");
+
+  if (!primary) {
+    ["--primary", "--primary-foreground", "--accent", "--ring", "--gradient-orange", "--shadow-orange", "--tenant-primary", "--tenant-secondary"].forEach((p) => root.style.removeProperty(p));
+    return;
+  }
+
+  const triplet = hexToHslTriplet(primary);
+  if (!triplet) return;
+
+  root.style.setProperty("--primary", triplet);
+  root.style.setProperty("--accent", triplet);
+  root.style.setProperty("--ring", triplet);
+  root.style.setProperty("--tenant-primary", primary);
+  const fg = foregroundTripletFor(primary);
+  if (fg) root.style.setProperty("--primary-foreground", fg);
+  else root.style.removeProperty("--primary-foreground");
+
+  const [h, s] = triplet.split(" ");
+  const sNum = s.replace("%", "");
+  root.style.setProperty("--shadow-orange", `0 4px 20px -4px hsla(${h}, ${sNum}%, 50%, 0.3)`);
+
+  // A cor SECUNDÁRIA da marca é usada como 2º ponto do gradiente (botões/realces),
+  // sem tocar no token neutro --secondary.
+  const secTriplet = secondary ? hexToHslTriplet(secondary) : null;
+  if (secTriplet) {
+    root.style.setProperty("--gradient-orange", `linear-gradient(135deg, hsl(${triplet}) 0%, hsl(${secTriplet}) 100%)`);
+    root.style.setProperty("--tenant-secondary", secondary);
+  } else {
+    root.style.setProperty("--gradient-orange", `linear-gradient(135deg, hsl(${triplet}) 0%, hsl(${triplet} / 0.85) 100%)`);
     root.style.removeProperty("--tenant-secondary");
-  } else {
-    const triplet = hexToHslTriplet(secondary);
-    if (triplet) {
-      root.style.setProperty("--secondary", triplet);
-      root.style.setProperty("--tenant-secondary", secondary);
-      const fg = foregroundTripletFor(secondary);
-      if (fg) root.style.setProperty("--secondary-foreground", fg);
-      else root.style.removeProperty("--secondary-foreground");
-    }
   }
-
-  // --- Tertiary ---
-  const tertiary = branding?.tertiary_color || null;
-  if (!tertiary) {
-    root.style.removeProperty("--tertiary");
-    root.style.removeProperty("--tertiary-foreground");
-    root.style.removeProperty("--tenant-tertiary");
-  } else {
-    const triplet = hexToHslTriplet(tertiary);
-    if (triplet) {
-      root.style.setProperty("--tertiary", triplet);
-      root.style.setProperty("--tenant-tertiary", tertiary);
-      const fg = foregroundTripletFor(tertiary);
-      if (fg) root.style.setProperty("--tertiary-foreground", fg);
-      else root.style.removeProperty("--tertiary-foreground");
-    }
-  }
-}
-
-// Capture the app's original favicon href once so we can restore it when a
-// tenant has no custom favicon (e.g. main domain / impersonating back out).
-let defaultFaviconHref: string | null = null;
-let defaultFaviconCaptured = false;
-
-function ensureFaviconLink(): HTMLLinkElement {
-  let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
-  if (!link) {
-    link = document.createElement("link");
-    link.rel = "icon";
-    document.head.appendChild(link);
-  }
-  if (!defaultFaviconCaptured) {
-    defaultFaviconHref = link.getAttribute("href");
-    defaultFaviconCaptured = true;
-  }
-  return link;
-}
-
-function applyFavicon(url: string | null) {
-  const link = ensureFaviconLink();
-  const next = url || defaultFaviconHref;
-  if (next) link.setAttribute("href", next);
-  else link.removeAttribute("href");
 }
 
 /** Normalize an RPC/cached row into a full TenantBranding (defensive about missing new fields). */
@@ -257,7 +204,8 @@ function writeTenantCache(slug: string, data: TenantBranding) {
 
 function applyBranding(tenant: TenantBranding) {
   applyTenantTheme(tenant);
-  applyFavicon(tenant.favicon_url);
+  // Favicon: mantemos SEMPRE o padrão do CRClin (definido no index.html). A logo
+  // do cliente como favicon ficava ruim (ícone pequeno/ilegível na aba).
   document.title = tenant.name;
 }
 
@@ -268,7 +216,6 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
   useEffect(() => {
     if (!slugOverride) {
       applyTenantTheme(null);
-      applyFavicon(null);
       setLoading(false);
       return;
     }
@@ -291,7 +238,6 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
         setTenant(fallbackTenant);
         writeTenantCache(slugOverride, fallbackTenant);
         applyTenantTheme(null);
-        applyFavicon(null);
         document.title = fallbackTenant.name;
       }
       setLoading(false);

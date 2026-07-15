@@ -59,6 +59,7 @@ const CrclinLanding = lazyWithPreload(() => import("./pages/CrclinLanding"));
 const ChangePassword = lazyWithPreload(() => import("./pages/ChangePassword"));
 const AdminLayout = lazyWithPreload(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminLayout })));
 const AdminClientes = lazyWithPreload(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminClientes })));
+const AdminDashboard = lazyWithPreload(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminDashboard })));
 const AdminPlanos = lazyWithPreload(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminPlanos })));
 const AdminMetricas = lazyWithPreload(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminMetricas })));
 const AdminCobranca = lazyWithPreload(() => import("./pages/admin/AdminPanel").then((m) => ({ default: m.AdminCobranca })));
@@ -191,6 +192,7 @@ export const PublicApp = ({ basename }: { basename: string }) => (
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route element={<AdminLayout />}>
               <Route path="/admin" element={<AdminClientes />} />
+              <Route path="/admin/dashboard" element={<AdminDashboard />} />
               <Route path="/admin/clientes/:id" element={<AdminClienteDetalhe />} />
               <Route path="/admin/planos" element={<AdminPlanos />} />
               <Route path="/admin/metricas" element={<AdminMetricas />} />
