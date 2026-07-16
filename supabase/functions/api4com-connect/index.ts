@@ -12,32 +12,46 @@ const corsHeaders = {
 };
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+// Gateway curto e seguro (o UUID inteiro pode estourar limites de coluna na Api4Com).
+// A conta é dedicada à clínica, então um id curto por tenant basta.
+function safeGateway(tenantId: string) {
+  return "crclin-" + String(tenantId).replace(/-/g, "").slice(0, 12);
+}
+
 // Registra (upsert) a integração de webhook na Api4Com. Auth: token PURO no header
 // Authorization (sem "Bearer"), conforme a doc do Webphone. IMPORTANTE: NÃO usamos
 // webhookConstraint — a conta é dedicada à clínica, então queremos TODAS as chamadas
 // (inclusive as feitas pela extensão, que não carregam nosso gateway no metadata).
-async function registerWebhook(apiToken: string, supaUrl: string, tenantId: string, gateway: string, webhookSecret: string) {
+// Como a API deles às vezes responde 500 a formatos que não espera, tentamos algumas
+// variações de corpo e ficamos com a primeira que der certo.
+async function registerWebhook(apiToken: string, supaUrl: string, tenantId: string, webhookSecret: string) {
+  const gateway = safeGateway(tenantId);
   const webhookUrl = `${supaUrl}/functions/v1/api4com-webhook?secret=${webhookSecret}&gw=${encodeURIComponent(gateway)}`;
-  try {
-    const res = await fetch(`${API4COM_BASE}/integrations`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: apiToken },
-      body: JSON.stringify({
-        gateway,
-        webhook: true,
-        metadata: {
-          webhookUrl,
-          webhookVersion: "1.8",
-          webhookTypes: ["channel-answer", "channel-hangup"],
-        },
-      }),
-    });
-    const body = await res.text().catch(() => "");
-    if (res.ok) return { ok: true, status: res.status, detail: null as string | null };
-    return { ok: false, status: res.status, detail: `HTTP ${res.status}: ${body.slice(0, 500)}` };
-  } catch (e: any) {
-    return { ok: false, status: 0, detail: `fetch error: ${String(e?.message ?? e).slice(0, 500)}` };
+  const meta = { webhookUrl, webhookVersion: "1.8", webhookTypes: ["channel-answer", "channel-hangup"] };
+
+  const variants: any[] = [
+    { gateway, webhook: true, metadata: meta },
+    { gateway, webhook: true, metadata: { ...meta, api_token: webhookSecret } },
+    { id: 0, gateway, webhook: true, metadata: { ...meta, api_token: webhookSecret } },
+    { gateway, webhook: true, metadata: JSON.stringify({ ...meta, api_token: webhookSecret }) },
+  ];
+
+  const errors: string[] = [];
+  for (let i = 0; i < variants.length; i++) {
+    try {
+      const res = await fetch(`${API4COM_BASE}/integrations`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: apiToken },
+        body: JSON.stringify(variants[i]),
+      });
+      if (res.ok) return { ok: true, status: res.status, detail: null as string | null, gateway };
+      const body = await res.text().catch(() => "");
+      errors.push(`v${i}: HTTP ${res.status}: ${body.slice(0, 220)}`);
+    } catch (e: any) {
+      errors.push(`v${i}: fetch error: ${String(e?.message ?? e).slice(0, 220)}`);
+    }
   }
+  return { ok: false, status: 0, detail: errors.join(" | ").slice(0, 900), gateway };
 }
 
 Deno.serve(async (req) => {
@@ -88,11 +102,10 @@ Deno.serve(async (req) => {
       const { data: cfg } = await admin.from("api4com_config")
         .select("api_token, gateway, webhook_secret").eq("tenant_id", tenantId).maybeSingle();
       if (!cfg?.api_token) return json({ error: "Conecte a conta Api4Com primeiro." }, 400);
-      const gateway = cfg.gateway || `crclin-${tenantId}`;
       const webhookSecret = cfg.webhook_secret || crypto.randomUUID().replace(/-/g, "");
-      const wh = await registerWebhook(cfg.api_token, SUPA_URL, tenantId, gateway, webhookSecret);
+      const wh = await registerWebhook(cfg.api_token, SUPA_URL, tenantId, webhookSecret);
       await admin.from("api4com_config").update({
-        gateway, webhook_secret: webhookSecret,
+        gateway: wh.gateway, webhook_secret: webhookSecret,
         webhook_registered: wh.ok, webhook_last_error: wh.detail,
         updated_at: new Date().toISOString(),
       }).eq("tenant_id", tenantId);
@@ -126,17 +139,16 @@ Deno.serve(async (req) => {
         if (permRes.ok && permData?.id) apiToken = permData.id;
       } catch (_) { /* mantém o token do login */ }
 
-      // 3) Gateway + segredo do webhook
-      const gateway = `crclin-${tenantId}`;
+      // 3) Segredo do webhook (o gateway é definido dentro de registerWebhook)
       const webhookSecret = crypto.randomUUID().replace(/-/g, "");
 
       // 4) Registrar webhook (captura o motivo em caso de falha)
-      const wh = await registerWebhook(apiToken, SUPA_URL, tenantId, gateway, webhookSecret);
+      const wh = await registerWebhook(apiToken, SUPA_URL, tenantId, webhookSecret);
 
       // 5) Salvar config (token só no servidor)
       const { error: upErr } = await admin.from("api4com_config").upsert({
         tenant_id: tenantId, account_email: email, api_token: apiToken,
-        gateway, webhook_secret: webhookSecret,
+        gateway: wh.gateway, webhook_secret: webhookSecret,
         webhook_registered: wh.ok, webhook_last_error: wh.detail,
         connected_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }, { onConflict: "tenant_id" });
