@@ -71,7 +71,12 @@ Deno.serve(async (req) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return json({ error: "Falha ao iniciar a ligação na Api4Com. (" + (data?.error?.message || data?.message || res.status) + ")" }, 502);
+      const raw = String(data?.error?.message || data?.message || `HTTP ${res.status}`);
+      // "user not registered" = o webphone do ramal não está online no momento.
+      if (/not\s*registered/i.test(raw)) {
+        return json({ error: `Abra a extensão/webphone da Api4Com e faça login no ramal ${cfg.ramal} — ele precisa estar online para receber a ligação.` }, 409);
+      }
+      return json({ error: "A Api4Com recusou a ligação: " + raw }, 502);
     }
     // O id do /dialer NÃO é o id real da chamada (débito técnico da Api4Com) —
     // o id verdadeiro vem no webhook. Só confirmamos o disparo.

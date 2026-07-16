@@ -33,7 +33,12 @@ export default function Api4ComDialButton({ leadId, phone }: { leadId: string; p
       const { data, error } = await supabase.functions.invoke("api4com-dial", {
         body: { lead_id: leadId, phone },
       });
-      if (error) throw error;
+      // Erros de negócio vêm no corpo (não-2xx) — lê a mensagem real, não a genérica.
+      if (error) {
+        let msg = error.message || "Falha ao iniciar a ligação";
+        try { const b = await (error as any).context?.json?.(); if (b?.error) msg = b.error; } catch { /* ignore */ }
+        throw new Error(msg);
+      }
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success("Ligando… atenda no webphone da Api4Com que ela disca o lead.");
     } catch (e: any) {
