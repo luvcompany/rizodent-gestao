@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Camera, Loader2, Save, Building2, Plus, Trash2, User, Send, Pencil, CheckCircle2, X, MapPin, Database, Download, RotateCcw, RefreshCw, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Camera, Loader2, Save, Building2, Plus, Trash2, User, Send, Pencil, CheckCircle2, X, MapPin, Database, Download, RotateCcw, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { generateAndSubmitAppointmentTemplate } from "@/lib/appointmentTemplateBlueprint";
 
@@ -26,10 +26,12 @@ export default function Configuracoes() {
         <TabsList>
           <TabsTrigger value="perfil"><User size={14} className="mr-1" /> Meu perfil</TabsTrigger>
           <TabsTrigger value="clinicas"><Building2 size={14} className="mr-1" /> Clínicas</TabsTrigger>
+          {isAdmin && <TabsTrigger value="telefonia"><Phone size={14} className="mr-1" /> Telefonia</TabsTrigger>}
           {isAdmin && <TabsTrigger value="backups"><Database size={14} className="mr-1" /> Backups</TabsTrigger>}
         </TabsList>
         <TabsContent value="perfil"><PerfilTab /></TabsContent>
         <TabsContent value="clinicas"><ClinicasTab /></TabsContent>
+        {isAdmin && <TabsContent value="telefonia"><TelefoniaTab /></TabsContent>}
         {isAdmin && <TabsContent value="backups"><BackupsTab /></TabsContent>}
       </Tabs>
     </div>
@@ -589,6 +591,90 @@ function BackupsTab() {
           <CardTitle className="text-base">Recuperação de desastre (recomendado)</CardTitle>
           <CardDescription>Estes backups são um snapshot lógico complementar. Para restauração point-in-time do banco inteiro, ative os backups gerenciados do Supabase (plano Pro): painel Supabase → Database → Backups (Daily backups + PITR).</CardDescription>
         </CardHeader>
+      </Card>
+    </div>
+  );
+}
+
+function TelefoniaTab() {
+  const [status, setStatus] = useState<{ connected: boolean; email: string | null; webhook_registered: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [connecting, setConnecting] = useState(false);
+
+  const call = async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke("api4com-connect", { body });
+    if (error) throw new Error(error.message || "Erro na telefonia");
+    if ((data as any)?.error) throw new Error((data as any).error);
+    return data as any;
+  };
+
+  const loadStatus = async () => {
+    setLoading(true);
+    try {
+      const d = await call({ action: "status" });
+      setStatus(d);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { loadStatus(); }, []);
+
+  const connect = async () => {
+    if (!form.email.trim() || !form.password) { toast.error("Informe e-mail e senha da Api4Com."); return; }
+    setConnecting(true);
+    try {
+      const d = await call({ action: "connect", email: form.email.trim(), password: form.password });
+      toast.success(d.webhook_registered ? "Api4Com conectada!" : "Conectada (o registro do webhook falhou — verificar depois).");
+      setForm({ email: "", password: "" });
+      loadStatus();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { setConnecting(false); }
+  };
+
+  const disconnect = async () => {
+    if (!confirm("Desconectar a telefonia Api4Com desta clínica?")) return;
+    try { await call({ action: "disconnect" }); toast.success("Desconectada."); loadStatus(); }
+    catch (e: any) { toast.error(e.message); }
+  };
+
+  return (
+    <div className="space-y-6 mt-4">
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2"><Phone size={18} /> Telefonia (Api4Com)</CardTitle>
+          <CardDescription>Ligações por telefone (voz) integradas ao CRM — <b>separado</b> da chamada por WhatsApp, que continua funcionando normalmente. Conecte a conta Api4Com da clínica.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? (
+            <div className="text-muted-foreground"><Loader2 className="inline animate-spin mr-2" size={14} /> Carregando…</div>
+          ) : status?.connected ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-500/5 p-3">
+                <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-foreground">Conectada</p>
+                  <p className="text-muted-foreground text-xs">Conta: {status.email} · Webhook: {status.webhook_registered ? "registrado" : "não registrado"}</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Próximos passos (em construção): provisionar ramais por atendente, botão "Ligar" no lead e o softphone flutuante. Assim que você conectar, eu finalizo essas etapas.</p>
+              <Button variant="outline" onClick={disconnect} className="text-destructive hover:text-destructive"><X size={14} className="mr-1" /> Desconectar</Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">Entre com o <b>login da sua conta Api4Com</b> (o mesmo do painel deles). O token fica guardado com segurança no servidor — nunca aparece no navegador.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1"><Label>E-mail Api4Com</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="seu@email.com" className="bg-secondary border-border" /></div>
+                <div className="space-y-1"><Label>Senha Api4Com</Label><Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" className="bg-secondary border-border" /></div>
+              </div>
+              <Button onClick={connect} disabled={connecting} className="gradient-orange text-primary-foreground font-semibold">
+                {connecting ? <Loader2 className="animate-spin mr-2" size={16} /> : <Phone className="mr-2" size={16} />} Conectar Api4Com
+              </Button>
+              <p className="text-[11px] text-muted-foreground">Precisa de uma conta na Api4Com (serviço de voz, pago). A ligação por WhatsApp não é afetada.</p>
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
