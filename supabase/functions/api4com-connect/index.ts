@@ -46,12 +46,22 @@ async function registerWebhook(apiToken: string, supaUrl: string, tenantId: stri
       });
       if (res.ok) return { ok: true, status: res.status, detail: null as string | null, gateway };
       const body = await res.text().catch(() => "");
-      errors.push(`v${i}: HTTP ${res.status}: ${body.slice(0, 220)}`);
+      errors.push(`v${i}: HTTP ${res.status}: ${body.slice(0, 180)}`);
     } catch (e: any) {
-      errors.push(`v${i}: fetch error: ${String(e?.message ?? e).slice(0, 220)}`);
+      errors.push(`v${i}: fetch error: ${String(e?.message ?? e).slice(0, 180)}`);
     }
   }
-  return { ok: false, status: 0, detail: errors.join(" | ").slice(0, 900), gateway };
+
+  // Todas falharam: sonda o estado da conta para diagnóstico (GET /integrations).
+  // Ajuda a distinguir "corpo errado" de "conta sem ramal/integração".
+  try {
+    const g = await fetch(`${API4COM_BASE}/integrations`, { headers: { Authorization: apiToken } });
+    const gb = await g.text().catch(() => "");
+    errors.push(`GET /integrations -> HTTP ${g.status}: ${gb.slice(0, 300)}`);
+  } catch (e: any) {
+    errors.push(`GET /integrations fetch error: ${String(e?.message ?? e).slice(0, 120)}`);
+  }
+  return { ok: false, status: 0, detail: errors.join(" | ").slice(0, 1400), gateway };
 }
 
 Deno.serve(async (req) => {
