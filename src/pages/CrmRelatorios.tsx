@@ -1011,13 +1011,74 @@ function AcoesPorDiaTab({
   pipelines: { id: string; name: string }[];
   setPipelineId: (id: string) => void;
 }) {
+  type RangeMode = "day" | "last7" | "last14" | "this_month" | "last_month";
+  const [rangeMode, setRangeMode] = useState<RangeMode>("day");
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Intervalo efetivo (dias YYYY-MM-DD locais) e limites de fetch.
+  const { fetchStart, fetchEnd, rangeStartKey, rangeEndKey, rangeLabel, isAggregated } = useMemo(() => {
+    const today = new Date();
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    let s: Date, e: Date;
+    let label = "";
+    let agg = true;
+    switch (rangeMode) {
+      case "last7": {
+        e = endOfDay(today);
+        s = startOfDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6));
+        label = `Últimos 7 dias (${format(s, "dd/MM", { locale: ptBR })} – ${format(e, "dd/MM/yyyy", { locale: ptBR })})`;
+        break;
+      }
+      case "last14": {
+        e = endOfDay(today);
+        s = startOfDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13));
+        label = `Últimos 14 dias (${format(s, "dd/MM", { locale: ptBR })} – ${format(e, "dd/MM/yyyy", { locale: ptBR })})`;
+        break;
+      }
+      case "this_month": {
+        s = startOfDay(new Date(today.getFullYear(), today.getMonth(), 1));
+        e = endOfDay(today);
+        label = format(s, "'Este mês —' MMMM/yyyy", { locale: ptBR });
+        break;
+      }
+      case "last_month": {
+        s = startOfDay(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+        e = endOfDay(new Date(today.getFullYear(), today.getMonth(), 0));
+        label = format(s, "'Mês passado —' MMMM/yyyy", { locale: ptBR });
+        break;
+      }
+      case "day":
+      default: {
+        s = startOfDay(selectedDate);
+        e = endOfDay(selectedDate);
+        agg = false;
+        label = format(selectedDate, "dd/MM/yyyy", { locale: ptBR });
+        break;
+      }
+    }
+    // Para "day", carregamos o mês inteiro (preserva o card "Média Diária — mês").
+    let fs = s, fe = e;
+    if (!agg) {
+      fs = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+      fe = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+    return {
+      fetchStart: fs,
+      fetchEnd: fe,
+      rangeStartKey: dayKeyFromDate(s),
+      rangeEndKey: dayKeyFromDate(e),
+      rangeLabel: label,
+      isAggregated: agg,
+    };
+  }, [rangeMode, selectedDate]);
+
   const monthStart = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1), [selectedDate]);
   const monthEnd = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999), [selectedDate]);
+
 
   const [inboundDays, setInboundDays] = useState<{ lead_id: string; created_at: string }[]>([]);
   // Substituímos stage history por appointments (= calendário) para "agendados"
@@ -1040,8 +1101,9 @@ function AcoesPorDiaTab({
     let alive = true;
     setLoading(true);
     setLoadError(null);
-    // Fronteiras do mês em America/Bahia
-    const { gteIso: startISO, lteIso: endISO } = rangeBahia(monthStart, monthEnd);
+    // Fronteiras do intervalo de fetch em America/Bahia
+    const { gteIso: startISO, lteIso: endISO } = rangeBahia(fetchStart, fetchEnd);
+
 
     (async () => {
       try {
@@ -1078,43 +1140,42 @@ function AcoesPorDiaTab({
     })();
 
     return () => { alive = false; };
-  }, [monthStart, monthEnd, reloadKey]);
+  }, [fetchStart, fetchEnd, reloadKey]);
 
-  const selectedKey = dayKeyFromDate(selectedDate);
+  const inRange = (iso: string) => {
+    const k = dayKeyBahia(iso);
+    return k >= rangeStartKey && k <= rangeEndKey;
+  };
 
   const falaramDia = useMemo(() => {
     const set = new Set<string>();
-    inboundDays.forEach(m => {
-      if (dayKeyBahia(m.created_at) === selectedKey) set.add(m.lead_id);
-    });
+    inboundDays.forEach(m => { if (inRange(m.created_at)) set.add(m.lead_id); });
     return set;
-  }, [inboundDays, selectedKey]);
+  }, [inboundDays, rangeStartKey, rangeEndKey]);
 
-  // Agendamentos criados no dia (não reagendados)
+  // Agendamentos criados no intervalo (não reagendados)
   const agendadosDia = useMemo(() => {
-    return apptsMonth.filter(a =>
-      dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled !== true
-    ).length;
-  }, [apptsMonth, selectedKey]);
+    return apptsMonth.filter(a => inRange(a.created_at) && a.is_rescheduled !== true).length;
+  }, [apptsMonth, rangeStartKey, rangeEndKey]);
 
-  // Reagendamentos criados no dia
+  // Reagendamentos criados no intervalo
   const reagendadosDia = useMemo(() => {
-    return apptsMonth.filter(a =>
-      dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled === true
-    ).length;
-  }, [apptsMonth, selectedKey]);
+    return apptsMonth.filter(a => inRange(a.created_at) && a.is_rescheduled === true).length;
+  }, [apptsMonth, rangeStartKey, rangeEndKey]);
 
-  // Dos que falaram, quantos agendaram (interseção por lead_id)
+  // Dos que falaram, quantos agendaram (interseção por lead_id) no intervalo
   const agendadosDosQueFalaram = useMemo(() => {
     const leadsAgendDia = new Set(
       apptsMonth
-        .filter(a => dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled !== true)
+        .filter(a => inRange(a.created_at) && a.is_rescheduled !== true)
         .map(a => a.lead_id)
     );
     let cnt = 0;
     falaramDia.forEach(id => { if (leadsAgendDia.has(id)) cnt++; });
     return cnt;
-  }, [apptsMonth, falaramDia, selectedKey]);
+  }, [apptsMonth, falaramDia, rangeStartKey, rangeEndKey]);
+
+
 
   const mediasMes = useMemo(() => {
     const today = new Date(); today.setHours(23, 59, 59, 999);
@@ -1179,12 +1240,31 @@ function AcoesPorDiaTab({
           <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
         </div>
         <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
+          <Select value={rangeMode} onValueChange={(v) => setRangeMode(v as RangeMode)}>
+            <SelectTrigger className="h-9 w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="day">Dia específico</SelectItem>
+              <SelectItem value="last7">Últimos 7 dias</SelectItem>
+              <SelectItem value="last14">Últimos 14 dias</SelectItem>
+              <SelectItem value="this_month">Este mês</SelectItem>
+              <SelectItem value="last_month">Mês passado</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Dia</span>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className={cn("h-9 w-[220px] justify-start text-left font-normal")}>
+              <Button
+                variant="outline"
+                disabled={isAggregated}
+                className={cn("h-9 w-[220px] justify-start text-left font-normal", isAggregated && "opacity-60")}
+              >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {format(selectedDate, "dd 'de' MMMM yyyy", { locale: ptBR })}
+                {isAggregated ? rangeLabel : format(selectedDate, "dd 'de' MMMM yyyy", { locale: ptBR })}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
@@ -1201,9 +1281,12 @@ function AcoesPorDiaTab({
           </Popover>
         </div>
         {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-        <div className="ml-auto text-xs text-muted-foreground">
-          Média baseada em {mediasMes.totalDias} dia(s) útil(eis) de {format(monthStart, "MMMM/yyyy", { locale: ptBR })}
-        </div>
+        {!isAggregated && (
+          <div className="ml-auto text-xs text-muted-foreground">
+            Média baseada em {mediasMes.totalDias} dia(s) útil(eis) de {format(monthStart, "MMMM/yyyy", { locale: ptBR })}
+          </div>
+        )}
+
       </Card>
 
       {loadError && (
@@ -1220,71 +1303,75 @@ function AcoesPorDiaTab({
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <Activity className="w-5 h-5 text-orange-500" />
-          <h2 className="text-lg font-semibold">Ações de {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}</h2>
+          <h2 className="text-lg font-semibold">Ações {isAggregated ? "—" : "de"} {rangeLabel}</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Pessoas que falaram, agendamentos criados e reagendamentos criados <strong>neste dia</strong>.
+          Pessoas que falaram, agendamentos criados e reagendamentos criados <strong>{isAggregated ? "neste período" : "neste dia"}</strong>.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
             <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
             <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
-            <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound no dia</span>
+            <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound {isAggregated ? "no período" : "no dia"}</span>
           </div>
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
             <span className="text-sm text-muted-foreground">Agendamentos criados</span>
             <span className="text-4xl font-bold text-green-600">{agendadosDia}</span>
-            <span className="text-xs text-muted-foreground">Novos agendamentos (não reagendados) criados no dia</span>
+            <span className="text-xs text-muted-foreground">Novos agendamentos (não reagendados) criados {isAggregated ? "no período" : "no dia"}</span>
           </div>
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
             <span className="text-sm text-muted-foreground">Reagendamentos</span>
             <span className="text-4xl font-bold text-amber-600">{reagendadosDia}</span>
-            <span className="text-xs text-muted-foreground">Appts marcados como reagendados no dia</span>
+            <span className="text-xs text-muted-foreground">Appts marcados como reagendados {isAggregated ? "no período" : "no dia"}</span>
           </div>
         </div>
 
         {falaramDia.size > 0 && (
           <div className="rounded-lg bg-secondary/40 p-4 text-center">
-            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendaram no mesmo dia)</span>
+            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendaram {isAggregated ? "no período" : "no mesmo dia"})</span>
             <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram / falaramDia.size) * 100).toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">{agendadosDosQueFalaram} de {falaramDia.size} lead(s) que falaram no dia</p>
+            <p className="text-xs text-muted-foreground mt-1">{agendadosDosQueFalaram} de {falaramDia.size} lead(s) que falaram {isAggregated ? "no período" : "no dia"}</p>
           </div>
         )}
       </Card>
 
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <TrendingUp className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Média Diária — {format(monthStart, "MMMM/yyyy", { locale: ptBR })}</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Média por dia útil (excluindo domingos, feriados nacionais e feriados cadastrados no painel) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
-        </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
-            <span className="text-sm text-muted-foreground">Média de pessoas/dia</span>
-            <span className="text-3xl font-bold text-primary">{mediasMes.avgFalaram.toFixed(1)}</span>
+      {!isAggregated && (
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold">Média Diária — {format(monthStart, "MMMM/yyyy", { locale: ptBR })}</h2>
           </div>
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
-            <span className="text-sm text-muted-foreground">Média de agendamentos/dia</span>
-            <span className="text-3xl font-bold text-green-600">{mediasMes.avgAgendados.toFixed(1)}</span>
-          </div>
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
-            <span className="text-sm text-muted-foreground">Média de reagendamentos/dia</span>
-            <span className="text-3xl font-bold text-amber-600">{mediasMes.avgReagendados.toFixed(1)}</span>
-          </div>
-        </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Média por dia útil (excluindo domingos, feriados nacionais e feriados cadastrados no painel) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
+          </p>
 
-        {mediasMes.falaramTotal > 0 && (
-          <div className="rounded-lg bg-secondary/40 p-4 text-center">
-            <span className="text-sm text-muted-foreground">Taxa média de conversão mensal (falaram → agendaram no mesmo dia)</span>
-            <p className="text-3xl font-bold text-primary mt-1">{mediasMes.taxaMensal.toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">Mesma regra do card diário: leads distintos que falaram e criaram agendamento no mesmo dia útil</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
+              <span className="text-sm text-muted-foreground">Média de pessoas/dia</span>
+              <span className="text-3xl font-bold text-primary">{mediasMes.avgFalaram.toFixed(1)}</span>
+            </div>
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
+              <span className="text-sm text-muted-foreground">Média de agendamentos/dia</span>
+              <span className="text-3xl font-bold text-green-600">{mediasMes.avgAgendados.toFixed(1)}</span>
+            </div>
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
+              <span className="text-sm text-muted-foreground">Média de reagendamentos/dia</span>
+              <span className="text-3xl font-bold text-amber-600">{mediasMes.avgReagendados.toFixed(1)}</span>
+            </div>
           </div>
-        )}
-      </Card>
+
+          {mediasMes.falaramTotal > 0 && (
+            <div className="rounded-lg bg-secondary/40 p-4 text-center">
+              <span className="text-sm text-muted-foreground">Taxa média de conversão mensal (falaram → agendaram no mesmo dia)</span>
+              <p className="text-3xl font-bold text-primary mt-1">{mediasMes.taxaMensal.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Mesma regra do card diário: leads distintos que falaram e criaram agendamento no mesmo dia útil</p>
+            </div>
+          )}
+        </Card>
+      )}
+
     </div>
   );
 }
