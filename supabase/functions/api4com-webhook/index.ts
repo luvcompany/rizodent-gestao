@@ -42,6 +42,25 @@ Deno.serve(async (req) => {
     // Segredo pode vir na query (registro atual) ou no header (mais seguro).
     const secret = req.headers.get("x-webhook-secret") || url.searchParams.get("secret") || "";
     const gw = url.searchParams.get("gw") || "";
+
+    // DIAGNÓSTICO (temporário): registra TODA requisição recebida, mesmo inválida,
+    // para confirmar se a Api4Com está de fato chamando o webhook das ligações.
+    let rawBody: any = null;
+    try {
+      const bodyText = await req.clone().text().catch(() => "");
+      try { rawBody = JSON.parse(bodyText); } catch { rawBody = { _text: bodyText.slice(0, 2000) }; }
+    } catch (_) { /* ignore */ }
+    try {
+      await admin.from("api4com_webhook_log").insert({
+        method: req.method,
+        query: url.search,
+        user_agent: req.headers.get("user-agent"),
+        content_type: req.headers.get("content-type"),
+        body: rawBody,
+        note: secret ? "com secret" : "SEM secret",
+      });
+    } catch (_) { /* nunca bloqueia o fluxo por causa do log */ }
+
     if (!secret) return json({ error: "missing secret" }, 401);
 
     // Identifica o tenant pela combinação gateway + secret.
