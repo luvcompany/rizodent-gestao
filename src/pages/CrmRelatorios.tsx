@@ -1240,12 +1240,31 @@ function AcoesPorDiaTab({
           <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
         </div>
         <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
+          <Select value={rangeMode} onValueChange={(v) => setRangeMode(v as RangeMode)}>
+            <SelectTrigger className="h-9 w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="day">Dia específico</SelectItem>
+              <SelectItem value="last7">Últimos 7 dias</SelectItem>
+              <SelectItem value="last14">Últimos 14 dias</SelectItem>
+              <SelectItem value="this_month">Este mês</SelectItem>
+              <SelectItem value="last_month">Mês passado</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Dia</span>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className={cn("h-9 w-[220px] justify-start text-left font-normal")}>
+              <Button
+                variant="outline"
+                disabled={isAggregated}
+                className={cn("h-9 w-[220px] justify-start text-left font-normal", isAggregated && "opacity-60")}
+              >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {format(selectedDate, "dd 'de' MMMM yyyy", { locale: ptBR })}
+                {isAggregated ? rangeLabel : format(selectedDate, "dd 'de' MMMM yyyy", { locale: ptBR })}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
@@ -1262,9 +1281,12 @@ function AcoesPorDiaTab({
           </Popover>
         </div>
         {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-        <div className="ml-auto text-xs text-muted-foreground">
-          Média baseada em {mediasMes.totalDias} dia(s) útil(eis) de {format(monthStart, "MMMM/yyyy", { locale: ptBR })}
-        </div>
+        {!isAggregated && (
+          <div className="ml-auto text-xs text-muted-foreground">
+            Média baseada em {mediasMes.totalDias} dia(s) útil(eis) de {format(monthStart, "MMMM/yyyy", { locale: ptBR })}
+          </div>
+        )}
+
       </Card>
 
       {loadError && (
