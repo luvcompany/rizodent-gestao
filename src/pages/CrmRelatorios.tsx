@@ -1184,6 +1184,43 @@ function AcoesPorDiaTab({
     return cnt;
   }, [apptsMonth, falaramDia, rangeStartKey, rangeEndKey]);
 
+  // Conversão em 7 dias por coorte: um lead que falou no range converteu se
+  // criou algum agendamento (não-reagendado) em até 7 dias corridos após
+  // sua PRIMEIRA fala dentro do range.
+  const conv7d = useMemo(() => {
+    const SEVEN_D_MS = 7 * 24 * 60 * 60 * 1000;
+    // firstInboundByLead — só leads dentro do range
+    const firstInboundByLead = new Map<string, number>();
+    inboundDays.forEach(m => {
+      if (!inRange(m.created_at)) return;
+      const t = new Date(m.created_at).getTime();
+      const prev = firstInboundByLead.get(m.lead_id);
+      if (prev === undefined || t < prev) firstInboundByLead.set(m.lead_id, t);
+    });
+    // Agendamentos (não reagendados) agrupados por lead
+    const apptsByLead = new Map<string, number[]>();
+    apptsMonth.forEach(a => {
+      if (a.is_rescheduled === true) return;
+      const arr = apptsByLead.get(a.lead_id) ?? [];
+      arr.push(new Date(a.created_at).getTime());
+      apptsByLead.set(a.lead_id, arr);
+    });
+    const nowMs = Date.now();
+    let count = 0;
+    let imaturos = 0;
+    firstInboundByLead.forEach((firstMs, leadId) => {
+      const janelaFim = firstMs + SEVEN_D_MS;
+      if (janelaFim > nowMs) imaturos++;
+      const appts = apptsByLead.get(leadId);
+      if (!appts) return;
+      if (appts.some(t => t >= firstMs && t <= janelaFim)) count++;
+    });
+    const total = firstInboundByLead.size;
+    return { count, total, pct: total > 0 ? (count / total) * 100 : 0, imaturos };
+  }, [inboundDays, apptsMonth, rangeStartKey, rangeEndKey]);
+
+
+
 
 
   const mediasMes = useMemo(() => {
