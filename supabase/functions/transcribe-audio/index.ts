@@ -90,6 +90,10 @@ async function transcribeWithLovableGatewaySTT(
   const blob = new Blob([audioBytes], { type: mime || "audio/webm" });
   form.append("file", blob, `audio.${ext}`);
   form.append("model", "openai/gpt-4o-mini-transcribe");
+  // Força português-BR — sem isso o modelo "adivinha" o idioma e, em gravações
+  // curtas/ruidosas de ligação, sai em francês/inglês.
+  form.append("language", "pt");
+  form.append("prompt", "Transcrição de uma ligação telefônica em português do Brasil.");
   const r = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
