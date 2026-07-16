@@ -1011,13 +1011,74 @@ function AcoesPorDiaTab({
   pipelines: { id: string; name: string }[];
   setPipelineId: (id: string) => void;
 }) {
+  type RangeMode = "day" | "last7" | "last14" | "this_month" | "last_month";
+  const [rangeMode, setRangeMode] = useState<RangeMode>("day");
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Intervalo efetivo (dias YYYY-MM-DD locais) e limites de fetch.
+  const { fetchStart, fetchEnd, rangeStartKey, rangeEndKey, rangeLabel, isAggregated } = useMemo(() => {
+    const today = new Date();
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    let s: Date, e: Date;
+    let label = "";
+    let agg = true;
+    switch (rangeMode) {
+      case "last7": {
+        e = endOfDay(today);
+        s = startOfDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6));
+        label = `Últimos 7 dias (${format(s, "dd/MM", { locale: ptBR })} – ${format(e, "dd/MM/yyyy", { locale: ptBR })})`;
+        break;
+      }
+      case "last14": {
+        e = endOfDay(today);
+        s = startOfDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13));
+        label = `Últimos 14 dias (${format(s, "dd/MM", { locale: ptBR })} – ${format(e, "dd/MM/yyyy", { locale: ptBR })})`;
+        break;
+      }
+      case "this_month": {
+        s = startOfDay(new Date(today.getFullYear(), today.getMonth(), 1));
+        e = endOfDay(today);
+        label = format(s, "'Este mês —' MMMM/yyyy", { locale: ptBR });
+        break;
+      }
+      case "last_month": {
+        s = startOfDay(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+        e = endOfDay(new Date(today.getFullYear(), today.getMonth(), 0));
+        label = format(s, "'Mês passado —' MMMM/yyyy", { locale: ptBR });
+        break;
+      }
+      case "day":
+      default: {
+        s = startOfDay(selectedDate);
+        e = endOfDay(selectedDate);
+        agg = false;
+        label = format(selectedDate, "dd/MM/yyyy", { locale: ptBR });
+        break;
+      }
+    }
+    // Para "day", carregamos o mês inteiro (preserva o card "Média Diária — mês").
+    let fs = s, fe = e;
+    if (!agg) {
+      fs = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+      fe = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+    return {
+      fetchStart: fs,
+      fetchEnd: fe,
+      rangeStartKey: dayKeyFromDate(s),
+      rangeEndKey: dayKeyFromDate(e),
+      rangeLabel: label,
+      isAggregated: agg,
+    };
+  }, [rangeMode, selectedDate]);
+
   const monthStart = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1), [selectedDate]);
   const monthEnd = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0, 23, 59, 59, 999), [selectedDate]);
+
 
   const [inboundDays, setInboundDays] = useState<{ lead_id: string; created_at: string }[]>([]);
   // Substituímos stage history por appointments (= calendário) para "agendados"
