@@ -9,10 +9,22 @@ import {
   ConditionsConfig,
   AutomationCondition,
   ConditionField,
+  ConditionOperator,
   FIELD_LABELS,
+  OPERATOR_LABELS,
   defaultOperatorForField,
 } from "@/lib/automationConditions";
 import { supabase } from "@/integrations/supabase/client";
+
+// Operadores oferecidos por tipo de campo (o avaliador suporta os 12).
+const NO_VALUE_OPERATORS: ConditionOperator[] = ["is_empty", "is_not_empty", "is_true", "is_false"];
+const MULTI_VALUE_OPERATORS: ConditionOperator[] = ["in", "not_in"]; // valores separados por vírgula
+function operatorsFor(field: ConditionField): ConditionOperator[] {
+  if (field === "has_ad" || field === "no_tags") return ["is_true", "is_false"];
+  if (field === "tags") return ["contains", "not_contains", "is_empty", "is_not_empty"];
+  if (field === "value") return ["equals", "not_equals", "gt", "lt"];
+  return ["equals", "not_equals", "in", "not_in", "is_empty", "is_not_empty"];
+}
 
 interface Props {
   value: ConditionsConfig | undefined;
@@ -20,11 +32,8 @@ interface Props {
 }
 
 const FIELD_OPTIONS: ConditionField[] = [
-  "source", "has_ad", "tags", "cidade", "servico_interesse", "nome_anuncio", "ad_account_name", "assigned_to",
+  "source", "has_ad", "tags", "cidade", "servico_interesse", "value", "nome_anuncio", "ad_account_name", "assigned_to",
 ];
-
-// Campos booleanos (Sim/Não) — o valor é o próprio operador (is_true/is_false).
-const BOOLEAN_FIELDS: ConditionField[] = ["has_ad", "no_tags"];
 
 // Static option presets per field
 const STATIC_FIELD_OPTIONS: Partial<Record<ConditionField, string[]>> = {
@@ -187,32 +196,43 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
 
       {conditions.rules.map((rule, idx) => (
         <div key={idx} className="flex items-start gap-1 p-2 bg-card rounded border border-border">
-          <div className="flex-1 grid grid-cols-2 gap-1.5">
+          <div className="flex-1 flex flex-wrap gap-1.5">
+            {/* Campo */}
             <Select value={rule.field} onValueChange={(v) => updateRule(idx, { field: v as ConditionField })}>
-              <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-7 text-xs min-w-[110px] flex-1"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {FIELD_OPTIONS.map((f) => (
                   <SelectItem key={f} value={f}>{FIELD_LABELS[f]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {BOOLEAN_FIELDS.includes(rule.field) ? (
-              <Select
-                value={rule.operator === "is_false" ? "false" : "true"}
-                onValueChange={(v) => updateRule(idx, { operator: v === "false" ? "is_false" : "is_true" })}
-              >
-                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="true">Sim</SelectItem>
-                  <SelectItem value="false">Não</SelectItem>
-                </SelectContent>
-              </Select>
-            ) : (
-              <ValueSelector
-                field={rule.field}
-                value={rule.value}
-                onChange={(v) => updateRule(idx, { value: v })}
-              />
+            {/* Operador */}
+            <Select value={rule.operator} onValueChange={(v) => updateRule(idx, { operator: v as ConditionOperator })}>
+              <SelectTrigger className="h-7 text-xs min-w-[110px] flex-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {operatorsFor(rule.field).map((op) => (
+                  <SelectItem key={op} value={op}>{OPERATOR_LABELS[op]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* Valor — some p/ operadores sem valor (vazio/preenchido/sim/não) */}
+            {!NO_VALUE_OPERATORS.includes(rule.operator) && (
+              MULTI_VALUE_OPERATORS.includes(rule.operator) ? (
+                <Input
+                  className="h-7 text-xs min-w-[110px] flex-1"
+                  placeholder="valor1, valor2"
+                  value={String(rule.value ?? "")}
+                  onChange={(e) => updateRule(idx, { value: e.target.value })}
+                />
+              ) : (
+                <div className="min-w-[110px] flex-1">
+                  <ValueSelector
+                    field={rule.field}
+                    value={rule.value}
+                    onChange={(v) => updateRule(idx, { value: v })}
+                  />
+                </div>
+              )
             )}
           </div>
           <button

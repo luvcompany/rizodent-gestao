@@ -997,6 +997,19 @@ async function executeNode(
   };
 
   const sendAndAssert = async (payload: Record<string, any>, context: string) => {
+    // GUARD DE JANELA DE 24h: mensagem LIVRE (não-template) só sai se o lead
+    // respondeu nas últimas 24h. Fora da janela, PULA o envio (evita o erro 131047
+    // e a mensagem "falhada" na conversa — ex.: "Áudio Inicial" p/ lead que nunca
+    // respondeu). Template passa (é o único jeito de reabrir a conversa).
+    const isTemplate = String(payload?.type || "").toLowerCase() === "template";
+    if (!isTemplate) {
+      const lastInbound = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
+      const windowOpen = lastInbound > 0 && (Date.now() - lastInbound) < 24 * 60 * 60 * 1000;
+      if (!windowOpen) {
+        console.log(`[bot-engine] pulando envio livre (${context}) — janela de 24h fechada p/ lead ${lead.id}`);
+        return { skipped: "window_closed" };
+      }
+    }
     const result = lead.instagram_user_id
       ? await sendViaInstagram(supabaseUrl, serviceKey, authHeader, lead.id, payload)
       : await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, payload, skipMarkAsRead);
