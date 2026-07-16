@@ -1337,38 +1337,41 @@ function AcoesPorDiaTab({
       </Card>
 
 
-      <Card className="p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <TrendingUp className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold">Média Diária — {format(monthStart, "MMMM/yyyy", { locale: ptBR })}</h2>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">
-          Média por dia útil (excluindo domingos, feriados nacionais e feriados cadastrados no painel) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
-        </p>
+      {!isAggregated && (
+        <Card className="p-6">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold">Média Diária — {format(monthStart, "MMMM/yyyy", { locale: ptBR })}</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Média por dia útil (excluindo domingos, feriados nacionais e feriados cadastrados no painel) considerando os {mediasMes.totalDias} dia(s) úteis do mês.
+          </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
-            <span className="text-sm text-muted-foreground">Média de pessoas/dia</span>
-            <span className="text-3xl font-bold text-primary">{mediasMes.avgFalaram.toFixed(1)}</span>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
+              <span className="text-sm text-muted-foreground">Média de pessoas/dia</span>
+              <span className="text-3xl font-bold text-primary">{mediasMes.avgFalaram.toFixed(1)}</span>
+            </div>
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
+              <span className="text-sm text-muted-foreground">Média de agendamentos/dia</span>
+              <span className="text-3xl font-bold text-green-600">{mediasMes.avgAgendados.toFixed(1)}</span>
+            </div>
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
+              <span className="text-sm text-muted-foreground">Média de reagendamentos/dia</span>
+              <span className="text-3xl font-bold text-amber-600">{mediasMes.avgReagendados.toFixed(1)}</span>
+            </div>
           </div>
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
-            <span className="text-sm text-muted-foreground">Média de agendamentos/dia</span>
-            <span className="text-3xl font-bold text-green-600">{mediasMes.avgAgendados.toFixed(1)}</span>
-          </div>
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
-            <span className="text-sm text-muted-foreground">Média de reagendamentos/dia</span>
-            <span className="text-3xl font-bold text-amber-600">{mediasMes.avgReagendados.toFixed(1)}</span>
-          </div>
-        </div>
 
-        {mediasMes.falaramTotal > 0 && (
-          <div className="rounded-lg bg-secondary/40 p-4 text-center">
-            <span className="text-sm text-muted-foreground">Taxa média de conversão mensal (falaram → agendaram no mesmo dia)</span>
-            <p className="text-3xl font-bold text-primary mt-1">{mediasMes.taxaMensal.toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">Mesma regra do card diário: leads distintos que falaram e criaram agendamento no mesmo dia útil</p>
-          </div>
-        )}
-      </Card>
+          {mediasMes.falaramTotal > 0 && (
+            <div className="rounded-lg bg-secondary/40 p-4 text-center">
+              <span className="text-sm text-muted-foreground">Taxa média de conversão mensal (falaram → agendaram no mesmo dia)</span>
+              <p className="text-3xl font-bold text-primary mt-1">{mediasMes.taxaMensal.toFixed(1)}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Mesma regra do card diário: leads distintos que falaram e criaram agendamento no mesmo dia útil</p>
+            </div>
+          )}
+        </Card>
+      )}
+
     </div>
   );
 }
