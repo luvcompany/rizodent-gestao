@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLeadLabels } from "@/hooks/useLeadLabels";
 import { getLeadChannel } from "@/lib/leadChannel";
+import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -245,7 +246,7 @@ export const prefetchConversasData = async (tenantId: string, userId: string): P
   try {
     const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
       fetchAllConversationLeads(tenantId),
-      supabase.from("profiles").select("id, nome").eq("tenant_id", tenantId),
+      supabase.from("profiles").select("id, nome").eq("tenant_id", tenantId).not("id","in",HIDDEN_USER_IDS_PG),
       supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenantId).order("created_at"),
     ]);
     const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
@@ -419,7 +420,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       (async () => {
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
           fetchAllConversationLeads(tenant.id),
-          supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
+          supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id).not("id","in",HIDDEN_USER_IDS_PG),
           supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenant.id).order("created_at"),
         ]);
         const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
@@ -448,7 +449,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
           setLeads(firstPage);
           setLoading(false);
         }),
-        supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id),
+        supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id).not("id","in",HIDDEN_USER_IDS_PG),
         supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenant.id).order("created_at"),
       ]);
       const profs = (profilesRes.data as { id: string; nome: string }[]) || [];

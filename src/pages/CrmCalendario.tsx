@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -147,7 +148,7 @@ export const prefetchCrmCalendarioData = async (userId: string | null | undefine
     const weekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
       supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role").order("due_date"),
-      supabase.from("profiles").select("id, nome"),
+      supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, lead_name, lead_cidade").gte("scheduled_date", weekStart).lte("scheduled_date", weekEnd).order("scheduled_date").order("scheduled_time"),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
@@ -242,7 +243,7 @@ export default function CrmCalendario() {
 
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
       supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role").order("due_date"),
-      supabase.from("profiles").select("id, nome"),
+      supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
       // crm_appointments has denormalized lead_name/lead_cidade columns (populated by triggers)
       // — no join needed, immune to RLS restrictions on crm_leads
       supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, lead_name, lead_cidade").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),

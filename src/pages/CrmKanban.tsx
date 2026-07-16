@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { useNavigate, Link } from "react-router-dom";
+import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -670,7 +671,7 @@ export default function CrmKanban() {
     // ── Fase 1: pipelines, perfis, etapas, leads e followups em paralelo ────
     const [pipelinesRes, profilesRes, stagesRes, fqRes] = await Promise.all([
       supabase.from("crm_pipelines").select("id, name, color, description, created_at, is_default, is_instagram, is_posvenda").order("created_at"),
-      supabase.from("profiles").select("id, nome"),
+      supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
       targetPipelineId
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position, is_won").eq("pipeline_id", targetPipelineId).order("position")
         : Promise.resolve({ data: null }),
