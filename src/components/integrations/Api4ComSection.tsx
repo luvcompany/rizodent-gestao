@@ -11,7 +11,7 @@ import { Phone, Loader2, CheckCircle2, X, RotateCcw } from "lucide-react";
 // Seção da página de Integrações: telefonia por voz via Api4Com.
 // Complementar à ligação por WhatsApp. A ligação em si é feita pela extensão do
 // Chrome da Api4Com; o CRClin registra o webhook, grava e transcreve as chamadas.
-type Status = { connected: boolean; email: string | null; webhook_registered: boolean; webhook_error?: string | null };
+type Status = { connected: boolean; email: string | null; webhook_registered: boolean; webhook_error?: string | null; ramal?: string | null };
 
 export default function Api4ComSection() {
   const { userRole } = useAuth();
@@ -22,6 +22,8 @@ export default function Api4ComSection() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [connecting, setConnecting] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [ramal, setRamal] = useState("");
+  const [savingRamal, setSavingRamal] = useState(false);
 
   const call = async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("api4com-connect", { body });
@@ -32,11 +34,25 @@ export default function Api4ComSection() {
 
   const loadStatus = async () => {
     setLoading(true);
-    try { setStatus(await call({ action: "status" })); }
+    try {
+      const st = await call({ action: "status" });
+      setStatus(st);
+      setRamal(st?.ramal ?? "");
+    }
     catch (e: any) { toast.error(e.message); }
     finally { setLoading(false); }
   };
   useEffect(() => { if (isAdmin) loadStatus(); }, [isAdmin]);
+
+  const saveRamal = async () => {
+    setSavingRamal(true);
+    try {
+      await call({ action: "set_ramal", ramal: ramal.trim() });
+      toast.success("Ramal salvo.");
+      loadStatus();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setSavingRamal(false); }
+  };
 
   const connect = async () => {
     if (!form.email.trim() || !form.password) { toast.error("Informe e-mail e senha da Api4Com."); return; }
@@ -108,6 +124,19 @@ export default function Api4ComSection() {
                 </div>
               )}
 
+              <div className="rounded-lg border border-border p-3 space-y-2">
+                <p className="text-sm font-medium text-foreground">Ramal do operador</p>
+                <p className="text-xs text-muted-foreground">Usado pelo botão de ligar do lead (click-to-call). É o número do ramal (4 dígitos) logado na extensão.</p>
+                <div className="flex items-end gap-2 max-w-xs">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs">Ramal</Label>
+                    <Input value={ramal} onChange={(e) => setRamal(e.target.value)} placeholder="Ex: 1000" inputMode="numeric" />
+                  </div>
+                  <Button size="sm" onClick={saveRamal} disabled={savingRamal || ramal.trim() === (status.ramal ?? "")}>
+                    {savingRamal ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
+                  </Button>
+                </div>
+              </div>
               <p className="text-xs text-muted-foreground">Instale a <b>extensão da Api4Com no Chrome</b> e faça login com esta mesma conta. As ligações feitas por ela aparecem em <b>Ligações</b>.</p>
               <Button variant="outline" onClick={disconnect} className="text-destructive hover:text-destructive"><X size={14} className="mr-1" /> Desconectar</Button>
             </div>
