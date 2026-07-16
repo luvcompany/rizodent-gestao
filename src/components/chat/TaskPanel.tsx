@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,7 +67,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
 
   useEffect(() => {
     fetchTasks();
-    supabase.from("profiles").select("id, nome").then(({ data }) => setProfiles((data as Profile[]) || []));
+    supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG).then(({ data }) => setProfiles((data as Profile[]) || []));
   }, [leadId]);
 
   const resetForm = () => {

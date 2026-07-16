@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { deduplicateTemplates } from "@/lib/templateUtils";
+import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -114,7 +115,7 @@ export default function CrmAutomacoes() {
   // Load round-robin state
   useEffect(() => {
     const loadRR = async () => {
-      const { data: profiles } = await supabase.from("profiles").select("id, nome");
+      const { data: profiles } = await supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG);
       setRrProfiles(profiles || []);
       if (!selectedPipelineId) return;
       const { data: existing } = await supabase.from("crm_automations").select("*").eq("action_type", "assign_lead");

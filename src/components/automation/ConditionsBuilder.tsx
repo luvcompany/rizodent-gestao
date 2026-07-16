@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,7 +42,7 @@ function useDynamicOptions(field: ConditionField | null) {
     (async () => {
       try {
         if (field === "assigned_to") {
-          const { data } = await supabase.from("profiles").select("id, full_name, email").limit(500);
+          const { data } = await supabase.from("profiles").select("id, full_name, email").not("id","in",HIDDEN_USER_IDS_PG).limit(500);
           if (cancelled) return;
           setOptions((data || []).map((u: any) => ({
             value: u.id,
