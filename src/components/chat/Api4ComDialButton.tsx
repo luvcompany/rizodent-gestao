@@ -6,13 +6,19 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Loader2 } from "lucide-react";
 import api4comLogo from "@/assets/api4com-logo.png";
 
-// Consulta uma única vez por sessão se a telefonia está pronta (conectada + ramal).
+// Consulta se a telefonia está pronta (conectada + ramal). Cacheia só o RESULTADO
+// definitivo (true/false); em ERRO (ex.: cache do PostgREST no 1º load), NÃO fixa —
+// zera o cache p/ tentar de novo no próximo lead aberto (evita o botão sumir a sessão
+// inteira por causa de uma falha momentânea).
 let enabledPromise: Promise<boolean> | null = null;
 function checkDialEnabled(): Promise<boolean> {
   if (!enabledPromise) {
     enabledPromise = supabase.rpc("api4com_dial_enabled")
-      .then(({ data }) => !!data)
-      .catch(() => false);
+      .then(({ data, error }) => {
+        if (error) { enabledPromise = null; return false; }
+        return !!data;
+      })
+      .catch(() => { enabledPromise = null; return false; });
   }
   return enabledPromise;
 }
