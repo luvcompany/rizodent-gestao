@@ -549,6 +549,7 @@ export type Database = {
           connected_at: string | null
           created_at: string
           gateway: string | null
+          ramal: string | null
           tenant_id: string
           updated_at: string
           webhook_last_error: string | null
@@ -561,6 +562,7 @@ export type Database = {
           connected_at?: string | null
           created_at?: string
           gateway?: string | null
+          ramal?: string | null
           tenant_id: string
           updated_at?: string
           webhook_last_error?: string | null
@@ -573,6 +575,7 @@ export type Database = {
           connected_at?: string | null
           created_at?: string
           gateway?: string | null
+          ramal?: string | null
           tenant_id?: string
           updated_at?: string
           webhook_last_error?: string | null
@@ -4121,6 +4124,11 @@ export type Database = {
           role: string
         }[]
       }
+      api4com_call_label: {
+        Args: { _direction: string; _dur: number; _status: string }
+        Returns: string
+      }
+      api4com_dial_enabled: { Args: never; Returns: boolean }
       backup_list_tables: {
         Args: never
         Returns: {
