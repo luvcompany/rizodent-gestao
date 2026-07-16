@@ -460,6 +460,88 @@ export type Database = {
           },
         ]
       }
+      api4com_calls: {
+        Row: {
+          answered_at: string | null
+          call_id: string | null
+          created_at: string
+          direction: string | null
+          duration_seconds: number | null
+          ended_at: string | null
+          from_phone: string | null
+          hangup_cause: string | null
+          id: string
+          lead_id: string | null
+          raw_payload: Json | null
+          recording_url: string | null
+          started_at: string | null
+          status: string | null
+          tenant_id: string
+          to_phone: string | null
+          transcription: string | null
+        }
+        Insert: {
+          answered_at?: string | null
+          call_id?: string | null
+          created_at?: string
+          direction?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          from_phone?: string | null
+          hangup_cause?: string | null
+          id?: string
+          lead_id?: string | null
+          raw_payload?: Json | null
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string | null
+          tenant_id: string
+          to_phone?: string | null
+          transcription?: string | null
+        }
+        Update: {
+          answered_at?: string | null
+          call_id?: string | null
+          created_at?: string
+          direction?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          from_phone?: string | null
+          hangup_cause?: string | null
+          id?: string
+          lead_id?: string | null
+          raw_payload?: Json | null
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string
+          to_phone?: string | null
+          transcription?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api4com_calls_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api4com_calls_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "api4com_calls_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       api4com_config: {
         Row: {
           account_email: string | null
