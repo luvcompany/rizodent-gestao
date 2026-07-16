@@ -24,6 +24,7 @@ import InstagramLiteSection from "@/components/integrations/InstagramLiteSection
 import InstagramAccountsSection from "@/components/integrations/InstagramAccountsSection";
 import WhatsAppEmbeddedSignupButton from "@/components/integrations/WhatsAppEmbeddedSignupButton";
 import WhatsAppAccountsSection from "@/components/integrations/WhatsAppAccountsSection";
+import Api4ComSection from "@/components/integrations/Api4ComSection";
 
 
 import { useTenant } from "@/contexts/TenantContext";
@@ -540,6 +541,9 @@ export default function CrmIntegracoes() {
             );
           })}
         </div>
+
+        {/* Telefonia (Api4Com) */}
+        <Api4ComSection />
 
         {/* Webhook Genérico */}
         <WebhookSection />
