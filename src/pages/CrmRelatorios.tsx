@@ -1303,38 +1303,39 @@ function AcoesPorDiaTab({
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
           <Activity className="w-5 h-5 text-orange-500" />
-          <h2 className="text-lg font-semibold">Ações de {format(selectedDate, "dd/MM/yyyy", { locale: ptBR })}</h2>
+          <h2 className="text-lg font-semibold">Ações {isAggregated ? "—" : "de"} {rangeLabel}</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
-          Pessoas que falaram, agendamentos criados e reagendamentos criados <strong>neste dia</strong>.
+          Pessoas que falaram, agendamentos criados e reagendamentos criados <strong>{isAggregated ? "neste período" : "neste dia"}</strong>.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
             <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
             <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
-            <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound no dia</span>
+            <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound {isAggregated ? "no período" : "no dia"}</span>
           </div>
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
             <span className="text-sm text-muted-foreground">Agendamentos criados</span>
             <span className="text-4xl font-bold text-green-600">{agendadosDia}</span>
-            <span className="text-xs text-muted-foreground">Novos agendamentos (não reagendados) criados no dia</span>
+            <span className="text-xs text-muted-foreground">Novos agendamentos (não reagendados) criados {isAggregated ? "no período" : "no dia"}</span>
           </div>
           <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
             <span className="text-sm text-muted-foreground">Reagendamentos</span>
             <span className="text-4xl font-bold text-amber-600">{reagendadosDia}</span>
-            <span className="text-xs text-muted-foreground">Appts marcados como reagendados no dia</span>
+            <span className="text-xs text-muted-foreground">Appts marcados como reagendados {isAggregated ? "no período" : "no dia"}</span>
           </div>
         </div>
 
         {falaramDia.size > 0 && (
           <div className="rounded-lg bg-secondary/40 p-4 text-center">
-            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendaram no mesmo dia)</span>
+            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendaram {isAggregated ? "no período" : "no mesmo dia"})</span>
             <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram / falaramDia.size) * 100).toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">{agendadosDosQueFalaram} de {falaramDia.size} lead(s) que falaram no dia</p>
+            <p className="text-xs text-muted-foreground mt-1">{agendadosDosQueFalaram} de {falaramDia.size} lead(s) que falaram {isAggregated ? "no período" : "no dia"}</p>
           </div>
         )}
       </Card>
+
 
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
