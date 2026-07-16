@@ -1,47 +1,35 @@
+## Objetivo
+Na aba **Ações por dia** (Relatórios), permitir agregar os KPIs (Pessoas que falaram, Agendamentos criados, Reagendamentos e Taxa de conversão) por um período além do dia único: **Últimos 7 dias**, **Últimos 14 dias**, **Este mês** e **Mês passado**, mantendo a opção atual de escolher um dia específico no calendário.
 
-## O que vamos resolver
+## Mudanças (apenas em `src/pages/CrmRelatorios.tsx`, componente `AcoesPorDiaTab`)
 
-Dois problemas observados na conversa do Rafael:
+### 1. Novo controle de período
+Adicionar um seletor ao lado do campo "Dia" com 5 opções:
+- **Dia específico** (comportamento atual, com o calendário) — padrão
+- **Últimos 7 dias** (hoje-6d → hoje)
+- **Últimos 14 dias** (hoje-13d → hoje)
+- **Este mês** (1º dia do mês atual → hoje)
+- **Mês passado** (1º ao último dia do mês anterior)
 
-1. **Bot aceitou "Olá! Posso ter mais informações sobre isso?" como nome completo** — o bloco de captura do nome grava qualquer texto e avança de etapa, sem sanitizar.
-2. **Template de confirmação exibiu `Período: 🌅 Manhã]`** — sobrou um `]` porque o texto do bloco no editor de bot está com bracket desbalanceado (é conteúdo configurado pelo usuário no `flow_json`, não código).
+Nas opções agregadas, o botão do calendário fica desabilitado e o rótulo mostra o intervalo (ex.: "10/07 – 16/07/2026").
 
-## Escopo
+### 2. Ajuste no fetch
+Hoje o efeito carrega o **mês** de `selectedDate`. Passa a carregar o **intervalo necessário** em America/Bahia:
+- Modo "dia": mês da `selectedDate` (igual hoje, para preservar o card "Média Diária — mês").
+- Modo 7/14 dias / mês passado: intervalo exato da janela.
+- Modo "este mês": mês atual.
 
-### 1. Validação de "nome completo" no bloco de espera de resposta (bot-engine)
+### 3. Ajuste nos KPIs do card "Ações de …"
+- Título: "Ações de DD/MM/YYYY" no modo dia; nos outros modos, rótulo do preset ("Ações dos últimos 7 dias (DD/MM – DD/MM)", "Ações de julho/2026", "Ações de junho/2026" etc.).
+- Legenda "neste dia" vira "neste período" quando aplicável.
+- **Pessoas que falaram**: `lead_id` distintos com mensagem inbound cujo `dayKeyBahia(created_at)` cai no intervalo.
+- **Agendamentos criados**: appts com `is_rescheduled !== true` cujo `created_at` cai no intervalo.
+- **Reagendamentos**: idem com `is_rescheduled === true`.
+- **Taxa de conversão**: interseção `leads que falaram no período ∩ leads que criaram agendamento (não reagendado) no período`, dividido por leads que falaram no período. Mesma semântica do card diário, agora agregada.
 
-- Adicionar um flag opcional `validateAs: "full_name"` em nós de captura (`wait_reply` e nós `send_text`/`send_menu` com `saveToField`).
-- Novo helper `isLikelyFullName(text)` no `supabase/functions/bot-engine/index.ts` com heurísticas simples:
-  - Rejeita se contiver `?`, `!`, URL, dígitos.
-  - Rejeita saudações/perguntas típicas: `olá`, `oi`, `bom dia`, `boa tarde`, `boa noite`, `informações`, `preço`, `valor`, `quero`, `posso`, `como`, `quando`, `onde`, `porque`.
-  - Exige ao menos 2 palavras alfabéticas, cada uma com ≥ 2 letras, comprimento total 4–80 chars.
-- No handler de resposta (linhas ~473–522), antes de gravar `saveToField` e escolher `nextEdge`: se o nó tem `validateAs === "full_name"` e a resposta falha na validação, **re-envia um prompt amigável e mantém `status: "waiting_reply"`** (mesmo padrão do fallback de menu já existente nas linhas 508–522).
-- Contador `invalid_attempts` nas `variables` da execução; após 2 tentativas inválidas, encerra a execução com `status: "completed"` e motivo `"name_validation_exhausted"` para que a atendente humana entre.
-- Mensagem de re-prompt configurável por nó (`invalidReplyMessage`), com fallback `"Só pra confirmar, me diga seu nome completo (nome e sobrenome), por favor 🙂"`.
+### 4. Card "Média Diária do mês"
+Sem mudança de fórmula. Só é renderizado no modo "Dia específico" (nos demais modos fica oculto para não misturar com a janela agregada).
 
-### 2. UI: toggle no editor de bot
-
-- Em `src/components/bot-editor/NodePropertiesPanel.tsx`, quando o nó tiver `saveToField` preenchido, exibir:
-  - Select "Validar resposta como": `Nenhuma` | `Nome completo`.
-  - Campo `Mensagem de re-prompt` (opcional) quando validação ativa.
-- Persistido em `node.data.validateAs` e `node.data.invalidReplyMessage`.
-
-### 3. Aviso de brackets/placeholders desbalanceados no editor
-
-- Em `NodePropertiesPanel.tsx`, no editor de texto de mensagem (VariableTextarea), adicionar um pequeno aviso inline (texto laranja abaixo do campo) quando detectarmos `[`/`]`, `{{`/`}}` ou `*` desbalanceados no texto atual do nó.
-- Isso não altera nada automaticamente — só ajuda o usuário a encontrar o `]` sobrando no template de confirmação e corrigir manualmente no bot editor.
-
-### 4. Deploy
-
-- Redeploy da edge function `bot-engine` após as mudanças.
-
-## Fora de escopo
-
-- Não vamos editar o `flow_json` do bot em produção automaticamente — a correção do `]` no template de confirmação será feita pelo usuário no bot editor (o aviso de bracket desbalanceado o guia até lá).
-- Nenhuma mudança em banco, RLS, ou outras edge functions.
-- Sem alteração no fluxo de mensagens já existente que não use `validateAs`.
-
-## Arquivos afetados
-
-- `supabase/functions/bot-engine/index.ts` — helper de validação + branch de re-prompt.
-- `src/components/bot-editor/NodePropertiesPanel.tsx` — toggle de validação + aviso de brackets.
+## Fora do escopo
+- Não altero outras abas, backend, edge functions, migrations, nem o componente `DateRangeFilter` global.
+- Não mudo a semântica de nenhum KPI existente; apenas expando a janela de agregação.
