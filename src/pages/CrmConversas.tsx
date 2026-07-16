@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLeadLabels } from "@/hooks/useLeadLabels";
 import { getLeadChannel } from "@/lib/leadChannel";
+import { formatPhoneDisplayBR, toE164BR } from "@/lib/phoneUtils";
 import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
@@ -1258,7 +1259,15 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       <span>@{selectedLead.instagram_username}</span>
                     ) : selectedLead.phone ? (
                       <span className="inline-flex items-center gap-1">
-                        <span>{selectedLead.phone}</span>
+                        {/* Link tel: em formato BR — permite o click-to-call da extensão
+                            Api4Com detectar o número e abrir a discagem já preenchida. */}
+                        <a
+                          href={`tel:${toE164BR(selectedLead.phone)}`}
+                          className="hover:text-foreground hover:underline"
+                          title="Ligar (via extensão de telefonia)"
+                        >
+                          {formatPhoneDisplayBR(selectedLead.phone)}
+                        </a>
                         <button
                           type="button"
                           onClick={async () => {
