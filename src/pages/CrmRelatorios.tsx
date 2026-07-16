@@ -1140,43 +1140,42 @@ function AcoesPorDiaTab({
     })();
 
     return () => { alive = false; };
-  }, [monthStart, monthEnd, reloadKey]);
+  }, [fetchStart, fetchEnd, reloadKey]);
 
-  const selectedKey = dayKeyFromDate(selectedDate);
+  const inRange = (iso: string) => {
+    const k = dayKeyBahia(iso);
+    return k >= rangeStartKey && k <= rangeEndKey;
+  };
 
   const falaramDia = useMemo(() => {
     const set = new Set<string>();
-    inboundDays.forEach(m => {
-      if (dayKeyBahia(m.created_at) === selectedKey) set.add(m.lead_id);
-    });
+    inboundDays.forEach(m => { if (inRange(m.created_at)) set.add(m.lead_id); });
     return set;
-  }, [inboundDays, selectedKey]);
+  }, [inboundDays, rangeStartKey, rangeEndKey]);
 
-  // Agendamentos criados no dia (não reagendados)
+  // Agendamentos criados no intervalo (não reagendados)
   const agendadosDia = useMemo(() => {
-    return apptsMonth.filter(a =>
-      dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled !== true
-    ).length;
-  }, [apptsMonth, selectedKey]);
+    return apptsMonth.filter(a => inRange(a.created_at) && a.is_rescheduled !== true).length;
+  }, [apptsMonth, rangeStartKey, rangeEndKey]);
 
-  // Reagendamentos criados no dia
+  // Reagendamentos criados no intervalo
   const reagendadosDia = useMemo(() => {
-    return apptsMonth.filter(a =>
-      dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled === true
-    ).length;
-  }, [apptsMonth, selectedKey]);
+    return apptsMonth.filter(a => inRange(a.created_at) && a.is_rescheduled === true).length;
+  }, [apptsMonth, rangeStartKey, rangeEndKey]);
 
-  // Dos que falaram, quantos agendaram (interseção por lead_id)
+  // Dos que falaram, quantos agendaram (interseção por lead_id) no intervalo
   const agendadosDosQueFalaram = useMemo(() => {
     const leadsAgendDia = new Set(
       apptsMonth
-        .filter(a => dayKeyBahia(a.created_at) === selectedKey && a.is_rescheduled !== true)
+        .filter(a => inRange(a.created_at) && a.is_rescheduled !== true)
         .map(a => a.lead_id)
     );
     let cnt = 0;
     falaramDia.forEach(id => { if (leadsAgendDia.has(id)) cnt++; });
     return cnt;
-  }, [apptsMonth, falaramDia, selectedKey]);
+  }, [apptsMonth, falaramDia, rangeStartKey, rangeEndKey]);
+
+
 
   const mediasMes = useMemo(() => {
     const today = new Date(); today.setHours(23, 59, 59, 999);
