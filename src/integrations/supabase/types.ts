@@ -460,6 +460,91 @@ export type Database = {
           },
         ]
       }
+      api4com_config: {
+        Row: {
+          account_email: string | null
+          api_token: string | null
+          connected_at: string | null
+          created_at: string
+          gateway: string | null
+          tenant_id: string
+          updated_at: string
+          webhook_registered: boolean
+          webhook_secret: string | null
+        }
+        Insert: {
+          account_email?: string | null
+          api_token?: string | null
+          connected_at?: string | null
+          created_at?: string
+          gateway?: string | null
+          tenant_id: string
+          updated_at?: string
+          webhook_registered?: boolean
+          webhook_secret?: string | null
+        }
+        Update: {
+          account_email?: string | null
+          api_token?: string | null
+          connected_at?: string | null
+          created_at?: string
+          gateway?: string | null
+          tenant_id?: string
+          updated_at?: string
+          webhook_registered?: boolean
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api4com_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api4com_extensions: {
+        Row: {
+          bina: string | null
+          created_at: string
+          domain: string
+          id: string
+          ramal: string
+          senha: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          bina?: string | null
+          created_at?: string
+          domain: string
+          id?: string
+          ramal: string
+          senha: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          bina?: string | null
+          created_at?: string
+          domain?: string
+          id?: string
+          ramal?: string
+          senha?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api4com_extensions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_execution_logs: {
         Row: {
           action: string
