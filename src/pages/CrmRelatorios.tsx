@@ -1103,6 +1103,14 @@ function AcoesPorDiaTab({
     setLoadError(null);
     // Fronteiras do intervalo de fetch em America/Bahia
     const { gteIso: startISO, lteIso: endISO } = rangeBahia(fetchStart, fetchEnd);
+    // Para a métrica de "Conversão em 7 dias" precisamos de agendamentos criados
+    // ATÉ 7 dias após o fim do range (mas nunca no futuro). Isso NÃO afeta os
+    // demais KPIs, que continuam filtrando por `inRange`/dias úteis do mês.
+    const apptEndISO = (() => {
+      const plus7 = new Date(new Date(endISO).getTime() + 7 * 24 * 60 * 60 * 1000);
+      const now = new Date();
+      return (plus7.getTime() > now.getTime() ? now : plus7).toISOString();
+    })();
 
 
     (async () => {
@@ -1119,12 +1127,13 @@ function AcoesPorDiaTab({
         );
 
         // Appointments criados no mês — TODOS, sem filtro de pipeline
+        // (janela estendida em +7d para permitir a conversão por coorte)
         const apptsCreated = await fetchAllPaged<any>(() =>
           supabase
             .from("crm_appointments")
             .select("id, lead_id, created_at, scheduled_date, is_rescheduled")
             .gte("created_at", startISO)
-            .lte("created_at", endISO),
+            .lte("created_at", apptEndISO),
           "id"
         );
 
@@ -1175,6 +1184,43 @@ function AcoesPorDiaTab({
     return cnt;
   }, [apptsMonth, falaramDia, rangeStartKey, rangeEndKey]);
 
+  // Conversão em 7 dias por coorte: um lead que falou no range converteu se
+  // criou algum agendamento (não-reagendado) em até 7 dias corridos após
+  // sua PRIMEIRA fala dentro do range.
+  const conv7d = useMemo(() => {
+    const SEVEN_D_MS = 7 * 24 * 60 * 60 * 1000;
+    // firstInboundByLead — só leads dentro do range
+    const firstInboundByLead = new Map<string, number>();
+    inboundDays.forEach(m => {
+      if (!inRange(m.created_at)) return;
+      const t = new Date(m.created_at).getTime();
+      const prev = firstInboundByLead.get(m.lead_id);
+      if (prev === undefined || t < prev) firstInboundByLead.set(m.lead_id, t);
+    });
+    // Agendamentos (não reagendados) agrupados por lead
+    const apptsByLead = new Map<string, number[]>();
+    apptsMonth.forEach(a => {
+      if (a.is_rescheduled === true) return;
+      const arr = apptsByLead.get(a.lead_id) ?? [];
+      arr.push(new Date(a.created_at).getTime());
+      apptsByLead.set(a.lead_id, arr);
+    });
+    const nowMs = Date.now();
+    let count = 0;
+    let imaturos = 0;
+    firstInboundByLead.forEach((firstMs, leadId) => {
+      const janelaFim = firstMs + SEVEN_D_MS;
+      if (janelaFim > nowMs) imaturos++;
+      const appts = apptsByLead.get(leadId);
+      if (!appts) return;
+      if (appts.some(t => t >= firstMs && t <= janelaFim)) count++;
+    });
+    const total = firstInboundByLead.size;
+    return { count, total, pct: total > 0 ? (count / total) * 100 : 0, imaturos };
+  }, [inboundDays, apptsMonth, rangeStartKey, rangeEndKey]);
+
+
+
 
 
   const mediasMes = useMemo(() => {
@@ -1201,24 +1247,44 @@ function AcoesPorDiaTab({
     let falaramTotal = 0;
     falaramByDay.forEach(s => { falaramTotal += s.size; });
 
-    // Leads que criaram agendamento (não reagendado) por dia útil — para a taxa
-    // mensal usar a MESMA lógica do card diário: interseção falou ∩ agendou no dia.
-    const agendLeadsByDay = new Map<string, Set<string>>();
+    // Leads que criaram agendamento (não reagendado) por dia útil — usado só
+    // para os totais mensais (agendTotal/reagTotal). A taxa mensal agora usa
+    // janela de 7 dias por coorte.
     let agendTotal = 0, reagTotal = 0;
     apptsMonth.forEach(a => {
       const k = dayKeyBahia(a.created_at);
       if (!workingSet.has(k)) return;
       if (a.is_rescheduled === true) { reagTotal++; return; }
       agendTotal++;
-      if (!agendLeadsByDay.has(k)) agendLeadsByDay.set(k, new Set());
-      agendLeadsByDay.get(k)!.add(a.lead_id);
     });
 
+    // Taxa mensal por coorte de 7 dias: para cada par (dia útil, lead) que
+    // falou, converteu se existe agendamento (não-reagendado) dele em até
+    // 7 dias corridos após a PRIMEIRA fala dele naquele dia.
+    const SEVEN_D_MS = 7 * 24 * 60 * 60 * 1000;
+    const firstInboundByDayLead = new Map<string, number>();
+    inboundDays.forEach(m => {
+      const k = dayKeyBahia(m.created_at);
+      if (!workingSet.has(k)) return;
+      const key = `${k}|${m.lead_id}`;
+      const t = new Date(m.created_at).getTime();
+      const prev = firstInboundByDayLead.get(key);
+      if (prev === undefined || t < prev) firstInboundByDayLead.set(key, t);
+    });
+    const apptsByLead7d = new Map<string, number[]>();
+    apptsMonth.forEach(a => {
+      if (a.is_rescheduled === true) return;
+      const arr = apptsByLead7d.get(a.lead_id) ?? [];
+      arr.push(new Date(a.created_at).getTime());
+      apptsByLead7d.set(a.lead_id, arr);
+    });
     let falaramEAgendaramTotal = 0;
-    falaramByDay.forEach((leadsSet, k) => {
-      const ag = agendLeadsByDay.get(k);
-      if (!ag) return;
-      leadsSet.forEach(id => { if (ag.has(id)) falaramEAgendaramTotal++; });
+    firstInboundByDayLead.forEach((firstMs, key) => {
+      const leadId = key.split("|")[1];
+      const appts = apptsByLead7d.get(leadId);
+      if (!appts) return;
+      const janelaFim = firstMs + SEVEN_D_MS;
+      if (appts.some(t => t >= firstMs && t <= janelaFim)) falaramEAgendaramTotal++;
     });
 
     return {
@@ -1227,7 +1293,7 @@ function AcoesPorDiaTab({
       avgReagendados: reagTotal / workingDays.length,
       totalDias: workingDays.length,
       falaramTotal,
-      // Mesmo numerador/denominador do card diário (leads distintos, interseção por dia)
+      // Coorte de 7 dias: leads distintos por dia que falaram e agendaram em ≤7d.
       taxaMensal: falaramTotal > 0 ? (falaramEAgendaramTotal / falaramTotal) * 100 : 0,
     };
   }, [apptsMonth, inboundDays, monthStart, monthEnd, holidaySet]);
@@ -1329,9 +1395,20 @@ function AcoesPorDiaTab({
 
         {falaramDia.size > 0 && (
           <div className="rounded-lg bg-secondary/40 p-4 text-center">
-            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendaram {isAggregated ? "no período" : "no mesmo dia"})</span>
-            <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram / falaramDia.size) * 100).toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">{agendadosDosQueFalaram} de {falaramDia.size} lead(s) que falaram {isAggregated ? "no período" : "no dia"}</p>
+            <span className="text-sm text-muted-foreground">Conversão em 7 dias</span>
+            <p className="text-3xl font-bold text-primary mt-1">{conv7d.pct.toFixed(1)}%</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {conv7d.count} de {conv7d.total} leads que falaram{isAggregated ? " no período" : ""} agendaram em até 7 dias
+            </p>
+            {conv7d.imaturos > 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                ⏳ Parcial — {conv7d.imaturos} lead(s) ainda dentro da janela de 7 dias; o número tende a subir
+              </p>
+            )}
+            <div className="border-t border-border/50 my-2" />
+            <p className="text-xs text-muted-foreground">
+              No mesmo dia: {((agendadosDosQueFalaram / falaramDia.size) * 100).toFixed(1)}% — mede a agilidade da 1ª resposta, não o resultado final
+            </p>
           </div>
         )}
       </Card>
@@ -1364,9 +1441,9 @@ function AcoesPorDiaTab({
 
           {mediasMes.falaramTotal > 0 && (
             <div className="rounded-lg bg-secondary/40 p-4 text-center">
-              <span className="text-sm text-muted-foreground">Taxa média de conversão mensal (falaram → agendaram no mesmo dia)</span>
+              <span className="text-sm text-muted-foreground">Taxa média de conversão em 7 dias (mês)</span>
               <p className="text-3xl font-bold text-primary mt-1">{mediasMes.taxaMensal.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Mesma regra do card diário: leads distintos que falaram e criaram agendamento no mesmo dia útil</p>
+              <p className="text-xs text-muted-foreground mt-1">Leads distintos que falaram e agendaram em até 7 dias</p>
             </div>
           )}
         </Card>
