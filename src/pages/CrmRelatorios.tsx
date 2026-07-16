@@ -1441,9 +1441,9 @@ function AcoesPorDiaTab({
 
           {mediasMes.falaramTotal > 0 && (
             <div className="rounded-lg bg-secondary/40 p-4 text-center">
-              <span className="text-sm text-muted-foreground">Taxa média de conversão mensal (falaram → agendaram no mesmo dia)</span>
+              <span className="text-sm text-muted-foreground">Taxa média de conversão em 7 dias (mês)</span>
               <p className="text-3xl font-bold text-primary mt-1">{mediasMes.taxaMensal.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground mt-1">Mesma regra do card diário: leads distintos que falaram e criaram agendamento no mesmo dia útil</p>
+              <p className="text-xs text-muted-foreground mt-1">Leads distintos que falaram e agendaram em até 7 dias</p>
             </div>
           )}
         </Card>
