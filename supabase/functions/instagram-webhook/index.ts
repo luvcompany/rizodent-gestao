@@ -394,6 +394,40 @@ async function persistMessage(opts: {
         return;
       }
     }
+
+    // Dedupe extra para respostas a story: a Meta envia o mesmo evento em 2 webhooks
+    // (um com reply_to.story.url = thumbnail, outro com attachment story_reply cuja
+    // url expira em segundos). São a MESMA resposta do lead. Se já houver uma
+    // "📖 Resposta a story" desse lead nos últimos 3 min, não duplicar.
+    const isStoryReply = finalContent.startsWith("📖 Resposta a story");
+    if (isStoryReply) {
+      const threeMinAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+      const { data: recentStory } = await supabase
+        .from("messages")
+        .select("id, media_url, created_at")
+        .eq("lead_id", leadId)
+        .eq("direction", "inbound")
+        .eq("channel", "instagram")
+        .like("content", "📖 Resposta a story%")
+        .gte("created_at", threeMinAgo)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const prev = recentStory?.[0];
+      if (prev) {
+        // Se a mensagem existente NÃO tem mídia e a nova tem, atualiza a existente
+        // (preferimos manter a thumbnail persistente). Caso contrário, apenas ignora.
+        if (!prev.media_url && mediaUrl) {
+          await supabase
+            .from("messages")
+            .update({ media_url: mediaUrl, type: msgType, content: finalContent })
+            .eq("id", prev.id);
+          console.log(`[ig-webhook] Story reply merged into ${prev.id} — added media`);
+        } else {
+          console.log(`[ig-webhook] Story reply duplicate skipped for lead ${leadId}`);
+        }
+        return;
+      }
+    }
     await supabase.from("messages").insert({
       lead_id: leadId,
       tenant_id: opts.account.tenant_id,
