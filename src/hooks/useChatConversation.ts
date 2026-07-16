@@ -55,13 +55,42 @@ const normalizeOutboundStatus = (message: ChatMessage): ChatMessage => {
   return message;
 };
 
+// Janela em ms para "puxar" a mensagem inbound do anúncio para cima da resposta
+// automática do bot. O webhook do click-to-WhatsApp geralmente chega alguns
+// segundos depois do lead ser criado, mas visualmente ele precisa vir primeiro.
+const AD_INBOUND_REORDER_WINDOW_MS = 10_000;
+
+const hasAdContext = (m: ChatMessage): boolean => {
+  const anyMsg = m as any;
+  return Boolean(
+    anyMsg?.ad_source_id ||
+      anyMsg?.ad_headline ||
+      anyMsg?.ad_body ||
+      anyMsg?.ad_image_url ||
+      anyMsg?.ad_source_url,
+  );
+};
+
 const sortChatMessages = (list: ChatMessage[]): ChatMessage[] => {
-  // Ordena por created_at; em caso de empate (ou diferença ínfima entre webhook
-  // do lead e disparo automático do bot), inbound vem antes de outbound para que
-  // o card do anúncio apareça acima da resposta automática.
+  // Ordena por created_at; em caso de empate (ou diferença curta entre o webhook
+  // do lead vindo de anúncio e o disparo automático do bot), a inbound com
+  // contexto de anúncio vem antes da outbound para que o card do anúncio
+  // apareça acima da resposta automática.
   return [...list].sort((a, b) => {
     const ta = new Date(a.created_at).getTime();
     const tb = new Date(b.created_at).getTime();
+    const delta = Math.abs(ta - tb);
+
+    // Reordenação especial: inbound com contexto de anúncio deve vir antes de
+    // outbound automática (bot/audio de boas-vindas) mesmo que tenha chegado
+    // alguns segundos depois.
+    if (delta <= AD_INBOUND_REORDER_WINDOW_MS) {
+      const aAdInbound = a.direction === "inbound" && hasAdContext(a);
+      const bAdInbound = b.direction === "inbound" && hasAdContext(b);
+      if (aAdInbound && b.direction === "outbound") return -1;
+      if (bAdInbound && a.direction === "outbound") return 1;
+    }
+
     if (ta !== tb) return ta - tb;
     const da = a.direction === "inbound" ? 0 : 1;
     const db = b.direction === "inbound" ? 0 : 1;
