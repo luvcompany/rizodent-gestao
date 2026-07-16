@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLeadLabels } from "@/hooks/useLeadLabels";
 import { getLeadChannel } from "@/lib/leadChannel";
+import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
