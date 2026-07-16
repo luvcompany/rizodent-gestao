@@ -43,7 +43,9 @@ type CallRow = {
 // Normaliza uma linha de api4com_calls para o formato unificado de CallRow.
 function mapApi4comCall(r: any): CallRow {
   const s = String(r.status || "").toLowerCase();
-  const mappedStatus = s === "answered" ? "completed" : s === "no-answer" ? "missed" : s;
+  // "no-answer" NÃO vira "missed" direto — a categorização decide por direção
+  // (recebida não atendida = Perdida; realizada não atendida = Não atendida).
+  const mappedStatus = s === "answered" ? "completed" : s === "no-answer" ? "no_answer" : s;
   return {
     id: r.id,
     tenant_id: r.tenant_id,
@@ -72,7 +74,7 @@ const FILTERS: { key: CallCategory | "all"; label: string }[] = [
   { key: "missed", label: "Perdidas" },
   { key: "rejected", label: "Recusadas" },
   { key: "blocked", label: "Bloqueadas" },
-  { key: "failed", label: "Não completadas" },
+  { key: "failed", label: "Não atendidas" },
 ];
 
 function categorize(c: CallRow): CallCategory {
@@ -83,7 +85,8 @@ function categorize(c: CallRow): CallCategory {
   // Atendida: duração > 0, OU (telefonia) foi atendida/gravada mesmo sem duração informada.
   if (s === "completed" && ((c.duration_seconds || 0) > 0 || !!c.recording_url || !!c.connected_at)) return "answered";
   if (s === "rejected" || s === "declined") return "rejected";
-  if (["missed", "no_answer", "ringing_timeout", "unanswered"].includes(s)) return "missed";
+  // Não atendida: RECEBIDA sem atender = Perdida; REALIZADA sem atender = Não atendida (failed).
+  if (["missed", "no_answer", "ringing_timeout", "unanswered"].includes(s)) return c.direction === "inbound" ? "missed" : "failed";
   if ((c.duration_seconds || 0) === 0 && c.direction === "inbound" && (s === "ended" || s === "terminated")) return "missed";
   if (["failed", "error"].includes(s)) return "failed";
   return "failed";
@@ -101,7 +104,7 @@ function categoryMeta(cat: CallCategory, direction: string) {
     case "blocked":
       return { icon: Ban, color: "text-orange-600 dark:text-orange-500", label: "Bloqueada pelo cliente" };
     case "failed":
-      return { icon: AlertCircle, color: "text-muted-foreground", label: "Não completada" };
+      return { icon: inbound ? AlertCircle : PhoneOff, color: "text-muted-foreground", label: inbound ? "Não completada" : "Não atendida" };
     case "ongoing":
       return { icon: Phone, color: "text-primary", label: "Ao vivo" };
   }
