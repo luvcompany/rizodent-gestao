@@ -20,18 +20,22 @@ interface Props {
 }
 
 const FIELD_OPTIONS: ConditionField[] = [
-  "tags", "cidade", "servico_interesse", "source", "assigned_to",
+  "source", "has_ad", "tags", "cidade", "servico_interesse", "nome_anuncio", "ad_account_name", "assigned_to",
 ];
+
+// Campos booleanos (Sim/Não) — o valor é o próprio operador (is_true/is_false).
+const BOOLEAN_FIELDS: ConditionField[] = ["has_ad", "no_tags"];
 
 // Static option presets per field
 const STATIC_FIELD_OPTIONS: Partial<Record<ConditionField, string[]>> = {
   servico_interesse: ["PRÓTESE", "IMPLANTE", "ZIGOMÁTICO", "FACETA", "PROTOCÓLO", "OUTROS"],
-  source: ["whatsapp", "instagram", "manual", "webhook", "import"],
 };
 
-// Fields that should be loaded dynamically from the database (distinct values)
+// Fields that should be loaded dynamically from the database (distinct values).
+// `source` (Origem) é dinâmico p/ mostrar as origens REAIS dos leads — não uma
+// lista fixa desatualizada. Idem nome/conta de anúncio.
 const DYNAMIC_FIELDS: ConditionField[] = [
-  "tags", "cidade", "assigned_to",
+  "tags", "cidade", "assigned_to", "source", "nome_anuncio", "ad_account_name",
 ];
 
 function useDynamicOptions(field: ConditionField | null) {
@@ -192,11 +196,24 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
                 ))}
               </SelectContent>
             </Select>
-            <ValueSelector
-              field={rule.field}
-              value={rule.value}
-              onChange={(v) => updateRule(idx, { value: v })}
-            />
+            {BOOLEAN_FIELDS.includes(rule.field) ? (
+              <Select
+                value={rule.operator === "is_false" ? "false" : "true"}
+                onValueChange={(v) => updateRule(idx, { operator: v === "false" ? "is_false" : "is_true" })}
+              >
+                <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Sim</SelectItem>
+                  <SelectItem value="false">Não</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <ValueSelector
+                field={rule.field}
+                value={rule.value}
+                onChange={(v) => updateRule(idx, { value: v })}
+              />
+            )}
           </div>
           <button
             type="button"

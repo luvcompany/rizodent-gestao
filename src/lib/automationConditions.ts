@@ -44,7 +44,7 @@ export interface ConditionsConfig {
 
 export const FIELD_LABELS: Record<ConditionField, string> = {
   tags: "Tag",
-  source: "Fonte",
+  source: "Origem",
   cidade: "Cidade",
   ad_id: "ID do anúncio",
   ad_account_id: "ID conta de anúncios",
