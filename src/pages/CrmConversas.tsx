@@ -1143,17 +1143,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                             </div>
                             {(() => {
                               const basePreview = formatCallPermissionPreview(lead.last_message) ?? (lead.last_message || "");
-                              const outAt = lead.last_outbound_at ? new Date(lead.last_outbound_at).getTime() : 0;
-                              const inAt = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
-                              const lastAt = lead.last_message_at ? new Date(lead.last_message_at).getTime() : 0;
-                              // Se a mensagem mais recente é outbound mas o texto salvo em last_message
-                              // ainda corresponde à inbound anterior (áudio/mídia sem texto), sinaliza
-                              // "Você: 🎤 Áudio" para deixar claro que o bot já enviou algo.
-                              const outboundIsLatest = outAt > 0 && outAt >= inAt && Math.abs(lastAt - outAt) < 3000;
+                              const isOutbound = lead.last_direction === "outbound";
                               let preview: string;
-                              if (outboundIsLatest) {
-                                preview = basePreview && outAt <= inAt + 2000
-                                  ? `Você: ${basePreview}`
+                              if (isOutbound) {
+                                preview = basePreview
+                                  ? (basePreview.startsWith("Você:") ? basePreview : `Você: ${basePreview}`)
                                   : "Você: 🎤 Áudio";
                               } else {
                                 preview = basePreview || "Sem mensagens";
