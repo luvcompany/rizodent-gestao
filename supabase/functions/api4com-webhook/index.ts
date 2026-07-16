@@ -14,6 +14,23 @@ const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, h
 const onlyDigits = (s: string) => String(s || "").replace(/\D/g, "");
 const last8 = (s: string) => { const d = onlyDigits(s); return d.length >= 8 ? d.slice(-8) : d; };
 
+// Só aceitamos gravações públicas em https e para hosts externos (evita SSRF:
+// impede que um payload forjado aponte a URL de gravação para IPs internos /
+// metadata, que o transcribe-audio buscaria via fetch server-side).
+function isSafePublicHttpsUrl(raw: string): boolean {
+  try {
+    const u = new URL(String(raw));
+    if (u.protocol !== "https:") return false;
+    const host = u.hostname.toLowerCase();
+    if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal") || host.endsWith(".local")) return false;
+    // IP literais privados / loopback / link-local / metadata.
+    if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host)) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+    if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) return false;
+    return true;
+  } catch { return false; }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -22,7 +39,8 @@ Deno.serve(async (req) => {
     const admin = createClient(SUPA_URL, SR);
 
     const url = new URL(req.url);
-    const secret = url.searchParams.get("secret") || "";
+    // Segredo pode vir na query (registro atual) ou no header (mais seguro).
+    const secret = req.headers.get("x-webhook-secret") || url.searchParams.get("secret") || "";
     const gw = url.searchParams.get("gw") || "";
     if (!secret) return json({ error: "missing secret" }, 401);
 
@@ -41,38 +59,61 @@ Deno.serve(async (req) => {
     const caller = String(payload.caller ?? payload.from ?? payload.src ?? "");
     const called = String(payload.called ?? payload.to ?? payload.dst ?? payload.phone ?? "");
     const durationSeconds = Number(payload.duration ?? payload.billsec ?? payload.durationSeconds ?? 0) || null;
-    const recordUrl = payload.recordUrl ?? payload.recording_url ?? payload.record ?? null;
+    const recordUrlRaw = payload.recordUrl ?? payload.recording_url ?? payload.record ?? null;
     const hangupCause = payload.hangupCause ?? payload.hangup_cause ?? null;
     const startedAt = payload.startedAt ?? payload.started_at ?? null;
     const answeredAt = payload.answeredAt ?? payload.answered_at ?? null;
     const endedAt = payload.endedAt ?? payload.ended_at ?? null;
     const metaLeadId = payload?.metadata?.entityId ?? payload?.metadata?.lead_id ?? null;
+    const callIdVal = payload.callId ?? payload.uniqueid ?? payload.id ?? null;
 
     // Só registramos no fim da chamada (hangup). channel-answer só confirmamos.
     if (type === "channel-answer") return json({ ok: true, ignored: "answer" });
+
+    // Só guardamos a URL de gravação se for pública/https (anti-SSRF).
+    const recordUrl = recordUrlRaw && isSafePublicHttpsUrl(recordUrlRaw) ? recordUrlRaw : null;
 
     // Descobre o número do LEAD (o que não é ramal curto). Ramal costuma ter <=6 dígitos.
     const callerDigits = onlyDigits(caller), calledDigits = onlyDigits(called);
     const leadNumber = calledDigits.length >= 8 ? called : (callerDigits.length >= 8 ? caller : called);
     const direction = calledDigits.length >= 8 ? "outbound" : "inbound";
 
-    // Casa o lead pelo final do número (últimos 8 dígitos), no tenant.
-    let leadId = metaLeadId;
+    // Casa o lead. Preferimos o entityId do metadata (mas validando que é do tenant).
+    // Caso contrário, casamos pelos últimos 8 dígitos ANCORADOS no fim do telefone,
+    // e só aceitamos quando há EXATAMENTE um candidato (evita atribuir ao lead errado).
+    let leadId: string | null = null;
+    if (metaLeadId) {
+      const { data: ml } = await admin.from("crm_leads")
+        .select("id").eq("tenant_id", tenantId).eq("id", metaLeadId).maybeSingle();
+      leadId = ml?.id ?? null;
+    }
     if (!leadId && leadNumber) {
       const l8 = last8(leadNumber);
-      const { data: lead } = await admin.from("crm_leads")
-        .select("id").eq("tenant_id", tenantId)
-        .ilike("phone", `%${l8}%`).limit(1).maybeSingle();
-      leadId = lead?.id ?? null;
+      if (l8.length >= 8) {
+        // Busca candidatos que contenham os 8 dígitos e confirma no lado do servidor
+        // que o telefone (só dígitos) TERMINA com eles. Ambíguo (>1) => não atribui.
+        const { data: cands } = await admin.from("crm_leads")
+          .select("id, phone").eq("tenant_id", tenantId).ilike("phone", `%${l8}%`).limit(10);
+        const matches = (cands || []).filter((c: any) => onlyDigits(c.phone).endsWith(l8));
+        if (matches.length === 1) leadId = matches[0].id;
+      }
     }
 
     const status = hangupCause === "NORMAL_CLEARING" && durationSeconds ? "answered"
       : (answeredAt ? "answered" : "no-answer");
 
+    // Dedup: a Api4Com pode reenviar o mesmo channel-hangup (retry/timeout). Se já
+    // registramos essa call_id no tenant, respondemos ok sem duplicar.
+    if (callIdVal) {
+      const { data: existing } = await admin.from("api4com_calls")
+        .select("id").eq("tenant_id", tenantId).eq("call_id", callIdVal).maybeSingle();
+      if (existing?.id) return json({ ok: true, call_id: existing.id, deduped: true, lead_matched: null });
+    }
+
     const { data: inserted, error: insErr } = await admin.from("api4com_calls").insert({
       tenant_id: tenantId,
       lead_id: leadId,
-      call_id: payload.callId ?? payload.uniqueid ?? payload.id ?? null,
+      call_id: callIdVal,
       from_phone: caller || null,
       to_phone: called || null,
       direction,
@@ -85,17 +126,32 @@ Deno.serve(async (req) => {
       ended_at: endedAt,
       raw_payload: payload,
     }).select("id").single();
-    if (insErr) return json({ error: insErr.message }, 500);
+    if (insErr) {
+      // 23505 = corrida com um reenvio simultâneo (unique parcial em tenant+call_id).
+      if (insErr.code === "23505") return json({ ok: true, deduped: true, lead_matched: !!leadId });
+      return json({ error: insErr.message }, 500);
+    }
 
-    // Dispara transcrição da gravação (best-effort).
+    // Dispara transcrição da gravação em SEGUNDO PLANO (não trava a resposta ao
+    // provedor — reduz timeout/retry e, com ele, duplicidade). A rede de segurança
+    // (cron transcribe-pending-audios) reprocessa se isto falhar.
     if (recordUrl && inserted?.id) {
+      const fire = async () => {
+        try {
+          const r = await fetch(`${SUPA_URL}/functions/v1/transcribe-audio`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${SR}`, apikey: SR },
+            body: JSON.stringify({ api4com_call_id: inserted.id }),
+          });
+          if (!r.ok) console.warn(`[api4com-webhook] transcribe-audio ${r.status} p/ call ${inserted.id} — cron reprocessa`);
+        } catch (e: any) {
+          console.warn(`[api4com-webhook] transcribe-audio falhou p/ call ${inserted.id}: ${e?.message} — cron reprocessa`);
+        }
+      };
       try {
-        await fetch(`${SUPA_URL}/functions/v1/transcribe-audio`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SR}`, apikey: SR },
-          body: JSON.stringify({ api4com_call_id: inserted.id }),
-        });
-      } catch (_) { /* ignore */ }
+        const rt = (globalThis as any).EdgeRuntime;
+        if (rt?.waitUntil) rt.waitUntil(fire()); else fire();
+      } catch { fire(); }
     }
 
     return json({ ok: true, call_id: inserted?.id, lead_matched: !!leadId });

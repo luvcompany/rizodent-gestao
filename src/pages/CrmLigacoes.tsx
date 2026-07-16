@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -80,7 +80,8 @@ function categorize(c: CallRow): CallCategory {
   const err = (c.error_message || "").toLowerCase();
   if (["ringing", "connecting", "connected", "in_progress"].includes(s)) return "ongoing";
   if (err.includes("no approved call permission") || err.includes("2593090") || err.includes("permissão de ligação")) return "blocked";
-  if (s === "completed" && (c.duration_seconds || 0) > 0) return "answered";
+  // Atendida: duração > 0, OU (telefonia) foi atendida/gravada mesmo sem duração informada.
+  if (s === "completed" && ((c.duration_seconds || 0) > 0 || !!c.recording_url || !!c.connected_at)) return "answered";
   if (s === "rejected" || s === "declined") return "rejected";
   if (["missed", "no_answer", "ringing_timeout", "unanswered"].includes(s)) return "missed";
   if ((c.duration_seconds || 0) === 0 && c.direction === "inbound" && (s === "ended" || s === "terminated")) return "missed";
@@ -130,10 +131,14 @@ export default function CrmLigacoes() {
   const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const [view, setView] = useState<"ligacoes" | "permissoes">("ligacoes");
 
+  const firstLoad = useRef(true);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      setLoading(true);
+      // Só mostra "Carregando…" no 1º load. Refetches do realtime rodam em segundo
+      // plano, mantendo a lista visível (evita o painel piscar a cada ligação/UPDATE).
+      if (firstLoad.current) setLoading(true);
       const [wa, api4com] = await Promise.all([
         supabase
           .from("whatsapp_calls")
@@ -172,6 +177,10 @@ export default function CrmLigacoes() {
         return tb - ta;
       });
       setCalls(merged);
+      // Mantém o detalhe aberto sincronizado com a versão mais nova da linha
+      // (ex.: transcrição que acabou de ser gravada, status atualizado).
+      setSelected((prev) => (prev ? merged.find((c) => c.id === prev.id) ?? prev : prev));
+      firstLoad.current = false;
       setLoading(false);
     }
     load();
@@ -363,7 +372,7 @@ export default function CrmLigacoes() {
                       <Icon size={14} />
                       <span>{meta.label}</span>
                       {dur && <span className="text-muted-foreground">· {dur}</span>}
-                      {c.recording_url && cat === "answered" && (
+                      {c.recording_url && (
                         <span className="text-muted-foreground">· 🎙️ Gravado</span>
                       )}
                     </div>
@@ -471,7 +480,7 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
         </div>
       )}
 
-      {call.recording_url && cat === "answered" && (
+      {call.recording_url && (
         <div className="rounded-md border p-3 bg-card">
           <div className="text-xs font-medium mb-2 flex items-center gap-1.5">🎙️ Gravação da ligação</div>
           <AudioPlayer src={call.recording_url} />
