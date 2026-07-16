@@ -13,12 +13,13 @@ import api4comLogo from "@/assets/api4com-logo.png";
 let enabledPromise: Promise<boolean> | null = null;
 function checkDialEnabled(): Promise<boolean> {
   if (!enabledPromise) {
-    enabledPromise = supabase.rpc("api4com_dial_enabled")
+    enabledPromise = Promise.resolve(supabase.rpc("api4com_dial_enabled"))
       .then(({ data, error }) => {
         if (error) { enabledPromise = null; return false; }
         return !!data;
       })
       .catch(() => { enabledPromise = null; return false; });
+
   }
   return enabledPromise;
 }
