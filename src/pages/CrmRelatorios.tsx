@@ -1103,6 +1103,14 @@ function AcoesPorDiaTab({
     setLoadError(null);
     // Fronteiras do intervalo de fetch em America/Bahia
     const { gteIso: startISO, lteIso: endISO } = rangeBahia(fetchStart, fetchEnd);
+    // Para a métrica de "Conversão em 7 dias" precisamos de agendamentos criados
+    // ATÉ 7 dias após o fim do range (mas nunca no futuro). Isso NÃO afeta os
+    // demais KPIs, que continuam filtrando por `inRange`/dias úteis do mês.
+    const apptEndISO = (() => {
+      const plus7 = new Date(new Date(endISO).getTime() + 7 * 24 * 60 * 60 * 1000);
+      const now = new Date();
+      return (plus7.getTime() > now.getTime() ? now : plus7).toISOString();
+    })();
 
 
     (async () => {
@@ -1119,12 +1127,13 @@ function AcoesPorDiaTab({
         );
 
         // Appointments criados no mês — TODOS, sem filtro de pipeline
+        // (janela estendida em +7d para permitir a conversão por coorte)
         const apptsCreated = await fetchAllPaged<any>(() =>
           supabase
             .from("crm_appointments")
             .select("id, lead_id, created_at, scheduled_date, is_rescheduled")
             .gte("created_at", startISO)
-            .lte("created_at", endISO),
+            .lte("created_at", apptEndISO),
           "id"
         );
 
