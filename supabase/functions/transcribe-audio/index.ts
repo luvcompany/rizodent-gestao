@@ -179,12 +179,13 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const messageId = body.message_id as string | undefined;
     const callId = body.call_id as string | undefined;
+    const api4comCallId = body.api4com_call_id as string | undefined;
     const force = !!body.force;
-    if (!messageId && !callId) return json({ error: "message_id ou call_id é obrigatório" }, 400);
+    if (!messageId && !callId && !api4comCallId) return json({ error: "message_id, call_id ou api4com_call_id é obrigatório" }, 400);
 
     let mediaUrl: string | null = null;
     let existingTranscription: string | null = null;
-    let sourceTable: "messages" | "whatsapp_calls" = "messages";
+    let sourceTable: "messages" | "whatsapp_calls" | "api4com_calls" = "messages";
     let sourceId = "";
 
     let agentUrl: string | null = null;
@@ -218,6 +219,20 @@ Deno.serve(async (req) => {
       leadUrl = (call as any).recording_url_lead || null;
       existingTranscription = call.transcription;
       sourceTable = "whatsapp_calls";
+      sourceId = call.id;
+    } else if (api4comCallId) {
+      const { data: call, error: callErr } = await admin
+        .from("api4com_calls")
+        .select("id, tenant_id, recording_url, transcription")
+        .eq("id", api4comCallId)
+        .maybeSingle();
+      if (callErr || !call) return json({ error: "Ligação não encontrada" }, 404);
+      if (!caller.isServiceRole && !caller.isSuperadmin && call.tenant_id !== caller.tenantId) {
+        return json({ error: "Sem permissão para esta ligação" }, 403);
+      }
+      mediaUrl = call.recording_url;
+      existingTranscription = call.transcription;
+      sourceTable = "api4com_calls";
       sourceId = call.id;
     }
 
@@ -260,7 +275,7 @@ Deno.serve(async (req) => {
     const transcriptionModel: string = (cfg as any)?.transcription_model || "google/gemini-2.5-flash";
 
     let text = "";
-    const isCallRecording = !!callPath || sourceTable === "whatsapp_calls" || mime.toLowerCase().includes("webm");
+    const isCallRecording = !!callPath || sourceTable === "whatsapp_calls" || sourceTable === "api4com_calls" || mime.toLowerCase().includes("webm");
 
     const downloadTrack = async (url: string): Promise<{ bytes: Uint8Array; mime: string } | null> => {
       try {

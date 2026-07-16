@@ -6,15 +6,16 @@ import { toast } from "sonner";
 interface Props {
   messageId?: string;
   callId?: string;
+  api4comCallId?: string;
   initialTranscription?: string | null;
 }
 
-export default function AudioTranscriptionToggle({ messageId, callId, initialTranscription }: Props) {
+export default function AudioTranscriptionToggle({ messageId, callId, api4comCallId, initialTranscription }: Props) {
   const [text, setText] = useState<string | null>(initialTranscription || null);
   const [open, setOpen] = useState(!!initialTranscription);
   const [loading, setLoading] = useState(false);
 
-  if (!messageId && !callId) return null;
+  if (!messageId && !callId && !api4comCallId) return null;
 
   const handleClick = async () => {
     if (text) {
@@ -24,7 +25,8 @@ export default function AudioTranscriptionToggle({ messageId, callId, initialTra
     setLoading(true);
     try {
       const body: Record<string, string> = {};
-      if (callId) body.call_id = callId;
+      if (api4comCallId) body.api4com_call_id = api4comCallId;
+      else if (callId) body.call_id = callId;
       else if (messageId) body.message_id = messageId;
       const { data, error } = await supabase.functions.invoke("transcribe-audio", { body });
       if (error) throw error;
