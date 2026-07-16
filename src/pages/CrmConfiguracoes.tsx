@@ -590,10 +590,11 @@ function HorarioComercialTab() {
    Telefonia (Api4Com)
    ═══════════════════════════════════════════════════ */
 function TelefoniaTab() {
-  const [status, setStatus] = useState<{ connected: boolean; email: string | null; webhook_registered: boolean } | null>(null);
+  const [status, setStatus] = useState<{ connected: boolean; email: string | null; webhook_registered: boolean; webhook_error?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ email: "", password: "" });
   const [connecting, setConnecting] = useState(false);
+  const [registering, setRegistering] = useState(false);
 
   const call = async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("api4com-connect", { body });
@@ -628,6 +629,17 @@ function TelefoniaTab() {
     catch (e: any) { toast.error(e.message); }
   };
 
+  const registerWebhook = async () => {
+    setRegistering(true);
+    try {
+      const d = await call({ action: "register_webhook" });
+      if (d.webhook_registered) toast.success("Webhook registrado! As ligações vão aparecer em Ligações.");
+      else toast.error("Ainda não deu: " + (d.error || "falha ao registrar o webhook."));
+      loadStatus();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setRegistering(false); }
+  };
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold flex items-center gap-2"><Phone size={18} /> Telefonia (Api4Com)</h3>
@@ -648,6 +660,18 @@ function TelefoniaTab() {
                 <p className="text-muted-foreground text-xs">Conta: {status.email} · Webhook: {status.webhook_registered ? "registrado" : "não registrado"}</p>
               </div>
             </div>
+            {!status.webhook_registered && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-500">Webhook não registrado</p>
+                <p className="text-xs text-muted-foreground">Sem o webhook, as ligações não aparecem automaticamente em Ligações. Clique para registrar (não precisa digitar a senha de novo).</p>
+                {status.webhook_error && (
+                  <p className="text-[11px] text-muted-foreground break-words"><b>Detalhe:</b> {status.webhook_error}</p>
+                )}
+                <Button size="sm" onClick={registerWebhook} disabled={registering}>
+                  {registering ? <Loader2 className="animate-spin mr-2" size={14} /> : <RotateCcw className="mr-2" size={14} />} Registrar webhook
+                </Button>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">Instale a <b>extensão da Api4Com no Chrome</b> e faça login com esta mesma conta. As ligações feitas por ela aparecem em <b>Ligações</b>.</p>
             <Button variant="outline" onClick={disconnect} className="text-destructive hover:text-destructive"><X size={14} className="mr-1" /> Desconectar</Button>
           </div>
