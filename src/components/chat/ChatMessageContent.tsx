@@ -49,9 +49,26 @@ function InstagramSpecialCard({
   onMediaClick?: (url: string, type: "image" | "video") => void;
 }) {
   const [imgError, setImgError] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const Icon = kind === "reel" ? Film : kind === "story" ? BookOpen : Share2;
-  const isInstagramLink = mediaUrl ? /instagram\.com\//i.test(mediaUrl) : false;
-  const canPreview = !!mediaUrl && !imgError && !isInstagramLink;
+
+  // Detecta vídeo por extensão quando o tipo não foi informado pelo backend
+  const looksLikeVideo = mediaUrl ? /\.(mp4|mov|webm|m4v)(\?|$)/i.test(mediaUrl) : false;
+  const looksLikeImage = mediaUrl ? /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(mediaUrl) : false;
+  const effectiveType: "image" | "video" | null =
+    mediaType ?? (looksLikeVideo ? "video" : looksLikeImage ? "image" : null);
+
+  const hasError = effectiveType === "video" ? videoError : imgError;
+  const canPreview = !!mediaUrl && !hasError && effectiveType !== null;
+
+  const handleOpen = () => {
+    if (!mediaUrl) return;
+    if (onMediaClick && effectiveType && !hasError) {
+      onMediaClick(mediaUrl, effectiveType);
+    } else {
+      window.open(mediaUrl, "_blank", "noopener,noreferrer");
+    }
+  };
 
   return (
     <div className="flex flex-col gap-2 max-w-[280px]">
@@ -59,55 +76,57 @@ function InstagramSpecialCard({
         <Icon size={12} />
         <span>{label}</span>
       </div>
-      {canPreview && mediaType === "video" && (
-        <div
-          className="relative cursor-pointer rounded-lg overflow-hidden bg-black/5"
-          onClick={() => onMediaClick?.(mediaUrl!, "video")}
+      {canPreview && effectiveType === "video" && (
+        <button
+          type="button"
+          className="relative cursor-pointer rounded-lg overflow-hidden bg-black/5 group text-left"
+          onClick={handleOpen}
         >
           <video
             src={mediaUrl!}
             preload="metadata"
             className="w-full max-h-64 object-cover"
-            onError={() => setImgError(true)}
+            onError={() => setVideoError(true)}
           />
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-background/80 flex items-center justify-center group-hover:scale-110 transition-transform">
               <span className="text-foreground text-lg ml-0.5">▶</span>
             </div>
           </div>
-        </div>
+        </button>
       )}
-      {canPreview && mediaType === "image" && (
+      {canPreview && effectiveType === "image" && (
         <img
           src={mediaUrl!}
           alt={label}
           className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
           onError={() => setImgError(true)}
-          onClick={() => onMediaClick?.(mediaUrl!, "image")}
+          onClick={handleOpen}
         />
       )}
-      {(!canPreview || isInstagramLink) && (
+      {!canPreview && (
         <div className="rounded-lg border border-border bg-muted/40 p-3 flex items-center gap-2 text-xs text-muted-foreground">
           <Icon size={20} className="flex-shrink-0" />
           <span className="flex-1">
-            {imgError
+            {hasError
               ? "Mídia indisponível (expirada no Instagram)"
               : mediaUrl
-                ? "Abrir no Instagram"
+                ? "Prévia não disponível"
                 : "Mídia não disponível"}
           </span>
         </div>
       )}
       {mediaUrl && (
-        <a
-          href={mediaUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleOpen();
+          }}
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline self-start"
         >
           <ExternalLink size={12} /> Abrir mídia
-        </a>
+        </button>
       )}
       {caption && <p className="text-sm whitespace-pre-wrap break-words">{caption}</p>}
     </div>
