@@ -93,13 +93,23 @@ Deno.serve(async (req) => {
 
     if (action === "status") {
       const { data: cfg } = await admin.from("api4com_config")
-        .select("account_email, connected_at, webhook_registered, webhook_last_error").eq("tenant_id", tenantId).maybeSingle();
+        .select("account_email, connected_at, webhook_registered, webhook_last_error, ramal").eq("tenant_id", tenantId).maybeSingle();
       return json({
         connected: !!cfg?.connected_at,
         email: cfg?.account_email ?? null,
         webhook_registered: !!cfg?.webhook_registered,
         webhook_error: cfg?.webhook_last_error ?? null,
+        ramal: cfg?.ramal ?? null,
       });
+    }
+
+    if (action === "set_ramal") {
+      const ramal = String(body.ramal ?? "").trim();
+      const { error: rErr } = await admin.from("api4com_config")
+        .update({ ramal: ramal || null, updated_at: new Date().toISOString() })
+        .eq("tenant_id", tenantId);
+      if (rErr) return json({ error: "Falha ao salvar o ramal: " + rErr.message }, 500);
+      return json({ ok: true, ramal: ramal || null });
     }
 
     if (action === "disconnect") {

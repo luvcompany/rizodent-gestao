@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     const startedAt = payload.startedAt ?? payload.started_at ?? null;
     const answeredAt = payload.answeredAt ?? payload.answered_at ?? null;
     const endedAt = payload.endedAt ?? payload.ended_at ?? null;
-    const metaLeadId = payload?.metadata?.entityId ?? payload?.metadata?.lead_id ?? null;
+    const metaLeadId = payload?.metadata?.leadId ?? payload?.metadata?.entityId ?? payload?.metadata?.lead_id ?? null;
     const callIdVal = payload.callId ?? payload.uniqueid ?? payload.id ?? null;
 
     // Só registramos no fim da chamada (hangup). channel-answer só confirmamos.

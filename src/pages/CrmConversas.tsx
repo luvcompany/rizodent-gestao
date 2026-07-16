@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useLeadLabels } from "@/hooks/useLeadLabels";
 import { getLeadChannel } from "@/lib/leadChannel";
 import { formatPhoneDisplayBR, toE164BR } from "@/lib/phoneUtils";
+import Api4ComDialButton from "@/components/chat/Api4ComDialButton";
 import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
@@ -1319,6 +1320,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-emerald-600" /> Ligar via WhatsApp</span>
                     </TooltipContent>
                   </Tooltip>
+                )}
+                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
+                  <Api4ComDialButton leadId={selectedLead.id} phone={selectedLead.phone} />
                 )}
                 {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
                   <Tooltip delayDuration={200}>
