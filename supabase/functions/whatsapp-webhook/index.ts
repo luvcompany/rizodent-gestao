@@ -346,7 +346,7 @@ async function executeWebhookAction(
         }
         break;
       case "add_tag": {
-        const tag = config.tag as string;
+        const tag = (config.tag ?? config.tag_name) as string;
         if (tag) {
           const { data: ld } = await supabase.from("crm_leads").select("tags").eq("id", leadId).single();
           const existing = (ld?.tags || []) as string[];

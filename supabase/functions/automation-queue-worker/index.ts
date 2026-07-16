@@ -301,7 +301,8 @@ async function sendAction(
       return;
     }
     case "add_tag": {
-      const tag = config.tag as string;
+      // A UI salva em `tag_name`; aceitamos ambos (o engine já fazia isso).
+      const tag = (config.tag ?? config.tag_name) as string;
       if (!tag) return;
       const { data: lead } = await supabase.from("crm_leads").select("tags").eq("id", leadId).maybeSingle();
       const existing = (lead?.tags || []) as string[];
