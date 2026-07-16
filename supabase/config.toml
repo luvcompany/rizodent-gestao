@@ -30,6 +30,11 @@ verify_jwt = false
 [functions.generic-lead-webhook]
 verify_jwt = false
 
+# Recebe callbacks de telefonia da Api4Com (channel-hangup). Autenticação via
+# segredo por tenant (x-webhook-secret ou ?secret=) validado dentro da função.
+[functions.api4com-webhook]
+verify_jwt = false
+
 # Callback do OAuth do Instagram/Meta — chamado pelo navegador do usuário após
 # autorizar; não pode carregar JWT do app. Validação de CSRF via state.
 [functions.instagram-oauth-callback]
