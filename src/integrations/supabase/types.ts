@@ -3905,6 +3905,19 @@ export type Database = {
       }
       admin_platform_metrics: { Args: never; Returns: Json }
       admin_tenant_metrics: { Args: { _tenant_id: string }; Returns: Json }
+      admin_tenant_users: {
+        Args: { _tenant_id: string }
+        Returns: {
+          cargo: string
+          email: string
+          id: string
+          is_blocked: boolean
+          last_login_at: string
+          must_change_password: boolean
+          nome: string
+          role: string
+        }[]
+      }
       backup_list_tables: {
         Args: never
         Returns: {
