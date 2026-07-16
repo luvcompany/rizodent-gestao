@@ -36,8 +36,35 @@ type CallRow = {
   transcription: string | null;
   initiated_by: string | null;
   answered_by: string | null;
+  source: "whatsapp" | "api4com";
   lead?: { id: string; name: string | null; phone: string | null } | null;
 };
+
+// Normaliza uma linha de api4com_calls para o formato unificado de CallRow.
+function mapApi4comCall(r: any): CallRow {
+  const s = String(r.status || "").toLowerCase();
+  const mappedStatus = s === "answered" ? "completed" : s === "no-answer" ? "missed" : s;
+  return {
+    id: r.id,
+    tenant_id: r.tenant_id,
+    lead_id: r.lead_id ?? null,
+    from_phone: r.from_phone ?? null,
+    to_phone: r.to_phone ?? null,
+    direction: r.direction || "outbound",
+    status: mappedStatus,
+    started_at: r.started_at ?? r.created_at ?? null,
+    connected_at: r.answered_at ?? null,
+    ended_at: r.ended_at ?? null,
+    duration_seconds: r.duration_seconds ?? null,
+    error_message: null,
+    recording_url: r.recording_url ?? null,
+    transcription: r.transcription ?? null,
+    initiated_by: null,
+    answered_by: null,
+    source: "api4com",
+    lead: r.lead ?? null,
+  };
+}
 
 const FILTERS: { key: CallCategory | "all"; label: string }[] = [
   { key: "all", label: "Todas" },
@@ -107,32 +134,52 @@ export default function CrmLigacoes() {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("whatsapp_calls")
-        .select(`
-          id, tenant_id, lead_id, from_phone, to_phone, direction, status,
-          started_at, connected_at, ended_at, duration_seconds, error_message,
-          recording_url, transcription, initiated_by, answered_by,
-          lead:crm_leads!whatsapp_calls_lead_id_fkey ( id, name, phone )
-        `)
-        .order("started_at", { ascending: false, nullsFirst: false })
-        .limit(500);
+      const [wa, api4com] = await Promise.all([
+        supabase
+          .from("whatsapp_calls")
+          .select(`
+            id, tenant_id, lead_id, from_phone, to_phone, direction, status,
+            started_at, connected_at, ended_at, duration_seconds, error_message,
+            recording_url, transcription, initiated_by, answered_by,
+            lead:crm_leads!whatsapp_calls_lead_id_fkey ( id, name, phone )
+          `)
+          .order("started_at", { ascending: false, nullsFirst: false })
+          .limit(500),
+        supabase
+          .from("api4com_calls")
+          .select(`
+            id, tenant_id, lead_id, from_phone, to_phone, direction, status,
+            started_at, answered_at, ended_at, duration_seconds,
+            recording_url, transcription, created_at,
+            lead:crm_leads!api4com_calls_lead_id_fkey ( id, name, phone )
+          `)
+          .order("created_at", { ascending: false })
+          .limit(500),
+      ]);
       if (cancelled) return;
-      if (error) {
-        console.error("[ligacoes] load error:", error);
+      if (wa.error) {
+        console.error("[ligacoes] whatsapp load error:", wa.error);
         toast.error("Erro ao carregar ligações");
-      } else {
-        setCalls((data as any) || []);
       }
+      // api4com pode não estar configurado ainda — silencioso se der erro.
+      if (api4com.error) console.warn("[ligacoes] api4com load:", api4com.error?.message);
+
+      const waRows: CallRow[] = ((wa.data as any) || []).map((r: any) => ({ ...r, source: "whatsapp" as const }));
+      const apiRows: CallRow[] = ((api4com.data as any) || []).map(mapApi4comCall);
+      const merged = [...waRows, ...apiRows].sort((a, b) => {
+        const ta = a.started_at ? new Date(a.started_at).getTime() : 0;
+        const tb = b.started_at ? new Date(b.started_at).getTime() : 0;
+        return tb - ta;
+      });
+      setCalls(merged);
       setLoading(false);
     }
     load();
 
     const channel = supabase
-      .channel("whatsapp_calls_ligacoes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_calls" }, () => {
-        load();
-      })
+      .channel("ligacoes_all")
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_calls" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "api4com_calls" }, () => load())
       .subscribe();
 
     return () => {
@@ -298,8 +345,15 @@ export default function CrmLigacoes() {
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`font-medium truncate ${cat === "missed" || cat === "rejected" ? "text-destructive" : ""}`}>
-                        {name}
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <span className={`font-medium truncate ${cat === "missed" || cat === "rejected" ? "text-destructive" : ""}`}>
+                          {name}
+                        </span>
+                        {c.source === "api4com" && (
+                          <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                            Telefonia
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs text-muted-foreground flex-shrink-0">
                         {when ? formatDistanceToNow(when, { locale: ptBR, addSuffix: true }) : ""}
@@ -396,6 +450,9 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
         <Icon size={16} />
         <span className="font-medium">{meta.label}</span>
         {call.duration_seconds ? <span className="text-muted-foreground">· {formatDuration(call.duration_seconds)}</span> : null}
+        <span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded border bg-muted text-muted-foreground">
+          {call.source === "api4com" ? "Telefonia" : "WhatsApp"}
+        </span>
       </div>
 
       <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
@@ -418,7 +475,11 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
         <div className="rounded-md border p-3 bg-card">
           <div className="text-xs font-medium mb-2 flex items-center gap-1.5">🎙️ Gravação da ligação</div>
           <AudioPlayer src={call.recording_url} />
-          <AudioTranscriptionToggle callId={call.id} initialTranscription={call.transcription} />
+          {call.source === "api4com" ? (
+            <AudioTranscriptionToggle api4comCallId={call.id} initialTranscription={call.transcription} />
+          ) : (
+            <AudioTranscriptionToggle callId={call.id} initialTranscription={call.transcription} />
+          )}
         </div>
       )}
 
