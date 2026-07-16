@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Upload, Bell, CheckCircle2, Ban, RotateCcw, Trash2, MessageSquare, Clock } from "lucide-react";
+import { Upload, Bell, CheckCircle2, Ban, RotateCcw, Trash2, MessageSquare, Clock, Phone, Loader2, X } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -585,22 +586,109 @@ function HorarioComercialTab() {
   );
 }
 
+/* ═══════════════════════════════════════════════════
+   Telefonia (Api4Com)
+   ═══════════════════════════════════════════════════ */
+function TelefoniaTab() {
+  const [status, setStatus] = useState<{ connected: boolean; email: string | null; webhook_registered: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [connecting, setConnecting] = useState(false);
+
+  const call = async (body: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke("api4com-connect", { body });
+    if (error) throw new Error(error.message || "Erro na telefonia");
+    if ((data as any)?.error) throw new Error((data as any).error);
+    return data as any;
+  };
+
+  const loadStatus = async () => {
+    setLoading(true);
+    try { setStatus(await call({ action: "status" })); }
+    catch (e: any) { toast.error(e.message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { loadStatus(); }, []);
+
+  const connect = async () => {
+    if (!form.email.trim() || !form.password) { toast.error("Informe e-mail e senha da Api4Com."); return; }
+    setConnecting(true);
+    try {
+      const d = await call({ action: "connect", email: form.email.trim(), password: form.password });
+      toast.success(d.webhook_registered ? "Api4Com conectada!" : "Conectada (o registro do webhook falhou — verificar depois).");
+      setForm({ email: "", password: "" });
+      loadStatus();
+    } catch (e: any) { toast.error(e.message); }
+    finally { setConnecting(false); }
+  };
+
+  const disconnect = async () => {
+    if (!confirm("Desconectar a telefonia Api4Com desta clínica?")) return;
+    try { await call({ action: "disconnect" }); toast.success("Desconectada."); loadStatus(); }
+    catch (e: any) { toast.error(e.message); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold flex items-center gap-2"><Phone size={18} /> Telefonia (Api4Com)</h3>
+      <p className="text-sm text-muted-foreground">
+        Ligações por telefone (voz) integradas ao CRM — <b>separado</b> da chamada por WhatsApp, que continua normal.
+        A ligação é feita pela <b>extensão da Api4Com no Chrome</b>; as chamadas (com gravação e transcrição) aparecem
+        sozinhas na aba <b>Ligações</b>. Conecte a conta Api4Com da clínica.
+      </p>
+      <Card className="p-4 space-y-4 max-w-xl">
+        {loading ? (
+          <div className="text-muted-foreground text-sm"><Loader2 className="inline animate-spin mr-2" size={14} /> Carregando…</div>
+        ) : status?.connected ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-500/5 p-3">
+              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+              <div className="text-sm">
+                <p className="font-medium text-foreground">Conectada</p>
+                <p className="text-muted-foreground text-xs">Conta: {status.email} · Webhook: {status.webhook_registered ? "registrado" : "não registrado"}</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Instale a <b>extensão da Api4Com no Chrome</b> e faça login com esta mesma conta. As ligações feitas por ela aparecem em <b>Ligações</b>.</p>
+            <Button variant="outline" onClick={disconnect} className="text-destructive hover:text-destructive"><X size={14} className="mr-1" /> Desconectar</Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Entre com o <b>login da sua conta Api4Com</b> (o mesmo do painel deles). O token fica guardado com segurança no servidor — nunca aparece no navegador.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1"><Label>E-mail Api4Com</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="seu@email.com" /></div>
+              <div className="space-y-1"><Label>Senha Api4Com</Label><Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" /></div>
+            </div>
+            <Button onClick={connect} disabled={connecting}>
+              {connecting ? <Loader2 className="animate-spin mr-2" size={16} /> : <Phone className="mr-2" size={16} />} Conectar Api4Com
+            </Button>
+            <p className="text-[11px] text-muted-foreground">Precisa de uma conta na Api4Com (serviço de voz, pago). A ligação por WhatsApp não é afetada.</p>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 export default function CrmConfiguracoes() {
+  const { userRole } = useAuth();
+  const isAdmin = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Configurações</h1>
-      <p className="text-muted-foreground">Horário comercial, importação de dados, notificações, leads bloqueados e lixeira.</p>
+      <p className="text-muted-foreground">Horário comercial, importação de dados, notificações, telefonia, leads bloqueados e lixeira.</p>
       <Tabs defaultValue="horario" className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="horario"><Clock size={14} className="mr-1" /> Horário</TabsTrigger>
           <TabsTrigger value="import"><Upload size={14} className="mr-1" /> Importação</TabsTrigger>
           <TabsTrigger value="notifications"><Bell size={14} className="mr-1" /> Notificações</TabsTrigger>
+          {isAdmin && <TabsTrigger value="telefonia"><Phone size={14} className="mr-1" /> Telefonia</TabsTrigger>}
           <TabsTrigger value="blocked"><Ban size={14} className="mr-1" /> Bloqueados</TabsTrigger>
           <TabsTrigger value="lixeira"><Trash2 size={14} className="mr-1" /> Lixeira</TabsTrigger>
         </TabsList>
         <TabsContent value="horario"><HorarioComercialTab /></TabsContent>
         <TabsContent value="import"><ImportTab /></TabsContent>
         <TabsContent value="notifications"><NotificationsTab /></TabsContent>
+        {isAdmin && <TabsContent value="telefonia"><TelefoniaTab /></TabsContent>}
         <TabsContent value="blocked"><BlockedTab /></TabsContent>
         <TabsContent value="lixeira"><LixeiraTab /></TabsContent>
       </Tabs>
