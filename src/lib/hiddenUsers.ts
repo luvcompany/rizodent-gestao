@@ -12,3 +12,7 @@ export function isHiddenUser(id: string | null | undefined): boolean {
 export function filterVisibleUsers<T extends { id: string }>(rows: T[] | null | undefined): T[] {
   return (rows ?? []).filter((r) => !HIDDEN_USER_IDS.has(r.id));
 }
+
+/** Filtro PostgREST `.not('id','in','(...)')` para excluir usuários ocultos. */
+export const HIDDEN_USER_IDS_PG = `(${[...HIDDEN_USER_IDS].join(",")})`;
+
