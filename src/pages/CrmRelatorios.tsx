@@ -1247,24 +1247,44 @@ function AcoesPorDiaTab({
     let falaramTotal = 0;
     falaramByDay.forEach(s => { falaramTotal += s.size; });
 
-    // Leads que criaram agendamento (não reagendado) por dia útil — para a taxa
-    // mensal usar a MESMA lógica do card diário: interseção falou ∩ agendou no dia.
-    const agendLeadsByDay = new Map<string, Set<string>>();
+    // Leads que criaram agendamento (não reagendado) por dia útil — usado só
+    // para os totais mensais (agendTotal/reagTotal). A taxa mensal agora usa
+    // janela de 7 dias por coorte.
     let agendTotal = 0, reagTotal = 0;
     apptsMonth.forEach(a => {
       const k = dayKeyBahia(a.created_at);
       if (!workingSet.has(k)) return;
       if (a.is_rescheduled === true) { reagTotal++; return; }
       agendTotal++;
-      if (!agendLeadsByDay.has(k)) agendLeadsByDay.set(k, new Set());
-      agendLeadsByDay.get(k)!.add(a.lead_id);
     });
 
+    // Taxa mensal por coorte de 7 dias: para cada par (dia útil, lead) que
+    // falou, converteu se existe agendamento (não-reagendado) dele em até
+    // 7 dias corridos após a PRIMEIRA fala dele naquele dia.
+    const SEVEN_D_MS = 7 * 24 * 60 * 60 * 1000;
+    const firstInboundByDayLead = new Map<string, number>();
+    inboundDays.forEach(m => {
+      const k = dayKeyBahia(m.created_at);
+      if (!workingSet.has(k)) return;
+      const key = `${k}|${m.lead_id}`;
+      const t = new Date(m.created_at).getTime();
+      const prev = firstInboundByDayLead.get(key);
+      if (prev === undefined || t < prev) firstInboundByDayLead.set(key, t);
+    });
+    const apptsByLead7d = new Map<string, number[]>();
+    apptsMonth.forEach(a => {
+      if (a.is_rescheduled === true) return;
+      const arr = apptsByLead7d.get(a.lead_id) ?? [];
+      arr.push(new Date(a.created_at).getTime());
+      apptsByLead7d.set(a.lead_id, arr);
+    });
     let falaramEAgendaramTotal = 0;
-    falaramByDay.forEach((leadsSet, k) => {
-      const ag = agendLeadsByDay.get(k);
-      if (!ag) return;
-      leadsSet.forEach(id => { if (ag.has(id)) falaramEAgendaramTotal++; });
+    firstInboundByDayLead.forEach((firstMs, key) => {
+      const leadId = key.split("|")[1];
+      const appts = apptsByLead7d.get(leadId);
+      if (!appts) return;
+      const janelaFim = firstMs + SEVEN_D_MS;
+      if (appts.some(t => t >= firstMs && t <= janelaFim)) falaramEAgendaramTotal++;
     });
 
     return {
@@ -1273,7 +1293,7 @@ function AcoesPorDiaTab({
       avgReagendados: reagTotal / workingDays.length,
       totalDias: workingDays.length,
       falaramTotal,
-      // Mesmo numerador/denominador do card diário (leads distintos, interseção por dia)
+      // Coorte de 7 dias: leads distintos por dia que falaram e agendaram em ≤7d.
       taxaMensal: falaramTotal > 0 ? (falaramEAgendaramTotal / falaramTotal) * 100 : 0,
     };
   }, [apptsMonth, inboundDays, monthStart, monthEnd, holidaySet]);
