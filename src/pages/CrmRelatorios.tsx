@@ -1395,9 +1395,20 @@ function AcoesPorDiaTab({
 
         {falaramDia.size > 0 && (
           <div className="rounded-lg bg-secondary/40 p-4 text-center">
-            <span className="text-sm text-muted-foreground">Taxa de conversão (falaram → agendaram {isAggregated ? "no período" : "no mesmo dia"})</span>
-            <p className="text-3xl font-bold text-primary mt-1">{((agendadosDosQueFalaram / falaramDia.size) * 100).toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">{agendadosDosQueFalaram} de {falaramDia.size} lead(s) que falaram {isAggregated ? "no período" : "no dia"}</p>
+            <span className="text-sm text-muted-foreground">Conversão em 7 dias</span>
+            <p className="text-3xl font-bold text-primary mt-1">{conv7d.pct.toFixed(1)}%</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {conv7d.count} de {conv7d.total} leads que falaram{isAggregated ? " no período" : ""} agendaram em até 7 dias
+            </p>
+            {conv7d.imaturos > 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                ⏳ Parcial — {conv7d.imaturos} lead(s) ainda dentro da janela de 7 dias; o número tende a subir
+              </p>
+            )}
+            <div className="border-t border-border/50 my-2" />
+            <p className="text-xs text-muted-foreground">
+              No mesmo dia: {((agendadosDosQueFalaram / falaramDia.size) * 100).toFixed(1)}% — mede a agilidade da 1ª resposta, não o resultado final
+            </p>
           </div>
         )}
       </Card>
