@@ -1101,8 +1101,9 @@ function AcoesPorDiaTab({
     let alive = true;
     setLoading(true);
     setLoadError(null);
-    // Fronteiras do mês em America/Bahia
-    const { gteIso: startISO, lteIso: endISO } = rangeBahia(monthStart, monthEnd);
+    // Fronteiras do intervalo de fetch em America/Bahia
+    const { gteIso: startISO, lteIso: endISO } = rangeBahia(fetchStart, fetchEnd);
+
 
     (async () => {
       try {
