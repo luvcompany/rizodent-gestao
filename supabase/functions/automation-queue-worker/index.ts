@@ -17,6 +17,15 @@ const PARALLEL = 8;
 // move_stage / add_tag / notify_* são internas e podem rodar a qualquer hora.
 const MESSAGE_ACTIONS = new Set(["send_template", "send_bot", "send_audio", "send_file"]);
 
+// Ações de mensagem LIVRE (não-template): o WhatsApp/Instagram só permite enviar
+// dentro da janela de 24h desde a última resposta do lead. Fora da janela, o envio
+// falha (erro 131047). O TEMPLATE é o único que passa fora da janela — por isso não
+// entra aqui. send_bot também NÃO entra: o bot pode começar com um template e tem
+// seu próprio guard por-mensagem (no bot-engine). Guard: não tentamos estas ações
+// se a janela estiver fechada.
+const FREEFORM_ACTIONS = new Set(["send_audio", "send_file"]);
+const WINDOW_MS = 24 * 60 * 60 * 1000;
+
 // Janela comercial (BR = UTC-3): seg–sáb 08:00–20:00 local.
 // Retorna ISO do próximo horário permitido, ou null se JÁ estamos na janela.
 function nextCommercialFireAt(now: Date = new Date()): string | null {
@@ -53,7 +62,7 @@ Deno.serve(async (req) => {
   }
 
 
-  const stats = { processed: 0, sent: 0, failed: 0, skipped: 0, deferred: 0 };
+  const stats = { processed: 0, sent: 0, failed: 0, skipped: 0, deferred: 0, window_closed: 0 };
 
   try {
     // 1. Recover items stuck in "processing" for > 10 min back to pending
@@ -116,12 +125,34 @@ Deno.serve(async (req) => {
       try {
         const { data: lead } = await supabase
           .from("crm_leads")
-          .select("phone, is_blocked")
+          .select("phone, is_blocked, last_inbound_at")
           .eq("id", item.lead_id)
           .maybeSingle();
 
         if (!lead) throw new Error("lead not found");
         if (lead.is_blocked) throw new Error("lead blocked");
+
+        // GUARD DE JANELA DE 24h: mensagens LIVRES (áudio/bot/arquivo) só saem se o
+        // lead respondeu nas últimas 24h. Fora da janela o WhatsApp recusa (131047)
+        // e cria uma mensagem "falhada" na conversa. Aqui cancelamos antes de tentar.
+        // Template NÃO entra nesse guard (passa fora da janela).
+        if (FREEFORM_ACTIONS.has(item.action_type)) {
+          const lastInbound = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
+          const windowOpen = lastInbound > 0 && (Date.now() - lastInbound) < WINDOW_MS;
+          if (!windowOpen) {
+            await supabase
+              .from("crm_automation_queue")
+              .update({
+                status: "cancelled",
+                error_message: "Janela de 24h fechada — mensagem livre não enviada (o lead precisa ter respondido nas últimas 24h). Use um template para reabrir a conversa.",
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", item.id);
+            stats.window_closed++;
+            console.log(`[queue-worker] item ${item.id} (${item.action_type}) fora da janela de 24h — cancelado`);
+            return;
+          }
+        }
 
         await sendAction(
           supabase,
