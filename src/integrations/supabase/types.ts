@@ -630,6 +630,39 @@ export type Database = {
           },
         ]
       }
+      api4com_webhook_log: {
+        Row: {
+          body: Json | null
+          content_type: string | null
+          id: string
+          method: string | null
+          note: string | null
+          query: string | null
+          received_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          body?: Json | null
+          content_type?: string | null
+          id?: string
+          method?: string | null
+          note?: string | null
+          query?: string | null
+          received_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          body?: Json | null
+          content_type?: string | null
+          id?: string
+          method?: string | null
+          note?: string | null
+          query?: string | null
+          received_at?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       bot_execution_logs: {
         Row: {
           action: string
