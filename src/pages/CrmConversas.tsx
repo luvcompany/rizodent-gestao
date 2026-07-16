@@ -1059,7 +1059,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-medium text-foreground truncate block">{lead.name}</span>
-                          <span className="text-[10px] text-muted-foreground">{lead.phone || "Sem telefone"}</span>
+                          <span className="text-[10px] text-muted-foreground">{lead.phone ? formatPhoneDisplayBR(lead.phone) : "Sem telefone"}</span>
                         </div>
                       </button>
                     ))}
@@ -1517,7 +1517,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       <p className="text-xs text-muted-foreground">
                         {selectedLead.instagram_username
                           ? `@${selectedLead.instagram_username}`
-                          : selectedLead.phone || "Sem telefone"}
+                          : selectedLead.phone
+                            ? <a href={`tel:${toE164BR(selectedLead.phone)}`} className="hover:text-foreground hover:underline" title="Ligar (via extensão de telefonia)">{formatPhoneDisplayBR(selectedLead.phone)}</a>
+                            : "Sem telefone"}
                       </p>
                     </div>
                   </div>
