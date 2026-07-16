@@ -551,6 +551,7 @@ export type Database = {
           gateway: string | null
           tenant_id: string
           updated_at: string
+          webhook_last_error: string | null
           webhook_registered: boolean
           webhook_secret: string | null
         }
@@ -562,6 +563,7 @@ export type Database = {
           gateway?: string | null
           tenant_id: string
           updated_at?: string
+          webhook_last_error?: string | null
           webhook_registered?: boolean
           webhook_secret?: string | null
         }
@@ -573,6 +575,7 @@ export type Database = {
           gateway?: string | null
           tenant_id?: string
           updated_at?: string
+          webhook_last_error?: string | null
           webhook_registered?: boolean
           webhook_secret?: string | null
         }
