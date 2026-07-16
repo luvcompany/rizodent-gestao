@@ -446,7 +446,7 @@ export default function ChatMessageContent({
   const igSpecial = detectInstagramSpecial(message.content);
   if (igSpecial) {
     const mediaType: "image" | "video" | null =
-      message.type === "video" ? "video" : message.type === "image" || igSpecial.kind === "story" ? "image" : null;
+      message.type === "video" ? "video" : message.type === "image" ? "image" : null;
     return (
       <InstagramSpecialCard
         kind={igSpecial.kind}
