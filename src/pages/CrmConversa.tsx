@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cleanTemplateName } from "@/lib/templateUtils";
+import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 
 import ChatInput from "@/components/chat/ChatInput";
 import AiSuggestionStrip from "@/components/chat/AiSuggestionStrip";
@@ -148,7 +149,7 @@ export default function CrmConversa() {
 
     const profilesPromise = profilesCacheConv.data && Date.now() - profilesCacheConv.timestamp < PROFILES_CACHE_TTL
       ? Promise.resolve({ data: profilesCacheConv.data })
-      : supabase.from("profiles").select("id, nome");
+      : supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG);
 
     // Use SECURITY DEFINER RPC to bypass crm_leads RLS for leads in restricted
     // pipelines (e.g. Pós-Venda). Falls back to direct query if RPC unavailable.
