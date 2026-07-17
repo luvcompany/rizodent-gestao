@@ -3,13 +3,39 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
-const ALERT_SOUND_URL = "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVYGAACAgICAgICAgICAgICAgICAgICAgICAgHx8fHx8gICAgICEhISEhISEhISEhISIiIiIiIiIiIiIjIyMjIyMjIyMjIyQkJCQkJCQkJCQlJSUlJSUlJSUlJiYmJiYmJiYmJicnJycnJycnJycnKCgoKCgoKCgoKCkpKSkpKSkpKSkqKioqKioqKioqKysrKysrKysrKywsLCwsLCwsLCwtLS0tLS0tLS0tLi4uLi4uLi4uLi8vLy8vLy8vLy8wMDAwMDAwMDAwMTExMTExMTExMTIyMjIyMjIyMjIzMzMzMzMzMzMzNDQ0NDQ0NDQ0NDU1NTU1NTU1NTU2NjY2NjY2NjY2Nzc3Nzc3Nzc3Nzg4ODg4ODg4ODg5OTk5OTk5OTk5Ojo6Ojo6Ojo6Ojs7Ozs7Ozs7Ozs8PDw8PDw8PDw8PT09PT09PT09PT4+Pj4+Pj4+Pj4/Pz8/Pz8/Pz8/QEBAQEBAQEBAQEFBQUFBQUFBQUFCQkJCQkJCQkJCQ0NDQ0NDQ0NDQ0REREREREREREVFRUVFRUVFRUVGRkZGRkZGRkZGR0dHR0dHR0dHR0hISEhISEhISElJSUlJSUlJSUlKSkpKSkpKSkpKS0tLS0tLS0tLTExMTExMTExMTE1NTU1NTU1NTU5OTk5OTk5OTk9PT09PT09PT1BQUFBQUFBQUFBQUFBQUFBQUFBQUE9PT09PT09PTk5OTk5OTk5OTExMTExMTExMS0tLS0tLS0tLSkpKSkpKSkpKSUlJSUlJSUlJSEhISEhISEhIR0dHR0dHR0dHRkZGRkZGRkZGRUVFRUVFRUVFREREREREREREQ0NDQ0NDQ0NDQkJCQkJCQkJCQUFBQUFBQUFBQEBAQEBAQEBAQD8/Pz8/Pz8/Pz4+Pj4+Pj4+Pj09PT09PT09PT08PDw8PDw8PDw7Ozs7Ozs7Ozs6Ojo6Ojo6Ojo5OTk5OTk5OTk4ODg4ODg4ODg3Nzc3Nzc3Nzc2NjY2NjY2NjY1NTU1NTU1NTU0NDQ0NDQ0NDQzMzMzMzMzMzMyMjIyMjIyMjIxMTExMTExMTEwMDAwMDAwMDAvLy8vLy8vLy8uLi4uLi4uLi4tLS0tLS0tLS0sLCwsLCwsLCwrKysrKysrKysqKioqKioqKioqKSkpKSkpKSkpKCgoKCgoKCgoJycnJycnJycnJiYmJiYmJiYmJSUlJSUlJSUlJCQkJCQkJCQkIyMjIyMjIyMjIiIiIiIiIiIiISEhISEhISEhICAgICAgICAggB8fHx8fHx8fHx4eHh4eHh4eHh0dHR0dHR0dHRwcHBwcHBwcHBsbGxsbGxsbGxoaGhoaGhoaGhkZGRkZGRkZGRgYGBgYGBgYGBcXFxcXFxcXFxYWFhYWFhYWFhUVFRUVFRUVFRQUFBQUFBQUFBMTExMTExMTExISEhISEhISEhERERERERERERAQEBAQEBAQEA8PDw8PDw8PDw4ODg4ODg4ODg0NDQ0NDQ0NDQwMDAwMDAwMDAsMDAwMDAwMDAwNDQ0NDQ0NDQ0ODg4ODg4ODg4PDw8PDw8PDw8QEBAQEBAQEBARERERERERERESERISERISERISERISERISERISERISERISERISERISERISERQ0NDQ0NDQ0NDFBQUFBQUFBQUFBUVFRUVFRUVFRYUFBQUFBQUFBUXFRUV";
 
 function playAlertSound() {
   try {
-    const audio = new Audio(ALERT_SOUND_URL);
-    audio.volume = 0.5;
-    audio.play().catch(() => {});
+    const AC = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const master = ctx.createGain();
+    master.gain.value = 0.5;
+    master.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    // Chime suave "ding-dong" — duas notas em senoide
+    const notes: Array<{ freq: number; start: number; dur: number }> = [
+      { freq: 880, start: 0.0, dur: 0.45 },
+      { freq: 659.25, start: 0.28, dur: 0.65 },
+    ];
+
+    notes.forEach(({ freq, start, dur }) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      osc.connect(g);
+      g.connect(master);
+      const t0 = now + start;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.05);
+    });
+
+    setTimeout(() => { try { ctx.close(); } catch {} }, 1500);
   } catch {}
 }
 
