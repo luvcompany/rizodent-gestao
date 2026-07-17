@@ -7,9 +7,36 @@ const ALERT_SOUND_URL = "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQ
 
 function playAlertSound() {
   try {
-    const audio = new Audio(ALERT_SOUND_URL);
-    audio.volume = 0.5;
-    audio.play().catch(() => {});
+    const AC = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const master = ctx.createGain();
+    master.gain.value = 0.5;
+    master.connect(ctx.destination);
+
+    const now = ctx.currentTime;
+    // Chime suave "ding-dong" — duas notas em senoide
+    const notes: Array<{ freq: number; start: number; dur: number }> = [
+      { freq: 880, start: 0.0, dur: 0.45 },
+      { freq: 659.25, start: 0.28, dur: 0.65 },
+    ];
+
+    notes.forEach(({ freq, start, dur }) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      osc.connect(g);
+      g.connect(master);
+      const t0 = now + start;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.5, t0 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.05);
+    });
+
+    setTimeout(() => { try { ctx.close(); } catch {} }, 1500);
   } catch {}
 }
 
