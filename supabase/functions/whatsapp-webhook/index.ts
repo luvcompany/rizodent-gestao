@@ -292,6 +292,17 @@ function inferCidadeFromAdAccount(...sources: Array<string | null | undefined>):
 }
 
 // Centralized server-side action executor — always awaits to prevent runtime shutdown
+// Descobre o tipo de mídia (mime do upload; se faltar, pela extensão da URL), para
+// o WhatsApp receber vídeo como VÍDEO (toca no chat) em vez de documento.
+function detectMediaType(url: string, mime?: string): "video" | "image" | "audio" | "document" {
+  const m = String(mime || "").toLowerCase();
+  const ext = String(url || "").split("?")[0].split(".").pop()?.toLowerCase() || "";
+  if (m.startsWith("video/") || ["mp4", "mov", "3gp"].includes(ext)) return "video";
+  if (m.startsWith("image/") || ["jpg", "jpeg", "png", "webp"].includes(ext)) return "image";
+  if (m.startsWith("audio/") || ["ogg", "opus", "mp3", "m4a", "aac", "wav"].includes(ext)) return "audio";
+  return "document";
+}
+
 async function executeWebhookAction(
   supabase: any,
   supabaseUrl: string,
@@ -338,9 +349,14 @@ async function executeWebhookAction(
         break;
       case "send_file":
         if (config.file_url && phone) {
+          // Vídeo/imagem/áudio vão pelo tipo real (vídeo toca no chat, não vira documento).
+          const fileMediaType = detectMediaType(config.file_url as string, config.file_mime as string);
           const r = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
             method: "POST", headers,
-            body: JSON.stringify({ lead_id: leadId, to: phone, type: "document", media_url: config.file_url, filename: config.filename || "arquivo" }),
+            body: JSON.stringify({
+              lead_id: leadId, to: phone, type: fileMediaType, media_url: config.file_url,
+              ...(fileMediaType === "document" ? { filename: config.filename || config.file_name || "arquivo" } : {}),
+            }),
           });
           await r.text();
         }
