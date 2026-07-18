@@ -40,6 +40,17 @@ async function fetchAllRows<T = any>(buildQuery: () => any, pageSize = PAGE_SIZE
 }
 
 // Commercial hours guard (BR = UTC-3): Mon-Sat 08:00-20:00 local.
+// Descobre o tipo de mídia (mime do upload; se faltar, pela extensão da URL), para
+// o WhatsApp receber vídeo como VÍDEO (toca no chat) em vez de documento.
+function detectMediaType(url: string, mime?: string): "video" | "image" | "audio" | "document" {
+  const m = String(mime || "").toLowerCase();
+  const ext = String(url || "").split("?")[0].split(".").pop()?.toLowerCase() || "";
+  if (m.startsWith("video/") || ["mp4", "mov", "3gp"].includes(ext)) return "video";
+  if (m.startsWith("image/") || ["jpg", "jpeg", "png", "webp"].includes(ext)) return "image";
+  if (m.startsWith("audio/") || ["ogg", "opus", "mp3", "m4a", "aac", "wav"].includes(ext)) return "audio";
+  return "document";
+}
+
 // Returns ISO string for next allowed fire time, or null if we're inside the window.
 function nextCommercialFireAt(now: Date = new Date()): string | null {
   const BR_OFFSET_MS = -3 * 60 * 60 * 1000; // UTC-3
@@ -1049,15 +1060,19 @@ async function sendAction(
 
       case "send_file":
         if (config.file_url && phone) {
+          // Envia pelo TIPO real da mídia (vídeo toca no chat, não vira documento).
+          const fileMediaType = detectMediaType(config.file_url as string, config.file_mime as string);
           await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
             body: JSON.stringify({
               lead_id: leadId,
               to: phone,
-              type: "document",
+              type: fileMediaType,
               media_url: config.file_url,
-              filename: config.filename || "arquivo",
+              ...(fileMediaType === "document"
+                ? { filename: config.filename || config.file_name || "arquivo" }
+                : {}),
             }),
           }).then((r) => r.text());
         }

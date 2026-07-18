@@ -26,6 +26,17 @@ const MESSAGE_ACTIONS = new Set(["send_template", "send_bot", "send_audio", "sen
 const FREEFORM_ACTIONS = new Set(["send_audio", "send_file"]);
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
+// Descobre o tipo de mídia (mime salvo no upload; se faltar, pela extensão da URL),
+// para o WhatsApp receber vídeo como VÍDEO (toca no chat) em vez de documento.
+function detectMediaType(url: string, mime?: string): "video" | "image" | "audio" | "document" {
+  const m = String(mime || "").toLowerCase();
+  const ext = String(url || "").split("?")[0].split(".").pop()?.toLowerCase() || "";
+  if (m.startsWith("video/") || ["mp4", "mov", "3gp"].includes(ext)) return "video";
+  if (m.startsWith("image/") || ["jpg", "jpeg", "png", "webp"].includes(ext)) return "image";
+  if (m.startsWith("audio/") || ["ogg", "opus", "mp3", "m4a", "aac", "wav"].includes(ext)) return "audio";
+  return "document";
+}
+
 // Janela comercial (BR = UTC-3): seg–sáb 08:00–20:00 local.
 // Retorna ISO do próximo horário permitido, ou null se JÁ estamos na janela.
 function nextCommercialFireAt(now: Date = new Date()): string | null {
@@ -281,6 +292,9 @@ async function sendAction(
     }
     case "send_file": {
       if (!config.file_url || !phone) throw new Error("missing file_url or phone");
+      // Envia pelo TIPO real da mídia: vídeo toca no chat, imagem aparece, áudio
+      // vira mensagem de voz. Só cai em "document" quando não é mídia reconhecida.
+      const mediaType = detectMediaType(config.file_url as string, config.file_mime as string);
       const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
         method: "POST",
         headers: {
@@ -291,9 +305,11 @@ async function sendAction(
         body: JSON.stringify({
           lead_id: leadId,
           to: phone,
-          type: "document",
+          type: mediaType,
           media_url: config.file_url,
-          filename: config.filename || "arquivo",
+          ...(mediaType === "document"
+            ? { filename: config.filename || config.file_name || "arquivo" }
+            : {}),
         }),
       });
       const txt = await resp.text();
