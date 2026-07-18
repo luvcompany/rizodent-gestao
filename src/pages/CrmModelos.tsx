@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
+import { uploadAutomationMedia } from "@/components/automation/automationMediaUpload";
 import { useAuth } from "@/contexts/AuthContext";
 
 import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialog";
@@ -51,6 +52,69 @@ type Integration = {
 };
 
 const PAGE_SIZE = 10;
+
+// Cabeçalho de MÍDIA do template (vídeo/imagem/documento). O Meta não aceita URL:
+// exige um `header_handle` gerado por upload. Aqui subimos o arquivo e pedimos o
+// handle ao backend — é isso que permite ter VÍDEO em template (que entrega mesmo
+// fora da janela de 24h, ao contrário de mensagem livre).
+function TemplateMediaHeader({
+  headerType, headerContent, onChange,
+}: { headerType: string; headerContent: string; onChange: (handle: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [fileName, setFileName] = useState("");
+
+  const accept = headerType === "VIDEO" ? "video/mp4,video/3gpp"
+    : headerType === "IMAGE" ? "image/jpeg,image/png"
+    : headerType === "AUDIO" ? "audio/*"
+    : ".pdf,.doc,.docx,.xls,.xlsx";
+
+  const pick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      const up = await uploadAutomationMedia(file, "template-headers", { fileName: file.name });
+      if (!up) return;
+      const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", {
+        body: { action: "upload_media", media_url: up.url, file_name: up.name, file_type: up.mime },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const handle = (data as any)?.handle;
+      if (!handle) throw new Error("O Meta não devolveu o identificador da mídia.");
+      onChange(handle);
+      setFileName(up.name);
+      toast.success("Mídia enviada ao Meta. Agora é só salvar o template.");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao enviar a mídia ao Meta.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={pick} />
+      {headerContent ? (
+        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-2 py-1.5">
+          <span className="text-xs truncate flex-1">{fileName || "Mídia enviada ao Meta"}</span>
+          <button type="button" className="text-xs text-primary hover:underline"
+            onClick={() => inputRef.current?.click()} disabled={busy}>Trocar</button>
+        </div>
+      ) : (
+        <Button type="button" variant="outline" size="sm" className="h-8 w-full text-xs"
+          onClick={() => inputRef.current?.click()} disabled={busy}>
+          {busy ? "Enviando ao Meta..." : `Selecionar ${headerType === "VIDEO" ? "vídeo" : headerType === "IMAGE" ? "imagem" : "arquivo"}`}
+        </Button>
+      )}
+      <p className="text-[10px] text-muted-foreground">
+        Vídeo ≤16MB (MP4). O arquivo é enviado ao Meta para aprovação junto com o template.
+      </p>
+    </div>
+  );
+}
 
 export default function CrmModelos() {
   const { userRole } = useAuth();
@@ -735,7 +799,15 @@ export default function CrmModelos() {
                       <SelectItem value="AUDIO">Áudio</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input placeholder="Conteúdo do cabeçalho" value={form.header_content} onChange={e => setForm(p => ({ ...p, header_content: e.target.value }))} />
+                  {form.header_type === "TEXT" ? (
+                    <Input placeholder="Conteúdo do cabeçalho" value={form.header_content} onChange={e => setForm(p => ({ ...p, header_content: e.target.value }))} />
+                  ) : (
+                    <TemplateMediaHeader
+                      headerType={form.header_type}
+                      headerContent={form.header_content}
+                      onChange={(handle) => setForm(p => ({ ...p, header_content: handle }))}
+                    />
+                  )}
                 </div>
               )}
 

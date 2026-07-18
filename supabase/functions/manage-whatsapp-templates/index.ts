@@ -19,7 +19,7 @@ async function resolveCredentials(supabase: any, integrationKey?: string, tenant
       const token = cfg.access_token || cfg.token;
       const wabaId = cfg.waba_id;
       if (token && wabaId) {
-        return { token, wabaId };
+        return { token, wabaId, appId: cfg.app_id || Deno.env.get("META_APP_ID") || "" };
       }
     }
   }
@@ -38,14 +38,49 @@ async function resolveCredentials(supabase: any, integrationKey?: string, tenant
     if (cfg) {
       const token = cfg.access_token || cfg.token;
       const wabaId = cfg.waba_id;
-      if (token && wabaId) return { token, wabaId };
+      if (token && wabaId) return { token, wabaId, appId: cfg.app_id || Deno.env.get("META_APP_ID") || "" };
     }
   }
   // Fallback to env vars
   return {
     token: Deno.env.get("WHATSAPP_TOKEN") || "",
     wabaId: Deno.env.get("WABA_ID") || "",
+    appId: Deno.env.get("META_APP_ID") || "",
   };
+}
+
+// Upload resumable do Meta: devolve o `header_handle` exigido para criar template
+// com cabeçalho de MÍDIA (vídeo/imagem/documento). Sem isso não dá para ter vídeo
+// em template — e template é o único que entrega FORA da janela de 24h.
+async function uploadMediaToMeta(
+  appId: string,
+  token: string,
+  bytes: Uint8Array,
+  fileName: string,
+  fileType: string,
+): Promise<{ handle?: string; error?: string }> {
+  if (!appId) return { error: "App ID (Meta) não configurado na integração do WhatsApp." };
+  const base = "https://graph.facebook.com/v25.0";
+
+  // 1) Abre a sessão de upload
+  const startUrl = `${base}/${appId}/uploads?file_name=${encodeURIComponent(fileName)}&file_length=${bytes.length}&file_type=${encodeURIComponent(fileType)}`;
+  const startRes = await fetch(startUrl, { method: "POST", headers: { Authorization: `OAuth ${token}` } });
+  const startData = await startRes.json().catch(() => ({}));
+  if (!startRes.ok || !startData?.id) {
+    return { error: `abrir upload falhou (HTTP ${startRes.status}): ${JSON.stringify(startData).slice(0, 300)}` };
+  }
+
+  // 2) Envia os bytes e recebe o handle
+  const upRes = await fetch(`${base}/${startData.id}`, {
+    method: "POST",
+    headers: { Authorization: `OAuth ${token}`, file_offset: "0", "Content-Type": "application/octet-stream" },
+    body: bytes,
+  });
+  const upData = await upRes.json().catch(() => ({}));
+  if (!upRes.ok || !upData?.h) {
+    return { error: `enviar bytes falhou (HTTP ${upRes.status}): ${JSON.stringify(upData).slice(0, 300)}` };
+  }
+  return { handle: upData.h as string };
 }
 
 Deno.serve(async (req) => {
@@ -100,7 +135,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const callerTenantId = profile?.tenant_id || null;
 
-    const { token: WHATSAPP_TOKEN, wabaId: WABA_ID } = await resolveCredentials(supabase, integration_key, callerTenantId);
+    const { token: WHATSAPP_TOKEN, wabaId: WABA_ID, appId: META_APP_ID } = await resolveCredentials(supabase, integration_key, callerTenantId);
 
     if (!WHATSAPP_TOKEN || !WABA_ID) {
       return new Response(
@@ -211,6 +246,41 @@ Deno.serve(async (req) => {
     }
 
     // ACTION: CREATE - Submit new template to Meta API
+    // ACTION: UPLOAD_MEDIA — sobe a mídia para o Meta e devolve o `header_handle`,
+    // que é o que permite criar TEMPLATE com cabeçalho de vídeo/imagem/documento.
+    // Template é o único formato que entrega FORA da janela de 24h.
+    if (action === "upload_media") {
+      if (!isPrivileged) {
+        return new Response(JSON.stringify({ error: "Sem permissão." }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { media_url, file_name, file_type } = body;
+      if (!media_url) {
+        return new Response(JSON.stringify({ error: "media_url é obrigatório" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const mediaRes = await fetch(media_url);
+      if (!mediaRes.ok) {
+        return new Response(JSON.stringify({ error: `Não consegui baixar a mídia (HTTP ${mediaRes.status}).` }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const bytes = new Uint8Array(await mediaRes.arrayBuffer());
+      const mime = file_type || mediaRes.headers.get("content-type") || "video/mp4";
+      const name = file_name || (media_url.split("?")[0].split("/").pop() || "midia");
+      const up = await uploadMediaToMeta(META_APP_ID, WHATSAPP_TOKEN, bytes, name, mime);
+      if (up.error) {
+        return new Response(JSON.stringify({ error: up.error }), {
+          status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ handle: up.handle, size: bytes.length, mime }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "create") {
       const { name, language, category, header_type, header_content, body_text, footer_text, buttons } = body;
 
