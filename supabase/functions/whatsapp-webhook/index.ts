@@ -1022,6 +1022,11 @@ Deno.serve(async (req) => {
                     stage_id: stage.id,
                     tenant_id: tenantId,
                     source: referral ? "facebook_ad" : "whatsapp",
+                    // Marca já como janela aberta — o lead nasce por causa de uma
+                    // mensagem inbound que acabou de chegar. Sem isso, automações
+                    // on_create disparadas antes do insert da mensagem veem
+                    // last_inbound_at=null e pulam o envio (guard de 24h).
+                    last_inbound_at: new Date().toISOString(),
                   };
                   // Save ad referral data if present
                   if (referral) {
