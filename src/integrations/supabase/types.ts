@@ -4427,6 +4427,10 @@ export type Database = {
           similarity: number
         }[]
       }
+      notify_dashboard_event: {
+        Args: { p_cidade: string; p_source: string; p_tipo: string }
+        Returns: undefined
+      }
       posvenda_dashboard_metrics: { Args: never; Returns: Json }
       recalculate_all_lead_scores:
         | { Args: never; Returns: undefined }

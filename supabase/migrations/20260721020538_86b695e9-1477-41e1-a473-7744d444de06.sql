@@ -1,0 +1,1 @@
+DELETE FROM public.crm_leads WHERE id = '4cff6c67-bbc5-41bb-bdba-84056f0a2418' AND name = '__TEST_DASHBOARD__';
