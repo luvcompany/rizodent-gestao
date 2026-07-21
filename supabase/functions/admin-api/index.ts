@@ -316,11 +316,13 @@ async function conversations(tenantId: string, p: URLSearchParams) {
 async function conversationsUnreadCount(tenantId: string) {
   // Endpoint LEVE p/ o dashboard consultar a cada minuto: replica exatamente
   // a regra de get_crm_unread_leads_count (tenant inteiro, sem RLS por usuário)
-  // e devolve total, quebra por canal e por cidade.
+  // e devolve total, quebra por grupo de funil (comercial vs pós-venda),
+  // por canal e por cidade. por_canal/por_unidade referem-se ao COMERCIAL
+  // (é o recorte da TV); pos_venda é só o total.
   const cutoffIso = new Date(Date.now() - 60 * 86400_000).toISOString();
   const rows = await fetchAllPaged<any>(
     () => admin.from("crm_leads")
-      .select("id,last_inbound_at,last_outbound_at,instagram_user_id,cidade")
+      .select("id,last_inbound_at,last_outbound_at,instagram_user_id,cidade,stage_id")
       .eq("tenant_id", tenantId)
       .eq("is_blocked", false)
       .not("last_inbound_at", "is", null)
@@ -330,9 +332,21 @@ async function conversationsUnreadCount(tenantId: string) {
   const unread = rows.filter((l: any) =>
     !l.last_outbound_at || l.last_inbound_at > l.last_outbound_at
   );
-  let wa = 0, ig = 0;
+  // Mapa stage_id → é pós-venda? Identifica pipeline pelo nome (case+acentos insensitive).
+  const norm = (s: string) => (s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const { data: pipelines } = await admin.from("crm_pipelines").select("id,name").eq("tenant_id", tenantId);
+  const posVendaPipelineIds = new Set((pipelines || []).filter((p: any) => norm(p.name).startsWith("pos-venda") || norm(p.name).startsWith("pos venda") || norm(p.name) === "posvenda").map((p: any) => p.id));
+  const { data: stages } = await admin.from("crm_stages").select("id,pipeline_id").eq("tenant_id", tenantId);
+  const posVendaStageIds = new Set((stages || []).filter((s: any) => posVendaPipelineIds.has(s.pipeline_id)).map((s: any) => s.id));
+
+  let wa = 0, ig = 0, comercial = 0, pos_venda = 0;
   const porCidade = new Map<string, number>();
   for (const l of unread) {
+    if (l.stage_id && posVendaStageIds.has(l.stage_id)) {
+      pos_venda++;
+      continue;
+    }
+    comercial++;
     if (l.instagram_user_id) ig++; else wa++;
     const cidade = (l.cidade && String(l.cidade).trim()) || "SEM_CIDADE";
     porCidade.set(cidade, (porCidade.get(cidade) || 0) + 1);
@@ -342,10 +356,13 @@ async function conversationsUnreadCount(tenantId: string) {
     .sort((a, b) => b.count - a.count);
   return json({
     total: unread.length,
+    comercial,
+    pos_venda,
     por_canal: { whatsapp: wa, instagram: ig },
     por_unidade,
   });
 }
+
 
 async function appointments(tenantId: string, method: string, p: URLSearchParams, body: any, id?: string) {
   if (method === "GET") {
