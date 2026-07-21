@@ -340,13 +340,21 @@ async function conversationsUnreadCount(tenantId: string) {
   const posVendaStageIds = new Set((stages || []).filter((s: any) => posVendaPipelineIds.has(s.pipeline_id)).map((s: any) => s.id));
 
   let wa = 0, ig = 0, comercial = 0, pos_venda = 0;
+  let maisAntigoComercial: string | null = null;
+  let maisAntigoPosVenda: string | null = null;
   const porCidade = new Map<string, number>();
   for (const l of unread) {
     if (l.stage_id && posVendaStageIds.has(l.stage_id)) {
       pos_venda++;
+      if (l.last_inbound_at && (!maisAntigoPosVenda || l.last_inbound_at < maisAntigoPosVenda)) {
+        maisAntigoPosVenda = l.last_inbound_at;
+      }
       continue;
     }
     comercial++;
+    if (l.last_inbound_at && (!maisAntigoComercial || l.last_inbound_at < maisAntigoComercial)) {
+      maisAntigoComercial = l.last_inbound_at;
+    }
     if (l.instagram_user_id) ig++; else wa++;
     const cidade = (l.cidade && String(l.cidade).trim()) || "SEM_CIDADE";
     porCidade.set(cidade, (porCidade.get(cidade) || 0) + 1);
@@ -358,9 +366,12 @@ async function conversationsUnreadCount(tenantId: string) {
     total: unread.length,
     comercial,
     pos_venda,
+    mais_antigo_comercial: maisAntigoComercial,
+    mais_antigo_pos_venda: maisAntigoPosVenda,
     por_canal: { whatsapp: wa, instagram: ig },
     por_unidade,
   });
+
 }
 
 
