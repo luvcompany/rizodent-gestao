@@ -281,27 +281,70 @@ async function sendMessage(tenantId: string, id: string, body: any) {
 async function conversations(tenantId: string, p: URLSearchParams) {
   const limit = Math.min(parseInt(p.get("limit") || "50"), 200);
   const unreadOnly = p.get("unread") === "true";
-  let q = admin.from("crm_leads")
+  // Igualdade com a RPC get_crm_unread_leads_count: is_blocked=false,
+  // last_inbound_at NOT NULL, janela 60 dias, inbound > outbound. O filtro
+  // roda ANTES do limit — senão, quando há 50+ conversas recentes, o LIMIT
+  // corta candidatas não lidas fora do topo por last_message_at.
+  if (unreadOnly) {
+    const cutoffIso = new Date(Date.now() - 60 * 86400_000).toISOString();
+    const rows = await fetchAllPaged<any>(
+      () => admin.from("crm_leads")
+        .select("id,name,phone,last_message_at,last_inbound_at,last_outbound_at,stage_id,assigned_to")
+        .eq("tenant_id", tenantId)
+        .eq("is_blocked", false)
+        .not("last_inbound_at", "is", null)
+        .gte("last_inbound_at", cutoffIso),
+      "id",
+    );
+    const filtered = rows.filter((l: any) =>
+      !l.last_outbound_at || l.last_inbound_at > l.last_outbound_at
+    );
+    filtered.sort((a: any, b: any) =>
+      String(b.last_message_at || "").localeCompare(String(a.last_message_at || "")));
+    return json({ data: filtered.slice(0, limit) });
+  }
+  const { data, error } = await admin.from("crm_leads")
     .select("id,name,phone,last_message_at,last_inbound_at,last_outbound_at,stage_id,assigned_to")
     .eq("tenant_id", tenantId)
     .not("last_message_at", "is", null)
     .order("last_message_at", { ascending: false })
     .limit(limit);
-  const { data, error } = await q;
   if (error) return json({ error: error.message }, 500);
-  let list = data || [];
-  if (unreadOnly) {
-    // "Não lido" com janela de 60 dias (mesma semântica da RPC corrigida
-    // crm_unread_leads_count): inbound antigo sem resposta não conta para
-    // sempre como não lido.
-    const cutoffIso = new Date(Date.now() - 60 * 86400_000).toISOString();
-    list = list.filter((l: any) =>
-      l.last_inbound_at &&
-      l.last_inbound_at >= cutoffIso &&
-      (!l.last_outbound_at || l.last_inbound_at > l.last_outbound_at)
-    );
+  return json({ data: data || [] });
+}
+
+async function conversationsUnreadCount(tenantId: string) {
+  // Endpoint LEVE p/ o dashboard consultar a cada minuto: replica exatamente
+  // a regra de get_crm_unread_leads_count (tenant inteiro, sem RLS por usuário)
+  // e devolve total, quebra por canal e por cidade.
+  const cutoffIso = new Date(Date.now() - 60 * 86400_000).toISOString();
+  const rows = await fetchAllPaged<any>(
+    () => admin.from("crm_leads")
+      .select("id,last_inbound_at,last_outbound_at,instagram_user_id,cidade")
+      .eq("tenant_id", tenantId)
+      .eq("is_blocked", false)
+      .not("last_inbound_at", "is", null)
+      .gte("last_inbound_at", cutoffIso),
+    "id",
+  );
+  const unread = rows.filter((l: any) =>
+    !l.last_outbound_at || l.last_inbound_at > l.last_outbound_at
+  );
+  let wa = 0, ig = 0;
+  const porCidade = new Map<string, number>();
+  for (const l of unread) {
+    if (l.instagram_user_id) ig++; else wa++;
+    const cidade = (l.cidade && String(l.cidade).trim()) || "SEM_CIDADE";
+    porCidade.set(cidade, (porCidade.get(cidade) || 0) + 1);
   }
-  return json({ data: list });
+  const por_unidade = Array.from(porCidade.entries())
+    .map(([cidade, count]) => ({ cidade, count }))
+    .sort((a, b) => b.count - a.count);
+  return json({
+    total: unread.length,
+    por_canal: { whatsapp: wa, instagram: ig },
+    por_unidade,
+  });
 }
 
 async function appointments(tenantId: string, method: string, p: URLSearchParams, body: any, id?: string) {
@@ -915,6 +958,7 @@ Deno.serve(async (req) => {
           "GET /messages/:id/download  (binary download of media)",
           "GET /media/sign?url=...  or  ?bucket=&path=&expires_in=3600",
           "GET /conversations?limit=&unread=true",
+          "GET /conversations/unread-count  → { total, por_canal, por_unidade }",
           "GET /appointments?from=&to=",
           "POST /appointments",
           "PATCH /appointments/:id",
@@ -944,6 +988,9 @@ Deno.serve(async (req) => {
         if (req.method === "PATCH") return await updateLead(tenantId, id, body);
         if (req.method === "DELETE") return await deleteLead(tenantId, id);
       }
+    }
+    if (parts[0] === "conversations" && parts[1] === "unread-count" && req.method === "GET") {
+      return await conversationsUnreadCount(tenantId);
     }
     if (parts[0] === "conversations" && req.method === "GET") return await conversations(tenantId, p);
     if (parts[0] === "messages" && parts[1] && parts[2] === "download" && req.method === "GET") {
