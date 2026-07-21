@@ -558,6 +558,16 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     .reduce((s, pg) => s + num(pg.valor), 0);
   const faturamentoMedioDiaUtil = diasUteisPassados > 0 ? fatAteOntem / diasUteisPassados : 0;
 
+  // Projeção do MÊS CORRENTE (mesma fórmula do Dashboard do CRClin em
+  // src/pages/Dashboard.tsx — projecaoMensal = ticketMedioDiario * diasUteisMes,
+  // onde ticketMedioDiario = fatAteOntem / diasUteisPassados e diasUteisMes
+  // cobre o mês corrente inteiro. Domingo=0, feriado=0, Sáb=1, Seg-Sex=1
+  // (regra única em _shared/reporting.ts + src/lib/businessDays.ts).
+  const firstOfCurMonth = `${hoje.slice(0, 8)}01`;
+  const lastOfCurMonth = new Date(Date.UTC(hy, hm, 0)).toISOString().slice(0, 10);
+  const diasUteisTotaisMes = Math.max(businessDaysBetween(firstOfCurMonth, lastOfCurMonth, holidaySet), 1);
+  const projecaoMes = faturamentoMedioDiaUtil * diasUteisTotaisMes;
+
   // por especialidade
   const espMap = new Map<string, { faturamento: number; qtd: number }>();
   pagamentos.forEach((pg) => {
