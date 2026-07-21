@@ -958,6 +958,7 @@ Deno.serve(async (req) => {
           "GET /messages/:id/download  (binary download of media)",
           "GET /media/sign?url=...  or  ?bucket=&path=&expires_in=3600",
           "GET /conversations?limit=&unread=true",
+          "GET /conversations/unread-count  → { total, por_canal, por_unidade }",
           "GET /appointments?from=&to=",
           "POST /appointments",
           "PATCH /appointments/:id",
