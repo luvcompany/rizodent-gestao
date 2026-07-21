@@ -988,6 +988,9 @@ Deno.serve(async (req) => {
         if (req.method === "DELETE") return await deleteLead(tenantId, id);
       }
     }
+    if (parts[0] === "conversations" && parts[1] === "unread-count" && req.method === "GET") {
+      return await conversationsUnreadCount(tenantId);
+    }
     if (parts[0] === "conversations" && req.method === "GET") return await conversations(tenantId, p);
     if (parts[0] === "messages" && parts[1] && parts[2] === "download" && req.method === "GET") {
       return await mediaDownload(tenantId, parts[1]);
