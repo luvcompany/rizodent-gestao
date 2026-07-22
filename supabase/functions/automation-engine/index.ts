@@ -731,6 +731,7 @@ Deno.serve(async (req) => {
           .select("id, phone, stage_id")
           .eq("id", appt.lead_id)
           .eq("stage_id", auto.stage_id)
+          .eq("is_blocked", false)
           .maybeSingle();
 
         if (!lead) continue;
