@@ -465,18 +465,31 @@ Deno.serve(async (req) => {
           if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType) && tplRow.header_content) {
             resolvedComponents = resolvedComponents.filter((component: any) => String(component?.type || "").toLowerCase() !== "header");
 
-            const stableHeaderLink = await ensurePublicTemplateMediaLink(
-              supabase,
-              resolvedTemplateName,
-              headerType,
-              tplRow.header_content,
-            );
+            // Tenta cachear a mídia num bucket público estável. Se falhar (URL do
+            // Meta expirada, bucket com limite, RLS bloqueando etc.), NÃO derrubar
+            // o envio — cai de volta para a URL original do Meta. Se essa também
+            // não funcionar, o erro do Meta é capturado adiante e vira mensagem
+            // com status=failed (visível na conversa), em vez de sumir silencioso.
+            let stableHeaderLink: string | null = tplRow.header_content;
+            try {
+              stableHeaderLink = await ensurePublicTemplateMediaLink(
+                supabase,
+                resolvedTemplateName,
+                headerType,
+                tplRow.header_content,
+              );
 
-            if (stableHeaderLink && stableHeaderLink !== tplRow.header_content) {
-              await supabase
-                .from("crm_whatsapp_templates")
-                .update({ header_content: stableHeaderLink, updated_at: new Date().toISOString() })
-                .eq("name", resolvedTemplateName);
+              if (stableHeaderLink && stableHeaderLink !== tplRow.header_content) {
+                await supabase
+                  .from("crm_whatsapp_templates")
+                  .update({ header_content: stableHeaderLink, updated_at: new Date().toISOString() })
+                  .eq("name", resolvedTemplateName);
+              }
+            } catch (mediaErr) {
+              console.warn(
+                `[send-whatsapp] Falha ao cachear mídia do template ${resolvedTemplateName}: ${mediaErr instanceof Error ? mediaErr.message : String(mediaErr)} — usando URL original.`,
+              );
+              stableHeaderLink = tplRow.header_content;
             }
 
             const headerComponent = stableHeaderLink ? buildMediaHeaderComponent(headerType, stableHeaderLink) : null;
