@@ -135,7 +135,10 @@ Deno.serve(async (req) => {
             .maybeSingle();
           const currentHeader = current?.header_content || "";
           const finalPayload: Record<string, unknown> = { ...payload };
-          if (currentHeader.includes("/storage/v1/object/public/")) {
+          if (
+            currentHeader.includes("/storage/v1/object/public/") ||
+            currentHeader.includes("/storage/v1/object/sign/")
+          ) {
             delete finalPayload.header_content;
           }
           await supabase

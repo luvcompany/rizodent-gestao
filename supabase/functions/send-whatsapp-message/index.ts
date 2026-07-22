@@ -6,8 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PUBLIC_TEMPLATE_MEDIA_BUCKET = "avatars";
+// Usamos o bucket privado chat-media (o "avatars" restringe a apenas imagens,
+// então uploads de vídeo/PDF de header de template falhavam silenciosamente).
+// Geramos uma signed URL de longa duração para o Meta baixar a mídia no envio.
+const PUBLIC_TEMPLATE_MEDIA_BUCKET = "chat-media";
 const PUBLIC_TEMPLATE_MEDIA_PREFIX = "whatsapp-template-media";
+const TEMPLATE_MEDIA_SIGNED_TTL = 60 * 60 * 24 * 365; // 1 ano
 
 const isHttpUrl = (value: string | null | undefined) => Boolean(value && /^https?:\/\//i.test(value));
 
@@ -122,7 +126,13 @@ async function ensurePublicTemplateMediaLink(
 ) {
   if (!originalValue) return null;
   if (!isHttpUrl(originalValue)) return originalValue;
-  if (originalValue.includes("/storage/v1/object/public/")) return originalValue;
+  // Já é uma URL do nosso Storage (público ou assinado) — Meta consegue baixar.
+  if (
+    originalValue.includes("/storage/v1/object/public/") ||
+    originalValue.includes("/storage/v1/object/sign/")
+  ) {
+    return originalValue;
+  }
 
   const response = await fetch(originalValue);
   if (!response.ok) {
@@ -145,8 +155,15 @@ async function ensurePublicTemplateMediaLink(
     throw new Error(`Failed to cache template media: ${uploadError.message}`);
   }
 
-  const { data } = supabase.storage.from(PUBLIC_TEMPLATE_MEDIA_BUCKET).getPublicUrl(filePath);
-  return data.publicUrl;
+  // Bucket privado: Meta baixa via signed URL de longa duração.
+  const { data: signed, error: signErr } = await supabase.storage
+    .from(PUBLIC_TEMPLATE_MEDIA_BUCKET)
+    .createSignedUrl(filePath, TEMPLATE_MEDIA_SIGNED_TTL);
+
+  if (signErr || !signed?.signedUrl) {
+    throw new Error(`Failed to sign template media URL: ${signErr?.message || "unknown"}`);
+  }
+  return signed.signedUrl;
 }
 
 Deno.serve(async (req) => {
