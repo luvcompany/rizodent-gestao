@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
     const nowIso = new Date().toISOString();
     const { data: items, error: fetchErr } = await supabase
       .from("crm_automation_queue")
-      .select("id, lead_id, action_type, action_config, automation_id, scheduled_at")
+      .select("id, lead_id, action_type, action_config, automation_id, scheduled_at, error_message")
       .eq("status", "pending")
       .lte("scheduled_at", nowIso)
       .order("scheduled_at", { ascending: true })
