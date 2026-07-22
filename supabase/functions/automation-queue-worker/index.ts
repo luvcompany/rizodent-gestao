@@ -143,7 +143,19 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (!lead) throw new Error("lead not found");
-        if (lead.is_blocked) throw new Error("lead blocked");
+        if (lead.is_blocked) {
+          await supabase
+            .from("crm_automation_queue")
+            .update({
+              status: "cancelled",
+              error_message: "lead bloqueado — automação ignorada",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", item.id);
+          stats.cancelled++;
+          console.log(`[queue-worker] item ${item.id} cancelado — lead ${item.lead_id} bloqueado`);
+          return;
+        }
 
         // GUARD DE JANELA DE 24h: mensagens LIVRES (áudio/bot/arquivo) só saem se o
         // lead respondeu nas últimas 24h. Fora da janela o WhatsApp recusa (131047)
