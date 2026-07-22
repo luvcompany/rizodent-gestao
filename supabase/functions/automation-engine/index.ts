@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
           .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
           .eq("stage_id", auto.stage_id)
           .not("automation_paused", "is", true)
+          .eq("is_blocked", false)
           .order("id"),
       );
 
