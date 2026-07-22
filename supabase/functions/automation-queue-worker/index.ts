@@ -201,6 +201,33 @@ Deno.serve(async (req) => {
       } catch (e: any) {
         const msg = (e?.message || String(e)).substring(0, 1000);
         console.error(`[queue-worker] item ${item.id} failed:`, msg);
+
+        // 429 rate-limit do Edge Runtime / gateway — reagenda em vez de descartar
+        const rateMatch = msg.match(/Rate limit exceeded[^]*?Retry after (\d+)\s*ms/i);
+        if (rateMatch) {
+          const retryMs = Math.min(parseInt(rateMatch[1], 10) || 30000, 5 * 60 * 1000);
+          const prevMsg = (item.error_message as string) || "";
+          const prevAttempt = parseInt((prevMsg.match(/retry #(\d+)\/\d+/) || [])[1] || "0", 10);
+          const nextAttempt = prevAttempt + 1;
+
+          if (nextAttempt <= MAX_RATE_LIMIT_RETRIES) {
+            const jitter = 500 + Math.floor(Math.random() * 1000);
+            const nextAt = new Date(Date.now() + retryMs + jitter).toISOString();
+            await supabase
+              .from("crm_automation_queue")
+              .update({
+                status: "pending",
+                scheduled_at: nextAt,
+                error_message: `retry #${nextAttempt}/${MAX_RATE_LIMIT_RETRIES} — rate limit; próximo envio em ${nextAt}`,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", item.id);
+            stats.retried++;
+            console.log(`[queue-worker] item ${item.id} 429 — retry #${nextAttempt} em ${retryMs + jitter}ms`);
+            return;
+          }
+        }
+
         await supabase
           .from("crm_automation_queue")
           .update({
@@ -218,7 +245,7 @@ Deno.serve(async (req) => {
       const slice = queue.slice(i, i + PARALLEL);
       await Promise.allSettled(slice.map(processOne));
       if (i + PARALLEL < queue.length) {
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, CHUNK_GAP_MS));
       }
     }
 
