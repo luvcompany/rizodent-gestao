@@ -11,7 +11,9 @@ const corsHeaders = {
 };
 
 const BATCH_LIMIT = 60;
-const PARALLEL = 8;
+const PARALLEL = 3;
+const CHUNK_GAP_MS = 800;
+const MAX_RATE_LIMIT_RETRIES = 5;
 
 // Ações que ENVIAM mensagem ao paciente — só podem sair no horário comercial.
 // move_stage / add_tag / notify_* são internas e podem rodar a qualquer hora.
@@ -73,7 +75,7 @@ Deno.serve(async (req) => {
   }
 
 
-  const stats = { processed: 0, sent: 0, failed: 0, skipped: 0, deferred: 0, window_closed: 0 };
+  const stats = { processed: 0, sent: 0, failed: 0, skipped: 0, deferred: 0, window_closed: 0, cancelled: 0, retried: 0 };
 
   try {
     // 1. Recover items stuck in "processing" for > 10 min back to pending
@@ -87,7 +89,7 @@ Deno.serve(async (req) => {
     const nowIso = new Date().toISOString();
     const { data: items, error: fetchErr } = await supabase
       .from("crm_automation_queue")
-      .select("id, lead_id, action_type, action_config, automation_id, scheduled_at")
+      .select("id, lead_id, action_type, action_config, automation_id, scheduled_at, error_message")
       .eq("status", "pending")
       .lte("scheduled_at", nowIso)
       .order("scheduled_at", { ascending: true })
@@ -141,7 +143,19 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (!lead) throw new Error("lead not found");
-        if (lead.is_blocked) throw new Error("lead blocked");
+        if (lead.is_blocked) {
+          await supabase
+            .from("crm_automation_queue")
+            .update({
+              status: "cancelled",
+              error_message: "lead bloqueado — automação ignorada",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", item.id);
+          stats.cancelled++;
+          console.log(`[queue-worker] item ${item.id} cancelado — lead ${item.lead_id} bloqueado`);
+          return;
+        }
 
         // GUARD DE JANELA DE 24h: mensagens LIVRES (áudio/bot/arquivo) só saem se o
         // lead respondeu nas últimas 24h. Fora da janela o WhatsApp recusa (131047)
@@ -187,6 +201,33 @@ Deno.serve(async (req) => {
       } catch (e: any) {
         const msg = (e?.message || String(e)).substring(0, 1000);
         console.error(`[queue-worker] item ${item.id} failed:`, msg);
+
+        // 429 rate-limit do Edge Runtime / gateway — reagenda em vez de descartar
+        const rateMatch = msg.match(/Rate limit exceeded[^]*?Retry after (\d+)\s*ms/i);
+        if (rateMatch) {
+          const retryMs = Math.min(parseInt(rateMatch[1], 10) || 30000, 5 * 60 * 1000);
+          const prevMsg = (item.error_message as string) || "";
+          const prevAttempt = parseInt((prevMsg.match(/retry #(\d+)\/\d+/) || [])[1] || "0", 10);
+          const nextAttempt = prevAttempt + 1;
+
+          if (nextAttempt <= MAX_RATE_LIMIT_RETRIES) {
+            const jitter = 500 + Math.floor(Math.random() * 1000);
+            const nextAt = new Date(Date.now() + retryMs + jitter).toISOString();
+            await supabase
+              .from("crm_automation_queue")
+              .update({
+                status: "pending",
+                scheduled_at: nextAt,
+                error_message: `retry #${nextAttempt}/${MAX_RATE_LIMIT_RETRIES} — rate limit; próximo envio em ${nextAt}`,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", item.id);
+            stats.retried++;
+            console.log(`[queue-worker] item ${item.id} 429 — retry #${nextAttempt} em ${retryMs + jitter}ms`);
+            return;
+          }
+        }
+
         await supabase
           .from("crm_automation_queue")
           .update({
@@ -204,7 +245,7 @@ Deno.serve(async (req) => {
       const slice = queue.slice(i, i + PARALLEL);
       await Promise.allSettled(slice.map(processOne));
       if (i + PARALLEL < queue.length) {
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, CHUNK_GAP_MS));
       }
     }
 

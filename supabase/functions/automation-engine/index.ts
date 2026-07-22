@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
           .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
           .eq("stage_id", auto.stage_id)
           .not("automation_paused", "is", true)
+          .eq("is_blocked", false)
           .order("id"),
       );
 
@@ -554,6 +555,7 @@ Deno.serve(async (req) => {
           .select("id, phone, last_inbound_at, last_outbound_at")
           .eq("stage_id", auto.stage_id)
           .not("automation_paused", "is", true)
+          .eq("is_blocked", false)
           .order("id"),
       );
 
@@ -664,6 +666,7 @@ Deno.serve(async (req) => {
           .select("id, phone, updated_at, last_message_at")
           .eq("stage_id", auto.stage_id)
           .not("automation_paused", "is", true)
+          .eq("is_blocked", false)
           .lt("updated_at", cutoff)
           .order("id"),
       );
@@ -728,6 +731,7 @@ Deno.serve(async (req) => {
           .select("id, phone, stage_id")
           .eq("id", appt.lead_id)
           .eq("stage_id", auto.stage_id)
+          .eq("is_blocked", false)
           .maybeSingle();
 
         if (!lead) continue;
@@ -851,6 +855,7 @@ Deno.serve(async (req) => {
             .select("id, phone, stage_id")
             .eq("id", appt.lead_id)
             .eq("stage_id", auto.stage_id)
+            .eq("is_blocked", false)
             .maybeSingle();
           if (!lead) continue;
           if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -914,6 +919,7 @@ Deno.serve(async (req) => {
             .select("id, phone, stage_id")
             .eq("id", task.lead_id)
             .eq("stage_id", auto.stage_id)
+            .eq("is_blocked", false)
             .maybeSingle();
           if (!lead) continue;
           if (!(await passesConditions(supabase, lead.id, config))) continue;
