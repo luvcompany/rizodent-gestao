@@ -1010,6 +1010,9 @@ Deno.serve(async (req) => {
           "GET /reports/by-source?from=&to=",
           "GET /reports/financeiro?from=YYYY-MM-DD&to=YYYY-MM-DD&clinica=<uuid?>",
           "GET /reports/clientes-pagantes?limit=&offset=",
+          "GET /templates?name=  (lista status dos templates na Meta)",
+          "POST /templates/upload-media  { file_b64 | media_url, file_name, file_type }  → { handle }",
+          "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
         ],
       });
     }
