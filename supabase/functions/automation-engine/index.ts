@@ -919,6 +919,7 @@ Deno.serve(async (req) => {
             .select("id, phone, stage_id")
             .eq("id", task.lead_id)
             .eq("stage_id", auto.stage_id)
+            .eq("is_blocked", false)
             .maybeSingle();
           if (!lead) continue;
           if (!(await passesConditions(supabase, lead.id, config))) continue;
