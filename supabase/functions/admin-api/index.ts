@@ -965,6 +965,128 @@ async function reportClientesPagantes(tenantId: string, p: URLSearchParams) {
   return json({ data: paged, total });
 }
 
+// ── WhatsApp templates (Meta) ────────────────────────────────────────────────
+async function resolveWhatsAppCreds(tenantId: string): Promise<{ token: string; wabaId: string; appId: string } | null> {
+  const { data: list } = await admin
+    .from("integrations")
+    .select("config")
+    .eq("tenant_id", tenantId)
+    .eq("status", "connected")
+    .like("key", "whatsapp_%")
+    .limit(1);
+  const cfg = (list && (list as any)[0]?.config) as any;
+  if (!cfg) return null;
+  const token = cfg.access_token || cfg.token;
+  const wabaId = cfg.waba_id;
+  const appId = cfg.app_id || Deno.env.get("META_APP_ID") || "";
+  if (!token || !wabaId) return null;
+  return { token, wabaId, appId };
+}
+
+async function adminUploadMediaToMeta(appId: string, token: string, bytes: Uint8Array, fileName: string, fileType: string): Promise<{ handle?: string; error?: string }> {
+  if (!appId) return { error: "META_APP_ID/app_id não configurado na integração do WhatsApp." };
+  const base = "https://graph.facebook.com/v25.0";
+  const startUrl = `${base}/${appId}/uploads?file_name=${encodeURIComponent(fileName)}&file_length=${bytes.length}&file_type=${encodeURIComponent(fileType)}`;
+  const startRes = await fetch(startUrl, { method: "POST", headers: { Authorization: `OAuth ${token}` } });
+  const startData = await startRes.json().catch(() => ({}));
+  if (!startRes.ok || !(startData as any)?.id) return { error: `abrir upload falhou (HTTP ${startRes.status}): ${JSON.stringify(startData).slice(0, 300)}` };
+  const upRes = await fetch(`${base}/${(startData as any).id}`, {
+    method: "POST",
+    headers: { Authorization: `OAuth ${token}`, file_offset: "0", "Content-Type": "application/octet-stream" },
+    body: bytes,
+  });
+  const upData = await upRes.json().catch(() => ({}));
+  if (!upRes.ok || !(upData as any)?.h) return { error: `enviar bytes falhou (HTTP ${upRes.status}): ${JSON.stringify(upData).slice(0, 300)}` };
+  return { handle: (upData as any).h as string };
+}
+
+function adminB64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function templatesUploadMedia(tenantId: string, body: any) {
+  const creds = await resolveWhatsAppCreds(tenantId);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+  let bytes: Uint8Array | null = null;
+  let mime = body.file_type || "video/mp4";
+  let name = body.file_name || "midia";
+  if (body.file_b64) {
+    try { bytes = adminB64ToBytes(String(body.file_b64)); } catch { return json({ error: "file_b64 inválido." }, 400); }
+  } else if (body.media_url) {
+    const r = await fetch(body.media_url);
+    if (!r.ok) return json({ error: `não consegui baixar media_url (HTTP ${r.status}).` }, 400);
+    bytes = new Uint8Array(await r.arrayBuffer());
+    mime = body.file_type || r.headers.get("content-type") || mime;
+    name = body.file_name || (String(body.media_url).split("?")[0].split("/").pop() || name);
+  } else {
+    return json({ error: "envie file_b64 (base64) ou media_url." }, 400);
+  }
+  const up = await adminUploadMediaToMeta(creds.appId, creds.token, bytes!, name, mime);
+  if (up.error) return json({ error: up.error }, 502);
+  return json({ handle: up.handle, size: bytes!.length, mime });
+}
+
+async function templatesCreate(tenantId: string, body: any) {
+  const creds = await resolveWhatsAppCreds(tenantId);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+  const { name, language, category, header_type, header_content, body_text, footer_text, buttons } = body;
+  if (!name || !body_text) return json({ error: "name e body_text são obrigatórios." }, 400);
+  const lang = language || "pt_BR";
+  const cat = category || "UTILITY";
+  const components: any[] = [];
+  if (header_type && header_content) {
+    if (header_type === "TEXT") components.push({ type: "HEADER", format: "TEXT", text: header_content });
+    else components.push({ type: "HEADER", format: header_type, example: { header_handle: [header_content] } });
+  }
+  const variables = String(body_text).match(/\{\{\d+\}\}/g) || [];
+  const bodyComponent: any = { type: "BODY", text: body_text };
+  if (variables.length > 0) bodyComponent.example = { body_text: [variables.map((_: string, i: number) => `exemplo${i + 1}`)] };
+  components.push(bodyComponent);
+  if (footer_text) components.push({ type: "FOOTER", text: footer_text });
+  if (buttons && Array.isArray(buttons) && buttons.length > 0) {
+    components.push({ type: "BUTTONS", buttons: buttons.map((btn: any) => btn.type === "URL" ? { type: "URL", text: btn.text, url: btn.url } : { type: "QUICK_REPLY", text: btn.text }) });
+  }
+  const metaPayload = { name, language: lang, category: cat, components };
+  try { await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "create_request", template_name: name, waba_id: creds.wabaId, request_payload: metaPayload }); } catch (_) {}
+  const metaRes = await fetch(`https://graph.facebook.com/v25.0/${creds.wabaId}/message_templates`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(metaPayload),
+  });
+  const metaData = await metaRes.json().catch(() => ({}));
+  try { await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "create_response", template_name: name, waba_id: creds.wabaId, response_body: metaData, http_status: metaRes.status }); } catch (_) {}
+  if (!metaRes.ok) return json({ error: "Erro na API da Meta", details: metaData, waba_id: creds.wabaId }, metaRes.status);
+  await admin.from("crm_whatsapp_templates").insert({
+    name, language: lang, category: cat,
+    header_type: header_type || null, header_content: header_content || null,
+    body_text, footer_text: footer_text || null,
+    buttons: buttons && buttons.length > 0 ? buttons : null,
+    meta_template_id: (metaData as any).id, status: (metaData as any).status || "PENDING",
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  });
+  return json({ success: true, meta_template_id: (metaData as any).id, status: (metaData as any).status || "PENDING", waba_id: creds.wabaId });
+}
+
+async function templatesList(tenantId: string, p: URLSearchParams) {
+  const creds = await resolveWhatsAppCreds(tenantId);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+  const nameFilter = p.get("name");
+  let out: any[] = [];
+  let next: string | null = `https://graph.facebook.com/v25.0/${creds.wabaId}/message_templates?limit=100`;
+  while (next) {
+    const r: Response = await fetch(next, { headers: { Authorization: `Bearer ${creds.token}` } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return json({ error: "Erro ao listar na Meta", details: d }, r.status);
+    out = out.concat(((d as any).data || []).map((t: any) => ({ name: t.name, status: t.status, category: t.category, language: t.language })));
+    next = (d as any).paging?.next || null;
+  }
+  if (nameFilter) out = out.filter((t) => t.name === nameFilter);
+  return json({ data: out, count: out.length });
+}
+
 Deno.serve(async (req) => {
   cors = buildCorsFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -1010,6 +1132,9 @@ Deno.serve(async (req) => {
           "GET /reports/by-source?from=&to=",
           "GET /reports/financeiro?from=YYYY-MM-DD&to=YYYY-MM-DD&clinica=<uuid?>",
           "GET /reports/clientes-pagantes?limit=&offset=",
+          "GET /templates?name=  (lista status dos templates na Meta)",
+          "POST /templates/upload-media  { file_b64 | media_url, file_name, file_type }  → { handle }",
+          "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
         ],
       });
     }
@@ -1045,6 +1170,11 @@ Deno.serve(async (req) => {
       if (parts[1] === "by-source") return await reportBySource(tenantId, p);
       if (parts[1] === "financeiro") return await reportFinanceiro(tenantId, p);
       if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
+    }
+    if (parts[0] === "templates") {
+      if (parts[1] === "upload-media" && req.method === "POST") return await templatesUploadMedia(tenantId, body);
+      if (!parts[1] && req.method === "POST") return await templatesCreate(tenantId, body);
+      if (!parts[1] && req.method === "GET") return await templatesList(tenantId, p);
     }
     return json({ error: "not_found", path, method: req.method }, 404);
   } catch (e: any) {
