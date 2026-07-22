@@ -1,8 +1,9 @@
-import { Phone, PhoneOff, Minus } from "lucide-react";
+import { Phone, PhoneOff, Minus, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { WhatsappCallRow } from "@/contexts/WhatsappCallContext";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
@@ -22,25 +23,51 @@ function formatPhone(p: string | null): string {
 }
 
 export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onReject, onMinimize, onInteract }) => {
+  const navigate = useNavigate();
   const [leadName, setLeadName] = useState<string | null>(null);
+  const [resolvedLeadId, setResolvedLeadId] = useState<string | null>(call.lead_id ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    if (call.lead_id) {
-      supabase
+    (async () => {
+      // 1) Se o call já vier com lead_id, busca direto
+      if (call.lead_id) {
+        const { data } = await supabase
+          .from("crm_leads")
+          .select("id, name")
+          .eq("id", call.lead_id)
+          .maybeSingle();
+        if (cancelled) return;
+        setLeadName((data as any)?.name ?? null);
+        setResolvedLeadId((data as any)?.id ?? call.lead_id);
+        return;
+      }
+      // 2) Fallback: tenta casar pelo telefone normalizado
+      const digits = (call.from_phone || "").replace(/\D/g, "");
+      if (!digits) return;
+      const { data } = await supabase
         .from("crm_leads")
-        .select("nome")
-        .eq("id", call.lead_id)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (!cancelled) setLeadName((data as any)?.nome ?? null);
-        });
-    }
+        .select("id, name")
+        .eq("phone", digits)
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        setLeadName((data as any).name ?? null);
+        setResolvedLeadId((data as any).id ?? null);
+      }
+    })();
     return () => { cancelled = true; };
-  }, [call.lead_id]);
+  }, [call.lead_id, call.from_phone]);
 
   const displayName = leadName || formatPhone(call.from_phone);
   const initials = (leadName || "?").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
+
+  const handleOpenConversation = () => {
+    if (!resolvedLeadId) return;
+    onMinimize?.();
+    navigate(`/crm/conversas?lead=${resolvedLeadId}`);
+  };
 
   return (
     // Fundo com leve escurecimento mas SEM bloquear o CRM (pointer-events-none);
