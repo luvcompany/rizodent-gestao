@@ -270,7 +270,7 @@ async function sendMessage(tenantId: string, id: string, body: any) {
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${SR}`,
-      "apikey": ANON,
+      "apikey": SR,
     },
     body: JSON.stringify({ lead_id: id, ...body }),
   });
@@ -997,7 +997,8 @@ async function adminUploadMediaToMeta(appId: string, token: string, bytes: Uint8
   });
   const upData = await upRes.json().catch(() => ({}));
   if (!upRes.ok || !(upData as any)?.h) return { error: `enviar bytes falhou (HTTP ${upRes.status}): ${JSON.stringify(upData).slice(0, 300)}` };
-  return { handle: (upData as any).h as string };
+  // O Meta às vezes devolve várias linhas de handle; a 1ª é a válida p/ criação.
+  return { handle: String((upData as any).h).split("\n").map((s) => s.trim()).filter(Boolean)[0] };
 }
 
 function adminB64ToBytes(b64: string): Uint8Array {
@@ -1008,11 +1009,9 @@ function adminB64ToBytes(b64: string): Uint8Array {
 }
 
 async function templatesUploadMedia(tenantId: string, body: any) {
-  const creds = await resolveWhatsAppCreds(tenantId);
-  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
   let bytes: Uint8Array | null = null;
   let mime = body.file_type || "video/mp4";
-  let name = body.file_name || "midia";
+  let name = body.file_name || `midia-${Date.now()}`;
   if (body.file_b64) {
     try { bytes = adminB64ToBytes(String(body.file_b64)); } catch { return json({ error: "file_b64 inválido." }, 400); }
   } else if (body.media_url) {
@@ -1024,9 +1023,24 @@ async function templatesUploadMedia(tenantId: string, body: any) {
   } else {
     return json({ error: "envie file_b64 (base64) ou media_url." }, 400);
   }
-  const up = await adminUploadMediaToMeta(creds.appId, creds.token, bytes!, name, mime);
-  if (up.error) return json({ error: up.error }, 502);
-  return json({ handle: up.handle, size: bytes!.length, mime });
+  // header_content precisa ser URL (o ENVIO baixa a mídia). Cacheia no bucket
+  // privado chat-media e gera signed URL de 1 ano (mesmo padrão do envio).
+  const safe = String(name).replace(/[^a-z0-9._-]+/gi, "-");
+  const path = `whatsapp-template-media/${Date.now()}_${safe}`;
+  const blob = new Blob([bytes!], { type: mime });
+  const { error: upErr } = await admin.storage.from("chat-media").upload(path, blob, { contentType: mime, upsert: true });
+  if (upErr) return json({ error: `falha ao cachear no storage: ${upErr.message}` }, 500);
+  const { data: signed, error: signErr } = await admin.storage.from("chat-media").createSignedUrl(path, 60 * 60 * 24 * 365);
+  if (signErr || !signed?.signedUrl) return json({ error: `falha ao assinar URL: ${signErr?.message || "?"}` }, 500);
+  const mediaUrl = signed.signedUrl;
+  let patched = false;
+  if (body.template_name) {
+    const { error: updErr } = await admin.from("crm_whatsapp_templates")
+      .update({ header_content: mediaUrl, updated_at: new Date().toISOString() })
+      .eq("name", body.template_name);
+    patched = !updErr;
+  }
+  return json({ media_url: mediaUrl, size: bytes!.length, mime, patched });
 }
 
 async function templatesCreate(tenantId: string, body: any) {
@@ -1036,10 +1050,25 @@ async function templatesCreate(tenantId: string, body: any) {
   if (!name || !body_text) return json({ error: "name e body_text são obrigatórios." }, 400);
   const lang = language || "pt_BR";
   const cat = category || "UTILITY";
+  const HT = header_type ? String(header_type).toUpperCase() : "";
+  const isMedia = ["VIDEO", "IMAGE", "DOCUMENT"].includes(HT);
   const components: any[] = [];
-  if (header_type && header_content) {
-    if (header_type === "TEXT") components.push({ type: "HEADER", format: "TEXT", text: header_content });
-    else components.push({ type: "HEADER", format: header_type, example: { header_handle: [header_content] } });
+  if (HT === "TEXT" && header_content) {
+    components.push({ type: "HEADER", format: "TEXT", text: header_content });
+  } else if (isMedia && header_content) {
+    // header_content é URL (guardada p/ o envio). A criação exige um handle do
+    // upload resumable — gera aqui a partir da URL. Handle legado (não-URL) passa direto.
+    let creationHandle = header_content;
+    if (/^https?:\/\//i.test(header_content)) {
+      const r = await fetch(header_content);
+      if (!r.ok) return json({ error: `não consegui baixar a mídia do header (HTTP ${r.status}).` }, 400);
+      const mbytes = new Uint8Array(await r.arrayBuffer());
+      const mmime = HT === "VIDEO" ? "video/mp4" : HT === "IMAGE" ? "image/jpeg" : "application/pdf";
+      const up = await adminUploadMediaToMeta(creds.appId, creds.token, mbytes, String(name), mmime);
+      if (up.error) return json({ error: up.error }, 502);
+      creationHandle = up.handle!;
+    }
+    components.push({ type: "HEADER", format: HT, example: { header_handle: [creationHandle] } });
   }
   const variables = String(body_text).match(/\{\{\d+\}\}/g) || [];
   const bodyComponent: any = { type: "BODY", text: body_text };
@@ -1050,14 +1079,14 @@ async function templatesCreate(tenantId: string, body: any) {
     components.push({ type: "BUTTONS", buttons: buttons.map((btn: any) => btn.type === "URL" ? { type: "URL", text: btn.text, url: btn.url } : { type: "QUICK_REPLY", text: btn.text }) });
   }
   const metaPayload = { name, language: lang, category: cat, components };
-  try { await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "create_request", template_name: name, waba_id: creds.wabaId, request_payload: metaPayload }); } catch (_) {}
+  await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "create_request", template_name: name, waba_id: creds.wabaId, request_payload: metaPayload });
   const metaRes = await fetch(`https://graph.facebook.com/v25.0/${creds.wabaId}/message_templates`, {
     method: "POST",
     headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
     body: JSON.stringify(metaPayload),
   });
   const metaData = await metaRes.json().catch(() => ({}));
-  try { await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "create_response", template_name: name, waba_id: creds.wabaId, response_body: metaData, http_status: metaRes.status }); } catch (_) {}
+  await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "create_response", template_name: name, waba_id: creds.wabaId, response_body: metaData, http_status: metaRes.status });
   if (!metaRes.ok) return json({ error: "Erro na API da Meta", details: metaData, waba_id: creds.wabaId }, metaRes.status);
   await admin.from("crm_whatsapp_templates").insert({
     name, language: lang, category: cat,
