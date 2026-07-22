@@ -1049,6 +1049,11 @@ Deno.serve(async (req) => {
       if (parts[1] === "financeiro") return await reportFinanceiro(tenantId, p);
       if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
     }
+    if (parts[0] === "templates") {
+      if (parts[1] === "upload-media" && req.method === "POST") return await templatesUploadMedia(tenantId, body);
+      if (!parts[1] && req.method === "POST") return await templatesCreate(tenantId, body);
+      if (!parts[1] && req.method === "GET") return await templatesList(tenantId, p);
+    }
     return json({ error: "not_found", path, method: req.method }, 404);
   } catch (e: any) {
     const msg = e?.message ?? String(e);
