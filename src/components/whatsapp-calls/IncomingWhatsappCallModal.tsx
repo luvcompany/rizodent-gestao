@@ -127,6 +127,17 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
           <span>Recusar</span>
           <span>Atender</span>
         </div>
+        {resolvedLeadId && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOpenConversation}
+            className="mt-1 gap-2"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Ver conversa
+          </Button>
+        )}
       </div>
     </div>
   );
