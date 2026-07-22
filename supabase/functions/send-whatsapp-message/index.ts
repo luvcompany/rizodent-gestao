@@ -126,7 +126,13 @@ async function ensurePublicTemplateMediaLink(
 ) {
   if (!originalValue) return null;
   if (!isHttpUrl(originalValue)) return originalValue;
-  if (originalValue.includes("/storage/v1/object/public/")) return originalValue;
+  // Já é uma URL do nosso Storage (público ou assinado) — Meta consegue baixar.
+  if (
+    originalValue.includes("/storage/v1/object/public/") ||
+    originalValue.includes("/storage/v1/object/sign/")
+  ) {
+    return originalValue;
+  }
 
   const response = await fetch(originalValue);
   if (!response.ok) {
@@ -149,8 +155,15 @@ async function ensurePublicTemplateMediaLink(
     throw new Error(`Failed to cache template media: ${uploadError.message}`);
   }
 
-  const { data } = supabase.storage.from(PUBLIC_TEMPLATE_MEDIA_BUCKET).getPublicUrl(filePath);
-  return data.publicUrl;
+  // Bucket privado: Meta baixa via signed URL de longa duração.
+  const { data: signed, error: signErr } = await supabase.storage
+    .from(PUBLIC_TEMPLATE_MEDIA_BUCKET)
+    .createSignedUrl(filePath, TEMPLATE_MEDIA_SIGNED_TTL);
+
+  if (signErr || !signed?.signedUrl) {
+    throw new Error(`Failed to sign template media URL: ${signErr?.message || "unknown"}`);
+  }
+  return signed.signedUrl;
 }
 
 Deno.serve(async (req) => {
