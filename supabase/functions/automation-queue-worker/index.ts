@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
   }
 
 
-  const stats = { processed: 0, sent: 0, failed: 0, skipped: 0, deferred: 0, window_closed: 0 };
+  const stats = { processed: 0, sent: 0, failed: 0, skipped: 0, deferred: 0, window_closed: 0, cancelled: 0, retried: 0 };
 
   try {
     // 1. Recover items stuck in "processing" for > 10 min back to pending
