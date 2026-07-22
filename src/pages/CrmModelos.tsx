@@ -84,7 +84,9 @@ function TemplateMediaHeader({
       if ((data as any)?.error) throw new Error((data as any).error);
       const handle = (data as any)?.handle;
       if (!handle) throw new Error("O Meta não devolveu o identificador da mídia.");
-      onChange(handle);
+      // Guardamos a URL do arquivo (não o handle): o ENVIO precisa de URL e a
+      // criação do template gera o handle a partir dela no backend.
+      onChange(up.url);
       setFileName(up.name);
       toast.success("Mídia enviada ao Meta. Agora é só salvar o template.");
     } catch (err: any) {

@@ -80,7 +80,8 @@ async function uploadMediaToMeta(
   if (!upRes.ok || !upData?.h) {
     return { error: `enviar bytes falhou (HTTP ${upRes.status}): ${JSON.stringify(upData).slice(0, 300)}` };
   }
-  return { handle: upData.h as string };
+  // O Meta às vezes devolve várias linhas de handle; a 1ª é a válida.
+  return { handle: String(upData.h).split("\n").map((s: string) => s.trim()).filter(Boolean)[0] };
 }
 
 Deno.serve(async (req) => {
@@ -297,11 +298,24 @@ Deno.serve(async (req) => {
         if (header_type === "TEXT") {
           components.push({ type: "HEADER", format: "TEXT", text: header_content });
         } else {
-          components.push({
-            type: "HEADER",
-            format: header_type,
-            example: { header_handle: [header_content] },
-          });
+          // header_content é a URL da mídia (guardada p/ o ENVIO). Para CRIAR o
+          // template a Meta exige um header_handle do upload resumable — geramos
+          // aqui a partir da URL. Handle legado (não-URL) passa direto.
+          let creationHandle = header_content;
+          if (/^https?:\/\//i.test(header_content)) {
+            const mres = await fetch(header_content);
+            if (!mres.ok) {
+              return new Response(JSON.stringify({ error: `Não consegui baixar a mídia do cabeçalho (HTTP ${mres.status}).` }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            const mbytes = new Uint8Array(await mres.arrayBuffer());
+            const mmime = header_type === "VIDEO" ? "video/mp4" : header_type === "IMAGE" ? "image/jpeg" : "application/pdf";
+            const up = await uploadMediaToMeta(META_APP_ID, WHATSAPP_TOKEN, mbytes, name, mmime);
+            if (up.error) {
+              return new Response(JSON.stringify({ error: up.error }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            creationHandle = up.handle!;
+          }
+          components.push({ type: "HEADER", format: header_type, example: { header_handle: [creationHandle] } });
         }
       }
 
