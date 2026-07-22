@@ -261,10 +261,11 @@ async function sendMessage(tenantId: string, id: string, body: any) {
   // Isolamento de tenant: o lead precisa pertencer ao tenant da chave antes
   // do proxy (sem isso, uma 2ª chave per-tenant dispararia WhatsApp em lead alheio).
   const { data: lead, error: leadErr } = await admin.from("crm_leads")
-    .select("id").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
+    .select("id, phone").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
   if (leadErr) return json({ error: leadErr.message }, 500);
   if (!lead) return json({ error: "not_found" }, 404);
   // Proxy to send-whatsapp-message function using service role.
+  // send-whatsapp-message exige `to` (telefone) — usa o do body ou o do lead.
   const res = await fetch(`${URL_BASE}/functions/v1/send-whatsapp-message`, {
     method: "POST",
     headers: {
@@ -272,7 +273,7 @@ async function sendMessage(tenantId: string, id: string, body: any) {
       "Authorization": `Bearer ${SR}`,
       "apikey": SR,
     },
-    body: JSON.stringify({ lead_id: id, ...body }),
+    body: JSON.stringify({ lead_id: id, ...body, to: (body?.to || (lead as any).phone) }),
   });
   const txt = await res.text();
   try { return json(JSON.parse(txt), res.status); } catch { return new Response(txt, { status: res.status, headers: cors }); }
