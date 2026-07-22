@@ -6,8 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const PUBLIC_TEMPLATE_MEDIA_BUCKET = "avatars";
+// Usamos o bucket privado chat-media (o "avatars" restringe a apenas imagens,
+// então uploads de vídeo/PDF de header de template falhavam silenciosamente).
+// Geramos uma signed URL de longa duração para o Meta baixar a mídia no envio.
+const PUBLIC_TEMPLATE_MEDIA_BUCKET = "chat-media";
 const PUBLIC_TEMPLATE_MEDIA_PREFIX = "whatsapp-template-media";
+const TEMPLATE_MEDIA_SIGNED_TTL = 60 * 60 * 24 * 365; // 1 ano
 
 const isHttpUrl = (value: string | null | undefined) => Boolean(value && /^https?:\/\//i.test(value));
 
