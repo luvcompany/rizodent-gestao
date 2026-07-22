@@ -123,9 +123,24 @@ Deno.serve(async (req) => {
         const existing = existingRows && existingRows[0];
 
         if (existing) {
+          // NÃO sobrescrever header_content se já cacheamos a mídia num bucket
+          // público estável. As URLs do Meta (scontent.whatsapp.net) expiram
+          // rápido; se o sync sobrescreve o link estável, o próximo envio do
+          // template com header de mídia (IMAGE/VIDEO/DOCUMENT) falha em baixar
+          // a URL expirada e o gatilho "1 dia antes / 1 hora antes" some.
+          const { data: current } = await supabase
+            .from("crm_whatsapp_templates")
+            .select("header_content")
+            .eq("id", existing.id)
+            .maybeSingle();
+          const currentHeader = current?.header_content || "";
+          const finalPayload: Record<string, unknown> = { ...payload };
+          if (currentHeader.includes("/storage/v1/object/public/")) {
+            delete finalPayload.header_content;
+          }
           await supabase
             .from("crm_whatsapp_templates")
-            .update(payload)
+            .update(finalPayload)
             .eq("id", existing.id);
         } else {
           await supabase.from("crm_whatsapp_templates").insert({
