@@ -343,6 +343,32 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     return () => { cancelled = true; };
   }, []);
 
+  // Suporte a deep-link ?lead=<id> (ex.: clicar em "Ver conversa" no modal de chamada).
+  // Consome o param uma vez (por valor de id) e o remove da URL para não re-selecionar.
+  const urlLeadId = searchParams.get("lead");
+  useEffect(() => {
+    if (!urlLeadId) return;
+    setSelectedLeadId(urlLeadId);
+    setMobileShowDetails(false);
+    // Se ainda não estiver no array `leads`, hidrata mínimo p/ o painel abrir.
+    const inList = leads.find((l) => l.id === urlLeadId);
+    if (!inList) {
+      supabase
+        .from("crm_leads")
+        .select("id, name, phone, stage_id, pipeline_id, assigned_to, notes, value, last_direction, last_message_at")
+        .eq("id", urlLeadId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) setSelectedLead((prev) => prev && prev.id === urlLeadId ? prev : (data as any));
+        });
+    }
+    // remove param sem recarregar
+    const next = new URLSearchParams(searchParams);
+    next.delete("lead");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlLeadId]);
+
 
 
 
