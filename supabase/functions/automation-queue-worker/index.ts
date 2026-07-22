@@ -11,7 +11,9 @@ const corsHeaders = {
 };
 
 const BATCH_LIMIT = 60;
-const PARALLEL = 8;
+const PARALLEL = 3;
+const CHUNK_GAP_MS = 800;
+const MAX_RATE_LIMIT_RETRIES = 5;
 
 // Ações que ENVIAM mensagem ao paciente — só podem sair no horário comercial.
 // move_stage / add_tag / notify_* são internas e podem rodar a qualquer hora.
