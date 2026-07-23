@@ -302,9 +302,104 @@ type PlanItem = {
   matched_lead_name: string | null;
   matched_paciente_id: string | null; // paciente já existente no CRClin
   move_to_contratado: boolean;
+  // Tipo primeiro/recorrente baseado no HISTÓRICO DO DONTUS (não no CRClin).
+  tipo: "primeiro" | "recorrente";
+  tipo_source: "visto_antes_no_dontus" | "primeiro_no_dontus";
+  // Criar lead novo no CRClin diretamente em "Contratados" (para KOMMO sem lead
+  // com pagamento que CONTA no dia). Apenas um item por paciente/dia recebe true.
+  create_lead: boolean;
   notification: string | null;
   reason?: string;
 };
+
+// Garante o cache diário de pacientes já vistos no Dontus para a clínica.
+// Faz lookback de ~18 meses até ONTEM (nunca inclui hoje). Executa 1x/dia por clínica.
+// Retorna um Set<idPaciente> com pacientes que tiveram algum pagamento em data
+// anterior a `date` — usado para classificar tipo (primeiro/recorrente).
+async function ensureDontusPacienteSeen(
+  admin: any,
+  teamToken: string,
+  idClinicaDontus: number,
+  clinicaId: string,
+  date: string,
+): Promise<Set<number>> {
+  const today = date; // yyyy-mm-dd
+  // Já refreshou hoje?
+  const { data: fresh } = await admin.from("dontus_paciente_seen")
+    .select("id_paciente_dontus, primeira_data")
+    .eq("clinica_id", clinicaId)
+    .eq("refreshed_on", today)
+    .limit(1);
+
+  if (fresh?.length) {
+    const { data: all } = await admin.from("dontus_paciente_seen")
+      .select("id_paciente_dontus, primeira_data")
+      .eq("clinica_id", clinicaId);
+      const seen = new Set<number>();
+      for (const r of all || []) {
+        // Só conta como "visto antes" se primeira_data < today
+        if (String(r.primeira_data) < today) seen.add(Number(r.id_paciente_dontus));
+      }
+      return seen;
+  }
+
+  // Precisa refazer o lookback. 18 meses até ontem.
+  const end = new Date(today); end.setDate(end.getDate() - 1);
+  const start = new Date(end); start.setMonth(start.getMonth() - 18);
+  const dIni = start.toISOString().slice(0, 10);
+  const dFim = end.toISOString().slice(0, 10);
+
+  const primeiraPorPaciente = new Map<number, string>();
+  try {
+    const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_contas_recebidas", {
+      input: { contexto: { idDontus: DONTUS_ID, idClinica: idClinicaDontus }, dataInicio: dIni, dataFim: dFim },
+    });
+    for (const r of rows) {
+      const id = Number(r.idPaciente);
+      const d = String(r.dataRecebimento || "").slice(0, 10);
+      if (!id || !d) continue;
+      const prev = primeiraPorPaciente.get(id);
+      if (!prev || d < prev) primeiraPorPaciente.set(id, d);
+    }
+  } catch (_) {
+    // best-effort: se falhar, retorna set atual (o que já estava em cache)
+    const { data: all } = await admin.from("dontus_paciente_seen")
+      .select("id_paciente_dontus, primeira_data").eq("clinica_id", clinicaId);
+    const seen = new Set<number>();
+    for (const r of all || []) {
+      if (String(r.primeira_data) < today) seen.add(Number(r.id_paciente_dontus));
+    }
+    return seen;
+  }
+
+  // Upsert em lote
+  if (primeiraPorPaciente.size) {
+    const rows = Array.from(primeiraPorPaciente.entries()).map(([id, d]) => ({
+      id_paciente_dontus: id,
+      clinica_id: clinicaId,
+      primeira_data: d,
+      refreshed_on: today,
+      updated_at: new Date().toISOString(),
+    }));
+    // upsert em chunks pra evitar payload gigante
+    const CHUNK = 500;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      await admin.from("dontus_paciente_seen")
+        .upsert(rows.slice(i, i + CHUNK), { onConflict: "id_paciente_dontus,clinica_id" });
+    }
+  }
+  // Marca refreshed_on nos que já existiam mas não apareceram (mantém primeira_data)
+  await admin.from("dontus_paciente_seen")
+    .update({ refreshed_on: today })
+    .eq("clinica_id", clinicaId)
+    .neq("refreshed_on", today);
+
+  const seen = new Set<number>();
+  for (const [id, d] of primeiraPorPaciente.entries()) {
+    if (d < today) seen.add(id);
+  }
+  return seen;
+}
 
 async function syncClinica(
   admin: any,
@@ -350,8 +445,18 @@ async function syncClinica(
   }
 
   const clinicaId = clinicaInfo.id;
+
+  // Set de idPaciente vistos em data ANTERIOR a hoje no Dontus (fonte da verdade
+  // para 'primeiro' vs 'recorrente'). Best-effort: se falhar, todo mundo cai como 'primeiro'.
+  let seenBefore: Set<number> = new Set();
+  try {
+    seenBefore = await ensureDontusPacienteSeen(admin, teamToken, idClinica, clinicaId, date);
+  } catch (_) { /* best-effort */ }
+
   const plan: PlanItem[] = [];
   const contratadoAlreadyForLead = new Set<string>(); // dedupe move por lead
+
+
 
 
   for (const it of recebidos) {
@@ -551,7 +656,54 @@ async function syncClinica(
     });
   }
 
-  const summary = {
+  // ============ Pós-processamento ============
+  // (A) Classificar tipo primeiro/recorrente com base no histórico DO DONTUS.
+  //     Fonte: seenBefore (idPaciente com pagamento em data anterior a hoje).
+  for (const p of plan) {
+    const seen = seenBefore.has(p.paciente_id_dontus);
+    p.tipo = seen ? "recorrente" : "primeiro";
+    p.tipo_source = seen ? "visto_antes_no_dontus" : "primeiro_no_dontus";
+    p.create_lead = false;
+  }
+
+  // (B) KOMMO sem lead: se o paciente tem AO MENOS UM item que CONTA no dia
+  //     (recorrencia_orto=false) e não há lead vinculável, marcar o PRIMEIRO
+  //     item que conta com create_lead=true (novo lead direto em "Contratados").
+  //     Se só houver itens que NÃO contam (ex.: orto manutenção), NÃO cria lead.
+  const kommoNoLeadByPaciente = new Map<number, PlanItem[]>();
+  for (const p of plan) {
+    if (p.action === "skip") continue;
+    if (p.origem_paciente !== "KOMMO") continue;
+    if (p.matched_lead_id) continue;
+    const arr = kommoNoLeadByPaciente.get(p.paciente_id_dontus) || [];
+    arr.push(p);
+    kommoNoLeadByPaciente.set(p.paciente_id_dontus, arr);
+  }
+  for (const [_idPac, items] of kommoNoLeadByPaciente.entries()) {
+    const counting = items.filter((i) => !i.recorrencia_orto);
+    if (!counting.length) {
+      // Só recorrência orto → não cria lead, mantém notificação de KOMMO sem lead
+      for (const i of items) {
+        i.notification = "Venda KOMMO (orto manutenção) sem lead prévio — importada como recorrência, sem criar lead";
+      }
+      continue;
+    }
+    const primary = counting[0];
+    primary.create_lead = true;
+    primary.move_to_contratado = true;
+    primary.notification =
+      `Lead criado automaticamente a partir de venda KOMMO sem lead prévio — conferir | ` +
+      `paciente=${primary.paciente_nome}, tel=${primary.telefone ?? "?"}, valor=R$${primary.valor.toFixed(2)}, clínica=${primary.clinica_nome}`;
+    // Demais itens do mesmo paciente KOMMO (se houver) — anexar ao mesmo lead novo
+    // apenas informacionalmente no dry-run; contador único de criação de lead.
+    for (const i of items) {
+      if (i !== primary) {
+        i.notification = `Anexado ao lead criado automaticamente para ${primary.paciente_nome}`;
+      }
+    }
+  }
+
+  const summary: any = {
     clinica: clinicaInfo.nome,
     id_clinica_dontus: idClinica,
     itens_lidos: recebidos.length,
@@ -560,7 +712,10 @@ async function syncClinica(
     ignorados: plan.filter((p) => p.action === "skip").length,
     vinculos_telefone: plan.filter((p) => p.matched_by === "phone").length,
     vinculos_nome: plan.filter((p) => p.matched_by === "name").length,
-    mover_contratado: plan.filter((p) => p.move_to_contratado).length,
+    mover_contratado: plan.filter((p) => p.move_to_contratado && !p.create_lead).length,
+    leads_criados_em_contratado: plan.filter((p) => p.create_lead).length,
+    primeiros: plan.filter((p) => p.tipo === "primeiro").length,
+    recorrentes: plan.filter((p) => p.tipo === "recorrente").length,
     notificacoes: plan.filter((p) => p.notification).length,
     plan,
   };
