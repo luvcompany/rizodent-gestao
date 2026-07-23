@@ -399,6 +399,7 @@ const Atendimento = () => {
       }
 
       for (const ent of entries) {
+        const isOrtodontia = isOrto(ent.especialidade);
         const { error: pagError } = await supabase.from("pagamentos").insert({
           paciente_id: pacienteId,
           clinica_id: clinicaId,
@@ -408,7 +409,9 @@ const Atendimento = () => {
           tipo: tipoPagamento,
           data_pagamento: dataPagamento,
           created_by: user?.id,
-        });
+          // Só ortodontia usa a resposta; outras especialidades gravam sempre false.
+          recorrencia_orto: isOrtodontia ? ent.recorrenciaOrto === true : false,
+        } as any);
         if (pagError) throw pagError;
       }
 
