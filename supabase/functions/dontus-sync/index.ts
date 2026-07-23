@@ -465,6 +465,261 @@ async function ensureDontusPacienteSeen(
   return seen;
 }
 
+// ============ Execução real do plano (não-dry-run) ============
+const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
+
+async function resolveFallbackUser(admin: any): Promise<string | null> {
+  const { data } = await admin.from("profiles")
+    .select("id").eq("tenant_id", RIZODENT_TENANT_ID)
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  return data?.id ?? null;
+}
+
+async function findMainPipelineContratado(admin: any): Promise<{ pipeline_id: string; stage_id: string } | null> {
+  // Pipeline principal = qualquer pipeline do tenant Rizodent que contenha etapa ILIKE %contratado%.
+  // Preferência: pipeline cujo nome contenha "principal".
+  const { data: stages } = await admin.from("crm_stages")
+    .select("id, name, pipeline_id, crm_pipelines!inner(id, name, tenant_id)")
+    .ilike("name", "%contratado%")
+    .eq("crm_pipelines.tenant_id", RIZODENT_TENANT_ID);
+  if (!stages?.length) return null;
+  const principal = stages.find((s: any) => /principal/i.test(s.crm_pipelines?.name || ""));
+  const chosen = principal || stages[0];
+  return { pipeline_id: chosen.pipeline_id, stage_id: chosen.id };
+}
+
+async function ensurePacienteFromItem(admin: any, item: PlanItem, leadId: string | null): Promise<string> {
+  // 1) via vínculo de lead
+  if (leadId) {
+    const { data: vinc } = await admin.from("crm_lead_pacientes")
+      .select("paciente_id").eq("lead_id", leadId).limit(1);
+    if (vinc?.length) return vinc[0].paciente_id;
+  }
+  // 2) por telefone (últimos 8 dígitos) + nome compatível na clínica
+  if (item.telefone) {
+    const tail = tailPhone(item.telefone);
+    if (tail) {
+      const { data: pacs } = await admin.from("pacientes")
+        .select("id, nome, telefone")
+        .eq("tenant_id", RIZODENT_TENANT_ID)
+        .ilike("telefone", `%${tail}`).limit(10);
+      const match = (pacs || []).find((p: any) => namesCompatible(p.nome, item.paciente_nome));
+      if (match) return match.id;
+    }
+  }
+  // 3) por nome normalizado exato + clinica
+  const norm = normalizeName(item.paciente_nome);
+  if (norm) {
+    const { data: pacs } = await admin.from("pacientes")
+      .select("id, nome")
+      .eq("tenant_id", RIZODENT_TENANT_ID).limit(2000);
+    const match = (pacs || []).find((p: any) => normalizeName(p.nome) === norm);
+    if (match) return match.id;
+  }
+  // 4) criar
+  const { data: created, error } = await admin.from("pacientes").insert({
+    nome: item.paciente_nome,
+    telefone: item.telefone || "",
+    cidade: item.clinica_nome,
+    origem: item.origem_paciente === "KOMMO" ? "kommo" : (item.origem_paciente || null),
+    tenant_id: RIZODENT_TENANT_ID,
+  }).select("id").single();
+  if (error) throw new Error(`criar paciente falhou: ${error.message}`);
+  return created.id;
+}
+
+async function executePlan(admin: any, plan: PlanItem[]): Promise<{
+  importados: number; adotados: number; leads_criados: number;
+  movidos: number; notificacoes: number; erros: number; erros_det: any[];
+}> {
+  const c = { importados: 0, adotados: 0, leads_criados: 0, movidos: 0, notificacoes: 0, erros: 0, erros_det: [] as any[] };
+  const fallbackUser = await resolveFallbackUser(admin);
+  let mainPipeline: { pipeline_id: string; stage_id: string } | null = null;
+  const movedLeads = new Set<string>();
+  const createdLeadByPaciente = new Map<number, { leadId: string; pacienteId: string }>();
+
+  const notify = async (userId: string | null, item: PlanItem, leadId: string | null, dedupe: string) => {
+    if (!userId || !item.notification) return;
+    const { error } = await admin.from("crm_notifications").insert({
+      user_id: userId, lead_id: leadId,
+      title: "Sync Dontus", body: item.notification,
+      type: "dontus_sync", dedupe_key: dedupe,
+    });
+    if (!error) c.notificacoes++;
+    else if (!/duplicate|unique/i.test(error.message || "")) throw error;
+  };
+
+  for (const item of plan) {
+    try {
+      // Guarda de tenant: clínicas do CLINICA_MAP são todas Rizodent, mas checamos.
+      if (item.action === "skip") {
+        if (item.notification) {
+          await notify(fallbackUser, item, item.matched_lead_id, `sync:skip:${item.dontus_key}`);
+        }
+        continue;
+      }
+
+      let leadId = item.matched_lead_id;
+      let pacienteId = item.matched_paciente_id;
+
+      // --- create_lead: reusar por telefone/nome antes de criar ---
+      if (item.create_lead && !leadId) {
+        const cached = createdLeadByPaciente.get(item.paciente_id_dontus);
+        if (cached) {
+          leadId = cached.leadId;
+          pacienteId = cached.pacienteId;
+        } else {
+          let existing: any = null;
+          if (item.telefone) {
+            const tail = tailPhone(item.telefone);
+            if (tail) {
+              const { data } = await admin.from("crm_leads")
+                .select("id, name, phone, pipeline_id, stage_id")
+                .eq("tenant_id", RIZODENT_TENANT_ID)
+                .ilike("phone", `%${tail}`)
+                .order("created_at", { ascending: false }).limit(10);
+              existing = (data || []).find((l: any) => namesCompatible(l.name, item.paciente_nome)) || null;
+            }
+          }
+          if (!existing) {
+            const norm = normalizeName(item.paciente_nome);
+            if (norm) {
+              const { data } = await admin.from("crm_leads")
+                .select("id, name, pipeline_id, stage_id")
+                .eq("tenant_id", RIZODENT_TENANT_ID)
+                .order("created_at", { ascending: false }).limit(1000);
+              existing = (data || []).find((l: any) => normalizeName(l.name) === norm) || null;
+            }
+          }
+
+          if (existing) {
+            leadId = existing.id;
+          } else {
+            mainPipeline = mainPipeline || await findMainPipelineContratado(admin);
+            if (!mainPipeline) throw new Error("pipeline principal com etapa Contratado não encontrado");
+            const ins = await admin.from("crm_leads").insert({
+              tenant_id: RIZODENT_TENANT_ID,
+              name: item.paciente_nome,
+              phone: item.telefone || null,
+              source: "kommo",
+              pipeline_id: mainPipeline.pipeline_id,
+              stage_id: mainPipeline.stage_id,
+              cidade: item.clinica_nome,
+            }).select("id").single();
+            if (ins.error) throw new Error(`criar lead falhou: ${ins.error.message}`);
+            leadId = ins.data.id;
+            c.leads_criados++;
+            await admin.from("crm_lead_stage_history").insert({
+              lead_id: leadId, stage_id: mainPipeline.stage_id,
+            });
+            movedLeads.add(leadId); // já entra em Contratado; não mover de novo
+          }
+
+          pacienteId = await ensurePacienteFromItem(admin, item, leadId);
+          // garantir vínculo
+          if (leadId && pacienteId) {
+            await admin.from("crm_lead_pacientes")
+              .upsert({ lead_id: leadId, paciente_id: pacienteId, is_primary: true },
+                { onConflict: "lead_id,paciente_id" });
+          }
+          createdLeadByPaciente.set(item.paciente_id_dontus, { leadId: leadId!, pacienteId });
+        }
+      }
+
+      // --- garantir paciente para import/adopt ---
+      if (!pacienteId) {
+        pacienteId = await ensurePacienteFromItem(admin, item, leadId);
+        if (leadId && pacienteId) {
+          await admin.from("crm_lead_pacientes")
+            .upsert({ lead_id: leadId, paciente_id: pacienteId, is_primary: false },
+              { onConflict: "lead_id,paciente_id" });
+        }
+      }
+
+      // --- action ---
+      if (item.action === "adopt") {
+        const { data: rows } = await admin.from("pagamentos")
+          .select("id, valor, dontus_key")
+          .eq("paciente_id", pacienteId)
+          .eq("data_pagamento", item.data)
+          .is("dontus_key", null);
+        const target = (rows || []).find((r: any) => Number(r.valor) === Number(item.valor));
+        if (target) {
+          const upd = await admin.from("pagamentos")
+            .update({ dontus_key: item.dontus_key })
+            .eq("id", target.id).is("dontus_key", null);
+          if (upd.error) {
+            if (!/duplicate|unique/i.test(upd.error.message || "")) throw upd.error;
+          } else {
+            c.adotados++;
+          }
+        }
+        // Se sumiu, apenas não conta como adotado — evita gerar duplicado.
+      } else if (item.action === "import") {
+        const { data: dup } = await admin.from("pagamentos")
+          .select("id").eq("dontus_key", item.dontus_key).maybeSingle();
+        if (!dup) {
+          const ins = await admin.from("pagamentos").insert({
+            paciente_id: pacienteId,
+            clinica_id: item.clinica_id,
+            valor: item.valor,
+            data_pagamento: item.data,
+            especialidade: item.especialidade,
+            forma_pagamento: item.forma_pagamento || "Não informado",
+            tipo: item.tipo === "recorrente" ? "recorrente" : "primeiro",
+            recorrencia_orto: item.recorrencia_orto,
+            dontus_key: item.dontus_key,
+          });
+          if (ins.error) {
+            if (!/duplicate|unique/i.test(ins.error.message || "")) throw ins.error;
+          } else {
+            c.importados++;
+          }
+        }
+      }
+
+      // --- move para Contratado (uma vez por lead) ---
+      if (item.move_to_contratado && leadId && !movedLeads.has(leadId)) {
+        movedLeads.add(leadId);
+        const { data: lead } = await admin.from("crm_leads")
+          .select("id, pipeline_id, stage_id").eq("id", leadId).maybeSingle();
+        if (lead?.pipeline_id) {
+          const { data: curStg } = await admin.from("crm_stages")
+            .select("id, name").eq("id", lead.stage_id).maybeSingle();
+          if (!/contratado/i.test(curStg?.name || "")) {
+            const { data: tgt } = await admin.from("crm_stages")
+              .select("id").eq("pipeline_id", lead.pipeline_id)
+              .ilike("name", "%contratado%").limit(1).maybeSingle();
+            if (tgt?.id) {
+              const upd = await admin.from("crm_leads")
+                .update({ stage_id: tgt.id }).eq("id", leadId);
+              if (upd.error) throw upd.error;
+              await admin.from("crm_lead_stage_history").insert({
+                lead_id: leadId, stage_id: tgt.id, from_stage_id: lead.stage_id,
+              });
+              c.movidos++;
+            }
+          }
+        }
+      }
+
+      // --- notificação ---
+      if (item.notification) {
+        const userId = leadId
+          ? (await admin.from("crm_leads").select("assigned_to").eq("id", leadId).maybeSingle()).data?.assigned_to || fallbackUser
+          : fallbackUser;
+        await notify(userId, item, leadId, `sync:${item.action}:${item.dontus_key}`);
+      }
+    } catch (e: any) {
+      c.erros++;
+      c.erros_det.push({ dontus_key: item.dontus_key, paciente: item.paciente_nome, error: e?.message || String(e) });
+    }
+  }
+  return c;
+}
+
+
+
 async function syncClinica(
   admin: any,
   teamToken: string,
