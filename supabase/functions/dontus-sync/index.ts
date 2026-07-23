@@ -302,9 +302,104 @@ type PlanItem = {
   matched_lead_name: string | null;
   matched_paciente_id: string | null; // paciente já existente no CRClin
   move_to_contratado: boolean;
+  // Tipo primeiro/recorrente baseado no HISTÓRICO DO DONTUS (não no CRClin).
+  tipo: "primeiro" | "recorrente";
+  tipo_source: "visto_antes_no_dontus" | "primeiro_no_dontus";
+  // Criar lead novo no CRClin diretamente em "Contratados" (para KOMMO sem lead
+  // com pagamento que CONTA no dia). Apenas um item por paciente/dia recebe true.
+  create_lead: boolean;
   notification: string | null;
   reason?: string;
 };
+
+// Garante o cache diário de pacientes já vistos no Dontus para a clínica.
+// Faz lookback de ~18 meses até ONTEM (nunca inclui hoje). Executa 1x/dia por clínica.
+// Retorna um Set<idPaciente> com pacientes que tiveram algum pagamento em data
+// anterior a `date` — usado para classificar tipo (primeiro/recorrente).
+async function ensureDontusPacienteSeen(
+  admin: any,
+  teamToken: string,
+  idClinicaDontus: number,
+  clinicaId: string,
+  date: string,
+): Promise<Set<number>> {
+  const today = date; // yyyy-mm-dd
+  // Já refreshou hoje?
+  const { data: fresh } = await admin.from("dontus_paciente_seen")
+    .select("id_paciente_dontus, primeira_data")
+    .eq("clinica_id", clinicaId)
+    .eq("refreshed_on", today)
+    .limit(1);
+
+  if (fresh?.length) {
+    const { data: all } = await admin.from("dontus_paciente_seen")
+      .select("id_paciente_dontus, primeira_data")
+      .eq("clinica_id", clinicaId);
+      const seen = new Set<number>();
+      for (const r of all || []) {
+        // Só conta como "visto antes" se primeira_data < today
+        if (String(r.primeira_data) < today) seen.add(Number(r.id_paciente_dontus));
+      }
+      return seen;
+  }
+
+  // Precisa refazer o lookback. 18 meses até ontem.
+  const end = new Date(today); end.setDate(end.getDate() - 1);
+  const start = new Date(end); start.setMonth(start.getMonth() - 18);
+  const dIni = start.toISOString().slice(0, 10);
+  const dFim = end.toISOString().slice(0, 10);
+
+  const primeiraPorPaciente = new Map<number, string>();
+  try {
+    const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_contas_recebidas", {
+      input: { contexto: { idDontus: DONTUS_ID, idClinica: idClinicaDontus }, dataInicio: dIni, dataFim: dFim },
+    });
+    for (const r of rows) {
+      const id = Number(r.idPaciente);
+      const d = String(r.dataRecebimento || "").slice(0, 10);
+      if (!id || !d) continue;
+      const prev = primeiraPorPaciente.get(id);
+      if (!prev || d < prev) primeiraPorPaciente.set(id, d);
+    }
+  } catch (_) {
+    // best-effort: se falhar, retorna set atual (o que já estava em cache)
+    const { data: all } = await admin.from("dontus_paciente_seen")
+      .select("id_paciente_dontus, primeira_data").eq("clinica_id", clinicaId);
+    const seen = new Set<number>();
+    for (const r of all || []) {
+      if (String(r.primeira_data) < today) seen.add(Number(r.id_paciente_dontus));
+    }
+    return seen;
+  }
+
+  // Upsert em lote
+  if (primeiraPorPaciente.size) {
+    const rows = Array.from(primeiraPorPaciente.entries()).map(([id, d]) => ({
+      id_paciente_dontus: id,
+      clinica_id: clinicaId,
+      primeira_data: d,
+      refreshed_on: today,
+      updated_at: new Date().toISOString(),
+    }));
+    // upsert em chunks pra evitar payload gigante
+    const CHUNK = 500;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      await admin.from("dontus_paciente_seen")
+        .upsert(rows.slice(i, i + CHUNK), { onConflict: "id_paciente_dontus,clinica_id" });
+    }
+  }
+  // Marca refreshed_on nos que já existiam mas não apareceram (mantém primeira_data)
+  await admin.from("dontus_paciente_seen")
+    .update({ refreshed_on: today })
+    .eq("clinica_id", clinicaId)
+    .neq("refreshed_on", today);
+
+  const seen = new Set<number>();
+  for (const [id, d] of primeiraPorPaciente.entries()) {
+    if (d < today) seen.add(id);
+  }
+  return seen;
+}
 
 async function syncClinica(
   admin: any,
