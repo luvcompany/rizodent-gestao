@@ -279,30 +279,34 @@ async function sendMessage(tenantId: string, id: string, body: any) {
   try { return json(JSON.parse(txt), res.status); } catch { return new Response(txt, { status: res.status, headers: cors }); }
 }
 
+// Base de leads "aguardando resposta" — usa last_relevant_inbound calculado
+// via messages (WhatsApp + Direct), IGNORANDO comentários do Instagram
+// (instagram_comment_id NOT NULL). O CRM continua atualizando last_inbound_at
+// com comentários — por isso NÃO usamos essa coluna aqui.
+async function fetchUnreadBase(tenantId: string): Promise<any[]> {
+  const { data, error } = await admin.rpc("admin_api_unread_leads_base", { _tenant: tenantId });
+  if (error) throw new Error(error.message);
+  return (data as any[]) || [];
+}
+
 async function conversations(tenantId: string, p: URLSearchParams) {
   const limit = Math.min(parseInt(p.get("limit") || "50"), 200);
   const unreadOnly = p.get("unread") === "true";
-  // Igualdade com a RPC get_crm_unread_leads_count: is_blocked=false,
-  // last_inbound_at NOT NULL, janela 60 dias, inbound > outbound. O filtro
-  // roda ANTES do limit — senão, quando há 50+ conversas recentes, o LIMIT
-  // corta candidatas não lidas fora do topo por last_message_at.
   if (unreadOnly) {
-    const cutoffIso = new Date(Date.now() - 60 * 86400_000).toISOString();
-    const rows = await fetchAllPaged<any>(
-      () => admin.from("crm_leads")
-        .select("id,name,phone,last_message_at,last_inbound_at,last_outbound_at,stage_id,assigned_to")
-        .eq("tenant_id", tenantId)
-        .eq("is_blocked", false)
-        .not("last_inbound_at", "is", null)
-        .gte("last_inbound_at", cutoffIso),
-      "id",
-    );
-    const filtered = rows.filter((l: any) =>
-      !l.last_outbound_at || l.last_inbound_at > l.last_outbound_at
-    );
-    filtered.sort((a: any, b: any) =>
+    const rows = await fetchUnreadBase(tenantId);
+    rows.sort((a: any, b: any) =>
       String(b.last_message_at || "").localeCompare(String(a.last_message_at || "")));
-    return json({ data: filtered.slice(0, limit) });
+    // Mantém o mesmo shape das versões anteriores (last_inbound_at) para o
+    // consumidor; expõe também last_relevant_inbound.
+    const out = rows.slice(0, limit).map((l: any) => ({
+      id: l.id, name: l.name, phone: l.phone,
+      last_message_at: l.last_message_at,
+      last_inbound_at: l.last_relevant_inbound,
+      last_relevant_inbound: l.last_relevant_inbound,
+      last_outbound_at: l.last_outbound_at,
+      stage_id: l.stage_id, assigned_to: l.assigned_to,
+    }));
+    return json({ data: out });
   }
   const { data, error } = await admin.from("crm_leads")
     .select("id,name,phone,last_message_at,last_inbound_at,last_outbound_at,stage_id,assigned_to")
@@ -315,24 +319,11 @@ async function conversations(tenantId: string, p: URLSearchParams) {
 }
 
 async function conversationsUnreadCount(tenantId: string) {
-  // Endpoint LEVE p/ o dashboard consultar a cada minuto: replica exatamente
-  // a regra de get_crm_unread_leads_count (tenant inteiro, sem RLS por usuário)
-  // e devolve total, quebra por grupo de funil (comercial vs pós-venda),
-  // por canal e por cidade. por_canal/por_unidade referem-se ao COMERCIAL
-  // (é o recorte da TV); pos_venda é só o total.
-  const cutoffIso = new Date(Date.now() - 60 * 86400_000).toISOString();
-  const rows = await fetchAllPaged<any>(
-    () => admin.from("crm_leads")
-      .select("id,last_inbound_at,last_outbound_at,instagram_user_id,cidade,stage_id")
-      .eq("tenant_id", tenantId)
-      .eq("is_blocked", false)
-      .not("last_inbound_at", "is", null)
-      .gte("last_inbound_at", cutoffIso),
-    "id",
-  );
-  const unread = rows.filter((l: any) =>
-    !l.last_outbound_at || l.last_inbound_at > l.last_outbound_at
-  );
+  // Endpoint LEVE p/ o dashboard consultar a cada minuto. Regra: COMENTÁRIO
+  // do Instagram NÃO conta como conversa. Base = last_relevant_inbound
+  // (max created_at de messages inbound não deletadas SEM instagram_comment_id).
+  const unread = await fetchUnreadBase(tenantId);
+
   // Mapa stage_id → é pós-venda? Identifica pipeline pelo nome (case+acentos insensitive).
   const norm = (s: string) => (s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
   const { data: pipelines } = await admin.from("crm_pipelines").select("id,name").eq("tenant_id", tenantId);
@@ -345,16 +336,17 @@ async function conversationsUnreadCount(tenantId: string) {
   let maisAntigoPosVenda: string | null = null;
   const porCidade = new Map<string, number>();
   for (const l of unread) {
+    const rel = l.last_relevant_inbound as string | null;
     if (l.stage_id && posVendaStageIds.has(l.stage_id)) {
       pos_venda++;
-      if (l.last_inbound_at && (!maisAntigoPosVenda || l.last_inbound_at < maisAntigoPosVenda)) {
-        maisAntigoPosVenda = l.last_inbound_at;
+      if (rel && (!maisAntigoPosVenda || rel < maisAntigoPosVenda)) {
+        maisAntigoPosVenda = rel;
       }
       continue;
     }
     comercial++;
-    if (l.last_inbound_at && (!maisAntigoComercial || l.last_inbound_at < maisAntigoComercial)) {
-      maisAntigoComercial = l.last_inbound_at;
+    if (rel && (!maisAntigoComercial || rel < maisAntigoComercial)) {
+      maisAntigoComercial = rel;
     }
     if (l.instagram_user_id) ig++; else wa++;
     const cidade = (l.cidade && String(l.cidade).trim()) || "SEM_CIDADE";

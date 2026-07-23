@@ -4109,6 +4109,21 @@ export type Database = {
           users: number
         }[]
       }
+      admin_api_unread_leads_base: {
+        Args: { _tenant: string }
+        Returns: {
+          assigned_to: string
+          cidade: string
+          id: string
+          instagram_user_id: string
+          last_message_at: string
+          last_outbound_at: string
+          last_relevant_inbound: string
+          name: string
+          phone: string
+          stage_id: string
+        }[]
+      }
       admin_platform_metrics: { Args: never; Returns: Json }
       admin_tenant_metrics: { Args: { _tenant_id: string }; Returns: Json }
       admin_tenant_users: {
