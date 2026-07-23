@@ -4310,6 +4310,10 @@ export type Database = {
         Returns: string
       }
       generate_tenant_invoices: { Args: never; Returns: number }
+      get_conversation_leads: {
+        Args: { p_limit?: number; p_tenant_id?: string }
+        Returns: Json
+      }
       get_crm_unread_leads_count: { Args: never; Returns: number }
       get_crm_unread_leads_count_by_channel: {
         Args: { _channel: string }
