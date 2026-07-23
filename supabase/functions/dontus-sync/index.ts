@@ -68,10 +68,20 @@ function tailPhone(raw: string | null | undefined): string | null {
   return d.slice(-8);
 }
 
+// Stopwords BR frequentes em nomes — não contam como token significativo.
+const NAME_STOPWORDS = new Set([
+  "DE","DA","DO","DAS","DOS","E","DI","DU","LA","LE","EL",
+  "JR","JUNIOR","NETO","FILHO","FILHA","SOBRINHO",
+  "SANTOS","SILVA","SOUZA","SOUSA","OLIVEIRA","LIMA","COSTA","PEREIRA","FERREIRA",
+  "RODRIGUES","ALVES","GOMES","MARTINS","ARAUJO","BARBOSA","RIBEIRO","CARVALHO","MELO","MOURA",
+]);
+function significantTokens(name: string): string[] {
+  return name.split(/\s+/).filter((t) => t.length > 2 && !NAME_STOPWORDS.has(t));
+}
 // Compatibilidade de nomes para aceitar match por telefone:
 // - iguais normalizados, OU
-// - mesmo primeiro nome, OU
-// - >=2 tokens significativos (>2 letras) em comum.
+// - mesmo primeiro nome (não-stopword), OU
+// - >=2 tokens SIGNIFICATIVOS em comum (excluindo stopwords/sobrenomes comuns).
 function namesCompatible(a: string | null | undefined, b: string | null | undefined): boolean {
   const na = normalizeName(a);
   const nb = normalizeName(b);
@@ -80,11 +90,13 @@ function namesCompatible(a: string | null | undefined, b: string | null | undefi
   const ta = na.split(/\s+/).filter(Boolean);
   const tb = nb.split(/\s+/).filter(Boolean);
   if (!ta.length || !tb.length) return false;
-  if (ta[0] === tb[0]) return true;
-  const setB = new Set(tb.filter((t) => t.length > 2));
+  // Primeiro nome deve bater E não ser stopword comum.
+  if (ta[0] === tb[0] && !NAME_STOPWORDS.has(ta[0]) && ta[0].length > 2) return true;
+  const sigA = significantTokens(na);
+  const setB = new Set(significantTokens(nb));
   let common = 0;
-  for (const t of ta) {
-    if (t.length > 2 && setB.has(t)) common++;
+  for (const t of sigA) {
+    if (setB.has(t)) common++;
     if (common >= 2) return true;
   }
   return false;
