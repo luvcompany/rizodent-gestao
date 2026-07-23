@@ -707,6 +707,41 @@ const Atendimento = () => {
                           />
                         </div>
                       </div>
+
+                      {isOrto(ent.especialidade) && (
+                        <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+                          <p className="text-xs font-semibold text-foreground">
+                            Houve panorâmica ou aparelho neste atendimento?
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Regra oficial: ortodontia só conta no faturamento quando é <strong>início de tratamento</strong>. Manutenção, mensalidade, braquete, moldagem ou contenção contam como recorrência e não entram nos relatórios.
+                          </p>
+                          <label className="flex items-start gap-2 cursor-pointer text-xs">
+                            <input
+                              type="radio"
+                              name={`recorrencia-${ent.id}`}
+                              checked={ent.recorrenciaOrto === false}
+                              onChange={() => updateEntry(index, "recorrenciaOrto", false)}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              <strong>Sim</strong>, início de tratamento <span className="text-muted-foreground">(conta no faturamento)</span>
+                            </span>
+                          </label>
+                          <label className="flex items-start gap-2 cursor-pointer text-xs">
+                            <input
+                              type="radio"
+                              name={`recorrencia-${ent.id}`}
+                              checked={ent.recorrenciaOrto === true}
+                              onChange={() => updateEntry(index, "recorrenciaOrto", true)}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              <strong>Não</strong>, é recorrência <span className="text-muted-foreground">(manutenção/mensalidade/braquete/moldagem — não conta)</span>
+                            </span>
+                          </label>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );
