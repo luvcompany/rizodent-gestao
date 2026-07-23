@@ -56,15 +56,20 @@ interface PagamentoEntry {
   // Regra oficial (conciliação com Dontus 07/2026): ORTODONTIA só conta no
   // faturamento quando há PANORÂMICA ou APARELHO no dia (início de tratamento).
   // Manutenção/mensalidade/braquete/moldagem/contenção = recorrência (não conta).
-  recorrenciaOrto: boolean;
+  // null = ainda não respondido (obrigatório quando especialidade = ORTODONTIA).
+  recorrenciaOrto: boolean | null;
 }
+
+// Detecta ORTODONTIA independente de acento/caixa.
+const isOrto = (esp: string) =>
+  esp.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim() === "ORTODONTIA";
 
 const createEmptyEntry = (mode: EspMode = "nova"): PagamentoEntry => ({
   id: crypto.randomUUID(),
   mode,
   especialidade: "",
   valor: "",
-  recorrenciaOrto: false,
+  recorrenciaOrto: null,
 });
 
 const Atendimento = () => {
