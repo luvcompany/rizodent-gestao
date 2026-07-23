@@ -656,7 +656,54 @@ async function syncClinica(
     });
   }
 
-  const summary = {
+  // ============ Pós-processamento ============
+  // (A) Classificar tipo primeiro/recorrente com base no histórico DO DONTUS.
+  //     Fonte: seenBefore (idPaciente com pagamento em data anterior a hoje).
+  for (const p of plan) {
+    const seen = seenBefore.has(p.paciente_id_dontus);
+    p.tipo = seen ? "recorrente" : "primeiro";
+    p.tipo_source = seen ? "visto_antes_no_dontus" : "primeiro_no_dontus";
+    p.create_lead = false;
+  }
+
+  // (B) KOMMO sem lead: se o paciente tem AO MENOS UM item que CONTA no dia
+  //     (recorrencia_orto=false) e não há lead vinculável, marcar o PRIMEIRO
+  //     item que conta com create_lead=true (novo lead direto em "Contratados").
+  //     Se só houver itens que NÃO contam (ex.: orto manutenção), NÃO cria lead.
+  const kommoNoLeadByPaciente = new Map<number, PlanItem[]>();
+  for (const p of plan) {
+    if (p.action === "skip") continue;
+    if (p.origem_paciente !== "KOMMO") continue;
+    if (p.matched_lead_id) continue;
+    const arr = kommoNoLeadByPaciente.get(p.paciente_id_dontus) || [];
+    arr.push(p);
+    kommoNoLeadByPaciente.set(p.paciente_id_dontus, arr);
+  }
+  for (const [_idPac, items] of kommoNoLeadByPaciente.entries()) {
+    const counting = items.filter((i) => !i.recorrencia_orto);
+    if (!counting.length) {
+      // Só recorrência orto → não cria lead, mantém notificação de KOMMO sem lead
+      for (const i of items) {
+        i.notification = "Venda KOMMO (orto manutenção) sem lead prévio — importada como recorrência, sem criar lead";
+      }
+      continue;
+    }
+    const primary = counting[0];
+    primary.create_lead = true;
+    primary.move_to_contratado = true;
+    primary.notification =
+      `Lead criado automaticamente a partir de venda KOMMO sem lead prévio — conferir | ` +
+      `paciente=${primary.paciente_nome}, tel=${primary.telefone ?? "?"}, valor=R$${primary.valor.toFixed(2)}, clínica=${primary.clinica_nome}`;
+    // Demais itens do mesmo paciente KOMMO (se houver) — anexar ao mesmo lead novo
+    // apenas informacionalmente no dry-run; contador único de criação de lead.
+    for (const i of items) {
+      if (i !== primary) {
+        i.notification = `Anexado ao lead criado automaticamente para ${primary.paciente_nome}`;
+      }
+    }
+  }
+
+  const summary: any = {
     clinica: clinicaInfo.nome,
     id_clinica_dontus: idClinica,
     itens_lidos: recebidos.length,
@@ -665,7 +712,10 @@ async function syncClinica(
     ignorados: plan.filter((p) => p.action === "skip").length,
     vinculos_telefone: plan.filter((p) => p.matched_by === "phone").length,
     vinculos_nome: plan.filter((p) => p.matched_by === "name").length,
-    mover_contratado: plan.filter((p) => p.move_to_contratado).length,
+    mover_contratado: plan.filter((p) => p.move_to_contratado && !p.create_lead).length,
+    leads_criados_em_contratado: plan.filter((p) => p.create_lead).length,
+    primeiros: plan.filter((p) => p.tipo === "primeiro").length,
+    recorrentes: plan.filter((p) => p.tipo === "recorrente").length,
     notificacoes: plan.filter((p) => p.notification).length,
     plan,
   };
