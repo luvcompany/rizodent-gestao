@@ -570,7 +570,7 @@ const Dashboard = () => {
   { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp, subtitle: canalFiltro !== "todos" ? "Pagamentos do período de pacientes do canal selecionado" : "Pagamentos recebidos no período" },
   { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
   { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
-  { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign, subtitle: "Faturamento ÷ dias úteis do período filtrado (até ontem)" },
+  { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign, subtitle: "Faturamento ÷ dias úteis até o último dia com lançamento" },
   ...(isCurrentMonthSelected
     ? [{ title: "Previsão Mensal", value: formatCurrency(projecaoMensal), icon: TrendingUp, subtitle: `${diasUteisMes} dias úteis no mês` }]
     : []),
