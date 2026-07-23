@@ -431,10 +431,14 @@ async function contratadosCanonicos(
 ): Promise<{ paciente_id: string; clinica_id: string | null; primeiro_pagamento: string }[]> {
   if (!clinicaIds.length) return [];
   // pagamentos NÃO tem tenant_id — o escopo vem de clinica_id ∈ clinicas do tenant.
+  // Pagamentos marcados como recorrência de ortodontia não contam como
+  // "início de tratamento" (regra oficial de 07/2026): excluímos da lista
+  // usada para determinar o primeiro pagamento do paciente.
   const noPeriodo = await fetchAllPaged<any>(
     () => admin.from("pagamentos")
       .select("id, paciente_id, clinica_id, data_pagamento, created_at")
       .in("clinica_id", clinicaIds)
+      .eq("recorrencia_orto", false)
       .gte("data_pagamento", fromDay).lte("data_pagamento", toDay),
     "id",
   );
@@ -454,6 +458,7 @@ async function contratadosCanonicos(
     const prev = await fetchAllPaged<any>(
       () => admin.from("pagamentos").select("id, paciente_id")
         .in("clinica_id", clinicaIds).in("paciente_id", ids)
+        .eq("recorrencia_orto", false)
         .lt("data_pagamento", fromDay),
       "id",
     );
