@@ -1223,6 +1223,21 @@ Deno.serve(async (req) => {
       if (!parts[1] && req.method === "POST") return await templatesCreate(tenantId, body);
       if (!parts[1] && req.method === "GET") return await templatesList(tenantId, p);
     }
+    if (parts[0] === "sync-dontus" && req.method === "POST") {
+      // Só Rizodent (tenant do Dontus real) pode acionar.
+      if (tenantId !== RIZODENT_TENANT_ID) return json({ error: "forbidden" }, 403);
+      const url2 = `${Deno.env.get("SUPABASE_URL")}/functions/v1/dontus-sync`;
+      const res = await fetch(url2, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify(body || {}),
+      });
+      const txt = await res.text();
+      return new Response(txt, { status: res.status, headers: { ...cors, "Content-Type": "application/json" } });
+    }
     return json({ error: "not_found", path, method: req.method }, 404);
   } catch (e: any) {
     const msg = e?.message ?? String(e);
