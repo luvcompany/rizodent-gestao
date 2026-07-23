@@ -462,18 +462,28 @@ const Dashboard = () => {
     return min;
   }, [pagamentos]);
 
-  // Dias úteis DECORRIDOS dentro do PERÍODO FILTRADO, até ONTEM
-  // (Seg-Sex=1, Sáb=0.5, Dom=0, feriados=0) — mesma janela do numerador.
+  // Último dia COM LANÇAMENTO (max data_pagamento). Os pagamentos são digitados
+  // com atraso (a clínica lança no dia seguinte), então "ontem" quase sempre ainda
+  // não tem dado. Ancorar aqui — e não em "ontem" — evita diluir média/projeção com
+  // dias ainda não lançados. Mesma regra de src/pages/Relatorios.tsx (predictability).
+  const ultimoDiaLancado = useMemo(
+    () => filtered.pagamentos.reduce((mx, p) => ((p.data_pagamento || "") > mx ? (p.data_pagamento as string) : mx), ""),
+    [filtered.pagamentos]
+  );
+
+  // Dias úteis DECORRIDOS até o ÚLTIMO DIA COM LANÇAMENTO
+  // (Seg-Sex=1, Sáb=0.5, Dom=0, feriados=0) — mesma janela do numerador (faturamento total).
   const diasUteisPassados = useMemo(() => {
+    if (!ultimoDiaLancado) return 0.5;
     const bounds = rangeBounds ?? (minPagamentoStr ? [{ from: minPagamentoStr, to: dateTo }] : []);
     let total = 0;
     bounds.forEach((b) => {
-      const toStr = b.to < yesterdayStr ? b.to : yesterdayStr;
+      const toStr = b.to < ultimoDiaLancado ? b.to : ultimoDiaLancado;
       if (toStr < b.from) return;
       total += businessDaysBetween(new Date(b.from + "T12:00:00"), new Date(toStr + "T12:00:00"), holidaySet);
     });
     return Math.max(total, 0.5);
-  }, [rangeBounds, minPagamentoStr, dateTo, yesterdayStr, holidaySet]);
+  }, [rangeBounds, minPagamentoStr, dateTo, ultimoDiaLancado, holidaySet]);
 
   // Total de dias úteis do MÊS CORRENTE (para a projeção, exibida só com o mês corrente completo)
   const diasUteisMes = useMemo(() => {
@@ -483,15 +493,9 @@ const Dashboard = () => {
     return Math.max(businessDaysBetween(firstDay, lastDay, holidaySet), 1);
   }, [holidaySet]);
 
-  // Faturamento até ONTEM (mesma janela do divisor) para o Ticket Médio Diário
-  const fatAteOntem = useMemo(() => {
-    return filtered.pagamentos
-      .filter((p) => (p.data_pagamento || "") <= yesterdayStr)
-      .reduce((s, p) => s + Number(p.valor), 0);
-  }, [filtered.pagamentos, yesterdayStr]);
-
-  // Ticket médio diário: numerador e divisor cobrem o MESMO período filtrado (até ontem)
-  const ticketMedio = fatAteOntem / diasUteisPassados;
+  // Ticket médio diário: faturamento TOTAL do período ÷ dias úteis até o último dia
+  // com lançamento (numerador e divisor cobrem a MESMA janela de dados reais).
+  const ticketMedio = diasUteisPassados > 0 ? fatTotal / diasUteisPassados : 0;
   const projecaoMensal = ticketMedio * diasUteisMes;
 
   // ===== KPIs CRM (filtrados por período + cidade da clínica) =====
