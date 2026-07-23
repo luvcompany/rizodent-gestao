@@ -312,10 +312,23 @@ type PlanItem = {
   reason?: string;
 };
 
-// Garante o cache diário de pacientes já vistos no Dontus para a clínica.
-// Faz lookback de ~18 meses até ONTEM (nunca inclui hoje). Executa 1x/dia por clínica.
-// Retorna um Set<idPaciente> com pacientes que tiveram algum pagamento em data
-// anterior a `date` — usado para classificar tipo (primeiro/recorrente).
+// Helpers de data (yyyy-mm-dd)
+function ymd(d: Date): string { return d.toISOString().slice(0, 10); }
+function addDays(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return ymd(d);
+}
+function minIso(a: string, b: string): string { return a < b ? a : b; }
+function maxIso(a: string, b: string): string { return a > b ? a : b; }
+
+// Backfill incremental do histórico de pagamentos do Dontus por clínica.
+// A tool `consultar_contas_recebidas` aceita no máximo 31 dias por chamada,
+// então iteramos em janelas de 30 dias. Persistimos até que data já foi
+// coberta em `dontus_seen_coverage` para tornar o processo idempotente e
+// retomável. Executa no máximo 1x/dia por clínica (coberto_ate >= ontem).
+// Retorna Set<idPaciente> com pacientes cuja primeira_data < `date` (hoje).
+const LOOKBACK_MONTHS = 18;
+const WINDOW_DAYS = 30;
+
 async function ensureDontusPacienteSeen(
   admin: any,
   teamToken: string,
@@ -324,79 +337,130 @@ async function ensureDontusPacienteSeen(
   date: string,
 ): Promise<Set<number>> {
   const today = date; // yyyy-mm-dd
-  // Já refreshou hoje?
-  const { data: fresh } = await admin.from("dontus_paciente_seen")
-    .select("id_paciente_dontus, primeira_data")
+  const ontem = addDays(today, -1);
+
+  // Lê cobertura existente
+  const { data: covRow } = await admin.from("dontus_seen_coverage")
+    .select("coberto_de, coberto_ate")
     .eq("clinica_id", clinicaId)
-    .eq("refreshed_on", today)
-    .limit(1);
+    .maybeSingle();
 
-  if (fresh?.length) {
-    const { data: all } = await admin.from("dontus_paciente_seen")
-      .select("id_paciente_dontus, primeira_data")
-      .eq("clinica_id", clinicaId);
-      const seen = new Set<number>();
-      for (const r of all || []) {
-        // Só conta como "visto antes" se primeira_data < today
-        if (String(r.primeira_data) < today) seen.add(Number(r.id_paciente_dontus));
-      }
-      return seen;
+  const desiredStart = (() => {
+    const d = new Date(ontem + "T00:00:00Z");
+    d.setUTCMonth(d.getUTCMonth() - LOOKBACK_MONTHS);
+    return ymd(d);
+  })();
+
+  // Determina intervalos que ainda precisam ser buscados.
+  const ranges: Array<{ ini: string; fim: string }> = [];
+  const covDe: string | null = covRow?.coberto_de ?? null;
+  const covAte: string | null = covRow?.coberto_ate ?? null;
+
+  if (!covDe || !covAte) {
+    // primeira vez: cobre tudo
+    if (desiredStart <= ontem) ranges.push({ ini: desiredStart, fim: ontem });
+  } else {
+    // extensão para trás (se lookback ficou maior que cobertura antiga)
+    if (desiredStart < covDe) ranges.push({ ini: desiredStart, fim: addDays(covDe, -1) });
+    // extensão para frente até ontem
+    if (covAte < ontem) ranges.push({ ini: addDays(covAte, 1), fim: ontem });
+    // já cobre até ontem? Pula fetch.
   }
 
-  // Precisa refazer o lookback. 18 meses até ontem.
-  const end = new Date(today); end.setDate(end.getDate() - 1);
-  const start = new Date(end); start.setMonth(start.getMonth() - 18);
-  const dIni = start.toISOString().slice(0, 10);
-  const dFim = end.toISOString().slice(0, 10);
-
+  let windowsFailed = 0;
+  let windowsOk = 0;
   const primeiraPorPaciente = new Map<number, string>();
-  try {
-    const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_contas_recebidas", {
-      input: { contexto: { idDontus: DONTUS_ID, idClinica: idClinicaDontus }, dataInicio: dIni, dataFim: dFim },
-    });
-    for (const r of rows) {
-      const id = Number(r.idPaciente);
-      const d = String(r.dataRecebimento || "").slice(0, 10);
-      if (!id || !d) continue;
-      const prev = primeiraPorPaciente.get(id);
-      if (!prev || d < prev) primeiraPorPaciente.set(id, d);
+
+  for (const rng of ranges) {
+    let cursor = rng.ini;
+    while (cursor <= rng.fim) {
+      const wFim = minIso(addDays(cursor, WINDOW_DAYS - 1), rng.fim);
+      try {
+        const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_contas_recebidas", {
+          input: {
+            contexto: { idDontus: DONTUS_ID, idClinica: idClinicaDontus },
+            dataInicio: cursor, dataFim: wFim,
+          },
+        });
+        if (!Array.isArray(rows)) {
+          windowsFailed++;
+        } else {
+          for (const r of rows) {
+            const id = Number(r.idPaciente);
+            const d = String(r.dataRecebimento || "").slice(0, 10);
+            if (!id || !d) continue;
+            const prev = primeiraPorPaciente.get(id);
+            if (!prev || d < prev) primeiraPorPaciente.set(id, d);
+          }
+          windowsOk++;
+        }
+      } catch (e) {
+        windowsFailed++;
+        console.warn(`[dontus-sync] janela ${cursor}..${wFim} clinica ${clinicaId} falhou:`, (e as any)?.message || e);
+      }
+      cursor = addDays(wFim, 1);
     }
-  } catch (_) {
-    // best-effort: se falhar, retorna set atual (o que já estava em cache)
-    const { data: all } = await admin.from("dontus_paciente_seen")
-      .select("id_paciente_dontus, primeira_data").eq("clinica_id", clinicaId);
-    const seen = new Set<number>();
-    for (const r of all || []) {
-      if (String(r.primeira_data) < today) seen.add(Number(r.id_paciente_dontus));
-    }
-    return seen;
   }
 
-  // Upsert em lote
+  // Upsert das primeiras datas encontradas (mantém a MENOR data por conflito)
   if (primeiraPorPaciente.size) {
-    const rows = Array.from(primeiraPorPaciente.entries()).map(([id, d]) => ({
-      id_paciente_dontus: id,
-      clinica_id: clinicaId,
-      primeira_data: d,
-      refreshed_on: today,
-      updated_at: new Date().toISOString(),
-    }));
-    // upsert em chunks pra evitar payload gigante
+    // Busca existentes para preservar min(primeira_data)
+    const ids = Array.from(primeiraPorPaciente.keys());
+    const existing = new Map<number, string>();
+    const CHUNK_Q = 500;
+    for (let i = 0; i < ids.length; i += CHUNK_Q) {
+      const slice = ids.slice(i, i + CHUNK_Q);
+      const { data: exs } = await admin.from("dontus_paciente_seen")
+        .select("id_paciente_dontus, primeira_data")
+        .eq("clinica_id", clinicaId)
+        .in("id_paciente_dontus", slice);
+      for (const r of exs || []) {
+        existing.set(Number(r.id_paciente_dontus), String(r.primeira_data));
+      }
+    }
+
+    const rows = Array.from(primeiraPorPaciente.entries()).map(([id, d]) => {
+      const prev = existing.get(id);
+      const primeira = prev ? minIso(prev, d) : d;
+      return {
+        id_paciente_dontus: id,
+        clinica_id: clinicaId,
+        primeira_data: primeira,
+        refreshed_on: today,
+        updated_at: new Date().toISOString(),
+      };
+    });
     const CHUNK = 500;
     for (let i = 0; i < rows.length; i += CHUNK) {
       await admin.from("dontus_paciente_seen")
         .upsert(rows.slice(i, i + CHUNK), { onConflict: "id_paciente_dontus,clinica_id" });
     }
   }
-  // Marca refreshed_on nos que já existiam mas não apareceram (mantém primeira_data)
-  await admin.from("dontus_paciente_seen")
-    .update({ refreshed_on: today })
-    .eq("clinica_id", clinicaId)
-    .neq("refreshed_on", today);
 
+  // Atualiza cobertura apenas com janelas que rodaram (mesmo se algumas falharem
+  // no meio, expandimos o intervalo cumulativamente porque as falhas são logadas
+  // e podem ser retomadas na próxima execução via re-fetch do gap — aqui,
+  // conservadoramente, só avançamos se NENHUMA janela do range falhou).
+  if (ranges.length && windowsFailed === 0) {
+    const newDe = covDe ? minIso(covDe, desiredStart) : desiredStart;
+    const newAte = covAte ? maxIso(covAte, ontem) : ontem;
+    await admin.from("dontus_seen_coverage").upsert({
+      clinica_id: clinicaId,
+      coberto_de: newDe,
+      coberto_ate: newAte,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "clinica_id" });
+  } else if (windowsFailed > 0) {
+    console.warn(`[dontus-sync] clinica ${clinicaId}: ${windowsFailed} janela(s) falharam, ${windowsOk} ok — cobertura NÃO avançada.`);
+  }
+
+  // Monta o Set final lendo o cache completo (inclui runs anteriores).
+  const { data: all } = await admin.from("dontus_paciente_seen")
+    .select("id_paciente_dontus, primeira_data")
+    .eq("clinica_id", clinicaId);
   const seen = new Set<number>();
-  for (const [id, d] of primeiraPorPaciente.entries()) {
-    if (d < today) seen.add(id);
+  for (const r of all || []) {
+    if (String(r.primeira_data) < today) seen.add(Number(r.id_paciente_dontus));
   }
   return seen;
 }

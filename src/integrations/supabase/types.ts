@@ -2644,6 +2644,35 @@ export type Database = {
         }
         Relationships: []
       }
+      dontus_seen_coverage: {
+        Row: {
+          clinica_id: string
+          coberto_ate: string | null
+          coberto_de: string | null
+          updated_at: string
+        }
+        Insert: {
+          clinica_id: string
+          coberto_ate?: string | null
+          coberto_de?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clinica_id?: string
+          coberto_ate?: string | null
+          coberto_de?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dontus_seen_coverage_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: true
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dontus_sync_runs: {
         Row: {
           adotados: number
