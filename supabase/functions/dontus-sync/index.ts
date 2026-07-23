@@ -1039,29 +1039,49 @@ async function syncClinica(
     plan,
   };
 
-  // Registrar run
+  // Execução real (só quando dry_run=false) — feita ANTES do INSERT no runs
+  // para gravar contadores reais.
+  let exec: {
+    importados: number; adotados: number; leads_criados: number;
+    movidos: number; notificacoes: number; erros: number; erros_det: any[];
+  } | null = null;
+  if (!dryRun) {
+    exec = await executePlan(admin, plan);
+    summary.execucao = {
+      importados: exec.importados,
+      adotados: exec.adotados,
+      leads_criados: exec.leads_criados,
+      movidos_contratado: exec.movidos,
+      notificacoes: exec.notificacoes,
+      erros: exec.erros,
+      erros_det: exec.erros_det,
+    };
+  }
+
+  // Registrar run com números reais quando aplicável.
   await admin.from("dontus_sync_runs").insert({
     started_at: runStart, finished_at: new Date().toISOString(),
     date_sincronizada: date, clinica_id: clinicaId, id_clinica_dontus: idClinica, dry_run: dryRun,
     itens_lidos: recebidos.length,
-    importados: dryRun ? 0 : summary.a_importar,
-    adotados: dryRun ? 0 : summary.a_adotar,
+    importados: dryRun ? 0 : (exec?.importados ?? 0),
+    adotados: dryRun ? 0 : (exec?.adotados ?? 0),
     ignorados: summary.ignorados,
     vinculados_telefone: summary.vinculos_telefone,
     vinculados_nome: summary.vinculos_nome,
-    movidos_contratado: dryRun ? 0 : summary.mover_contratado,
-    notificacoes: dryRun ? 0 : summary.notificacoes,
-    erros: 0,
-    detalhes: dryRun ? summary : { resumo: { ...summary, plan: undefined } },
+    movidos_contratado: dryRun ? 0 : (exec?.movidos ?? 0),
+    notificacoes: dryRun ? 0 : (exec?.notificacoes ?? 0),
+    erros: dryRun ? 0 : (exec?.erros ?? 0),
+    error_message: !dryRun && exec?.erros
+      ? JSON.stringify(exec.erros_det).slice(0, 2000)
+      : null,
+    detalhes: dryRun
+      ? summary
+      : { resumo: { ...summary, plan: undefined }, execucao: summary.execucao },
   });
-
-  // Escrita real ainda não implementada — feature em dry-run.
-  if (!dryRun) {
-    summary.observacao = "Escrita ainda não habilitada — sync efetivo será liberado após aprovação (dry-run apenas).";
-  }
 
   return summary;
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
