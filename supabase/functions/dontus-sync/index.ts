@@ -445,8 +445,18 @@ async function syncClinica(
   }
 
   const clinicaId = clinicaInfo.id;
+
+  // Set de idPaciente vistos em data ANTERIOR a hoje no Dontus (fonte da verdade
+  // para 'primeiro' vs 'recorrente'). Best-effort: se falhar, todo mundo cai como 'primeiro'.
+  let seenBefore: Set<number> = new Set();
+  try {
+    seenBefore = await ensureDontusPacienteSeen(admin, teamToken, idClinica, clinicaId, date);
+  } catch (_) { /* best-effort */ }
+
   const plan: PlanItem[] = [];
   const contratadoAlreadyForLead = new Set<string>(); // dedupe move por lead
+
+
 
 
   for (const it of recebidos) {
