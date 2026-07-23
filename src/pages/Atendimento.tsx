@@ -227,12 +227,14 @@ const Atendimento = () => {
     toast.success(`Paciente ${pac.nome} selecionado!`);
   };
 
-  const updateEntry = (index: number, field: keyof PagamentoEntry, value: string) => {
+  const updateEntry = <K extends keyof PagamentoEntry>(index: number, field: K, value: PagamentoEntry[K]) => {
     setEntries((prev) => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
-      if (field === "mode") {
-        updated[index].especialidade = "";
+      if (field === "mode" || field === "especialidade") {
+        // Reset da flag de recorrência sempre que a especialidade muda (ou o modo).
+        if (field === "mode") updated[index].especialidade = "";
+        updated[index].recorrenciaOrto = false;
       }
       return updated;
     });
