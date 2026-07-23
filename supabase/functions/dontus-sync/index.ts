@@ -68,6 +68,40 @@ function tailPhone(raw: string | null | undefined): string | null {
   return d.slice(-8);
 }
 
+// Stopwords BR frequentes em nomes — não contam como token significativo.
+const NAME_STOPWORDS = new Set([
+  "DE","DA","DO","DAS","DOS","E","DI","DU","LA","LE","EL",
+  "JR","JUNIOR","NETO","FILHO","FILHA","SOBRINHO",
+  "SANTOS","SILVA","SOUZA","SOUSA","OLIVEIRA","LIMA","COSTA","PEREIRA","FERREIRA",
+  "RODRIGUES","ALVES","GOMES","MARTINS","ARAUJO","BARBOSA","RIBEIRO","CARVALHO","MELO","MOURA",
+]);
+function significantTokens(name: string): string[] {
+  return name.split(/\s+/).filter((t) => t.length > 2 && !NAME_STOPWORDS.has(t));
+}
+// Compatibilidade de nomes para aceitar match por telefone:
+// - iguais normalizados, OU
+// - mesmo primeiro nome (não-stopword), OU
+// - >=2 tokens SIGNIFICATIVOS em comum (excluindo stopwords/sobrenomes comuns).
+function namesCompatible(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const ta = na.split(/\s+/).filter(Boolean);
+  const tb = nb.split(/\s+/).filter(Boolean);
+  if (!ta.length || !tb.length) return false;
+  // Primeiro nome deve bater E não ser stopword comum.
+  if (ta[0] === tb[0] && !NAME_STOPWORDS.has(ta[0]) && ta[0].length > 2) return true;
+  const sigA = significantTokens(na);
+  const setB = new Set(significantTokens(nb));
+  let common = 0;
+  for (const t of sigA) {
+    if (setB.has(t)) common++;
+    if (common >= 2) return true;
+  }
+  return false;
+}
+
 // ============ OAuth helpers ============
 function b64url(bytes: Uint8Array): string {
   let s = btoa(String.fromCharCode(...bytes));
@@ -317,6 +351,8 @@ async function syncClinica(
 
   const clinicaId = clinicaInfo.id;
   const plan: PlanItem[] = [];
+  const contratadoAlreadyForLead = new Set<string>(); // dedupe move por lead
+
 
   for (const it of recebidos) {
     const idPaciente = Number(it.idPaciente);
@@ -350,16 +386,19 @@ async function syncClinica(
     }
 
     // 2) Elegibilidade + match
+    // Regras:
+    //  - origem=KOMMO é sempre elegível (importa mesmo sem lead).
+    //  - Match por telefone (últimos 8 dígitos) só vincula se o NOME for compatível
+    //    (namesCompatible); telefone bate mas nome incompatível → não vincula e,
+    //    se não for KOMMO, gera notificação de conferência e ignora (skip).
+    //  - Match por nome exige normalizado IGUAL.
     let matched_by: PlanItem["matched_by"] = null;
     let matched_lead_id: string | null = null;
     let matched_lead_name: string | null = null;
     let notification: string | null = null;
+    let phoneNameConflictLead: { id: string; name: string } | null = null;
 
-    if (origem === "KOMMO") {
-      matched_by = "kommo";
-    }
-
-    // Buscar lead por telefone (últimos 8 dígitos) OU nome normalizado
+    // Buscar lead por telefone (últimos 8 dígitos) — pega o mais recente com nome compatível.
     let leadRow: any = null;
     if (telefone) {
       const tail = tailPhone(telefone);
@@ -367,46 +406,79 @@ async function syncClinica(
         const { data: leads } = await admin.from("crm_leads")
           .select("id, name, phone, stage_id, pipeline_id, created_at")
           .ilike("phone", `%${tail}`)
-          .order("created_at", { ascending: false }).limit(5);
-        if (leads?.length) leadRow = leads[0];
+          .order("created_at", { ascending: false }).limit(10);
+        if (leads?.length) {
+          const compat = leads.find((l) => namesCompatible(l.name, nome));
+          if (compat) {
+            leadRow = compat;
+            matched_by = origem === "KOMMO" ? "kommo" : "phone";
+          } else {
+            // telefone bate mas nomes divergem → conflito
+            phoneNameConflictLead = { id: leads[0].id, name: String(leads[0].name || "") };
+          }
+        }
       }
     }
+    // Match por nome (sem telefone ou telefone com conflito): exige nome normalizado igual.
     if (!leadRow) {
       const norm = normalizeName(nome);
       if (norm) {
         const { data: leads } = await admin.from("crm_leads")
           .select("id, name, phone, stage_id, pipeline_id, created_at")
-          .order("created_at", { ascending: false }).limit(200);
-        // fallback local para nome — evitar ILIKE quebrar em acentos
+          .order("created_at", { ascending: false }).limit(500);
         leadRow = (leads || []).find((l) => normalizeName(l.name) === norm) || null;
-        if (leadRow && matched_by !== "kommo") matched_by = "name";
+        if (leadRow) matched_by = origem === "KOMMO" ? "kommo" : "name";
       }
-    } else if (matched_by !== "kommo") {
-      matched_by = "phone";
     }
 
-    if (matched_by === "kommo" && leadRow) {
-      matched_lead_id = leadRow.id; matched_lead_name = leadRow.name;
-    } else if (matched_by === "phone" && leadRow) {
-      matched_lead_id = leadRow.id; matched_lead_name = leadRow.name;
-      notification = "Paciente pago sem origem Kommo — vinculado por telefone (conferir)";
-    } else if (matched_by === "name" && leadRow) {
-      matched_lead_id = leadRow.id; matched_lead_name = leadRow.name;
-      notification = "Paciente pago vinculado por NOME — conferência obrigatória";
+    if (leadRow) {
+      matched_lead_id = leadRow.id;
+      matched_lead_name = leadRow.name;
+      if (matched_by === "phone") {
+        notification = "Vinculado por telefone (nomes compatíveis) — conferir";
+      } else if (matched_by === "name") {
+        notification = "Vinculado por NOME — conferência obrigatória";
+      }
     }
 
-    if (!matched_by || !leadRow) {
-      plan.push({
-        action: "skip", reason: "sem match (não é KOMMO e não bateu tel/nome)",
-        clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
-        paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
-        especialidade, especialidade_raw: espRaw, servico,
-        forma_pagamento: it.formaPagamento || null, recorrencia_orto: false, dontus_key,
-        origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
-        matched_paciente_id: null, move_to_contratado: false, notification: null,
-      });
-      continue;
+    // KOMMO: sempre importa. Se não achou lead, gera notificação e segue sem vincular/mover.
+    if (origem === "KOMMO") {
+      if (!leadRow) {
+        matched_by = "kommo";
+        notification = "Venda KOMMO sem lead vinculado no CRM — conferir";
+      }
+      // segue o fluxo (não faz skip)
+    } else {
+      // Não-KOMMO precisa de lead para importar.
+      if (!leadRow) {
+        // Se telefone bateu mas nomes divergiram, sinaliza conferência.
+        if (phoneNameConflictLead) {
+          plan.push({
+            action: "skip",
+            reason: `Telefone coincide com lead ${phoneNameConflictLead.name}, mas nomes divergem — conferência manual`,
+            clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
+            paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
+            especialidade, especialidade_raw: espRaw, servico,
+            forma_pagamento: it.formaPagamento || null, recorrencia_orto: false, dontus_key,
+            origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
+            matched_paciente_id: null, move_to_contratado: false,
+            notification: `Telefone de ${nome} coincide com lead ${phoneNameConflictLead.name}, mas os nomes divergem — conferir manualmente`,
+          });
+          continue;
+        }
+        plan.push({
+          action: "skip", reason: "sem match (não é KOMMO e não bateu tel/nome)",
+          clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
+          paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
+          especialidade, especialidade_raw: espRaw, servico,
+          forma_pagamento: it.formaPagamento || null, recorrencia_orto: false, dontus_key,
+          origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
+          matched_paciente_id: null, move_to_contratado: false, notification: null,
+        });
+        continue;
+      }
     }
+
 
     // 3) Recorrência de ortodontia
     let recorrencia_orto = false;
@@ -415,12 +487,13 @@ async function syncClinica(
       recorrencia_orto = !ortoDayHasStart.get(key);
     }
 
-    // 4) Dedupe com pagamento manual
-    // buscamos paciente CRClin do lead (via crm_lead_pacientes)
+    // 4) Dedupe com pagamento manual (só se houver lead vinculado + paciente)
     let pacienteCrmId: string | null = null;
-    const { data: vinc } = await admin.from("crm_lead_pacientes")
-      .select("paciente_id").eq("lead_id", matched_lead_id).limit(1);
-    if (vinc?.length) pacienteCrmId = vinc[0].paciente_id;
+    if (matched_lead_id) {
+      const { data: vinc } = await admin.from("crm_lead_pacientes")
+        .select("paciente_id").eq("lead_id", matched_lead_id).limit(1);
+      if (vinc?.length) pacienteCrmId = vinc[0].paciente_id;
+    }
 
     let action: PlanItem["action"] = "import";
     if (pacienteCrmId) {
@@ -433,27 +506,39 @@ async function syncClinica(
         const sameValor = sameDay.find((p) => Number(p.valor) === valor);
         if (sameValor) {
           action = "adopt";
-          notification = notification ?? null; // manter notif de vínculo se houver
         } else {
-          // valor diferente → importa e notifica divergência
           notification = (notification ? notification + " | " : "") +
             `Divergência de valor com lançamento manual (${sameDay.map((s) => `R$${s.valor}`).join(", ")}) — conferir`;
         }
       }
     }
 
-    // 5) Contratado? Só se conta (recorrencia_orto=false) e etapa atual não é contratado.
+    // 5) Contratado? Só se conta (recorrencia_orto=false), há lead vinculado
+    //    e ainda não movemos esse lead neste batch (dedupe por lead).
     let move_to_contratado = false;
-    if (!recorrencia_orto && leadRow?.stage_id && leadRow?.pipeline_id) {
+    if (
+      !recorrencia_orto &&
+      matched_lead_id &&
+      leadRow?.stage_id &&
+      leadRow?.pipeline_id &&
+      !contratadoAlreadyForLead.has(matched_lead_id)
+    ) {
       const { data: stg } = await admin.from("crm_stages")
         .select("id, name").eq("id", leadRow.stage_id).maybeSingle();
       if (stg && !/contratado/i.test(stg.name || "")) {
         const { data: targetStage } = await admin.from("crm_stages")
           .select("id, name").eq("pipeline_id", leadRow.pipeline_id)
           .ilike("name", "%contratado%").limit(1).maybeSingle();
-        if (targetStage) move_to_contratado = true;
+        if (targetStage) {
+          move_to_contratado = true;
+          contratadoAlreadyForLead.add(matched_lead_id);
+        }
+      } else if (stg) {
+        // já está em Contratado — marca como movido pra não repetir
+        contratadoAlreadyForLead.add(matched_lead_id);
       }
     }
+
 
     plan.push({
       action,
@@ -518,8 +603,13 @@ Deno.serve(async (req) => {
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
 
-  const auth = await authorizeInternal(req, admin, { cronSecretName: "AUTOMATION_CRON_TOKEN" });
+  const auth = await authorizeInternal(req, admin, { cronSecretName: "automation_cron_token", allowUserJwt: true });
   if (!auth.ok) return unauthorizedResponse(corsHeaders);
+  // Se veio via user JWT, exige superadmin (dry-run/staging manual).
+  if (auth.via === "user_jwt") {
+    const { data: isSuper } = await admin.rpc("has_role", { _user_id: auth.userId, _role: "superadmin" });
+    if (!isSuper) return unauthorizedResponse(corsHeaders);
+  }
 
   const teamToken = Deno.env.get("DONTUS_TEAM_TOKEN");
   if (!teamToken) {
