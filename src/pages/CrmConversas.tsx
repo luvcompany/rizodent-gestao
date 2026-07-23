@@ -211,25 +211,17 @@ const fetchAllConversationLeads = async (
   tenantId: string,
   onFirstPage?: (rows: LeadConversation[]) => void,
 ) => {
-  const all: LeadConversation[] = [];
-  for (let page = 0; page < CONVERSATION_MAX_PAGES; page++) {
-    const from = page * CONVERSATION_PAGE_SIZE;
-    const to = from + CONVERSATION_PAGE_SIZE - 1;
-    const { data, error } = await supabase
-      .from("crm_leads")
-      .select(LEAD_LIST_COLS)
-      .eq("tenant_id", tenantId)
-      .eq("is_blocked", false)
-      .order("last_message_at", { ascending: false, nullsFirst: false })
-      .range(from, to);
-
-    if (error) throw error;
-    const rows = ((data || []) as any as LeadConversation[]).map(normalizeLead);
-    all.push(...rows);
-    if (page === 0 && onFirstPage) onFirstPage([...rows]);
-    if (rows.length < CONVERSATION_PAGE_SIZE) break;
-  }
-  return sortLeadsByLastActivity(all);
+  // Uma única chamada RPC (SECURITY DEFINER) devolve TODO o inbox já escopado
+  // (equivalente à RLS) e ordenado por last_message_at. Substitui as ~7 páginas
+  // sequenciais que faziam seq scan avaliando RLS por linha (~20s → ~1s).
+  const { data, error } = await supabase.rpc("get_conversation_leads", {
+    p_tenant_id: tenantId,
+    p_limit: 20000,
+  });
+  if (error) throw error;
+  const rows = ((data || []) as any as LeadConversation[]).map(normalizeLead);
+  if (onFirstPage) onFirstPage([...rows]);
+  return sortLeadsByLastActivity(rows);
 };
 
 
