@@ -3126,6 +3126,7 @@ export type Database = {
           forma_pagamento: string
           id: string
           paciente_id: string
+          recorrencia_orto: boolean
           tipo: string
           tratamento_id: string | null
           valor: number
@@ -3139,6 +3140,7 @@ export type Database = {
           forma_pagamento: string
           id?: string
           paciente_id: string
+          recorrencia_orto?: boolean
           tipo?: string
           tratamento_id?: string | null
           valor: number
@@ -3152,6 +3154,7 @@ export type Database = {
           forma_pagamento?: string
           id?: string
           paciente_id?: string
+          recorrencia_orto?: boolean
           tipo?: string
           tratamento_id?: string | null
           valor?: number
