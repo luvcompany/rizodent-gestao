@@ -53,13 +53,23 @@ interface PagamentoEntry {
   mode: EspMode;
   especialidade: string;
   valor: string;
+  // Regra oficial (conciliação com Dontus 07/2026): ORTODONTIA só conta no
+  // faturamento quando há PANORÂMICA ou APARELHO no dia (início de tratamento).
+  // Manutenção/mensalidade/braquete/moldagem/contenção = recorrência (não conta).
+  // null = ainda não respondido (obrigatório quando especialidade = ORTODONTIA).
+  recorrenciaOrto: boolean | null;
 }
+
+// Detecta ORTODONTIA independente de acento/caixa.
+const isOrto = (esp: string) =>
+  esp.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim() === "ORTODONTIA";
 
 const createEmptyEntry = (mode: EspMode = "nova"): PagamentoEntry => ({
   id: crypto.randomUUID(),
   mode,
   especialidade: "",
   valor: "",
+  recorrenciaOrto: null,
 });
 
 const Atendimento = () => {
@@ -222,12 +232,14 @@ const Atendimento = () => {
     toast.success(`Paciente ${pac.nome} selecionado!`);
   };
 
-  const updateEntry = (index: number, field: keyof PagamentoEntry, value: string) => {
+  const updateEntry = <K extends keyof PagamentoEntry>(index: number, field: K, value: PagamentoEntry[K]) => {
     setEntries((prev) => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
-      if (field === "mode") {
-        updated[index].especialidade = "";
+      if (field === "mode" || field === "especialidade") {
+        // Reset da flag de recorrência sempre que a especialidade muda (ou o modo).
+        if (field === "mode") updated[index].especialidade = "";
+        updated[index].recorrenciaOrto = false;
       }
       return updated;
     });
@@ -339,6 +351,10 @@ const Atendimento = () => {
         toast.error(`Informe o valor do pagamento ${entries.length > 1 ? i + 1 : ""}.`);
         return;
       }
+      if (isOrto(ent.especialidade) && ent.recorrenciaOrto === null) {
+        toast.error(`Responda a pergunta de ortodontia do pagamento ${entries.length > 1 ? i + 1 : ""}.`);
+        return;
+      }
     }
 
     setSaving(true);
@@ -383,6 +399,7 @@ const Atendimento = () => {
       }
 
       for (const ent of entries) {
+        const isOrtodontia = isOrto(ent.especialidade);
         const { error: pagError } = await supabase.from("pagamentos").insert({
           paciente_id: pacienteId,
           clinica_id: clinicaId,
@@ -392,7 +409,9 @@ const Atendimento = () => {
           tipo: tipoPagamento,
           data_pagamento: dataPagamento,
           created_by: user?.id,
-        });
+          // Só ortodontia usa a resposta; outras especialidades gravam sempre false.
+          recorrencia_orto: isOrtodontia ? ent.recorrenciaOrto === true : false,
+        } as any);
         if (pagError) throw pagError;
       }
 
@@ -688,6 +707,41 @@ const Atendimento = () => {
                           />
                         </div>
                       </div>
+
+                      {isOrto(ent.especialidade) && (
+                        <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+                          <p className="text-xs font-semibold text-foreground">
+                            Houve panorâmica ou aparelho neste atendimento?
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Regra oficial: ortodontia só conta no faturamento quando é <strong>início de tratamento</strong>. Manutenção, mensalidade, braquete, moldagem ou contenção contam como recorrência e não entram nos relatórios.
+                          </p>
+                          <label className="flex items-start gap-2 cursor-pointer text-xs">
+                            <input
+                              type="radio"
+                              name={`recorrencia-${ent.id}`}
+                              checked={ent.recorrenciaOrto === false}
+                              onChange={() => updateEntry(index, "recorrenciaOrto", false)}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              <strong>Sim</strong>, início de tratamento <span className="text-muted-foreground">(conta no faturamento)</span>
+                            </span>
+                          </label>
+                          <label className="flex items-start gap-2 cursor-pointer text-xs">
+                            <input
+                              type="radio"
+                              name={`recorrencia-${ent.id}`}
+                              checked={ent.recorrenciaOrto === true}
+                              onChange={() => updateEntry(index, "recorrenciaOrto", true)}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              <strong>Não</strong>, é recorrência <span className="text-muted-foreground">(manutenção/mensalidade/braquete/moldagem — não conta)</span>
+                            </span>
+                          </label>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 );

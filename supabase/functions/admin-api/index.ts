@@ -431,10 +431,14 @@ async function contratadosCanonicos(
 ): Promise<{ paciente_id: string; clinica_id: string | null; primeiro_pagamento: string }[]> {
   if (!clinicaIds.length) return [];
   // pagamentos NÃO tem tenant_id — o escopo vem de clinica_id ∈ clinicas do tenant.
+  // Pagamentos marcados como recorrência de ortodontia não contam como
+  // "início de tratamento" (regra oficial de 07/2026): excluímos da lista
+  // usada para determinar o primeiro pagamento do paciente.
   const noPeriodo = await fetchAllPaged<any>(
     () => admin.from("pagamentos")
       .select("id, paciente_id, clinica_id, data_pagamento, created_at")
       .in("clinica_id", clinicaIds)
+      .eq("recorrencia_orto", false)
       .gte("data_pagamento", fromDay).lte("data_pagamento", toDay),
     "id",
   );
@@ -454,6 +458,7 @@ async function contratadosCanonicos(
     const prev = await fetchAllPaged<any>(
       () => admin.from("pagamentos").select("id, paciente_id")
         .in("clinica_id", clinicaIds).in("paciente_id", ids)
+        .eq("recorrencia_orto", false)
         .lt("data_pagamento", fromDay),
       "id",
     );
@@ -491,11 +496,16 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
 
   // pagamentos do tenant (a tabela NÃO tem tenant_id — escopo via clinica_id
   // ∈ clinicas do tenant), paginando além do cap de 1000 linhas do PostgREST.
+  // Regra oficial (conciliada com o Dontus em 07/2026): pagamentos marcados
+  // como recorrência de ortodontia (recorrencia_orto=true) NÃO entram nos
+  // agregados de faturamento — só o início de tratamento (panorâmica/aparelho
+  // no dia) conta. Filtramos aqui na origem; agendamentos ficam intocados.
   const pagamentos = pagClinicaIds.length
     ? await fetchAllPaged<any>(
         () => admin.from("pagamentos")
           .select("id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade")
           .in("clinica_id", pagClinicaIds)
+          .eq("recorrencia_orto", false)
           .gte("data_pagamento", from).lte("data_pagamento", to),
         "id",
       )
