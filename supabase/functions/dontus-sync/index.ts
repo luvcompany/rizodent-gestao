@@ -1,0 +1,557 @@
+// @ts-nocheck
+// Sincronização Dontus → CRClin.
+// Fluxo:
+//   1) Registrar client OAuth 1x (cache em dontus_sync_state).
+//   2) PKCE + form GET/POST /oauth/authorize com DONTUS_TEAM_TOKEN.
+//   3) Trocar code por access_token (~30d).
+//   4) MCP: initialize + tools/call (SSE data:).
+//   5) Aplicar regras de importação (dry-run ou grava).
+//
+// Auth: chamado apenas pelo admin-api (Bearer SUPABASE_SERVICE_ROLE_KEY) ou por
+// pg_cron (x-cron-secret + AUTOMATION_CRON_TOKEN).
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-api-key, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const DONTUS_BASE = "https://one.dontus.com.br";
+const DONTUS_ID = 210380;
+const REDIRECT_URI = "http://localhost:8976/callback";
+
+const CLINICA_MAP: Record<number, { id: string; nome: string }> = {
+  2: { id: "c9f82611-a9d2-4729-9b44-afeb2208bc0e", nome: "Ipiaú" },
+  3: { id: "91e304ed-53bb-483c-bfca-0c6e599c52ba", nome: "Guanambi" },
+  4: { id: "87062a6d-ddd8-4ffa-95a6-b36d42eea327", nome: "Itabuna" },
+  5: { id: "93c99d9a-8698-495a-829b-a6592ade8d06", nome: "Rizodent VCA" },
+};
+
+// Mapeamento de especialidades Dontus → CRClin.
+const ESP_MAP: Record<string, string> = {
+  "CLINICO GERAL": "CLÍNICO GERAL",
+  "CLÍNICO GERAL": "CLÍNICO GERAL",
+  "ESTÉTICA FACETA": "ESTÉTICA",
+  "ESTETICA FACETA": "ESTÉTICA",
+  "ESTÉTICA": "ESTÉTICA",
+  "ESTETICA": "ESTÉTICA",
+  "ORTODONTIA": "ORTODONTIA",
+  "IMPLANTODONTIA": "IMPLANTODONTIA",
+  "IMPLANTE": "IMPLANTODONTIA",
+  "IMPLANTES": "IMPLANTODONTIA",
+  "PERIODONTIA": "PERIODONTIA",
+  "ENDODONTIA": "ENDODONTIA",
+  "PRÓTESE": "PRÓTESE",
+  "PROTESE": "PRÓTESE",
+  "CIRURGIA": "CIRURGIA",
+  "HARMONIZAÇÃO OROFACIAL": "HARMONIZAÇÃO",
+  "HARMONIZACAO OROFACIAL": "HARMONIZAÇÃO",
+};
+
+function mapEspecialidade(raw: string | null | undefined): string {
+  const key = String(raw || "").trim().toUpperCase();
+  if (!key) return "CLÍNICO GERAL";
+  return ESP_MAP[key] ?? key;
+}
+
+function normalizeName(raw: string | null | undefined): string {
+  return String(raw || "")
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .toUpperCase().replace(/\s+/g, " ").trim();
+}
+
+function tailPhone(raw: string | null | undefined): string | null {
+  const d = String(raw || "").replace(/\D/g, "");
+  if (d.length < 8) return null;
+  return d.slice(-8);
+}
+
+// ============ OAuth helpers ============
+function b64url(bytes: Uint8Array): string {
+  let s = btoa(String.fromCharCode(...bytes));
+  return s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+async function sha256(input: string): Promise<Uint8Array> {
+  const buf = new TextEncoder().encode(input);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return new Uint8Array(hash);
+}
+function randomVerifier(): string {
+  const arr = new Uint8Array(48);
+  crypto.getRandomValues(arr);
+  return b64url(arr);
+}
+
+async function ensureClientId(admin: any): Promise<string> {
+  const { data } = await admin.from("dontus_sync_state").select("client_id").eq("id", "singleton").maybeSingle();
+  if (data?.client_id) return data.client_id;
+  const res = await fetch(`${DONTUS_BASE}/oauth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      redirect_uris: [REDIRECT_URI],
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code"],
+      response_types: ["code"],
+      client_name: "CRClin Sync",
+    }),
+  });
+  if (!res.ok) throw new Error(`oauth/register failed: ${res.status} ${await res.text()}`);
+  const j = await res.json();
+  const clientId = j.client_id;
+  await admin.from("dontus_sync_state").upsert({ id: "singleton", client_id: clientId, updated_at: new Date().toISOString() });
+  return clientId;
+}
+
+async function performAuthorize(clientId: string, teamToken: string): Promise<string> {
+  const verifier = randomVerifier();
+  const challenge = b64url(await sha256(verifier));
+  const state = b64url(crypto.getRandomValues(new Uint8Array(16)));
+
+  const authUrl = `${DONTUS_BASE}/oauth/authorize?client_id=${encodeURIComponent(clientId)}` +
+    `&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&scope=finance.read&state=${encodeURIComponent(state)}` +
+    `&code_challenge=${challenge}&code_challenge_method=S256`;
+
+  const getRes = await fetch(authUrl, { method: "GET", redirect: "manual" });
+  const html = await getRes.text();
+
+  // Parse hidden inputs and normalize dontus_token field
+  const hidden: Record<string, string> = {};
+  const re = /<input[^>]+name=["']([^"']+)["'][^>]*value=["']([^"']*)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) hidden[m[1]] = m[2];
+  // Fill required fields even if not present in HTML.
+  const form = new URLSearchParams();
+  const need = ["response_type", "client_id", "redirect_uri", "state", "scope", "code_challenge", "code_challenge_method"];
+  const defaults: Record<string, string> = {
+    response_type: "code", client_id: clientId, redirect_uri: REDIRECT_URI,
+    state, scope: "finance.read", code_challenge: challenge, code_challenge_method: "S256",
+  };
+  for (const k of need) form.set(k, hidden[k] ?? defaults[k]);
+  form.set("dontus_token", teamToken);
+
+  const postRes = await fetch(`${DONTUS_BASE}/oauth/authorize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+    redirect: "manual",
+  });
+  if (postRes.status !== 302) {
+    throw new Error(`authorize POST expected 302, got ${postRes.status}: ${await postRes.text().catch(() => "")}`);
+  }
+  const loc = postRes.headers.get("location") || "";
+  const codeMatch = loc.match(/[?&]code=([^&]+)/);
+  if (!codeMatch) throw new Error(`authorize POST redirect sem code: ${loc}`);
+  const code = decodeURIComponent(codeMatch[1]);
+
+  const tokenForm = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: REDIRECT_URI,
+    client_id: clientId,
+    code_verifier: verifier,
+  });
+  const tokRes = await fetch(`${DONTUS_BASE}/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: tokenForm.toString(),
+  });
+  if (!tokRes.ok) throw new Error(`oauth/token failed: ${tokRes.status} ${await tokRes.text()}`);
+  const tj = await tokRes.json();
+  return tj.access_token;
+}
+
+async function getAccessToken(admin: any, teamToken: string, forceRefresh = false): Promise<string> {
+  if (!forceRefresh) {
+    const { data } = await admin.from("dontus_sync_state").select("access_token, token_expires_at").eq("id", "singleton").maybeSingle();
+    if (data?.access_token && data?.token_expires_at) {
+      const exp = new Date(data.token_expires_at).getTime();
+      // renovar 1 dia antes
+      if (exp - Date.now() > 24 * 3600 * 1000) return data.access_token;
+    }
+  }
+  const clientId = await ensureClientId(admin);
+  const token = await performAuthorize(clientId, teamToken);
+  const expiresAt = new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString();
+  await admin.from("dontus_sync_state").update({
+    access_token: token, token_expires_at: expiresAt,
+    last_authorize_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  }).eq("id", "singleton");
+  return token;
+}
+
+// ============ MCP call ============
+async function mcpCall(accessToken: string, method: string, params: any): Promise<any> {
+  const body = JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params });
+  const res = await fetch(`${DONTUS_BASE}/mcp`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
+    },
+    body,
+  });
+  if (res.status === 401) throw Object.assign(new Error("MCP 401"), { code: 401 });
+  if (!res.ok) throw new Error(`MCP ${method} failed: ${res.status} ${await res.text()}`);
+  const text = await res.text();
+  // SSE — pega a linha data:
+  const line = text.split("\n").find((l) => l.trim().startsWith("data:"));
+  if (!line) {
+    // pode ser JSON puro
+    try { return JSON.parse(text); } catch { throw new Error("MCP resposta sem data: e não é JSON"); }
+  }
+  const jsonStr = line.trim().replace(/^data:\s*/, "");
+  return JSON.parse(jsonStr);
+}
+
+async function mcpToolCall(admin: any, teamToken: string, name: string, args: any): Promise<any[]> {
+  let token = await getAccessToken(admin, teamToken);
+  let attempt = 0;
+  while (attempt < 2) {
+    try {
+      // initialize é barato; alguns servidores exigem antes do tools/call.
+      await mcpCall(token, "initialize", {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "crclin-sync", version: "1.0.0" },
+      }).catch(() => {});
+      const resp = await mcpCall(token, "tools/call", { name, arguments: args });
+      const dados = resp?.result?.dados
+        ?? resp?.result?.structuredContent?.dados
+        ?? resp?.result?.content?.[0]?.dados
+        ?? (Array.isArray(resp?.result) ? resp.result : null);
+      if (dados) return dados;
+      // Alguns servidores embutem em content[0].text (JSON string).
+      const txt = resp?.result?.content?.[0]?.text;
+      if (typeof txt === "string") {
+        try {
+          const p = JSON.parse(txt);
+          return p.dados ?? p.data ?? p ?? [];
+        } catch {}
+      }
+      return [];
+    } catch (e: any) {
+      if (e?.code === 401 && attempt === 0) {
+        token = await getAccessToken(admin, teamToken, true);
+        attempt++;
+        continue;
+      }
+      throw e;
+    }
+  }
+  return [];
+}
+
+// ============ Main sync logic ============
+type PlanItem = {
+  action: "import" | "adopt" | "skip";
+  clinica_id: string;
+  clinica_nome: string;
+  paciente_nome: string;
+  paciente_id_dontus: number;
+  telefone: string | null;
+  valor: number;
+  data: string;
+  especialidade: string;
+  especialidade_raw: string;
+  servico: string;
+  forma_pagamento: string | null;
+  recorrencia_orto: boolean;
+  dontus_key: string;
+  origem_paciente: string;
+  matched_by: "kommo" | "phone" | "name" | null;
+  matched_lead_id: string | null;
+  matched_lead_name: string | null;
+  matched_paciente_id: string | null; // paciente já existente no CRClin
+  move_to_contratado: boolean;
+  notification: string | null;
+  reason?: string;
+};
+
+async function syncClinica(
+  admin: any,
+  teamToken: string,
+  idClinica: number,
+  date: string,
+  dryRun: boolean,
+): Promise<any> {
+  const runStart = new Date().toISOString();
+  const clinicaInfo = CLINICA_MAP[idClinica];
+  if (!clinicaInfo) return { erro: `idClinica ${idClinica} não mapeado` };
+
+  const args = {
+    input: { contexto: { idDontus: DONTUS_ID, idClinica }, dataInicio: date, dataFim: date },
+  };
+
+  const recebidos: any[] = await mcpToolCall(admin, teamToken, "consultar_contas_recebidas", args);
+
+  // Cache telefone Dontus por idPaciente (últimos ~3 dias)
+  const phoneCache = new Map<number, string>();
+  try {
+    const start = new Date(date); start.setDate(start.getDate() - 3);
+    const dIni = start.toISOString().slice(0, 10);
+    const pacs: any[] = await mcpToolCall(admin, teamToken, "consultar_relatorio_pacientes", {
+      input: { contexto: { idDontus: DONTUS_ID, idClinica }, dataInicio: dIni, dataFim: date },
+    });
+    for (const p of pacs) {
+      const id = Number(p.idPaciente || p.id);
+      const tel = String(p.celular || p.telefone || "").trim();
+      if (id && tel) phoneCache.set(id, tel);
+    }
+  } catch (_) { /* best-effort */ }
+
+  // Agrupar orto por paciente/dia
+  const ortoDayHasStart = new Map<string, boolean>(); // key = paciente_id_dontus|data
+  for (const it of recebidos) {
+    const esp = String(it.especialidade || "").toUpperCase();
+    if (!esp.includes("ORTO")) continue;
+    const svc = String(it.servico || "").toUpperCase();
+    const key = `${it.idPaciente}|${it.dataRecebimento}`;
+    if (svc.includes("PANOR") || svc.includes("APARELHO")) ortoDayHasStart.set(key, true);
+    else if (!ortoDayHasStart.has(key)) ortoDayHasStart.set(key, false);
+  }
+
+  const clinicaId = clinicaInfo.id;
+  const plan: PlanItem[] = [];
+
+  for (const it of recebidos) {
+    const idPaciente = Number(it.idPaciente);
+    const idPag = Number(it.idPagamento);
+    const idConta = Number(it.idContaReceberPaciente);
+    const parcela = Number(it.parcela ?? 1);
+    const dontus_key = `${idConta}-${idPag}-${parcela}`;
+    const nome = String(it.paciente || "").trim();
+    const valor = Number(it.valorRecebido || 0);
+    const dataPag = String(it.dataRecebimento || date).slice(0, 10);
+    const espRaw = String(it.especialidade || "");
+    const especialidade = mapEspecialidade(espRaw);
+    const servico = String(it.servico || "");
+    const origem = String(it.origemPaciente || "").toUpperCase();
+    const telefone = phoneCache.get(idPaciente) || null;
+
+    // 1) Já importado?
+    const { data: existing } = await admin.from("pagamentos")
+      .select("id").eq("dontus_key", dontus_key).maybeSingle();
+    if (existing) {
+      plan.push({
+        action: "skip", reason: "já importado",
+        clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
+        paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
+        especialidade, especialidade_raw: espRaw, servico,
+        forma_pagamento: it.formaPagamento || null, recorrencia_orto: false, dontus_key,
+        origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
+        matched_paciente_id: null, move_to_contratado: false, notification: null,
+      });
+      continue;
+    }
+
+    // 2) Elegibilidade + match
+    let matched_by: PlanItem["matched_by"] = null;
+    let matched_lead_id: string | null = null;
+    let matched_lead_name: string | null = null;
+    let notification: string | null = null;
+
+    if (origem === "KOMMO") {
+      matched_by = "kommo";
+    }
+
+    // Buscar lead por telefone (últimos 8 dígitos) OU nome normalizado
+    let leadRow: any = null;
+    if (telefone) {
+      const tail = tailPhone(telefone);
+      if (tail) {
+        const { data: leads } = await admin.from("crm_leads")
+          .select("id, name, phone, stage_id, pipeline_id, created_at")
+          .ilike("phone", `%${tail}`)
+          .order("created_at", { ascending: false }).limit(5);
+        if (leads?.length) leadRow = leads[0];
+      }
+    }
+    if (!leadRow) {
+      const norm = normalizeName(nome);
+      if (norm) {
+        const { data: leads } = await admin.from("crm_leads")
+          .select("id, name, phone, stage_id, pipeline_id, created_at")
+          .order("created_at", { ascending: false }).limit(200);
+        // fallback local para nome — evitar ILIKE quebrar em acentos
+        leadRow = (leads || []).find((l) => normalizeName(l.name) === norm) || null;
+        if (leadRow && matched_by !== "kommo") matched_by = "name";
+      }
+    } else if (matched_by !== "kommo") {
+      matched_by = "phone";
+    }
+
+    if (matched_by === "kommo" && leadRow) {
+      matched_lead_id = leadRow.id; matched_lead_name = leadRow.name;
+    } else if (matched_by === "phone" && leadRow) {
+      matched_lead_id = leadRow.id; matched_lead_name = leadRow.name;
+      notification = "Paciente pago sem origem Kommo — vinculado por telefone (conferir)";
+    } else if (matched_by === "name" && leadRow) {
+      matched_lead_id = leadRow.id; matched_lead_name = leadRow.name;
+      notification = "Paciente pago vinculado por NOME — conferência obrigatória";
+    }
+
+    if (!matched_by || !leadRow) {
+      plan.push({
+        action: "skip", reason: "sem match (não é KOMMO e não bateu tel/nome)",
+        clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
+        paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
+        especialidade, especialidade_raw: espRaw, servico,
+        forma_pagamento: it.formaPagamento || null, recorrencia_orto: false, dontus_key,
+        origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
+        matched_paciente_id: null, move_to_contratado: false, notification: null,
+      });
+      continue;
+    }
+
+    // 3) Recorrência de ortodontia
+    let recorrencia_orto = false;
+    if (especialidade === "ORTODONTIA") {
+      const key = `${idPaciente}|${dataPag}`;
+      recorrencia_orto = !ortoDayHasStart.get(key);
+    }
+
+    // 4) Dedupe com pagamento manual
+    // buscamos paciente CRClin do lead (via crm_lead_pacientes)
+    let pacienteCrmId: string | null = null;
+    const { data: vinc } = await admin.from("crm_lead_pacientes")
+      .select("paciente_id").eq("lead_id", matched_lead_id).limit(1);
+    if (vinc?.length) pacienteCrmId = vinc[0].paciente_id;
+
+    let action: PlanItem["action"] = "import";
+    if (pacienteCrmId) {
+      const { data: sameDay } = await admin.from("pagamentos")
+        .select("id, valor, dontus_key")
+        .eq("paciente_id", pacienteCrmId)
+        .eq("data_pagamento", dataPag)
+        .is("dontus_key", null);
+      if (sameDay?.length) {
+        const sameValor = sameDay.find((p) => Number(p.valor) === valor);
+        if (sameValor) {
+          action = "adopt";
+          notification = notification ?? null; // manter notif de vínculo se houver
+        } else {
+          // valor diferente → importa e notifica divergência
+          notification = (notification ? notification + " | " : "") +
+            `Divergência de valor com lançamento manual (${sameDay.map((s) => `R$${s.valor}`).join(", ")}) — conferir`;
+        }
+      }
+    }
+
+    // 5) Contratado? Só se conta (recorrencia_orto=false) e etapa atual não é contratado.
+    let move_to_contratado = false;
+    if (!recorrencia_orto && leadRow?.stage_id && leadRow?.pipeline_id) {
+      const { data: stg } = await admin.from("crm_stages")
+        .select("id, name").eq("id", leadRow.stage_id).maybeSingle();
+      if (stg && !/contratado/i.test(stg.name || "")) {
+        const { data: targetStage } = await admin.from("crm_stages")
+          .select("id, name").eq("pipeline_id", leadRow.pipeline_id)
+          .ilike("name", "%contratado%").limit(1).maybeSingle();
+        if (targetStage) move_to_contratado = true;
+      }
+    }
+
+    plan.push({
+      action,
+      clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
+      paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
+      especialidade, especialidade_raw: espRaw, servico,
+      forma_pagamento: it.formaPagamento || null, recorrencia_orto, dontus_key,
+      origem_paciente: origem, matched_by, matched_lead_id, matched_lead_name,
+      matched_paciente_id: pacienteCrmId, move_to_contratado, notification,
+    });
+  }
+
+  const summary = {
+    clinica: clinicaInfo.nome,
+    id_clinica_dontus: idClinica,
+    itens_lidos: recebidos.length,
+    a_importar: plan.filter((p) => p.action === "import").length,
+    a_adotar: plan.filter((p) => p.action === "adopt").length,
+    ignorados: plan.filter((p) => p.action === "skip").length,
+    vinculos_telefone: plan.filter((p) => p.matched_by === "phone").length,
+    vinculos_nome: plan.filter((p) => p.matched_by === "name").length,
+    mover_contratado: plan.filter((p) => p.move_to_contratado).length,
+    notificacoes: plan.filter((p) => p.notification).length,
+    plan,
+  };
+
+  // Registrar run
+  await admin.from("dontus_sync_runs").insert({
+    started_at: runStart, finished_at: new Date().toISOString(),
+    date_sincronizada: date, clinica_id: clinicaId, id_clinica_dontus: idClinica, dry_run: dryRun,
+    itens_lidos: recebidos.length,
+    importados: dryRun ? 0 : summary.a_importar,
+    adotados: dryRun ? 0 : summary.a_adotar,
+    ignorados: summary.ignorados,
+    vinculados_telefone: summary.vinculos_telefone,
+    vinculados_nome: summary.vinculos_nome,
+    movidos_contratado: dryRun ? 0 : summary.mover_contratado,
+    notificacoes: dryRun ? 0 : summary.notificacoes,
+    erros: 0,
+    detalhes: dryRun ? summary : { resumo: { ...summary, plan: undefined } },
+  });
+
+  // Escrita real ainda não implementada — feature em dry-run.
+  if (!dryRun) {
+    summary.observacao = "Escrita ainda não habilitada — sync efetivo será liberado após aprovação (dry-run apenas).";
+  }
+
+  return summary;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+      status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+
+  const auth = await authorizeInternal(req, admin, { cronSecretName: "AUTOMATION_CRON_TOKEN" });
+  if (!auth.ok) return unauthorizedResponse(corsHeaders);
+
+  const teamToken = Deno.env.get("DONTUS_TEAM_TOKEN");
+  if (!teamToken) {
+    return new Response(JSON.stringify({
+      error: "DONTUS_TEAM_TOKEN não configurado. Adicione em Project Settings → Secrets.",
+    }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  let body: any = {};
+  try { body = await req.json(); } catch { body = {}; }
+  const date: string = String(body.date || new Date().toISOString().slice(0, 10));
+  const dryRun: boolean = body.dry_run !== false; // padrão: TRUE (dry-run) para segurança
+  const clinicas: number[] = Array.isArray(body.clinicas) && body.clinicas.length
+    ? body.clinicas.map((n: any) => Number(n)).filter((n) => CLINICA_MAP[n])
+    : [2, 3, 4, 5];
+
+  const results: any[] = [];
+  const errors: any[] = [];
+  for (const idC of clinicas) {
+    try {
+      const r = await syncClinica(admin, teamToken, idC, date, dryRun);
+      results.push(r);
+    } catch (e: any) {
+      errors.push({ id_clinica_dontus: idC, error: e?.message ?? String(e) });
+      await admin.from("dontus_sync_runs").insert({
+        date_sincronizada: date, clinica_id: CLINICA_MAP[idC]?.id, id_clinica_dontus: idC,
+        dry_run: dryRun, erros: 1, error_message: e?.message ?? String(e),
+      });
+    }
+  }
+
+  return new Response(JSON.stringify({
+    date, dry_run: dryRun, clinicas: results, errors,
+  }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+});

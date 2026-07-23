@@ -2614,6 +2614,99 @@ export type Database = {
         }
         Relationships: []
       }
+      dontus_sync_runs: {
+        Row: {
+          adotados: number
+          clinica_id: string | null
+          date_sincronizada: string
+          detalhes: Json | null
+          dry_run: boolean
+          error_message: string | null
+          erros: number
+          finished_at: string | null
+          id: string
+          id_clinica_dontus: number | null
+          ignorados: number
+          importados: number
+          itens_lidos: number
+          movidos_contratado: number
+          notificacoes: number
+          started_at: string
+          vinculados_nome: number
+          vinculados_telefone: number
+        }
+        Insert: {
+          adotados?: number
+          clinica_id?: string | null
+          date_sincronizada: string
+          detalhes?: Json | null
+          dry_run?: boolean
+          error_message?: string | null
+          erros?: number
+          finished_at?: string | null
+          id?: string
+          id_clinica_dontus?: number | null
+          ignorados?: number
+          importados?: number
+          itens_lidos?: number
+          movidos_contratado?: number
+          notificacoes?: number
+          started_at?: string
+          vinculados_nome?: number
+          vinculados_telefone?: number
+        }
+        Update: {
+          adotados?: number
+          clinica_id?: string | null
+          date_sincronizada?: string
+          detalhes?: Json | null
+          dry_run?: boolean
+          error_message?: string | null
+          erros?: number
+          finished_at?: string | null
+          id?: string
+          id_clinica_dontus?: number | null
+          ignorados?: number
+          importados?: number
+          itens_lidos?: number
+          movidos_contratado?: number
+          notificacoes?: number
+          started_at?: string
+          vinculados_nome?: number
+          vinculados_telefone?: number
+        }
+        Relationships: []
+      }
+      dontus_sync_state: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          created_at: string
+          id: string
+          last_authorize_at: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          last_authorize_at?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          last_authorize_at?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       funnel_channels: {
         Row: {
           channel_config: Json | null
@@ -3122,6 +3215,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           data_pagamento: string
+          dontus_key: string | null
           especialidade: string | null
           forma_pagamento: string
           id: string
@@ -3136,6 +3230,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           data_pagamento?: string
+          dontus_key?: string | null
           especialidade?: string | null
           forma_pagamento: string
           id?: string
@@ -3150,6 +3245,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           data_pagamento?: string
+          dontus_key?: string | null
           especialidade?: string | null
           forma_pagamento?: string
           id?: string
