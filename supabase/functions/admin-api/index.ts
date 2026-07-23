@@ -714,15 +714,6 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
       .sort((a, b) => b.faturamento - a.faturamento).slice(0, 10);
   }
 
-  // agendamentos
-  const total = appointments.length;
-  const porStatus: Record<string, number> = {};
-  appointments.forEach((a) => {
-    const s = a.status || "sem_status";
-    porStatus[s] = (porStatus[s] || 0) + 1;
-  });
-  const remarcados = appointments.filter((a) => a.is_rescheduled === true).length;
-
   // por clínica via crm_leads.cidade — casamento por chave normalizada com
   // clinicas.cidade do TENANT (clínica ativa vence se a cidade se repetir);
   // cidade sem clínica correspondente aparece como veio; nula = "Sem cidade".
@@ -731,14 +722,35 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     const k = normalizeCidadeKey(c.cidade);
     if (k && !clinicByCidade.has(k)) clinicByCidade.set(k, c);
   });
+  const cidadeToClinicaId = (cidade: string | null | undefined): string | null => {
+    const k = normalizeCidadeKey(cidade);
+    if (!k) return null;
+    const c = clinicByCidade.get(k);
+    return c ? (c.id as string) : null;
+  };
   const cidadeToClinica = (cidade: string | null | undefined): string => {
     const k = normalizeCidadeKey(cidade);
     if (!k) return SEM_CIDADE;
     const c = clinicByCidade.get(k);
     return c ? c.nome : String(cidade).trim();
   };
+
+  // agendamentos — quando ?clinica= está presente, restringe aos appointments
+  // cuja clínica (derivada de crm_leads.cidade) bate com o filtro. Sem filtro,
+  // usa todos os appointments do tenant (comportamento original preservado).
+  const appointmentsScope = clinicaId
+    ? appointments.filter((a: any) => cidadeToClinicaId(a.crm_leads?.cidade) === clinicaId)
+    : appointments;
+  const total = appointmentsScope.length;
+  const porStatus: Record<string, number> = {};
+  appointmentsScope.forEach((a) => {
+    const s = a.status || "sem_status";
+    porStatus[s] = (porStatus[s] || 0) + 1;
+  });
+  const remarcados = appointmentsScope.filter((a) => a.is_rescheduled === true).length;
+
   const aptClinMap = new Map<string, { total: number; por_status: Record<string, number> }>();
-  appointments.forEach((a: any) => {
+  appointmentsScope.forEach((a: any) => {
     const cidade = a.crm_leads?.cidade ?? null;
     const key = cidadeToClinica(cidade);
     const entry = aptClinMap.get(key) || { total: 0, por_status: {} };
