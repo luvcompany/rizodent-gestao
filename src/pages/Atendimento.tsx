@@ -53,6 +53,10 @@ interface PagamentoEntry {
   mode: EspMode;
   especialidade: string;
   valor: string;
+  // Regra oficial (conciliação com Dontus 07/2026): ORTODONTIA só conta no
+  // faturamento quando há PANORÂMICA ou APARELHO no dia (início de tratamento).
+  // Manutenção/mensalidade/braquete/moldagem/contenção = recorrência (não conta).
+  recorrenciaOrto: boolean;
 }
 
 const createEmptyEntry = (mode: EspMode = "nova"): PagamentoEntry => ({
@@ -60,6 +64,7 @@ const createEmptyEntry = (mode: EspMode = "nova"): PagamentoEntry => ({
   mode,
   especialidade: "",
   valor: "",
+  recorrenciaOrto: false,
 });
 
 const Atendimento = () => {
