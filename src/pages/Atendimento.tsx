@@ -346,6 +346,10 @@ const Atendimento = () => {
         toast.error(`Informe o valor do pagamento ${entries.length > 1 ? i + 1 : ""}.`);
         return;
       }
+      if (isOrto(ent.especialidade) && ent.recorrenciaOrto === null) {
+        toast.error(`Responda a pergunta de ortodontia do pagamento ${entries.length > 1 ? i + 1 : ""}.`);
+        return;
+      }
     }
 
     setSaving(true);
