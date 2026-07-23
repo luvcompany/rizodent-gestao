@@ -554,12 +554,14 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     const applies = !h.clinica_id || !clinicaId || h.clinica_id === clinicaId;
     if (applies) holidaySet.add(h.data);
   });
-  const ontem = addDays(hoje, -1);
-  const fimJanela = ontem < to ? ontem : to;
-  const diasUteisPassados = fimJanela >= from ? businessDaysBetween(from, fimJanela, holidaySet) : 0;
-  const fatAteOntem = pagamentos
-    .filter((pg) => pg.data_pagamento <= fimJanela)
-    .reduce((s, pg) => s + num(pg.valor), 0);
+  // Lançamentos atrasam (a clínica digita os pagamentos no dia seguinte), então
+  // "ontem" quase sempre ainda não tem dado. Ancorar no ÚLTIMO DIA COM LANÇAMENTO
+  // (max data_pagamento) evita diluir a média/projeção com dias não lançados —
+  // mesma regra de src/pages/Relatorios.tsx (predictability).
+  const ultimoDiaLancado = pagamentos.reduce((mx, pg) => (pg.data_pagamento > mx ? pg.data_pagamento : mx), "");
+  const fimJanela = ultimoDiaLancado || to;
+  const diasUteisPassados = (ultimoDiaLancado && fimJanela >= from) ? Math.max(businessDaysBetween(from, fimJanela, holidaySet), 0.5) : 0;
+  const fatAteOntem = fatTotal; // todos os pagamentos lançados no período (todos <= ultimoDiaLancado)
   const faturamentoMedioDiaUtil = diasUteisPassados > 0 ? fatAteOntem / diasUteisPassados : 0;
 
   // Projeção do MÊS CORRENTE (mesma fórmula do Dashboard do CRClin em
@@ -773,6 +775,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     dias_uteis_passados: diasUteisPassados,
     projecao_mes: projecaoMes,
     dias_uteis_totais_mes: diasUteisTotaisMes,
+    ultimo_dia_lancado: ultimoDiaLancado || null,
     pacientes_total: pacientesTotalSet.size,
     // novos_contratados = definição canônica (primeiro pagamento no período)
     novos_contratados: contratadosNoFiltro.length,
