@@ -2614,6 +2614,36 @@ export type Database = {
         }
         Relationships: []
       }
+      dontus_paciente_seen: {
+        Row: {
+          clinica_id: string
+          created_at: string
+          id: number
+          id_paciente_dontus: number
+          primeira_data: string
+          refreshed_on: string
+          updated_at: string
+        }
+        Insert: {
+          clinica_id: string
+          created_at?: string
+          id?: number
+          id_paciente_dontus: number
+          primeira_data: string
+          refreshed_on?: string
+          updated_at?: string
+        }
+        Update: {
+          clinica_id?: string
+          created_at?: string
+          id?: number
+          id_paciente_dontus?: number
+          primeira_data?: string
+          refreshed_on?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       dontus_sync_runs: {
         Row: {
           adotados: number
