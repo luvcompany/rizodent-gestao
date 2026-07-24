@@ -70,6 +70,19 @@ function isWonContratadoStage(name?: string | null): boolean {
   return n.includes("contratado") && !n.includes("nao contratado");
 }
 
+// Espelha a SQL map_source_to_origem: source do lead → categoria de origem do paciente.
+function mapSourceToOrigem(src?: string | null): string {
+  const s = String(src || "").toLowerCase().trim();
+  if (!s) return "Outros";
+  if (/(facebook_ad|instagram_ad|fb_ad|_ad$|^ad$|an[uú]ncio)/.test(s)) return "Anúncio";
+  if (/instagram/.test(s)) return "Instagram";
+  if (/(whatsapp|organic|orgânic|ligacao|ligação|kommo)/.test(s)) return "Outros";
+  if (/(^site|website)/.test(s)) return "Site";
+  if (/indica/.test(s)) return "Indicação";
+  if (/google/.test(s)) return "Google Ads";
+  return "Outros";
+}
+
 function tailPhone(raw: string | null | undefined): string | null {
   const d = String(raw || "").replace(/\D/g, "");
   if (d.length < 8) return null;
