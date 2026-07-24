@@ -20,6 +20,7 @@ const corsHeaders = {
 
 const DONTUS_BASE = "https://one.dontus.com.br";
 const DONTUS_ID = 210380;
+const MIN_PAYMENT_DATE = "2026-07-23"; // sync não processa pagamentos anteriores a esta data
 const REDIRECT_URI = "http://localhost:8976/callback";
 
 const CLINICA_MAP: Record<number, { id: string; nome: string }> = {
