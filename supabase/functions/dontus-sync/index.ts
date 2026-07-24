@@ -62,6 +62,14 @@ function normalizeName(raw: string | null | undefined): string {
     .toUpperCase().replace(/\s+/g, " ").trim();
 }
 
+// Uma etapa é "Contratado (ganho)" se contém "contratado" mas NÃO é "não contratado".
+function isWonContratadoStage(name?: string | null): boolean {
+  const n = String(name || "")
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .toLowerCase().replace(/\s+/g, " ").trim();
+  return n.includes("contratado") && !n.includes("nao contratado");
+}
+
 function tailPhone(raw: string | null | undefined): string | null {
   const d = String(raw || "").replace(/\D/g, "");
   if (d.length < 8) return null;
@@ -483,9 +491,10 @@ async function findMainPipelineContratado(admin: any): Promise<{ pipeline_id: st
     .select("id, name, pipeline_id, crm_pipelines!inner(id, name, tenant_id)")
     .ilike("name", "%contratado%")
     .eq("crm_pipelines.tenant_id", RIZODENT_TENANT_ID);
-  if (!stages?.length) return null;
-  const principal = stages.find((s: any) => /principal/i.test(s.crm_pipelines?.name || ""));
-  const chosen = principal || stages[0];
+  const won = (stages || []).filter((s: any) => isWonContratadoStage(s.name));
+  if (!won.length) return null;
+  const principal = won.find((s: any) => /principal/i.test(s.crm_pipelines?.name || ""));
+  const chosen = principal || won[0];
   return { pipeline_id: chosen.pipeline_id, stage_id: chosen.id };
 }
 
@@ -631,9 +640,30 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
       if (!pacienteId) {
         pacienteId = await ensurePacienteFromItem(admin, item, leadId);
         if (leadId && pacienteId) {
+          // Se o lead ainda não tem titular vinculado a outro paciente,
+          // este paciente vira titular (is_primary=true).
+          const { data: primaryExisting } = await admin.from("crm_lead_pacientes")
+            .select("paciente_id").eq("lead_id", leadId).eq("is_primary", true).limit(1);
+          const hasOtherPrimary = (primaryExisting || []).some(
+            (r: any) => r.paciente_id && r.paciente_id !== pacienteId,
+          );
           await admin.from("crm_lead_pacientes")
-            .upsert({ lead_id: leadId, paciente_id: pacienteId, is_primary: false },
+            .upsert({ lead_id: leadId, paciente_id: pacienteId, is_primary: !hasOtherPrimary },
               { onConflict: "lead_id,paciente_id" });
+          // Backfill: telefone do paciente vazio + lead com phone → copia.
+          try {
+            const { data: pac } = await admin.from("pacientes")
+              .select("id, telefone").eq("id", pacienteId).maybeSingle();
+            const pacTel = String(pac?.telefone || "").trim();
+            if (!pacTel) {
+              const { data: ld } = await admin.from("crm_leads")
+                .select("phone").eq("id", leadId).maybeSingle();
+              const leadPhone = String(ld?.phone || "").trim();
+              if (leadPhone) {
+                await admin.from("pacientes").update({ telefone: leadPhone }).eq("id", pacienteId);
+              }
+            }
+          } catch (_) { /* best-effort */ }
         }
       }
 
@@ -700,10 +730,11 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
         if (lead?.pipeline_id) {
           const { data: curStg } = await admin.from("crm_stages")
             .select("id, name").eq("id", lead.stage_id).maybeSingle();
-          if (!/contratado/i.test(curStg?.name || "")) {
-            const { data: tgt } = await admin.from("crm_stages")
-              .select("id").eq("pipeline_id", lead.pipeline_id)
-              .ilike("name", "%contratado%").limit(1).maybeSingle();
+          if (!isWonContratadoStage(curStg?.name)) {
+            const { data: tgtRows } = await admin.from("crm_stages")
+              .select("id, name").eq("pipeline_id", lead.pipeline_id)
+              .ilike("name", "%contratado%");
+            const tgt = (tgtRows || []).find((s: any) => isWonContratadoStage(s.name)) || null;
             if (tgt?.id) {
               const upd = await admin.from("crm_leads")
                 .update({ stage_id: tgt.id }).eq("id", leadId);
@@ -1007,16 +1038,17 @@ async function syncClinica(
     ) {
       const { data: stg } = await admin.from("crm_stages")
         .select("id, name").eq("id", leadRow.stage_id).maybeSingle();
-      if (stg && !/contratado/i.test(stg.name || "")) {
-        const { data: targetStage } = await admin.from("crm_stages")
+      if (stg && !isWonContratadoStage(stg.name)) {
+        const { data: targetStages } = await admin.from("crm_stages")
           .select("id, name").eq("pipeline_id", leadRow.pipeline_id)
-          .ilike("name", "%contratado%").limit(1).maybeSingle();
+          .ilike("name", "%contratado%");
+        const targetStage = (targetStages || []).find((s: any) => isWonContratadoStage(s.name)) || null;
         if (targetStage) {
           move_to_contratado = true;
           contratadoAlreadyForLead.add(matched_lead_id);
         }
-      } else if (stg) {
-        // já está em Contratado — marca como movido pra não repetir
+      } else if (stg && isWonContratadoStage(stg.name)) {
+        // já está em Contratado (ganho) — marca como movido pra não repetir
         contratadoAlreadyForLead.add(matched_lead_id);
       }
     }
