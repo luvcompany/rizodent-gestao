@@ -1083,6 +1083,7 @@ async function syncClinica(
           matched_paciente_id: null, move_to_contratado: false, notification: null,
         });
         continue;
+        }
       }
     }
 
