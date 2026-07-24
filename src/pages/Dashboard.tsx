@@ -405,9 +405,14 @@ const Dashboard = () => {
     };
   }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, dateFrom, dateTo, rangeBounds]);
 
-  const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
-  const fatNovos = filtered.pagamentos.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
-  const fatRecorrentes = filtered.pagamentos.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
+  // Ortodontia em manutenção (recorrencia_orto=true) NÃO conta no faturamento
+  // — mesma regra do endpoint /reports/financeiro que alimenta o Rizodent Pulse.
+  // Só afeta cálculos de dinheiro; contagens de pacientes/agendamentos seguem
+  // usando filtered.pagamentos inteiro.
+  const pagamentosFat = filtered.pagamentos.filter((p) => p.recorrencia_orto !== true);
+  const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);
+  const fatNovos = pagamentosFat.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
+  const fatRecorrentes = pagamentosFat.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
   const totalPacientes = new Set(filtered.pagamentos.map((p) => p.paciente_id)).size;
 
   // Conjunto de feriados (YYYY-MM-DD) aplicáveis à clínica filtrada.
