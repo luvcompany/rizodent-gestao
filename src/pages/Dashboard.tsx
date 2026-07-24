@@ -59,7 +59,7 @@ const CRM_LEADS_PAGE_SIZE = 1000;
 const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
 const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
 const CLINICAS_SELECT = "id, nome, cidade, ativa";
-const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade";
+const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade, recorrencia_orto";
 const TRATAMENTOS_SELECT = "id, paciente_id, clinica_id, created_at";
 const PACIENTES_SELECT = "id, origem, nome_anuncio";
 
