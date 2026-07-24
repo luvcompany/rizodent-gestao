@@ -768,7 +768,7 @@ const Dashboard = () => {
   const pacienteOrigemLookup = new Map<string, string>();
   pacientes.forEach((p) => pacienteOrigemLookup.set(p.id, p.origem || "Outros"));
   const origemMap = new Map<string, {pacs: Set<string>;fat: number;}>();
-  filtered.pagamentos.forEach((pg) => {
+  pagamentosFat.forEach((pg) => {
     const o = pacienteOrigemLookup.get(pg.paciente_id) || "Outros";
     const entry = origemMap.get(o) || { pacs: new Set<string>(), fat: 0 };
     entry.pacs.add(pg.paciente_id);
