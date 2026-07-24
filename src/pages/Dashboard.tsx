@@ -730,7 +730,7 @@ const Dashboard = () => {
     if (name.includes("VCA")) name = "VCA";
     return {
       name,
-      value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
+      value: pagamentosFat.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
     };
   });
   const fatClinicaGrouped = new Map<string, number>();
