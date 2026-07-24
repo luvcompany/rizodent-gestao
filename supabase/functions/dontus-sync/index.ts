@@ -20,6 +20,7 @@ const corsHeaders = {
 
 const DONTUS_BASE = "https://one.dontus.com.br";
 const DONTUS_ID = 210380;
+const MIN_PAYMENT_DATE = "2026-07-23"; // sync não processa pagamentos anteriores a esta data
 const REDIRECT_URI = "http://localhost:8976/callback";
 
 const CLINICA_MAP: Record<number, { id: string; nome: string }> = {
@@ -578,7 +579,8 @@ async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados:
 
     // pagamentos marketing dos últimos 30 dias → paciente_ids (clínicas do tenant)
     const hoje = new Date().toISOString().slice(0, 10);
-    const desde = (() => { const d = new Date(hoje + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 30); return d.toISOString().slice(0, 10); })();
+    let desde = (() => { const d = new Date(hoje + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 30); return d.toISOString().slice(0, 10); })();
+    desde = desde < MIN_PAYMENT_DATE ? MIN_PAYMENT_DATE : desde;
     const { data: clins } = await admin.from("clinicas").select("id").eq("tenant_id", TENANT);
     const clinicaIds = (clins || []).map((c: any) => c.id);
     if (!clinicaIds.length) return out;
@@ -939,6 +941,7 @@ async function syncClinica(
     const nome = String(it.paciente || "").trim();
     const valor = Number(it.valorRecebido || 0);
     const dataPag = String(it.dataRecebimento || date).slice(0, 10);
+    if (dataPag < MIN_PAYMENT_DATE) continue; // trava: ignora pagamentos anteriores a 23/07/2026
     const espRaw = String(it.especialidade || "");
     const especialidade = mapEspecialidade(espRaw);
     const servico = String(it.servico || "");
