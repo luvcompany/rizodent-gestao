@@ -2617,6 +2617,48 @@ export type Database = {
         }
         Relationships: []
       }
+      dontus_dedup_runs: {
+        Row: {
+          ambiguos: number
+          created_at: string
+          date_ate: string
+          date_de: string
+          detalhes: Json
+          dry_run: boolean
+          erros: number
+          fundidos: number
+          id: string
+          pares_encontrados: number
+          tenant_id: string
+        }
+        Insert: {
+          ambiguos?: number
+          created_at?: string
+          date_ate: string
+          date_de: string
+          detalhes?: Json
+          dry_run?: boolean
+          erros?: number
+          fundidos?: number
+          id?: string
+          pares_encontrados?: number
+          tenant_id: string
+        }
+        Update: {
+          ambiguos?: number
+          created_at?: string
+          date_ate?: string
+          date_de?: string
+          detalhes?: Json
+          dry_run?: boolean
+          erros?: number
+          fundidos?: number
+          id?: string
+          pares_encontrados?: number
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       dontus_paciente_seen: {
         Row: {
           clinica_id: string
