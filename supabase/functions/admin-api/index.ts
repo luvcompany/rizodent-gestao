@@ -533,6 +533,22 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   const fatNovos = pagamentos.filter((pg) => pg.tipo === "primeiro").reduce((s, pg) => s + num(pg.valor), 0);
   const fatRecorrentes = pagamentos.filter((pg) => pg.tipo === "recorrente").reduce((s, pg) => s + num(pg.valor), 0);
 
+  // Série diária de faturamento (mesma base do total: pagamentos já filtrados
+  // por clínica do tenant, recorrencia_orto=false e data_pagamento ∈ [from,to]).
+  // Agrupa por data_pagamento; inclui só dias com pagamento.
+  const porDiaMap = new Map<string, { faturamento: number; pagamentos: number }>();
+  for (const pg of pagamentos) {
+    const dia = String(pg.data_pagamento || "").slice(0, 10);
+    if (!dia) continue;
+    const cur = porDiaMap.get(dia) || { faturamento: 0, pagamentos: 0 };
+    cur.faturamento += num(pg.valor);
+    cur.pagamentos += 1;
+    porDiaMap.set(dia, cur);
+  }
+  const porDia = [...porDiaMap.entries()]
+    .map(([dia, v]) => ({ dia, faturamento: v.faturamento, pagamentos: v.pagamentos }))
+    .sort((a, b) => a.dia.localeCompare(b.dia));
+
   const pacientesTotalSet = new Set(pagamentos.map((pg) => pg.paciente_id).filter(Boolean));
 
   // pacientes do tenant presentes nos pagamentos do período (por id, em blocos)
@@ -794,6 +810,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     por_clinica: porClinica,
     por_origem: porOrigem,
     por_anuncio: porAnuncio,
+    por_dia: porDia,
     agendamentos: {
       total,
       por_status: porStatus,
