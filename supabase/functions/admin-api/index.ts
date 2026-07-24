@@ -658,7 +658,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
 
   // por anúncio — atribuição por paciente -> lead -> ad_id (nome real do criativo), tenant-scoped
   let porAnuncio: any[] = [];
-  try {
+  if (!light) try {
     const pacientesComFat = [...pacientesTotalSet].filter((pid) => (pagByPaciente.get(pid) || 0) > 0);
     // 1) todos os vínculos (paginado: fan-out 1:N pode passar de 1000 linhas)
     const allLinks: any[] = [];
