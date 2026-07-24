@@ -587,7 +587,7 @@ const Dashboard = () => {
     if (useMonthlyChart) {
       // Aggregate by month
       const monthMap = new Map<string, number>();
-      filtered.pagamentos.forEach((p) => {
+      pagamentosFat.forEach((p) => {
         const key = p.data_pagamento.substring(0, 7); // "YYYY-MM"
         monthMap.set(key, (monthMap.get(key) || 0) + Number(p.valor));
       });
@@ -603,7 +603,7 @@ const Dashboard = () => {
     const endRaw = new Date(dateTo + "T12:00:00");
     const end = endRaw > today ? today : endRaw;
     const pgMap = new Map<string, number>();
-    filtered.pagamentos.forEach((p) => {
+    pagamentosFat.forEach((p) => {
       pgMap.set(p.data_pagamento, (pgMap.get(p.data_pagamento) || 0) + Number(p.valor));
     });
     const days: { dia: string; valor: number }[] = [];
@@ -619,7 +619,7 @@ const Dashboard = () => {
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart, rangeBounds, holidaySet]);
+  }, [dateFrom, dateTo, pagamentosFat, useMonthlyChart, rangeBounds, holidaySet]);
 
   // Chart: Leads Novos Diários — fonte ÚNICA: crm_leads.created_at (dia local America/Bahia).
   // A fonte manual (leads_diarios) foi abandonada em 18/04/2026 e misturava semânticas
