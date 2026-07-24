@@ -1312,7 +1312,12 @@ Deno.serve(async (req) => {
     }
   }
 
+  let reconciliacao: any = null;
+  if (!dryRun) {
+    reconciliacao = await reconcileStuckNaoContratado(admin);
+  }
+
   return new Response(JSON.stringify({
-    date, dry_run: dryRun, clinicas: results, errors,
+    date, dry_run: dryRun, clinicas: results, errors, reconciliacao,
   }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
