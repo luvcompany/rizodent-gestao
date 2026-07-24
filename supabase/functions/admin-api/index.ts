@@ -483,6 +483,10 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   const from = assertDay((p.get("from") || firstOfMonth).slice(0, 10));
   const to = assertDay((p.get("to") || lastOfMonth).slice(0, 10));
   const clinicaId = p.get("clinica");
+  // ?light=1|true → pula agregações mais caras (por_anuncio, por_origem) para
+  // acelerar o modal do painel; consumidores recebem arrays vazios nesses campos.
+  const lightRaw = (p.get("light") || "").toLowerCase();
+  const light = lightRaw === "1" || lightRaw === "true" || lightRaw === "yes";
 
   // Clínicas do TENANT (inclui inativas para atribuir pagamentos antigos ao
   // nome real da clínica — nada de strings chumbadas).
