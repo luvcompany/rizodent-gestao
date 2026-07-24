@@ -810,6 +810,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     por_clinica: porClinica,
     por_origem: porOrigem,
     por_anuncio: porAnuncio,
+    por_dia: porDia,
     agendamentos: {
       total,
       por_status: porStatus,
