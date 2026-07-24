@@ -929,6 +929,26 @@ async function syncClinica(
   const contratadoAlreadyForLead = new Set<string>(); // dedupe move por lead
   const adoptedPagamentoIds = new Set<string>(); // pagamentos manuais já adotados neste run
 
+  // Base de telefones do CRM antigo (Kommo). Se o paciente NÃO for KOMMO no Dontus
+  // e NÃO tiver lead no CRClin, mas o telefone bater aqui, tratamos como venda
+  // de marketing (matched_by="kommo_base") — mesmo fluxo do KOMMO-sem-lead.
+  const kommoBaseTails = new Set<string>();
+  try {
+    const PAGE = 1000;
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data, error } = await admin.from("kommo_contatos")
+        .select("phone_tail").range(from, from + PAGE - 1);
+      if (error) break;
+      const rows = data || [];
+      for (const r of rows) kommoBaseTails.add(String(r.phone_tail));
+      if (rows.length < PAGE) break;
+      from += PAGE;
+    }
+  } catch (_) { /* best-effort */ }
+
+
 
 
 
