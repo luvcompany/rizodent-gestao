@@ -1016,7 +1016,7 @@ async function syncClinica(
       especialidade, especialidade_raw: espRaw, servico,
       forma_pagamento: it.formaPagamento || null, recorrencia_orto, dontus_key,
       origem_paciente: origem, matched_by, matched_lead_id, matched_lead_name,
-      matched_paciente_id: pacienteCrmId, move_to_contratado, notification,
+      matched_paciente_id: pacienteCrmId, matched_payment_id, move_to_contratado, notification,
     });
   }
 
