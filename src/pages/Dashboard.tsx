@@ -741,7 +741,7 @@ const Dashboard = () => {
 
   // Chart: Faturamento por Especialidade (soma dos pagamentos)
   const espFatMap = new Map<string, number>();
-  filtered.pagamentos.forEach((p) => {
+  pagamentosFat.forEach((p) => {
     const esp = p.especialidade || "Sem Especialidade";
     espFatMap.set(esp, (espFatMap.get(esp) || 0) + Number(p.valor || 0));
   });
