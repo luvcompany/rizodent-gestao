@@ -579,7 +579,8 @@ async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados:
 
     // pagamentos marketing dos últimos 30 dias → paciente_ids (clínicas do tenant)
     const hoje = new Date().toISOString().slice(0, 10);
-    const desde = (() => { const d = new Date(hoje + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 30); return d.toISOString().slice(0, 10); })();
+    let desde = (() => { const d = new Date(hoje + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 30); return d.toISOString().slice(0, 10); })();
+    desde = desde < MIN_PAYMENT_DATE ? MIN_PAYMENT_DATE : desde;
     const { data: clins } = await admin.from("clinicas").select("id").eq("tenant_id", TENANT);
     const clinicaIds = (clins || []).map((c: any) => c.id);
     if (!clinicaIds.length) return out;
