@@ -775,6 +775,7 @@ async function syncClinica(
 
   const plan: PlanItem[] = [];
   const contratadoAlreadyForLead = new Set<string>(); // dedupe move por lead
+  const adoptedPagamentoIds = new Set<string>(); // pagamentos manuais já adotados neste run
 
 
 
