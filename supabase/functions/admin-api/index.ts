@@ -1238,6 +1238,20 @@ Deno.serve(async (req) => {
       const txt = await res.text();
       return new Response(txt, { status: res.status, headers: { ...cors, "Content-Type": "application/json" } });
     }
+    if (parts[0] === "dedup-dontus" && req.method === "POST") {
+      if (tenantId !== RIZODENT_TENANT_ID) return json({ error: "forbidden" }, 403);
+      const url3 = `${Deno.env.get("SUPABASE_URL")}/functions/v1/dontus-dedup`;
+      const res = await fetch(url3, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify(body || {}),
+      });
+      const txt = await res.text();
+      return new Response(txt, { status: res.status, headers: { ...cors, "Content-Type": "application/json" } });
+    }
     return json({ error: "not_found", path, method: req.method }, 404);
   } catch (e: any) {
     const msg = e?.message ?? String(e);
