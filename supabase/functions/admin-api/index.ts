@@ -483,6 +483,10 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   const from = assertDay((p.get("from") || firstOfMonth).slice(0, 10));
   const to = assertDay((p.get("to") || lastOfMonth).slice(0, 10));
   const clinicaId = p.get("clinica");
+  // ?light=1|true → pula agregações mais caras (por_anuncio, por_origem) para
+  // acelerar o modal do painel; consumidores recebem arrays vazios nesses campos.
+  const lightRaw = (p.get("light") || "").toLowerCase();
+  const light = lightRaw === "1" || lightRaw === "true" || lightRaw === "yes";
 
   // Clínicas do TENANT (inclui inativas para atribuir pagamentos antigos ao
   // nome real da clínica — nada de strings chumbadas).
@@ -636,22 +640,25 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     if (!pg.paciente_id) return;
     pagByPaciente.set(pg.paciente_id, (pagByPaciente.get(pg.paciente_id) || 0) + num(pg.valor));
   });
-  const origemMap = new Map<string, { pacientes: number; faturamento: number }>();
-  pacientesTotalSet.forEach((pid) => {
-    const pac = pacienteById.get(pid as string);
-    const origem = (pac?.origem || "Outros") as string;
-    const entry = origemMap.get(origem) || { pacientes: 0, faturamento: 0 };
-    entry.pacientes += 1;
-    entry.faturamento += pagByPaciente.get(pid as string) || 0;
-    origemMap.set(origem, entry);
-  });
-  const porOrigem = Array.from(origemMap.entries())
-    .map(([origem, v]) => ({ origem, ...v }))
-    .sort((a, b) => b.faturamento - a.faturamento);
+  let porOrigem: any[] = [];
+  if (!light) {
+    const origemMap = new Map<string, { pacientes: number; faturamento: number }>();
+    pacientesTotalSet.forEach((pid) => {
+      const pac = pacienteById.get(pid as string);
+      const origem = (pac?.origem || "Outros") as string;
+      const entry = origemMap.get(origem) || { pacientes: 0, faturamento: 0 };
+      entry.pacientes += 1;
+      entry.faturamento += pagByPaciente.get(pid as string) || 0;
+      origemMap.set(origem, entry);
+    });
+    porOrigem = Array.from(origemMap.entries())
+      .map(([origem, v]) => ({ origem, ...v }))
+      .sort((a, b) => b.faturamento - a.faturamento);
+  }
 
   // por anúncio — atribuição por paciente -> lead -> ad_id (nome real do criativo), tenant-scoped
   let porAnuncio: any[] = [];
-  try {
+  if (!light) try {
     const pacientesComFat = [...pacientesTotalSet].filter((pid) => (pagByPaciente.get(pid) || 0) > 0);
     // 1) todos os vínculos (paginado: fan-out 1:N pode passar de 1000 linhas)
     const allLinks: any[] = [];
