@@ -538,6 +538,93 @@ async function ensurePacienteFromItem(admin: any, item: PlanItem, leadId: string
   return created.id;
 }
 
+// Rede de segurança: leads com pagamento marketing (recorrencia_orto=false) dos
+// últimos 30 dias que ficaram presos em etapa "Não contratado" são movidos
+// automaticamente para "Contratado" (ganho) do MESMO pipeline + notificação.
+async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados: number; leads: any[] }> {
+  const TENANT = RIZODENT_TENANT_ID;
+  const out = { reconciliados: 0, leads: [] as any[] };
+  try {
+    // etapas "não contratado" do tenant
+    const { data: stages } = await admin.from("crm_stages")
+      .select("id, name, pipeline_id, crm_pipelines!inner(tenant_id)")
+      .eq("crm_pipelines.tenant_id", TENANT);
+    const naoContratadoIds = (stages || [])
+      .filter((s: any) => {
+        const n = String(s.name || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+        return n.includes("nao contratado");
+      })
+      .map((s: any) => s.id);
+    if (!naoContratadoIds.length) return out;
+
+    // pagamentos marketing dos últimos 30 dias → paciente_ids (clínicas do tenant)
+    const hoje = new Date().toISOString().slice(0, 10);
+    const desde = (() => { const d = new Date(hoje + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 30); return d.toISOString().slice(0, 10); })();
+    const { data: clins } = await admin.from("clinicas").select("id").eq("tenant_id", TENANT);
+    const clinicaIds = (clins || []).map((c: any) => c.id);
+    if (!clinicaIds.length) return out;
+    const { data: pays } = await admin.from("pagamentos")
+      .select("paciente_id").in("clinica_id", clinicaIds)
+      .eq("recorrencia_orto", false).gte("data_pagamento", desde);
+    const pacienteIds = Array.from(new Set((pays || []).map((p: any) => p.paciente_id).filter(Boolean)));
+    if (!pacienteIds.length) return out;
+
+    // leads desses pacientes que estão numa etapa "não contratado"
+    const CH = 200;
+    const leadIds = new Set<string>();
+    for (let i = 0; i < pacienteIds.length; i += CH) {
+      const { data: links } = await admin.from("crm_lead_pacientes")
+        .select("lead_id").in("paciente_id", pacienteIds.slice(i, i + CH));
+      for (const l of links || []) if (l.lead_id) leadIds.add(l.lead_id);
+    }
+    if (!leadIds.size) return out;
+    const leadArr = Array.from(leadIds);
+    const stuck: any[] = [];
+    for (let i = 0; i < leadArr.length; i += CH) {
+      const { data: leads } = await admin.from("crm_leads")
+        .select("id, name, pipeline_id, stage_id, assigned_to")
+        .eq("tenant_id", TENANT).in("id", leadArr.slice(i, i + CH)).in("stage_id", naoContratadoIds);
+      for (const l of leads || []) stuck.push(l);
+    }
+    if (!stuck.length) return out;
+
+    // fallback user p/ notificação
+    const { data: prof } = await admin.from("profiles")
+      .select("id").eq("tenant_id", TENANT).order("created_at", { ascending: true }).limit(1).maybeSingle();
+    const fallbackUser = prof?.id ?? null;
+
+    // mover cada lead p/ Contratado (ganho) do mesmo pipeline
+    const targetByPipeline = new Map<string, string>();
+    for (const l of stuck) {
+      try {
+        let tgt = targetByPipeline.get(l.pipeline_id);
+        if (tgt === undefined) {
+          const { data: cs } = await admin.from("crm_stages")
+            .select("id, name").eq("pipeline_id", l.pipeline_id).ilike("name", "%contratado%");
+          const won = (cs || []).find((s: any) => isWonContratadoStage(s.name));
+          tgt = won?.id ?? "";
+          targetByPipeline.set(l.pipeline_id, tgt);
+        }
+        if (!tgt) continue;
+        const upd = await admin.from("crm_leads").update({ stage_id: tgt })
+          .eq("id", l.id).eq("stage_id", l.stage_id);
+        if (upd.error) continue;
+        if (fallbackUser) {
+          await admin.from("crm_notifications").insert({
+            user_id: l.assigned_to || fallbackUser, lead_id: l.id,
+            title: "Venda reconciliada automaticamente",
+            body: `Lead ${l.name} tinha pagamento mas estava em "Não contratado" — movido para Contratado pela rede de segurança. Conferir.`,
+            type: "reconcile_contratado", dedupe_key: `reconcile:${l.id}`,
+          }).then((r: any) => r, () => {});
+        }
+        out.reconciliados++;
+        out.leads.push({ id: l.id, name: l.name });
+      } catch (_) { /* best-effort por lead */ }
+    }
+  } catch (_) { /* best-effort geral — nunca derruba o sync */ }
+  return out;
+}
+
 async function executePlan(admin: any, plan: PlanItem[]): Promise<{
   importados: number; adotados: number; leads_criados: number;
   movidos: number; notificacoes: number; erros: number; erros_det: any[];
