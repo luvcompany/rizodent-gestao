@@ -1291,6 +1291,41 @@ Deno.serve(async (req) => {
       const txt = await res.text();
       return new Response(txt, { status: res.status, headers: { ...cors, "Content-Type": "application/json" } });
     }
+    if (parts[0] === "kommo-import" && req.method === "POST") {
+      if (tenantId !== RIZODENT_TENANT_ID) return json({ error: "forbidden" }, 403);
+      const src = String((body as any)?.url || "").trim();
+      const replace = (body as any)?.replace === true;
+      if (!src) return json({ error: "url é obrigatório" }, 400);
+      const r = await fetch(src);
+      if (!r.ok) return json({ error: `download falhou: HTTP ${r.status}` }, 502);
+      const text = await r.text();
+      const lines = text.split(/\r?\n/);
+      let lidos = 0;
+      const tails = new Set<string>();
+      for (const raw of lines) {
+        const digits = raw.replace(/\D/g, "");
+        if (digits.length < 8) continue;
+        lidos++;
+        tails.add(digits.slice(-8));
+      }
+      if (replace) {
+        const { error: delErr } = await admin.from("kommo_contatos").delete().neq("phone_tail", "__none__");
+        if (delErr) return json({ error: `truncate: ${delErr.message}` }, 500);
+      }
+      const arr = Array.from(tails).map((phone_tail) => ({ phone_tail }));
+      const CHUNK = 2000;
+      let inseridos = 0;
+      for (let i = 0; i < arr.length; i += CHUNK) {
+        const slice = arr.slice(i, i + CHUNK);
+        const { error, count } = await admin.from("kommo_contatos")
+          .upsert(slice, { onConflict: "phone_tail", ignoreDuplicates: true, count: "exact" });
+        if (error) return json({ error: `upsert: ${error.message}` }, 500);
+        inseridos += count ?? slice.length;
+      }
+      const { count: total_tabela } = await admin.from("kommo_contatos")
+        .select("*", { count: "exact", head: true });
+      return json({ ok: true, lidos, inseridos, total_tabela: total_tabela ?? null });
+    }
     return json({ error: "not_found", path, method: req.method }, 404);
   } catch (e: any) {
     const msg = e?.message ?? String(e);

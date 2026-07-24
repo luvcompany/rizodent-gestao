@@ -319,7 +319,7 @@ type PlanItem = {
   recorrencia_orto: boolean;
   dontus_key: string;
   origem_paciente: string;
-  matched_by: "kommo" | "phone" | "name" | null;
+  matched_by: "kommo" | "phone" | "name" | "kommo_base" | null;
   matched_lead_id: string | null;
   matched_lead_name: string | null;
   matched_paciente_id: string | null; // paciente já existente no CRClin
@@ -929,6 +929,26 @@ async function syncClinica(
   const contratadoAlreadyForLead = new Set<string>(); // dedupe move por lead
   const adoptedPagamentoIds = new Set<string>(); // pagamentos manuais já adotados neste run
 
+  // Base de telefones do CRM antigo (Kommo). Se o paciente NÃO for KOMMO no Dontus
+  // e NÃO tiver lead no CRClin, mas o telefone bater aqui, tratamos como venda
+  // de marketing (matched_by="kommo_base") — mesmo fluxo do KOMMO-sem-lead.
+  const kommoBaseTails = new Set<string>();
+  try {
+    const PAGE = 1000;
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data, error } = await admin.from("kommo_contatos")
+        .select("phone_tail").range(from, from + PAGE - 1);
+      if (error) break;
+      const rows = data || [];
+      for (const r of rows) kommoBaseTails.add(String(r.phone_tail));
+      if (rows.length < PAGE) break;
+      from += PAGE;
+    }
+  } catch (_) { /* best-effort */ }
+
+
 
 
 
@@ -1030,6 +1050,14 @@ async function syncClinica(
     } else {
       // Não-KOMMO precisa de lead para importar.
       if (!leadRow) {
+        // Base do Kommo (CRM antigo): se o telefone do paciente está lá,
+        // reconhecemos como venda de marketing e seguimos o fluxo KOMMO-sem-lead.
+        const tailKB = telefone ? tailPhone(telefone) : "";
+        if (tailKB && kommoBaseTails.has(tailKB)) {
+          matched_by = "kommo_base";
+          notification = "Venda reconhecida pela base do Kommo (telefone) — sem marcação KOMMO no Dontus — conferir";
+          // segue o fluxo (não faz skip); item continua sem leadRow
+        } else {
         // Se telefone bateu mas nomes divergiram, sinaliza conferência.
         if (phoneNameConflictLead) {
           plan.push({
@@ -1055,6 +1083,7 @@ async function syncClinica(
           matched_paciente_id: null, move_to_contratado: false, notification: null,
         });
         continue;
+        }
       }
     }
 
@@ -1184,14 +1213,16 @@ async function syncClinica(
     p.create_lead = false;
   }
 
-  // (B) KOMMO sem lead: se o paciente tem AO MENOS UM item que CONTA no dia
-  //     (recorrencia_orto=false) e não há lead vinculável, marcar o PRIMEIRO
-  //     item que conta com create_lead=true (novo lead direto em "Contratados").
+  // (B) KOMMO sem lead OU reconhecido pela base do Kommo (kommo_base): se o
+  //     paciente tem AO MENOS UM item que CONTA no dia (recorrencia_orto=false)
+  //     e não há lead vinculável, marcar o PRIMEIRO item que conta com
+  //     create_lead=true (novo lead direto em "Contratados").
   //     Se só houver itens que NÃO contam (ex.: orto manutenção), NÃO cria lead.
   const kommoNoLeadByPaciente = new Map<number, PlanItem[]>();
   for (const p of plan) {
     if (p.action === "skip") continue;
-    if (p.origem_paciente !== "KOMMO") continue;
+    const isKommoish = p.origem_paciente === "KOMMO" || p.matched_by === "kommo_base";
+    if (!isKommoish) continue;
     if (p.matched_lead_id) continue;
     const arr = kommoNoLeadByPaciente.get(p.paciente_id_dontus) || [];
     arr.push(p);
@@ -1199,21 +1230,28 @@ async function syncClinica(
   }
   for (const [_idPac, items] of kommoNoLeadByPaciente.entries()) {
     const counting = items.filter((i) => !i.recorrencia_orto);
+    const isBase = items[0]?.matched_by === "kommo_base";
     if (!counting.length) {
-      // Só recorrência orto → não cria lead, mantém notificação de KOMMO sem lead
+      // Só recorrência orto → não cria lead
       for (const i of items) {
-        i.notification = "Venda KOMMO (orto manutenção) sem lead prévio — importada como recorrência, sem criar lead";
+        i.notification = isBase
+          ? "Venda reconhecida pela base do Kommo (telefone) — só recorrência orto, sem criar lead — conferir"
+          : "Venda KOMMO (orto manutenção) sem lead prévio — importada como recorrência, sem criar lead";
       }
       continue;
     }
     const primary = counting[0];
     primary.create_lead = true;
     primary.move_to_contratado = true;
+    const prefix = isBase
+      ? "Lead criado automaticamente a partir de venda reconhecida pela base do Kommo (telefone) — sem marcação KOMMO no Dontus — conferir"
+      : "Lead criado automaticamente a partir de venda KOMMO sem lead prévio — conferir";
+    const dedupe_key = `kommobase|${primary.paciente_id_dontus}|${primary.data}|${primary.valor.toFixed(2)}|${primary.clinica_id}`;
     primary.notification =
-      `Lead criado automaticamente a partir de venda KOMMO sem lead prévio — conferir | ` +
-      `paciente=${primary.paciente_nome}, tel=${primary.telefone ?? "?"}, valor=R$${primary.valor.toFixed(2)}, clínica=${primary.clinica_nome}`;
-    // Demais itens do mesmo paciente KOMMO (se houver) — anexar ao mesmo lead novo
-    // apenas informacionalmente no dry-run; contador único de criação de lead.
+      `${prefix} | ` +
+      `paciente=${primary.paciente_nome}, tel=${primary.telefone ?? "?"}, valor=R$${primary.valor.toFixed(2)}, clínica=${primary.clinica_nome}` +
+      (isBase ? ` | dedupe_key=${dedupe_key}` : "");
+    // Demais itens do mesmo paciente (se houver) — anexar ao mesmo lead novo
     for (const i of items) {
       if (i !== primary) {
         i.notification = `Anexado ao lead criado automaticamente para ${primary.paciente_nome}`;

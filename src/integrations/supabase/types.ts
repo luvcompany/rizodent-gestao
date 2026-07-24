@@ -3070,6 +3070,21 @@ export type Database = {
         }
         Relationships: []
       }
+      kommo_contatos: {
+        Row: {
+          created_at: string
+          phone_tail: string
+        }
+        Insert: {
+          created_at?: string
+          phone_tail: string
+        }
+        Update: {
+          created_at?: string
+          phone_tail?: string
+        }
+        Relationships: []
+      }
       leads_diarios: {
         Row: {
           agendaram: number
