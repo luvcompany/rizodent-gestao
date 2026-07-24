@@ -639,16 +639,29 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
 
       // --- action ---
       if (item.action === "adopt") {
-        const { data: rows } = await admin.from("pagamentos")
-          .select("id, valor, dontus_key")
-          .eq("paciente_id", pacienteId)
-          .eq("data_pagamento", item.data)
-          .is("dontus_key", null);
-        const target = (rows || []).find((r: any) => Number(r.valor) === Number(item.valor));
-        if (target) {
+        // Preferir o pagamento identificado na montagem do plano (dedupe amplo,
+        // independente de vínculo lead↔paciente). Fallback: refazer busca por
+        // paciente/data/valor com dontus_key nula.
+        let targetId: string | null = item.matched_payment_id || null;
+        if (targetId) {
+          const { data: chk } = await admin.from("pagamentos")
+            .select("id, dontus_key").eq("id", targetId).maybeSingle();
+          if (!chk || chk.dontus_key) targetId = null;
+        }
+        if (!targetId) {
+          const { data: rows } = await admin.from("pagamentos")
+            .select("id, valor, dontus_key")
+            .eq("paciente_id", pacienteId)
+            .eq("clinica_id", item.clinica_id)
+            .eq("data_pagamento", item.data)
+            .is("dontus_key", null);
+          const target = (rows || []).find((r: any) => Number(r.valor) === Number(item.valor));
+          targetId = target?.id || null;
+        }
+        if (targetId) {
           const upd = await admin.from("pagamentos")
             .update({ dontus_key: item.dontus_key })
-            .eq("id", target.id).is("dontus_key", null);
+            .eq("id", targetId).is("dontus_key", null);
           if (upd.error) {
             if (!/duplicate|unique/i.test(upd.error.message || "")) throw upd.error;
           } else {
