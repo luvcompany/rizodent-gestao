@@ -788,7 +788,7 @@ const Dashboard = () => {
   filtered.pacientes.forEach((p) => {
     if (!p.nome_anuncio) return;
     const key = p.nome_anuncio.trim().toLowerCase();
-    const paid = filtered.pagamentos.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
+    const paid = pagamentosFat.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
     anuncioMap.set(key, (anuncioMap.get(key) || 0) + paid);
   });
   // Keep original casing for display: use first occurrence
