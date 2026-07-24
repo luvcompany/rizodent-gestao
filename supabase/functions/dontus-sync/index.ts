@@ -913,31 +913,74 @@ async function syncClinica(
       recorrencia_orto = !ortoDayHasStart.get(key);
     }
 
-    // 4) Dedupe com pagamento manual (só se houver lead vinculado + paciente)
+    // 4) Dedupe com pagamento manual — INDEPENDENTE de vínculo com lead.
+    //    Monta candidatos de paciente no CRClin: (a) vinculados ao lead,
+    //    (b) telefone (últimos 8 dígitos) com nome compatível,
+    //    (c) nome normalizado idêntico.
     let pacienteCrmId: string | null = null;
+    const candidatePacIds = new Set<string>();
     if (matched_lead_id) {
       const { data: vinc } = await admin.from("crm_lead_pacientes")
-        .select("paciente_id").eq("lead_id", matched_lead_id).limit(1);
-      if (vinc?.length) pacienteCrmId = vinc[0].paciente_id;
+        .select("paciente_id").eq("lead_id", matched_lead_id);
+      for (const v of vinc || []) {
+        candidatePacIds.add(v.paciente_id);
+        if (!pacienteCrmId) pacienteCrmId = v.paciente_id;
+      }
     }
-
-    let action: PlanItem["action"] = "import";
-    if (pacienteCrmId) {
-      const { data: sameDay } = await admin.from("pagamentos")
-        .select("id, valor, dontus_key")
-        .eq("paciente_id", pacienteCrmId)
-        .eq("data_pagamento", dataPag)
-        .is("dontus_key", null);
-      if (sameDay?.length) {
-        const sameValor = sameDay.find((p) => Number(p.valor) === valor);
-        if (sameValor) {
-          action = "adopt";
-        } else {
-          notification = (notification ? notification + " | " : "") +
-            `Divergência de valor com lançamento manual (${sameDay.map((s) => `R$${s.valor}`).join(", ")}) — conferir`;
+    if (telefone) {
+      const tail = tailPhone(telefone);
+      if (tail) {
+        const { data: pacs } = await admin.from("pacientes")
+          .select("id, nome, telefone")
+          .eq("tenant_id", RIZODENT_TENANT_ID)
+          .ilike("telefone", `%${tail}`).limit(20);
+        for (const p of pacs || []) {
+          if (namesCompatible(p.nome, nome)) candidatePacIds.add(p.id);
         }
       }
     }
+    {
+      const norm = normalizeName(nome);
+      if (norm) {
+        const firstToken = nome.trim().split(/\s+/)[0] || "";
+        if (firstToken) {
+          const { data: pacs } = await admin.from("pacientes")
+            .select("id, nome")
+            .eq("tenant_id", RIZODENT_TENANT_ID)
+            .ilike("nome", `%${firstToken}%`).limit(500);
+          for (const p of pacs || []) {
+            if (normalizeName(p.nome) === norm) candidatePacIds.add(p.id);
+          }
+        }
+      }
+    }
+
+    let action: PlanItem["action"] = "import";
+    let matched_payment_id: string | null = null;
+    if (candidatePacIds.size) {
+      const { data: sameDay } = await admin.from("pagamentos")
+        .select("id, paciente_id, valor")
+        .in("paciente_id", Array.from(candidatePacIds))
+        .eq("clinica_id", clinicaId)
+        .eq("data_pagamento", dataPag)
+        .is("dontus_key", null);
+      // Casar por VALOR exato + paciente-candidato, evitando adotar o mesmo
+      // pagamento manual duas vezes no mesmo run (parcelas repetidas).
+      const cand = (sameDay || []).find((p) =>
+        Number(p.valor) === valor && !adoptedPagamentoIds.has(p.id)
+      );
+      if (cand) {
+        action = "adopt";
+        matched_payment_id = cand.id;
+        adoptedPagamentoIds.add(cand.id);
+        if (!pacienteCrmId) pacienteCrmId = cand.paciente_id;
+      } else if ((sameDay || []).length && !pacienteCrmId) {
+        // Existe pagamento manual do mesmo dia/paciente mas valor diverge — sinaliza.
+        notification = (notification ? notification + " | " : "") +
+          `Divergência de valor com lançamento manual (${(sameDay||[]).map((s: any) => `R$${s.valor}`).join(", ")}) — conferir`;
+      }
+    }
+
 
     // 5) Contratado? Só se conta (recorrencia_orto=false), há lead vinculado
     //    e ainda não movemos esse lead neste batch (dedupe por lead).
