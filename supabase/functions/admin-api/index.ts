@@ -555,6 +555,20 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
 
   const pacientesTotalSet = new Set(pagamentos.map((pg) => pg.paciente_id).filter(Boolean));
 
+  // pacientes_pagantes: distintos que tiveram QUALQUER pagamento no período,
+  // INCLUINDO recorrência de ortodontia (bate com o dashboard interno).
+  const pacientesPagantesSet = new Set<string>();
+  if (pagClinicaIds.length) {
+    const pagAll = await fetchAllPaged<any>(
+      () => admin.from("pagamentos")
+        .select("paciente_id")
+        .in("clinica_id", pagClinicaIds)
+        .gte("data_pagamento", from).lte("data_pagamento", to),
+      "paciente_id",
+    );
+    for (const pg of pagAll) if (pg.paciente_id) pacientesPagantesSet.add(pg.paciente_id);
+  }
+
   // pacientes do tenant presentes nos pagamentos do período (por id, em blocos)
   const pacientes: any[] = [];
   for (const ids of chunk([...pacientesTotalSet] as string[], 150)) {
