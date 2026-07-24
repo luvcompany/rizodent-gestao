@@ -940,6 +940,7 @@ async function syncClinica(
     const nome = String(it.paciente || "").trim();
     const valor = Number(it.valorRecebido || 0);
     const dataPag = String(it.dataRecebimento || date).slice(0, 10);
+    if (dataPag < MIN_PAYMENT_DATE) continue; // trava: ignora pagamentos anteriores a 23/07/2026
     const espRaw = String(it.especialidade || "");
     const especialidade = mapEspecialidade(espRaw);
     const servico = String(it.servico || "");
