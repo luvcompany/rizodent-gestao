@@ -1050,6 +1050,14 @@ async function syncClinica(
     } else {
       // Não-KOMMO precisa de lead para importar.
       if (!leadRow) {
+        // Base do Kommo (CRM antigo): se o telefone do paciente está lá,
+        // reconhecemos como venda de marketing e seguimos o fluxo KOMMO-sem-lead.
+        const tailKB = telefone ? tailPhone(telefone) : "";
+        if (tailKB && kommoBaseTails.has(tailKB)) {
+          matched_by = "kommo_base";
+          notification = "Venda reconhecida pela base do Kommo (telefone) — sem marcação KOMMO no Dontus — conferir";
+          // segue o fluxo (não faz skip); item continua sem leadRow
+        } else {
         // Se telefone bateu mas nomes divergiram, sinaliza conferência.
         if (phoneNameConflictLead) {
           plan.push({
