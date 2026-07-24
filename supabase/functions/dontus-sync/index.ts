@@ -540,11 +540,17 @@ async function ensurePacienteFromItem(admin: any, item: PlanItem, leadId: string
     if (match) return match.id;
   }
   // 4) criar
+  // Origem do paciente = origem REAL do lead vinculado; sem lead (KOMMO) → "Outros".
+  let origemPaciente = "Outros";
+  if (leadId) {
+    const { data: ld } = await admin.from("crm_leads").select("source").eq("id", leadId).maybeSingle();
+    origemPaciente = mapSourceToOrigem(ld?.source);
+  }
   const { data: created, error } = await admin.from("pacientes").insert({
     nome: item.paciente_nome,
     telefone: item.telefone || "",
     cidade: item.clinica_nome,
-    origem: item.origem_paciente === "KOMMO" ? "kommo" : (item.origem_paciente || null),
+    origem: origemPaciente,
     tenant_id: RIZODENT_TENANT_ID,
   }).select("id").single();
   if (error) throw new Error(`criar paciente falhou: ${error.message}`);
