@@ -59,7 +59,7 @@ const CRM_LEADS_PAGE_SIZE = 1000;
 const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
 const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
 const CLINICAS_SELECT = "id, nome, cidade, ativa";
-const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade";
+const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade, recorrencia_orto";
 const TRATAMENTOS_SELECT = "id, paciente_id, clinica_id, created_at";
 const PACIENTES_SELECT = "id, origem, nome_anuncio";
 
@@ -405,9 +405,14 @@ const Dashboard = () => {
     };
   }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, dateFrom, dateTo, rangeBounds]);
 
-  const fatTotal = filtered.pagamentos.reduce((s, p) => s + Number(p.valor), 0);
-  const fatNovos = filtered.pagamentos.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
-  const fatRecorrentes = filtered.pagamentos.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
+  // Ortodontia em manutenção (recorrencia_orto=true) NÃO conta no faturamento
+  // — mesma regra do endpoint /reports/financeiro que alimenta o Rizodent Pulse.
+  // Só afeta cálculos de dinheiro; contagens de pacientes/agendamentos seguem
+  // usando filtered.pagamentos inteiro.
+  const pagamentosFat = filtered.pagamentos.filter((p) => p.recorrencia_orto !== true);
+  const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);
+  const fatNovos = pagamentosFat.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
+  const fatRecorrentes = pagamentosFat.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
   const totalPacientes = new Set(filtered.pagamentos.map((p) => p.paciente_id)).size;
 
   // Conjunto de feriados (YYYY-MM-DD) aplicáveis à clínica filtrada.
@@ -467,8 +472,8 @@ const Dashboard = () => {
   // não tem dado. Ancorar aqui — e não em "ontem" — evita diluir média/projeção com
   // dias ainda não lançados. Mesma regra de src/pages/Relatorios.tsx (predictability).
   const ultimoDiaLancado = useMemo(
-    () => filtered.pagamentos.reduce((mx, p) => ((p.data_pagamento || "") > mx ? (p.data_pagamento as string) : mx), ""),
-    [filtered.pagamentos]
+    () => pagamentosFat.reduce((mx, p) => ((p.data_pagamento || "") > mx ? (p.data_pagamento as string) : mx), ""),
+    [pagamentosFat]
   );
 
   // Dias úteis DECORRIDOS até o ÚLTIMO DIA COM LANÇAMENTO
@@ -582,7 +587,7 @@ const Dashboard = () => {
     if (useMonthlyChart) {
       // Aggregate by month
       const monthMap = new Map<string, number>();
-      filtered.pagamentos.forEach((p) => {
+      pagamentosFat.forEach((p) => {
         const key = p.data_pagamento.substring(0, 7); // "YYYY-MM"
         monthMap.set(key, (monthMap.get(key) || 0) + Number(p.valor));
       });
@@ -598,7 +603,7 @@ const Dashboard = () => {
     const endRaw = new Date(dateTo + "T12:00:00");
     const end = endRaw > today ? today : endRaw;
     const pgMap = new Map<string, number>();
-    filtered.pagamentos.forEach((p) => {
+    pagamentosFat.forEach((p) => {
       pgMap.set(p.data_pagamento, (pgMap.get(p.data_pagamento) || 0) + Number(p.valor));
     });
     const days: { dia: string; valor: number }[] = [];
@@ -614,7 +619,7 @@ const Dashboard = () => {
       current.setDate(current.getDate() + 1);
     }
     return days;
-  }, [dateFrom, dateTo, filtered.pagamentos, useMonthlyChart, rangeBounds, holidaySet]);
+  }, [dateFrom, dateTo, pagamentosFat, useMonthlyChart, rangeBounds, holidaySet]);
 
   // Chart: Leads Novos Diários — fonte ÚNICA: crm_leads.created_at (dia local America/Bahia).
   // A fonte manual (leads_diarios) foi abandonada em 18/04/2026 e misturava semânticas
@@ -725,7 +730,7 @@ const Dashboard = () => {
     if (name.includes("VCA")) name = "VCA";
     return {
       name,
-      value: filtered.pagamentos.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
+      value: pagamentosFat.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
     };
   });
   const fatClinicaGrouped = new Map<string, number>();
@@ -736,7 +741,7 @@ const Dashboard = () => {
 
   // Chart: Faturamento por Especialidade (soma dos pagamentos)
   const espFatMap = new Map<string, number>();
-  filtered.pagamentos.forEach((p) => {
+  pagamentosFat.forEach((p) => {
     const esp = p.especialidade || "Sem Especialidade";
     espFatMap.set(esp, (espFatMap.get(esp) || 0) + Number(p.valor || 0));
   });
@@ -763,7 +768,7 @@ const Dashboard = () => {
   const pacienteOrigemLookup = new Map<string, string>();
   pacientes.forEach((p) => pacienteOrigemLookup.set(p.id, p.origem || "Outros"));
   const origemMap = new Map<string, {pacs: Set<string>;fat: number;}>();
-  filtered.pagamentos.forEach((pg) => {
+  pagamentosFat.forEach((pg) => {
     const o = pacienteOrigemLookup.get(pg.paciente_id) || "Outros";
     const entry = origemMap.get(o) || { pacs: new Set<string>(), fat: 0 };
     entry.pacs.add(pg.paciente_id);
@@ -783,7 +788,7 @@ const Dashboard = () => {
   filtered.pacientes.forEach((p) => {
     if (!p.nome_anuncio) return;
     const key = p.nome_anuncio.trim().toLowerCase();
-    const paid = filtered.pagamentos.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
+    const paid = pagamentosFat.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
     anuncioMap.set(key, (anuncioMap.get(key) || 0) + paid);
   });
   // Keep original casing for display: use first occurrence
