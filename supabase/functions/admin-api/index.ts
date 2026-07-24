@@ -561,10 +561,10 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   if (pagClinicaIds.length) {
     const pagAll = await fetchAllPaged<any>(
       () => admin.from("pagamentos")
-        .select("paciente_id")
+        .select("id, paciente_id")
         .in("clinica_id", pagClinicaIds)
         .gte("data_pagamento", from).lte("data_pagamento", to),
-      "paciente_id",
+      "id",
     );
     for (const pg of pagAll) if (pg.paciente_id) pacientesPagantesSet.add(pg.paciente_id);
   }
