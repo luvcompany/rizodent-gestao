@@ -472,8 +472,8 @@ const Dashboard = () => {
   // não tem dado. Ancorar aqui — e não em "ontem" — evita diluir média/projeção com
   // dias ainda não lançados. Mesma regra de src/pages/Relatorios.tsx (predictability).
   const ultimoDiaLancado = useMemo(
-    () => filtered.pagamentos.reduce((mx, p) => ((p.data_pagamento || "") > mx ? (p.data_pagamento as string) : mx), ""),
-    [filtered.pagamentos]
+    () => pagamentosFat.reduce((mx, p) => ((p.data_pagamento || "") > mx ? (p.data_pagamento as string) : mx), ""),
+    [pagamentosFat]
   );
 
   // Dias úteis DECORRIDOS até o ÚLTIMO DIA COM LANÇAMENTO
