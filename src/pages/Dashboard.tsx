@@ -313,6 +313,7 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
+    if (!rangeReady) return;
     fetchAll();
 
     // Realtime: refetch on changes to relevant tables
@@ -336,7 +337,7 @@ const Dashboard = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [dateFrom, dateTo, isAllPeriod]);
+  }, [dateFrom, dateTo, isAllPeriod, rangeReady]);
 
   // ===== RPCs canônicas (rpt_*) — mesmo número para qualquer usuário do tenant =====
   // Elas só cobrem período contíguo e não conhecem o filtro de canal; fora disso
