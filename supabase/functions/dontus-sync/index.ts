@@ -1003,17 +1003,23 @@ async function syncClinica(
     // 2) Elegibilidade + match
     // Regras:
     //  - origem=KOMMO é sempre elegível (importa mesmo sem lead).
-    //  - Match por telefone (últimos 8 dígitos) só vincula se o NOME for compatível
-    //    (namesCompatible); telefone bate mas nome incompatível → não vincula e,
-    //    se não for KOMMO, gera notificação de conferência e ignora (skip).
+    //  - Match por telefone (últimos 8 dígitos) com NOME compatível
+    //    (namesCompatible) → vincula normalmente ("phone").
+    //  - Telefone bate com lead existente mas o NOME NÃO é compatível →
+    //    tratado como FAMÍLIA / mesma linha ("phone_familia"): vincula à lead
+    //    existente APENAS para atribuição de origem, sem virar titular e sem
+    //    mover a etapa da lead. Precedência: essa regra tem prioridade sobre
+    //    o kommo_base (só cai em kommo_base quando o telefone NÃO bate com
+    //    nenhum crm_lead).
     //  - Match por nome exige normalizado IGUAL.
     let matched_by: PlanItem["matched_by"] = null;
     let matched_lead_id: string | null = null;
     let matched_lead_name: string | null = null;
     let notification: string | null = null;
+    let is_family_link = false;
     let phoneNameConflictLead: { id: string; name: string } | null = null;
 
-    // Buscar lead por telefone (últimos 8 dígitos) — pega o mais recente com nome compatível.
+    // Buscar lead por telefone (últimos 8 dígitos).
     let leadRow: any = null;
     if (telefone) {
       const tail = tailPhone(telefone);
@@ -1028,14 +1034,28 @@ async function syncClinica(
             leadRow = compat;
             matched_by = origem === "KOMMO" ? "kommo" : "phone";
           } else {
-            // telefone bate mas nomes divergem → conflito
-            phoneNameConflictLead = { id: leads[0].id, name: String(leads[0].name || "") };
+            // Telefone bate mas nome diverge → possível FAMÍLIA.
+            // Guardrail p/ reduzir falso-positivo: se dá para inferir DDD dos
+            // dois lados, exigir DDD igual; se não der para inferir, segue só
+            // com os últimos 8 (a notificação cobre a conferência).
+            const dddPag = phoneDDD(telefone);
+            const candidate = leads[0];
+            const dddLead = phoneDDD(candidate?.phone);
+            const dddOk = (!dddPag || !dddLead) ? true : (dddPag === dddLead);
+            if (dddOk) {
+              leadRow = candidate;
+              matched_by = "phone_familia";
+              is_family_link = true;
+            } else {
+              // DDDs conhecidos e diferentes → não trata como família.
+              phoneNameConflictLead = { id: candidate.id, name: String(candidate.name || "") };
+            }
           }
         }
       }
     }
-    // Match por nome (sem telefone ou telefone com conflito): exige nome normalizado igual.
-    if (!leadRow) {
+    // Match por nome (sem telefone ou telefone sem match): exige nome normalizado igual.
+    if (!leadRow && !is_family_link) {
       const norm = normalizeName(nome);
       if (norm) {
         const { data: leads } = await admin.from("crm_leads")
@@ -1053,6 +1073,13 @@ async function syncClinica(
         notification = "Vinculado por telefone (nomes compatíveis) — conferir";
       } else if (matched_by === "name") {
         notification = "Vinculado por NOME — conferência obrigatória";
+      } else if (matched_by === "phone_familia") {
+        const dedupe_key = `familia|${idPaciente}|${dataPag}|${valor.toFixed(2)}|${clinicaId}`;
+        notification =
+          `Pagamento de possível familiar (mesma linha do lead ${matched_lead_name}, nome diferente) — ` +
+          `vinculado à lead ${matched_lead_name} para atribuição de origem — conferir | ` +
+          `paciente=${nome}, tel=${telefone ?? "?"}, valor=R$${valor.toFixed(2)}, clínica=${clinicaInfo.nome} | ` +
+          `dedupe_key=${dedupe_key}`;
       }
     }
 
