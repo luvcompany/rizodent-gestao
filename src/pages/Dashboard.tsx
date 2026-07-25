@@ -354,32 +354,32 @@ const Dashboard = () => {
   useEffect(() => {
     let cancelled = false;
     setRpcContratadosCount(null);
-    if (!rpcFiltersOk) return;
+    if (!rpcFiltersOk || !rangeReady) return;
     rptContratados(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcContratadosCount(rows.length); })
       .catch((e) => console.warn("[Dashboard] rpt_contratados indisponível; usando cálculo local:", e));
     return () => { cancelled = true; };
-  }, [rpcFiltersOk, dateFrom, dateTo, clinicaFiltro]);
+  }, [rpcFiltersOk, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
   useEffect(() => {
     let cancelled = false;
     setRpcCanalOrigem(null);
-    if (dateFilter.preset === "multi") return; // período contíguo só
+    if (dateFilter.preset === "multi" || !rangeReady) return; // período contíguo só / completo
     rptFaturamentoOrigem(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcCanalOrigem(rows); })
       .catch((e) => console.warn("[Dashboard] rpt_faturamento_origem indisponível; usando cálculo local:", e));
     return () => { cancelled = true; };
-  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro]);
+  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
   useEffect(() => {
     let cancelled = false;
     setRpcAnuncio(null);
-    if (dateFilter.preset === "multi") return; // período contíguo só
+    if (dateFilter.preset === "multi" || !rangeReady) return; // período contíguo só / completo
     rptFaturamentoAnuncio(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcAnuncio(rows); })
       .catch((e) => console.warn("[Dashboard] rpt_faturamento_anuncio indisponível; usando cálculo local:", e));
     return () => { cancelled = true; };
-  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro]);
+  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
   // Unique values for filter dropdowns
 
