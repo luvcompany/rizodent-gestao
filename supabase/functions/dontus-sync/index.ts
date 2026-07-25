@@ -343,6 +343,10 @@ type PlanItem = {
   // Criar lead novo no CRClin diretamente em "Contratados" (para KOMMO sem lead
   // com pagamento que CONTA no dia). Apenas um item por paciente/dia recebe true.
   create_lead: boolean;
+  // Família / mesma linha: telefone bate com um crm_lead do tenant mas o NOME
+  // diverge (namesCompatible=false). Vincula à lead existente APENAS para
+  // atribuição de origem — nunca vira titular e nunca move a etapa da lead.
+  is_family_link?: boolean;
   notification: string | null;
   reason?: string;
 };
