@@ -1313,6 +1313,7 @@ async function syncClinica(
     ignorados: plan.filter((p) => p.action === "skip").length,
     vinculos_telefone: plan.filter((p) => p.matched_by === "phone").length,
     vinculos_nome: plan.filter((p) => p.matched_by === "name").length,
+    vinculos_familia: plan.filter((p) => p.matched_by === "phone_familia").length,
     mover_contratado: plan.filter((p) => p.move_to_contratado && !p.create_lead).length,
     leads_criados_em_contratado: plan.filter((p) => p.create_lead).length,
     primeiros: plan.filter((p) => p.tipo === "primeiro").length,
