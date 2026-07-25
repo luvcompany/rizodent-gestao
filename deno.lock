@@ -1,7 +1,12 @@
 {
   "version": "5",
+  "redirects": {
+    "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.110.8"
+  },
   "remote": {
-    "https://esm.sh/@supabase/supabase-js@2.39.0": "f51aeb2dbf8f67c8fa396628af45793e3513067d45705f1ea158f5c678bb0cea"
+    "https://esm.sh/@supabase/supabase-js@2.110.8": "3fe5b529aba9ea7d19e980feb977d4da1f9300cb5378942b32f1522c21649623",
+    "https://esm.sh/@supabase/supabase-js@2.39.0": "f51aeb2dbf8f67c8fa396628af45793e3513067d45705f1ea158f5c678bb0cea",
+    "https://esm.sh/@supabase/supabase-js@2.95.0": "8f03cc20a55700f9625b75c9b6de887287727b59f376fc3e8598785fea5e4d14"
   },
   "workspace": {
     "packageJson": {

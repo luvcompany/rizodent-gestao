@@ -90,6 +90,18 @@ function tailPhone(raw: string | null | undefined): string | null {
   return d.slice(-8);
 }
 
+// Extrai DDD (2 dígitos) de um telefone BR quando possível. Retorna null se
+// não der para inferir com segurança (número curto/desconhecido).
+function phoneDDD(raw: string | null | undefined): string | null {
+  const d = String(raw || "").replace(/\D/g, "");
+  if (!d) return null;
+  // 55 + DDD(2) + número(8|9) = 12|13
+  if ((d.length === 12 || d.length === 13) && d.startsWith("55")) return d.slice(2, 4);
+  // DDD(2) + número(8|9) = 10|11
+  if (d.length === 10 || d.length === 11) return d.slice(0, 2);
+  return null;
+}
+
 // Stopwords BR frequentes em nomes — não contam como token significativo.
 const NAME_STOPWORDS = new Set([
   "DE","DA","DO","DAS","DOS","E","DI","DU","LA","LE","EL",
@@ -319,7 +331,7 @@ type PlanItem = {
   recorrencia_orto: boolean;
   dontus_key: string;
   origem_paciente: string;
-  matched_by: "kommo" | "phone" | "name" | "kommo_base" | null;
+  matched_by: "kommo" | "phone" | "name" | "kommo_base" | "phone_familia" | null;
   matched_lead_id: string | null;
   matched_lead_name: string | null;
   matched_paciente_id: string | null; // paciente já existente no CRClin
@@ -331,6 +343,10 @@ type PlanItem = {
   // Criar lead novo no CRClin diretamente em "Contratados" (para KOMMO sem lead
   // com pagamento que CONTA no dia). Apenas um item por paciente/dia recebe true.
   create_lead: boolean;
+  // Família / mesma linha: telefone bate com um crm_lead do tenant mas o NOME
+  // diverge (namesCompatible=false). Vincula à lead existente APENAS para
+  // atribuição de origem — nunca vira titular e nunca move a etapa da lead.
+  is_family_link?: boolean;
   notification: string | null;
   reason?: string;
 };
@@ -748,15 +764,22 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
       if (!pacienteId) {
         pacienteId = await ensurePacienteFromItem(admin, item, leadId);
         if (leadId && pacienteId) {
-          // Se o lead ainda não tem titular vinculado a outro paciente,
-          // este paciente vira titular (is_primary=true).
-          const { data: primaryExisting } = await admin.from("crm_lead_pacientes")
-            .select("paciente_id").eq("lead_id", leadId).eq("is_primary", true).limit(1);
-          const hasOtherPrimary = (primaryExisting || []).some(
-            (r: any) => r.paciente_id && r.paciente_id !== pacienteId,
-          );
+          // Se for vínculo de FAMÍLIA (mesma linha, nome divergente), nunca
+          // sobrescrever o titular — o paciente pagante entra como não-titular
+          // apenas para atribuição de origem.
+          let isPrimary = false;
+          if (!item.is_family_link) {
+            // Se o lead ainda não tem titular vinculado a outro paciente,
+            // este paciente vira titular (is_primary=true).
+            const { data: primaryExisting } = await admin.from("crm_lead_pacientes")
+              .select("paciente_id").eq("lead_id", leadId).eq("is_primary", true).limit(1);
+            const hasOtherPrimary = (primaryExisting || []).some(
+              (r: any) => r.paciente_id && r.paciente_id !== pacienteId,
+            );
+            isPrimary = !hasOtherPrimary;
+          }
           await admin.from("crm_lead_pacientes")
-            .upsert({ lead_id: leadId, paciente_id: pacienteId, is_primary: !hasOtherPrimary },
+            .upsert({ lead_id: leadId, paciente_id: pacienteId, is_primary: isPrimary },
               { onConflict: "lead_id,paciente_id" });
           // Backfill: telefone do paciente vazio + lead com phone → copia.
           try {
@@ -987,17 +1010,23 @@ async function syncClinica(
     // 2) Elegibilidade + match
     // Regras:
     //  - origem=KOMMO é sempre elegível (importa mesmo sem lead).
-    //  - Match por telefone (últimos 8 dígitos) só vincula se o NOME for compatível
-    //    (namesCompatible); telefone bate mas nome incompatível → não vincula e,
-    //    se não for KOMMO, gera notificação de conferência e ignora (skip).
+    //  - Match por telefone (últimos 8 dígitos) com NOME compatível
+    //    (namesCompatible) → vincula normalmente ("phone").
+    //  - Telefone bate com lead existente mas o NOME NÃO é compatível →
+    //    tratado como FAMÍLIA / mesma linha ("phone_familia"): vincula à lead
+    //    existente APENAS para atribuição de origem, sem virar titular e sem
+    //    mover a etapa da lead. Precedência: essa regra tem prioridade sobre
+    //    o kommo_base (só cai em kommo_base quando o telefone NÃO bate com
+    //    nenhum crm_lead).
     //  - Match por nome exige normalizado IGUAL.
     let matched_by: PlanItem["matched_by"] = null;
     let matched_lead_id: string | null = null;
     let matched_lead_name: string | null = null;
     let notification: string | null = null;
+    let is_family_link = false;
     let phoneNameConflictLead: { id: string; name: string } | null = null;
 
-    // Buscar lead por telefone (últimos 8 dígitos) — pega o mais recente com nome compatível.
+    // Buscar lead por telefone (últimos 8 dígitos).
     let leadRow: any = null;
     if (telefone) {
       const tail = tailPhone(telefone);
@@ -1012,14 +1041,28 @@ async function syncClinica(
             leadRow = compat;
             matched_by = origem === "KOMMO" ? "kommo" : "phone";
           } else {
-            // telefone bate mas nomes divergem → conflito
-            phoneNameConflictLead = { id: leads[0].id, name: String(leads[0].name || "") };
+            // Telefone bate mas nome diverge → possível FAMÍLIA.
+            // Guardrail p/ reduzir falso-positivo: se dá para inferir DDD dos
+            // dois lados, exigir DDD igual; se não der para inferir, segue só
+            // com os últimos 8 (a notificação cobre a conferência).
+            const dddPag = phoneDDD(telefone);
+            const candidate = leads[0];
+            const dddLead = phoneDDD(candidate?.phone);
+            const dddOk = (!dddPag || !dddLead) ? true : (dddPag === dddLead);
+            if (dddOk) {
+              leadRow = candidate;
+              matched_by = "phone_familia";
+              is_family_link = true;
+            } else {
+              // DDDs conhecidos e diferentes → não trata como família.
+              phoneNameConflictLead = { id: candidate.id, name: String(candidate.name || "") };
+            }
           }
         }
       }
     }
-    // Match por nome (sem telefone ou telefone com conflito): exige nome normalizado igual.
-    if (!leadRow) {
+    // Match por nome (sem telefone ou telefone sem match): exige nome normalizado igual.
+    if (!leadRow && !is_family_link) {
       const norm = normalizeName(nome);
       if (norm) {
         const { data: leads } = await admin.from("crm_leads")
@@ -1037,6 +1080,13 @@ async function syncClinica(
         notification = "Vinculado por telefone (nomes compatíveis) — conferir";
       } else if (matched_by === "name") {
         notification = "Vinculado por NOME — conferência obrigatória";
+      } else if (matched_by === "phone_familia") {
+        const dedupe_key = `familia|${idPaciente}|${dataPag}|${valor.toFixed(2)}|${clinicaId}`;
+        notification =
+          `Pagamento de possível familiar (mesma linha do lead ${matched_lead_name}, nome diferente) — ` +
+          `vinculado à lead ${matched_lead_name} para atribuição de origem — conferir | ` +
+          `paciente=${nome}, tel=${telefone ?? "?"}, valor=R$${valor.toFixed(2)}, clínica=${clinicaInfo.nome} | ` +
+          `dedupe_key=${dedupe_key}`;
       }
     }
 
@@ -1170,6 +1220,7 @@ async function syncClinica(
     if (
       !recorrencia_orto &&
       matched_lead_id &&
+      !is_family_link &&
       leadRow?.stage_id &&
       leadRow?.pipeline_id &&
       !contratadoAlreadyForLead.has(matched_lead_id)
@@ -1199,7 +1250,8 @@ async function syncClinica(
       especialidade, especialidade_raw: espRaw, servico,
       forma_pagamento: it.formaPagamento || null, recorrencia_orto, dontus_key,
       origem_paciente: origem, matched_by, matched_lead_id, matched_lead_name,
-      matched_paciente_id: pacienteCrmId, matched_payment_id, move_to_contratado, notification,
+      matched_paciente_id: pacienteCrmId, matched_payment_id, move_to_contratado,
+      is_family_link, notification,
     });
   }
 
@@ -1268,6 +1320,7 @@ async function syncClinica(
     ignorados: plan.filter((p) => p.action === "skip").length,
     vinculos_telefone: plan.filter((p) => p.matched_by === "phone").length,
     vinculos_nome: plan.filter((p) => p.matched_by === "name").length,
+    vinculos_familia: plan.filter((p) => p.matched_by === "phone_familia").length,
     mover_contratado: plan.filter((p) => p.move_to_contratado && !p.create_lead).length,
     leads_criados_em_contratado: plan.filter((p) => p.create_lead).length,
     primeiros: plan.filter((p) => p.tipo === "primeiro").length,
