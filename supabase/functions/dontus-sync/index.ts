@@ -90,6 +90,18 @@ function tailPhone(raw: string | null | undefined): string | null {
   return d.slice(-8);
 }
 
+// Extrai DDD (2 dígitos) de um telefone BR quando possível. Retorna null se
+// não der para inferir com segurança (número curto/desconhecido).
+function phoneDDD(raw: string | null | undefined): string | null {
+  const d = String(raw || "").replace(/\D/g, "");
+  if (!d) return null;
+  // 55 + DDD(2) + número(8|9) = 12|13
+  if ((d.length === 12 || d.length === 13) && d.startsWith("55")) return d.slice(2, 4);
+  // DDD(2) + número(8|9) = 10|11
+  if (d.length === 10 || d.length === 11) return d.slice(0, 2);
+  return null;
+}
+
 // Stopwords BR frequentes em nomes — não contam como token significativo.
 const NAME_STOPWORDS = new Set([
   "DE","DA","DO","DAS","DOS","E","DI","DU","LA","LE","EL",
