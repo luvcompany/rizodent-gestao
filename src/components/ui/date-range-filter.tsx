@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -35,12 +35,36 @@ interface DateRangeFilterProps {
 
 export function DateRangeFilter({ value, onChange, excludePresets = [], className, triggerClassName }: DateRangeFilterProps) {
   const [open, setOpen] = useState(false);
+  // Modo do PAINEL (qual tela do popover está aberta) — separado do valor aplicado.
+  const [panel, setPanel] = useState<"presets" | "custom" | "multi">("presets");
+  // Rascunhos locais — nunca sobem para o pai até "Aplicar".
+  const [draftRange, setDraftRange] = useState<DateRange | undefined>(undefined);
+  const [draftMulti, setDraftMulti] = useState<{ from: Date; to: Date }[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const presets = useMemo(
     () => PRESETS.filter((p) => !excludePresets.includes(p.value)),
     [excludePresets]
   );
+
+  // Ao ABRIR o popover, semear os rascunhos com o valor já aplicado.
+  useEffect(() => {
+    if (!open) return;
+    if (value.preset === "custom") {
+      setPanel("custom");
+      setDraftRange(value.customFrom ? { from: value.customFrom, to: value.customTo } : undefined);
+      setEditingIndex(null);
+    } else if (value.preset === "multi") {
+      setPanel("multi");
+      setDraftMulti((value.customRanges || []).filter((r) => r.from && r.to));
+      setEditingIndex(null);
+    } else {
+      setPanel("presets");
+      setDraftRange(undefined);
+      setDraftMulti([]);
+      setEditingIndex(null);
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentLabel = useMemo(() => {
     if (value.preset === "custom" && value.customFrom) {
@@ -59,57 +83,63 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
 
   const handlePreset = (preset: DatePreset) => {
     if (preset === "custom") {
-      onChange({ preset: "custom", customFrom: value.customFrom, customTo: value.customTo });
-    } else if (preset === "multi") {
+      setPanel("custom");
+      setDraftRange(
+        value.preset === "custom" && value.customFrom
+          ? { from: value.customFrom, to: value.customTo }
+          : undefined
+      );
+      return; // NÃO chama onChange — ainda não há período
+    }
+    if (preset === "multi") {
+      setPanel("multi");
       const existing = (value.customRanges || []).filter((r) => r.from && r.to);
-      onChange({ preset: "multi", customRanges: existing });
-      setEditingIndex(existing.length); // open new range editor
-    } else {
-      onChange({ preset });
-      setOpen(false);
+      setDraftMulti(existing);
+      setEditingIndex(existing.length === 0 ? 0 : null);
+      return; // NÃO chama onChange
     }
+    onChange({ preset });
+    setOpen(false);
   };
 
-  const handleRangeSelect = (range: DateRange | undefined) => {
-    onChange({
-      preset: "custom",
-      customFrom: range?.from || undefined,
-      customTo: range?.to || undefined,
-    });
+  const applyCustom = (range: DateRange | undefined) => {
+    if (!range?.from || !range?.to) return;
+    onChange({ preset: "custom", customFrom: range.from, customTo: range.to });
+    setOpen(false);
+  };
+
+  const handleDraftRangeSelect = (range: DateRange | undefined) => {
+    setDraftRange(range);
     if (range?.from && range?.to) {
-      setTimeout(() => setOpen(false), 300);
+      setTimeout(() => applyCustom(range), 150);
     }
   };
 
-  const calendarRange: DateRange | undefined =
-    value.preset === "custom" && value.customFrom
-      ? { from: value.customFrom, to: value.customTo }
-      : undefined;
-
-  // Multi handlers
-  const multiRanges = (value.customRanges || []).filter((r) => r.from && r.to);
-  const handleMultiRangeSelect = (range: DateRange | undefined) => {
+  const handleDraftMultiSelect = (range: DateRange | undefined) => {
     if (!range?.from) return;
-    const list = [...multiRanges];
+    const list = [...draftMulti];
     const newRange = { from: range.from, to: range.to || range.from };
-    if (editingIndex !== null && editingIndex < list.length) {
-      list[editingIndex] = newRange;
-    } else {
-      list.push(newRange);
-    }
-    onChange({ preset: "multi", customRanges: list });
-    if (range.from && range.to) {
-      setEditingIndex(null);
-    }
+    if (editingIndex !== null && editingIndex < list.length) list[editingIndex] = newRange;
+    else list.push(newRange);
+    setDraftMulti(list);
+    if (range.from && range.to) setEditingIndex(null);
   };
   const handleRemoveMulti = (idx: number) => {
-    const list = multiRanges.filter((_, i) => i !== idx);
-    onChange({ preset: "multi", customRanges: list });
+    setDraftMulti(draftMulti.filter((_, i) => i !== idx));
     if (editingIndex === idx) setEditingIndex(null);
   };
+  const applyMulti = () => {
+    const list = draftMulti.filter((r) => r.from && r.to);
+    if (list.length === 0) {
+      setOpen(false);
+      return;
+    }
+    onChange({ preset: "multi", customRanges: list });
+    setOpen(false);
+  };
   const editingMultiRange: DateRange | undefined =
-    editingIndex !== null && editingIndex < multiRanges.length
-      ? { from: multiRanges[editingIndex].from, to: multiRanges[editingIndex].to }
+    editingIndex !== null && editingIndex < draftMulti.length
+      ? { from: draftMulti[editingIndex].from, to: draftMulti[editingIndex].to }
       : undefined;
 
   return (
@@ -128,13 +158,13 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
       <PopoverContent
         className={cn(
           "w-[200px] p-0 pointer-events-auto",
-          (value.preset === "custom" || value.preset === "multi") && "w-auto",
+          (panel === "custom" || panel === "multi") && "w-auto",
           className
         )}
         align="end"
         side="bottom"
       >
-        {value.preset !== "custom" && value.preset !== "multi" ? (
+        {panel === "presets" ? (
           <div className="p-2 space-y-0.5">
             {presets.map((p) => (
               <button
@@ -151,35 +181,48 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
               </button>
             ))}
           </div>
-        ) : value.preset === "custom" ? (
+        ) : panel === "custom" ? (
           <div className="flex flex-col">
             <div className="flex items-center justify-between px-3 pt-2">
               <button
-                onClick={() => onChange({ preset: "all" })}
+                onClick={() => setPanel("presets")}
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 ← Voltar aos presets
               </button>
-              {value.customFrom && value.customTo && (
-                <span className="text-xs text-muted-foreground">
-                  {format(value.customFrom, "dd/MM/yy")} — {format(value.customTo, "dd/MM/yy")}
-                </span>
-              )}
+              <span className="text-xs text-muted-foreground">
+                {draftRange?.from
+                  ? `${format(draftRange.from, "dd/MM/yy")} — ${draftRange.to ? format(draftRange.to, "dd/MM/yy") : "..."}`
+                  : "Selecione o início e o fim"}
+              </span>
             </div>
             <Calendar
               mode="range"
-              selected={calendarRange}
-              onSelect={handleRangeSelect}
+              selected={draftRange}
+              onSelect={handleDraftRangeSelect}
               numberOfMonths={1}
               locale={ptBR}
               className="pointer-events-auto p-3"
             />
+            <div className="flex justify-end gap-2 px-3 pb-2 pt-1 border-t border-border">
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={!draftRange?.from || !draftRange?.to}
+                onClick={() => applyCustom(draftRange)}
+              >
+                Aplicar
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col w-[320px]">
             <div className="flex items-center justify-between px-3 pt-2 pb-1">
               <button
-                onClick={() => onChange({ preset: "all" })}
+                onClick={() => setPanel("presets")}
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 ← Voltar aos presets
@@ -187,12 +230,12 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
               <span className="text-[11px] text-muted-foreground">União dos períodos</span>
             </div>
 
-            {/* List of selected ranges */}
+            {/* List of draft ranges */}
             <div className="px-3 py-2 space-y-1 max-h-[140px] overflow-y-auto">
-              {multiRanges.length === 0 && editingIndex === null && (
+              {draftMulti.length === 0 && editingIndex === null && (
                 <p className="text-xs text-muted-foreground italic">Nenhum período. Clique em "Adicionar período" abaixo.</p>
               )}
-              {multiRanges.map((r, idx) => (
+              {draftMulti.map((r, idx) => (
                 <div
                   key={idx}
                   className={cn(
@@ -216,10 +259,10 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
                 </div>
               ))}
               <button
-                onClick={() => setEditingIndex(multiRanges.length)}
+                onClick={() => setEditingIndex(draftMulti.length)}
                 className={cn(
                   "w-full flex items-center justify-center gap-1 rounded-md px-2 py-1 text-xs border border-dashed transition-colors",
-                  editingIndex === multiRanges.length
+                  editingIndex === draftMulti.length
                     ? "border-primary text-primary"
                     : "border-border text-muted-foreground hover:text-foreground hover:border-primary/50"
                 )}
@@ -231,12 +274,12 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
             {editingIndex !== null && (
               <>
                 <div className="px-3 pt-1 pb-0 text-[11px] text-muted-foreground">
-                  {editingIndex < multiRanges.length ? `Editando período ${editingIndex + 1}` : "Selecione o intervalo"}
+                  {editingIndex < draftMulti.length ? `Editando período ${editingIndex + 1}` : "Selecione o intervalo"}
                 </div>
                 <Calendar
                   mode="range"
                   selected={editingMultiRange}
-                  onSelect={handleMultiRangeSelect}
+                  onSelect={handleDraftMultiSelect}
                   numberOfMonths={1}
                   locale={ptBR}
                   className="pointer-events-auto p-3"
@@ -244,9 +287,17 @@ export function DateRangeFilter({ value, onChange, excludePresets = [], classNam
               </>
             )}
 
-            <div className="flex justify-end px-3 pb-2 pt-1 border-t border-border">
+            <div className="flex justify-end gap-2 px-3 pb-2 pt-1 border-t border-border">
               <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(false)}>
-                Concluir
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={draftMulti.filter((r) => r.from && r.to).length === 0}
+                onClick={applyMulti}
+              >
+                Aplicar
               </Button>
             </div>
           </div>
