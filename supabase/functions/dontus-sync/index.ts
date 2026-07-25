@@ -331,7 +331,7 @@ type PlanItem = {
   recorrencia_orto: boolean;
   dontus_key: string;
   origem_paciente: string;
-  matched_by: "kommo" | "phone" | "name" | "kommo_base" | null;
+  matched_by: "kommo" | "phone" | "name" | "kommo_base" | "phone_familia" | null;
   matched_lead_id: string | null;
   matched_lead_name: string | null;
   matched_paciente_id: string | null; // paciente já existente no CRClin
