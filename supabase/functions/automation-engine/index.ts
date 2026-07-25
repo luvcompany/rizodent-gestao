@@ -865,6 +865,18 @@ Deno.serve(async (req) => {
           const fireAt = scheduledAt - beforeMs;
           const withinWindow = now >= fireAt && now <= scheduledAt + CRON_GRACE_MS;
 
+          // GUARD "antecedência mínima": se o agendamento foi CRIADO depois do
+          // momento em que o lembrete deveria disparar (ex.: agendou hoje para
+          // amanhã e a regra é "1 dia antes"), não faz sentido enviar o lembrete
+          // retroativo — pula.
+          const apptCreatedAt = appt.created_at ? new Date(appt.created_at).getTime() : 0;
+          if (apptCreatedAt && apptCreatedAt > fireAt) {
+            console.log(
+              `[BEFORE_SCHEDULED] Skipping appt ${appt.id} — created (${new Date(apptCreatedAt).toISOString()}) after fireAt (${new Date(fireAt).toISOString()}); antecedência insuficiente`,
+            );
+            continue;
+          }
+
           console.log(
             `[BEFORE_SCHEDULED] Appt ${appt.id}: scheduledAt=${new Date(scheduledAt).toISOString()}, fireAt=${new Date(fireAt).toISOString()}, now=${new Date(now).toISOString()}, withinWindow=${withinWindow}`,
           );
