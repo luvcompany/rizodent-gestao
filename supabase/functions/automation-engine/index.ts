@@ -839,7 +839,7 @@ Deno.serve(async (req) => {
         const appointments = await fetchAllRows(() =>
           supabase
             .from("crm_appointments")
-            .select("id, lead_id, scheduled_date, scheduled_time")
+            .select("id, lead_id, scheduled_date, scheduled_time, created_at")
             .eq("status", "confirmed")
             .gte("scheduled_date", beforeSchedFloor)
             .order("id"),
