@@ -764,15 +764,22 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
       if (!pacienteId) {
         pacienteId = await ensurePacienteFromItem(admin, item, leadId);
         if (leadId && pacienteId) {
-          // Se o lead ainda não tem titular vinculado a outro paciente,
-          // este paciente vira titular (is_primary=true).
-          const { data: primaryExisting } = await admin.from("crm_lead_pacientes")
-            .select("paciente_id").eq("lead_id", leadId).eq("is_primary", true).limit(1);
-          const hasOtherPrimary = (primaryExisting || []).some(
-            (r: any) => r.paciente_id && r.paciente_id !== pacienteId,
-          );
+          // Se for vínculo de FAMÍLIA (mesma linha, nome divergente), nunca
+          // sobrescrever o titular — o paciente pagante entra como não-titular
+          // apenas para atribuição de origem.
+          let isPrimary = false;
+          if (!item.is_family_link) {
+            // Se o lead ainda não tem titular vinculado a outro paciente,
+            // este paciente vira titular (is_primary=true).
+            const { data: primaryExisting } = await admin.from("crm_lead_pacientes")
+              .select("paciente_id").eq("lead_id", leadId).eq("is_primary", true).limit(1);
+            const hasOtherPrimary = (primaryExisting || []).some(
+              (r: any) => r.paciente_id && r.paciente_id !== pacienteId,
+            );
+            isPrimary = !hasOtherPrimary;
+          }
           await admin.from("crm_lead_pacientes")
-            .upsert({ lead_id: leadId, paciente_id: pacienteId, is_primary: !hasOtherPrimary },
+            .upsert({ lead_id: leadId, paciente_id: pacienteId, is_primary: isPrimary },
               { onConflict: "lead_id,paciente_id" });
           // Backfill: telefone do paciente vazio + lead com phone → copia.
           try {
