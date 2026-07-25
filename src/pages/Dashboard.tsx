@@ -219,6 +219,15 @@ const Dashboard = () => {
     return getDateRangesFromFilter(dateFilter);
   }, [dateFilter, dateRange]);
   const isAllPeriod = dateFilter.preset === "all";
+  // Período está COMPLETO? Custom/multi emitem estados intermediários (seleção de
+  // "Personalizado" sem datas, 1º clique do calendário) que NÃO devem disparar o
+  // fetch pesado — senão a página "recarrega" antes de o usuário terminar de
+  // escolher o período. Só busca quando o range está fechado.
+  const rangeReady = useMemo(() => {
+    if (dateFilter.preset === "custom") return !!(dateFilter.customFrom && dateFilter.customTo);
+    if (dateFilter.preset === "multi") return (dateFilter.customRanges || []).some((r) => r.from && r.to);
+    return true;
+  }, [dateFilter]);
   const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
   const dateFrom = useMemo(() => dateRange ? toLocalDateStr(dateRange.start) : "2020-01-01", [dateRange]);
   const dateTo = useMemo(() => {
