@@ -219,6 +219,15 @@ const Dashboard = () => {
     return getDateRangesFromFilter(dateFilter);
   }, [dateFilter, dateRange]);
   const isAllPeriod = dateFilter.preset === "all";
+  // Período está COMPLETO? Custom/multi emitem estados intermediários (seleção de
+  // "Personalizado" sem datas, 1º clique do calendário) que NÃO devem disparar o
+  // fetch pesado — senão a página "recarrega" antes de o usuário terminar de
+  // escolher o período. Só busca quando o range está fechado.
+  const rangeReady = useMemo(() => {
+    if (dateFilter.preset === "custom") return !!(dateFilter.customFrom && dateFilter.customTo);
+    if (dateFilter.preset === "multi") return (dateFilter.customRanges || []).some((r) => r.from && r.to);
+    return true;
+  }, [dateFilter]);
   const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
   const dateFrom = useMemo(() => dateRange ? toLocalDateStr(dateRange.start) : "2020-01-01", [dateRange]);
   const dateTo = useMemo(() => {
@@ -304,6 +313,7 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
+    if (!rangeReady) return;
     fetchAll();
 
     // Realtime: refetch on changes to relevant tables
@@ -327,7 +337,7 @@ const Dashboard = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [dateFrom, dateTo, isAllPeriod]);
+  }, [dateFrom, dateTo, isAllPeriod, rangeReady]);
 
   // ===== RPCs canônicas (rpt_*) — mesmo número para qualquer usuário do tenant =====
   // Elas só cobrem período contíguo e não conhecem o filtro de canal; fora disso
@@ -344,32 +354,32 @@ const Dashboard = () => {
   useEffect(() => {
     let cancelled = false;
     setRpcContratadosCount(null);
-    if (!rpcFiltersOk) return;
+    if (!rpcFiltersOk || !rangeReady) return;
     rptContratados(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcContratadosCount(rows.length); })
       .catch((e) => console.warn("[Dashboard] rpt_contratados indisponível; usando cálculo local:", e));
     return () => { cancelled = true; };
-  }, [rpcFiltersOk, dateFrom, dateTo, clinicaFiltro]);
+  }, [rpcFiltersOk, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
   useEffect(() => {
     let cancelled = false;
     setRpcCanalOrigem(null);
-    if (dateFilter.preset === "multi") return; // período contíguo só
+    if (dateFilter.preset === "multi" || !rangeReady) return; // período contíguo só / completo
     rptFaturamentoOrigem(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcCanalOrigem(rows); })
       .catch((e) => console.warn("[Dashboard] rpt_faturamento_origem indisponível; usando cálculo local:", e));
     return () => { cancelled = true; };
-  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro]);
+  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
   useEffect(() => {
     let cancelled = false;
     setRpcAnuncio(null);
-    if (dateFilter.preset === "multi") return; // período contíguo só
+    if (dateFilter.preset === "multi" || !rangeReady) return; // período contíguo só / completo
     rptFaturamentoAnuncio(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
       .then((rows) => { if (!cancelled) setRpcAnuncio(rows); })
       .catch((e) => console.warn("[Dashboard] rpt_faturamento_anuncio indisponível; usando cálculo local:", e));
     return () => { cancelled = true; };
-  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro]);
+  }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
   // Unique values for filter dropdowns
 
