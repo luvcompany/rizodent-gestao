@@ -1213,6 +1213,7 @@ async function syncClinica(
     if (
       !recorrencia_orto &&
       matched_lead_id &&
+      !is_family_link &&
       leadRow?.stage_id &&
       leadRow?.pipeline_id &&
       !contratadoAlreadyForLead.has(matched_lead_id)
@@ -1242,7 +1243,8 @@ async function syncClinica(
       especialidade, especialidade_raw: espRaw, servico,
       forma_pagamento: it.formaPagamento || null, recorrencia_orto, dontus_key,
       origem_paciente: origem, matched_by, matched_lead_id, matched_lead_name,
-      matched_paciente_id: pacienteCrmId, matched_payment_id, move_to_contratado, notification,
+      matched_paciente_id: pacienteCrmId, matched_payment_id, move_to_contratado,
+      is_family_link, notification,
     });
   }
 
