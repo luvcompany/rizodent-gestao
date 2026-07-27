@@ -246,35 +246,35 @@ export default function EmojiPickerButton({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-[360px] p-0 border-none shadow-lg overflow-hidden"
+        className="w-[360px] p-0 border-none shadow-lg overflow-hidden bg-[#1d1d1d]"
       >
         {stickersEnabled ? (
           <Tabs
             value={tab}
             onValueChange={(v) => setTab(v as "emojis" | "stickers")}
-            className="flex flex-col h-[420px]"
+            className="flex flex-col"
           >
-            <TabsList className="w-full grid grid-cols-2 rounded-none border-b border-border bg-background p-0 h-10 shrink-0">
+            <TabsList className="w-full grid grid-cols-2 rounded-none border-b border-white/10 bg-[#1d1d1d] p-0 h-10 shrink-0">
               <TabsTrigger
                 value="emojis"
-                className="rounded-none h-full data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                className="rounded-none h-full text-sm text-neutral-400 hover:text-neutral-200 data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow-none"
               >
                 Emojis
               </TabsTrigger>
               <TabsTrigger
                 value="stickers"
-                className="rounded-none h-full data-[state=active]:bg-accent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                className="rounded-none h-full text-sm text-neutral-400 hover:text-neutral-200 data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow-none"
               >
                 Figurinhas
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="emojis" className="flex-1 m-0 overflow-hidden">
+            <TabsContent value="emojis" className="m-0">
               <Picker
                 data={data}
                 onEmojiSelect={(emoji: any) => onEmojiSelect(emoji.native)}
                 locale="pt"
-                theme="auto"
+                theme="dark"
                 previewPosition="none"
                 skinTonePosition="search"
                 set="native"
@@ -284,25 +284,25 @@ export default function EmojiPickerButton({
 
             <TabsContent
               value="stickers"
-              className="flex-1 m-0 flex flex-col overflow-hidden"
+              className="m-0 flex flex-col h-[420px] overflow-hidden"
             >
-              <div className="p-2 border-b border-border bg-background shrink-0">
+              <div className="p-2 border-b border-white/10 bg-[#1d1d1d] shrink-0">
                 <div className="relative">
                   <Search
                     size={14}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none"
                   />
                   <input
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Buscar figurinha..."
-                    className="w-full h-8 pl-8 pr-2 rounded-md bg-muted/50 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring border border-transparent focus:border-border"
+                    className="w-full h-8 pl-8 pr-2 rounded-md bg-white/5 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:ring-1 focus:ring-white/20 border border-transparent focus:border-white/20"
                   />
                 </div>
               </div>
               {stickersDisabled && (
-                <div className="px-3 py-2 text-[11px] text-muted-foreground border-b border-border bg-muted/30 shrink-0">
+                <div className="px-3 py-2 text-[11px] text-neutral-400 border-b border-white/10 bg-white/5 shrink-0">
                   {stickersDisabledReason}
                 </div>
               )}
@@ -314,7 +314,7 @@ export default function EmojiPickerButton({
             data={data}
             onEmojiSelect={(emoji: any) => onEmojiSelect(emoji.native)}
             locale="pt"
-            theme="auto"
+            theme="dark"
             previewPosition="none"
             skinTonePosition="search"
             set="native"
