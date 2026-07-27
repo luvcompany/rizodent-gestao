@@ -24,7 +24,7 @@ import SlashCommandMenu from "./SlashCommandMenu";
 import AudioRecorderComposer from "./AudioRecorderComposer";
 import EmojiPickerButton from "./EmojiPickerButton";
 import { convertAudioBlobToInstagramWav } from "@/lib/audioConverter";
-import StickerGalleryPopover from "./StickerGalleryPopover";
+
 
 const getInvokeErrorMessage = (data: any, error: any) => {
   if (data?.user_message) return data.user_message;
@@ -617,7 +617,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
   }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, resolveInstagramAccountId]);
 
-  const sendSticker = useCallback(async (sticker: { id: string; media_url: string }) => {
+  const sendSticker = useCallback(async (mediaUrl: string) => {
+    const sticker = { media_url: mediaUrl };
     if (isInstagram) return;
     if (!leadPhone) {
       toast.error("Lead sem telefone");
@@ -852,6 +853,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               <EmojiPickerButton
                 disabled={optimizing || uploading}
                 onEmojiSelect={(emoji) => setNewMessage((prev) => prev + emoji)}
+                stickersEnabled={!isInstagram}
+                stickersDisabledReason={isWindowExpired ? "Fora da janela de 24h — só template entrega" : undefined}
+                onStickerSelect={(mediaUrl) => sendSticker(mediaUrl)}
               />
 
               {!isInstagram && (
@@ -859,13 +863,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   <FileText size={20} />
                 </button>
               )}
-
-              <StickerGalleryPopover
-                hidden={isInstagram}
-                disabled={isWindowExpired}
-                disabledReason="Fora da janela de 24h — só template entrega"
-                onPick={(s) => sendSticker(s)}
-              />
 
               <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
                 <PopoverTrigger asChild>
