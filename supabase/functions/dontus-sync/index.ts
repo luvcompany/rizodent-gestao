@@ -776,15 +776,16 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
             leadId = existing.id;
             // Se o lead achado tem telefone e o item não, adota o do lead.
             if (!item.telefone && existing.phone) item.telefone = existing.phone;
+          } else if (!item.telefone) {
+            // Sem telefone NÃO criamos lead — foi isso que gerou as duplicatas
+            // de 23–25/07 (sem telefone o match não encontra o lead que já
+            // existe). MAS o PAGAMENTO é importado normalmente: receita não pode
+            // sumir por falta de telefone (regressão de 27/07, R$2.620 perdidos).
+            // O lead fica pendente; o vínculo acontece quando o telefone
+            // aparecer no Dontus ou for preenchido à mão.
+            leadId = null;
+            (c as any).sem_telefone_sem_lead = ((c as any).sem_telefone_sem_lead || 0) + 1;
           } else {
-            // NUNCA criar lead sem telefone: sem ele não há como deduplicar
-            // depois (foi o que gerou as duplicatas de 23–25/07). Sem telefone,
-            // pula o item — o dontus_key garante que ele será reprocessado no
-            // próximo run, quando a API voltar a devolver o telefone.
-            if (!item.telefone) {
-              (c as any).ignorados = ((c as any).ignorados || 0) + 1;
-              continue;
-            }
             mainPipeline = mainPipeline || await findMainPipelineContratado(admin);
             if (!mainPipeline) throw new Error("pipeline principal com etapa Contratado não encontrado");
             const ins = await admin.from("crm_leads").insert({
@@ -1402,6 +1403,7 @@ async function syncClinica(
       importados: exec.importados,
       adotados: exec.adotados,
       leads_criados: exec.leads_criados,
+      sem_telefone_sem_lead: (exec as any).sem_telefone_sem_lead || 0,
       movidos_contratado: exec.movidos,
       notificacoes: exec.notificacoes,
       erros: exec.erros,
