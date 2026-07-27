@@ -860,6 +860,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 </button>
               )}
 
+              <StickerGalleryPopover
+                hidden={isInstagram}
+                disabled={isWindowExpired}
+                disabledReason="Fora da janela de 24h — só template entrega"
+                onPick={(s) => sendSticker(s)}
+              />
+
               <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
                 <PopoverTrigger asChild>
                   <button className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
