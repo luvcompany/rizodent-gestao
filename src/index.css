@@ -124,3 +124,11 @@
     background: var(--gradient-card);
   }
 }
+
+/* O picker do emoji-mart tem border-radius próprio, maior que o do popover.
+   Dentro do nosso popover (que já é arredondado e recorta com overflow-hidden)
+   isso deixava vazar o fundo branco no canto, entre a barra de abas e o painel.
+   Zerando o raio, ele encosta reto e quem arredonda é só o popover. */
+em-emoji-picker {
+  --border-radius: 0px;
+}
