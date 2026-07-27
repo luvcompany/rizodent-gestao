@@ -971,6 +971,7 @@ async function syncClinica(
 
   // Cache telefone Dontus por idPaciente (últimos ~3 dias)
   const phoneCache = new Map<number, string>();
+  let phoneLookupFailed = false;
   try {
     const start = new Date(date); start.setDate(start.getDate() - 3);
     const dIni = start.toISOString().slice(0, 10);
@@ -982,7 +983,10 @@ async function syncClinica(
       const tel = String(p.celular || p.telefone || "").trim();
       if (id && tel) phoneCache.set(id, tel);
     }
-  } catch (_) { /* best-effort */ }
+  } catch (e: any) {
+    console.error(`[dontus-sync] falha ao buscar telefones (clinica ${idClinica}):`, e?.message || e);
+    phoneLookupFailed = true;
+  }
 
   // Agrupar orto por paciente/dia
   const ortoDayHasStart = new Map<string, boolean>(); // key = paciente_id_dontus|data
