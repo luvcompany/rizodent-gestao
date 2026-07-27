@@ -24,6 +24,7 @@ import SlashCommandMenu from "./SlashCommandMenu";
 import AudioRecorderComposer from "./AudioRecorderComposer";
 import EmojiPickerButton from "./EmojiPickerButton";
 import { convertAudioBlobToInstagramWav } from "@/lib/audioConverter";
+import StickerGalleryPopover from "./StickerGalleryPopover";
 
 const getInvokeErrorMessage = (data: any, error: any) => {
   if (data?.user_message) return data.user_message;
@@ -616,6 +617,50 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
   }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, resolveInstagramAccountId]);
 
+  const sendSticker = useCallback(async (sticker: { id: string; media_url: string }) => {
+    if (isInstagram) return;
+    if (!leadPhone) {
+      toast.error("Lead sem telefone");
+      return;
+    }
+    if (windowInfo.expired) {
+      toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
+      return;
+    }
+    const tempId = crypto.randomUUID();
+    const optimisticMsg = {
+      id: tempId,
+      lead_id: leadId,
+      direction: "outbound",
+      type: "sticker",
+      content: null,
+      media_url: sticker.media_url,
+      status: "sending",
+      created_at: new Date().toISOString(),
+      whatsapp_message_id: null,
+      reply_to_message_id: null,
+    };
+    onMessageSent?.(optimisticMsg);
+    try {
+      const body = await buildSendBody({ type: "sticker", media_url: sticker.media_url });
+      const { data, error } = await supabase.functions.invoke(sendFnName, { body });
+      if (error || data?.error || data?.ok === false) {
+        if (data?.message) {
+          onMessageSuccess?.(tempId, data.message);
+        } else {
+          onMessageError?.(tempId);
+        }
+        toast.error(getInvokeErrorMessage(data, error));
+      } else {
+        onMessageSuccess?.(tempId, data?.message);
+      }
+    } catch (err: any) {
+      onMessageError?.(tempId);
+      toast.error(`Erro ao enviar figurinha: ${err?.message || ""}`);
+    }
+  }, [isInstagram, leadPhone, windowInfo.expired, leadId, onMessageSent, onMessageError, onMessageSuccess, sendFnName]);
+
+
   return (
     <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
@@ -814,6 +859,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   <FileText size={20} />
                 </button>
               )}
+
+              <StickerGalleryPopover
+                hidden={isInstagram}
+                disabled={isWindowExpired}
+                disabledReason="Fora da janela de 24h — só template entrega"
+                onPick={(s) => sendSticker(s)}
+              />
 
               <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
                 <PopoverTrigger asChild>

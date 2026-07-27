@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Mic, File as FileIcon, Image, ExternalLink, Phone, PhoneIncoming, PhoneMissed, PhoneOff, Film, BookOpen, Share2 } from "lucide-react";
+import { Mic, File as FileIcon, Image, ExternalLink, Phone, PhoneIncoming, PhoneMissed, PhoneOff, Film, BookOpen, Share2, Star } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
 import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
@@ -7,6 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
 import { linkify } from "@/lib/linkify";
 import { LinkPreview } from "./LinkPreview";
+import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 // Detecta conteúdo especial do Instagram (reel, story reply, shared post)
 type IgSpecialKind = "reel" | "story" | "share";
@@ -441,6 +444,29 @@ export default function ChatMessageContent({
   const [imgError, setImgError] = useState(false);
   useEffect(() => { setImgError(false); }, [resolvedUrl]);
   const handleImgError = useCallback(() => setImgError(true), []);
+  const { tenant } = useTenant();
+  const { user } = useAuth();
+  const [stickerSaving, setStickerSaving] = useState(false);
+  const handleSaveSticker = useCallback(async () => {
+    if (!tenant?.id || !message.media_url) return;
+    setStickerSaving(true);
+    const { error } = await supabase.from("crm_stickers").insert({
+      tenant_id: tenant.id,
+      media_url: message.media_url,
+      origem: "recebida",
+      created_by: user?.id ?? null,
+    });
+    setStickerSaving(false);
+    if (error) {
+      if ((error as any).code === "23505" || /duplicate|unique/i.test(error.message)) {
+        toast("Já está na sua galeria");
+      } else {
+        toast.error(`Erro ao salvar figurinha: ${error.message}`);
+      }
+      return;
+    }
+    toast.success("Figurinha salva");
+  }, [tenant?.id, user?.id, message.media_url]);
 
   // Instagram: reel/story/shared post — render distinctive clickable card
   const igSpecial = detectInstagramSpecial(message.content);
@@ -509,15 +535,27 @@ export default function ChatMessageContent({
         </p>
       );
     }
+    const isSticker = message.type === "sticker";
     return (
-      <div>
+      <div className={isSticker ? "relative group inline-block" : undefined}>
         <img
           src={resolvedUrl!}
-          alt={message.type === "sticker" ? "Figurinha" : "Imagem"}
-          className={message.type === "sticker" ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
+          alt={isSticker ? "Figurinha" : "Imagem"}
+          className={isSticker ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
           onError={handleImgError}
           onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
         />
+        {isSticker && message.media_url && (
+          <button
+            type="button"
+            onClick={handleSaveSticker}
+            disabled={stickerSaving}
+            title="Salvar na minha galeria"
+            className="absolute top-1 right-1 p-1 rounded-full bg-background/90 border border-border shadow-sm text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+          >
+            <Star size={14} />
+          </button>
+        )}
         {message.content?.trim() && (
           <TextWithLinks text={message.content} className="mt-1" />
         )}
