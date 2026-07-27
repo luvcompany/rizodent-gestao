@@ -538,6 +538,84 @@ async function ensureDontusPacienteSeen(
   return seen;
 }
 
+// Preenche o cache de telefones (dontus_paciente_telefone) varrendo
+// consultar_relatorio_pacientes em janelas de WINDOW_DAYS. A cobertura já
+// varrida fica em dontus_telefone_coverage, então cada execução só busca o que
+// falta — e no máximo TEL_MAX_WINDOWS_PER_RUN janelas, para não pesar na cota.
+async function ensureDontusTelefones(
+  admin: any,
+  teamToken: string,
+  idClinicaDontus: number,
+  clinicaId: string,
+  date: string,
+): Promise<void> {
+  const { data: covRow } = await admin.from("dontus_telefone_coverage")
+    .select("coberto_de, coberto_ate").eq("clinica_id", clinicaId).maybeSingle();
+
+  const desiredStart = (() => {
+    const d = new Date(date + "T00:00:00Z");
+    d.setUTCMonth(d.getUTCMonth() - TEL_LOOKBACK_MONTHS);
+    return ymd(d);
+  })();
+
+  let covDe: string | null = covRow?.coberto_de ?? null;
+  let covAte: string | null = covRow?.coberto_ate ?? null;
+  let windows = 0;
+
+  const scan = async (ini: string, fim: string): Promise<boolean> => {
+    try {
+      const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_relatorio_pacientes", {
+        input: { contexto: { idDontus: DONTUS_ID, idClinica: idClinicaDontus }, dataInicio: ini, dataFim: fim },
+      });
+      const up = (rows || []).map((p: any) => ({
+        id_paciente_dontus: Number(p.idPaciente || p.id),
+        telefone: String(p.celular || p.telefone || "").replace(/\D/g, ""),
+        nome: p.nome || null,
+        clinica_id: clinicaId,
+      })).filter((r: any) => r.id_paciente_dontus && r.telefone.length >= 8);
+      for (let i = 0; i < up.length; i += 500) {
+        await admin.from("dontus_paciente_telefone")
+          .upsert(up.slice(i, i + 500), { onConflict: "id_paciente_dontus" });
+      }
+      return true;
+    } catch (e: any) {
+      console.error(`[dontus-sync] telefones ${ini}..${fim} falhou:`, e?.message || e);
+      return false;
+    }
+  };
+
+  // (a) PARA FRENTE: do fim da cobertura até hoje (mais importante — pacientes recentes)
+  if (!covDe || !covAte) {
+    const fim = minIso(addDays(desiredStart, WINDOW_DAYS - 1), date);
+    if (await scan(desiredStart, fim)) { covDe = desiredStart; covAte = fim; }
+    windows++;
+  }
+  while (covAte && covAte < date && windows < TEL_MAX_WINDOWS_PER_RUN) {
+    const ini = addDays(covAte, 1);
+    const fim = minIso(addDays(ini, WINDOW_DAYS - 1), date);
+    if (!(await scan(ini, fim))) break;
+    covAte = fim;
+    windows++;
+  }
+
+  // (b) PARA TRÁS: estende a cobertura até desiredStart, uma janela por vez
+  while (covDe && desiredStart < covDe && windows < TEL_MAX_WINDOWS_PER_RUN) {
+    const fim = addDays(covDe, -1);
+    const iniCand = addDays(fim, -(WINDOW_DAYS - 1));
+    const ini = iniCand < desiredStart ? desiredStart : iniCand;
+    if (!(await scan(ini, fim))) break;
+    covDe = ini;
+    windows++;
+  }
+
+  if (covDe && covAte) {
+    await admin.from("dontus_telefone_coverage").upsert({
+      clinica_id: clinicaId, coberto_de: covDe, coberto_ate: covAte,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "clinica_id" });
+  }
+}
+
 // ============ Execução real do plano (não-dry-run) ============
 const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
 
