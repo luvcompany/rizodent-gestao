@@ -396,6 +396,11 @@ function maxIso(a: string, b: string): string { return a > b ? a : b; }
 // Retorna Set<idPaciente> com pacientes cuja primeira_data < `date` (hoje).
 const LOOKBACK_MONTHS = 18;
 const WINDOW_DAYS = 30;
+const TEL_LOOKBACK_MONTHS = 18;
+// Backfill INCREMENTAL: no máximo N janelas por execução, senão a primeira
+// rodada dispararia ~18 chamadas por clínica e estouraria a cota do Dontus
+// (foi o que derrubou o sync em 26–27/07).
+const TEL_MAX_WINDOWS_PER_RUN = 4;
 
 async function ensureDontusPacienteSeen(
   admin: any,
@@ -531,6 +536,84 @@ async function ensureDontusPacienteSeen(
     if (String(r.primeira_data) < today) seen.add(Number(r.id_paciente_dontus));
   }
   return seen;
+}
+
+// Preenche o cache de telefones (dontus_paciente_telefone) varrendo
+// consultar_relatorio_pacientes em janelas de WINDOW_DAYS. A cobertura já
+// varrida fica em dontus_telefone_coverage, então cada execução só busca o que
+// falta — e no máximo TEL_MAX_WINDOWS_PER_RUN janelas, para não pesar na cota.
+async function ensureDontusTelefones(
+  admin: any,
+  teamToken: string,
+  idClinicaDontus: number,
+  clinicaId: string,
+  date: string,
+): Promise<void> {
+  const { data: covRow } = await admin.from("dontus_telefone_coverage")
+    .select("coberto_de, coberto_ate").eq("clinica_id", clinicaId).maybeSingle();
+
+  const desiredStart = (() => {
+    const d = new Date(date + "T00:00:00Z");
+    d.setUTCMonth(d.getUTCMonth() - TEL_LOOKBACK_MONTHS);
+    return ymd(d);
+  })();
+
+  let covDe: string | null = covRow?.coberto_de ?? null;
+  let covAte: string | null = covRow?.coberto_ate ?? null;
+  let windows = 0;
+
+  const scan = async (ini: string, fim: string): Promise<boolean> => {
+    try {
+      const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_relatorio_pacientes", {
+        input: { contexto: { idDontus: DONTUS_ID, idClinica: idClinicaDontus }, dataInicio: ini, dataFim: fim },
+      });
+      const up = (rows || []).map((p: any) => ({
+        id_paciente_dontus: Number(p.idPaciente || p.id),
+        telefone: String(p.celular || p.telefone || "").replace(/\D/g, ""),
+        nome: p.nome || null,
+        clinica_id: clinicaId,
+      })).filter((r: any) => r.id_paciente_dontus && r.telefone.length >= 8);
+      for (let i = 0; i < up.length; i += 500) {
+        await admin.from("dontus_paciente_telefone")
+          .upsert(up.slice(i, i + 500), { onConflict: "id_paciente_dontus" });
+      }
+      return true;
+    } catch (e: any) {
+      console.error(`[dontus-sync] telefones ${ini}..${fim} falhou:`, e?.message || e);
+      return false;
+    }
+  };
+
+  // (a) PARA FRENTE: do fim da cobertura até hoje (mais importante — pacientes recentes)
+  if (!covDe || !covAte) {
+    const fim = minIso(addDays(desiredStart, WINDOW_DAYS - 1), date);
+    if (await scan(desiredStart, fim)) { covDe = desiredStart; covAte = fim; }
+    windows++;
+  }
+  while (covAte && covAte < date && windows < TEL_MAX_WINDOWS_PER_RUN) {
+    const ini = addDays(covAte, 1);
+    const fim = minIso(addDays(ini, WINDOW_DAYS - 1), date);
+    if (!(await scan(ini, fim))) break;
+    covAte = fim;
+    windows++;
+  }
+
+  // (b) PARA TRÁS: estende a cobertura até desiredStart, uma janela por vez
+  while (covDe && desiredStart < covDe && windows < TEL_MAX_WINDOWS_PER_RUN) {
+    const fim = addDays(covDe, -1);
+    const iniCand = addDays(fim, -(WINDOW_DAYS - 1));
+    const ini = iniCand < desiredStart ? desiredStart : iniCand;
+    if (!(await scan(ini, fim))) break;
+    covDe = ini;
+    windows++;
+  }
+
+  if (covDe && covAte) {
+    await admin.from("dontus_telefone_coverage").upsert({
+      clinica_id: clinicaId, coberto_de: covDe, coberto_ate: covAte,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "clinica_id" });
+  }
 }
 
 // ============ Execução real do plano (não-dry-run) ============
@@ -989,6 +1072,31 @@ async function syncClinica(
     phoneLookupFailed = true;
   }
 
+  // Mantém o cache persistente em dia (incremental, poucas janelas por run)…
+  try {
+    await ensureDontusTelefones(admin, teamToken, idClinica, clinicaInfo.id, date);
+  } catch (e: any) {
+    console.error(`[dontus-sync] ensureDontusTelefones falhou:`, e?.message || e);
+  }
+  // …e completa o phoneCache com os telefones já conhecidos dos pacientes que
+  // pagaram hoje. É isto que resolve o paciente ANTIGO: ele nunca aparece na
+  // janela de 3 dias (que filtra por data de cadastro), mas está no cache.
+  try {
+    const idsPagantes = [...new Set((recebidos || [])
+      .map((it: any) => Number(it.idPaciente)).filter((n: number) => !!n))];
+    for (let i = 0; i < idsPagantes.length; i += 200) {
+      const parte = idsPagantes.slice(i, i + 200);
+      const { data: tels } = await admin.from("dontus_paciente_telefone")
+        .select("id_paciente_dontus, telefone").in("id_paciente_dontus", parte);
+      for (const t of (tels || [])) {
+        const id = Number(t.id_paciente_dontus);
+        if (id && t.telefone && !phoneCache.has(id)) phoneCache.set(id, String(t.telefone));
+      }
+    }
+  } catch (e: any) {
+    console.error(`[dontus-sync] leitura do cache de telefones falhou:`, e?.message || e);
+  }
+
   // Agrupar orto por paciente/dia
   const ortoDayHasStart = new Map<string, boolean>(); // key = paciente_id_dontus|data
   for (const it of recebidos) {
@@ -1388,6 +1496,7 @@ async function syncClinica(
     recorrentes: plan.filter((p) => p.tipo === "recorrente").length,
     notificacoes: plan.filter((p) => p.notification).length,
     phone_lookup_failed: phoneLookupFailed,
+    telefones_no_cache: phoneCache.size,
     plan,
   };
 

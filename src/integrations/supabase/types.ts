@@ -2689,6 +2689,30 @@ export type Database = {
         }
         Relationships: []
       }
+      dontus_paciente_telefone: {
+        Row: {
+          clinica_id: string | null
+          id_paciente_dontus: number
+          nome: string | null
+          telefone: string
+          updated_at: string
+        }
+        Insert: {
+          clinica_id?: string | null
+          id_paciente_dontus: number
+          nome?: string | null
+          telefone: string
+          updated_at?: string
+        }
+        Update: {
+          clinica_id?: string | null
+          id_paciente_dontus?: number
+          nome?: string | null
+          telefone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       dontus_seen_coverage: {
         Row: {
           clinica_id: string
@@ -2807,6 +2831,27 @@ export type Database = {
           id?: string
           last_authorize_at?: string | null
           token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      dontus_telefone_coverage: {
+        Row: {
+          clinica_id: string
+          coberto_ate: string | null
+          coberto_de: string | null
+          updated_at: string
+        }
+        Insert: {
+          clinica_id: string
+          coberto_ate?: string | null
+          coberto_de?: string | null
+          updated_at?: string
+        }
+        Update: {
+          clinica_id?: string
+          coberto_ate?: string | null
+          coberto_de?: string | null
           updated_at?: string
         }
         Relationships: []
