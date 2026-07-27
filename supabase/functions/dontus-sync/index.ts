@@ -1496,6 +1496,7 @@ async function syncClinica(
     recorrentes: plan.filter((p) => p.tipo === "recorrente").length,
     notificacoes: plan.filter((p) => p.notification).length,
     phone_lookup_failed: phoneLookupFailed,
+    telefones_no_cache: phoneCache.size,
     plan,
   };
 
