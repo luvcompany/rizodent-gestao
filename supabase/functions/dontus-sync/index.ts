@@ -298,8 +298,27 @@ async function mcpToolCall(admin: any, teamToken: string, name: string, args: an
       if (typeof txt === "string") {
         try {
           const p = JSON.parse(txt);
-          return p.dados ?? p.data ?? p ?? [];
-        } catch {}
+          // Envelope de ERRO do Dontus (ex.: LIMITE_PLANO_EXCEDIDO) — falhar alto,
+          // senão devolvíamos o objeto de erro e o chamador estourava com
+          // "recebidos is not iterable", escondendo a causa real.
+          if (p && p.sucesso === false) {
+            const cod = p?.erro?.codigo || "ERRO_DONTUS";
+            const msg = p?.erro?.mensagem || "erro desconhecido";
+            throw Object.assign(new Error(`Dontus ${name}: ${cod} — ${msg}`), { dontusCode: cod });
+          }
+          const out = p?.dados ?? p?.data ?? p;
+          if (Array.isArray(out)) return out;
+          if (out && Array.isArray(out?.itens)) return out.itens;
+          throw new Error(`Dontus ${name}: resposta inesperada (não é lista)`);
+        } catch (e: any) {
+          if (e?.dontusCode || /resposta inesperada/.test(String(e?.message))) throw e;
+        }
+      }
+      // Envelope de erro direto em result
+      if (resp?.result?.sucesso === false) {
+        const cod = resp?.result?.erro?.codigo || "ERRO_DONTUS";
+        const msg = resp?.result?.erro?.mensagem || "erro desconhecido";
+        throw Object.assign(new Error(`Dontus ${name}: ${cod} — ${msg}`), { dontusCode: cod });
       }
       return [];
     } catch (e: any) {
