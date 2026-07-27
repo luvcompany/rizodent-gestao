@@ -30,6 +30,16 @@ const CLINICA_MAP: Record<number, { id: string; nome: string }> = {
   5: { id: "93c99d9a-8698-495a-829b-a6592ade8d06", nome: "Rizodent VCA" },
 };
 
+// Nome da clínica ≠ cidade (ex.: "Rizodent VCA" → "Vitória da Conquista").
+function cidadeDaClinica(nome: string): string {
+  const n = String(nome || "").toUpperCase();
+  if (n.includes("VCA") || n.includes("CONQUISTA")) return "Vitória da Conquista";
+  if (n.includes("IPIA")) return "Ipiaú";
+  if (n.includes("GUANAMBI")) return "Guanambi";
+  if (n.includes("ITABUNA")) return "Itabuna";
+  return nome;
+}
+
 // Mapeamento de especialidades Dontus → CRClin.
 const ESP_MAP: Record<string, string> = {
   "CLINICO GERAL": "CLÍNICO GERAL",
@@ -298,8 +308,27 @@ async function mcpToolCall(admin: any, teamToken: string, name: string, args: an
       if (typeof txt === "string") {
         try {
           const p = JSON.parse(txt);
-          return p.dados ?? p.data ?? p ?? [];
-        } catch {}
+          // Envelope de ERRO do Dontus (ex.: LIMITE_PLANO_EXCEDIDO) — falhar alto,
+          // senão devolvíamos o objeto de erro e o chamador estourava com
+          // "recebidos is not iterable", escondendo a causa real.
+          if (p && p.sucesso === false) {
+            const cod = p?.erro?.codigo || "ERRO_DONTUS";
+            const msg = p?.erro?.mensagem || "erro desconhecido";
+            throw Object.assign(new Error(`Dontus ${name}: ${cod} — ${msg}`), { dontusCode: cod });
+          }
+          const out = p?.dados ?? p?.data ?? p;
+          if (Array.isArray(out)) return out;
+          if (out && Array.isArray(out?.itens)) return out.itens;
+          throw new Error(`Dontus ${name}: resposta inesperada (não é lista)`);
+        } catch (e: any) {
+          if (e?.dontusCode || /resposta inesperada/.test(String(e?.message))) throw e;
+        }
+      }
+      // Envelope de erro direto em result
+      if (resp?.result?.sucesso === false) {
+        const cod = resp?.result?.erro?.codigo || "ERRO_DONTUS";
+        const msg = resp?.result?.erro?.mensagem || "erro desconhecido";
+        throw Object.assign(new Error(`Dontus ${name}: ${cod} — ${msg}`), { dontusCode: cod });
       }
       return [];
     } catch (e: any) {
@@ -566,7 +595,7 @@ async function ensurePacienteFromItem(admin: any, item: PlanItem, leadId: string
   const { data: created, error } = await admin.from("pacientes").insert({
     nome: item.paciente_nome,
     telefone: item.telefone || "",
-    cidade: item.clinica_nome,
+    cidade: cidadeDaClinica(item.clinica_nome),
     origem: origemPaciente,
     tenant_id: RIZODENT_TENANT_ID,
   }).select("id").single();
@@ -716,29 +745,56 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
             }
           }
           if (!existing) {
-            const norm = normalizeName(item.paciente_nome);
-            if (norm) {
-              const { data } = await admin.from("crm_leads")
-                .select("id, name, pipeline_id, stage_id")
+            // Match por NOME sem janela: antes varria só os 1000 leads mais
+            // recentes (base tem ~7000), então lead antigo nunca era encontrado
+            // e o sync criava DUPLICATA.
+            const nomeRaw = String(item.paciente_nome || "").trim();
+            const norm = normalizeName(nomeRaw);
+            if (norm && nomeRaw) {
+              const { data: exact } = await admin.from("crm_leads")
+                .select("id, name, phone, pipeline_id, stage_id")
                 .eq("tenant_id", RIZODENT_TENANT_ID)
-                .order("created_at", { ascending: false }).limit(1000);
-              existing = (data || []).find((l: any) => normalizeName(l.name) === norm) || null;
+                .ilike("name", nomeRaw)
+                .limit(20);
+              existing = (exact || []).find((l: any) => normalizeName(l.name) === norm) || null;
+
+              if (!existing) {
+                const toks = nomeRaw.split(/\s+/).filter(Boolean);
+                if (toks.length >= 2) {
+                  const { data: cand } = await admin.from("crm_leads")
+                    .select("id, name, phone, pipeline_id, stage_id")
+                    .eq("tenant_id", RIZODENT_TENANT_ID)
+                    .ilike("name", `${toks[0]}%${toks[toks.length - 1]}`)
+                    .limit(200);
+                  existing = (cand || []).find((l: any) => normalizeName(l.name) === norm) || null;
+                }
+              }
             }
           }
 
           if (existing) {
             leadId = existing.id;
+            // Se o lead achado tem telefone e o item não, adota o do lead.
+            if (!item.telefone && existing.phone) item.telefone = existing.phone;
           } else {
+            // NUNCA criar lead sem telefone: sem ele não há como deduplicar
+            // depois (foi o que gerou as duplicatas de 23–25/07). Sem telefone,
+            // pula o item — o dontus_key garante que ele será reprocessado no
+            // próximo run, quando a API voltar a devolver o telefone.
+            if (!item.telefone) {
+              (c as any).ignorados = ((c as any).ignorados || 0) + 1;
+              continue;
+            }
             mainPipeline = mainPipeline || await findMainPipelineContratado(admin);
             if (!mainPipeline) throw new Error("pipeline principal com etapa Contratado não encontrado");
             const ins = await admin.from("crm_leads").insert({
               tenant_id: RIZODENT_TENANT_ID,
               name: item.paciente_nome,
-              phone: item.telefone || null,
+              phone: item.telefone,
               source: "kommo",
               pipeline_id: mainPipeline.pipeline_id,
               stage_id: mainPipeline.stage_id,
-              cidade: item.clinica_nome,
+              cidade: cidadeDaClinica(item.clinica_nome),
             }).select("id").single();
             if (ins.error) throw new Error(`criar lead falhou: ${ins.error.message}`);
             leadId = ins.data.id;
@@ -915,6 +971,7 @@ async function syncClinica(
 
   // Cache telefone Dontus por idPaciente (últimos ~3 dias)
   const phoneCache = new Map<number, string>();
+  let phoneLookupFailed = false;
   try {
     const start = new Date(date); start.setDate(start.getDate() - 3);
     const dIni = start.toISOString().slice(0, 10);
@@ -926,7 +983,10 @@ async function syncClinica(
       const tel = String(p.celular || p.telefone || "").trim();
       if (id && tel) phoneCache.set(id, tel);
     }
-  } catch (_) { /* best-effort */ }
+  } catch (e: any) {
+    console.error(`[dontus-sync] falha ao buscar telefones (clinica ${idClinica}):`, e?.message || e);
+    phoneLookupFailed = true;
+  }
 
   // Agrupar orto por paciente/dia
   const ortoDayHasStart = new Map<string, boolean>(); // key = paciente_id_dontus|data
@@ -1326,6 +1386,7 @@ async function syncClinica(
     primeiros: plan.filter((p) => p.tipo === "primeiro").length,
     recorrentes: plan.filter((p) => p.tipo === "recorrente").length,
     notificacoes: plan.filter((p) => p.notification).length,
+    phone_lookup_failed: phoneLookupFailed,
     plan,
   };
 
