@@ -1219,7 +1219,12 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
     if (isIn) recebidas++;
     if (isAns) atendidas++;
     if (REJECTED.has(st)) recusadas++;
-    if (MISSED.has(st)) perdidas++;
+    if (MISSED.has(st)) {
+      // perdidas = LEAD ligou e o time NÃO atendeu (perda de oportunidade real).
+      // nao_atendidas = time ligou e o LEAD não atendeu.
+      if (isIn) perdidas++;
+      else if (isOut) nao_atendidas++;
+    }
     if (isAns && typeof r.duration_seconds === "number" && r.duration_seconds > 0) {
       durSum += r.duration_seconds; durCount++;
     }
