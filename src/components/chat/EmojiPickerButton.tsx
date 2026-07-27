@@ -352,7 +352,7 @@ export default function EmojiPickerButton({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-auto p-0 border-none shadow-lg"
+        className="w-auto p-0 border-none shadow-lg overflow-hidden"
       >
         {stickersEnabled ? (
           <Tabs value={tab} onValueChange={(v) => setTab(v as "emojis" | "stickers")}>
