@@ -396,6 +396,11 @@ function maxIso(a: string, b: string): string { return a > b ? a : b; }
 // Retorna Set<idPaciente> com pacientes cuja primeira_data < `date` (hoje).
 const LOOKBACK_MONTHS = 18;
 const WINDOW_DAYS = 30;
+const TEL_LOOKBACK_MONTHS = 18;
+// Backfill INCREMENTAL: no máximo N janelas por execução, senão a primeira
+// rodada dispararia ~18 chamadas por clínica e estouraria a cota do Dontus
+// (foi o que derrubou o sync em 26–27/07).
+const TEL_MAX_WINDOWS_PER_RUN = 4;
 
 async function ensureDontusPacienteSeen(
   admin: any,
