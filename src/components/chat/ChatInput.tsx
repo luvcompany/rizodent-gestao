@@ -617,7 +617,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
   }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, resolveInstagramAccountId]);
 
-  const sendSticker = useCallback(async (sticker: { id: string; media_url: string }) => {
+  const sendSticker = useCallback(async (mediaUrl: string) => {
+    const sticker = { media_url: mediaUrl };
     if (isInstagram) return;
     if (!leadPhone) {
       toast.error("Lead sem telefone");
