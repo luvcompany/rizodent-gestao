@@ -500,16 +500,16 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
 
   // pagamentos do tenant (a tabela NÃO tem tenant_id — escopo via clinica_id
   // ∈ clinicas do tenant), paginando além do cap de 1000 linhas do PostgREST.
-  // Regra oficial (conciliada com o Dontus em 07/2026): pagamentos marcados
-  // como recorrência de ortodontia (recorrencia_orto=true) NÃO entram nos
-  // agregados de faturamento — só o início de tratamento (panorâmica/aparelho
-  // no dia) conta. Filtramos aqui na origem; agendamentos ficam intocados.
+  // FATURAMENTO = TODOS os pagamentos do período (decisão do dono, 27/07/2026).
+  // Antes excluíamos recorrência de ortodontia aqui; isso fazia este relatório
+  // divergir da aba de Pacientes e do Dashboard. Agora todos somam a mesma base.
+  // (A função contratadosCanonicos CONTINUA excluindo recorrencia_orto: uma
+  // manutenção não pode fazer um paciente contar como "novo contratado".)
   const pagamentos = pagClinicaIds.length
     ? await fetchAllPaged<any>(
         () => admin.from("pagamentos")
           .select("id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade")
           .in("clinica_id", pagClinicaIds)
-          .eq("recorrencia_orto", false)
           .gte("data_pagamento", from).lte("data_pagamento", to),
         "id",
       )
@@ -537,8 +537,8 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   const fatNovos = pagamentos.filter((pg) => pg.tipo === "primeiro").reduce((s, pg) => s + num(pg.valor), 0);
   const fatRecorrentes = pagamentos.filter((pg) => pg.tipo === "recorrente").reduce((s, pg) => s + num(pg.valor), 0);
 
-  // Série diária de faturamento (mesma base do total: pagamentos já filtrados
-  // por clínica do tenant, recorrencia_orto=false e data_pagamento ∈ [from,to]).
+  // Série diária de faturamento (mesma base do total: todos os pagamentos do
+  // período já filtrados por clínica do tenant e data_pagamento ∈ [from,to]).
   // Agrupa por data_pagamento; inclui só dias com pagamento.
   const porDiaMap = new Map<string, { faturamento: number; pagamentos: number }>();
   for (const pg of pagamentos) {

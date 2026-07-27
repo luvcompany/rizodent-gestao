@@ -415,11 +415,11 @@ const Dashboard = () => {
     };
   }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, dateFrom, dateTo, rangeBounds]);
 
-  // Ortodontia em manutenção (recorrencia_orto=true) NÃO conta no faturamento
-  // — mesma regra do endpoint /reports/financeiro que alimenta o Rizodent Pulse.
-  // Só afeta cálculos de dinheiro; contagens de pacientes/agendamentos seguem
-  // usando filtered.pagamentos inteiro.
-  const pagamentosFat = filtered.pagamentos.filter((p) => p.recorrencia_orto !== true);
+  // FATURAMENTO = TODOS os pagamentos do período (decisão do dono, 27/07/2026).
+  // Antes excluíamos manutenção de ortodontia (recorrencia_orto=true), o que
+  // fazia o Dashboard divergir da aba de Pacientes. Agora as duas telas somam
+  // exatamente a mesma coisa: tudo que está cadastrado no dia.
+  const pagamentosFat = filtered.pagamentos;
   const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);
   const fatNovos = pagamentosFat.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
   const fatRecorrentes = pagamentosFat.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
