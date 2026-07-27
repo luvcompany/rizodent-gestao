@@ -14,6 +14,7 @@ import {
   assertDay,
   businessDaysBetween,
   chunk,
+  dayKeyBahia,
   fetchAllPaged,
   normalizeCidadeKey,
   rangeBahia,
