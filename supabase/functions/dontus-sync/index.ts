@@ -1072,6 +1072,31 @@ async function syncClinica(
     phoneLookupFailed = true;
   }
 
+  // Mantém o cache persistente em dia (incremental, poucas janelas por run)…
+  try {
+    await ensureDontusTelefones(admin, teamToken, idClinica, clinicaInfo.id, date);
+  } catch (e: any) {
+    console.error(`[dontus-sync] ensureDontusTelefones falhou:`, e?.message || e);
+  }
+  // …e completa o phoneCache com os telefones já conhecidos dos pacientes que
+  // pagaram hoje. É isto que resolve o paciente ANTIGO: ele nunca aparece na
+  // janela de 3 dias (que filtra por data de cadastro), mas está no cache.
+  try {
+    const idsPagantes = [...new Set((recebidos || [])
+      .map((it: any) => Number(it.idPaciente)).filter((n: number) => !!n))];
+    for (let i = 0; i < idsPagantes.length; i += 200) {
+      const parte = idsPagantes.slice(i, i + 200);
+      const { data: tels } = await admin.from("dontus_paciente_telefone")
+        .select("id_paciente_dontus, telefone").in("id_paciente_dontus", parte);
+      for (const t of (tels || [])) {
+        const id = Number(t.id_paciente_dontus);
+        if (id && t.telefone && !phoneCache.has(id)) phoneCache.set(id, String(t.telefone));
+      }
+    }
+  } catch (e: any) {
+    console.error(`[dontus-sync] leitura do cache de telefones falhou:`, e?.message || e);
+  }
+
   // Agrupar orto por paciente/dia
   const ortoDayHasStart = new Map<string, boolean>(); // key = paciente_id_dontus|data
   for (const it of recebidos) {
