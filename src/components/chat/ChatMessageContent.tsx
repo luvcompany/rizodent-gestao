@@ -535,15 +535,27 @@ export default function ChatMessageContent({
         </p>
       );
     }
+    const isSticker = message.type === "sticker";
     return (
-      <div>
+      <div className={isSticker ? "relative group inline-block" : undefined}>
         <img
           src={resolvedUrl!}
-          alt={message.type === "sticker" ? "Figurinha" : "Imagem"}
-          className={message.type === "sticker" ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
+          alt={isSticker ? "Figurinha" : "Imagem"}
+          className={isSticker ? "max-w-[150px]" : "rounded mb-1 max-w-full max-h-64 cursor-pointer hover:opacity-90 transition-opacity"}
           onError={handleImgError}
           onClick={() => message.type === "image" && onMediaClick ? onMediaClick(resolvedUrl!, "image") : undefined}
         />
+        {isSticker && message.media_url && (
+          <button
+            type="button"
+            onClick={handleSaveSticker}
+            disabled={stickerSaving}
+            title="Salvar na minha galeria"
+            className="absolute top-1 right-1 p-1 rounded-full bg-background/90 border border-border shadow-sm text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+          >
+            <Star size={14} />
+          </button>
+        )}
         {message.content?.trim() && (
           <TextWithLinks text={message.content} className="mt-1" />
         )}
