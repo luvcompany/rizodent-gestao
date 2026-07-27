@@ -14,6 +14,7 @@ import {
   assertDay,
   businessDaysBetween,
   chunk,
+  dayKeyBahia,
   fetchAllPaged,
   normalizeCidadeKey,
   rangeBahia,
@@ -1173,6 +1174,154 @@ async function templatesList(tenantId: string, p: URLSearchParams) {
   return json({ data: out, count: out.length });
 }
 
+
+// ===== /reports/ligacoes =====
+// Combina api4com_calls + whatsapp_calls do tenant no período [from,to] por
+// created_at, e calcula o SLA de 1ª resposta (inbound → 1º outbound) escopo tenant.
+async function reportLigacoes(tenantId: string, p: URLSearchParams) {
+  const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
+
+  const ANSWERED = new Set(["answered", "completed", "accepted"]);
+  const REJECTED = new Set(["rejected"]);
+  const MISSED = new Set(["no-answer", "missed"]);
+
+  type CallRow = { direction: string | null; status: string | null; created_at: string; duration_seconds: number | null };
+
+  const [api4, wa] = await Promise.all([
+    fetchAllPaged<CallRow>(
+      () => admin.from("api4com_calls")
+        .select("direction, status, created_at, duration_seconds, id")
+        .eq("tenant_id", tenantId)
+        .gte("created_at", gteIso).lte("created_at", lteIso),
+      "id",
+    ),
+    fetchAllPaged<CallRow>(
+      () => admin.from("whatsapp_calls")
+        .select("direction, status, created_at, duration_seconds, id")
+        .eq("tenant_id", tenantId)
+        .gte("created_at", gteIso).lte("created_at", lteIso),
+      "id",
+    ),
+  ]);
+
+  const rows = [...api4, ...wa];
+  let feitas = 0, recebidas = 0, atendidas = 0, recusadas = 0, perdidas = 0;
+  let durSum = 0, durCount = 0;
+  const porDia = new Map<string, { feitas: number; recebidas: number; atendidas: number }>();
+
+  for (const r of rows) {
+    const dir = (r.direction || "").toLowerCase();
+    const st = (r.status || "").toLowerCase();
+    const isOut = dir === "outbound";
+    const isIn = dir === "inbound";
+    const isAns = ANSWERED.has(st);
+    if (isOut) feitas++;
+    if (isIn) recebidas++;
+    if (isAns) atendidas++;
+    if (REJECTED.has(st)) recusadas++;
+    if (MISSED.has(st)) perdidas++;
+    if (isAns && typeof r.duration_seconds === "number" && r.duration_seconds > 0) {
+      durSum += r.duration_seconds; durCount++;
+    }
+    const dia = dayKeyBahia(r.created_at);
+    const cur = porDia.get(dia) || { feitas: 0, recebidas: 0, atendidas: 0 };
+    if (isOut) cur.feitas++;
+    if (isIn) cur.recebidas++;
+    if (isAns) cur.atendidas++;
+    porDia.set(dia, cur);
+  }
+
+  const por_dia = Array.from(porDia.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([dia, v]) => ({ dia, ...v }));
+
+  const ligacoes = {
+    feitas, recebidas, atendidas, recusadas, perdidas,
+    total: rows.length,
+    duracao_media_seg: durCount > 0 ? Math.round(durSum / durCount) : 0,
+    por_dia,
+  };
+
+  // ---- tempo_resposta: 1ª inbound do lead no período → 1ª outbound posterior.
+  // Escopo tenant via join messages→crm_leads.
+  type MsgIn = { lead_id: string; created_at: string };
+  const inboundRows = await fetchAllPaged<MsgIn>(
+    () => admin.from("messages")
+      .select("lead_id, created_at, id, crm_leads!inner(tenant_id)")
+      .eq("direction", "inbound")
+      .is("deleted_at", null)
+      .is("instagram_comment_id", null)
+      .eq("crm_leads.tenant_id", tenantId)
+      .gte("created_at", gteIso).lte("created_at", lteIso),
+    "id",
+  );
+
+  // 1ª inbound de cada lead dentro do período.
+  const firstInboundByLead = new Map<string, string>();
+  for (const m of inboundRows) {
+    if (!m.lead_id) continue;
+    const prev = firstInboundByLead.get(m.lead_id);
+    if (!prev || m.created_at < prev) firstInboundByLead.set(m.lead_id, m.created_at);
+  }
+
+  const leadIds = Array.from(firstInboundByLead.keys());
+  const total = leadIds.length;
+
+  // Busca outbound apenas desses leads, a partir do menor firstInbound.
+  const deltas: number[] = [];
+  if (leadIds.length > 0) {
+    let minInbound = lteIso;
+    for (const t of firstInboundByLead.values()) if (t < minInbound) minInbound = t;
+
+    // outbound por lead: guardar todos e depois procurar o primeiro >= firstInbound.
+    const outByLead = new Map<string, string[]>();
+    for (const ids of chunk(leadIds, 200)) {
+      const rows2 = await fetchAllPaged<MsgIn>(
+        () => admin.from("messages")
+          .select("lead_id, created_at, id")
+          .eq("direction", "outbound")
+          .is("deleted_at", null)
+          .in("lead_id", ids)
+          .gte("created_at", minInbound),
+        "id",
+      );
+      for (const m of rows2) {
+        if (!m.lead_id) continue;
+        const arr = outByLead.get(m.lead_id) || [];
+        arr.push(m.created_at);
+        outByLead.set(m.lead_id, arr);
+      }
+    }
+
+    for (const [leadId, inboundAt] of firstInboundByLead) {
+      const outs = outByLead.get(leadId);
+      if (!outs || outs.length === 0) continue;
+      let firstOut: string | null = null;
+      for (const t of outs) {
+        if (t >= inboundAt && (firstOut === null || t < firstOut)) firstOut = t;
+      }
+      if (!firstOut) continue;
+      const delta = (new Date(firstOut).getTime() - new Date(inboundAt).getTime()) / 1000;
+      if (delta >= 0) deltas.push(delta);
+    }
+  }
+
+  deltas.sort((a, b) => a - b);
+  const respondidos = deltas.length;
+  const mediana_seg = respondidos === 0 ? 0
+    : respondidos % 2 === 1
+      ? Math.round(deltas[(respondidos - 1) / 2])
+      : Math.round((deltas[respondidos / 2 - 1] + deltas[respondidos / 2]) / 2);
+  const media_seg = respondidos === 0 ? 0
+    : Math.round(deltas.reduce((a, b) => a + b, 0) / respondidos);
+
+  return json({
+    period: { from: fromDay, to: toDay, timezone: BAHIA_TZ },
+    ligacoes,
+    tempo_resposta: { mediana_seg, media_seg, respondidos, total },
+  });
+}
+
 Deno.serve(async (req) => {
   cors = buildCorsFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -1218,6 +1367,7 @@ Deno.serve(async (req) => {
           "GET /reports/by-source?from=&to=",
           "GET /reports/financeiro?from=YYYY-MM-DD&to=YYYY-MM-DD&clinica=<uuid?>",
           "GET /reports/clientes-pagantes?limit=&offset=",
+          "GET /reports/ligacoes?from=YYYY-MM-DD&to=YYYY-MM-DD",
           "GET /templates?name=  (lista status dos templates na Meta)",
           "POST /templates/upload-media  { file_b64 | media_url, file_name, file_type }  → { handle }",
           "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
@@ -1256,6 +1406,7 @@ Deno.serve(async (req) => {
       if (parts[1] === "by-source") return await reportBySource(tenantId, p);
       if (parts[1] === "financeiro") return await reportFinanceiro(tenantId, p);
       if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
+      if (parts[1] === "ligacoes") return await reportLigacoes(tenantId, p);
     }
     if (parts[0] === "templates") {
       if (parts[1] === "upload-media" && req.method === "POST") return await templatesUploadMedia(tenantId, body);
