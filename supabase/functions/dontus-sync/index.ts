@@ -1403,6 +1403,7 @@ async function syncClinica(
       importados: exec.importados,
       adotados: exec.adotados,
       leads_criados: exec.leads_criados,
+      sem_telefone_sem_lead: (exec as any).sem_telefone_sem_lead || 0,
       movidos_contratado: exec.movidos,
       notificacoes: exec.notificacoes,
       erros: exec.erros,
