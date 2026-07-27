@@ -1205,7 +1205,7 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
   ]);
 
   const rows = [...api4, ...wa];
-  let feitas = 0, recebidas = 0, atendidas = 0, recusadas = 0, perdidas = 0;
+  let feitas = 0, recebidas = 0, atendidas = 0, recusadas = 0, perdidas = 0, nao_atendidas = 0;
   let durSum = 0, durCount = 0;
   const porDia = new Map<string, { feitas: number; recebidas: number; atendidas: number }>();
 
@@ -1219,7 +1219,12 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
     if (isIn) recebidas++;
     if (isAns) atendidas++;
     if (REJECTED.has(st)) recusadas++;
-    if (MISSED.has(st)) perdidas++;
+    if (MISSED.has(st)) {
+      // perdidas = LEAD ligou e o time NÃO atendeu (perda de oportunidade real).
+      // nao_atendidas = time ligou e o LEAD não atendeu.
+      if (isIn) perdidas++;
+      else if (isOut) nao_atendidas++;
+    }
     if (isAns && typeof r.duration_seconds === "number" && r.duration_seconds > 0) {
       durSum += r.duration_seconds; durCount++;
     }
@@ -1236,7 +1241,7 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
     .map(([dia, v]) => ({ dia, ...v }));
 
   const ligacoes = {
-    feitas, recebidas, atendidas, recusadas, perdidas,
+    feitas, recebidas, atendidas, recusadas, perdidas, nao_atendidas,
     total: rows.length,
     duracao_media_seg: durCount > 0 ? Math.round(durSum / durCount) : 0,
     por_dia,
