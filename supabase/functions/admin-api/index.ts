@@ -537,8 +537,8 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   const fatNovos = pagamentos.filter((pg) => pg.tipo === "primeiro").reduce((s, pg) => s + num(pg.valor), 0);
   const fatRecorrentes = pagamentos.filter((pg) => pg.tipo === "recorrente").reduce((s, pg) => s + num(pg.valor), 0);
 
-  // Série diária de faturamento (mesma base do total: pagamentos já filtrados
-  // por clínica do tenant, recorrencia_orto=false e data_pagamento ∈ [from,to]).
+  // Série diária de faturamento (mesma base do total: todos os pagamentos do
+  // período já filtrados por clínica do tenant e data_pagamento ∈ [from,to]).
   // Agrupa por data_pagamento; inclui só dias com pagamento.
   const porDiaMap = new Map<string, { faturamento: number; pagamentos: number }>();
   for (const pg of pagamentos) {
