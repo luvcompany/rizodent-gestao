@@ -1278,14 +1278,22 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
     let minInbound = lteIso;
     for (const t of firstInboundByLead.values()) if (t < minInbound) minInbound = t;
 
-    // outbound por lead: guardar todos e depois procurar o primeiro >= firstInbound.
-    const outByLead = new Map<string, string[]>();
+    // outbound por lead: consideramos apenas mensagens de CONTEÚDO real
+    // (text/audio/image) — isto exclui type='system' (logs do bot, ex.:
+    // "Etapa alterada ... (Bot)") e 'call'/'comment'. Também pulamos a
+    // saudação automática do bot "Elisa" (content começa com "*Elisa:*").
+    // Objetivo: medir o tempo até a 1ª resposta HUMANA de verdade.
+    const isBotGreeting = (c: string | null) =>
+      !!c && c.replace(/^\s+/, "").startsWith("*Elisa:*");
+    type OutMsg = { lead_id: string; created_at: string; content: string | null };
+    const outByLead = new Map<string, Array<{ t: string; c: string | null }>>();
     for (const ids of chunk(leadIds, 200)) {
-      const rows2 = await fetchAllPaged<MsgIn>(
+      const rows2 = await fetchAllPaged<OutMsg>(
         () => admin.from("messages")
-          .select("lead_id, created_at, id")
+          .select("lead_id, created_at, id, content")
           .eq("direction", "outbound")
           .is("deleted_at", null)
+          .in("type", ["text", "audio", "image"])
           .in("lead_id", ids)
           .gte("created_at", minInbound),
         "id",
@@ -1293,7 +1301,7 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
       for (const m of rows2) {
         if (!m.lead_id) continue;
         const arr = outByLead.get(m.lead_id) || [];
-        arr.push(m.created_at);
+        arr.push({ t: m.created_at, c: m.content ?? null });
         outByLead.set(m.lead_id, arr);
       }
     }
@@ -1302,8 +1310,10 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
       const outs = outByLead.get(leadId);
       if (!outs || outs.length === 0) continue;
       let firstOut: string | null = null;
-      for (const t of outs) {
-        if (t >= inboundAt && (firstOut === null || t < firstOut)) firstOut = t;
+      for (const o of outs) {
+        if (o.t < inboundAt) continue;          // resposta anterior ao inbound
+        if (isBotGreeting(o.c)) continue;        // pula saudação automática do bot
+        if (firstOut === null || o.t < firstOut) firstOut = o.t;
       }
       if (!firstOut) continue;
       const delta = (new Date(firstOut).getTime() - new Date(inboundAt).getTime()) / 1000;
