@@ -1205,7 +1205,7 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
   ]);
 
   const rows = [...api4, ...wa];
-  let feitas = 0, recebidas = 0, atendidas = 0, recusadas = 0, perdidas = 0;
+  let feitas = 0, recebidas = 0, atendidas = 0, recusadas = 0, perdidas = 0, nao_atendidas = 0;
   let durSum = 0, durCount = 0;
   const porDia = new Map<string, { feitas: number; recebidas: number; atendidas: number }>();
 
