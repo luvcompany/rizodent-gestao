@@ -2353,6 +2353,36 @@ export type Database = {
           },
         ]
       }
+      crm_stickers: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string | null
+          media_url: string
+          origem: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          media_url: string
+          origem?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          media_url?: string
+          origem?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       crm_tasks: {
         Row: {
           assigned_to: string | null
