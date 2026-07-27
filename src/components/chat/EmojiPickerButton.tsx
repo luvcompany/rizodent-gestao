@@ -145,7 +145,7 @@ export default function EmojiPickerButton({
   const stickersDisabled = Boolean(stickersDisabledReason);
 
   const renderStickerGrid = () => (
-    <div className="flex-1 overflow-y-auto p-2">
+    <div className="flex-1 overflow-y-auto p-2 bg-[#1d1d1d]">
       <input
         ref={fileInputRef}
         type="file"
@@ -154,7 +154,7 @@ export default function EmojiPickerButton({
         onChange={handleFileChange}
       />
       {loading ? (
-        <p className="text-xs text-muted-foreground py-6 text-center">Carregando...</p>
+        <p className="text-xs text-neutral-400 py-6 text-center">Carregando...</p>
       ) : (
         <div className="grid grid-cols-4 gap-2">
           {!query.trim() && (
@@ -162,11 +162,11 @@ export default function EmojiPickerButton({
               type="button"
               onClick={handleCreateClick}
               disabled={uploading}
-              className="aspect-square rounded-lg bg-muted/30 hover:bg-accent border border-border flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
+              className="aspect-square rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
               title="Enviar figurinha própria (WebP)"
             >
-              <ImagePlus size={22} className="text-muted-foreground" />
-              <span className="text-[10px] font-medium text-muted-foreground">
+              <ImagePlus size={22} className="text-neutral-400" />
+              <span className="text-[10px] font-medium text-neutral-400">
                 {uploading ? "..." : "Criar"}
               </span>
             </button>
@@ -181,7 +181,7 @@ export default function EmojiPickerButton({
                   onStickerSelect?.(s.media_url);
                   setOpen(false);
                 }}
-                className="w-full h-full rounded-lg bg-muted/30 hover:bg-accent transition-colors overflow-hidden flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full h-full rounded-lg bg-white/5 hover:bg-white/10 transition-colors overflow-hidden flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-60"
                 title={stickersDisabled ? stickersDisabledReason : (s.label || "Enviar figurinha")}
               >
                 <img
@@ -203,10 +203,10 @@ export default function EmojiPickerButton({
                     toast("Clique de novo no × para confirmar remoção");
                   }
                 }}
-                className={`absolute -top-1 -right-1 p-0.5 rounded-full border border-border bg-background shadow-sm transition-opacity ${
+                className={`absolute -top-1 -right-1 p-0.5 rounded-full border border-white/10 bg-[#1d1d1d] shadow-sm transition-opacity ${
                   confirmDeleteId === s.id
                     ? "opacity-100 text-destructive"
-                    : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                    : "opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-destructive"
                 }`}
                 title={confirmDeleteId === s.id ? "Clique de novo para confirmar" : "Remover da galeria"}
               >
@@ -215,12 +215,12 @@ export default function EmojiPickerButton({
             </div>
           ))}
           {!loading && filtered.length === 0 && query.trim() && (
-            <p className="col-span-4 text-xs text-muted-foreground py-6 text-center">
+            <p className="col-span-4 text-xs text-neutral-400 py-6 text-center">
               Nenhuma figurinha com "{query}".
             </p>
           )}
           {!loading && loaded && items.length === 0 && !query.trim() && (
-            <p className="col-span-3 text-xs text-muted-foreground py-2 leading-relaxed self-center">
+            <p className="col-span-3 text-xs text-neutral-400 py-2 leading-relaxed self-center">
               Nenhuma figurinha salva. Passe o mouse numa figurinha recebida na conversa e clique na estrela para salvar, ou use "Criar" para enviar sua própria (WebP).
             </p>
           )}
@@ -228,6 +228,7 @@ export default function EmojiPickerButton({
       )}
     </div>
   );
+
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
