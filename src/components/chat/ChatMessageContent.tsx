@@ -444,6 +444,29 @@ export default function ChatMessageContent({
   const [imgError, setImgError] = useState(false);
   useEffect(() => { setImgError(false); }, [resolvedUrl]);
   const handleImgError = useCallback(() => setImgError(true), []);
+  const { tenant } = useTenant();
+  const { user } = useAuth();
+  const [stickerSaving, setStickerSaving] = useState(false);
+  const handleSaveSticker = useCallback(async () => {
+    if (!tenant?.id || !message.media_url) return;
+    setStickerSaving(true);
+    const { error } = await supabase.from("crm_stickers").insert({
+      tenant_id: tenant.id,
+      media_url: message.media_url,
+      origem: "recebida",
+      created_by: user?.id ?? null,
+    });
+    setStickerSaving(false);
+    if (error) {
+      if ((error as any).code === "23505" || /duplicate|unique/i.test(error.message)) {
+        toast("Já está na sua galeria");
+      } else {
+        toast.error(`Erro ao salvar figurinha: ${error.message}`);
+      }
+      return;
+    }
+    toast.success("Figurinha salva");
+  }, [tenant?.id, user?.id, message.media_url]);
 
   // Instagram: reel/story/shared post — render distinctive clickable card
   const igSpecial = detectInstagramSpecial(message.content);
