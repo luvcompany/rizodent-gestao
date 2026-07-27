@@ -30,6 +30,16 @@ const CLINICA_MAP: Record<number, { id: string; nome: string }> = {
   5: { id: "93c99d9a-8698-495a-829b-a6592ade8d06", nome: "Rizodent VCA" },
 };
 
+// Nome da clínica ≠ cidade (ex.: "Rizodent VCA" → "Vitória da Conquista").
+function cidadeDaClinica(nome: string): string {
+  const n = String(nome || "").toUpperCase();
+  if (n.includes("VCA") || n.includes("CONQUISTA")) return "Vitória da Conquista";
+  if (n.includes("IPIA")) return "Ipiaú";
+  if (n.includes("GUANAMBI")) return "Guanambi";
+  if (n.includes("ITABUNA")) return "Itabuna";
+  return nome;
+}
+
 // Mapeamento de especialidades Dontus → CRClin.
 const ESP_MAP: Record<string, string> = {
   "CLINICO GERAL": "CLÍNICO GERAL",
