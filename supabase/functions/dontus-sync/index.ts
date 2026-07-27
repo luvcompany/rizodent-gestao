@@ -595,7 +595,7 @@ async function ensurePacienteFromItem(admin: any, item: PlanItem, leadId: string
   const { data: created, error } = await admin.from("pacientes").insert({
     nome: item.paciente_nome,
     telefone: item.telefone || "",
-    cidade: item.clinica_nome,
+    cidade: cidadeDaClinica(item.clinica_nome),
     origem: origemPaciente,
     tenant_id: RIZODENT_TENANT_ID,
   }).select("id").single();
