@@ -24,6 +24,7 @@ import SlashCommandMenu from "./SlashCommandMenu";
 import AudioRecorderComposer from "./AudioRecorderComposer";
 import EmojiPickerButton from "./EmojiPickerButton";
 import { convertAudioBlobToInstagramWav } from "@/lib/audioConverter";
+import StickerGalleryPopover from "./StickerGalleryPopover";
 
 const getInvokeErrorMessage = (data: any, error: any) => {
   if (data?.user_message) return data.user_message;
