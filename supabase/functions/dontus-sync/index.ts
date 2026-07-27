@@ -745,29 +745,56 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
             }
           }
           if (!existing) {
-            const norm = normalizeName(item.paciente_nome);
-            if (norm) {
-              const { data } = await admin.from("crm_leads")
-                .select("id, name, pipeline_id, stage_id")
+            // Match por NOME sem janela: antes varria só os 1000 leads mais
+            // recentes (base tem ~7000), então lead antigo nunca era encontrado
+            // e o sync criava DUPLICATA.
+            const nomeRaw = String(item.paciente_nome || "").trim();
+            const norm = normalizeName(nomeRaw);
+            if (norm && nomeRaw) {
+              const { data: exact } = await admin.from("crm_leads")
+                .select("id, name, phone, pipeline_id, stage_id")
                 .eq("tenant_id", RIZODENT_TENANT_ID)
-                .order("created_at", { ascending: false }).limit(1000);
-              existing = (data || []).find((l: any) => normalizeName(l.name) === norm) || null;
+                .ilike("name", nomeRaw)
+                .limit(20);
+              existing = (exact || []).find((l: any) => normalizeName(l.name) === norm) || null;
+
+              if (!existing) {
+                const toks = nomeRaw.split(/\s+/).filter(Boolean);
+                if (toks.length >= 2) {
+                  const { data: cand } = await admin.from("crm_leads")
+                    .select("id, name, phone, pipeline_id, stage_id")
+                    .eq("tenant_id", RIZODENT_TENANT_ID)
+                    .ilike("name", `${toks[0]}%${toks[toks.length - 1]}`)
+                    .limit(200);
+                  existing = (cand || []).find((l: any) => normalizeName(l.name) === norm) || null;
+                }
+              }
             }
           }
 
           if (existing) {
             leadId = existing.id;
+            // Se o lead achado tem telefone e o item não, adota o do lead.
+            if (!item.telefone && existing.phone) item.telefone = existing.phone;
           } else {
+            // NUNCA criar lead sem telefone: sem ele não há como deduplicar
+            // depois (foi o que gerou as duplicatas de 23–25/07). Sem telefone,
+            // pula o item — o dontus_key garante que ele será reprocessado no
+            // próximo run, quando a API voltar a devolver o telefone.
+            if (!item.telefone) {
+              (c as any).ignorados = ((c as any).ignorados || 0) + 1;
+              continue;
+            }
             mainPipeline = mainPipeline || await findMainPipelineContratado(admin);
             if (!mainPipeline) throw new Error("pipeline principal com etapa Contratado não encontrado");
             const ins = await admin.from("crm_leads").insert({
               tenant_id: RIZODENT_TENANT_ID,
               name: item.paciente_nome,
-              phone: item.telefone || null,
+              phone: item.telefone,
               source: "kommo",
               pipeline_id: mainPipeline.pipeline_id,
               stage_id: mainPipeline.stage_id,
-              cidade: item.clinica_nome,
+              cidade: cidadeDaClinica(item.clinica_nome),
             }).select("id").single();
             if (ins.error) throw new Error(`criar lead falhou: ${ins.error.message}`);
             leadId = ins.data.id;
