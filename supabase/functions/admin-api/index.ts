@@ -1241,7 +1241,7 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
     .map(([dia, v]) => ({ dia, ...v }));
 
   const ligacoes = {
-    feitas, recebidas, atendidas, recusadas, perdidas,
+    feitas, recebidas, atendidas, recusadas, perdidas, nao_atendidas,
     total: rows.length,
     duracao_media_seg: durCount > 0 ? Math.round(durSum / durCount) : 0,
     por_dia,
