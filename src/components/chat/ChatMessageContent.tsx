@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Mic, File as FileIcon, Image, ExternalLink, Phone, PhoneIncoming, PhoneMissed, PhoneOff, Film, BookOpen, Share2 } from "lucide-react";
+import { Mic, File as FileIcon, Image, ExternalLink, Phone, PhoneIncoming, PhoneMissed, PhoneOff, Film, BookOpen, Share2, Star } from "lucide-react";
 import { cleanTemplateName } from "@/lib/templateUtils";
 import AudioPlayer from "./AudioPlayer";
 import AudioTranscriptionToggle from "./AudioTranscriptionToggle";
@@ -7,6 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSignedMediaUrl, extractStoragePath } from "@/lib/mediaUtils";
 import { linkify } from "@/lib/linkify";
 import { LinkPreview } from "./LinkPreview";
+import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 // Detecta conteúdo especial do Instagram (reel, story reply, shared post)
 type IgSpecialKind = "reel" | "story" | "share";
