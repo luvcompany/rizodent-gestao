@@ -1405,6 +1405,7 @@ Deno.serve(async (req) => {
       if (parts[1] === "by-source") return await reportBySource(tenantId, p);
       if (parts[1] === "financeiro") return await reportFinanceiro(tenantId, p);
       if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
+      if (parts[1] === "ligacoes") return await reportLigacoes(tenantId, p);
     }
     if (parts[0] === "templates") {
       if (parts[1] === "upload-media" && req.method === "POST") return await templatesUploadMedia(tenantId, body);
