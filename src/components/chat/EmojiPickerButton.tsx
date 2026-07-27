@@ -69,6 +69,10 @@ export default function EmojiPickerButton({
     if (!open) {
       setConfirmDeleteId(null);
       setQuery("");
+      // Reseta o cache ao fechar: a estrela que salva a figurinha fica em OUTRO
+      // componente (ChatMessageContent), então sem isso a galeria continuaria
+      // mostrando a lista antiga (bug: figurinha salva não aparecia).
+      setLoaded(false);
     }
   }, [open, tab, stickersEnabled, loaded, load]);
 
