@@ -1,0 +1,1 @@
+ALTER TABLE public.dontus_paciente_seen ADD COLUMN IF NOT EXISTS primeira_data_orto date;
