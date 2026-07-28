@@ -1207,15 +1207,37 @@ async function syncClinica(
     console.error(`[dontus-sync] leitura do cache de telefones falhou:`, e?.message || e);
   }
 
-  // Agrupar orto por paciente/dia
-  const ortoDayHasStart = new Map<string, boolean>(); // key = paciente_id_dontus|data
+  // Regra do dono (28/07/2026): orto só conta se o paciente NÃO tiver orto
+  // ANTERIOR no Dontus. Antes usávamos "tem PANORÂMICA/APARELHO no dia", que
+  // classificava errado quem começava tratamento sem esses serviços no lançamento.
+  const idsOrtoHoje = [...new Set(
+    (recebidos || [])
+      .filter((it: any) => String(it.especialidade || "").toUpperCase().includes("ORTO"))
+      .map((it: any) => Number(it.idPaciente))
+      .filter((n: number) => !!n),
+  )];
+  const primeiraOrtoPorPacienteHist = new Map<number, string>();
+  for (let i = 0; i < idsOrtoHoje.length; i += 200) {
+    const { data: hist } = await admin.from("dontus_paciente_seen")
+      .select("id_paciente_dontus, primeira_data_orto")
+      .in("id_paciente_dontus", idsOrtoHoje.slice(i, i + 200))
+      .not("primeira_data_orto", "is", null);
+    for (const h of (hist || [])) {
+      const id = Number(h.id_paciente_dontus);
+      const d = String(h.primeira_data_orto);
+      const atual = primeiraOrtoPorPacienteHist.get(id);
+      if (!atual || d < atual) primeiraOrtoPorPacienteHist.set(id, d);
+    }
+  }
+  // true = é INÍCIO de tratamento (conta). false = mensalidade (não conta).
+  const ortoDayHasStart = new Map<string, boolean>();
   for (const it of recebidos) {
-    const esp = String(it.especialidade || "").toUpperCase();
-    if (!esp.includes("ORTO")) continue;
-    const svc = String(it.servico || "").toUpperCase();
-    const key = `${it.idPaciente}|${it.dataRecebimento}`;
-    if (svc.includes("PANOR") || svc.includes("APARELHO")) ortoDayHasStart.set(key, true);
-    else if (!ortoDayHasStart.has(key)) ortoDayHasStart.set(key, false);
+    if (!String(it.especialidade || "").toUpperCase().includes("ORTO")) continue;
+    const idPac = Number(it.idPaciente);
+    const dataPag = String(it.dataRecebimento || "").slice(0, 10);
+    const primeira = primeiraOrtoPorPacienteHist.get(idPac);
+    const temOrtoAntes = !!primeira && primeira < dataPag;
+    ortoDayHasStart.set(`${idPac}|${it.dataRecebimento}`, !temOrtoAntes);
   }
 
   const clinicaId = clinicaInfo.id;
