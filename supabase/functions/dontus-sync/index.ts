@@ -843,8 +843,13 @@ async function reconcileRemovidosNoDontus(
         const { count } = await admin.from("pagamentos")
           .select("id", { count: "exact", head: true }).eq("paciente_id", p.paciente_id);
         if ((count ?? 0) === 0) {
-          const { data: leads } = await admin.from("crm_leads")
-            .select("id").eq("tenant_id", RIZODENT_TENANT_ID).eq("paciente_id", p.paciente_id);
+          const { data: links } = await admin.from("crm_lead_pacientes")
+            .select("lead_id").eq("paciente_id", p.paciente_id);
+          const leadIds = Array.from(new Set((links || []).map((r: any) => r.lead_id).filter(Boolean)));
+          const { data: leads } = leadIds.length
+            ? await admin.from("crm_leads").select("id").eq("tenant_id", RIZODENT_TENANT_ID).in("id", leadIds)
+            : { data: [] as any[] };
+
           for (const l of (leads || [])) {
             const { count: msgs } = await admin.from("messages")
               .select("id", { count: "exact", head: true }).eq("lead_id", l.id);
