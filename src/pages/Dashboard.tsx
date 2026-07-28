@@ -415,11 +415,10 @@ const Dashboard = () => {
     };
   }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, dateFrom, dateTo, rangeBounds]);
 
-  // FATURAMENTO = TODOS os pagamentos do período (decisão do dono, 27/07/2026).
-  // Antes excluíamos manutenção de ortodontia (recorrencia_orto=true), o que
-  // fazia o Dashboard divergir da aba de Pacientes. Agora as duas telas somam
-  // exatamente a mesma coisa: tudo que está cadastrado no dia.
-  const pagamentosFat = filtered.pagamentos;
+  // Mensalidade de ortodontia (recorrencia_orto=true) NÃO entra no faturamento:
+  // é receita recorrente de paciente antigo, não venda nova. Quem começa
+  // tratamento (sem orto anterior no Dontus) entra normalmente.
+  const pagamentosFat = filtered.pagamentos.filter((p) => p.recorrencia_orto !== true);
   const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);
   const fatNovos = pagamentosFat.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
   const fatRecorrentes = pagamentosFat.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
