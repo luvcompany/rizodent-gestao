@@ -2743,6 +2743,45 @@ export type Database = {
         }
         Relationships: []
       }
+      dontus_pagamentos_removidos: {
+        Row: {
+          clinica_id: string | null
+          data_pagamento: string | null
+          dontus_key: string
+          id: string
+          motivo: string
+          paciente_id: string | null
+          paciente_nome: string | null
+          pagamento_id: string | null
+          removido_em: string
+          valor: number | null
+        }
+        Insert: {
+          clinica_id?: string | null
+          data_pagamento?: string | null
+          dontus_key: string
+          id?: string
+          motivo?: string
+          paciente_id?: string | null
+          paciente_nome?: string | null
+          pagamento_id?: string | null
+          removido_em?: string
+          valor?: number | null
+        }
+        Update: {
+          clinica_id?: string | null
+          data_pagamento?: string | null
+          dontus_key?: string
+          id?: string
+          motivo?: string
+          paciente_id?: string | null
+          paciente_nome?: string | null
+          pagamento_id?: string | null
+          removido_em?: string
+          valor?: number | null
+        }
+        Relationships: []
+      }
       dontus_seen_coverage: {
         Row: {
           clinica_id: string
