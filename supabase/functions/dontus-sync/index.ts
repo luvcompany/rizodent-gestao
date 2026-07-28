@@ -452,6 +452,7 @@ async function ensureDontusPacienteSeen(
   let windowsFailed = 0;
   let windowsOk = 0;
   const primeiraPorPaciente = new Map<number, string>();
+  const primeiraOrtoPorPaciente = new Map<number, string>();
 
   for (const rng of ranges) {
     let cursor = rng.ini;
@@ -473,6 +474,10 @@ async function ensureDontusPacienteSeen(
             if (!id || !d) continue;
             const prev = primeiraPorPaciente.get(id);
             if (!prev || d < prev) primeiraPorPaciente.set(id, d);
+            if (String(r.especialidade || "").toUpperCase().includes("ORTO")) {
+              const prevO = primeiraOrtoPorPaciente.get(id);
+              if (!prevO || d < prevO) primeiraOrtoPorPaciente.set(id, d);
+            }
           }
           windowsOk++;
         }
@@ -486,28 +491,36 @@ async function ensureDontusPacienteSeen(
 
   // Upsert das primeiras datas encontradas (mantém a MENOR data por conflito)
   if (primeiraPorPaciente.size) {
-    // Busca existentes para preservar min(primeira_data)
+    // Busca existentes para preservar min(primeira_data) e min(primeira_data_orto)
     const ids = Array.from(primeiraPorPaciente.keys());
     const existing = new Map<number, string>();
+    const existingOrto = new Map<number, string>();
     const CHUNK_Q = 500;
     for (let i = 0; i < ids.length; i += CHUNK_Q) {
       const slice = ids.slice(i, i + CHUNK_Q);
       const { data: exs } = await admin.from("dontus_paciente_seen")
-        .select("id_paciente_dontus, primeira_data")
+        .select("id_paciente_dontus, primeira_data, primeira_data_orto")
         .eq("clinica_id", clinicaId)
         .in("id_paciente_dontus", slice);
       for (const r of exs || []) {
         existing.set(Number(r.id_paciente_dontus), String(r.primeira_data));
+        if (r.primeira_data_orto) existingOrto.set(Number(r.id_paciente_dontus), String(r.primeira_data_orto));
       }
     }
 
     const rows = Array.from(primeiraPorPaciente.entries()).map(([id, d]) => {
       const prev = existing.get(id);
       const primeira = prev ? minIso(prev, d) : d;
+      const novoOrto = primeiraOrtoPorPaciente.get(id);
+      const prevOrto = existingOrto.get(id);
+      let primeiraOrto: string | null = null;
+      if (prevOrto && novoOrto) primeiraOrto = minIso(prevOrto, novoOrto);
+      else primeiraOrto = prevOrto || novoOrto || null;
       return {
         id_paciente_dontus: id,
         clinica_id: clinicaId,
         primeira_data: primeira,
+        primeira_data_orto: primeiraOrto,
         refreshed_on: today,
         updated_at: new Date().toISOString(),
       };
@@ -1194,15 +1207,37 @@ async function syncClinica(
     console.error(`[dontus-sync] leitura do cache de telefones falhou:`, e?.message || e);
   }
 
-  // Agrupar orto por paciente/dia
-  const ortoDayHasStart = new Map<string, boolean>(); // key = paciente_id_dontus|data
+  // Regra do dono (28/07/2026): orto só conta se o paciente NÃO tiver orto
+  // ANTERIOR no Dontus. Antes usávamos "tem PANORÂMICA/APARELHO no dia", que
+  // classificava errado quem começava tratamento sem esses serviços no lançamento.
+  const idsOrtoHoje = [...new Set(
+    (recebidos || [])
+      .filter((it: any) => String(it.especialidade || "").toUpperCase().includes("ORTO"))
+      .map((it: any) => Number(it.idPaciente))
+      .filter((n: number) => !!n),
+  )];
+  const primeiraOrtoPorPacienteHist = new Map<number, string>();
+  for (let i = 0; i < idsOrtoHoje.length; i += 200) {
+    const { data: hist } = await admin.from("dontus_paciente_seen")
+      .select("id_paciente_dontus, primeira_data_orto")
+      .in("id_paciente_dontus", idsOrtoHoje.slice(i, i + 200))
+      .not("primeira_data_orto", "is", null);
+    for (const h of (hist || [])) {
+      const id = Number(h.id_paciente_dontus);
+      const d = String(h.primeira_data_orto);
+      const atual = primeiraOrtoPorPacienteHist.get(id);
+      if (!atual || d < atual) primeiraOrtoPorPacienteHist.set(id, d);
+    }
+  }
+  // true = é INÍCIO de tratamento (conta). false = mensalidade (não conta).
+  const ortoDayHasStart = new Map<string, boolean>();
   for (const it of recebidos) {
-    const esp = String(it.especialidade || "").toUpperCase();
-    if (!esp.includes("ORTO")) continue;
-    const svc = String(it.servico || "").toUpperCase();
-    const key = `${it.idPaciente}|${it.dataRecebimento}`;
-    if (svc.includes("PANOR") || svc.includes("APARELHO")) ortoDayHasStart.set(key, true);
-    else if (!ortoDayHasStart.has(key)) ortoDayHasStart.set(key, false);
+    if (!String(it.especialidade || "").toUpperCase().includes("ORTO")) continue;
+    const idPac = Number(it.idPaciente);
+    const dataPag = String(it.dataRecebimento || "").slice(0, 10);
+    const primeira = primeiraOrtoPorPacienteHist.get(idPac);
+    const temOrtoAntes = !!primeira && primeira < dataPag;
+    ortoDayHasStart.set(`${idPac}|${it.dataRecebimento}`, !temOrtoAntes);
   }
 
   const clinicaId = clinicaInfo.id;

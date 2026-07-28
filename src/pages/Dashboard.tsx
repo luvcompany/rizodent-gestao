@@ -415,11 +415,10 @@ const Dashboard = () => {
     };
   }, [clinicaFiltro, canalFiltro, pagamentos, tratamentos, pacientes, dateFrom, dateTo, rangeBounds]);
 
-  // FATURAMENTO = TODOS os pagamentos do período (decisão do dono, 27/07/2026).
-  // Antes excluíamos manutenção de ortodontia (recorrencia_orto=true), o que
-  // fazia o Dashboard divergir da aba de Pacientes. Agora as duas telas somam
-  // exatamente a mesma coisa: tudo que está cadastrado no dia.
-  const pagamentosFat = filtered.pagamentos;
+  // Mensalidade de ortodontia (recorrencia_orto=true) NÃO entra no faturamento:
+  // é receita recorrente de paciente antigo, não venda nova. Quem começa
+  // tratamento (sem orto anterior no Dontus) entra normalmente.
+  const pagamentosFat = filtered.pagamentos.filter((p) => p.recorrencia_orto !== true);
   const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);
   const fatNovos = pagamentosFat.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
   const fatRecorrentes = pagamentosFat.filter((p) => p.tipo === "recorrente").reduce((s, p) => s + Number(p.valor), 0);
@@ -585,7 +584,7 @@ const Dashboard = () => {
   { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp, subtitle: canalFiltro !== "todos" ? "Pagamentos do período de pacientes do canal selecionado" : "Pagamentos recebidos no período" },
   { title: "Fat. Novos Leads", value: formatCurrency(fatNovos), icon: Users, subtitle: "Primeiro pagamento" },
   { title: "Fat. Recorrentes", value: formatCurrency(fatRecorrentes), icon: DollarSign, subtitle: "Pagamentos recorrentes" },
-  { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign, subtitle: "Faturamento ÷ dias úteis até o último dia com lançamento" },
+  { title: "Ticket Médio Diário", value: formatCurrency(ticketMedio), icon: DollarSign, subtitle: "Faturamento (exclui mensalidade de orto) ÷ dias úteis" },
   ...(isCurrentMonthSelected
     ? [{ title: "Previsão Mensal", value: formatCurrency(projecaoMensal), icon: TrendingUp, subtitle: `${diasUteisMes} dias úteis no mês` }]
     : []),

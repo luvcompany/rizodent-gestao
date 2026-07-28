@@ -2696,6 +2696,7 @@ export type Database = {
           id: number
           id_paciente_dontus: number
           primeira_data: string
+          primeira_data_orto: string | null
           refreshed_on: string
           updated_at: string
         }
@@ -2705,6 +2706,7 @@ export type Database = {
           id?: number
           id_paciente_dontus: number
           primeira_data: string
+          primeira_data_orto?: string | null
           refreshed_on?: string
           updated_at?: string
         }
@@ -2714,6 +2716,7 @@ export type Database = {
           id?: number
           id_paciente_dontus?: number
           primeira_data?: string
+          primeira_data_orto?: string | null
           refreshed_on?: string
           updated_at?: string
         }

@@ -34,7 +34,7 @@ const Pacientes = () => {
 
       const [{ data: pacs }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
         supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
-        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id, tipo").order("data_pagamento", { ascending: false }),
+        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id, tipo, recorrencia_orto").order("data_pagamento", { ascending: false }),
         supabase.from("clinicas").select("id, nome"),
       ]);
 
@@ -50,8 +50,14 @@ const Pacientes = () => {
       })();
       const pagamentosValidos = (pagamentos || []).filter((p: any) => !p.data_pagamento || p.data_pagamento <= hojeLocal);
 
+      // Mensalidade de ortodontia (recorrencia_orto=true) NÃO soma no valor
+      // exibido — a mesma regra do Dashboard, pra as duas telas baterem.
+      // O paciente continua aparecendo na lista normalmente.
+      const isFat = (p: any) => p.recorrencia_orto !== true;
+
       const contratadoMap = new Map<string, number>();
       pagamentosValidos.forEach((p: any) => {
+        if (!isFat(p)) return;
         contratadoMap.set(p.paciente_id, (contratadoMap.get(p.paciente_id) || 0) + Number(p.valor || 0));
       });
 
@@ -86,12 +92,15 @@ const Pacientes = () => {
           if (pags.length === 0) continue;
         }
 
+        const pagsFat = pags.filter(isFat);
         const valorContratado = periodActive
-          ? pags.reduce((s: number, pg: any) => s + Number(pg.valor || 0), 0)
+          ? pagsFat.reduce((s: number, pg: any) => s + Number(pg.valor || 0), 0)
           : valorContratadoTotal;
-        // pags[0] é o pagamento mais recente porque o select já ordena por data_pagamento DESC
+        // pags[0] é o pagamento mais recente porque o select já ordena por data_pagamento DESC.
+        // "Última visita" reflete qualquer pagamento; "Último pagamento" (valor exibido)
+        // considera só faturamento (exclui mensalidade de orto).
         const ultimaVisita = pags[0]?.data_pagamento || null;
-        const ultimoValorPago = pags[0]?.valor != null ? Number(pags[0].valor) : null;
+        const ultimoValorPago = pagsFat[0]?.valor != null ? Number(pagsFat[0].valor) : null;
         const clinicaNome = pags[0]?.clinica_id ? clinicaMap.get(pags[0].clinica_id) || null : null;
         const isRecorrente = (pagMap.get(p.id) || []).some((pg: any) => pg.tipo === "recorrente");
 
