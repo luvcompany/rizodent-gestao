@@ -501,16 +501,16 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
 
   // pagamentos do tenant (a tabela NÃO tem tenant_id — escopo via clinica_id
   // ∈ clinicas do tenant), paginando além do cap de 1000 linhas do PostgREST.
-  // FATURAMENTO = TODOS os pagamentos do período (decisão do dono, 27/07/2026).
-  // Antes excluíamos recorrência de ortodontia aqui; isso fazia este relatório
-  // divergir da aba de Pacientes e do Dashboard. Agora todos somam a mesma base.
-  // (A função contratadosCanonicos CONTINUA excluindo recorrencia_orto: uma
-  // manutenção não pode fazer um paciente contar como "novo contratado".)
+  // FATURAMENTO exclui mensalidade de ortodontia (recorrencia_orto=true).
+  // A classificação início-vs-mensalidade vem do histórico de orto no Dontus
+  // (regra do dono, 28/07/2026): só é "início de tratamento" quem NÃO tem
+  // pagamento de orto anterior — mensalidade não conta como receita nova.
   const pagamentos = pagClinicaIds.length
     ? await fetchAllPaged<any>(
         () => admin.from("pagamentos")
           .select("id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade")
           .in("clinica_id", pagClinicaIds)
+          .eq("recorrencia_orto", false)
           .gte("data_pagamento", from).lte("data_pagamento", to),
         "id",
       )
