@@ -783,6 +783,89 @@ async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados:
   return out;
 }
 
+// Remove do CRClin os pagamentos que o sync importou e que NÃO existem mais no
+// Dontus (recepção corrigiu/apagou depois do import). Usa a lista `recebidos`
+// que o syncClinica já buscou — nenhuma chamada extra à API.
+const MAX_REMOCOES_POR_RUN = 25; // trava anti-catástrofe
+
+async function reconcileRemovidosNoDontus(
+  admin: any,
+  clinicaId: string,
+  date: string,
+  recebidos: any[],
+): Promise<{ removidos: number; alerta: string | null }> {
+  if (!Array.isArray(recebidos)) return { removidos: 0, alerta: "recebidos inválido" };
+  if (date < MIN_PAYMENT_DATE) return { removidos: 0, alerta: null };
+
+  const chavesNoDontus = new Set<string>();
+  for (const it of recebidos) {
+    const idConta = Number(it.idContaReceberPaciente);
+    const idPag = Number(it.idPagamento);
+    const parcela = Number(it.parcela ?? 1);
+    chavesNoDontus.add(`${idConta}-${idPag}-${parcela}`);
+  }
+
+  const { data: noCrclin, error } = await admin
+    .from("pagamentos")
+    .select("id, dontus_key, valor, paciente_id, data_pagamento")
+    .eq("clinica_id", clinicaId)
+    .eq("data_pagamento", date)
+    .not("dontus_key", "is", null);
+  if (error) return { removidos: 0, alerta: `leitura falhou: ${error.message}` };
+
+  const orfaos = (noCrclin || []).filter((p: any) => !chavesNoDontus.has(p.dontus_key));
+  if (orfaos.length === 0) return { removidos: 0, alerta: null };
+
+  if (orfaos.length > MAX_REMOCOES_POR_RUN) {
+    console.error(`[dontus-sync] ${orfaos.length} pagamentos sumiram do Dontus em ${clinicaId}/${date} — acima do limite, NADA foi removido`);
+    return { removidos: 0, alerta: `${orfaos.length} ausentes (acima do limite ${MAX_REMOCOES_POR_RUN}) — conferir manualmente` };
+  }
+
+  let removidos = 0;
+  for (const p of orfaos) {
+    try {
+      let nome: string | null = null;
+      if (p.paciente_id) {
+        const { data: pac } = await admin.from("pacientes").select("nome").eq("id", p.paciente_id).maybeSingle();
+        nome = pac?.nome ?? null;
+      }
+      await admin.from("dontus_pagamentos_removidos").insert({
+        dontus_key: p.dontus_key, pagamento_id: p.id, paciente_id: p.paciente_id,
+        paciente_nome: nome, clinica_id: clinicaId, valor: p.valor,
+        data_pagamento: p.data_pagamento, motivo: "ausente_no_dontus",
+      });
+      await admin.from("pagamentos").delete().eq("id", p.id);
+      removidos++;
+
+      // Limpeza conservadora: se o paciente ficou SEM nenhum pagamento, o lead
+      // que o sync criou vira ruído. Só apaga lead sem conversa e sem agendamento.
+      if (p.paciente_id) {
+        const { count } = await admin.from("pagamentos")
+          .select("id", { count: "exact", head: true }).eq("paciente_id", p.paciente_id);
+        if ((count ?? 0) === 0) {
+          const { data: leads } = await admin.from("crm_leads")
+            .select("id").eq("tenant_id", RIZODENT_TENANT_ID).eq("paciente_id", p.paciente_id);
+          for (const l of (leads || [])) {
+            const { count: msgs } = await admin.from("messages")
+              .select("id", { count: "exact", head: true }).eq("lead_id", l.id);
+            const { count: appts } = await admin.from("crm_appointments")
+              .select("id", { count: "exact", head: true }).eq("lead_id", l.id);
+            if ((msgs ?? 0) === 0 && (appts ?? 0) === 0) {
+              await admin.from("crm_lead_pacientes").delete().eq("lead_id", l.id);
+              await admin.from("crm_leads").delete().eq("id", l.id);
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error(`[dontus-sync] falha ao remover ${p.dontus_key}:`, e?.message || e);
+    }
+  }
+  console.log(`[dontus-sync] reconciliação: ${removidos} pagamento(s) removido(s) (${clinicaId}/${date})`);
+  return { removidos, alerta: null };
+}
+
+
 async function executePlan(admin: any, plan: PlanItem[]): Promise<{
   importados: number; adotados: number; leads_criados: number;
   movidos: number; notificacoes: number; erros: number; erros_det: any[];
