@@ -21,6 +21,15 @@ const corsHeaders = {
 const DONTUS_BASE = "https://one.dontus.com.br";
 const DONTUS_ID = 210380;
 const MIN_PAYMENT_DATE = "2026-07-23"; // sync não processa pagamentos anteriores a esta data
+
+// Regra "base do Kommo" DESLIGADA em 28/07/2026 por decisão do dono.
+// Ela marcava como marketing qualquer pagamento cujo telefone estivesse em
+// `kommo_contatos`, sobrepondo a origem informada pelo próprio Dontus
+// (FACHADA/INDICAÇÃO). Com o cache de telefones dando telefone a todos os
+// pacientes, virou fonte de falso positivo em massa (27/07: R$ 2.070 indevidos).
+// A elegibilidade agora depende só de: origem KOMMO no Dontus OU match com um
+// lead real do CRM (telefone/nome). Para religar, basta voltar para `true`.
+const KOMMO_BASE_ENABLED = false;
 const REDIRECT_URI = "http://localhost:8976/callback";
 
 const CLINICA_MAP: Record<number, { id: string; nome: string }> = {
@@ -1125,20 +1134,22 @@ async function syncClinica(
   // e NÃO tiver lead no CRClin, mas o telefone bater aqui, tratamos como venda
   // de marketing (matched_by="kommo_base") — mesmo fluxo do KOMMO-sem-lead.
   const kommoBaseTails = new Set<string>();
-  try {
-    const PAGE = 1000;
-    let from = 0;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { data, error } = await admin.from("kommo_contatos")
-        .select("phone_tail").range(from, from + PAGE - 1);
-      if (error) break;
-      const rows = data || [];
-      for (const r of rows) kommoBaseTails.add(String(r.phone_tail));
-      if (rows.length < PAGE) break;
-      from += PAGE;
-    }
-  } catch (_) { /* best-effort */ }
+  if (KOMMO_BASE_ENABLED) {
+    try {
+      const PAGE = 1000;
+      let from = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { data, error } = await admin.from("kommo_contatos")
+          .select("phone_tail").range(from, from + PAGE - 1);
+        if (error) break;
+        const rows = data || [];
+        for (const r of rows) kommoBaseTails.add(String(r.phone_tail));
+        if (rows.length < PAGE) break;
+        from += PAGE;
+      }
+    } catch (_) { /* best-effort */ }
+  }
 
 
 
@@ -1272,7 +1283,7 @@ async function syncClinica(
         // Base do Kommo (CRM antigo): se o telefone do paciente está lá,
         // reconhecemos como venda de marketing e seguimos o fluxo KOMMO-sem-lead.
         const tailKB = telefone ? tailPhone(telefone) : "";
-        if (tailKB && kommoBaseTails.has(tailKB)) {
+        if (KOMMO_BASE_ENABLED && tailKB && kommoBaseTails.has(tailKB)) {
           matched_by = "kommo_base";
           notification = "Venda reconhecida pela base do Kommo (telefone) — sem marcação KOMMO no Dontus — conferir";
           // segue o fluxo (não faz skip); item continua sem leadRow
