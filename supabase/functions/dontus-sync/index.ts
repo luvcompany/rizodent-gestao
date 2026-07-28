@@ -21,6 +21,15 @@ const corsHeaders = {
 const DONTUS_BASE = "https://one.dontus.com.br";
 const DONTUS_ID = 210380;
 const MIN_PAYMENT_DATE = "2026-07-23"; // sync não processa pagamentos anteriores a esta data
+
+// Regra "base do Kommo" DESLIGADA em 28/07/2026 por decisão do dono.
+// Ela marcava como marketing qualquer pagamento cujo telefone estivesse em
+// `kommo_contatos`, sobrepondo a origem informada pelo próprio Dontus
+// (FACHADA/INDICAÇÃO). Com o cache de telefones dando telefone a todos os
+// pacientes, virou fonte de falso positivo em massa (27/07: R$ 2.070 indevidos).
+// A elegibilidade agora depende só de: origem KOMMO no Dontus OU match com um
+// lead real do CRM (telefone/nome). Para religar, basta voltar para `true`.
+const KOMMO_BASE_ENABLED = false;
 const REDIRECT_URI = "http://localhost:8976/callback";
 
 const CLINICA_MAP: Record<number, { id: string; nome: string }> = {
