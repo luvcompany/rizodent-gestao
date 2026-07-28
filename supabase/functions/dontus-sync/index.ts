@@ -1605,6 +1605,8 @@ async function syncClinica(
     importados: number; adotados: number; leads_criados: number;
     movidos: number; notificacoes: number; erros: number; erros_det: any[];
   } | null = null;
+  let reconciliacaoRemovidos = 0;
+  let reconciliacaoAlerta: string | null = null;
   if (!dryRun) {
     exec = await executePlan(admin, plan);
     summary.execucao = {
@@ -1617,7 +1619,17 @@ async function syncClinica(
       erros: exec.erros,
       erros_det: exec.erros_det,
     };
+    try {
+      const rec = await reconcileRemovidosNoDontus(admin, clinicaId, date, recebidos);
+      reconciliacaoRemovidos = rec.removidos;
+      reconciliacaoAlerta = rec.alerta;
+    } catch (e: any) {
+      console.error("[dontus-sync] reconcileRemovidosNoDontus falhou:", e?.message || e);
+    }
+    summary.removidos_ausentes_no_dontus = reconciliacaoRemovidos;
+    summary.reconciliacao_alerta = reconciliacaoAlerta;
   }
+
 
   // Registrar run com números reais quando aplicável.
   await admin.from("dontus_sync_runs").insert({
