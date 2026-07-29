@@ -88,6 +88,10 @@ const Atendimento = () => {
   const [origem, setOrigem] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [origemOutrosDesc, setOrigemOutrosDesc] = useState("");
+  const [creativeKeyDeclarado, setCreativeKeyDeclarado] = useState<string | null>(null);
+  const [criativoOpcoes, setCriativoOpcoes] = useState<CriativoOpcao[]>([]);
+  const [criativoOpen, setCriativoOpen] = useState(false);
+  const [criativoLoading, setCriativoLoading] = useState(false);
   const [tipoPagamento, setTipoPagamento] = useState("primeiro");
   const [dataPagamento, setDataPagamento] = useState(() => todayLocalISO());
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
