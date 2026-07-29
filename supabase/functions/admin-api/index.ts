@@ -683,6 +683,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   if (!light) try {
     const dbUrl = Deno.env.get("SUPABASE_DB_URL");
     if (!dbUrl) throw new Error("SUPABASE_DB_URL indisponível");
+    if (!/^[0-9a-f-]{36}$/i.test(tenantId)) throw new Error("tenantId inválido");
     const pg = await import("https://deno.land/x/postgresjs@v3.4.4/mod.js");
     const sql = pg.default(dbUrl, { max: 1, prepare: false });
     try {
