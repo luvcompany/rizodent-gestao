@@ -932,16 +932,22 @@ Deno.serve(async (req) => {
                     adAccountName,
                   });
                 } catch (_e) { inferredCidadeForCache = null; }
-                await supabase.from("ad_id_mapping").upsert({
+                const cachePayload: Record<string, unknown> = {
                   ad_id: adSourceId,
-                  ad_account_id: adAccountId,
-                  ad_account_name: adAccountName,
-                  ...(adName ? { ad_name: adName } : {}),
-                  ad_headline: adHeadline,
-                  ad_body: adBody,
-                  cidade: inferredCidadeForCache,
                   updated_at: new Date().toISOString(),
-                }, { onConflict: "ad_id" });
+                };
+                if (adAccountId) cachePayload.ad_account_id = adAccountId;
+                if (adAccountName) cachePayload.ad_account_name = adAccountName;
+                if (adName) cachePayload.ad_name = adName;
+                if (adHeadline) cachePayload.ad_headline = adHeadline;
+                if (inferredCidadeForCache) cachePayload.cidade = inferredCidadeForCache;
+                // ad_body é a CHAVE DE AGRUPAMENTO do relatório: só grava se passar na sanidade
+                const corpoOk = typeof adBody === "string"
+                  && adBody.trim().length > 40
+                  && !adBody.includes("{{")
+                  && adBody.trim().toLowerCase() !== String(adAccountName ?? "").trim().toLowerCase();
+                if (corpoOk) cachePayload.ad_body = adBody;
+                await supabase.from("ad_id_mapping").upsert(cachePayload, { onConflict: "ad_id" });
                 console.log(`[AD-CACHE] UPSERT ad_id=${adSourceId} name=${adName} account=${adAccountName} cidade=${inferredCidadeForCache}`);
               } catch (upErr: any) {
                 console.log(`[AD-CACHE] erro upsert: ${upErr.message}`);
@@ -964,7 +970,7 @@ Deno.serve(async (req) => {
 
             let { data: leadRows } = await supabase
               .from("crm_leads")
-              .select("id, name, source, is_blocked")
+              .select("id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade")
               .eq("tenant_id", tenantId)
               .eq("phone", from)
               .order("created_at", { ascending: true })
@@ -1031,7 +1037,7 @@ Deno.serve(async (req) => {
                   // Save ad referral data if present
                   if (referral) {
                     if (adHeadline) insertData.titulo_anuncio = adHeadline;
-                    if (adHeadline) insertData.nome_anuncio = adHeadline;
+                    if (adName) insertData.nome_anuncio = adName;
                     if (adBody) insertData.descricao_anuncio = adBody;
                     if (adImageUrl) insertData.imagem_origem = adImageUrl;
                     if (adSourceUrl) insertData.link_anuncio = adSourceUrl;
@@ -1094,14 +1100,18 @@ Deno.serve(async (req) => {
               if (referral) {
                 if (adHeadline) {
                   updates.titulo_anuncio = adHeadline;
-                  updates.nome_anuncio = adHeadline;
+                }
+                if (adName) {
+                  // nome_anuncio só recebe o NOME real do anúncio, nunca o headline
+                  updates.nome_anuncio = adName;
                 }
                 if (adBody) updates.descricao_anuncio = adBody;
                 if (adImageUrl) updates.imagem_origem = adImageUrl;
                 if (adSourceUrl) updates.link_anuncio = adSourceUrl;
-                if (adSourceId) updates.ad_id = adSourceId;
-                if (adAccountId) updates.ad_account_id = adAccountId;
-                if (adAccountName) updates.ad_account_name = adAccountName;
+                // Primeiro clique: só grava ad_id/conta se o lead ainda não tem
+                if (adSourceId && !lead.ad_id) updates.ad_id = adSourceId;
+                if (adAccountId && !lead.ad_account_id) updates.ad_account_id = adAccountId;
+                if (adAccountName && !lead.ad_account_name) updates.ad_account_name = adAccountName;
                 // Preencher cidade automaticamente apenas se o lead ainda não tiver cidade definida (preserva alteração manual)
                 let inferredCidade: string | null = null;
                 try {
