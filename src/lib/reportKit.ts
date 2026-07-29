@@ -467,6 +467,9 @@ export async function rptCriativosParaSelecao(
     n_contas: r.n_contas == null ? null : num(r.n_contas),
     ultimo_visto: r.ultimo_visto ?? null,
   }));
+}
+
+
 
 /** Pacientes contratados: primeiro pagamento (global) dentro do período. */
 export async function rptContratados(
