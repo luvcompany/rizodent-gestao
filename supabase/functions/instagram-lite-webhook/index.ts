@@ -443,6 +443,7 @@ async function persistMessage(opts: {
         return;
       }
     }
+    const ref = opts.referral ?? null;
     const { data: savedMsg } = await supabase.from("messages").insert({
       lead_id: leadId,
       tenant_id: opts.account.tenant_id,
@@ -459,6 +460,7 @@ async function persistMessage(opts: {
       instagram_post_thumbnail: isComment ? postThumbnail : null,
       instagram_post_permalink: isComment ? postPermalink : null,
       status: "received",
+      ...(ref?.adSourceId ? { ad_source_id: ref.adSourceId } : {}),
     }).select("id").maybeSingle();
     await supabase
       .from("crm_leads")
@@ -468,6 +470,40 @@ async function persistMessage(opts: {
         last_inbound_at: new Date().toISOString(),
       })
       .eq("id", leadId);
+
+    // Referral do anúncio (regras: primeiro clique + só sobrescreve campos vazios)
+    if (ref?.adSourceId) {
+      try {
+        const { data: leadRow } = await supabase
+          .from("crm_leads")
+          .select("ad_id, source, titulo_anuncio, descricao_anuncio, link_anuncio")
+          .eq("id", leadId)
+          .maybeSingle();
+        const updates: Record<string, unknown> = {};
+        if (!leadRow?.ad_id) updates.ad_id = ref.adSourceId;
+        if (ref.adHeadline && !leadRow?.titulo_anuncio) updates.titulo_anuncio = ref.adHeadline;
+        if (ref.adBody && !leadRow?.descricao_anuncio) updates.descricao_anuncio = ref.adBody;
+        if (ref.adSourceUrl && !leadRow?.link_anuncio) updates.link_anuncio = ref.adSourceUrl;
+        if (!leadRow?.source || String(leadRow.source).toLowerCase().startsWith("instagram")) {
+          updates.source = "instagram_ad";
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase.from("crm_leads").update(updates).eq("id", leadId);
+        }
+        const cachePayload: Record<string, unknown> = {
+          ad_id: ref.adSourceId,
+          updated_at: new Date().toISOString(),
+        };
+        if (ref.adHeadline) cachePayload.ad_headline = ref.adHeadline;
+        const corpoOk = typeof ref.adBody === "string"
+          && ref.adBody.trim().length > 40
+          && !ref.adBody.includes("{{");
+        if (corpoOk) cachePayload.ad_body = ref.adBody;
+        await supabase.from("ad_id_mapping").upsert(cachePayload, { onConflict: "ad_id" });
+      } catch (e) {
+        console.warn("[ig-lite] referral update error", e);
+      }
+    }
 
     // Fire-and-forget audio transcription
     if (!isComment && msgType === "audio" && savedMsg?.id) {
