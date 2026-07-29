@@ -1067,17 +1067,69 @@ const Dashboard = () => {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Faturamento por Anúncio">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={anuncioData} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
-              <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: ct.axisColor }} />
-              <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
-              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="value" fill="hsl(15,90%,45%)" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
-            </BarChart>
-          </ResponsiveContainer>
+        <ChartCard title="Faturamento por Criativo" subtitle={criativoSubtitle}>
+          {criativoMultiPeriod ? (
+            <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground text-center px-4">
+              Selecione um período contínuo para ver o faturamento por criativo
+            </div>
+          ) : criativoErro ? (
+            <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground text-center px-4">
+              Não foi possível carregar o faturamento por criativo
+            </div>
+          ) : !rpcCriativo ? (
+            <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">
+              Carregando…
+            </div>
+          ) : criativoTop.length === 0 ? (
+            <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground text-center px-4">
+              Nenhum faturamento atribuído a criativo no período
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={criativoTop} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: ct.axisColor }} />
+                <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
+                  cursor={false}
+                  formatter={(value: number, _n: string, entry: any) => {
+                    const p = entry?.payload ?? {};
+                    if (p.isOutros) return [formatCurrency(value), "Faturamento"];
+                    const partes: string[] = [];
+                    partes.push(`${p.pacientes ?? 0} pacientes`);
+                    if (p.contas != null) partes.push(`${p.contas} contas`);
+                    if (p.variantes != null) partes.push(`${p.variantes} variantes`);
+                    const linhas = [formatCurrency(value), partes.join(" · ")];
+                    if (Array.isArray(p.cidades) && p.cidades.length > 0 && (p.contas ?? 0) > 1) {
+                      linhas.push(`Rodou em: ${p.cidades.join(", ")}`);
+                    }
+                    return [linhas.join("\n"), "Faturamento"];
+                  }}
+                />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
+                  {criativoTop.map((d, i) => (
+                    <Cell key={i} fill={d.isOutros ? "hsl(220, 10%, 55%)" : COLORS[i % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          {!criativoMultiPeriod && !criativoErro && rpcCriativo && criativoTop.some((d) => !d.isOutros && (d.variantes ?? 0) > 1) && (
+            <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+              {criativoTop
+                .filter((d) => !d.isOutros && (d.variantes ?? 0) > 1)
+                .map((d) => (
+                  <span key={d.name} className="rounded bg-muted px-1.5 py-0.5">
+                    {d.name}: {d.variantes} vídeos
+                  </span>
+                ))}
+            </div>
+          )}
         </ChartCard>
+
 
         {showCanalChart &&
         <ChartCard title="Pacientes por Canal de Origem" subtitle="Pacientes com pagamento no período filtrado, por origem">
