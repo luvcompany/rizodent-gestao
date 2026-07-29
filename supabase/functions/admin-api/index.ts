@@ -686,11 +686,13 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     const pg = await import("https://deno.land/x/postgresjs@v3.4.4/mod.js");
     const sql = pg.default(dbUrl, { max: 1, prepare: false });
     try {
-      await sql.unsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
-      const rows = await sql.unsafe(
-        `SELECT * FROM public.rpt_faturamento_criativo($1::date, $2::date, $3::uuid, 90)`,
-        [from, to, clinicaId ?? null],
-      );
+      const rows = await sql.begin(async (tx: any) => {
+        await tx.unsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
+        return await tx.unsafe(
+          `SELECT * FROM public.rpt_faturamento_criativo($1::date, $2::date, $3::uuid, 90)`,
+          [from, to, clinicaId ?? null],
+        );
+      });
       porAnuncio = (rows || [])
         .map((r: any) => ({
           anuncio: r.criativo, // contrato antigo
