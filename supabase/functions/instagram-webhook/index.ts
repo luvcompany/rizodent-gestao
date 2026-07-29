@@ -578,6 +578,15 @@ Deno.serve(async (req: Request) => {
           if (!m?.message || m?.message?.is_echo) continue;
           const senderId = String(m?.sender?.id ?? "");
           if (!senderId || senderId === accountId) continue;
+          const rref = (m as any)?.message?.referral ?? (m as any)?.referral ?? (m as any)?.postback?.referral ?? null;
+          const referral = rref
+            ? {
+                adSourceId: rref?.ad_id ?? rref?.source_id ?? null,
+                adHeadline: rref?.headline ?? null,
+                adBody: rref?.body ?? null,
+                adSourceUrl: rref?.source_url ?? null,
+              }
+            : null;
           await persistMessage({
             account: acc,
             senderId,
@@ -590,6 +599,7 @@ Deno.serve(async (req: Request) => {
             igMessageId: m?.message?.mid ?? null,
             attachments: Array.isArray(m?.message?.attachments) ? m.message.attachments : [],
             replyToStoryUrl: m?.message?.reply_to?.story?.url ?? null,
+            referral,
           });
         }
 
