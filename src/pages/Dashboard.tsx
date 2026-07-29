@@ -19,9 +19,9 @@ import {
   classifyOrigemCanonica,
   rptContratados,
   rptFaturamentoOrigem,
-  rptFaturamentoAnuncio,
+  rptFaturamentoCriativo,
   type FaturamentoOrigemRow,
-  type FaturamentoAnuncioRow,
+  type FaturamentoCriativoRow,
 } from "@/lib/reportKit";
 
 const DateRangeFilter = lazy(() =>
@@ -348,7 +348,8 @@ const Dashboard = () => {
   // Faturamento por origem canônica (mesma fonte da aba Origem & Conversão) —
   // caixa do período por origem do lead do paciente. Reconcilia com o total.
   const [rpcCanalOrigem, setRpcCanalOrigem] = useState<FaturamentoOrigemRow[] | null>(null);
-  const [rpcAnuncio, setRpcAnuncio] = useState<FaturamentoAnuncioRow[] | null>(null);
+  const [rpcCriativo, setRpcCriativo] = useState<FaturamentoCriativoRow[] | null>(null);
+  const [criativoErro, setCriativoErro] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -373,11 +374,15 @@ const Dashboard = () => {
 
   useEffect(() => {
     let cancelled = false;
-    setRpcAnuncio(null);
-    if (dateFilter.preset === "multi" || !rangeReady) return; // período contíguo só / completo
-    rptFaturamentoAnuncio(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
-      .then((rows) => { if (!cancelled) setRpcAnuncio(rows); })
-      .catch((e) => console.warn("[Dashboard] rpt_faturamento_anuncio indisponível; usando cálculo local:", e));
+    setRpcCriativo(null);
+    setCriativoErro(null);
+    if (dateFilter.preset === "multi" || !rangeReady) return;
+    rptFaturamentoCriativo(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
+      .then((rows) => { if (!cancelled) setRpcCriativo(rows); })
+      .catch((e) => {
+        console.warn("[Dashboard] rpt_faturamento_criativo falhou:", e);
+        if (!cancelled) setCriativoErro(e?.message || "erro desconhecido");
+      });
     return () => { cancelled = true; };
   }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
@@ -792,28 +797,46 @@ const Dashboard = () => {
     ? rpcCanalOrigem.map((r) => ({ name: r.origem, pacientes: r.pacientes, faturamento: r.faturamento })).sort((a, b) => b.faturamento - a.faturamento)
     : origemDataLocal;
 
-  // Chart: Faturamento por Anúncio
-  const anuncioMap = new Map<string, number>();
-  filtered.pacientes.forEach((p) => {
-    if (!p.nome_anuncio) return;
-    const key = p.nome_anuncio.trim().toLowerCase();
-    const paid = pagamentosFat.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
-    anuncioMap.set(key, (anuncioMap.get(key) || 0) + paid);
-  });
-  // Keep original casing for display: use first occurrence
-  const anuncioDisplayNames = new Map<string, string>();
-  filtered.pacientes.forEach((p) => {
-    if (!p.nome_anuncio) return;
-    const key = p.nome_anuncio.trim().toLowerCase();
-    if (!anuncioDisplayNames.has(key)) anuncioDisplayNames.set(key, p.nome_anuncio.trim());
-  });
-  const anuncioDataLocal = Array.from(anuncioMap.entries()).map(([key, value]) => ({ name: anuncioDisplayNames.get(key) || key, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
-  // Fonte preferida: RPC canônica (rpt_faturamento_anuncio) — nome real do
-  // criativo (ad_name → nome_anuncio → ad_headline). Fallback: cálculo local.
-  const anuncioData = rpcAnuncio
-    ? rpcAnuncio.map((r) => ({ name: r.anuncio, value: Number(r.faturamento) })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6)
-    : anuncioDataLocal;
-
+  // Chart: Faturamento por Criativo — agrupa o mesmo criativo rodando entre unidades.
+  // Fonte única: RPC canônica (rpt_faturamento_criativo). Sem fallback local (nome_anuncio
+  // é texto digitado à mão e produz rótulos-lixo tipo "NÃO IDENTIFICADO"/"SEM ANÚNCIO").
+  const criativoMultiPeriod = dateFilter.preset === "multi";
+  const criativoTotalBruto = (rpcCriativo ?? []).reduce((s, r) => s + Number(r.faturamento || 0), 0);
+  const criativoTotalRastreado = (rpcCriativo ?? [])
+    .filter((r) => r.atribuido === true)
+    .reduce((s, r) => s + Number(r.faturamento || 0), 0);
+  const criativoPct = criativoTotalBruto > 0 ? Math.round((criativoTotalRastreado / criativoTotalBruto) * 100) : 0;
+  const fmtBRL0 = (v: number) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`;
+  const criativoSubtitle = rpcCriativo && criativoTotalBruto > 0
+    ? `${fmtBRL0(criativoTotalRastreado)} de ${fmtBRL0(criativoTotalBruto)} rastreados por criativo (${criativoPct}%)`
+    : undefined;
+  // Top 6 atribuídos + "Outros (N criativos)" na 7ª barra; não-atribuídos ficam fora do gráfico
+  // (eles já estão contados no subtítulo). "Sem anúncio vinculado" / "fora da janela" não viram barra.
+  const atribuidosOrdenados = (rpcCriativo ?? [])
+    .filter((r) => r.atribuido === true && Number(r.faturamento || 0) > 0)
+    .sort((a, b) => Number(b.faturamento) - Number(a.faturamento));
+  const criativoTop = atribuidosOrdenados.slice(0, 6).map((r) => ({
+    name: r.criativo,
+    value: Number(r.faturamento),
+    pacientes: Number(r.pacientes || 0),
+    contas: r.contas ?? 1,
+    variantes: r.variantes ?? 1,
+    cidades: r.cidades ?? [],
+    isOutros: false,
+  }));
+  const restoAtribuido = atribuidosOrdenados.slice(6);
+  if (restoAtribuido.length > 0) {
+    const somaResto = restoAtribuido.reduce((s, r) => s + Number(r.faturamento || 0), 0);
+    criativoTop.push({
+      name: `Outros (${restoAtribuido.length} criativos)`,
+      value: somaResto,
+      pacientes: restoAtribuido.reduce((s, r) => s + Number(r.pacientes || 0), 0),
+      contas: 0,
+      variantes: 0,
+      cidades: [],
+      isOutros: true,
+    });
+  }
 
 
   const showClinicaChart = clinicaFiltro === "todas";
@@ -822,6 +845,7 @@ const Dashboard = () => {
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando dados...</div>;
   }
+
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1043,17 +1067,69 @@ const Dashboard = () => {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Faturamento por Anúncio">
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={anuncioData} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
-              <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: ct.axisColor }} />
-              <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
-              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="value" fill="hsl(15,90%,45%)" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
-            </BarChart>
-          </ResponsiveContainer>
+        <ChartCard title="Faturamento por Criativo" subtitle={criativoSubtitle}>
+          {criativoMultiPeriod ? (
+            <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground text-center px-4">
+              Selecione um período contínuo para ver o faturamento por criativo
+            </div>
+          ) : criativoErro ? (
+            <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground text-center px-4">
+              Não foi possível carregar o faturamento por criativo
+            </div>
+          ) : !rpcCriativo ? (
+            <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">
+              Carregando…
+            </div>
+          ) : criativoTop.length === 0 ? (
+            <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground text-center px-4">
+              Nenhum faturamento atribuído a criativo no período
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={criativoTop} margin={{ top: 30, right: 10, left: 10, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
+                <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: ct.axisColor }} />
+                <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  labelStyle={tooltipLabelStyle}
+                  itemStyle={tooltipItemStyle}
+                  cursor={false}
+                  formatter={(value: number, _n: string, entry: any) => {
+                    const p = entry?.payload ?? {};
+                    if (p.isOutros) return [formatCurrency(value), "Faturamento"];
+                    const partes: string[] = [];
+                    partes.push(`${p.pacientes ?? 0} pacientes`);
+                    if (p.contas != null) partes.push(`${p.contas} contas`);
+                    if (p.variantes != null) partes.push(`${p.variantes} variantes`);
+                    const linhas = [formatCurrency(value), partes.join(" · ")];
+                    if (Array.isArray(p.cidades) && p.cidades.length > 0 && (p.contas ?? 0) > 1) {
+                      linhas.push(`Rodou em: ${p.cidades.join(", ")}`);
+                    }
+                    return [linhas.join("\n"), "Faturamento"];
+                  }}
+                />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
+                  {criativoTop.map((d, i) => (
+                    <Cell key={i} fill={d.isOutros ? "hsl(220, 10%, 55%)" : COLORS[i % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          {!criativoMultiPeriod && !criativoErro && rpcCriativo && criativoTop.some((d) => !d.isOutros && (d.variantes ?? 0) > 1) && (
+            <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+              {criativoTop
+                .filter((d) => !d.isOutros && (d.variantes ?? 0) > 1)
+                .map((d) => (
+                  <span key={d.name} className="rounded bg-muted px-1.5 py-0.5">
+                    {d.name}: {d.variantes} vídeos
+                  </span>
+                ))}
+            </div>
+          )}
         </ChartCard>
+
 
         {showCanalChart &&
         <ChartCard title="Pacientes por Canal de Origem" subtitle="Pacientes com pagamento no período filtrado, por origem">

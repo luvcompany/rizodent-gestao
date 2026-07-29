@@ -395,6 +395,54 @@ export async function rptFaturamentoAnuncio(
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Faturamento por CRIATIVO (agrupa o mesmo anúncio rodando em várias unidades)
+// ---------------------------------------------------------------------------
+
+export interface FaturamentoCriativoRow {
+  criativo_key: string | null;
+  criativo: string;
+  faturamento: number;
+  pacientes: number;
+  pagamentos: number;
+  ads_no_grupo: number | null;
+  ads_no_periodo: number;
+  contas: number | null;
+  cidades: string[] | null;
+  variantes: number | null;
+  atribuido: boolean;
+  origem_atribuicao: string;
+}
+
+/** Faturamento do período por criativo canônico (agrupa entre unidades). */
+export async function rptFaturamentoCriativo(
+  from: Date | string,
+  to: Date | string,
+  clinicaId?: string | null,
+  janelaDias = 90
+): Promise<FaturamentoCriativoRow[]> {
+  const rows = await callRpc<any[]>("rpt_faturamento_criativo", {
+    p_from: asDateParam(from),
+    p_to: asDateParam(to),
+    p_clinica_id: clinicaId ?? null,
+    p_janela_dias: janelaDias,
+  });
+  return (rows ?? []).map((r) => ({
+    criativo_key: r.criativo_key ?? null,
+    criativo: r.criativo,
+    faturamento: num(r.faturamento),
+    pacientes: num(r.pacientes),
+    pagamentos: num(r.pagamentos),
+    ads_no_grupo: r.ads_no_grupo == null ? null : num(r.ads_no_grupo),
+    ads_no_periodo: num(r.ads_no_periodo),
+    contas: r.contas == null ? null : num(r.contas),
+    cidades: Array.isArray(r.cidades) ? r.cidades : null,
+    variantes: r.variantes == null ? null : num(r.variantes),
+    atribuido: !!r.atribuido,
+    origem_atribuicao: String(r.origem_atribuicao ?? ""),
+  }));
+}
+
 /** Pacientes contratados: primeiro pagamento (global) dentro do período. */
 export async function rptContratados(
   from: Date | string,
