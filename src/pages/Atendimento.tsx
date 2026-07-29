@@ -409,10 +409,28 @@ const Atendimento = () => {
           }
         }
 
-        const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
+        // Se origem = Anúncio e a recepção escolheu um criativo, usamos o rótulo
+        // desse criativo como nome_anuncio (compat) e guardamos a chave em
+        // creative_key_declarado. "Não identificado" mantém nome_anuncio = null.
+        let nomeAnuncioFinal: string | null = null;
+        if (origem === "Anúncio") {
+          if (creativeKeyDeclarado) {
+            const opt = criativoOpcoes.find((o) => o.creative_key === creativeKeyDeclarado);
+            nomeAnuncioFinal = opt?.rotulo || null;
+          }
+        } else if (origem === "Outros") {
+          nomeAnuncioFinal = origemOutrosDesc || null;
+        }
         const { data: newPac, error } = await supabase
           .from("pacientes")
-          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncioFinal || null })
+          .insert({
+            nome,
+            telefone,
+            cidade: cidade || null,
+            origem: origem || null,
+            nome_anuncio: nomeAnuncioFinal || null,
+            creative_key_declarado: origem === "Anúncio" ? (creativeKeyDeclarado || null) : null,
+          } as any)
           .select("id")
           .single();
         if (error) throw error;
