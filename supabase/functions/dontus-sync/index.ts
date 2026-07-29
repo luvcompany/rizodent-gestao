@@ -1369,12 +1369,16 @@ async function syncClinica(
             const candidate = leads[0];
             const dddLead = phoneDDD(candidate?.phone);
             const dddOk = (!dddPag || !dddLead) ? true : (dddPag === dddLead);
-            if (dddOk) {
+            // Guardrail INDICAÇÃO: origem declarada como indicação NÃO vira
+            // vínculo de família — respeita a origem não-marketing informada
+            // no Dontus. Cai no fluxo antigo (conferência manual por conflito).
+            const isIndicaDeclarada = origem.startsWith("INDICA");
+            if (dddOk && !isIndicaDeclarada) {
               leadRow = candidate;
               matched_by = "phone_familia";
               is_family_link = true;
             } else {
-              // DDDs conhecidos e diferentes → não trata como família.
+              // DDDs conhecidos e diferentes, OU indicação declarada → não trata como família.
               phoneNameConflictLead = { id: candidate.id, name: String(candidate.name || "") };
             }
           }
