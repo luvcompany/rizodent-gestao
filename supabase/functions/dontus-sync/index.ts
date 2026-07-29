@@ -1240,6 +1240,23 @@ async function syncClinica(
     ortoDayHasStart.set(`${idPac}|${it.dataRecebimento}`, !temOrtoAntes);
   }
 
+  // Set com pacientes que têm AO MENOS UM pagamento que CONTA no dia
+  // (recorrencia_orto=false). Usado como guardrail do kommo_base: só reconhecer
+  // paciente pela base do Kommo se há venda de marketing "real" no dia — evita
+  // que uma manutenção de orto isolada seja atribuída a marketing.
+  // Chave: `${idPaciente}|${dataPag}`.
+  const pacienteHasCountingOnDay = new Set<string>();
+  for (const it of recebidos) {
+    const idPac = Number(it.idPaciente);
+    const dataPag = String(it.dataRecebimento || "").slice(0, 10);
+    if (!idPac || !dataPag) continue;
+    const isOrto = String(it.especialidade || "").toUpperCase().includes("ORTO");
+    const counts = isOrto
+      ? !!ortoDayHasStart.get(`${idPac}|${it.dataRecebimento}`)
+      : true;
+    if (counts) pacienteHasCountingOnDay.add(`${idPac}|${dataPag}`);
+  }
+
   const clinicaId = clinicaInfo.id;
 
   // Set de idPaciente vistos em data ANTERIOR a hoje no Dontus (fonte da verdade
