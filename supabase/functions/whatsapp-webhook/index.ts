@@ -970,7 +970,7 @@ Deno.serve(async (req) => {
 
             let { data: leadRows } = await supabase
               .from("crm_leads")
-              .select("id, name, source, is_blocked")
+              .select("id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade")
               .eq("tenant_id", tenantId)
               .eq("phone", from)
               .order("created_at", { ascending: true })
