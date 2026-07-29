@@ -1240,6 +1240,23 @@ async function syncClinica(
     ortoDayHasStart.set(`${idPac}|${it.dataRecebimento}`, !temOrtoAntes);
   }
 
+  // Set com pacientes que têm AO MENOS UM pagamento que CONTA no dia
+  // (recorrencia_orto=false). Usado como guardrail do kommo_base: só reconhecer
+  // paciente pela base do Kommo se há venda de marketing "real" no dia — evita
+  // que uma manutenção de orto isolada seja atribuída a marketing.
+  // Chave: `${idPaciente}|${dataPag}`.
+  const pacienteHasCountingOnDay = new Set<string>();
+  for (const it of recebidos) {
+    const idPac = Number(it.idPaciente);
+    const dataPag = String(it.dataRecebimento || "").slice(0, 10);
+    if (!idPac || !dataPag) continue;
+    const isOrto = String(it.especialidade || "").toUpperCase().includes("ORTO");
+    const counts = isOrto
+      ? !!ortoDayHasStart.get(`${idPac}|${it.dataRecebimento}`)
+      : true;
+    if (counts) pacienteHasCountingOnDay.add(`${idPac}|${dataPag}`);
+  }
+
   const clinicaId = clinicaInfo.id;
 
   // Set de idPaciente vistos em data ANTERIOR a hoje no Dontus (fonte da verdade
@@ -1352,12 +1369,16 @@ async function syncClinica(
             const candidate = leads[0];
             const dddLead = phoneDDD(candidate?.phone);
             const dddOk = (!dddPag || !dddLead) ? true : (dddPag === dddLead);
-            if (dddOk) {
+            // Guardrail INDICAÇÃO: origem declarada como indicação NÃO vira
+            // vínculo de família — respeita a origem não-marketing informada
+            // no Dontus. Cai no fluxo antigo (conferência manual por conflito).
+            const isIndicaDeclarada = origem.startsWith("INDICA");
+            if (dddOk && !isIndicaDeclarada) {
               leadRow = candidate;
               matched_by = "phone_familia";
               is_family_link = true;
             } else {
-              // DDDs conhecidos e diferentes → não trata como família.
+              // DDDs conhecidos e diferentes, OU indicação declarada → não trata como família.
               phoneNameConflictLead = { id: candidate.id, name: String(candidate.name || "") };
             }
           }
@@ -1406,7 +1427,18 @@ async function syncClinica(
         // Base do Kommo (CRM antigo): se o telefone do paciente está lá,
         // reconhecemos como venda de marketing e seguimos o fluxo KOMMO-sem-lead.
         const tailKB = telefone ? tailPhone(telefone) : "";
-        if (KOMMO_BASE_ENABLED && tailKB && kommoBaseTails.has(tailKB)) {
+        // Guardrails do kommo_base:
+        //  (a) NÃO ativa se origem declarada começa com "INDICA" (indicação
+        //      explícita não é marketing — respeitar);
+        //  (b) NÃO ativa se o paciente não tem NENHUM pagamento que CONTA no
+        //      dia (todos recorrencia_orto=true) — evita atribuir manutenção
+        //      isolada de orto a marketing.
+        const isIndicaDeclarada = origem.startsWith("INDICA");
+        const temPagamentoQueConta = pacienteHasCountingOnDay.has(`${idPaciente}|${dataPag}`);
+        const kommoBaseAtiva =
+          KOMMO_BASE_ENABLED && tailKB && kommoBaseTails.has(tailKB) &&
+          !isIndicaDeclarada && temPagamentoQueConta;
+        if (kommoBaseAtiva) {
           matched_by = "kommo_base";
           notification = "Venda reconhecida pela base do Kommo (telefone) — sem marcação KOMMO no Dontus — conferir";
           // segue o fluxo (não faz skip); item continua sem leadRow
