@@ -311,6 +311,12 @@ async function persistMessage(opts: {
   igMessageId: string | null;
   attachments?: Attachment[];
   replyToStoryUrl?: string | null;
+  referral?: {
+    adSourceId: string | null;
+    adHeadline: string | null;
+    adBody: string | null;
+    adSourceUrl: string | null;
+  } | null;
 }) {
   const profile = await fetchIgProfile(opts.senderId, opts.account.access_token);
   const finalName = profile.name ?? opts.senderName;
