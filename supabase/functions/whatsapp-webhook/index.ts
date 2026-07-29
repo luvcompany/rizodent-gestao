@@ -1037,7 +1037,7 @@ Deno.serve(async (req) => {
                   // Save ad referral data if present
                   if (referral) {
                     if (adHeadline) insertData.titulo_anuncio = adHeadline;
-                    if (adHeadline) insertData.nome_anuncio = adHeadline;
+                    if (adName) insertData.nome_anuncio = adName;
                     if (adBody) insertData.descricao_anuncio = adBody;
                     if (adImageUrl) insertData.imagem_origem = adImageUrl;
                     if (adSourceUrl) insertData.link_anuncio = adSourceUrl;
