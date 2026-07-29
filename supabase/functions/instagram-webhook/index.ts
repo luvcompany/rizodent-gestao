@@ -610,6 +610,15 @@ Deno.serve(async (req: Request) => {
           if (field === "messages") {
             const senderId = String(value?.sender?.id ?? value?.from?.id ?? "");
             if (!senderId || senderId === accountId) continue;
+            const rref = value?.message?.referral ?? value?.referral ?? value?.postback?.referral ?? null;
+            const referral = rref
+              ? {
+                  adSourceId: rref?.ad_id ?? rref?.source_id ?? null,
+                  adHeadline: rref?.headline ?? null,
+                  adBody: rref?.body ?? null,
+                  adSourceUrl: rref?.source_url ?? null,
+                }
+              : null;
             await persistMessage({
               account: acc,
               senderId,
@@ -626,6 +635,7 @@ Deno.serve(async (req: Request) => {
                   ? value.attachments
                   : [],
               replyToStoryUrl: value?.message?.reply_to?.story?.url ?? value?.reply_to?.story?.url ?? null,
+              referral,
             });
           } else if (field === "comments") {
             const senderId = String(value?.from?.id ?? "");
