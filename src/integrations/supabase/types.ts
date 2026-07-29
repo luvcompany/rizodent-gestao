@@ -115,6 +115,75 @@ export type Database = {
           },
         ]
       }
+      ad_creative_grupo: {
+        Row: {
+          atualizado_em: string
+          cidades: string[] | null
+          creative_key: string
+          n_ads: number | null
+          n_contas: number | null
+          n_variantes: number | null
+          rotulo: string | null
+          rotulo_manual: string | null
+          tema: string | null
+          tenant_id: string
+          ultimo_visto: string | null
+        }
+        Insert: {
+          atualizado_em?: string
+          cidades?: string[] | null
+          creative_key: string
+          n_ads?: number | null
+          n_contas?: number | null
+          n_variantes?: number | null
+          rotulo?: string | null
+          rotulo_manual?: string | null
+          tema?: string | null
+          tenant_id: string
+          ultimo_visto?: string | null
+        }
+        Update: {
+          atualizado_em?: string
+          cidades?: string[] | null
+          creative_key?: string
+          n_ads?: number | null
+          n_contas?: number | null
+          n_variantes?: number | null
+          rotulo?: string | null
+          rotulo_manual?: string | null
+          tema?: string | null
+          tenant_id?: string
+          ultimo_visto?: string | null
+        }
+        Relationships: []
+      }
+      ad_creative_override: {
+        Row: {
+          ad_id: string
+          creative_key: string
+          criado_em: string
+          criado_por: string | null
+          motivo: string | null
+          tenant_id: string
+        }
+        Insert: {
+          ad_id: string
+          creative_key: string
+          criado_em?: string
+          criado_por?: string | null
+          motivo?: string | null
+          tenant_id: string
+        }
+        Update: {
+          ad_id?: string
+          creative_key?: string
+          criado_em?: string
+          criado_por?: string | null
+          motivo?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       ad_id_mapping: {
         Row: {
           ad_account_id: string | null
@@ -123,10 +192,18 @@ export type Database = {
           ad_headline: string | null
           ad_id: string
           ad_name: string | null
+          campaign_id: string | null
+          catalogo_em: string | null
           cidade: string | null
           created_at: string
+          creative_id: string | null
+          creative_key: string | null
+          image_hash: string | null
           tenant_id: string | null
+          thumbnail_url: string | null
           updated_at: string
+          variant_key: string | null
+          video_id: string | null
         }
         Insert: {
           ad_account_id?: string | null
@@ -135,10 +212,18 @@ export type Database = {
           ad_headline?: string | null
           ad_id: string
           ad_name?: string | null
+          campaign_id?: string | null
+          catalogo_em?: string | null
           cidade?: string | null
           created_at?: string
+          creative_id?: string | null
+          creative_key?: string | null
+          image_hash?: string | null
           tenant_id?: string | null
+          thumbnail_url?: string | null
           updated_at?: string
+          variant_key?: string | null
+          video_id?: string | null
         }
         Update: {
           ad_account_id?: string | null
@@ -147,10 +232,18 @@ export type Database = {
           ad_headline?: string | null
           ad_id?: string
           ad_name?: string | null
+          campaign_id?: string | null
+          catalogo_em?: string | null
           cidade?: string | null
           created_at?: string
+          creative_id?: string | null
+          creative_key?: string | null
+          image_hash?: string | null
           tenant_id?: string | null
+          thumbnail_url?: string | null
           updated_at?: string
+          variant_key?: string | null
+          video_id?: string | null
         }
         Relationships: [
           {
@@ -3663,6 +3756,36 @@ export type Database = {
           },
         ]
       }
+      rpt_baseline_anuncio: {
+        Row: {
+          criado_em: string
+          faturamento: number | null
+          id: number
+          nota: string | null
+          periodo: string
+          rotulo: string | null
+          tenant_id: string
+        }
+        Insert: {
+          criado_em?: string
+          faturamento?: number | null
+          id?: number
+          nota?: string | null
+          periodo: string
+          rotulo?: string | null
+          tenant_id: string
+        }
+        Update: {
+          criado_em?: string
+          faturamento?: number | null
+          id?: number
+          nota?: string | null
+          periodo?: string
+          rotulo?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       tenant_api_keys: {
         Row: {
           active: boolean
@@ -4814,6 +4937,10 @@ export type Database = {
           valor_total_periodo: number
         }[]
       }
+      rpt_creative_key: {
+        Args: { p_ad_id: string; p_body: string; p_name: string }
+        Returns: string
+      }
       rpt_crm_message_activity: {
         Args: { p_from: string; p_to: string }
         Returns: {
@@ -4853,6 +4980,28 @@ export type Database = {
           faturamento: number
           pacientes: number
           pagamentos: number
+        }[]
+      }
+      rpt_faturamento_criativo: {
+        Args: {
+          p_clinica_id?: string
+          p_from: string
+          p_janela_dias?: number
+          p_to: string
+        }
+        Returns: {
+          ads_no_grupo: number
+          ads_no_periodo: number
+          atribuido: boolean
+          cidades: string[]
+          contas: number
+          criativo: string
+          criativo_key: string
+          faturamento: number
+          origem_atribuicao: string
+          pacientes: number
+          pagamentos: number
+          variantes: number
         }[]
       }
       rpt_faturamento_origem: {
