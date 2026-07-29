@@ -3495,6 +3495,7 @@ export type Database = {
         Row: {
           cidade: string | null
           created_at: string
+          creative_key_declarado: string | null
           email: string | null
           id: string
           nome: string
@@ -3507,6 +3508,7 @@ export type Database = {
         Insert: {
           cidade?: string | null
           created_at?: string
+          creative_key_declarado?: string | null
           email?: string | null
           id?: string
           nome: string
@@ -3519,6 +3521,7 @@ export type Database = {
         Update: {
           cidade?: string | null
           created_at?: string
+          creative_key_declarado?: string | null
           email?: string | null
           id?: string
           nome?: string
@@ -4940,6 +4943,16 @@ export type Database = {
       rpt_creative_key: {
         Args: { p_ad_id: string; p_body: string; p_name: string }
         Returns: string
+      }
+      rpt_criativos_para_selecao: {
+        Args: { p_cidade?: string; p_dias?: number }
+        Returns: {
+          cidades: string[]
+          creative_key: string
+          n_contas: number
+          rotulo: string
+          ultimo_visto: string
+        }[]
       }
       rpt_crm_message_activity: {
         Args: { p_from: string; p_to: string }

@@ -492,6 +492,7 @@ async function persistMessage(opts: {
         }
         const cachePayload: Record<string, unknown> = {
           ad_id: ref.adSourceId,
+          tenant_id: opts.account.tenant_id,
           updated_at: new Date().toISOString(),
         };
         if (ref.adHeadline) cachePayload.ad_headline = ref.adHeadline;

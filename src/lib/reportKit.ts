@@ -443,6 +443,34 @@ export async function rptFaturamentoCriativo(
   }));
 }
 
+export interface CriativoOpcao {
+  creative_key: string;
+  rotulo: string;
+  cidades: string[] | null;
+  n_contas: number | null;
+  ultimo_visto: string | null;
+}
+
+/** Lista de criativos ativos para seleção pela recepção. */
+export async function rptCriativosParaSelecao(
+  cidade?: string | null,
+  dias = 90,
+): Promise<CriativoOpcao[]> {
+  const rows = await callRpc<any[]>("rpt_criativos_para_selecao", {
+    p_cidade: cidade ?? null,
+    p_dias: dias,
+  });
+  return (rows ?? []).map((r) => ({
+    creative_key: String(r.creative_key ?? ""),
+    rotulo: String(r.rotulo ?? ""),
+    cidades: Array.isArray(r.cidades) ? r.cidades : null,
+    n_contas: r.n_contas == null ? null : num(r.n_contas),
+    ultimo_visto: r.ultimo_visto ?? null,
+  }));
+}
+
+
+
 /** Pacientes contratados: primeiro pagamento (global) dentro do período. */
 export async function rptContratados(
   from: Date | string,

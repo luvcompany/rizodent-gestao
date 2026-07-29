@@ -934,6 +934,7 @@ Deno.serve(async (req) => {
                 } catch (_e) { inferredCidadeForCache = null; }
                 const cachePayload: Record<string, unknown> = {
                   ad_id: adSourceId,
+                  tenant_id: tenantId,
                   updated_at: new Date().toISOString(),
                 };
                 if (adAccountId) cachePayload.ad_account_id = adAccountId;

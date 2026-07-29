@@ -6,11 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Save, Search, UserCheck, CalendarIcon, Plus, CreditCard, Trash2, UserPlus, Stethoscope } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Save, Search, UserCheck, CalendarIcon, Plus, CreditCard, Trash2, UserPlus, Stethoscope, Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
+import { rptCriativosParaSelecao, type CriativoOpcao } from "@/lib/reportKit";
+import { cn } from "@/lib/utils";
 
 const origens = ["Anúncio", "Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
@@ -84,6 +88,10 @@ const Atendimento = () => {
   const [origem, setOrigem] = useState("");
   const [nomeAnuncio, setNomeAnuncio] = useState("");
   const [origemOutrosDesc, setOrigemOutrosDesc] = useState("");
+  const [creativeKeyDeclarado, setCreativeKeyDeclarado] = useState<string | null>(null);
+  const [criativoOpcoes, setCriativoOpcoes] = useState<CriativoOpcao[]>([]);
+  const [criativoOpen, setCriativoOpen] = useState(false);
+  const [criativoLoading, setCriativoLoading] = useState(false);
   const [tipoPagamento, setTipoPagamento] = useState("primeiro");
   const [dataPagamento, setDataPagamento] = useState(() => todayLocalISO());
   const [sugestoes, setSugestoes] = useState<Tables<"pacientes">[]>([]);
@@ -199,6 +207,20 @@ const Atendimento = () => {
       setClinicaId(matches[0].id);
     }
   }, [cidade, clinicas, clinicaId]);
+
+  // Carrega criativos disponíveis para seleção quando origem = Anúncio.
+  useEffect(() => {
+    if (origem !== "Anúncio") return;
+    let cancelled = false;
+    setCriativoLoading(true);
+    rptCriativosParaSelecao(cidade || null, 90)
+      .then((opts) => { if (!cancelled) setCriativoOpcoes(opts); })
+      .catch(() => { if (!cancelled) setCriativoOpcoes([]); })
+      .finally(() => { if (!cancelled) setCriativoLoading(false); });
+    return () => { cancelled = true; };
+  }, [origem, cidade]);
+
+
 
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, "");
@@ -387,10 +409,28 @@ const Atendimento = () => {
           }
         }
 
-        const nomeAnuncioFinal = origem === "Anúncio" ? nomeAnuncio : origem === "Outros" ? origemOutrosDesc : null;
+        // Se origem = Anúncio e a recepção escolheu um criativo, usamos o rótulo
+        // desse criativo como nome_anuncio (compat) e guardamos a chave em
+        // creative_key_declarado. "Não identificado" mantém nome_anuncio = null.
+        let nomeAnuncioFinal: string | null = null;
+        if (origem === "Anúncio") {
+          if (creativeKeyDeclarado) {
+            const opt = criativoOpcoes.find((o) => o.creative_key === creativeKeyDeclarado);
+            nomeAnuncioFinal = opt?.rotulo || null;
+          }
+        } else if (origem === "Outros") {
+          nomeAnuncioFinal = origemOutrosDesc || null;
+        }
         const { data: newPac, error } = await supabase
           .from("pacientes")
-          .insert({ nome, telefone, cidade: cidade || null, origem: origem || null, nome_anuncio: nomeAnuncioFinal || null })
+          .insert({
+            nome,
+            telefone,
+            cidade: cidade || null,
+            origem: origem || null,
+            nome_anuncio: nomeAnuncioFinal || null,
+            creative_key_declarado: origem === "Anúncio" ? (creativeKeyDeclarado || null) : null,
+          } as any)
           .select("id")
           .single();
         if (error) throw error;
@@ -763,6 +803,7 @@ const Atendimento = () => {
                       setOrigem(v);
                       setNomeAnuncio("");
                       setOrigemOutrosDesc("");
+                      setCreativeKeyDeclarado(null);
                     }}
                   >
                     <SelectTrigger className="bg-secondary border-border">
@@ -779,13 +820,73 @@ const Atendimento = () => {
                 </div>
                 {origem === "Anúncio" && (
                   <div className="space-y-2">
-                    <Label>Nome do Anúncio</Label>
-                    <Input
-                      placeholder="Ex: Campanha Implante Jan"
-                      value={nomeAnuncio}
-                      onChange={(e) => setNomeAnuncio(e.target.value)}
-                      className="bg-secondary border-border"
-                    />
+                    <Label>Qual anúncio o paciente viu?</Label>
+                    <Popover open={criativoOpen} onOpenChange={setCriativoOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={criativoOpen}
+                          className="w-full justify-between bg-secondary border-border font-normal"
+                        >
+                          <span className="truncate">
+                            {creativeKeyDeclarado
+                              ? (criativoOpcoes.find((o) => o.creative_key === creativeKeyDeclarado)?.rotulo || "Criativo selecionado")
+                              : "Não identificado"}
+                          </span>
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Buscar criativo..." />
+                          <CommandList>
+                            <CommandEmpty>
+                              {criativoLoading ? "Carregando..." : "Nenhum criativo encontrado."}
+                            </CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="__nao_identificado__"
+                                onSelect={() => {
+                                  setCreativeKeyDeclarado(null);
+                                  setCriativoOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    !creativeKeyDeclarado ? "opacity-100" : "opacity-0",
+                                  )}
+                                />
+                                Não identificado
+                              </CommandItem>
+                              {criativoOpcoes.map((opt) => (
+                                <CommandItem
+                                  key={opt.creative_key}
+                                  value={`${opt.rotulo} ${opt.creative_key}`}
+                                  onSelect={() => {
+                                    setCreativeKeyDeclarado(opt.creative_key);
+                                    setCriativoOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      creativeKeyDeclarado === opt.creative_key ? "opacity-100" : "opacity-0",
+                                    )}
+                                  />
+                                  <span className="truncate">{opt.rotulo}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <p className="text-xs text-muted-foreground">
+                      Se souber qual anúncio o paciente viu, selecione. Essa informação entra no relatório como declarada, separada da medida automaticamente.
+                    </p>
                   </div>
                 )}
                 {origem === "Outros" && (

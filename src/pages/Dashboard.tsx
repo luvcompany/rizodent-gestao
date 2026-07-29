@@ -823,6 +823,7 @@ const Dashboard = () => {
     variantes: r.variantes ?? 1,
     cidades: r.cidades ?? [],
     isOutros: false,
+    isDeclarada: false,
   }));
   const restoAtribuido = atribuidosOrdenados.slice(6);
   if (restoAtribuido.length > 0) {
@@ -835,6 +836,25 @@ const Dashboard = () => {
       variantes: 0,
       cidades: [],
       isOutros: true,
+      isDeclarada: false,
+    });
+  }
+  // Barras "declaradas" (informadas pela recepção via creative_key_declarado).
+  // Aparecem depois das medidas, com cor acinzentada e sufixo " (informado)".
+  // NÃO entram no percentual "X de Y rastreados" — esse continua contando só medida.
+  const declaradasOrdenadas = (rpcCriativo ?? [])
+    .filter((r) => r.origem_atribuicao === "declarada" && Number(r.faturamento || 0) > 0)
+    .sort((a, b) => Number(b.faturamento) - Number(a.faturamento));
+  for (const r of declaradasOrdenadas) {
+    criativoTop.push({
+      name: `${r.criativo} (informado)`,
+      value: Number(r.faturamento),
+      pacientes: Number(r.pacientes || 0),
+      contas: 0,
+      variantes: 0,
+      cidades: [],
+      isOutros: false,
+      isDeclarada: true,
     });
   }
 
@@ -1098,6 +1118,12 @@ const Dashboard = () => {
                   formatter={(value: number, _n: string, entry: any) => {
                     const p = entry?.payload ?? {};
                     if (p.isOutros) return [formatCurrency(value), "Faturamento"];
+                    if (p.isDeclarada) {
+                      return [
+                        [formatCurrency(value), `${p.pacientes ?? 0} pacientes · informado pela recepção`].join("\n"),
+                        "Faturamento",
+                      ];
+                    }
                     const partes: string[] = [];
                     partes.push(`${p.pacientes ?? 0} pacientes`);
                     if (p.contas != null) partes.push(`${p.contas} contas`);
@@ -1111,16 +1137,30 @@ const Dashboard = () => {
                 />
                 <Bar dataKey="value" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
                   {criativoTop.map((d, i) => (
-                    <Cell key={i} fill={d.isOutros ? "hsl(220, 10%, 55%)" : COLORS[i % COLORS.length]} />
+                    <Cell
+                      key={i}
+                      fill={
+                        d.isDeclarada
+                          ? "hsl(220, 8%, 72%)"
+                          : d.isOutros
+                            ? "hsl(220, 10%, 55%)"
+                            : COLORS[i % COLORS.length]
+                      }
+                    />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
-          {!criativoMultiPeriod && !criativoErro && rpcCriativo && criativoTop.some((d) => !d.isOutros && (d.variantes ?? 0) > 1) && (
+          {!criativoMultiPeriod && !criativoErro && rpcCriativo && criativoTop.some((d) => d.isDeclarada) && (
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              Barras claras = informado pela recepção, não medido pelo clique.
+            </p>
+          )}
+          {!criativoMultiPeriod && !criativoErro && rpcCriativo && criativoTop.some((d) => !d.isOutros && !d.isDeclarada && (d.variantes ?? 0) > 1) && (
             <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
               {criativoTop
-                .filter((d) => !d.isOutros && (d.variantes ?? 0) > 1)
+                .filter((d) => !d.isOutros && !d.isDeclarada && (d.variantes ?? 0) > 1)
                 .map((d) => (
                   <span key={d.name} className="rounded bg-muted px-1.5 py-0.5">
                     {d.name}: {d.variantes} vídeos
