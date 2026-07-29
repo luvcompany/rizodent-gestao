@@ -803,6 +803,7 @@ const Atendimento = () => {
                       setOrigem(v);
                       setNomeAnuncio("");
                       setOrigemOutrosDesc("");
+                      setCreativeKeyDeclarado(null);
                     }}
                   >
                     <SelectTrigger className="bg-secondary border-border">
@@ -819,13 +820,73 @@ const Atendimento = () => {
                 </div>
                 {origem === "Anúncio" && (
                   <div className="space-y-2">
-                    <Label>Nome do Anúncio</Label>
-                    <Input
-                      placeholder="Ex: Campanha Implante Jan"
-                      value={nomeAnuncio}
-                      onChange={(e) => setNomeAnuncio(e.target.value)}
-                      className="bg-secondary border-border"
-                    />
+                    <Label>Qual anúncio o paciente viu?</Label>
+                    <Popover open={criativoOpen} onOpenChange={setCriativoOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={criativoOpen}
+                          className="w-full justify-between bg-secondary border-border font-normal"
+                        >
+                          <span className="truncate">
+                            {creativeKeyDeclarado
+                              ? (criativoOpcoes.find((o) => o.creative_key === creativeKeyDeclarado)?.rotulo || "Criativo selecionado")
+                              : "Não identificado"}
+                          </span>
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Buscar criativo..." />
+                          <CommandList>
+                            <CommandEmpty>
+                              {criativoLoading ? "Carregando..." : "Nenhum criativo encontrado."}
+                            </CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="__nao_identificado__"
+                                onSelect={() => {
+                                  setCreativeKeyDeclarado(null);
+                                  setCriativoOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    !creativeKeyDeclarado ? "opacity-100" : "opacity-0",
+                                  )}
+                                />
+                                Não identificado
+                              </CommandItem>
+                              {criativoOpcoes.map((opt) => (
+                                <CommandItem
+                                  key={opt.creative_key}
+                                  value={`${opt.rotulo} ${opt.creative_key}`}
+                                  onSelect={() => {
+                                    setCreativeKeyDeclarado(opt.creative_key);
+                                    setCriativoOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      creativeKeyDeclarado === opt.creative_key ? "opacity-100" : "opacity-0",
+                                    )}
+                                  />
+                                  <span className="truncate">{opt.rotulo}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <p className="text-xs text-muted-foreground">
+                      Se souber qual anúncio o paciente viu, selecione. Essa informação entra no relatório como declarada, separada da medida automaticamente.
+                    </p>
                   </div>
                 )}
                 {origem === "Outros" && (
