@@ -1100,14 +1100,18 @@ Deno.serve(async (req) => {
               if (referral) {
                 if (adHeadline) {
                   updates.titulo_anuncio = adHeadline;
-                  updates.nome_anuncio = adHeadline;
+                }
+                if (adName) {
+                  // nome_anuncio só recebe o NOME real do anúncio, nunca o headline
+                  updates.nome_anuncio = adName;
                 }
                 if (adBody) updates.descricao_anuncio = adBody;
                 if (adImageUrl) updates.imagem_origem = adImageUrl;
                 if (adSourceUrl) updates.link_anuncio = adSourceUrl;
-                if (adSourceId) updates.ad_id = adSourceId;
-                if (adAccountId) updates.ad_account_id = adAccountId;
-                if (adAccountName) updates.ad_account_name = adAccountName;
+                // Primeiro clique: só grava ad_id/conta se o lead ainda não tem
+                if (adSourceId && !lead.ad_id) updates.ad_id = adSourceId;
+                if (adAccountId && !lead.ad_account_id) updates.ad_account_id = adAccountId;
+                if (adAccountName && !lead.ad_account_name) updates.ad_account_name = adAccountName;
                 // Preencher cidade automaticamente apenas se o lead ainda não tiver cidade definida (preserva alteração manual)
                 let inferredCidade: string | null = null;
                 try {
