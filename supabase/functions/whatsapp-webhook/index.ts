@@ -932,16 +932,22 @@ Deno.serve(async (req) => {
                     adAccountName,
                   });
                 } catch (_e) { inferredCidadeForCache = null; }
-                await supabase.from("ad_id_mapping").upsert({
+                const cachePayload: Record<string, unknown> = {
                   ad_id: adSourceId,
-                  ad_account_id: adAccountId,
-                  ad_account_name: adAccountName,
-                  ...(adName ? { ad_name: adName } : {}),
-                  ad_headline: adHeadline,
-                  ad_body: adBody,
-                  cidade: inferredCidadeForCache,
                   updated_at: new Date().toISOString(),
-                }, { onConflict: "ad_id" });
+                };
+                if (adAccountId) cachePayload.ad_account_id = adAccountId;
+                if (adAccountName) cachePayload.ad_account_name = adAccountName;
+                if (adName) cachePayload.ad_name = adName;
+                if (adHeadline) cachePayload.ad_headline = adHeadline;
+                if (inferredCidadeForCache) cachePayload.cidade = inferredCidadeForCache;
+                // ad_body é a CHAVE DE AGRUPAMENTO do relatório: só grava se passar na sanidade
+                const corpoOk = typeof adBody === "string"
+                  && adBody.trim().length > 40
+                  && !adBody.includes("{{")
+                  && adBody.trim().toLowerCase() !== String(adAccountName ?? "").trim().toLowerCase();
+                if (corpoOk) cachePayload.ad_body = adBody;
+                await supabase.from("ad_id_mapping").upsert(cachePayload, { onConflict: "ad_id" });
                 console.log(`[AD-CACHE] UPSERT ad_id=${adSourceId} name=${adName} account=${adAccountName} cidade=${inferredCidadeForCache}`);
               } catch (upErr: any) {
                 console.log(`[AD-CACHE] erro upsert: ${upErr.message}`);
