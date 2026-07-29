@@ -1427,7 +1427,18 @@ async function syncClinica(
         // Base do Kommo (CRM antigo): se o telefone do paciente está lá,
         // reconhecemos como venda de marketing e seguimos o fluxo KOMMO-sem-lead.
         const tailKB = telefone ? tailPhone(telefone) : "";
-        if (KOMMO_BASE_ENABLED && tailKB && kommoBaseTails.has(tailKB)) {
+        // Guardrails do kommo_base:
+        //  (a) NÃO ativa se origem declarada começa com "INDICA" (indicação
+        //      explícita não é marketing — respeitar);
+        //  (b) NÃO ativa se o paciente não tem NENHUM pagamento que CONTA no
+        //      dia (todos recorrencia_orto=true) — evita atribuir manutenção
+        //      isolada de orto a marketing.
+        const isIndicaDeclarada = origem.startsWith("INDICA");
+        const temPagamentoQueConta = pacienteHasCountingOnDay.has(`${idPaciente}|${dataPag}`);
+        const kommoBaseAtiva =
+          KOMMO_BASE_ENABLED && tailKB && kommoBaseTails.has(tailKB) &&
+          !isIndicaDeclarada && temPagamentoQueConta;
+        if (kommoBaseAtiva) {
           matched_by = "kommo_base";
           notification = "Venda reconhecida pela base do Kommo (telefone) — sem marcação KOMMO no Dontus — conferir";
           // segue o fluxo (não faz skip); item continua sem leadRow
