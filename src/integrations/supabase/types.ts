@@ -4987,6 +4987,7 @@ export type Database = {
           p_clinica_id?: string
           p_from: string
           p_janela_dias?: number
+          p_tenant_id?: string
           p_to: string
         }
         Returns: {
