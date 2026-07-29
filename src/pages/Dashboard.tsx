@@ -348,7 +348,8 @@ const Dashboard = () => {
   // Faturamento por origem canônica (mesma fonte da aba Origem & Conversão) —
   // caixa do período por origem do lead do paciente. Reconcilia com o total.
   const [rpcCanalOrigem, setRpcCanalOrigem] = useState<FaturamentoOrigemRow[] | null>(null);
-  const [rpcAnuncio, setRpcAnuncio] = useState<FaturamentoAnuncioRow[] | null>(null);
+  const [rpcCriativo, setRpcCriativo] = useState<FaturamentoCriativoRow[] | null>(null);
+  const [criativoErro, setCriativoErro] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -373,11 +374,15 @@ const Dashboard = () => {
 
   useEffect(() => {
     let cancelled = false;
-    setRpcAnuncio(null);
-    if (dateFilter.preset === "multi" || !rangeReady) return; // período contíguo só / completo
-    rptFaturamentoAnuncio(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
-      .then((rows) => { if (!cancelled) setRpcAnuncio(rows); })
-      .catch((e) => console.warn("[Dashboard] rpt_faturamento_anuncio indisponível; usando cálculo local:", e));
+    setRpcCriativo(null);
+    setCriativoErro(null);
+    if (dateFilter.preset === "multi" || !rangeReady) return;
+    rptFaturamentoCriativo(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
+      .then((rows) => { if (!cancelled) setRpcCriativo(rows); })
+      .catch((e) => {
+        console.warn("[Dashboard] rpt_faturamento_criativo falhou:", e);
+        if (!cancelled) setCriativoErro(e?.message || "erro desconhecido");
+      });
     return () => { cancelled = true; };
   }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
