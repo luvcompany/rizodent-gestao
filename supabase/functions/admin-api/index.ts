@@ -673,50 +673,45 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
 
   // por anúncio → agora por CRIATIVO canônico (RPC rpt_faturamento_criativo).
   // Agrupa o MESMO criativo rodando em várias unidades numa linha só.
-  // A RPC precisa do tenant no contexto (rpt_resolve_tenant lê o GUC
-  // app.tenant_id quando o chamador é service_role). Como PostgREST executa
-  // cada request numa transação isolada, usamos conexão direta ao Postgres
-  // (SUPABASE_DB_URL) para SET + SELECT na MESMA sessão.
+  // A RPC honra p_tenant_id apenas quando o chamador é service_role;
+  // caso contrário usa o tenant do perfil autenticado. Chamamos direto pelo
+  // client admin (service_role) — sem conexão TCP direta ao Postgres.
   // Contrato: mantém campo `anuncio` (string) para não quebrar o dashboard de TV;
   // acrescenta criativo_key/contas/cidades/variantes/atribuido.
   let porAnuncio: any[] = [];
+  let porAnuncioErro: string | null = null;
   if (!light) try {
-    const dbUrl = Deno.env.get("SUPABASE_DB_URL");
-    if (!dbUrl) throw new Error("SUPABASE_DB_URL indisponível");
     if (!/^[0-9a-f-]{36}$/i.test(tenantId)) throw new Error("tenantId inválido");
-    const pg = await import("https://deno.land/x/postgresjs@v3.4.4/mod.js");
-    const sql = pg.default(dbUrl, { max: 1, prepare: false });
-    try {
-      const rows = await sql.begin(async (tx: any) => {
-        await tx.unsafe(`SET LOCAL app.tenant_id = '${tenantId}'`);
-        return await tx.unsafe(
-          `SELECT * FROM public.rpt_faturamento_criativo($1::date, $2::date, $3::uuid, 90)`,
-          [from, to, clinicaId ?? null],
-        );
-      });
-      porAnuncio = (rows || [])
-        .map((r: any) => ({
-          anuncio: r.criativo, // contrato antigo
-          criativo: r.criativo,
-          criativo_key: r.criativo_key ?? null,
-          faturamento: Number(r.faturamento) || 0,
-          pacientes: Number(r.pacientes) || 0,
-          pagamentos: Number(r.pagamentos) || 0,
-          contas: r.contas == null ? null : Number(r.contas),
-          cidades: Array.isArray(r.cidades) ? r.cidades : null,
-          variantes: r.variantes == null ? null : Number(r.variantes),
-          atribuido: !!r.atribuido,
-          origem_atribuicao: r.origem_atribuicao ?? null,
-        }))
-        .sort((a: any, b: any) => b.faturamento - a.faturamento)
-        .slice(0, 30);
-    } finally {
-      try { await sql.end({ timeout: 2 }); } catch { /* noop */ }
-    }
+    const { data, error } = await admin.rpc("rpt_faturamento_criativo", {
+      p_from: from,
+      p_to: to,
+      p_clinica_id: clinicaId ?? null,
+      p_janela_dias: 90,
+      p_tenant_id: tenantId,
+    });
+    if (error) throw new Error(error.message);
+    porAnuncio = (data || [])
+      .map((r: any) => ({
+        anuncio: r.criativo, // contrato antigo
+        criativo: r.criativo,
+        criativo_key: r.criativo_key ?? null,
+        faturamento: Number(r.faturamento) || 0,
+        pacientes: Number(r.pacientes) || 0,
+        pagamentos: Number(r.pagamentos) || 0,
+        contas: r.contas == null ? null : Number(r.contas),
+        cidades: Array.isArray(r.cidades) ? r.cidades : null,
+        variantes: r.variantes == null ? null : Number(r.variantes),
+        atribuido: !!r.atribuido,
+        origem_atribuicao: r.origem_atribuicao ?? null,
+      }))
+      .sort((a: any, b: any) => b.faturamento - a.faturamento)
+      .slice(0, 30);
   } catch (e) {
-    console.warn("[admin-api] rpt_faturamento_criativo falhou:", (e as Error)?.message);
+    porAnuncioErro = (e as Error)?.message ?? "falha ao calcular faturamento por criativo";
+    console.warn("[admin-api] rpt_faturamento_criativo falhou:", porAnuncioErro);
     porAnuncio = [];
   }
+
 
 
   // por clínica via crm_leads.cidade — casamento por chave normalizada com
