@@ -797,28 +797,46 @@ const Dashboard = () => {
     ? rpcCanalOrigem.map((r) => ({ name: r.origem, pacientes: r.pacientes, faturamento: r.faturamento })).sort((a, b) => b.faturamento - a.faturamento)
     : origemDataLocal;
 
-  // Chart: Faturamento por Anúncio
-  const anuncioMap = new Map<string, number>();
-  filtered.pacientes.forEach((p) => {
-    if (!p.nome_anuncio) return;
-    const key = p.nome_anuncio.trim().toLowerCase();
-    const paid = pagamentosFat.filter((pg) => pg.paciente_id === p.id).reduce((s, pg) => s + Number(pg.valor), 0);
-    anuncioMap.set(key, (anuncioMap.get(key) || 0) + paid);
-  });
-  // Keep original casing for display: use first occurrence
-  const anuncioDisplayNames = new Map<string, string>();
-  filtered.pacientes.forEach((p) => {
-    if (!p.nome_anuncio) return;
-    const key = p.nome_anuncio.trim().toLowerCase();
-    if (!anuncioDisplayNames.has(key)) anuncioDisplayNames.set(key, p.nome_anuncio.trim());
-  });
-  const anuncioDataLocal = Array.from(anuncioMap.entries()).map(([key, value]) => ({ name: anuncioDisplayNames.get(key) || key, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
-  // Fonte preferida: RPC canônica (rpt_faturamento_anuncio) — nome real do
-  // criativo (ad_name → nome_anuncio → ad_headline). Fallback: cálculo local.
-  const anuncioData = rpcAnuncio
-    ? rpcAnuncio.map((r) => ({ name: r.anuncio, value: Number(r.faturamento) })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6)
-    : anuncioDataLocal;
-
+  // Chart: Faturamento por Criativo — agrupa o mesmo criativo rodando entre unidades.
+  // Fonte única: RPC canônica (rpt_faturamento_criativo). Sem fallback local (nome_anuncio
+  // é texto digitado à mão e produz rótulos-lixo tipo "NÃO IDENTIFICADO"/"SEM ANÚNCIO").
+  const criativoMultiPeriod = dateFilter.preset === "multi";
+  const criativoTotalBruto = (rpcCriativo ?? []).reduce((s, r) => s + Number(r.faturamento || 0), 0);
+  const criativoTotalRastreado = (rpcCriativo ?? [])
+    .filter((r) => r.atribuido === true)
+    .reduce((s, r) => s + Number(r.faturamento || 0), 0);
+  const criativoPct = criativoTotalBruto > 0 ? Math.round((criativoTotalRastreado / criativoTotalBruto) * 100) : 0;
+  const fmtBRL0 = (v: number) => `R$ ${Math.round(v).toLocaleString("pt-BR")}`;
+  const criativoSubtitle = rpcCriativo && criativoTotalBruto > 0
+    ? `${fmtBRL0(criativoTotalRastreado)} de ${fmtBRL0(criativoTotalBruto)} rastreados por criativo (${criativoPct}%)`
+    : undefined;
+  // Top 6 atribuídos + "Outros (N criativos)" na 7ª barra; não-atribuídos ficam fora do gráfico
+  // (eles já estão contados no subtítulo). "Sem anúncio vinculado" / "fora da janela" não viram barra.
+  const atribuidosOrdenados = (rpcCriativo ?? [])
+    .filter((r) => r.atribuido === true && Number(r.faturamento || 0) > 0)
+    .sort((a, b) => Number(b.faturamento) - Number(a.faturamento));
+  const criativoTop = atribuidosOrdenados.slice(0, 6).map((r) => ({
+    name: r.criativo,
+    value: Number(r.faturamento),
+    pacientes: Number(r.pacientes || 0),
+    contas: r.contas ?? 1,
+    variantes: r.variantes ?? 1,
+    cidades: r.cidades ?? [],
+    isOutros: false,
+  }));
+  const restoAtribuido = atribuidosOrdenados.slice(6);
+  if (restoAtribuido.length > 0) {
+    const somaResto = restoAtribuido.reduce((s, r) => s + Number(r.faturamento || 0), 0);
+    criativoTop.push({
+      name: `Outros (${restoAtribuido.length} criativos)`,
+      value: somaResto,
+      pacientes: restoAtribuido.reduce((s, r) => s + Number(r.pacientes || 0), 0),
+      contas: 0,
+      variantes: 0,
+      cidades: [],
+      isOutros: true,
+    });
+  }
 
 
   const showClinicaChart = clinicaFiltro === "todas";
@@ -827,6 +845,7 @@ const Dashboard = () => {
   if (loading) {
     return <div className="flex items-center justify-center h-64 text-muted-foreground">Carregando dados...</div>;
   }
+
 
   return (
     <div className="space-y-6 animate-fade-in">
