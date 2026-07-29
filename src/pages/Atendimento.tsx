@@ -208,6 +208,20 @@ const Atendimento = () => {
     }
   }, [cidade, clinicas, clinicaId]);
 
+  // Carrega criativos disponíveis para seleção quando origem = Anúncio.
+  useEffect(() => {
+    if (origem !== "Anúncio") return;
+    let cancelled = false;
+    setCriativoLoading(true);
+    rptCriativosParaSelecao(cidade || null, 90)
+      .then((opts) => { if (!cancelled) setCriativoOpcoes(opts); })
+      .catch(() => { if (!cancelled) setCriativoOpcoes([]); })
+      .finally(() => { if (!cancelled) setCriativoLoading(false); });
+    return () => { cancelled = true; };
+  }, [origem, cidade]);
+
+
+
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, "");
     if (digits.length <= 2) return `(${digits}`;
