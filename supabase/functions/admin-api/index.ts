@@ -811,7 +811,55 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     .map(([clinica, v]) => ({ clinica, total: v.total, por_status: v.por_status }))
     .sort((a, b) => b.total - a.total);
 
+  // FUNIL OFICIAL — coorte por scheduled_date (NÃO por created_at): "leads que
+  // agendei PARA o período → desses, quantos compareceram → quantos fecharam".
+  // Usa os appointments já carregados (nenhuma query nova); respeita ?clinica=.
+  const DESFECHO_COMPARECEU = new Set(["contracted", "not_contracted"]);
+  const leadsAgendados = new Set<string>();
+  const leadsCompareceram = new Set<string>();
+  const leadsFecharam = new Set<string>();
+  const leadsSemDesfecho = new Set<string>();
+  for (const a of appointmentsScope as any[]) {
+    const lid = a.lead_id;
+    if (!lid) continue;
+    leadsAgendados.add(lid);
+    const st = a.status || "";
+    if (st === "contracted") leadsFecharam.add(lid);
+    if (DESFECHO_COMPARECEU.has(st)) leadsCompareceram.add(lid);
+    else leadsSemDesfecho.add(lid);
+  }
+  // aguardando_desfecho = leads da coorte SEM nenhum agendamento com desfecho.
+  const leadsAguardando = [...leadsSemDesfecho].filter((lid) => !leadsCompareceram.has(lid));
+  const funilOficial = {
+    leads_agendados: leadsAgendados.size,
+    consultas: appointmentsScope.length,
+    compareceram: leadsCompareceram.size,
+    fecharam: leadsFecharam.size,
+    aguardando_desfecho: leadsAguardando.length,
+  };
+
+  // RECORRENTES — reusa os números de dinheiro já calculados (nada novo de
+  // faturamento). Recorrente = paciente com pagamento no período cuja PRIMEIRA
+  // compra histórica (min data_pagamento) é ANTERIOR ao período.
+  const pacientesRecorrentes = new Set<string>();
+  for (const ids of chunk([...pacientesTotalSet] as string[], 150)) {
+    const r = await admin.from("pagamentos")
+      .select("paciente_id")
+      .in("paciente_id", ids)
+      .lt("data_pagamento", from)
+      .limit(5000);
+    if (r.error) return json({ error: r.error.message }, 500);
+    (r.data || []).forEach((pg: any) => { if (pg.paciente_id) pacientesRecorrentes.add(pg.paciente_id); });
+  }
+  const recorrentes = {
+    pacientes_novos: contratadosNoFiltro.length,
+    pacientes_recorrentes: pacientesRecorrentes.size,
+    faturamento_novos: fatNovos,
+    faturamento_recorrentes: fatRecorrentes,
+  };
+
   return json({
+
     period: { from, to, timezone: BAHIA_TZ },
     faturamento: { total: fatTotal, novos: fatNovos, recorrentes: fatRecorrentes },
     // Ticket médio real. O antigo campo "ticket_medio" (número único) era, na
