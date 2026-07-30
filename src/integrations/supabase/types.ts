@@ -4911,6 +4911,10 @@ export type Database = {
         Args: { p_cidade: string; p_source: string; p_tipo: string }
         Returns: undefined
       }
+      pagamento_conta_marketing: {
+        Args: { p_paciente_id: string; p_recorrencia_orto: boolean }
+        Returns: boolean
+      }
       posvenda_dashboard_metrics: { Args: never; Returns: Json }
       recalculate_all_lead_scores:
         | { Args: never; Returns: undefined }
