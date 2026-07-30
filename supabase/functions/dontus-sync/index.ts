@@ -1134,6 +1134,7 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
         const { data: dup } = await admin.from("pagamentos")
           .select("id").eq("dontus_key", item.dontus_key).maybeSingle();
         if (!dup) {
+          const naoMarketing = pacienteId ? await isWhatsappOrganicoSemAgendamento(pacienteId) : false;
           const ins = await admin.from("pagamentos").insert({
             paciente_id: pacienteId,
             clinica_id: item.clinica_id,
@@ -1143,6 +1144,7 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
             forma_pagamento: item.forma_pagamento || "Não informado",
             tipo: item.tipo === "recorrente" ? "recorrente" : "primeiro",
             recorrencia_orto: item.recorrencia_orto,
+            nao_marketing: naoMarketing,
             dontus_key: item.dontus_key,
           });
           if (ins.error) {
