@@ -1950,7 +1950,22 @@ Deno.serve(async (req) => {
     reconciliacao = await reconcileStuckNaoContratado(admin);
   }
 
+  // Varredura de pagamentos apagados no Dontus: sob demanda ({sweep_deleted:true})
+  // ou automaticamente no job do "dia anterior" (date < hoje).
+  const hojeStr = new Date().toISOString().slice(0, 10);
+  const querSweep = body.sweep_deleted === true
+    || (body.sweep_deleted !== false && !dryRun && date < hojeStr);
+  let sweep: any = null;
+  if (querSweep && !dryRun) {
+    try {
+      sweep = await sweepPagamentosApagadosNoDontus(admin, teamToken, MIN_PAYMENT_DATE, date);
+    } catch (e: any) {
+      sweep = { erro: e?.message ?? String(e) };
+    }
+  }
+
   return new Response(JSON.stringify({
-    date, dry_run: dryRun, clinicas: results, errors, reconciliacao,
+    date, dry_run: dryRun, clinicas: results, errors, reconciliacao, sweep_deleted: sweep,
   }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
 });
