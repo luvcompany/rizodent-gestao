@@ -937,10 +937,22 @@ async function reportOverview(tenantId: string, p: URLSearchParams) {
 
 async function reportFunnel(tenantId: string, p: URLSearchParams) {
   const pipelineId = p.get("pipeline_id");
-  let stagesQ = admin.from("crm_stages").select("id,name,position,pipeline_id").eq("tenant_id", tenantId).order("position");
-  if (pipelineId) stagesQ = stagesQ.eq("pipeline_id", pipelineId);
+  // Sem pipeline_id a resposta misturava TODOS os funis (leitura enganosa):
+  // agora é obrigatório e devolvemos a lista de funis do tenant para escolher.
+  if (!pipelineId) {
+    const { data: pls, error: pErr } = await admin.from("crm_pipelines")
+      .select("id, name").eq("tenant_id", tenantId).order("name");
+    if (pErr) return json({ error: pErr.message }, 500);
+    return json({
+      error: "pipeline_id é obrigatório: sem ele os funis ficam misturados. Escolha um pipeline abaixo.",
+      pipelines: (pls || []).map((pl: any) => ({ id: pl.id, name: pl.name })),
+    }, 400);
+  }
+  const stagesQ = admin.from("crm_stages").select("id,name,position,pipeline_id")
+    .eq("tenant_id", tenantId).eq("pipeline_id", pipelineId).order("position");
   const { data: stages, error: sErr } = await stagesQ;
   if (sErr) return json({ error: sErr.message }, 500);
+
   const out: any[] = [];
   for (const s of stages || []) {
     const { count, error } = await admin.from("crm_leads").select("id", { count: "exact", head: true })
