@@ -910,6 +910,38 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
     else if (!/duplicate|unique/i.test(error.message || "")) throw error;
   };
 
+  // "WhatsApp orgânico sem agendamento" → pagamento NOVO entra com
+  // nao_marketing=true. Regra ESTREITA e só na entrada (import): nunca aplicada
+  // em skip/adopt, para jamais mexer em histórico já gravado.
+  const naoMktCache = new Map<string, boolean>();
+  const isWhatsappOrganicoSemAgendamento = async (pacienteId: string): Promise<boolean> => {
+    if (naoMktCache.has(pacienteId)) return naoMktCache.get(pacienteId)!;
+    let res = false;
+    try {
+      const { data: vincs } = await admin.from("crm_lead_pacientes")
+        .select("lead_id").eq("paciente_id", pacienteId);
+      const leadIds = (vincs || []).map((v: any) => v.lead_id).filter(Boolean);
+      if (leadIds.length) {
+        const { data: leads } = await admin.from("crm_leads")
+          .select("id, source, ad_id").in("id", leadIds);
+        const rows = (leads || []) as any[];
+        const todosWhatsOrganico = rows.length > 0 && rows.every((l) => {
+          const src = String(l.source || "");
+          return /whatsapp/i.test(src) && !l.ad_id && !/(facebook|instagram|meta|_ad|ad_|click)/i.test(src);
+        });
+        if (todosWhatsOrganico) {
+          const { count } = await admin.from("crm_appointments")
+            .select("id", { count: "exact", head: true }).in("lead_id", leadIds);
+          res = (count || 0) === 0;
+        }
+      }
+    } catch (_e) {
+      res = false; // best-effort: nunca bloquear a importação
+    }
+    naoMktCache.set(pacienteId, res);
+    return res;
+  };
+
   for (const item of plan) {
     try {
       // Guarda de tenant: clínicas do CLINICA_MAP são todas Rizodent, mas checamos.
