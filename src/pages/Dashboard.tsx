@@ -427,10 +427,10 @@ const Dashboard = () => {
   // Mensalidade de ortodontia (recorrencia_orto=true) NÃO entra no faturamento:
   // é receita recorrente de paciente antigo, não venda nova. Quem começa
   // tratamento (sem orto anterior no Dontus) entra normalmente.
-  // Além da recorrência de orto, exclui "WhatsApp direto" (lead whatsapp sem
-  // nenhum agendamento no CRM) — os dois filtros valem juntos.
+  // Além da recorrência de orto, exclui pagamentos com a marca gravada
+  // nao_marketing (definida só na entrada do pagamento, nunca retroativa).
   const pagamentosFat = filtered.pagamentos.filter(
-    (p) => p.recorrencia_orto !== true && !(p.paciente_id && whatsDiretoPacientes.has(p.paciente_id)),
+    (p) => p.recorrencia_orto !== true && p.nao_marketing !== true,
   );
 
   const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);
