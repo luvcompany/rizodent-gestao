@@ -1296,21 +1296,30 @@ async function syncClinica(
     const origem = String(it.origemPaciente || "").toUpperCase();
     const telefone = phoneCache.get(idPaciente) || null;
 
+    // Regra de orto do DIA (única fonte da verdade para recorrencia_orto).
+    const isOrtoItem = especialidade === "ORTODONTIA";
+    const recEsperado = isOrtoItem ? !ortoDayHasStart.get(`${idPaciente}|${dataPag}`) : false;
+
     // 1) Já importado?
     const { data: existing } = await admin.from("pagamentos")
-      .select("id").eq("dontus_key", dontus_key).maybeSingle();
+      .select("id, recorrencia_orto").eq("dontus_key", dontus_key).maybeSingle();
     if (existing) {
+      // Auto-correção: se a classificação gravada divergir da regra do dia,
+      // o executor faz UPDATE (sem re-importar).
+      const precisaCorrigir = isOrtoItem && (existing as any).recorrencia_orto !== recEsperado;
       plan.push({
-        action: "skip", reason: "já importado",
+        action: "skip", reason: precisaCorrigir ? "já importado (corrigir recorrencia_orto)" : "já importado",
         clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
         paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
         especialidade, especialidade_raw: espRaw, servico,
-        forma_pagamento: it.formaPagamento || null, recorrencia_orto: false, dontus_key,
+        forma_pagamento: it.formaPagamento || null, recorrencia_orto: recEsperado, dontus_key,
         origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
         matched_paciente_id: null, move_to_contratado: false, notification: null,
-      });
+        fix_recorrencia_orto: precisaCorrigir, fix_pagamento_id: precisaCorrigir ? (existing as any).id : null,
+      } as any);
       continue;
     }
+
 
     // 2) Elegibilidade + match
     // Regras:
