@@ -519,6 +519,34 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
       )
     : [];
 
+  // Pagamentos SEM clínica atribuída (clinica_id IS NULL), mesmas regras de
+  // orto/nao_marketing. NÃO entram em faturamento.total (contrato preservado):
+  // servem só para a linha "Sem clínica" de por_clinica e para pacientes_total
+  // deixar de ficar menor que pacientes_pagantes. Escopo de tenant garantido
+  // pelo paciente (pagamentos não tem tenant_id).
+  let pagamentosSemClinica: any[] = [];
+  if (!clinicaId) {
+    const semClin = await fetchAllPaged<any>(
+      () => admin.from("pagamentos")
+        .select("id, valor, paciente_id, data_pagamento")
+        .is("clinica_id", null)
+        .eq("recorrencia_orto", false)
+        .eq("nao_marketing", false)
+        .gte("data_pagamento", from).lte("data_pagamento", to),
+      "id",
+    );
+    const idsSemClin = [...new Set(semClin.map((pg) => pg.paciente_id).filter(Boolean))] as string[];
+    const doTenant = new Set<string>();
+    for (const ids of chunk(idsSemClin, 150)) {
+      const r = await admin.from("pacientes").select("id").eq("tenant_id", tenantId).in("id", ids);
+      if (r.error) return json({ error: r.error.message }, 500);
+      (r.data || []).forEach((pc: any) => doTenant.add(pc.id));
+    }
+    pagamentosSemClinica = semClin.filter((pg) => pg.paciente_id && doTenant.has(pg.paciente_id));
+  }
+
+
+
 
 
 
