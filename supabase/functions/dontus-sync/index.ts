@@ -374,6 +374,10 @@ type PlanItem = {
   matched_lead_name: string | null;
   matched_paciente_id: string | null; // paciente já existente no CRClin
   matched_payment_id?: string | null; // pagamento manual a adotar (dontus_key := ...)
+  // Auto-correção de orto em pagamento JÁ importado (skip): UPDATE recorrencia_orto.
+  fix_recorrencia_orto?: boolean;
+  fix_pagamento_id?: string | null;
+
   move_to_contratado: boolean;
   // Tipo primeiro/recorrente baseado no HISTÓRICO DO DONTUS (não no CRClin).
   tipo: "primeiro" | "recorrente";
@@ -887,8 +891,9 @@ async function reconcileRemovidosNoDontus(
 async function executePlan(admin: any, plan: PlanItem[]): Promise<{
   importados: number; adotados: number; leads_criados: number;
   movidos: number; notificacoes: number; erros: number; erros_det: any[];
+  orto_corrigidos: number;
 }> {
-  const c = { importados: 0, adotados: 0, leads_criados: 0, movidos: 0, notificacoes: 0, erros: 0, erros_det: [] as any[] };
+  const c = { importados: 0, adotados: 0, leads_criados: 0, movidos: 0, notificacoes: 0, erros: 0, erros_det: [] as any[], orto_corrigidos: 0 };
   const fallbackUser = await resolveFallbackUser(admin);
   let mainPipeline: { pipeline_id: string; stage_id: string } | null = null;
   const movedLeads = new Set<string>();
@@ -909,11 +914,22 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
     try {
       // Guarda de tenant: clínicas do CLINICA_MAP são todas Rizodent, mas checamos.
       if (item.action === "skip") {
+        // Auto-correção: pagamento já importado com recorrencia_orto divergente
+        // da regra do dia — corrige sem re-importar (idempotente por dontus_key).
+        if (item.fix_recorrencia_orto && item.fix_pagamento_id) {
+          const upd = await admin.from("pagamentos")
+            .update({ recorrencia_orto: item.recorrencia_orto })
+            .eq("id", item.fix_pagamento_id)
+            .eq("dontus_key", item.dontus_key);
+          if (upd.error) throw upd.error;
+          c.orto_corrigidos++;
+        }
         if (item.notification) {
           await notify(fallbackUser, item, item.matched_lead_id, `sync:skip:${item.dontus_key}`);
         }
         continue;
       }
+
 
       let leadId = item.matched_lead_id;
       let pacienteId = item.matched_paciente_id;
@@ -1071,8 +1087,10 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
         }
         if (targetId) {
           const upd = await admin.from("pagamentos")
-            .update({ dontus_key: item.dontus_key })
+            // Sobrescreve a classificação da recepção pela regra do dia.
+            .update({ dontus_key: item.dontus_key, recorrencia_orto: item.recorrencia_orto })
             .eq("id", targetId).is("dontus_key", null);
+
           if (upd.error) {
             if (!/duplicate|unique/i.test(upd.error.message || "")) throw upd.error;
           } else {
@@ -1296,21 +1314,30 @@ async function syncClinica(
     const origem = String(it.origemPaciente || "").toUpperCase();
     const telefone = phoneCache.get(idPaciente) || null;
 
+    // Regra de orto do DIA (única fonte da verdade para recorrencia_orto).
+    const isOrtoItem = especialidade === "ORTODONTIA";
+    const recEsperado = isOrtoItem ? !ortoDayHasStart.get(`${idPaciente}|${dataPag}`) : false;
+
     // 1) Já importado?
     const { data: existing } = await admin.from("pagamentos")
-      .select("id").eq("dontus_key", dontus_key).maybeSingle();
+      .select("id, recorrencia_orto").eq("dontus_key", dontus_key).maybeSingle();
     if (existing) {
+      // Auto-correção: se a classificação gravada divergir da regra do dia,
+      // o executor faz UPDATE (sem re-importar).
+      const precisaCorrigir = isOrtoItem && (existing as any).recorrencia_orto !== recEsperado;
       plan.push({
-        action: "skip", reason: "já importado",
+        action: "skip", reason: precisaCorrigir ? "já importado (corrigir recorrencia_orto)" : "já importado",
         clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
         paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
         especialidade, especialidade_raw: espRaw, servico,
-        forma_pagamento: it.formaPagamento || null, recorrencia_orto: false, dontus_key,
+        forma_pagamento: it.formaPagamento || null, recorrencia_orto: recEsperado, dontus_key,
         origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
         matched_paciente_id: null, move_to_contratado: false, notification: null,
-      });
+        fix_recorrencia_orto: precisaCorrigir, fix_pagamento_id: precisaCorrigir ? (existing as any).id : null,
+      } as any);
       continue;
     }
+
 
     // 2) Elegibilidade + match
     // Regras:
@@ -1458,12 +1485,9 @@ async function syncClinica(
     }
 
 
-    // 3) Recorrência de ortodontia
-    let recorrencia_orto = false;
-    if (especialidade === "ORTODONTIA") {
-      const key = `${idPaciente}|${dataPag}`;
-      recorrencia_orto = !ortoDayHasStart.get(key);
-    }
+    // 3) Recorrência de ortodontia (regra do dia, computada acima)
+    const recorrencia_orto = recEsperado;
+
 
     // 4) Dedupe com pagamento manual — INDEPENDENTE de vínculo com lead.
     //    Monta candidatos de paciente no CRClin: (a) vinculados ao lead,
@@ -1646,6 +1670,7 @@ async function syncClinica(
     primeiros: plan.filter((p) => p.tipo === "primeiro").length,
     recorrentes: plan.filter((p) => p.tipo === "recorrente").length,
     notificacoes: plan.filter((p) => p.notification).length,
+    orto_a_corrigir: plan.filter((p) => p.fix_recorrencia_orto).length,
     phone_lookup_failed: phoneLookupFailed,
     telefones_no_cache: phoneCache.size,
     plan,
@@ -1656,6 +1681,7 @@ async function syncClinica(
   let exec: {
     importados: number; adotados: number; leads_criados: number;
     movidos: number; notificacoes: number; erros: number; erros_det: any[];
+    orto_corrigidos: number;
   } | null = null;
   let reconciliacaoRemovidos = 0;
   let reconciliacaoAlerta: string | null = null;
@@ -1668,9 +1694,11 @@ async function syncClinica(
       sem_telefone_sem_lead: (exec as any).sem_telefone_sem_lead || 0,
       movidos_contratado: exec.movidos,
       notificacoes: exec.notificacoes,
+      orto_corrigidos: exec.orto_corrigidos,
       erros: exec.erros,
       erros_det: exec.erros_det,
     };
+
     try {
       const rec = await reconcileRemovidosNoDontus(admin, clinicaId, date, recebidos);
       reconciliacaoRemovidos = rec.removidos;
