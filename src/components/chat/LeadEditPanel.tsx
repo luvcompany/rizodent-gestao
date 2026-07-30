@@ -355,10 +355,64 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
 
   return (
     <>
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
         <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
           <Pencil size={14} className="mr-1" /> Editar
         </Button>
+        {isInstagramLead && (
+          lead.phone ? (
+            <Popover open={transferOpen} onOpenChange={(o) => { setTransferOpen(o); if (o) void loadTransferData(); }}>
+              <PopoverTrigger asChild>
+                <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" title="Transferir o atendimento para o WhatsApp">
+                  <Send size={14} className="mr-1" /> Transferir p/ WhatsApp
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-80">
+                <div className="text-sm font-medium mb-1">Transferir para o WhatsApp</div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Abre a conversa no WhatsApp com um modelo aprovado (a Meta exige modelo para iniciar). O card e o histórico continuam os mesmos.
+                </p>
+                {loadingTransfer ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-2"><Loader2 size={14} className="animate-spin" /> Carregando modelos…</div>
+                ) : transferTemplates.length === 0 ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-500">
+                    Nenhum modelo aprovado. Crie e aprove um modelo de boas-vindas em <strong>Modelos</strong> para habilitar a transferência.
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Modelo de abertura</div>
+                    {transferTemplates.map((t) => (
+                      <button
+                        key={t.name}
+                        type="button"
+                        disabled={transferring}
+                        onClick={() => doTransfer(t)}
+                        className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted border border-border disabled:opacity-50"
+                      >
+                        <div className="font-medium truncate">{t.name}</div>
+                        {t.body_text && <div className="text-[11px] text-muted-foreground line-clamp-2">{t.body_text}</div>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {transferring && <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2"><Loader2 size={14} className="animate-spin" /> Transferindo…</div>}
+              </PopoverContent>
+            </Popover>
+          ) : (
+            // Sem telefone: abre o editar já no campo de telefone (a transferência
+            // exige número — a RPC recusa com 'no_phone').
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="whitespace-nowrap"
+              title="Preencha o telefone para transferir"
+              onClick={() => { setEditOpen(true); toast.info("Preencha o telefone para transferir para o WhatsApp."); }}
+            >
+              <Send size={14} className="mr-1" /> Transferir p/ WhatsApp
+            </Button>
+          )
+        )}
         <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Bloquear lead" onClick={() => setBlockOpen(true)}>
           <Ban size={14} />
         </Button>

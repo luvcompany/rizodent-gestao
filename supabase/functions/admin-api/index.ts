@@ -906,8 +906,10 @@ async function reportOverview(tenantId: string, p: URLSearchParams) {
     // ensure_lead_for_pagamento (source='Retroativo', nascem com
     // created_at=now() ao lançar pagamento antigo — não são leads novos).
     // `.or` em vez de `.neq` para não descartar source NULL (lógica ternária SQL).
-    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).or("source.is.null,source.neq.Retroativo").gte("created_at", gteIso).lte("created_at", lteIso),
-    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("source", "Retroativo").gte("created_at", gteIso).lte("created_at", lteIso),
+    // comment_only=true (leads nascidos de COMENTÁRIO no Instagram, sem Direct)
+    // não contam no funil — decisão do dono. Continuam visíveis no inbox/leads.
+    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("comment_only", false).or("source.is.null,source.neq.Retroativo").gte("created_at", gteIso).lte("created_at", lteIso),
+    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("comment_only", false).eq("source", "Retroativo").gte("created_at", gteIso).lte("created_at", lteIso),
     admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("direction", "inbound").gte("created_at", gteIso).lte("created_at", lteIso),
     admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("direction", "outbound").gte("created_at", gteIso).lte("created_at", lteIso),
     // crm_appointments usa scheduled_date (DATE) — scheduled_at não existe.
@@ -978,7 +980,7 @@ async function reportBySource(tenantId: string, p: URLSearchParams) {
   // Paginado — o PostgREST corta em 1000 linhas e truncaria a contagem.
   const rows = await fetchAllPaged<{ source: string | null }>(
     () => admin.from("crm_leads").select("id, source")
-      .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
+      .eq("tenant_id", tenantId).eq("comment_only", false).gte("created_at", gteIso).lte("created_at", lteIso),
     "id",
   );
   // Leads sintéticos do trigger ensure_lead_for_pagamento (source='Retroativo')
@@ -997,7 +999,7 @@ async function reportBySource(tenantId: string, p: URLSearchParams) {
     total: reais.length,
     retroativos,
     data: Object.entries(counts).map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count),
-    observacao: "Leads com source='Retroativo' (criados automaticamente ao lançar pagamento de paciente sem lead) são segregados em 'retroativos' e não entram em total/data.",
+    observacao: "Leads com source='Retroativo' (criados automaticamente ao lançar pagamento de paciente sem lead) são segregados em 'retroativos' e não entram em total/data. Leads que só interagiram por comentário no Instagram (comment_only) ficam fora da contagem.",
   });
 }
 

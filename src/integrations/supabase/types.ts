@@ -2083,6 +2083,7 @@ export type Database = {
           blocked_at: string | null
           blocked_by: string | null
           cidade: string | null
+          comment_only: boolean
           created_at: string
           descricao_anuncio: string | null
           first_inbound_at: string | null
@@ -2129,6 +2130,7 @@ export type Database = {
           blocked_at?: string | null
           blocked_by?: string | null
           cidade?: string | null
+          comment_only?: boolean
           created_at?: string
           descricao_anuncio?: string | null
           first_inbound_at?: string | null
@@ -2175,6 +2177,7 @@ export type Database = {
           blocked_at?: string | null
           blocked_by?: string | null
           cidade?: string | null
+          comment_only?: boolean
           created_at?: string
           descricao_anuncio?: string | null
           first_inbound_at?: string | null
@@ -3106,6 +3109,7 @@ export type Database = {
         Row: {
           access_token: string
           active: boolean
+          cidade: string | null
           created_at: string
           id: string
           ig_user_id: string
@@ -3117,6 +3121,7 @@ export type Database = {
         Insert: {
           access_token: string
           active?: boolean
+          cidade?: string | null
           created_at?: string
           id?: string
           ig_user_id: string
@@ -3128,6 +3133,7 @@ export type Database = {
         Update: {
           access_token?: string
           active?: boolean
+          cidade?: string | null
           created_at?: string
           id?: string
           ig_user_id?: string
@@ -4845,6 +4851,7 @@ export type Database = {
           blocked_at: string | null
           blocked_by: string | null
           cidade: string | null
+          comment_only: boolean
           created_at: string
           descricao_anuncio: string | null
           first_inbound_at: string | null
