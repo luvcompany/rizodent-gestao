@@ -1680,6 +1680,7 @@ async function syncClinica(
   let exec: {
     importados: number; adotados: number; leads_criados: number;
     movidos: number; notificacoes: number; erros: number; erros_det: any[];
+    orto_corrigidos: number;
   } | null = null;
   let reconciliacaoRemovidos = 0;
   let reconciliacaoAlerta: string | null = null;
@@ -1692,9 +1693,11 @@ async function syncClinica(
       sem_telefone_sem_lead: (exec as any).sem_telefone_sem_lead || 0,
       movidos_contratado: exec.movidos,
       notificacoes: exec.notificacoes,
+      orto_corrigidos: exec.orto_corrigidos,
       erros: exec.erros,
       erros_det: exec.erros_det,
     };
+
     try {
       const rec = await reconcileRemovidosNoDontus(admin, clinicaId, date, recebidos);
       reconciliacaoRemovidos = rec.removidos;
