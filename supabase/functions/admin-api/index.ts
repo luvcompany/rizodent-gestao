@@ -818,7 +818,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   const leadsAgendados = new Set<string>();
   const leadsCompareceram = new Set<string>();
   const leadsFecharam = new Set<string>();
-  const leadsSemDesfecho = new Set<string>();
+  const leadsNoShow = new Set<string>();
   for (const a of appointmentsScope as any[]) {
     const lid = a.lead_id;
     if (!lid) continue;
@@ -826,17 +826,23 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     const st = a.status || "";
     if (st === "contracted") leadsFecharam.add(lid);
     if (DESFECHO_COMPARECEU.has(st)) leadsCompareceram.add(lid);
-    else leadsSemDesfecho.add(lid);
+    else if (st === "no_show") leadsNoShow.add(lid);
   }
-  // aguardando_desfecho = leads da coorte SEM nenhum agendamento com desfecho.
-  const leadsAguardando = [...leadsSemDesfecho].filter((lid) => !leadsCompareceram.has(lid));
+  // Prioridade por lead: compareceu > faltou > aguardando.
+  const leadsFaltaram = [...leadsNoShow].filter((lid) => !leadsCompareceram.has(lid));
+  const faltaramSet = new Set(leadsFaltaram);
+  const leadsAguardando = [...leadsAgendados].filter(
+    (lid) => !leadsCompareceram.has(lid) && !faltaramSet.has(lid),
+  );
   const funilOficial = {
     leads_agendados: leadsAgendados.size,
     consultas: appointmentsScope.length,
     compareceram: leadsCompareceram.size,
     fecharam: leadsFecharam.size,
+    faltaram: leadsFaltaram.length,
     aguardando_desfecho: leadsAguardando.length,
   };
+
 
   // RECORRENTES — reusa os números de dinheiro já calculados (nada novo de
   // faturamento). Recorrente = paciente com pagamento no período cuja PRIMEIRA

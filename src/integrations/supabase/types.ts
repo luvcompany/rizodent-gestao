@@ -1728,6 +1728,45 @@ export type Database = {
           },
         ]
       }
+      crm_funil_cleanup_log: {
+        Row: {
+          created_at: string
+          detalhe: string | null
+          id: string
+          lead_id: string | null
+          lead_name: string | null
+          origem: string
+          resultado: string
+          stage_from: string | null
+          stage_to: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          detalhe?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          origem?: string
+          resultado: string
+          stage_from?: string | null
+          stage_to?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          detalhe?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          origem?: string
+          resultado?: string
+          stage_from?: string | null
+          stage_to?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       crm_funnel_custom_reports: {
         Row: {
           agendados: number
@@ -4639,6 +4678,17 @@ export type Database = {
         }[]
       }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
+      crm_cleanup_contratado_sem_pagamento: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          qtd: number
+          resultado: string
+        }[]
+      }
+      crm_lead_revert_or_delete: {
+        Args: { p_lead_id: string; p_origem?: string }
+        Returns: string
+      }
       crm_template_usage_counts: {
         Args: { _tenant_id: string }
         Returns: {

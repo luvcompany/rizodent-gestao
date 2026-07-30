@@ -740,7 +740,10 @@ async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados:
     if (!clinicaIds.length) return out;
     const { data: pays } = await admin.from("pagamentos")
       .select("paciente_id").in("clinica_id", clinicaIds)
-      .eq("recorrencia_orto", false).gte("data_pagamento", desde);
+      .eq("recorrencia_orto", false)
+      .eq("nao_marketing", false) // pagamento marcado como não-marketing não promove lead
+      .gte("data_pagamento", desde);
+
     const pacienteIds = Array.from(new Set((pays || []).map((p: any) => p.paciente_id).filter(Boolean)));
     if (!pacienteIds.length) return out;
 
@@ -886,6 +889,126 @@ async function reconcileRemovidosNoDontus(
   console.log(`[dontus-sync] reconciliação: ${removidos} pagamento(s) removido(s) (${clinicaId}/${date})`);
   return { removidos, alerta: null };
 }
+
+// VARREDURA de pagamentos apagados no Dontus num INTERVALO (não só no dia).
+// Compara todos os pagamentos do CRClin com dontus_key no intervalo contra a
+// lista de recebidos do Dontus. Só toca em pagamentos IMPORTADOS (dontus_key
+// não nulo) — lançamento manual da recepção nunca é apagado.
+const MAX_REMOCOES_POR_SWEEP = 50;
+
+async function sweepPagamentosApagadosNoDontus(
+  admin: any,
+  teamToken: string,
+  from: string,
+  to: string,
+): Promise<any> {
+  const inicio = from < MIN_PAYMENT_DATE ? MIN_PAYMENT_DATE : from;
+  const out: any = { periodo: { from: inicio, to }, por_clinica: [], removidos: 0, alertas: [] as string[] };
+  if (inicio > to) return out;
+
+  // janelas de no máximo 31 dias
+  const janelas: Array<[string, string]> = [];
+  let cursor = inicio;
+  while (cursor <= to) {
+    const d = new Date(cursor + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + 30);
+    const fim = d.toISOString().slice(0, 10);
+    janelas.push([cursor, fim > to ? to : fim]);
+    const nx = new Date((fim > to ? to : fim) + "T00:00:00Z");
+    nx.setUTCDate(nx.getUTCDate() + 1);
+    cursor = nx.toISOString().slice(0, 10);
+  }
+
+  for (const [idClinicaStr, info] of Object.entries(CLINICA_MAP)) {
+    const idClinica = Number(idClinicaStr);
+    const res: any = { clinica: info.nome, chaves_dontus: 0, orfaos: 0, removidos: 0, alerta: null };
+    try {
+      const chavesNoDontus = new Set<string>();
+      for (const [ji, jf] of janelas) {
+        const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_contas_recebidas", {
+          input: { contexto: { idDontus: DONTUS_ID, idClinica }, dataInicio: ji, dataFim: jf },
+        });
+        for (const it of rows || []) {
+          chavesNoDontus.add(
+            `${Number(it.idContaReceberPaciente)}-${Number(it.idPagamento)}-${Number(it.parcela ?? 1)}`,
+          );
+        }
+      }
+      res.chaves_dontus = chavesNoDontus.size;
+      if (chavesNoDontus.size === 0) {
+        res.alerta = "Dontus retornou 0 recebimentos no período — varredura abortada por segurança";
+        out.alertas.push(`${info.nome}: ${res.alerta}`);
+        out.por_clinica.push(res);
+        continue;
+      }
+
+      const { data: noCrclin, error } = await admin.from("pagamentos")
+        .select("id, dontus_key, valor, paciente_id, data_pagamento")
+        .eq("clinica_id", info.id)
+        .gte("data_pagamento", inicio).lte("data_pagamento", to)
+        .not("dontus_key", "is", null);
+      if (error) throw new Error(error.message);
+
+      const orfaos = (noCrclin || []).filter((p: any) => p.dontus_key && !chavesNoDontus.has(p.dontus_key));
+      res.orfaos = orfaos.length;
+      if (orfaos.length > MAX_REMOCOES_POR_SWEEP) {
+        res.alerta = `${orfaos.length} ausentes (acima do limite ${MAX_REMOCOES_POR_SWEEP}) — nada removido, conferir manualmente`;
+        out.alertas.push(`${info.nome}: ${res.alerta}`);
+        out.por_clinica.push(res);
+        continue;
+      }
+
+      const fallbackUser = await resolveFallbackUser(admin);
+      for (const p of orfaos) {
+        try {
+          let nome: string | null = null;
+          let leadId: string | null = null;
+          if (p.paciente_id) {
+            const { data: pac } = await admin.from("pacientes").select("nome").eq("id", p.paciente_id).maybeSingle();
+            nome = pac?.nome ?? null;
+            const { data: lk } = await admin.from("crm_lead_pacientes")
+              .select("lead_id").eq("paciente_id", p.paciente_id).limit(1).maybeSingle();
+            leadId = lk?.lead_id ?? null;
+          }
+          await admin.from("dontus_pagamentos_removidos").insert({
+            dontus_key: p.dontus_key, pagamento_id: p.id, paciente_id: p.paciente_id,
+            paciente_nome: nome, clinica_id: info.id, valor: p.valor,
+            data_pagamento: p.data_pagamento, motivo: "ausente_no_dontus_sweep",
+          }).then((r: any) => r, () => {});
+          const del = await admin.from("pagamentos").delete().eq("id", p.id);
+          if (del.error) throw new Error(del.error.message);
+          res.removidos++;
+          if (fallbackUser) {
+            await admin.from("crm_notifications").insert({
+              user_id: fallbackUser, lead_id: leadId,
+              title: "Pagamento removido",
+              body: `Pagamento removido: apagado no Dontus (${nome || "paciente sem nome"}, R$ ${Number(p.valor || 0).toFixed(2)}, ${p.data_pagamento}).`,
+              type: "dontus_pagamento_removido",
+              dedupe_key: `dontus_removido:${p.dontus_key}`,
+            }).then((r: any) => r, () => {});
+          }
+        } catch (e: any) {
+          console.error(`[dontus-sync] sweep falhou em ${p.dontus_key}:`, e?.message || e);
+        }
+      }
+    } catch (e: any) {
+      res.alerta = e?.message || String(e);
+      out.alertas.push(`${info.nome}: ${res.alerta}`);
+    }
+    out.removidos += res.removidos;
+    out.por_clinica.push(res);
+  }
+
+  try {
+    await admin.from("dontus_sync_runs").insert({
+      started_at: new Date().toISOString(), finished_at: new Date().toISOString(),
+      date_sincronizada: to, dry_run: false,
+      detalhes: { sweep_deleted: out },
+    });
+  } catch (_) { /* best-effort */ }
+  return out;
+}
+
 
 
 async function executePlan(admin: any, plan: PlanItem[]): Promise<{
@@ -1827,7 +1950,22 @@ Deno.serve(async (req) => {
     reconciliacao = await reconcileStuckNaoContratado(admin);
   }
 
+  // Varredura de pagamentos apagados no Dontus: sob demanda ({sweep_deleted:true})
+  // ou automaticamente no job do "dia anterior" (date < hoje).
+  const hojeStr = new Date().toISOString().slice(0, 10);
+  const querSweep = body.sweep_deleted === true
+    || (body.sweep_deleted !== false && !dryRun && date < hojeStr);
+  let sweep: any = null;
+  if (querSweep && !dryRun) {
+    try {
+      sweep = await sweepPagamentosApagadosNoDontus(admin, teamToken, MIN_PAYMENT_DATE, date);
+    } catch (e: any) {
+      sweep = { erro: e?.message ?? String(e) };
+    }
+  }
+
   return new Response(JSON.stringify({
-    date, dry_run: dryRun, clinicas: results, errors, reconciliacao,
+    date, dry_run: dryRun, clinicas: results, errors, reconciliacao, sweep_deleted: sweep,
   }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
 });
