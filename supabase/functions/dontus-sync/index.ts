@@ -740,7 +740,10 @@ async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados:
     if (!clinicaIds.length) return out;
     const { data: pays } = await admin.from("pagamentos")
       .select("paciente_id").in("clinica_id", clinicaIds)
-      .eq("recorrencia_orto", false).gte("data_pagamento", desde);
+      .eq("recorrencia_orto", false)
+      .eq("nao_marketing", false) // pagamento marcado como não-marketing não promove lead
+      .gte("data_pagamento", desde);
+
     const pacienteIds = Array.from(new Set((pays || []).map((p: any) => p.paciente_id).filter(Boolean)));
     if (!pacienteIds.length) return out;
 
