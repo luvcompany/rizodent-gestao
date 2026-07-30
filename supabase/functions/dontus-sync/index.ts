@@ -1670,6 +1670,7 @@ async function syncClinica(
     primeiros: plan.filter((p) => p.tipo === "primeiro").length,
     recorrentes: plan.filter((p) => p.tipo === "recorrente").length,
     notificacoes: plan.filter((p) => p.notification).length,
+    orto_a_corrigir: plan.filter((p) => p.fix_recorrencia_orto).length,
     phone_lookup_failed: phoneLookupFailed,
     telefones_no_cache: phoneCache.size,
     plan,
