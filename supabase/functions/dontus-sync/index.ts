@@ -1467,12 +1467,9 @@ async function syncClinica(
     }
 
 
-    // 3) Recorrência de ortodontia
-    let recorrencia_orto = false;
-    if (especialidade === "ORTODONTIA") {
-      const key = `${idPaciente}|${dataPag}`;
-      recorrencia_orto = !ortoDayHasStart.get(key);
-    }
+    // 3) Recorrência de ortodontia (regra do dia, computada acima)
+    const recorrencia_orto = recEsperado;
+
 
     // 4) Dedupe com pagamento manual — INDEPENDENTE de vínculo com lead.
     //    Monta candidatos de paciente no CRClin: (a) vinculados ao lead,
