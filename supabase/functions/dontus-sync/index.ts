@@ -1087,8 +1087,10 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
         }
         if (targetId) {
           const upd = await admin.from("pagamentos")
-            .update({ dontus_key: item.dontus_key })
+            // Sobrescreve a classificação da recepção pela regra do dia.
+            .update({ dontus_key: item.dontus_key, recorrencia_orto: item.recorrencia_orto })
             .eq("id", targetId).is("dontus_key", null);
+
           if (upd.error) {
             if (!/duplicate|unique/i.test(upd.error.message || "")) throw upd.error;
           } else {
