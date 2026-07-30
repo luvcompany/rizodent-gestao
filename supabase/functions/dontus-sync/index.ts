@@ -374,6 +374,10 @@ type PlanItem = {
   matched_lead_name: string | null;
   matched_paciente_id: string | null; // paciente já existente no CRClin
   matched_payment_id?: string | null; // pagamento manual a adotar (dontus_key := ...)
+  // Auto-correção de orto em pagamento JÁ importado (skip): UPDATE recorrencia_orto.
+  fix_recorrencia_orto?: boolean;
+  fix_pagamento_id?: string | null;
+
   move_to_contratado: boolean;
   // Tipo primeiro/recorrente baseado no HISTÓRICO DO DONTUS (não no CRClin).
   tipo: "primeiro" | "recorrente";
