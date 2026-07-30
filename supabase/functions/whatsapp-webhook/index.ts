@@ -1090,6 +1090,52 @@ Deno.serve(async (req) => {
                       ["on_create", "on_enter", "on_create_or_enter"]
                     );
                   }
+
+                  // ALERTA de possível duplicado Direct↔WhatsApp (NUNCA mescla
+                  // automaticamente): lead novo do WhatsApp com o mesmo nome
+                  // normalizado de um lead de Instagram sem telefone (Direct real,
+                  // não comentário) criado nos últimos 45 dias.
+                  if (newLead?.id) {
+                    try {
+                      const norm = (s: string | null | undefined) =>
+                        String(s ?? "")
+                          .normalize("NFD")
+                          .replace(/[\u0300-\u036f]/g, "")
+                          .replace(/\s+/g, " ")
+                          .trim()
+                          .toLowerCase();
+                      const novoNome = norm(newLead.name);
+                      if (novoNome) {
+                        const since = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString();
+                        const { data: igCands } = await supabase
+                          .from("crm_leads")
+                          .select("id, name, assigned_to")
+                          .eq("tenant_id", tenantId)
+                          .not("instagram_user_id", "is", null)
+                          .is("phone", null)
+                          .eq("comment_only", false)
+                          .gte("created_at", since)
+                          .limit(500);
+                        const match = (igCands || []).find((c: any) => norm(c.name) === novoNome);
+                        if (match) {
+                          const destinatario = assignedTo || (match as any).assigned_to || null;
+                          if (destinatario) {
+                            await supabase.from("crm_notifications").insert({
+                              user_id: destinatario,
+                              type: "warning",
+                              title: `Possível duplicado do Direct: ${newLead.name}`,
+                              body: `Possível duplicado do Direct: ${newLead.name} — usar Transferir p/ WhatsApp para unificar (lead Instagram ${match.id} / lead WhatsApp ${newLead.id}).`,
+                              lead_id: newLead.id,
+                              dedupe_key: `dup_direct_wa:${match.id}:${newLead.id}`,
+                            });
+                            console.log(`[WEBHOOK] Alerta de duplicado Direct↔WhatsApp criado (IG ${match.id} ↔ WA ${newLead.id})`);
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      console.warn("[WEBHOOK] duplicate-direct check error", e);
+                    }
+                  }
                 }
               }
             } else {
