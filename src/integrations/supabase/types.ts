@@ -3551,6 +3551,7 @@ export type Database = {
           especialidade: string | null
           forma_pagamento: string
           id: string
+          nao_marketing: boolean
           paciente_id: string
           recorrencia_orto: boolean
           tipo: string
@@ -3566,6 +3567,7 @@ export type Database = {
           especialidade?: string | null
           forma_pagamento: string
           id?: string
+          nao_marketing?: boolean
           paciente_id: string
           recorrencia_orto?: boolean
           tipo?: string
@@ -3581,6 +3583,7 @@ export type Database = {
           especialidade?: string | null
           forma_pagamento?: string
           id?: string
+          nao_marketing?: boolean
           paciente_id?: string
           recorrencia_orto?: boolean
           tipo?: string
