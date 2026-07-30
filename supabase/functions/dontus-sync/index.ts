@@ -1237,7 +1237,7 @@ async function syncClinica(
     if (!idPac || !dataPag) continue;
     const isOrto = String(it.especialidade || "").toUpperCase().includes("ORTO");
     const counts = isOrto
-      ? !!ortoDayHasStart.get(`${idPac}|${it.dataRecebimento}`)
+      ? !!ortoDayHasStart.get(`${idPac}|${dataPag}`)
       : true;
     if (counts) pacienteHasCountingOnDay.add(`${idPac}|${dataPag}`);
   }
