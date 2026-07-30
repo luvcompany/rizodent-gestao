@@ -4911,6 +4911,12 @@ export type Database = {
         Args: { p_cidade: string; p_source: string; p_tipo: string }
         Returns: undefined
       }
+      pacientes_whatsapp_direto: {
+        Args: { p_paciente_ids: string[] }
+        Returns: {
+          paciente_id: string
+        }[]
+      }
       pagamento_conta_marketing: {
         Args: { p_paciente_id: string; p_recorrencia_orto: boolean }
         Returns: boolean
