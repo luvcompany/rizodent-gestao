@@ -1207,38 +1207,22 @@ async function syncClinica(
     console.error(`[dontus-sync] leitura do cache de telefones falhou:`, e?.message || e);
   }
 
-  // Regra do dono (28/07/2026): orto só conta se o paciente NÃO tiver orto
-  // ANTERIOR no Dontus. Antes usávamos "tem PANORÂMICA/APARELHO no dia", que
-  // classificava errado quem começava tratamento sem esses serviços no lançamento.
-  const idsOrtoHoje = [...new Set(
-    (recebidos || [])
-      .filter((it: any) => String(it.especialidade || "").toUpperCase().includes("ORTO"))
-      .map((it: any) => Number(it.idPaciente))
-      .filter((n: number) => !!n),
-  )];
-  const primeiraOrtoPorPacienteHist = new Map<number, string>();
-  for (let i = 0; i < idsOrtoHoje.length; i += 200) {
-    const { data: hist } = await admin.from("dontus_paciente_seen")
-      .select("id_paciente_dontus, primeira_data_orto")
-      .in("id_paciente_dontus", idsOrtoHoje.slice(i, i + 200))
-      .not("primeira_data_orto", "is", null);
-    for (const h of (hist || [])) {
-      const id = Number(h.id_paciente_dontus);
-      const d = String(h.primeira_data_orto);
-      const atual = primeiraOrtoPorPacienteHist.get(id);
-      if (!atual || d < atual) primeiraOrtoPorPacienteHist.set(id, d);
-    }
-  }
-  // true = é INÍCIO de tratamento (conta). false = mensalidade (não conta).
+  // Regra de orto (30/07/2026): baseada SÓ nos serviços do próprio dia, sem
+  // depender de histórico (primeira_data_orto / dontus_paciente_seen).
+  // Início de tratamento no dia = existe algum serviço do paciente naquele dia
+  // contendo "PANOR" (panorâmica) ou "APARELHO". Se há início, toda ORTODONTIA
+  // do dia conta; caso contrário, toda ORTODONTIA do dia é recorrência.
   const ortoDayHasStart = new Map<string, boolean>();
   for (const it of recebidos) {
-    if (!String(it.especialidade || "").toUpperCase().includes("ORTO")) continue;
     const idPac = Number(it.idPaciente);
-    const dataPag = String(it.dataRecebimento || "").slice(0, 10);
-    const primeira = primeiraOrtoPorPacienteHist.get(idPac);
-    const temOrtoAntes = !!primeira && primeira < dataPag;
-    ortoDayHasStart.set(`${idPac}|${it.dataRecebimento}`, !temOrtoAntes);
+    if (!idPac) continue;
+    const key = `${idPac}|${it.dataRecebimento}`;
+    const serv = String(it.servico || "").toUpperCase();
+    const isStart = serv.includes("PANOR") || serv.includes("APARELHO");
+    if (isStart) ortoDayHasStart.set(key, true);
+    else if (!ortoDayHasStart.has(key)) ortoDayHasStart.set(key, false);
   }
+
 
   // Set com pacientes que têm AO MENOS UM pagamento que CONTA no dia
   // (recorrencia_orto=false). Usado como guardrail do kommo_base: só reconhecer
