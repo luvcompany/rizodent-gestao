@@ -519,6 +519,34 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
       )
     : [];
 
+  // Pagamentos SEM clínica atribuída (clinica_id IS NULL), mesmas regras de
+  // orto/nao_marketing. NÃO entram em faturamento.total (contrato preservado):
+  // servem só para a linha "Sem clínica" de por_clinica e para pacientes_total
+  // deixar de ficar menor que pacientes_pagantes. Escopo de tenant garantido
+  // pelo paciente (pagamentos não tem tenant_id).
+  let pagamentosSemClinica: any[] = [];
+  if (!clinicaId) {
+    const semClin = await fetchAllPaged<any>(
+      () => admin.from("pagamentos")
+        .select("id, valor, paciente_id, data_pagamento")
+        .is("clinica_id", null)
+        .eq("recorrencia_orto", false)
+        .eq("nao_marketing", false)
+        .gte("data_pagamento", from).lte("data_pagamento", to),
+      "id",
+    );
+    const idsSemClin = [...new Set(semClin.map((pg) => pg.paciente_id).filter(Boolean))] as string[];
+    const doTenant = new Set<string>();
+    for (const ids of chunk(idsSemClin, 150)) {
+      const r = await admin.from("pacientes").select("id").eq("tenant_id", tenantId).in("id", ids);
+      if (r.error) return json({ error: r.error.message }, 500);
+      (r.data || []).forEach((pc: any) => doTenant.add(pc.id));
+    }
+    pagamentosSemClinica = semClin.filter((pg) => pg.paciente_id && doTenant.has(pg.paciente_id));
+  }
+
+
+
 
 
 
@@ -561,6 +589,11 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     .sort((a, b) => a.dia.localeCompare(b.dia));
 
   const pacientesTotalSet = new Set(pagamentos.map((pg) => pg.paciente_id).filter(Boolean));
+  // COUNT DISTINCT real do período: soma os pacientes cujos pagamentos ficaram
+  // sem clínica atribuída (mesma regra de orto/nao_marketing).
+  const pacientesTotalAllSet = new Set<string>([...pacientesTotalSet] as string[]);
+  pagamentosSemClinica.forEach((pg) => pacientesTotalAllSet.add(pg.paciente_id));
+
 
   // pacientes_pagantes: distintos que tiveram QUALQUER pagamento no período,
   // INCLUINDO recorrência de ortodontia (bate com o dashboard interno).
@@ -649,6 +682,15 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     if (pg.paciente_id) entry.pacientes.add(pg.paciente_id);
     clinMap.set(name, entry);
   });
+  // Linha "Sem clínica" — pagamentos sem clinica_id, para a soma de por_clinica
+  // cobrir todos os pacientes do período.
+  pagamentosSemClinica.forEach((pg) => {
+    const entry = clinMap.get("Sem clínica") || { faturamento: 0, pacientes: new Set<string>() };
+    entry.faturamento += num(pg.valor);
+    if (pg.paciente_id) entry.pacientes.add(pg.paciente_id);
+    clinMap.set("Sem clínica", entry);
+  });
+
   const porClinica = Array.from(clinMap.entries())
     .map(([clinica, v]) => ({ clinica, faturamento: v.faturamento, pacientes: v.pacientes.size }))
     .sort((a, b) => b.faturamento - a.faturamento);
@@ -769,7 +811,55 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     .map(([clinica, v]) => ({ clinica, total: v.total, por_status: v.por_status }))
     .sort((a, b) => b.total - a.total);
 
+  // FUNIL OFICIAL — coorte por scheduled_date (NÃO por created_at): "leads que
+  // agendei PARA o período → desses, quantos compareceram → quantos fecharam".
+  // Usa os appointments já carregados (nenhuma query nova); respeita ?clinica=.
+  const DESFECHO_COMPARECEU = new Set(["contracted", "not_contracted"]);
+  const leadsAgendados = new Set<string>();
+  const leadsCompareceram = new Set<string>();
+  const leadsFecharam = new Set<string>();
+  const leadsSemDesfecho = new Set<string>();
+  for (const a of appointmentsScope as any[]) {
+    const lid = a.lead_id;
+    if (!lid) continue;
+    leadsAgendados.add(lid);
+    const st = a.status || "";
+    if (st === "contracted") leadsFecharam.add(lid);
+    if (DESFECHO_COMPARECEU.has(st)) leadsCompareceram.add(lid);
+    else leadsSemDesfecho.add(lid);
+  }
+  // aguardando_desfecho = leads da coorte SEM nenhum agendamento com desfecho.
+  const leadsAguardando = [...leadsSemDesfecho].filter((lid) => !leadsCompareceram.has(lid));
+  const funilOficial = {
+    leads_agendados: leadsAgendados.size,
+    consultas: appointmentsScope.length,
+    compareceram: leadsCompareceram.size,
+    fecharam: leadsFecharam.size,
+    aguardando_desfecho: leadsAguardando.length,
+  };
+
+  // RECORRENTES — reusa os números de dinheiro já calculados (nada novo de
+  // faturamento). Recorrente = paciente com pagamento no período cuja PRIMEIRA
+  // compra histórica (min data_pagamento) é ANTERIOR ao período.
+  const pacientesRecorrentes = new Set<string>();
+  for (const ids of chunk([...pacientesTotalSet] as string[], 150)) {
+    const r = await admin.from("pagamentos")
+      .select("paciente_id")
+      .in("paciente_id", ids)
+      .lt("data_pagamento", from)
+      .limit(5000);
+    if (r.error) return json({ error: r.error.message }, 500);
+    (r.data || []).forEach((pg: any) => { if (pg.paciente_id) pacientesRecorrentes.add(pg.paciente_id); });
+  }
+  const recorrentes = {
+    pacientes_novos: contratadosNoFiltro.length,
+    pacientes_recorrentes: pacientesRecorrentes.size,
+    faturamento_novos: fatNovos,
+    faturamento_recorrentes: fatRecorrentes,
+  };
+
   return json({
+
     period: { from, to, timezone: BAHIA_TZ },
     faturamento: { total: fatTotal, novos: fatNovos, recorrentes: fatRecorrentes },
     // Ticket médio real. O antigo campo "ticket_medio" (número único) era, na
@@ -780,8 +870,11 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     projecao_mes: projecaoMes,
     dias_uteis_totais_mes: diasUteisTotaisMes,
     ultimo_dia_lancado: ultimoDiaLancado || null,
-    pacientes_total: pacientesTotalSet.size,
+    pacientes_total: pacientesTotalAllSet.size,
     pacientes_pagantes: pacientesPagantesSet.size,
+    funil_oficial: funilOficial,
+    recorrentes,
+
     // novos_contratados = definição canônica (primeiro pagamento no período)
     novos_contratados: contratadosNoFiltro.length,
     num_pagamentos: pagamentos.length,
@@ -844,10 +937,22 @@ async function reportOverview(tenantId: string, p: URLSearchParams) {
 
 async function reportFunnel(tenantId: string, p: URLSearchParams) {
   const pipelineId = p.get("pipeline_id");
-  let stagesQ = admin.from("crm_stages").select("id,name,position,pipeline_id").eq("tenant_id", tenantId).order("position");
-  if (pipelineId) stagesQ = stagesQ.eq("pipeline_id", pipelineId);
+  // Sem pipeline_id a resposta misturava TODOS os funis (leitura enganosa):
+  // agora é obrigatório e devolvemos a lista de funis do tenant para escolher.
+  if (!pipelineId) {
+    const { data: pls, error: pErr } = await admin.from("crm_pipelines")
+      .select("id, name").eq("tenant_id", tenantId).order("name");
+    if (pErr) return json({ error: pErr.message }, 500);
+    return json({
+      error: "pipeline_id é obrigatório: sem ele os funis ficam misturados. Escolha um pipeline abaixo.",
+      pipelines: (pls || []).map((pl: any) => ({ id: pl.id, name: pl.name })),
+    }, 400);
+  }
+  const stagesQ = admin.from("crm_stages").select("id,name,position,pipeline_id")
+    .eq("tenant_id", tenantId).eq("pipeline_id", pipelineId).order("position");
   const { data: stages, error: sErr } = await stagesQ;
   if (sErr) return json({ error: sErr.message }, 500);
+
   const out: any[] = [];
   for (const s of stages || []) {
     const { count, error } = await admin.from("crm_leads").select("id", { count: "exact", head: true })
