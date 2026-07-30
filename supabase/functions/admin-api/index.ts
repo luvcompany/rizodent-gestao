@@ -682,6 +682,15 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     if (pg.paciente_id) entry.pacientes.add(pg.paciente_id);
     clinMap.set(name, entry);
   });
+  // Linha "Sem clínica" — pagamentos sem clinica_id, para a soma de por_clinica
+  // cobrir todos os pacientes do período.
+  pagamentosSemClinica.forEach((pg) => {
+    const entry = clinMap.get("Sem clínica") || { faturamento: 0, pacientes: new Set<string>() };
+    entry.faturamento += num(pg.valor);
+    if (pg.paciente_id) entry.pacientes.add(pg.paciente_id);
+    clinMap.set("Sem clínica", entry);
+  });
+
   const porClinica = Array.from(clinMap.entries())
     .map(([clinica, v]) => ({ clinica, faturamento: v.faturamento, pacientes: v.pacientes.size }))
     .sort((a, b) => b.faturamento - a.faturamento);
