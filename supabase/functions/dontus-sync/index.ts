@@ -1216,7 +1216,8 @@ async function syncClinica(
   for (const it of recebidos) {
     const idPac = Number(it.idPaciente);
     if (!idPac) continue;
-    const key = `${idPac}|${it.dataRecebimento}`;
+    const key = `${idPac}|${String(it.dataRecebimento || "").slice(0, 10)}`;
+
     const serv = String(it.servico || "").toUpperCase();
     const isStart = serv.includes("PANOR") || serv.includes("APARELHO");
     if (isStart) ortoDayHasStart.set(key, true);
