@@ -59,7 +59,7 @@ const CRM_LEADS_PAGE_SIZE = 1000;
 const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
 const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
 const CLINICAS_SELECT = "id, nome, cidade, ativa";
-const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade, recorrencia_orto";
+const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade, recorrencia_orto, nao_marketing";
 const TRATAMENTOS_SELECT = "id, paciente_id, clinica_id, created_at";
 const PACIENTES_SELECT = "id, origem, nome_anuncio";
 
@@ -386,31 +386,8 @@ const Dashboard = () => {
     return () => { cancelled = true; };
   }, [dateFilter.preset, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
-  // ===== "WhatsApp direto" NÃO conta como faturamento de marketing (30/07/2026) =====
-  // Definição ÚNICA no banco (public.pagamento_conta_marketing, exposta em lote
-  // por pacientes_whatsapp_direto): paciente cujo(s) lead(s) vinculado(s) são
-  // source ILIKE 'whatsapp' e não têm NENHUM agendamento no CRM. É dinâmico —
-  // se a lead ganhar agendamento depois, o pagamento volta a contar.
-  const [whatsDiretoPacientes, setWhatsDiretoPacientes] = useState<Set<string>>(new Set());
-  const pacienteIdsPagantes = useMemo(
-    () => [...new Set(pagamentos.map((p) => p.paciente_id).filter(Boolean))] as string[],
-    [pagamentos],
-  );
-  useEffect(() => {
-    let cancelled = false;
-    if (!pacienteIdsPagantes.length) { setWhatsDiretoPacientes(new Set()); return; }
-    (async () => {
-      const acc = new Set<string>();
-      for (let i = 0; i < pacienteIdsPagantes.length; i += 500) {
-        const bloco = pacienteIdsPagantes.slice(i, i + 500);
-        const { data, error } = await (supabase.rpc as any)("pacientes_whatsapp_direto", { p_paciente_ids: bloco });
-        if (error) { console.warn("[Dashboard] pacientes_whatsapp_direto falhou:", error); return; }
-        for (const r of (data || []) as { paciente_id: string }[]) acc.add(r.paciente_id);
-      }
-      if (!cancelled) setWhatsDiretoPacientes(acc);
-    })();
-    return () => { cancelled = true; };
-  }, [pacienteIdsPagantes]);
+
+
 
   // Unique values for filter dropdowns
 
@@ -450,10 +427,10 @@ const Dashboard = () => {
   // Mensalidade de ortodontia (recorrencia_orto=true) NÃO entra no faturamento:
   // é receita recorrente de paciente antigo, não venda nova. Quem começa
   // tratamento (sem orto anterior no Dontus) entra normalmente.
-  // Além da recorrência de orto, exclui "WhatsApp direto" (lead whatsapp sem
-  // nenhum agendamento no CRM) — os dois filtros valem juntos.
+  // Além da recorrência de orto, exclui pagamentos com a marca gravada
+  // nao_marketing (definida só na entrada do pagamento, nunca retroativa).
   const pagamentosFat = filtered.pagamentos.filter(
-    (p) => p.recorrencia_orto !== true && !(p.paciente_id && whatsDiretoPacientes.has(p.paciente_id)),
+    (p) => p.recorrencia_orto !== true && p.nao_marketing !== true,
   );
 
   const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);

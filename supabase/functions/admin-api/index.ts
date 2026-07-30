@@ -505,32 +505,21 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   // A classificação início-vs-mensalidade vem do histórico de orto no Dontus
   // (regra do dono, 28/07/2026): só é "início de tratamento" quem NÃO tem
   // pagamento de orto anterior — mensalidade não conta como receita nova.
-  const pagamentosBruto = pagClinicaIds.length
+  // Exclui também pagamentos marcados como nao_marketing (marca gravada na
+  // entrada do pagamento — nunca recalculada retroativamente).
+  const pagamentos = pagClinicaIds.length
     ? await fetchAllPaged<any>(
         () => admin.from("pagamentos")
           .select("id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade")
           .in("clinica_id", pagClinicaIds)
           .eq("recorrencia_orto", false)
+          .eq("nao_marketing", false)
           .gte("data_pagamento", from).lte("data_pagamento", to),
         "id",
       )
     : [];
 
-  // REGRA "WHATSAPP DIRETO" (30/07/2026): pagamento de paciente cujo(s) lead(s)
-  // vinculado(s) são source ILIKE 'whatsapp' SEM nenhum agendamento no CRM não
-  // conta como faturamento de marketing. Definição única no banco
-  // (public.pagamento_conta_marketing / pacientes_whatsapp_direto) — nada de
-  // reimplementar a regra aqui, para não haver drift.
-  const whatsDireto = new Set<string>();
-  {
-    const ids = [...new Set(pagamentosBruto.map((pg) => pg.paciente_id).filter(Boolean))] as string[];
-    for (const bloco of chunk(ids, 500)) {
-      const { data, error } = await admin.rpc("pacientes_whatsapp_direto" as any, { p_paciente_ids: bloco });
-      if (error) return json({ error: error.message }, 500);
-      for (const r of (data || []) as any[]) whatsDireto.add(r.paciente_id);
-    }
-  }
-  const pagamentos = pagamentosBruto.filter((pg) => !pg.paciente_id || !whatsDireto.has(pg.paciente_id));
+
 
 
   // crm_appointments do tenant por scheduled_date (coluna DATE), paginado.
