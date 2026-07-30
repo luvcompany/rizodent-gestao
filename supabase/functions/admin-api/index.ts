@@ -870,8 +870,11 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     projecao_mes: projecaoMes,
     dias_uteis_totais_mes: diasUteisTotaisMes,
     ultimo_dia_lancado: ultimoDiaLancado || null,
-    pacientes_total: pacientesTotalSet.size,
+    pacientes_total: pacientesTotalAllSet.size,
     pacientes_pagantes: pacientesPagantesSet.size,
+    funil_oficial: funilOficial,
+    recorrentes,
+
     // novos_contratados = definição canônica (primeiro pagamento no período)
     novos_contratados: contratadosNoFiltro.length,
     num_pagamentos: pagamentos.length,
