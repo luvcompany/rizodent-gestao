@@ -589,6 +589,11 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     .sort((a, b) => a.dia.localeCompare(b.dia));
 
   const pacientesTotalSet = new Set(pagamentos.map((pg) => pg.paciente_id).filter(Boolean));
+  // COUNT DISTINCT real do período: soma os pacientes cujos pagamentos ficaram
+  // sem clínica atribuída (mesma regra de orto/nao_marketing).
+  const pacientesTotalAllSet = new Set<string>([...pacientesTotalSet] as string[]);
+  pagamentosSemClinica.forEach((pg) => pacientesTotalAllSet.add(pg.paciente_id));
+
 
   // pacientes_pagantes: distintos que tiveram QUALQUER pagamento no período,
   // INCLUINDO recorrência de ortodontia (bate com o dashboard interno).
