@@ -6,6 +6,7 @@
 // Conversas → Instagram → (Direct | Comentários), igual ao webhook oficial.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { resolveCidade } from "../_shared/resolveCidade.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +45,7 @@ interface IgAccountRow {
   active: boolean;
   token_expires_at: string | null;
   tenant_id: string;
+  cidade: string | null;
 }
 
 const pipelineCache = new Map<string, string>();
@@ -105,6 +107,9 @@ async function findOrCreateLead(
   accountUsername: string | null,
   igAccountId: string,
   tenantId: string,
+  // Comentário NÃO conta no funil: nasce comment_only=true. Quando chega um DM
+  // real, o lead "vira gente" e comment_only volta para false.
+  channelOpts: { isComment: boolean; accountCidade: string | null } = { isComment: false, accountCidade: null },
 ): Promise<string | null> {
   if (!igUserId) return null;
   const pipelineId = await resolveInstagramPipeline(tenantId);
@@ -153,7 +158,7 @@ async function findOrCreateLead(
   if (existingId) {
     const { data: existing } = await supabase
       .from("crm_leads")
-      .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked, tenant_id")
+      .select("id, instagram_username, instagram_profile_pic_url, name, is_blocked, tenant_id, comment_only, cidade")
       .eq("id", existingId)
       .maybeSingle();
     if (existing && (existing as any).is_blocked) return null;
@@ -169,6 +174,10 @@ async function findOrCreateLead(
         const better = profile.name || profile.username;
         if (better) updates.name = better;
       }
+      // DM real chegando num lead que só tinha comentário → passa a contar.
+      if (!channelOpts.isComment && (existing as any).comment_only === true) updates.comment_only = false;
+      // Cidade da conta do Instagram (só quando o lead ainda não tem cidade).
+      if (!(existing as any).cidade && channelOpts.accountCidade) updates.cidade = channelOpts.accountCidade;
       if (Object.keys(updates).length > 0) await supabase.from("crm_leads").update(updates).eq("id", existing.id);
       await supabase
         .from("crm_lead_instagram_identities")
@@ -203,6 +212,8 @@ async function findOrCreateLead(
       instagram_user_id: igUserId,
       instagram_username: profile.username,
       instagram_profile_pic_url: profile.profile_pic,
+      comment_only: channelOpts.isComment,
+      ...(channelOpts.accountCidade ? { cidade: channelOpts.accountCidade } : {}),
     })
     .select("id")
     .single();
@@ -362,6 +373,7 @@ async function persistMessage(opts: {
     opts.account.username,
     opts.account.ig_user_id,
     opts.account.tenant_id,
+    { isComment: opts.messageType === "comment", accountCidade: opts.account.cidade ?? null },
   );
   if (leadId) {
     const { data: blockedCheck } = await supabase.from("crm_leads").select("is_blocked").eq("id", leadId).maybeSingle();
@@ -467,7 +479,7 @@ async function persistMessage(opts: {
       try {
         const { data: leadRow } = await supabase
           .from("crm_leads")
-          .select("ad_id, source, titulo_anuncio, descricao_anuncio, link_anuncio")
+          .select("ad_id, source, titulo_anuncio, descricao_anuncio, link_anuncio, ad_account_id, ad_account_name")
           .eq("id", leadId)
           .maybeSingle();
         const updates: Record<string, unknown> = {};
@@ -478,6 +490,32 @@ async function persistMessage(opts: {
         if (!leadRow?.source || String(leadRow.source).toLowerCase().startsWith("instagram")) {
           updates.source = "instagram_ad";
         }
+        // Cidade do ANÚNCIO tem prioridade sobre a cidade da conta do Instagram
+        // (mesma resolução determinística do whatsapp-webhook, nunca lança).
+        const adCidade = await resolveCidade({
+          supabase,
+          tenantId: opts.account.tenant_id,
+          adAccountId: null,
+          adId: ref.adSourceId,
+          pageId: null,
+          adAccountName: null,
+        });
+        if (adCidade) updates.cidade = adCidade;
+        // ad_account_id / ad_account_name quando resolvíveis (referral não os traz).
+        try {
+          const suffix = String(ref.adSourceId).slice(-4);
+          const [{ data: acctMap }, { data: adMap }] = await Promise.all([
+            supabase.from("ad_account_map").select("ad_account_id")
+              .eq("tenant_id", opts.account.tenant_id).eq("ativo", true)
+              .eq("ad_id_suffix", suffix).limit(1).maybeSingle(),
+            supabase.from("ad_id_mapping").select("ad_account_id, ad_account_name")
+              .eq("ad_id", ref.adSourceId).limit(1).maybeSingle(),
+          ]);
+          const acctId = (adMap as any)?.ad_account_id || (acctMap as any)?.ad_account_id || null;
+          const acctName = (adMap as any)?.ad_account_name || null;
+          if (acctId && !leadRow?.ad_account_id) updates.ad_account_id = acctId;
+          if (acctName && !leadRow?.ad_account_name) updates.ad_account_name = acctName;
+        } catch (_e) { /* best-effort */ }
         if (Object.keys(updates).length > 0) {
           await supabase.from("crm_leads").update(updates).eq("id", leadId);
         }
@@ -564,7 +602,7 @@ Deno.serve(async (req: Request) => {
 
         const { data: account } = await supabase
           .from("ig_accounts")
-          .select("id, ig_user_id, username, access_token, active, token_expires_at, tenant_id")
+          .select("id, ig_user_id, username, access_token, active, token_expires_at, tenant_id, cidade")
           .eq("ig_user_id", accountId)
           .maybeSingle();
 
