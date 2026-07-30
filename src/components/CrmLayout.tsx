@@ -38,6 +38,23 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
 }
 
 const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
+  // Recepção: menu enxuto — sem Kanban/Dashboard/Relatórios/Integrações/Config.
+  // O guard correspondente fica em ProtectedRoute (RECEPCAO_PREFIXES).
+  if (role === "recepcao") {
+    return [
+      { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
+      {
+        label: "Automações",
+        icon: Bot,
+        children: [
+          { to: "/crm/bots", icon: Bot, label: "Bots" },
+          { to: "/crm/modelos", icon: FileText, label: "Modelos" },
+          { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
+          { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
+        ],
+      },
+    ];
+  }
   const items: SidebarEntry[] = [
     { to: "/crm/dashboard", icon: Home, label: "Dashboard" },
     { to: "/crm", icon: LayoutGrid, label: "Kanban", end: true },
@@ -265,7 +282,7 @@ const CrmLayout = () => {
             <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
             <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
           </div>
-          {userRole !== "posvenda" && (
+          {userRole !== "posvenda" && userRole !== "recepcao" && (
             <button
               onClick={() => navigate("/dashboard")}
               className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"

@@ -18,6 +18,10 @@ interface AuthContextType {
   user: User | null;
   profile: ProfileData | null;
   userRole: string | null;
+  /** true depois que o papel foi resolvido (cache válido ou 1º fetch concluído).
+   *  Os guards de papel do ProtectedRoute só decidem com isso true — senão uma
+   *  rota proibida renderiza (e consulta dados) na janela antes do papel chegar. */
+  roleResolved: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -52,12 +56,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [roleResolved, setRoleResolved] = useState(false);
   const [loading, setLoading] = useState(true);
   const lastProfileFetchRef = useRef<{ userId: string; at: number } | null>(null);
 
   const fetchProfile = async (userId: string, force = false) => {
     const last = lastProfileFetchRef.current;
-    if (!force && last?.userId === userId && Date.now() - last.at < 30_000) return;
+    if (!force && last?.userId === userId && Date.now() - last.at < 30_000) {
+      setRoleResolved(true);
+      return;
+    }
     lastProfileFetchRef.current = { userId, at: Date.now() };
     try {
       const [{ data: prof, error: profErr }, { data: role, error: roleErr }] = await Promise.all([
@@ -74,6 +82,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (e: any) {
       console.error("[AuthContext] fetchProfile failed:", e?.message || e);
       // Keep previous profile/role state on transient network errors.
+    } finally {
+      // Mesmo em erro: papel "resolvido" com o melhor estado disponível — senão o
+      // gate do ProtectedRoute travaria em "Carregando..." numa falha de rede.
+      setRoleResolved(true);
     }
   };
 
@@ -92,11 +104,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (cached) {
             setProfile(cached.profile);
             setUserRole(cached.userRole);
+            setRoleResolved(true);
           }
           setTimeout(() => fetchProfile(session.user.id), 0);
         } else {
           setProfile(null);
           setUserRole(null);
+          setRoleResolved(false);
         }
         setLoading(false);
       }
@@ -111,6 +125,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (cached) {
             setProfile(cached.profile);
             setUserRole(cached.userRole);
+            setRoleResolved(true);
           }
           fetchProfile(session.user.id);
         }
@@ -158,7 +173,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, userRole, loading, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, userRole, roleResolved, loading, signIn, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

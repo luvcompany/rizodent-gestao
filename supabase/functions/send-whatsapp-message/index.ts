@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
+import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -237,10 +237,20 @@ Deno.serve(async (req) => {
 
     const { data: leadData } = await supabase
       .from("crm_leads")
-      .select("pipeline_id, tenant_id")
+      .select("pipeline_id, tenant_id, whatsapp_number_id")
       .eq("id", lead_id)
       .maybeSingle();
     const leadTenantId: string | null = (leadData as any)?.tenant_id ?? null;
+
+    // Visibilidade por número (papel recepcao): quem não tem acesso ao número do
+    // lead não envia por ele. Lead sem carimbo (NULL) libera — caso Rizodent hoje.
+    const numCheck = await assertNumberAccess(req, (leadData as any)?.whatsapp_number_id ?? null, caller);
+    if (!numCheck.ok) {
+      console.warn(`[send-whatsapp-message] number guard: ${numCheck.error} lead=${lead_id} user=${caller.userId ?? "service"}`);
+      return new Response(JSON.stringify({ error: numCheck.error }), {
+        status: numCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ISOLAMENTO POR CLIENTE: as credenciais WhatsApp DEVEM pertencer
     // ao mesmo tenant do lead. Sem fallback "qualquer canal ativo".

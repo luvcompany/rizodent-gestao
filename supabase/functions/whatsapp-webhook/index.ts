@@ -648,10 +648,28 @@ Deno.serve(async (req) => {
             console.log(`[WEBHOOK] Integração encontrada: ${matchedIntegration.key} para phone_number_id ${incomingPhoneNumberId}`);
           }
 
+          const messages = value?.messages || [];
+
+          // Carimbo do número de origem: se o phone_number_id tiver cadastro em
+          // whatsapp_numbers, mensagens/leads recebem whatsapp_number_id — base da
+          // visibilidade por número (can_access_whatsapp_number). Sem cadastro ⇒ null
+          // ⇒ comportamento idêntico ao atual. Só consulta quando o payload tem
+          // mensagens: callbacks de status/reaction são a maioria do tráfego e não
+          // usam o carimbo.
+          let waNumberId: string | null = null;
+          if (matchedIntegration && incomingPhoneNumberId && messages.length > 0) {
+            const { data: waNum } = await supabase
+              .from("whatsapp_numbers")
+              .select("id")
+              .eq("tenant_id", matchedIntegration.tenant_id)
+              .eq("phone_number_id", incomingPhoneNumberId)
+              .maybeSingle();
+            waNumberId = waNum?.id ?? null;
+          }
+
           const contacts = value?.contacts || [];
           const contactName = contacts[0]?.profile?.name || null;
 
-          const messages = value?.messages || [];
           for (const msg of messages) {
             const from = msg.from;
             const msgType = msg.type || "text";
@@ -971,7 +989,7 @@ Deno.serve(async (req) => {
 
             let { data: leadRows } = await supabase
               .from("crm_leads")
-              .select("id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade")
+              .select("id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id")
               .eq("tenant_id", tenantId)
               .eq("phone", from)
               .order("created_at", { ascending: true })
@@ -1035,6 +1053,7 @@ Deno.serve(async (req) => {
                     // last_inbound_at=null e pulam o envio (guard de 24h).
                     last_inbound_at: new Date().toISOString(),
                   };
+                  if (waNumberId) insertData.whatsapp_number_id = waNumberId;
                   // Save ad referral data if present
                   if (referral) {
                     if (adHeadline) insertData.titulo_anuncio = adHeadline;
@@ -1097,6 +1116,10 @@ Deno.serve(async (req) => {
               const updates: any = {};
               if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
                 updates.name = contactName;
+              }
+              // Backfill do número de origem em leads antigos (só quando ainda não tem)
+              if (waNumberId && !lead.whatsapp_number_id) {
+                updates.whatsapp_number_id = waNumberId;
               }
               if (referral) {
                 if (adHeadline) {
@@ -1173,6 +1196,7 @@ Deno.serve(async (req) => {
                 content: content || null,
                 media_url: mediaUrl,
                 status: "received",
+                whatsapp_number_id: waNumberId,
                 whatsapp_message_id: msg.id || null,
                 reply_to_message_id: replyToMessageId,
                 // Dados do anúncio (referral)
