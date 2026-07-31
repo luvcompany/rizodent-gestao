@@ -41,18 +41,24 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
   // Recepção: menu enxuto — sem Kanban/Dashboard/Relatórios/Integrações/Config.
   // O guard correspondente fica em ProtectedRoute (RECEPCAO_PREFIXES).
   if (role === "recepcao") {
+    // Menu próprio do balcão: começa pelo resumo do turno, depois o atendimento
+    // (conversas e funil) e só então as ferramentas. Não é o menu dos outros
+    // perfis com itens escondidos — é uma lista pensada para este trabalho.
     return [
+      { to: "/crm/recepcao", icon: Home, label: "Início", end: true },
       { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
+      { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
       {
-        label: "Automações",
+        label: "Ferramentas",
         icon: Bot,
         children: [
-          { to: "/crm/bots", icon: Bot, label: "Bots" },
+          { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
-          { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
+          { to: "/crm/bots", icon: Bot, label: "Bots" },
         ],
       },
+      { to: "/crm/conexoes", icon: Link2, label: "Conexões" },
     ];
   }
   const items: SidebarEntry[] = [
@@ -107,7 +113,7 @@ const CrmLayout = () => {
   const initials = profile?.nome?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
   const [unreadCount, setUnreadCount] = useState(0);
   const [todayTaskCount, setTodayTaskCount] = useState(0);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações"]));
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações", "Ferramentas"]));
   const unreadFetchSeq = useRef(0);
   const unreadRefreshTimer = useRef<number | null>(null);
   const crmNavItems = buildCrmNavItems(userRole);

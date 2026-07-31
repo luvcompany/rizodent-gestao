@@ -7,13 +7,17 @@ import { toast } from "sonner";
 // Rotas liberadas para o papel Recepção (chat + disparos + modelos + bots).
 // Qualquer outra rota redireciona para Conversas.
 const RECEPCAO_PREFIXES = [
+  "/crm/recepcao",
   "/crm/conversas",
   "/crm/conversa",
   "/crm/campanhas",
   "/crm/modelos",
   "/crm/respostas-rapidas",
   "/crm/bots",
+  "/crm/conexoes",
 ];
+/** O Kanban é rota exata "/crm" — prefixo liberaria o CRM inteiro. */
+const RECEPCAO_ROTAS_EXATAS = ["/crm"];
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading, profile, signOut, user, userRole, roleResolved } = useAuth();
@@ -85,9 +89,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const path = location.pathname;
     const allowed =
       path === "/change-password" ||
+      RECEPCAO_ROTAS_EXATAS.includes(path) ||
       RECEPCAO_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
     if (!allowed) {
-      return <Navigate to="/crm/conversas" replace />;
+      return <Navigate to="/crm/recepcao" replace />;
     }
   }
 

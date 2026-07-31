@@ -41,6 +41,8 @@ const CrmConversa = lazyWithPreload(() => import("./pages/CrmConversa"));
 const CrmIntegracoes = lazyWithPreload(() => import("./pages/CrmIntegracoes"));
 const CrmRelatorios = lazyWithPreload(() => import("./pages/CrmRelatorios"));
 const CrmConversas = lazyWithPreload(() => import("./pages/CrmConversas"));
+const RecepcaoHome = lazyWithPreload(() => import("./pages/recepcao/RecepcaoHome"));
+const RecepcaoConexoes = lazyWithPreload(() => import("./pages/recepcao/RecepcaoConexoes"));
 const CrmCalendario = lazyWithPreload(() => import("./pages/CrmCalendario"));
 const CrmLigacoes = lazyWithPreload(() => import("./pages/CrmLigacoes"));
 
@@ -255,6 +257,8 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm" element={withRouteSuspense(<CrmKanban />)} />
               <Route path="/crm/dashboard" element={withRouteSuspense(<CrmDashboard />)} />
               <Route path="/crm/posvenda" element={withRouteSuspense(<CrmPosVendaDashboard />)} />
+              <Route path="/crm/recepcao" element={withRouteSuspense(<RecepcaoHome />)} />
+              <Route path="/crm/conexoes" element={withRouteSuspense(<RecepcaoConexoes />)} />
               <Route path="/crm/conversas" element={withRouteSuspense(<CrmConversas />)} />
               <Route path="/crm/conversa/:id" element={withRouteSuspense(<CrmConversa />)} />
               <Route path="/crm/automacoes" element={withRouteSuspense(<CrmAutomacoes />)} />
