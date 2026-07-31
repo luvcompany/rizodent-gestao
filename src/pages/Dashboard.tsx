@@ -15,14 +15,12 @@ import { businessDaysBetween } from "@/lib/businessDays";
 import {
   dayKeyBahia,
   rangeBahia,
-  normalizeCidade,
-  classifyOrigemCanonica,
-  rptContratados,
   rptFaturamentoOrigem,
   rptFaturamentoCriativo,
   type FaturamentoOrigemRow,
   type FaturamentoCriativoRow,
 } from "@/lib/reportKit";
+
 
 const DateRangeFilter = lazy(() =>
   import("@/components/ui/date-range-filter").then((m) => ({ default: m.DateRangeFilter }))
