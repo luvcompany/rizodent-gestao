@@ -325,12 +325,10 @@ const Dashboard = () => {
 
     const channel = supabase
       .channel("dashboard-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, scheduleRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_appointments" }, scheduleRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "crm_lead_stage_history" }, scheduleRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "pagamentos" }, scheduleRefetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "ad_id_mapping" }, scheduleRefetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "dashboard_holidays" }, scheduleRefetch)
+
       .subscribe();
 
     return () => {
