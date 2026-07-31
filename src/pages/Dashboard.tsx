@@ -136,15 +136,12 @@ export const prefetchDashboardData = async (): Promise<void> => {
   if (cached?.key === key && Date.now() - cached.ts < DASHBOARD_BG_REFRESH_AFTER) return;
   try {
     const bahia = rangeBahia(from, to);
-    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: hd }, cLeads, { data: cAppts }, { data: adMap }] = await Promise.all([
+    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: hd }] = await Promise.all([
       supabase.from("clinicas").select(CLINICAS_SELECT).eq("ativa", true),
       supabase.from("pagamentos").select(PAGAMENTOS_SELECT).gte("data_pagamento", from).lte("data_pagamento", to).limit(50000),
       supabase.from("tratamentos").select(TRATAMENTOS_SELECT).gte("created_at", bahia.gteIso).lte("created_at", bahia.lteIso).limit(20000),
       supabase.from("pacientes").select(PACIENTES_SELECT).limit(20000),
       (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-      fetchAllCrmLeads(from, to),
-      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").gte("scheduled_date", from).lte("scheduled_date", to).limit(10000),
-      (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000),
     ]);
     writeDashboardCache(key, {
       clinicas: cl || [],
@@ -152,10 +149,8 @@ export const prefetchDashboardData = async (): Promise<void> => {
       tratamentos: tr || [],
       pacientes: pc || [],
       holidays: (hd || []) as Holiday[],
-      crmLeads: cLeads || [],
-      crmAppointments: cAppts || [],
-      adIdMapping: adMap || [],
     });
+
   } catch (e) {
     console.warn("[prefetchDashboardData] falhou:", e);
   }
