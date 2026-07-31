@@ -291,7 +291,7 @@ const Dashboard = () => {
   // Elas só cobrem período contíguo e não conhecem o filtro de canal; fora disso
   // (ou se a migração ainda não criou as funções) caímos no cálculo local, com
   // rótulo honesto na UI.
-  const rpcFiltersOk = canalFiltro === "todos" && dateFilter.preset !== "multi";
+  
   // Faturamento por origem canônica (mesma fonte da aba Origem & Conversão) —
   // caixa do período por origem do lead do paciente. Reconcilia com o total.
   const [rpcCanalOrigem, setRpcCanalOrigem] = useState<FaturamentoOrigemRow[] | null>(null);
