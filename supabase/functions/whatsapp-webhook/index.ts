@@ -23,6 +23,141 @@ async function verifyMetaSignature(rawBody: string, signature: string | null): P
 }
 
 // ============ WhatsApp Business Calling API — event handler ============
+// COEXISTÊNCIA (field="smb_message_echoes"): espelho do que a atendente enviou
+// pelo APP WhatsApp Business do celular. Estrutura:
+// value.message_echoes: [{ from (número do negócio), to (cliente), id (wamid),
+//                          timestamp, type, text:{body} | image:{...} | ... }]
+// Grava como mensagem OUTBOUND na conversa do lead, marcada com from_device,
+// só para leads que JÁ existem — o app do celular fala com contatos que podem
+// não ser leads do CRM, e criar lead a partir de echo poluiria o funil.
+// Mesma regra do trigger normalize_lead_phone (migração 20260525160000):
+// crm_leads.phone é canônico "55<DDD><8 dígitos>" (9º dígito REMOVIDO). O echo
+// traz o número cru da Meta (com o 9) — sem normalizar, nenhum lead casa.
+function normalizeLeadPhone(raw: string): string | null {
+  let digits = (raw || "").replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length >= 12 && digits.startsWith("55")) digits = digits.slice(2);
+  if (digits.length === 11) {
+    const ddd = digits.slice(0, 2);
+    const rest = digits.slice(2);
+    if (rest.startsWith("9")) digits = ddd + rest.slice(1);
+  }
+  return "55" + digits;
+}
+
+async function handleMessageEchoes(supabase: any, value: any) {
+  const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
+  const echoes = value?.message_echoes || [];
+  if (!phoneNumberId || echoes.length === 0) return;
+
+  const { data: allIntegrations } = await supabase
+    .from("integrations")
+    .select("id, key, config, status, tenant_id")
+    .like("key", "whatsapp_%");
+  const matched = (allIntegrations || []).find(
+    (intg: any) => (intg.config as any)?.phone_number_id === phoneNumberId,
+  );
+  if (!matched || matched.status === "disabled" || !matched.tenant_id) {
+    console.warn(`[WEBHOOK-ECHOES] sem integração ativa para phone_number_id ${phoneNumberId}`);
+    return;
+  }
+  const tenantId: string = matched.tenant_id;
+
+  for (const echo of echoes) {
+    const wamid: string | null = echo?.id ?? null;
+    const rawTo: string | undefined = echo?.to;
+    if (!rawTo) continue;
+    const toPhone = normalizeLeadPhone(rawTo);
+    if (!toPhone) continue;
+
+    // Dedupe: a Meta reenvia; e uma mensagem enviada PELO CRM também volta como
+    // echo (mesmo wamid) — nesse caso já existe em messages e não duplica.
+    if (wamid) {
+      const { data: dup } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("whatsapp_message_id", wamid)
+        .maybeSingle();
+      if (dup?.id) continue;
+    }
+
+    const { data: leadRows } = await supabase
+      .from("crm_leads")
+      .select("id, last_message_at")
+      .eq("tenant_id", tenantId)
+      .eq("phone", toPhone)
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const lead = leadRows?.[0];
+    if (!lead) {
+      console.log(`[WEBHOOK-ECHOES] sem lead para ${toPhone} — echo ignorado`);
+      continue;
+    }
+
+    const echoType: string = echo?.type || "text";
+    // revoke (apagou para todos) e edit (editou) NÃO são mensagem nova: trazem
+    // wamid próprio e apontam o alvo em <tipo>.original_message_id. Tratar como
+    // conteúdo criaria um balão fantasma "[revoke]" e deixaria a original no chat.
+    if (echoType === "revoke" || echoType === "edit") {
+      const originalId: string | null = echo?.[echoType]?.original_message_id ?? null;
+      if (!originalId) {
+        console.warn(`[WEBHOOK-ECHOES] ${echoType} sem original_message_id — ignorado`);
+        continue;
+      }
+      const patch =
+        echoType === "revoke"
+          ? { deleted_at: new Date().toISOString() }
+          : { content: echo?.edit?.message?.text?.body ?? echo?.edit?.message?.body ?? null };
+      const { error: opErr } = await supabase
+        .from("messages")
+        .update(patch)
+        .eq("whatsapp_message_id", originalId);
+      if (opErr) {
+        console.error(`[WEBHOOK-ECHOES] falha ao aplicar ${echoType} em ${originalId}: ${opErr.message}`);
+      } else {
+        console.log(`[WEBHOOK-ECHOES] ${echoType} aplicado à mensagem ${originalId}`);
+      }
+      continue;
+    }
+    const content: string =
+      echoType === "text"
+        ? (echo?.text?.body ?? "")
+        : (echo?.[echoType]?.caption ?? `[${echoType}]`);
+    const sentAt = echo?.timestamp
+      ? new Date(Number(echo.timestamp) * 1000).toISOString()
+      : new Date().toISOString();
+
+    const { error: insErr } = await supabase.from("messages").insert({
+      lead_id: lead.id,
+      tenant_id: tenantId,
+      direction: "outbound",
+      type: echoType,
+      content: content || null,
+      status: "sent",
+      whatsapp_message_id: wamid,
+      from_device: true,
+      created_at: sentAt,
+    });
+    if (insErr) {
+      console.error(`[WEBHOOK-ECHOES] erro ao salvar echo lead=${lead.id}: ${insErr.message}`);
+      continue;
+    }
+
+    // last_outbound_at é o que marca a conversa como respondida (follow-ups e
+    // métricas de resposta leem esse campo) — sem isso, responder pelo celular
+    // deixaria o lead eternamente "aguardando resposta".
+    const leadUpdate: any = { last_outbound_at: sentAt };
+    // Prévia da conversa não pode retroceder: echo atrasado (celular offline)
+    // não sobrescreve mensagem mais recente.
+    if (!lead.last_message_at || new Date(sentAt) >= new Date(lead.last_message_at)) {
+      leadUpdate.last_message = content || `[${echoType}]`;
+      leadUpdate.last_message_at = sentAt;
+    }
+    await supabase.from("crm_leads").update(leadUpdate).eq("id", lead.id);
+    console.log(`[WEBHOOK-ECHOES] echo salvo: lead=${lead.id} type=${echoType}`);
+  }
+}
+
 // Meta envia eventos de chamada com field="calls".
 // value.calls: [{ id, from, to, event, timestamp, direction, status, session:{sdp_type,sdp}, start_time, duration }]
 async function handleCallsChange(supabase: any, value: any) {
@@ -612,6 +747,19 @@ Deno.serve(async (req) => {
               await handleCallsChange(supabase, value);
             } catch (e) {
               console.error("[WEBHOOK-CALLS] error:", e);
+            }
+            continue;
+          }
+
+          // ====== COEXISTÊNCIA: mensagens enviadas pelo APP do celular ======
+          // Em número coexistente, o que a atendente responde pelo WhatsApp do
+          // aparelho não passa pela Cloud API — chega espelhado neste campo.
+          // Sem isso, o CRM mostraria só metade da conversa.
+          if (change?.field === "smb_message_echoes") {
+            try {
+              await handleMessageEchoes(supabase, value);
+            } catch (e) {
+              console.error("[WEBHOOK-ECHOES] error:", e);
             }
             continue;
           }

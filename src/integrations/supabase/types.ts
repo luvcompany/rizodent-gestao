@@ -3416,6 +3416,7 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           direction: string
+          from_device: boolean
           error_reason: string | null
           id: string
           instagram_account_id: string | null
@@ -3450,6 +3451,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           direction?: string
+          from_device?: boolean
           error_reason?: string | null
           id?: string
           instagram_account_id?: string | null
@@ -3484,6 +3486,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           direction?: string
+          from_device?: boolean
           error_reason?: string | null
           id?: string
           instagram_account_id?: string | null
@@ -4488,6 +4491,7 @@ export type Database = {
           id: string
           is_active: boolean
           is_default: boolean
+          is_coexistence: boolean
           phone_e164: string | null
           phone_number_id: string
           tenant_id: string
@@ -4504,6 +4508,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_default?: boolean
+          is_coexistence?: boolean
           phone_e164?: string | null
           phone_number_id: string
           tenant_id: string
@@ -4520,6 +4525,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_default?: boolean
+          is_coexistence?: boolean
           phone_e164?: string | null
           phone_number_id?: string
           tenant_id?: string
@@ -4535,6 +4541,7 @@ export type Database = {
           created_at: string
           expires_at: string
           state: string
+          coexistence: boolean
           tenant_id: string
           user_id: string
         }
@@ -4542,6 +4549,7 @@ export type Database = {
           created_at?: string
           expires_at?: string
           state?: string
+          coexistence?: boolean
           tenant_id: string
           user_id: string
         }
@@ -4549,6 +4557,7 @@ export type Database = {
           created_at?: string
           expires_at?: string
           state?: string
+          coexistence?: boolean
           tenant_id?: string
           user_id?: string
         }
