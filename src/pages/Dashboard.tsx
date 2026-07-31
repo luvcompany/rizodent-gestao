@@ -55,8 +55,6 @@ const dbDay = (v: string | null | undefined): string | null => {
   return v.length > 10 ? dayKeyBahia(v) : v;
 };
 
-const CRM_LEADS_PAGE_SIZE = 1000;
-const CRM_LEADS_SELECT = "id, name, cidade, source, created_at, first_inbound_at, ad_id, ad_account_name, paciente_id, pipeline_id";
 const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
 const CLINICAS_SELECT = "id, nome, cidade, ativa";
 const PAGAMENTOS_SELECT = "id, valor, tipo, paciente_id, tratamento_id, clinica_id, data_pagamento, especialidade, recorrencia_orto, nao_marketing";
@@ -68,9 +66,6 @@ type DashboardPayload = {
   pagamentos: any[];
   tratamentos: any[];
   pacientes: any[];
-  crmLeads: any[];
-  crmAppointments: any[];
-  adIdMapping: any[];
   holidays: Holiday[];
 };
 
@@ -98,34 +93,6 @@ const writeDashboardCache = (key: string, data: DashboardPayload) => {
   dashboardMemoryCache = { key, ts: Date.now(), data };
 };
 
-const fetchAllCrmLeads = async (dateFrom?: string, dateTo?: string) => {
-  const rows: any[] = [];
-
-  for (let from = 0; ; from += CRM_LEADS_PAGE_SIZE) {
-    let query = supabase
-      .from("crm_leads")
-      .select(CRM_LEADS_SELECT)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, from + CRM_LEADS_PAGE_SIZE - 1);
-
-    if (dateFrom && dateTo) {
-      // Fronteiras do período em America/Bahia (created_at é timestamptz em UTC).
-      const { gteIso, lteIso } = rangeBahia(dateFrom, dateTo);
-      query = query.or(`and(created_at.gte.${gteIso},created_at.lte.${lteIso}),and(first_inbound_at.gte.${gteIso},first_inbound_at.lte.${lteIso})`);
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
-    if (!data?.length) break;
-
-    rows.push(...data);
-    if (data.length < CRM_LEADS_PAGE_SIZE) break;
-  }
-
-  return rows;
-};
 
 /** Pré-carrega todos os dados do Dashboard e popula o cache em memória.
  *  Idempotente: se o cache estiver fresco, retorna imediatamente. */
