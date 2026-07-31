@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
       .select("role")
       .eq("user_id", user.id);
     const rolesSet = new Set((callerRoles || []).map((r: any) => r.role));
-    const rolePriority = ["superadmin", "crc", "gerente", "posvenda"];
+    const rolePriority = ["superadmin", "crc", "gerente", "posvenda", "recepcao"];
     const callerPrimaryRole = rolePriority.find((r) => rolesSet.has(r)) || null;
 
     // Any authenticated tenant user can list/create/delete their own templates.

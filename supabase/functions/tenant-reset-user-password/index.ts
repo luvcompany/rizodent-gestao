@@ -9,7 +9,11 @@ const corsHeaders = {
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 // Papéis do tenant autorizados a redefinir a senha de outro usuário da MESMA clínica.
-const ALLOWED_CALLER_ROLES = new Set(["crc", "gerente"]);
+// DESATIVADA: a gestão de usuários é feita só no painel do superadmin, que usa
+// `admin-manage-user` (action reset_password). Esta função ficou sem chamador —
+// a allowlist vazia a mantém fechada em vez de deixar a porta de API aberta a
+// crc/gerente para uma ação que saiu da interface deles.
+const ALLOWED_CALLER_ROLES = new Set<string>([]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

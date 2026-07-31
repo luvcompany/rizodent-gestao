@@ -30,7 +30,6 @@ const PacienteDetalhe = lazyWithPreload(() => import("./pages/PacienteDetalhe"))
 const Relatorios = lazyWithPreload(() => import("./pages/Relatorios"));
 const Marketing = lazyWithPreload(() => import("./pages/Marketing"));
 const CadastroLeads = lazyWithPreload(() => import("./pages/CadastroLeads"));
-const Usuarios = lazyWithPreload(() => import("./pages/Usuarios"));
 const AcessosLog = lazyWithPreload(() => import("./pages/AcessosLog"));
 const TiposProcedimento = lazyWithPreload(() => import("./pages/TiposProcedimento"));
 const RegistroDiario = lazyWithPreload(() => import("./pages/RegistroDiario"));
@@ -241,7 +240,6 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/relatorios" element={withRouteSuspense(<Relatorios />)} />
               <Route path="/marketing" element={withRouteSuspense(<Marketing />)} />
               <Route path="/leads" element={withRouteSuspense(<CadastroLeads />)} />
-              <Route path="/usuarios" element={withRouteSuspense(<Usuarios />)} />
               <Route path="/acessos" element={withRouteSuspense(<AcessosLog />)} />
               <Route path="/procedimentos" element={withRouteSuspense(<TiposProcedimento />)} />
               <Route path="/registro-diario" element={withRouteSuspense(<RegistroDiario />)} />
@@ -274,7 +272,6 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/campanhas" element={withRouteSuspense(<CrmCampanhas />)} />
               <Route path="/crm/ia-config" element={withRouteSuspense(<CrmIaConfig />)} />
               <Route path="/crm/metricas" element={withRouteSuspense(<CrmMetricas />)} />
-              <Route path="/crm/usuarios" element={withRouteSuspense(<Usuarios />)} />
             </Route>
             <Route path="*" element={withRouteSuspense(<NotFound />)} />
           </Routes>
