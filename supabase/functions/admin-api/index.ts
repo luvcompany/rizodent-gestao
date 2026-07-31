@@ -751,6 +751,9 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
         variantes: r.variantes == null ? null : Number(r.variantes),
         atribuido: !!r.atribuido,
         origem_atribuicao: r.origem_atribuicao ?? null,
+        // ad_ids dos leads que geraram esta linha (só atribuição medida);
+        // permite casamento determinístico no painel quando o NOME do anúncio muda.
+        ad_ids: Array.isArray(r.ad_ids) ? r.ad_ids.slice(0, 100) : [],
       }))
       .sort((a: any, b: any) => b.faturamento - a.faturamento)
       .slice(0, 30);
