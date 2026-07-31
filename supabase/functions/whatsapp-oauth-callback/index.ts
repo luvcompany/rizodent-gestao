@@ -127,21 +127,6 @@ Deno.serve(async (req: Request) => {
 
     let connected = 0;
     for (const waba_id of wabaIds) {
-      // subscribed_apps SUBSTITUI o conjunto de campos (não é aditivo): se esta
-      // WABA já tem número em coexistência, reconectar pelo fluxo clássico
-      // apagaria a assinatura de smb_message_echoes e o CRM pararia de receber
-      // o que a atendente manda pelo celular. Por isso a assinatura considera
-      // também o que já está cadastrado.
-      let wabaHasCoexistence = isCoexistence;
-      if (!wabaHasCoexistence) {
-        const { data: coexRows } = await supabase
-          .from("whatsapp_numbers")
-          .select("id")
-          .eq("waba_id", waba_id)
-          .eq("is_coexistence", true)
-          .limit(1);
-        wabaHasCoexistence = (coexRows?.length ?? 0) > 0;
-      }
 
       // 3) Liga o app a esta WABA. ATENÇÃO: quais CAMPOS de webhook chegam é
       // configuração do APP (App Dashboard > WhatsApp > Configuração), não deste
@@ -164,11 +149,7 @@ Deno.serve(async (req: Request) => {
                 "message_template_status_update",
                 "account_update",
                 "calls",
-                // Coexistência: espelho das mensagens enviadas pelo app do celular.
-                // "history"/"smb_app_state_sync" NÃO entram aqui de propósito: o
-                // webhook ainda não trata esses payloads e pedir o sync gastaria a
-                // janela irreversível de 24h da Meta descartando os dados.
-                ...(wabaHasCoexistence ? ["smb_message_echoes"] : []),
+                "smb_message_echoes",
               ],
             }),
           },

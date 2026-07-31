@@ -95,11 +95,28 @@ async function handleMessageEchoes(supabase: any, value: any) {
     }
 
     const echoType: string = echo?.type || "text";
-    // revoke (apagou para todos) e edit (editou) não são conteúdo novo — tratá-los
-    // como mensagem criaria um balão fantasma no chat. Ignorados até existir
-    // suporte a apagar/editar no histórico do CRM.
+    // revoke (apagou para todos) e edit (editou) NÃO são mensagem nova: trazem
+    // wamid próprio e apontam o alvo em <tipo>.original_message_id. Tratar como
+    // conteúdo criaria um balão fantasma "[revoke]" e deixaria a original no chat.
     if (echoType === "revoke" || echoType === "edit") {
-      console.log(`[WEBHOOK-ECHOES] echo tipo ${echoType} ignorado (sem suporte a apagar/editar)`);
+      const originalId: string | null = echo?.[echoType]?.original_message_id ?? null;
+      if (!originalId) {
+        console.warn(`[WEBHOOK-ECHOES] ${echoType} sem original_message_id — ignorado`);
+        continue;
+      }
+      const patch =
+        echoType === "revoke"
+          ? { deleted_at: new Date().toISOString() }
+          : { content: echo?.edit?.message?.text?.body ?? echo?.edit?.message?.body ?? null };
+      const { error: opErr } = await supabase
+        .from("messages")
+        .update(patch)
+        .eq("whatsapp_message_id", originalId);
+      if (opErr) {
+        console.error(`[WEBHOOK-ECHOES] falha ao aplicar ${echoType} em ${originalId}: ${opErr.message}`);
+      } else {
+        console.log(`[WEBHOOK-ECHOES] ${echoType} aplicado à mensagem ${originalId}`);
+      }
       continue;
     }
     const content: string =
