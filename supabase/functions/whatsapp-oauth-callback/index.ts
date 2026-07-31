@@ -19,6 +19,10 @@ const REDIRECT_URI = Deno.env.get("WHATSAPP_REDIRECT_URI") ?? "";
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL") ?? "https://crclin.com.br";
 const API_VERSION = "v21.0";
+// Coexistência entrou depois da v21 — as chamadas específicas dela (status do
+// número, sync) exigem versão mais nova. Mantida à parte para não mexer no
+// fluxo clássico, que roda em produção nesta versão.
+const COEX_API_VERSION = "v25.0";
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -67,7 +71,7 @@ Deno.serve(async (req: Request) => {
   // Valida state
   const { data: stateRow, error: stateErr } = await supabase
     .from("whatsapp_oauth_states")
-    .select("tenant_id, user_id, expires_at")
+    .select("tenant_id, user_id, expires_at, coexistence")
     .eq("state", state)
     .maybeSingle();
   if (stateErr || !stateRow) {
@@ -79,6 +83,7 @@ Deno.serve(async (req: Request) => {
     return popupResponse("whatsapp", "error");
   }
   const tenantId: string = stateRow.tenant_id;
+  const isCoexistence: boolean = (stateRow as any)?.coexistence === true;
   await supabase.from("whatsapp_oauth_states").delete().eq("state", state);
 
   try {
@@ -122,7 +127,28 @@ Deno.serve(async (req: Request) => {
 
     let connected = 0;
     for (const waba_id of wabaIds) {
-      // 3) Assina webhook da WABA — incluindo campo "calls" para WhatsApp Calling API
+      // subscribed_apps SUBSTITUI o conjunto de campos (não é aditivo): se esta
+      // WABA já tem número em coexistência, reconectar pelo fluxo clássico
+      // apagaria a assinatura de smb_message_echoes e o CRM pararia de receber
+      // o que a atendente manda pelo celular. Por isso a assinatura considera
+      // também o que já está cadastrado.
+      let wabaHasCoexistence = isCoexistence;
+      if (!wabaHasCoexistence) {
+        const { data: coexRows } = await supabase
+          .from("whatsapp_numbers")
+          .select("id")
+          .eq("waba_id", waba_id)
+          .eq("is_coexistence", true)
+          .limit(1);
+        wabaHasCoexistence = (coexRows?.length ?? 0) > 0;
+      }
+
+      // 3) Liga o app a esta WABA. ATENÇÃO: quais CAMPOS de webhook chegam é
+      // configuração do APP (App Dashboard > WhatsApp > Configuração), não deste
+      // POST — a Subscribed Apps API só aceita override_callback_uri/verify_token.
+      // O array abaixo é mantido por compatibilidade e documenta a intenção, mas
+      // "smb_message_echoes" PRECISA estar marcado no painel da Meta, senão as
+      // mensagens enviadas pelo celular nunca chegam ao CRM.
       try {
         const subRes = await fetch(
           `https://graph.facebook.com/${API_VERSION}/${encodeURIComponent(waba_id)}/subscribed_apps`,
@@ -138,6 +164,11 @@ Deno.serve(async (req: Request) => {
                 "message_template_status_update",
                 "account_update",
                 "calls",
+                // Coexistência: espelho das mensagens enviadas pelo app do celular.
+                // "history"/"smb_app_state_sync" NÃO entram aqui de propósito: o
+                // webhook ainda não trata esses payloads e pedir o sync gastaria a
+                // janela irreversível de 24h da Meta descartando os dados.
+                ...(wabaHasCoexistence ? ["smb_message_echoes"] : []),
               ],
             }),
           },
@@ -168,7 +199,37 @@ Deno.serve(async (req: Request) => {
         const phone_number_id = num.id;
         const display_name = num.verified_name || num.display_phone_number || `WhatsApp ${phone_number_id.slice(-4)}`;
 
-        // Register (best-effort)
+        // A INTENÇÃO do usuário (botão de coexistência) não é garantia: o fluxo
+        // aqui é redirect puro e a Meta documenta `extras` no FB.login(). Se o
+        // parâmetro for ignorado, o onboarding sai CLÁSSICO e o número seria
+        // removido do app do celular — o oposto do que a recepção precisa.
+        // Por isso o estado real vem da Meta antes de qualquer ação destrutiva.
+        let numberOnBizApp = false;
+        try {
+          const stRes = await fetch(
+            `https://graph.facebook.com/${COEX_API_VERSION}/${encodeURIComponent(phone_number_id)}?fields=is_on_biz_app,platform_type&access_token=${encodeURIComponent(access_token)}`,
+          );
+          const stJson: any = await stRes.json().catch(() => ({}));
+          if (stRes.ok) {
+            numberOnBizApp = stJson?.is_on_biz_app === true;
+            console.log(`[wa-oauth-callback] ${phone_number_id} is_on_biz_app=${numberOnBizApp} platform_type=${stJson?.platform_type ?? "?"}`);
+          } else {
+            console.warn(`[wa-oauth-callback] status check failed for ${phone_number_id}:`, stJson);
+          }
+        } catch (e) {
+          console.warn(`[wa-oauth-callback] status check error for ${phone_number_id}:`, e);
+        }
+        if (isCoexistence && !numberOnBizApp) {
+          console.error(`[wa-oauth-callback] ATENÇÃO: pedido coexistência para ${phone_number_id}, mas a Meta não reporta is_on_biz_app. Tratando como onboarding clássico.`);
+        }
+        // Coexistência REAL (confirmada pela Meta) manda pular o /register: o
+        // número já está registrado pelo app e registrar de novo o derruba.
+        const skipRegister = numberOnBizApp;
+
+        // Register (best-effort).
+        if (skipRegister) {
+          console.log(`[wa-oauth-callback] número no app do celular: pulando /register de ${phone_number_id}`);
+        } else
         try {
           const regRes = await fetch(
             `https://graph.facebook.com/${API_VERSION}/${encodeURIComponent(phone_number_id)}/register`,
@@ -220,6 +281,50 @@ Deno.serve(async (req: Request) => {
             .insert({ tenant_id: tenantId, key, config, status: "connected" });
           if (insErr) console.error("[wa-oauth-callback] insert failed", insErr);
           else connected += 1;
+        }
+
+        // Cadastra o número em whatsapp_numbers — chave da visibilidade por
+        // unidade (permissão por número). SÓ no fluxo de coexistência: no fluxo
+        // clássico, popular essa tabela ativaria o resolvedor de "número padrão"
+        // do whatsapp-call-signaling (que hoje cai em integrations) e poderia
+        // trocar o número de origem das ligações dos tenants existentes.
+        // Best-effort: falha aqui não invalida a conexão já gravada.
+        if (numberOnBizApp) {
+          try {
+            const { data: existingNum } = await supabase
+              .from("whatsapp_numbers")
+              .select("id, tenant_id")
+              .eq("phone_number_id", phone_number_id)
+              .maybeSingle();
+            const numRow = {
+              tenant_id: tenantId,
+              phone_number_id,
+              display_name,
+              phone_e164: num.display_phone_number ?? null,
+              waba_id,
+              token: access_token,
+              app_id: META_APP_ID,
+              verify_token: WHATSAPP_VERIFY_TOKEN,
+              is_active: true,
+              is_coexistence: true,
+            };
+            if (existingNum?.id) {
+              // phone_number_id é UNIQUE GLOBAL: se a linha pertence a outro
+              // tenant, não sequestrar — só logar.
+              if (existingNum.tenant_id && existingNum.tenant_id !== tenantId) {
+                console.warn(`[wa-oauth-callback] ${phone_number_id} já cadastrado no tenant ${existingNum.tenant_id}; não sobrescrito.`);
+              } else {
+                const { error: updNumErr } = await supabase
+                  .from("whatsapp_numbers").update(numRow).eq("id", existingNum.id);
+                if (updNumErr) console.error(`[wa-oauth-callback] whatsapp_numbers update failed for ${phone_number_id}:`, updNumErr.message);
+              }
+            } else {
+              const { error: insNumErr } = await supabase.from("whatsapp_numbers").insert(numRow);
+              if (insNumErr) console.error(`[wa-oauth-callback] whatsapp_numbers insert failed for ${phone_number_id}:`, insNumErr.message);
+            }
+          } catch (e) {
+            console.warn(`[wa-oauth-callback] whatsapp_numbers upsert error for ${phone_number_id}:`, e);
+          }
         }
       }
     }

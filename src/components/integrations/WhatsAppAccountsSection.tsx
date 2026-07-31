@@ -93,11 +93,14 @@ export default function WhatsAppAccountsSection({
           <img src={whatsappLogo} alt="WhatsApp" width={20} height={20} className="rounded-full" /> WhatsApp
         </h2>
         {hasAccounts && (
-          <div
-            className="[&_button]:!bg-[color:var(--wa-green)] [&_button]:!text-white [&_button]:!border-0 [&_button:hover]:!opacity-90"
-            style={{ ["--wa-green" as any]: WA_GREEN }}
-          >
-            <WhatsAppEmbeddedSignupButton onConnected={onReload} />
+          <div className="flex flex-wrap items-center gap-2">
+            <WhatsAppEmbeddedSignupButton onConnected={onReload} coexistence />
+            <div
+              className="[&_button]:!bg-[color:var(--wa-green)] [&_button]:!text-white [&_button]:!border-0 [&_button:hover]:!opacity-90"
+              style={{ ["--wa-green" as any]: WA_GREEN }}
+            >
+              <WhatsAppEmbeddedSignupButton onConnected={onReload} />
+            </div>
           </div>
         )}
       </div>
@@ -111,14 +114,19 @@ export default function WhatsAppAccountsSection({
             <div>
               <h3 className="font-semibold text-foreground mb-1">Conecte seu WhatsApp Business</h3>
               <p className="text-sm text-muted-foreground max-w-md">
-                Conecte para enviar e receber mensagens direto pelo CRM.
+                Conecte para enviar e receber mensagens direto pelo CRM. Se quiser continuar
+                usando o WhatsApp no celular (grupos, conversas internas), escolha a opção
+                que mantém o número no aparelho.
               </p>
             </div>
-            <div
-              className="[&_button]:!bg-[color:var(--wa-green)] [&_button]:!text-white [&_button]:!border-0 [&_button:hover]:!opacity-90"
-              style={{ ["--wa-green" as any]: WA_GREEN }}
-            >
-              <WhatsAppEmbeddedSignupButton onConnected={onReload} />
+            <div className="flex flex-col items-center gap-2">
+              <div
+                className="[&_button]:!bg-[color:var(--wa-green)] [&_button]:!text-white [&_button]:!border-0 [&_button:hover]:!opacity-90"
+                style={{ ["--wa-green" as any]: WA_GREEN }}
+              >
+                <WhatsAppEmbeddedSignupButton onConnected={onReload} />
+              </div>
+              <WhatsAppEmbeddedSignupButton onConnected={onReload} coexistence />
             </div>
           </CardContent>
         </Card>
