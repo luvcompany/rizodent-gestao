@@ -1100,12 +1100,17 @@ Deno.serve(async (req) => {
                 } catch (_e) { inferredCidadeForCache = null; }
                 const cachePayload: Record<string, unknown> = {
                   ad_id: adSourceId,
-                  // Mesma fonte do `const tenantId` declarado adiante — usar a
-                  // variável aqui dava ReferenceError (TDZ) e o catch abaixo
-                  // engolia, então o cache de anúncio NUNCA era gravado.
-                  tenant_id: matchedIntegration?.tenant_id ?? null,
                   updated_at: new Date().toISOString(),
                 };
+                // Mesma fonte do `const tenantId` declarado adiante — usar a
+                // variável aqui dava ReferenceError (TDZ) e o catch abaixo
+                // engolia, então o cache de anúncio NUNCA era gravado.
+                // Só grava quando existe: ad_id é PK global e o upsert escreve as
+                // colunas presentes, então mandar null apagaria o tenant de uma
+                // linha já preenchida — e os relatórios de atribuição fazem join
+                // por (ad_id, tenant_id), perdendo nome do anúncio e faturamento.
+                const cacheTenantId = matchedIntegration?.tenant_id ?? null;
+                if (cacheTenantId) cachePayload.tenant_id = cacheTenantId;
                 if (adAccountId) cachePayload.ad_account_id = adAccountId;
                 if (adAccountName) cachePayload.ad_account_name = adAccountName;
                 if (adName) cachePayload.ad_name = adName;

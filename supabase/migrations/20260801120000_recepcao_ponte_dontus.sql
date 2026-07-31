@@ -46,6 +46,9 @@ COMMENT ON TABLE public.dontus_unidades IS 'Config por unidade da ponte Dontus: 
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.dontus_pacientes (
   tenant_id uuid NOT NULL,
+  -- id_dontus na chave: id_clinica é sequencial POR CONTA do Dontus, então uma
+  -- segunda conta repetiria os mesmos ids e um cliente sobrescreveria o outro.
+  id_dontus integer NOT NULL DEFAULT 210380,
   id_clinica integer NOT NULL,
   id_paciente bigint NOT NULL,
   nome text,
@@ -64,11 +67,15 @@ CREATE TABLE IF NOT EXISTS public.dontus_pacientes (
          ELSE (EXTRACT(month FROM data_nascimento)::int * 100
              + EXTRACT(day FROM data_nascimento)::int)::smallint END
   ) STORED,
-  PRIMARY KEY (id_clinica, id_paciente)
+  PRIMARY KEY (id_dontus, id_clinica, id_paciente)
 );
 CREATE INDEX IF NOT EXISTS dontus_pacientes_aniv ON public.dontus_pacientes(tenant_id, aniv_mmdd)
   WHERE aniv_mmdd IS NOT NULL AND phone IS NOT NULL AND opt_out = false;
 CREATE INDEX IF NOT EXISTS dontus_pacientes_phone ON public.dontus_pacientes(tenant_id, phone);
+-- FK para crm_leads sem índice = seq scan a cada lead apagado (ON DELETE SET NULL).
+-- Sem isto, excluir uma etapa do funil (centenas de leads) ficaria lento para
+-- TODOS os clientes assim que o espelho tivesse volume.
+CREATE INDEX IF NOT EXISTS dontus_pacientes_lead ON public.dontus_pacientes(lead_id) WHERE lead_id IS NOT NULL;
 COMMENT ON TABLE public.dontus_pacientes IS 'Espelho local de pacientes do Dontus (nome, telefone canônico, nascimento) — base do disparo de aniversário.';
 
 CREATE TABLE IF NOT EXISTS public.dontus_pacientes_coverage (
@@ -88,6 +95,7 @@ COMMENT ON TABLE public.dontus_pacientes_coverage IS 'Até onde o espelho de pac
 CREATE TABLE IF NOT EXISTS public.dontus_lembretes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
+  id_dontus integer NOT NULL DEFAULT 210380,
   id_clinica integer NOT NULL,
   kind text NOT NULL,
   occurrence_date date NOT NULL,
@@ -109,7 +117,7 @@ CREATE TABLE IF NOT EXISTS public.dontus_lembretes (
 );
 -- 1 lembrete por agendamento por tipo
 CREATE UNIQUE INDEX IF NOT EXISTS dontus_lembretes_agend_uniq
-  ON public.dontus_lembretes (id_clinica, kind, id_agendamento, occurrence_date)
+  ON public.dontus_lembretes (id_dontus, id_clinica, kind, id_agendamento, occurrence_date)
   WHERE id_agendamento IS NOT NULL;
 -- aniversário: 1 por pessoa por dia no tenant (mata duplicata entre unidades)
 CREATE UNIQUE INDEX IF NOT EXISTS dontus_lembretes_aniv_uniq
@@ -117,6 +125,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS dontus_lembretes_aniv_uniq
   WHERE kind = 'aniversario';
 CREATE INDEX IF NOT EXISTS dontus_lembretes_lookup
   ON public.dontus_lembretes(tenant_id, occurrence_date, kind, status);
+CREATE INDEX IF NOT EXISTS dontus_lembretes_lead ON public.dontus_lembretes(lead_id) WHERE lead_id IS NOT NULL;
 COMMENT ON TABLE public.dontus_lembretes IS 'Um registro por lembrete (claim antes do envio). O unique é a garantia de não enviar duas vezes.';
 
 CREATE TABLE IF NOT EXISTS public.dontus_lembretes_runs (

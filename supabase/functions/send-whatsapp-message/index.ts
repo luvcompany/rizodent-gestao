@@ -214,8 +214,10 @@ Deno.serve(async (req) => {
       header,
       footer,
       skip_mark_as_read = false,
-      // texto real gravado no chat no lugar de "📋 Template: x" (a recepção
-      // precisa ler o lembrete que foi enviado, não o nome do template)
+      // Texto real gravado no chat no lugar de "📋 Template: x" (a recepção
+      // precisa ler o lembrete enviado, não o nome do template). Aceito SÓ de
+      // chamador service_role: vindo do app, permitiria gravar no histórico um
+      // texto diferente do que a Meta entregou.
       log_content,
     } = await req.json();
 
@@ -275,6 +277,7 @@ Deno.serve(async (req) => {
         .select("phone_number_id, token")
         .eq("id", leadWaNumberId)
         .eq("tenant_id", leadTenantId)
+        .eq("is_active", true)   // is_active existe para desligar um número: respeitar
         .maybeSingle();
       if (waNum?.phone_number_id && waNum?.token) {
         phoneNumberId = waNum.phone_number_id;
@@ -769,7 +772,7 @@ Deno.serve(async (req) => {
       }
 
       // Still insert the message as failed so user can see it in chat
-      const dbContent = log_content || (type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null));
+      const dbContent = (caller.isServiceRole ? log_content : null) || (type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null));
       const dbType = type === "template" || type === "interactive" ? "text" : finalType;
       const { data: failedMsg } = await supabase.from("messages").insert({
         lead_id,
@@ -790,7 +793,7 @@ Deno.serve(async (req) => {
 
     const sentWamid = waData?.messages?.[0]?.id || null;
     const initialStatus = waData?.messages?.[0]?.message_status || "accepted";
-    const dbContent = log_content || (type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null));
+    const dbContent = (caller.isServiceRole ? log_content : null) || (type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null));
     const dbType = type === "template" || type === "interactive" ? "text" : finalType;
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,

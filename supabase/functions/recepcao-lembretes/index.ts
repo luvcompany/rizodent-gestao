@@ -42,6 +42,11 @@ const STATUS_NOMES: Record<number, string> = {
 const THROTTLE_MS = 150;          // mesmo passo do broadcast-engine
 const MAX_WINDOWS_PER_RUN = 4;    // espelho: janelas de 30 dias por execução
 const ESPELHO_LOOKBACK_MONTHS = 24;
+// Lembrete "2h antes" só vale se sobrar antecedência útil depois da abertura da
+// clínica. Consulta às 08:00 com abertura 08:00 não recebe (não haveria tempo);
+// quem cobre esses é a véspera. O caso é CONTABILIZADO, nunca silencioso.
+const MIN_ANTECEDENCIA_UTIL_MIN = 30;
+const MAX_RETRY_ATTEMPTS = 3;
 
 interface Unidade {
   id: string; tenant_id: string; id_dontus: number; id_clinica: number;
@@ -63,9 +68,19 @@ function addDays(iso: string, n: number): string {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
-/** Epoch ms de data+hora local (Bahia = UTC-3 fixo, sem horário de verão). */
-function bahiaMs(date: string, time: string | null): number {
-  return Date.parse(`${date}T${String(time || "00:00").slice(0, 5)}:00.000-03:00`);
+/**
+ * Epoch ms de uma data+hora LOCAL na timezone da unidade. Não assume -03:00:
+ * o campo timezone é editável e uma unidade em Manaus (-04:00) teria a janela
+ * de disparo deslocada em 1h — inclusive fechando antes da consulta começar.
+ */
+function localMs(date: string, time: string | null, tz: string): number {
+  const hhmm = String(time || "00:00").slice(0, 5);
+  const naive = Date.parse(`${date}T${hhmm}:00.000Z`);   // trata como se fosse UTC
+  // Descobre o offset real da TZ naquele instante e corrige.
+  const p = localParts(new Date(naive), tz);
+  const comoLocal = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+  const offsetMs = comoLocal - naive;
+  return naive - offsetMs;
 }
 function minutosDoDia(hhmm: string): number {
   const [h, m] = String(hhmm).slice(0, 5).split(":").map(Number);
@@ -87,11 +102,15 @@ async function ensureLead(
 ): Promise<{ id: string; is_blocked: boolean } | null> {
   if (idPaciente != null) {
     const { data: esp } = await admin.from("dontus_pacientes")
-      .select("lead_id").eq("id_clinica", u.id_clinica).eq("id_paciente", idPaciente).maybeSingle();
+      .select("lead_id")
+      .eq("id_dontus", u.id_dontus).eq("id_clinica", u.id_clinica).eq("id_paciente", idPaciente)
+      .maybeSingle();
     if (esp?.lead_id) {
+      // Confere o tenant do lead: um lead_id herdado/errado mandaria a mensagem
+      // desta consulta para a conversa de outra pessoa (ou de outro cliente).
       const { data: l } = await admin.from("crm_leads")
-        .select("id, is_blocked").eq("id", esp.lead_id).maybeSingle();
-      if (l) return l;
+        .select("id, is_blocked, tenant_id").eq("id", esp.lead_id).maybeSingle();
+      if (l && l.tenant_id === u.tenant_id) return l;
     }
   }
 
@@ -131,7 +150,7 @@ async function ensureLead(
   if (idPaciente != null && lead?.id) {
     await admin.from("dontus_pacientes")
       .update({ lead_id: lead.id, updated_at: new Date().toISOString() })
-      .eq("id_clinica", u.id_clinica).eq("id_paciente", idPaciente);
+      .eq("id_dontus", u.id_dontus).eq("id_clinica", u.id_clinica).eq("id_paciente", idPaciente);
   }
   return lead;
 }
@@ -213,6 +232,18 @@ Deno.serve(async (req) => {
       const hoje = hojeLocal(u.timezone);
       const agora = Date.now();
 
+      // FAIL-CLOSED: unidade sem número configurado não envia. Sem o carimbo, o
+      // lead nasce invisível para a própria recepção (policy RESTRICTIVE) e o
+      // envio cairia no fallback "qualquer integração do tenant" — ou seja, sairia
+      // pelo número de OUTRA unidade.
+      if (kind !== "espelho" && !u.whatsapp_number_id) {
+        run.error_message = "unidade sem whatsapp_number_id — envio bloqueado";
+        run.duracao_ms = Date.now() - t0;
+        await admin.from("dontus_lembretes_runs").insert(run);
+        resultados.push({ unidade: u.nome, erro: run.error_message });
+        continue;
+      }
+
       // Guarda de horário civilizado: protege contra reexecução manual de madrugada.
       if (kind !== "espelho") {
         const p = localParts(new Date(), u.timezone);
@@ -234,9 +265,42 @@ Deno.serve(async (req) => {
           .select("coberto_de, coberto_ate")
           .eq("id_dontus", u.id_dontus).eq("id_clinica", u.id_clinica).maybeSingle();
         const limiteAntigo = addDays(hoje, -30 * ESPELHO_LOOKBACK_MONTHS);
-        let fim = cov?.coberto_de ? addDays(cov.coberto_de, -1) : hoje;
-        let de = cov?.coberto_de ?? null;
-        const ate = cov?.coberto_ate ?? hoje;
+
+        // JANELA RECENTE primeiro: sem isso o espelho só andava para trás e,
+        // terminado o backfill, congelava — paciente cadastrado depois nunca
+        // entraria na base e jamais receberia aniversário (e telefone trocado
+        // no Dontus nunca seria atualizado).
+        const janelas: Array<{ ini: string; fim: string }> = [];
+        if (cov?.coberto_ate && cov.coberto_ate < hoje) {
+          janelas.push({ ini: cov.coberto_ate, fim: hoje });
+        } else if (!cov) {
+          janelas.push({ ini: addDays(hoje, -29), fim: hoje });
+        }
+
+        let fim = cov?.coberto_de ? addDays(cov.coberto_de, -1) : addDays(hoje, -30);
+        let de = cov?.coberto_de ?? addDays(hoje, -29);
+        const ate = hoje;   // sempre avança a cobertura recente
+
+        for (const j of janelas) {
+          const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_relatorio_pacientes", {
+            input: { contexto: { idDontus: u.id_dontus, idClinica: u.id_clinica }, dataInicio: j.ini, dataFim: j.fim },
+          });
+          run.lidos += rows.length;
+          for (const p of rows) {
+            const { phone, motivo } = normalizeBrPhone(p?.celular ?? p?.telefone, u.ddd_padrao);
+            if (!dryRun && p?.idPaciente != null) {
+              await admin.from("dontus_pacientes").upsert({
+                tenant_id: u.tenant_id, id_dontus: u.id_dontus, id_clinica: u.id_clinica,
+                id_paciente: p.idPaciente, nome: p?.nome ?? null, celular_raw: p?.celular ?? null,
+                phone, phone_motivo: motivo, data_nascimento: p?.dataNascimento ?? null,
+                cidade: p?.cidade ?? null, visto_em: j.fim, updated_at: new Date().toISOString(),
+              }, { onConflict: "id_dontus,id_clinica,id_paciente" });
+            }
+            if (motivo === "ok") run.elegiveis += 1;
+            else if (motivo === "sem_celular") run.sem_telefone += 1;
+            else run.tel_invalido += 1;
+          }
+        }
 
         for (let w = 0; w < MAX_WINDOWS_PER_RUN; w++) {
           if (fim < limiteAntigo) break;
@@ -248,14 +312,15 @@ Deno.serve(async (req) => {
           for (const p of rows) {
             const { phone, motivo } = normalizeBrPhone(p?.celular ?? p?.telefone, u.ddd_padrao);
             const payload: any = {
-              tenant_id: u.tenant_id, id_clinica: u.id_clinica, id_paciente: p?.idPaciente,
+              tenant_id: u.tenant_id, id_dontus: u.id_dontus, id_clinica: u.id_clinica,
+              id_paciente: p?.idPaciente,
               nome: p?.nome ?? null, celular_raw: p?.celular ?? null,
               phone, phone_motivo: motivo,
               data_nascimento: p?.dataNascimento ?? null, cidade: p?.cidade ?? null,
               visto_em: fim, updated_at: new Date().toISOString(),
             };
             if (!dryRun && payload.id_paciente != null) {
-              await admin.from("dontus_pacientes").upsert(payload, { onConflict: "id_clinica,id_paciente" });
+              await admin.from("dontus_pacientes").upsert(payload, { onConflict: "id_dontus,id_clinica,id_paciente" });
             }
             if (motivo === "ok") run.elegiveis += 1;
             else if (motivo === "sem_celular") run.sem_telefone += 1;
@@ -293,7 +358,7 @@ Deno.serve(async (req) => {
 
         const { data: nivers } = await admin.from("dontus_pacientes")
           .select("id_paciente, nome, phone")
-          .eq("tenant_id", u.tenant_id).eq("id_clinica", u.id_clinica)
+          .eq("tenant_id", u.tenant_id).eq("id_dontus", u.id_dontus).eq("id_clinica", u.id_clinica)
           .in("aniv_mmdd", alvos)
           .not("phone", "is", null).eq("opt_out", false).eq("wa_invalido", false);
         run.lidos = (nivers || []).length;
@@ -302,7 +367,7 @@ Deno.serve(async (req) => {
           run.elegiveis += 1;
           if (dryRun) continue;
           const claim = {
-            tenant_id: u.tenant_id, id_clinica: u.id_clinica, kind: "aniversario",
+            tenant_id: u.tenant_id, id_dontus: u.id_dontus, id_clinica: u.id_clinica, kind: "aniversario",
             occurrence_date: alvo, id_paciente: pac.id_paciente, phone: pac.phone,
             template_name: u.template_aniversario, status: "claimed",
           };
@@ -340,6 +405,11 @@ Deno.serve(async (req) => {
       // LEMBRETES DE AGENDA (véspera e 2h antes)
       // ------------------------------------------------------------------
       if (kind === "vespera" && !u.enviar_vespera) { resultados.push({ unidade: u.nome, pulado: "enviar_vespera=false" }); continue; }
+      // Véspera de segunda cai domingo à noite: a unidade pode desligar isso.
+      if (kind === "vespera" && !u.vespera_dom && localParts(new Date(), u.timezone).weekday === 0) {
+        resultados.push({ unidade: u.nome, pulado: "vespera_dom=false (hoje é domingo)" });
+        continue;
+      }
       if (kind === "duas_horas" && !u.enviar_2h) { resultados.push({ unidade: u.nome, pulado: "enviar_2h=false" }); continue; }
       const template = kind === "vespera" ? u.template_vespera : u.template_2h;
       if (!template) { resultados.push({ unidade: u.nome, pulado: `sem template de ${kind}` }); continue; }
@@ -391,12 +461,22 @@ Deno.serve(async (req) => {
       for (const [, grupo] of grupos) {
         grupo.sort((a, b) => a.horario.localeCompare(b.horario));
         const rep = grupo[0];
-        const inicioMs = bahiaMs(alvo, rep.horario);
+        const inicioMs = localMs(alvo, rep.horario, u.timezone);
 
         if (kind === "duas_horas") {
           const fireAt = inicioMs - u.antecedencia_min * 60_000;
-          const aberturaMs = bahiaMs(alvo, u.janela_inicio);
+          const aberturaMs = localMs(alvo, u.janela_inicio, u.timezone);
           const fireEfetivo = Math.max(fireAt, aberturaMs);
+          // Consulta cedo demais (início antes/junto da abertura): não há janela
+          // possível. Registra e segue — antes isso sumia sem contador nenhum.
+          if (inicioMs - fireEfetivo < MIN_ANTECEDENCIA_UTIL_MIN * 60_000) {
+            run.detalhes.cedo_demais = (run.detalhes.cedo_demais ?? 0) + 1;
+            run.detalhes.cedo_demais_horarios = run.detalhes.cedo_demais_horarios ?? [];
+            if (run.detalhes.cedo_demais_horarios.length < 20) {
+              run.detalhes.cedo_demais_horarios.push({ nome: rep.nome, horario: rep.horario });
+            }
+            continue;
+          }
           if (agora < fireEfetivo || agora >= inicioMs) continue;  // fora da janela deste horário
         }
         run.elegiveis += 1;
@@ -404,7 +484,7 @@ Deno.serve(async (req) => {
 
         // CLAIM: todas as linhas do grupo numa instrução só. 23505 = já tratado.
         const claimRows = grupo.map((it, idx) => ({
-          tenant_id: u.tenant_id, id_clinica: u.id_clinica, kind,
+          tenant_id: u.tenant_id, id_dontus: u.id_dontus, id_clinica: u.id_clinica, kind,
           occurrence_date: alvo, id_agendamento: it.ag?.idAgendamento,
           id_paciente: it.idPaciente, phone: it.phone, horario: it.horario,
           template_name: template,
@@ -413,12 +493,36 @@ Deno.serve(async (req) => {
         }));
         const { data: claimed, error: cErr } = await admin.from("dontus_lembretes")
           .insert(claimRows).select("id, status");
+        let linhaEnvio: { id: string } | null = null;
         if (cErr) {
-          if ((cErr as any).code === "23505") run.ja_enviados += 1;
-          else { run.falhas += 1; run.detalhes.erros.push(cErr.message); }
-          continue;
+          if ((cErr as any).code !== "23505") {
+            run.falhas += 1; run.detalhes.erros.push(cErr.message);
+            continue;
+          }
+          // Já existe registro para este agendamento. Se a tentativa anterior
+          // FALHOU de forma retentável, reclama a linha e tenta de novo — sem
+          // isto um 429 da Meta condenava o paciente a nunca receber, e ainda
+          // era contado como "já enviado".
+          const { data: existente } = await admin.from("dontus_lembretes")
+            .select("id, status, attempts")
+            .eq("id_dontus", u.id_dontus).eq("id_clinica", u.id_clinica).eq("kind", kind)
+            .eq("id_agendamento", rep.ag?.idAgendamento).eq("occurrence_date", alvo)
+            .maybeSingle();
+          if (existente?.status === "retry" && (existente.attempts ?? 0) < MAX_RETRY_ATTEMPTS) {
+            const { data: reclaimed } = await admin.from("dontus_lembretes")
+              .update({ status: "claimed", attempts: (existente.attempts ?? 0) + 1, updated_at: new Date().toISOString() })
+              .eq("id", existente.id).eq("status", "retry")   // compare-and-swap
+              .select("id").maybeSingle();
+            if (!reclaimed) { run.ja_enviados += 1; continue; }
+            linhaEnvio = reclaimed;
+            run.detalhes.reenvios = (run.detalhes.reenvios ?? 0) + 1;
+          } else {
+            run.ja_enviados += 1;
+            continue;
+          }
+        } else {
+          linhaEnvio = (claimed || []).find((c: any) => c.status === "claimed") ?? null;
         }
-        const linhaEnvio = (claimed || []).find((c: any) => c.status === "claimed");
         if (!linhaEnvio) continue;
 
         const lead = await ensureLead(admin, u, rep.nome, rep.phone, rep.idPaciente);
