@@ -1516,7 +1516,29 @@ Deno.serve(async (req) => {
       const txt = await res.text();
       return new Response(txt, { status: res.status, headers: { ...cors, "Content-Type": "application/json" } });
     }
+    if (parts[0] === "sync-comparecimento" && req.method === "POST") {
+      // Sincroniza comparecimento (Dontus → crm_appointments.status). Dry-run por padrão.
+      if (tenantId !== RIZODENT_TENANT_ID) return json({ error: "forbidden" }, 403);
+      const urlC = `${Deno.env.get("SUPABASE_URL")}/functions/v1/dontus-sync`;
+      const res = await fetch(urlC, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({
+          mode: "comparecimento",
+          from: (body as any)?.from,
+          to: (body as any)?.to,
+          dry_run: (body as any)?.dryRun !== false && (body as any)?.dry_run !== false,
+          clinicas: (body as any)?.clinicas,
+        }),
+      });
+      const txt = await res.text();
+      return new Response(txt, { status: res.status, headers: { ...cors, "Content-Type": "application/json" } });
+    }
     if (parts[0] === "dedup-dontus" && req.method === "POST") {
+
       if (tenantId !== RIZODENT_TENANT_ID) return json({ error: "forbidden" }, 403);
       const url3 = `${Deno.env.get("SUPABASE_URL")}/functions/v1/dontus-dedup`;
       const res = await fetch(url3, {
