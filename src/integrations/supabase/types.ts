@@ -3416,8 +3416,8 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           direction: string
-          from_device: boolean
           error_reason: string | null
+          from_device: boolean
           id: string
           instagram_account_id: string | null
           instagram_comment_id: string | null
@@ -3451,8 +3451,8 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           direction?: string
-          from_device?: boolean
           error_reason?: string | null
+          from_device?: boolean
           id?: string
           instagram_account_id?: string | null
           instagram_comment_id?: string | null
@@ -3486,8 +3486,8 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           direction?: string
-          from_device?: boolean
           error_reason?: string | null
+          from_device?: boolean
           id?: string
           instagram_account_id?: string | null
           instagram_comment_id?: string | null
@@ -4490,8 +4490,8 @@ export type Database = {
           display_name: string | null
           id: string
           is_active: boolean
-          is_default: boolean
           is_coexistence: boolean
+          is_default: boolean
           phone_e164: string | null
           phone_number_id: string
           tenant_id: string
@@ -4507,8 +4507,8 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_active?: boolean
-          is_default?: boolean
           is_coexistence?: boolean
+          is_default?: boolean
           phone_e164?: string | null
           phone_number_id: string
           tenant_id: string
@@ -4524,8 +4524,8 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_active?: boolean
-          is_default?: boolean
           is_coexistence?: boolean
+          is_default?: boolean
           phone_e164?: string | null
           phone_number_id?: string
           tenant_id?: string
@@ -4538,26 +4538,26 @@ export type Database = {
       }
       whatsapp_oauth_states: {
         Row: {
+          coexistence: boolean
           created_at: string
           expires_at: string
           state: string
-          coexistence: boolean
           tenant_id: string
           user_id: string
         }
         Insert: {
+          coexistence?: boolean
           created_at?: string
           expires_at?: string
           state?: string
-          coexistence?: boolean
           tenant_id: string
           user_id: string
         }
         Update: {
+          coexistence?: boolean
           created_at?: string
           expires_at?: string
           state?: string
-          coexistence?: boolean
           tenant_id?: string
           user_id?: string
         }
@@ -4958,6 +4958,7 @@ export type Database = {
       }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
+      lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
       map_source_to_origem: { Args: { src: string }; Returns: string }
       match_good_examples: {
         Args: {
@@ -5157,6 +5158,13 @@ export type Database = {
       show_trgm: { Args: { "": string }; Returns: string[] }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
+      tenant_set_user_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: undefined
+      }
       transfer_lead_to_whatsapp: { Args: { p_lead_id: string }; Returns: Json }
       update_whatsapp_template_sharing: {
         Args: {
@@ -5217,7 +5225,13 @@ export type Database = {
       watchdog_reenqueue_missing_bots: { Args: never; Returns: number }
     }
     Enums: {
-      app_role: "crc" | "gerente" | "crc_legacy" | "superadmin" | "posvenda" | "recepcao"
+      app_role:
+        | "crc"
+        | "gerente"
+        | "crc_legacy"
+        | "superadmin"
+        | "posvenda"
+        | "recepcao"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -5345,7 +5359,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["crc", "gerente", "crc_legacy", "superadmin", "posvenda", "recepcao"],
+      app_role: [
+        "crc",
+        "gerente",
+        "crc_legacy",
+        "superadmin",
+        "posvenda",
+        "recepcao",
+      ],
     },
   },
 } as const
