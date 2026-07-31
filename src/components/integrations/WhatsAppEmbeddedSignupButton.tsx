@@ -6,7 +6,19 @@ import { MessageCircle, Loader2 } from "lucide-react";
 
 type WaConfig = { app_id: string; config_id: string; redirect_uri: string; api_version: string };
 
-export default function WhatsAppEmbeddedSignupButton({ onConnected }: { onConnected?: () => void }) {
+/**
+ * coexistence=true conecta um número que CONTINUA ativo no app WhatsApp Business
+ * do celular (a Meta chama de Coexistence). O fluxo pede um QR code para escanear
+ * no app; mensagens enviadas pelo celular chegam ao CRM via webhook
+ * smb_message_echoes. Sem a flag, é o onboarding clássico (número sai do app).
+ */
+export default function WhatsAppEmbeddedSignupButton({
+  onConnected,
+  coexistence = false,
+}: {
+  onConnected?: () => void;
+  coexistence?: boolean;
+}) {
   const [cfg, setCfg] = useState<WaConfig | null>(null);
   const [connecting, setConnecting] = useState(false);
 
@@ -49,7 +61,7 @@ export default function WhatsAppEmbeddedSignupButton({ onConnected }: { onConnec
 
       const { data: stateRow, error: stateErr } = await supabase
         .from("whatsapp_oauth_states" as any)
-        .insert({ user_id: userId, tenant_id: tenantId })
+        .insert({ user_id: userId, tenant_id: tenantId, coexistence })
         .select("state")
         .single();
       if (stateErr || !(stateRow as any)?.state) {
@@ -66,6 +78,17 @@ export default function WhatsAppEmbeddedSignupButton({ onConnected }: { onConnec
       oauthUrl.searchParams.set("response_type", "code");
       oauthUrl.searchParams.set("override_default_response_type", "true");
       oauthUrl.searchParams.set("state", state);
+      // Coexistência: a Meta exige featureType + sessionInfoVersion 3 no extras.
+      if (coexistence) {
+        oauthUrl.searchParams.set(
+          "extras",
+          JSON.stringify({
+            setup: {},
+            sessionInfoVersion: 3,
+            featureType: "whatsapp_business_app_onboarding",
+          }),
+        );
+      }
 
       const width = 600;
       const height = 700;
@@ -98,9 +121,21 @@ export default function WhatsAppEmbeddedSignupButton({ onConnected }: { onConnec
   };
 
   return (
-    <Button size="sm" variant="outline" onClick={handleClick} disabled={connecting} title={notConfigured ? "Configuração pendente" : ""}>
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={handleClick}
+      disabled={connecting}
+      title={
+        notConfigured
+          ? "Configuração pendente"
+          : coexistence
+            ? "Mantém o número ativo no app WhatsApp Business do celular (escaneie o QR code quando aparecer)"
+            : ""
+      }
+    >
       {connecting ? <Loader2 size={14} className="mr-1 animate-spin" /> : <MessageCircle size={14} className="mr-1" />}
-      Conectar WhatsApp automaticamente
+      {coexistence ? "Conectar mantendo o WhatsApp no celular" : "Conectar WhatsApp automaticamente"}
     </Button>
   );
 }
