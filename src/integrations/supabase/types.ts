@@ -4662,6 +4662,10 @@ export type Database = {
         Returns: string
       }
       api4com_dial_enabled: { Args: never; Returns: boolean }
+      assert_tenant_do_chamador: {
+        Args: { _tenant: string }
+        Returns: undefined
+      }
       backup_list_tables: {
         Args: never
         Returns: {
@@ -4956,6 +4960,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      integracoes_visiveis: {
+        Args: never
+        Returns: {
+          criado_em: string
+          display_name: string
+          id: string
+          key: string
+          phone_number_id: string
+          status: string
+          waba_id: string
+        }[]
+      }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
       lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
@@ -4996,6 +5012,7 @@ export type Database = {
         | { Args: never; Returns: undefined }
         | { Args: { p_batch_size?: number }; Returns: number }
       recalculate_lead_score: { Args: { p_lead_id: string }; Returns: number }
+      recepcao_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
       recover_stuck_bot_executions: {
         Args: never
         Returns: {
