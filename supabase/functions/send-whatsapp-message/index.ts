@@ -214,6 +214,9 @@ Deno.serve(async (req) => {
       header,
       footer,
       skip_mark_as_read = false,
+      // texto real gravado no chat no lugar de "📋 Template: x" (a recepção
+      // precisa ler o lembrete que foi enviado, não o nome do template)
+      log_content,
     } = await req.json();
 
     if (!lead_id || !to) {
@@ -260,8 +263,33 @@ Deno.serve(async (req) => {
       });
     }
 
-    let resolvedFromTenant = false;
-    if (leadData?.pipeline_id) {
+    // Lead carimbado com um número específico (caso da Recepção, 4 unidades no
+    // mesmo tenant): a resposta TEM de sair pelo número daquela unidade. Sem
+    // isto, o fallback "qualquer integração ativa do tenant" mandaria o lembrete
+    // da unidade A pelo número da unidade B. No-op onde o carimbo é NULL.
+    let resolvedFromNumber = false;
+    const leadWaNumberId: string | null = (leadData as any)?.whatsapp_number_id ?? null;
+    if (leadWaNumberId) {
+      const { data: waNum } = await supabase
+        .from("whatsapp_numbers")
+        .select("phone_number_id, token")
+        .eq("id", leadWaNumberId)
+        .eq("tenant_id", leadTenantId)
+        .maybeSingle();
+      if (waNum?.phone_number_id && waNum?.token) {
+        phoneNumberId = waNum.phone_number_id;
+        whatsappToken = waNum.token;
+        resolvedFromNumber = true;
+        console.log(`[send-whatsapp-message] credenciais do número carimbado no lead (${phoneNumberId})`);
+      } else {
+        console.warn(`[send-whatsapp-message] lead ${lead_id} carimbado com número ${leadWaNumberId} sem credenciais em whatsapp_numbers`);
+      }
+    }
+
+    // O carimbo do lead tem PRECEDÊNCIA: quando ele resolve, os fallbacks por
+    // pipeline/tenant não podem sobrescrever o número da unidade.
+    let resolvedFromTenant = resolvedFromNumber;
+    if (!resolvedFromNumber && leadData?.pipeline_id) {
       const { data: funnelChannel } = await supabase
         .from("funnel_channels")
         .select("channel_config")
@@ -741,7 +769,7 @@ Deno.serve(async (req) => {
       }
 
       // Still insert the message as failed so user can see it in chat
-      const dbContent = type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
+      const dbContent = log_content || (type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null));
       const dbType = type === "template" || type === "interactive" ? "text" : finalType;
       const { data: failedMsg } = await supabase.from("messages").insert({
         lead_id,
@@ -762,7 +790,7 @@ Deno.serve(async (req) => {
 
     const sentWamid = waData?.messages?.[0]?.id || null;
     const initialStatus = waData?.messages?.[0]?.message_status || "accepted";
-    const dbContent = type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null);
+    const dbContent = log_content || (type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null));
     const dbType = type === "template" || type === "interactive" ? "text" : finalType;
     const { data: msg, error: insertError } = await supabase.from("messages").insert({
       lead_id,

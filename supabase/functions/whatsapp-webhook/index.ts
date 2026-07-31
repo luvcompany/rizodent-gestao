@@ -1100,7 +1100,10 @@ Deno.serve(async (req) => {
                 } catch (_e) { inferredCidadeForCache = null; }
                 const cachePayload: Record<string, unknown> = {
                   ad_id: adSourceId,
-                  tenant_id: tenantId,
+                  // Mesma fonte do `const tenantId` declarado adiante — usar a
+                  // variável aqui dava ReferenceError (TDZ) e o catch abaixo
+                  // engolia, então o cache de anúncio NUNCA era gravado.
+                  tenant_id: matchedIntegration?.tenant_id ?? null,
                   updated_at: new Date().toISOString(),
                 };
                 if (adAccountId) cachePayload.ad_account_id = adAccountId;
@@ -1135,14 +1138,33 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            let { data: leadRows } = await supabase
-              .from("crm_leads")
-              .select("id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id")
-              .eq("tenant_id", tenantId)
-              .eq("phone", from)
-              .order("created_at", { ascending: true })
-              .limit(1);
-            let lead: any = leadRows?.[0] || null;
+            const LEAD_COLS = "id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id";
+            let lead: any = null;
+            // Com vários números no mesmo tenant (as 4 recepções), casar só por
+            // telefone jogaria a resposta do paciente da unidade B no lead da
+            // unidade A — e a RLS por número o esconderia da recepção B.
+            // Prioridade: lead do MESMO número; depois lead sem carimbo (adota);
+            // nunca sequestra lead carimbado com número diferente.
+            if (waNumberId) {
+              const { data: mesmoNumero } = await supabase
+                .from("crm_leads").select(LEAD_COLS)
+                .eq("tenant_id", tenantId).eq("phone", from).eq("whatsapp_number_id", waNumberId)
+                .order("created_at", { ascending: true }).limit(1);
+              lead = mesmoNumero?.[0] || null;
+              if (!lead) {
+                const { data: semCarimbo } = await supabase
+                  .from("crm_leads").select(LEAD_COLS)
+                  .eq("tenant_id", tenantId).eq("phone", from).is("whatsapp_number_id", null)
+                  .order("created_at", { ascending: true }).limit(1);
+                lead = semCarimbo?.[0] || null;
+              }
+            } else {
+              const { data: leadRows } = await supabase
+                .from("crm_leads").select(LEAD_COLS)
+                .eq("tenant_id", tenantId).eq("phone", from)
+                .order("created_at", { ascending: true }).limit(1);
+              lead = leadRows?.[0] || null;
+            }
 
             // 🚫 Blocked lead: drop the inbound message entirely
             if (lead && (lead as any).is_blocked) {
