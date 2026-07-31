@@ -1100,9 +1100,17 @@ Deno.serve(async (req) => {
                 } catch (_e) { inferredCidadeForCache = null; }
                 const cachePayload: Record<string, unknown> = {
                   ad_id: adSourceId,
-                  tenant_id: tenantId,
                   updated_at: new Date().toISOString(),
                 };
+                // Mesma fonte do `const tenantId` declarado adiante — usar a
+                // variável aqui dava ReferenceError (TDZ) e o catch abaixo
+                // engolia, então o cache de anúncio NUNCA era gravado.
+                // Só grava quando existe: ad_id é PK global e o upsert escreve as
+                // colunas presentes, então mandar null apagaria o tenant de uma
+                // linha já preenchida — e os relatórios de atribuição fazem join
+                // por (ad_id, tenant_id), perdendo nome do anúncio e faturamento.
+                const cacheTenantId = matchedIntegration?.tenant_id ?? null;
+                if (cacheTenantId) cachePayload.tenant_id = cacheTenantId;
                 if (adAccountId) cachePayload.ad_account_id = adAccountId;
                 if (adAccountName) cachePayload.ad_account_name = adAccountName;
                 if (adName) cachePayload.ad_name = adName;
@@ -1135,14 +1143,33 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            let { data: leadRows } = await supabase
-              .from("crm_leads")
-              .select("id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id")
-              .eq("tenant_id", tenantId)
-              .eq("phone", from)
-              .order("created_at", { ascending: true })
-              .limit(1);
-            let lead: any = leadRows?.[0] || null;
+            const LEAD_COLS = "id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id";
+            let lead: any = null;
+            // Com vários números no mesmo tenant (as 4 recepções), casar só por
+            // telefone jogaria a resposta do paciente da unidade B no lead da
+            // unidade A — e a RLS por número o esconderia da recepção B.
+            // Prioridade: lead do MESMO número; depois lead sem carimbo (adota);
+            // nunca sequestra lead carimbado com número diferente.
+            if (waNumberId) {
+              const { data: mesmoNumero } = await supabase
+                .from("crm_leads").select(LEAD_COLS)
+                .eq("tenant_id", tenantId).eq("phone", from).eq("whatsapp_number_id", waNumberId)
+                .order("created_at", { ascending: true }).limit(1);
+              lead = mesmoNumero?.[0] || null;
+              if (!lead) {
+                const { data: semCarimbo } = await supabase
+                  .from("crm_leads").select(LEAD_COLS)
+                  .eq("tenant_id", tenantId).eq("phone", from).is("whatsapp_number_id", null)
+                  .order("created_at", { ascending: true }).limit(1);
+                lead = semCarimbo?.[0] || null;
+              }
+            } else {
+              const { data: leadRows } = await supabase
+                .from("crm_leads").select(LEAD_COLS)
+                .eq("tenant_id", tenantId).eq("phone", from)
+                .order("created_at", { ascending: true }).limit(1);
+              lead = leadRows?.[0] || null;
+            }
 
             // 🚫 Blocked lead: drop the inbound message entirely
             if (lead && (lead as any).is_blocked) {
