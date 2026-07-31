@@ -1892,6 +1892,202 @@ async function syncClinica(
   return summary;
 }
 
+// ===========================================================================
+// PASSADA NOVA: SINCRONIZAR COMPARECIMENTO (Dontus → crm_appointments.status)
+// Escopo: só ATUALIZA agendamentos que já existem no CRClin. Nunca cria.
+// Não toca em datas futuras. Não altera regras de orto/nao_marketing/pagamentos.
+// ===========================================================================
+
+// idStatus do Dontus → status alvo no CRClin (null = não mexer).
+const DONTUS_STATUS_TARGET: Record<number, string | null> = {
+  1: null,               // Agendado
+  3: null,               // Cancelado
+  4: null,               // Confirmado
+  5: "no_show",          // Faltou
+  6: "not_contracted",   // Atendido (compareceu) — pode virar 'contracted'
+  7: "rescheduled",      // Remarcado
+};
+
+/** Telefone do agendamento Dontus: celular com fallback telefone1/telefone2. */
+function agTelefones(ag: any): string[] {
+  return [ag?.celular, ag?.telefone1, ag?.telefone2]
+    .map((t: any) => String(t || "").trim())
+    .filter(Boolean);
+}
+
+/** Casa um agendamento Dontus com um LEAD do tenant Rizodent por telefone+nome. */
+async function matchLeadByPhoneName(
+  admin: any,
+  telefones: string[],
+  nome: string,
+): Promise<{ id: string; name: string; phone: string | null } | null> {
+  for (const tel of telefones) {
+    const tail = tailPhone(tel);
+    if (!tail) continue;
+    const { data: leads } = await admin.from("crm_leads")
+      .select("id, name, phone, created_at")
+      .eq("tenant_id", RIZODENT_TENANT_ID)
+      .ilike("phone", `%${tail}`)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (!leads?.length) continue;
+    // Guard anti-falso-positivo (Lorena/Thaina): exige nome compatível.
+    const compat = leads.find((l: any) => namesCompatible(l.name, nome));
+    if (compat) return { id: compat.id, name: String(compat.name || ""), phone: compat.phone ?? null };
+  }
+  return null;
+}
+
+/** true se o lead tem paciente vinculado com algum pagamento que CONTA. */
+async function leadTemPagamentoQueConta(admin: any, leadId: string): Promise<boolean> {
+  const { data: vincs } = await admin.from("crm_lead_pacientes")
+    .select("paciente_id").eq("lead_id", leadId);
+  const ids = (vincs || []).map((v: any) => v.paciente_id).filter(Boolean);
+  if (!ids.length) return false;
+  const { count } = await admin.from("pagamentos")
+    .select("id", { count: "exact", head: true })
+    .in("paciente_id", ids)
+    .eq("recorrencia_orto", false)
+    .eq("nao_marketing", false);
+  return (count ?? 0) > 0;
+}
+
+async function syncComparecimento(
+  admin: any,
+  teamToken: string,
+  from: string,
+  to: string,
+  dryRun: boolean,
+  clinicas: number[],
+): Promise<any> {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const fim = minIso(to, hoje);      // nunca datas futuras
+  const ini = minIso(from, fim);
+
+  const por_unidade: any[] = [];
+  const amostra: any[] = [];
+  const errors: any[] = [];
+
+  for (const idClinica of clinicas) {
+    const info = CLINICA_MAP[idClinica];
+    const clinicaNome = info?.nome ?? `idClinica ${idClinica}`;
+    const acc = {
+      clinica: clinicaNome,
+      atendido_corrigido: 0,
+      faltou_corrigido: 0,
+      remarcado_corrigido: 0,
+      ja_corretos: 0,
+      sem_match_lead: 0,
+      sem_agendamento_crclin: 0,
+    };
+
+    try {
+      // Janelas de 30 dias (mesmo limite prático das outras tools).
+      const rows: any[] = [];
+      let cursor = ini;
+      while (cursor <= fim) {
+        const wFim = minIso(addDays(cursor, WINDOW_DAYS - 1), fim);
+        const chunk: any[] = await mcpToolCall(admin, teamToken, "consultar_agendamentos", {
+          input: {
+            contexto: { idDontus: DONTUS_ID, idClinica },
+            dataInicio: cursor, dataFim: wFim,
+          },
+        });
+        rows.push(...(Array.isArray(chunk) ? chunk : []));
+        cursor = addDays(wFim, 1);
+      }
+
+      for (const ag of rows) {
+        const idStatus = Number(ag?.idStatus);
+        const target = DONTUS_STATUS_TARGET[idStatus] ?? null;
+        if (!target) continue; // Cancelado/Agendado/Confirmado → não mexer
+
+        const dataAg = String(ag?.dataAgendamento || "").slice(0, 10);
+        if (!dataAg || dataAg > hoje) continue; // nunca futuro
+
+        const nome = String(ag?.paciente || "").trim();
+        const telefones = agTelefones(ag);
+        const lead = telefones.length ? await matchLeadByPhoneName(admin, telefones, nome) : null;
+        if (!lead) { acc.sem_match_lead++; continue; }
+
+        const { data: appts } = await admin.from("crm_appointments")
+          .select("id, status, scheduled_date")
+          .eq("tenant_id", RIZODENT_TENANT_ID)
+          .eq("lead_id", lead.id)
+          .eq("scheduled_date", dataAg)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const appt = appts?.[0];
+        if (!appt) { acc.sem_agendamento_crclin++; continue; }
+
+        let statusNovo = target;
+        let motivo = `Dontus ${idStatus}=${String(ag?.descricaoStatus || "")}`;
+        if (idStatus === 6) {
+          const pagou = await leadTemPagamentoQueConta(admin, lead.id);
+          if (pagou) {
+            statusNovo = "contracted";
+            motivo += " + pagamento que conta";
+          }
+        }
+        // Nunca REBAIXAR quem já está 'contracted'.
+        if (appt.status === "contracted" && statusNovo !== "contracted") {
+          acc.ja_corretos++;
+          continue;
+        }
+        if (appt.status === statusNovo) { acc.ja_corretos++; continue; }
+
+        if (idStatus === 6) acc.atendido_corrigido++;
+        else if (idStatus === 5) acc.faltou_corrigido++;
+        else if (idStatus === 7) acc.remarcado_corrigido++;
+
+        if (amostra.length < 25) {
+          amostra.push({
+            lead_nome: lead.name,
+            telefone: telefones[0] ?? null,
+            data: dataAg,
+            status_atual: appt.status,
+            status_novo: statusNovo,
+            motivo,
+          });
+        }
+
+        if (!dryRun) {
+          await admin.from("crm_appointments")
+            .update({ status: statusNovo, updated_at: new Date().toISOString() })
+            .eq("id", appt.id);
+        }
+      }
+    } catch (e: any) {
+      errors.push({ id_clinica_dontus: idClinica, error: e?.message ?? String(e) });
+    }
+
+    por_unidade.push(acc);
+  }
+
+  const totais = por_unidade.reduce((t: any, u: any) => ({
+    atendido_corrigido: t.atendido_corrigido + u.atendido_corrigido,
+    faltou_corrigido: t.faltou_corrigido + u.faltou_corrigido,
+    remarcado_corrigido: t.remarcado_corrigido + u.remarcado_corrigido,
+    ja_corretos: t.ja_corretos + u.ja_corretos,
+    sem_match_lead: t.sem_match_lead + u.sem_match_lead,
+    sem_agendamento_crclin: t.sem_agendamento_crclin + u.sem_agendamento_crclin,
+  }), {
+    atendido_corrigido: 0, faltou_corrigido: 0, remarcado_corrigido: 0,
+    ja_corretos: 0, sem_match_lead: 0, sem_agendamento_crclin: 0,
+  });
+
+  return {
+    modo: "comparecimento",
+    dry_run: dryRun,
+    periodo: { from: ini, to: fim },
+    por_unidade,
+    totais,
+    amostra,
+    errors,
+  };
+}
+
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
