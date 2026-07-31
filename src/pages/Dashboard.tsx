@@ -526,73 +526,8 @@ const Dashboard = () => {
   const ticketMedio = diasUteisPassados > 0 ? fatTotal / diasUteisPassados : 0;
   const projecaoMensal = ticketMedio * diasUteisMes;
 
-  // ===== KPIs CRM (filtrados por período + cidade da clínica) =====
-  const clinicaSelecionada = clinicas.find(c => c.id === clinicaFiltro);
-  const cidadeFiltro = clinicaSelecionada?.cidade || null;
-  const crmFiltered = useMemo(() => {
-    // isInSelectedRanges já converte timestamptz para dia local (America/Bahia)
-    const inDate = (s: string) => isInSelectedRanges(s);
-    const matchCidade = (cid: string | null | undefined) =>
-      !cidadeFiltro || normalizeCidade(cid || null).toLowerCase().includes(cidadeFiltro.toLowerCase());
-    const leads = crmLeads.filter(l => inDate(l.created_at) && matchCidade(l.cidade));
 
-    // Mapa lead -> cidade (para filtrar agendamentos por cidade)
-    const leadCidade = new Map<string, string | null>();
-    crmLeads.forEach((l: any) => leadCidade.set(l.id, l.cidade || null));
 
-    // KPIs CRM usam crm_appointments como fonte de verdade (mesma do calendário).
-    // Filtra agendamentos cuja DATA AGENDADA (coluna DATE) está no período selecionado.
-    const apptsNoPeriodo = (crmAppointments || []).filter((a: any) => {
-      const d = dbDay(a.scheduled_date);
-      if (!d || !isInSelectedRanges(d)) return false;
-      const cid = (a as any).crm_leads?.cidade ?? leadCidade.get(a.lead_id);
-      return matchCidade(cid);
-    });
-
-    return { leads, apptsDosAgendados: apptsNoPeriodo };
-  }, [crmLeads, crmAppointments, cidadeFiltro, rangeBounds, dateFrom, dateTo]);
-  const crmLeadsCount = crmFiltered.leads.length;
-  // KPIs CRM excluem reagendamentos para manter o mesmo escopo dos cards.
-  // Reagendamentos têm aba própria.
-  const apptsNaoReagendados = crmFiltered.apptsDosAgendados.filter((a: any) => !a.is_rescheduled);
-  // "Agendados" = LEADS DISTINTOS com pelo menos uma consulta (não reagendada) no período
-  // (lead com 2 consultas não conta 2x).
-  const agendadosLeadIds = useMemo(
-    () => new Set<string>(apptsNaoReagendados.map((a: any) => a.lead_id)),
-    [apptsNaoReagendados]
-  );
-  const crmAgendados = agendadosLeadIds.size;
-  const crmCompareceram = apptsNaoReagendados.filter((a: any) => a.status === "contracted" || a.status === "not_contracted").length;
-  const crmFaltaram = apptsNaoReagendados.filter((a: any) => a.status === "no_show").length;
-  const taxaPresenca = (crmCompareceram + crmFaltaram) > 0 ? (crmCompareceram / (crmCompareceram + crmFaltaram)) * 100 : 0;
-
-  // Conversão em COORTE FECHADA: dos leads agendados no período, quantos tiveram
-  // consulta com status "contratado" no MESMO período. O numerador é subconjunto
-  // do denominador por construção — a taxa nunca passa de 100%.
-  const leadsContrataramCoorte = useMemo(() => {
-    const set = new Set<string>();
-    apptsNaoReagendados.forEach((a: any) => {
-      if (a.status === "contracted") set.add(a.lead_id);
-    });
-    return set.size;
-  }, [apptsNaoReagendados]);
-  const taxaConversao = crmAgendados > 0 ? (leadsContrataramCoorte / crmAgendados) * 100 : 0;
-
-  // Novos contratados no período (fallback local): pacientes distintos com pagamento
-  // tipo "primeiro" dentro do período/clínica filtrados. Mesma fonte da aba Pacientes.
-  const novosPagantesPeriodo = useMemo(() => {
-    const ids = new Set<string>();
-    filtered.pagamentos.forEach(p => {
-      if (p.tipo !== "primeiro") return;
-      ids.add(p.paciente_id);
-    });
-    return ids.size;
-  }, [filtered.pagamentos]);
-
-  // Preferência: fonte canônica (rpt_contratados = 1º pagamento GLOBAL do paciente
-  // dentro do período — não reconta quem já pagou antes). Fallback: cálculo local.
-  const novosContratadosCanonico = rpcContratadosCount !== null;
-  const novosContratados = rpcContratadosCount ?? novosPagantesPeriodo;
 
   const kpis = [
   { title: "Faturamento no Período", value: formatCurrency(fatTotal), icon: TrendingUp, subtitle: canalFiltro !== "todos" ? "Pagamentos do período de pacientes do canal selecionado" : "Pagamentos recebidos no período" },
