@@ -1893,12 +1893,19 @@ async function syncClinica(
 }
 
 // ===========================================================================
-// PASSADA NOVA: SINCRONIZAR COMPARECIMENTO (Dontus → crm_appointments.status)
-// Escopo: só ATUALIZA agendamentos que já existem no CRClin. Nunca cria.
-// Não toca em datas futuras. Não altera regras de orto/nao_marketing/pagamentos.
+// PASSADA NOVA: CICLO DE VIDA DO AGENDAMENTO (Dontus + tempo → status)
+// Escopo: SÓ agendamentos PENDENTES (status='confirmed') do CRClin com
+// scheduled_date >= GO_LIVE e <= hoje (America/Bahia). Nunca cria agendamento,
+// nunca toca status já resolvido, nunca toca passado anterior ao GO_LIVE,
+// nunca toca data futura.
+// Performance: percorre os PENDENTES do CRClin (poucos) e usa um índice em
+// memória dos agendamentos do Dontus (1 chamada por unidade no período).
 // ===========================================================================
 
-// idStatus do Dontus → status alvo no CRClin (null = não mexer).
+const GO_LIVE = "2026-07-31";
+const NO_SHOW_GRACE_MIN = 180; // 3 horas após o horário marcado
+
+// idStatus do Dontus → status alvo no CRClin (null = sem sinal de comparecimento).
 const DONTUS_STATUS_TARGET: Record<number, string | null> = {
   1: null,               // Agendado
   3: null,               // Cancelado
@@ -1915,27 +1922,15 @@ function agTelefones(ag: any): string[] {
     .filter(Boolean);
 }
 
-/** Casa um agendamento Dontus com um LEAD do tenant Rizodent por telefone+nome. */
-async function matchLeadByPhoneName(
-  admin: any,
-  telefones: string[],
-  nome: string,
-): Promise<{ id: string; name: string; phone: string | null } | null> {
-  for (const tel of telefones) {
-    const tail = tailPhone(tel);
-    if (!tail) continue;
-    const { data: leads } = await admin.from("crm_leads")
-      .select("id, name, phone, created_at")
-      .eq("tenant_id", RIZODENT_TENANT_ID)
-      .ilike("phone", `%${tail}`)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    if (!leads?.length) continue;
-    // Guard anti-falso-positivo (Lorena/Thaina): exige nome compatível.
-    const compat = leads.find((l: any) => namesCompatible(l.name, nome));
-    if (compat) return { id: compat.id, name: String(compat.name || ""), phone: compat.phone ?? null };
-  }
-  return null;
+/** Dia-calendário atual em America/Bahia (UTC-3 fixo). */
+function todayBahia(): string {
+  return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+}
+
+/** Epoch ms de uma data+hora local de America/Bahia (UTC-3 fixo). */
+function bahiaMs(date: string, time: string | null): number {
+  const hhmm = String(time || "00:00").slice(0, 5);
+  return Date.parse(`${date}T${hhmm}:00.000-03:00`);
 }
 
 /** true se o lead tem paciente vinculado com algum pagamento que CONTA. */
@@ -1952,6 +1947,8 @@ async function leadTemPagamentoQueConta(admin: any, leadId: string): Promise<boo
   return (count ?? 0) > 0;
 }
 
+type DontusAg = { idStatus: number; descricao: string; nome: string; clinica: string };
+
 async function syncComparecimento(
   admin: any,
   teamToken: string,
@@ -1960,132 +1957,228 @@ async function syncComparecimento(
   dryRun: boolean,
   clinicas: number[],
 ): Promise<any> {
-  const hoje = new Date().toISOString().slice(0, 10);
-  const fim = minIso(to, hoje);      // nunca datas futuras
-  const ini = minIso(from, fim);
+  const hoje = todayBahia();
+  const agora = Date.now();
+  const fim = minIso(to, hoje);                 // nunca datas futuras
+  const ini = maxIso(minIso(from, fim), GO_LIVE); // nunca antes do GO_LIVE
 
-  const por_unidade: any[] = [];
-  const amostra: any[] = [];
   const errors: any[] = [];
+  const amostra: any[] = [];
+  const unidades: Record<string, any> = {};
+  const bump = (uni: string, key: string) => {
+    const u = (unidades[uni] ||= {
+      unidade: uni, compareceu: 0, no_show_por_tempo: 0, no_show_por_dontus: 0,
+      rescheduled: 0, ainda_pendentes: 0, sem_dontus: 0,
+    });
+    u[key]++;
+  };
 
-  for (const idClinica of clinicas) {
-    const info = CLINICA_MAP[idClinica];
-    const clinicaNome = info?.nome ?? `idClinica ${idClinica}`;
-    const acc = {
-      clinica: clinicaNome,
-      atendido_corrigido: 0,
-      faltou_corrigido: 0,
-      remarcado_corrigido: 0,
-      ja_corretos: 0,
-      sem_match_lead: 0,
-      sem_agendamento_crclin: 0,
+  if (ini > fim) {
+    return {
+      modo: "comparecimento", dry_run: dryRun, go_live: GO_LIVE,
+      periodo: { from: ini, to: fim }, por_unidade: [], totais: {}, amostra, errors,
+      nota: "Período fora da janela válida (GO_LIVE..hoje).",
     };
+  }
 
+  // 1) PENDENTES do CRClin no período (poucos registros).
+  const { data: pendentes, error: apptErr } = await admin.from("crm_appointments")
+    .select("id, lead_id, scheduled_date, scheduled_time, status, lead_cidade")
+    .eq("tenant_id", RIZODENT_TENANT_ID)
+    .eq("status", "confirmed")
+    .gte("scheduled_date", ini)
+    .lte("scheduled_date", fim)
+    .order("scheduled_date", { ascending: true });
+  if (apptErr) throw new Error(`crm_appointments: ${apptErr.message}`);
+  const pend = (pendentes || []).filter((a: any) => a.lead_id);
+
+  // Leads dos pendentes (nome + telefone) em blocos.
+  const leadIds = [...new Set(pend.map((a: any) => a.lead_id))] as string[];
+  const leadsById = new Map<string, { name: string; phone: string | null; cidade: string | null }>();
+  for (const bloco of chunkArr(leadIds, 200)) {
+    const { data } = await admin.from("crm_leads")
+      .select("id, name, phone, cidade")
+      .eq("tenant_id", RIZODENT_TENANT_ID)
+      .in("id", bloco);
+    for (const l of (data || [])) {
+      leadsById.set(l.id, { name: String(l.name || ""), phone: l.phone ?? null, cidade: l.cidade ?? null });
+    }
+  }
+
+  // Outros agendamentos 'confirmed' dos mesmos leads (para detectar remarcação).
+  const outrosPorLead = new Map<string, { date: string; time: string | null }[]>();
+  for (const bloco of chunkArr(leadIds, 200)) {
+    const { data } = await admin.from("crm_appointments")
+      .select("lead_id, scheduled_date, scheduled_time")
+      .eq("tenant_id", RIZODENT_TENANT_ID)
+      .eq("status", "confirmed")
+      .in("lead_id", bloco);
+    for (const a of (data || [])) {
+      const arr = outrosPorLead.get(a.lead_id) || [];
+      arr.push({ date: a.scheduled_date, time: a.scheduled_time ?? null });
+      outrosPorLead.set(a.lead_id, arr);
+    }
+  }
+
+  // 2) Índice do Dontus: chave `tail8|YYYY-MM-DD` → lista de agendamentos.
+  const idx = new Map<string, DontusAg[]>();
+  for (const idClinica of clinicas) {
+    const clinicaNome = CLINICA_MAP[idClinica]?.nome ?? `idClinica ${idClinica}`;
     try {
-      // Janelas de 30 dias (mesmo limite prático das outras tools).
-      const rows: any[] = [];
       let cursor = ini;
       while (cursor <= fim) {
         const wFim = minIso(addDays(cursor, WINDOW_DAYS - 1), fim);
-        const chunk: any[] = await mcpToolCall(admin, teamToken, "consultar_agendamentos", {
+        const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_agendamentos", {
           input: {
             contexto: { idDontus: DONTUS_ID, idClinica },
             dataInicio: cursor, dataFim: wFim,
           },
         });
-        rows.push(...(Array.isArray(chunk) ? chunk : []));
-        cursor = addDays(wFim, 1);
-      }
-
-      for (const ag of rows) {
-        const idStatus = Number(ag?.idStatus);
-        const target = DONTUS_STATUS_TARGET[idStatus] ?? null;
-        if (!target) continue; // Cancelado/Agendado/Confirmado → não mexer
-
-        const dataAg = String(ag?.dataAgendamento || "").slice(0, 10);
-        if (!dataAg || dataAg > hoje) continue; // nunca futuro
-
-        const nome = String(ag?.paciente || "").trim();
-        const telefones = agTelefones(ag);
-        const lead = telefones.length ? await matchLeadByPhoneName(admin, telefones, nome) : null;
-        if (!lead) { acc.sem_match_lead++; continue; }
-
-        const { data: appts } = await admin.from("crm_appointments")
-          .select("id, status, scheduled_date")
-          .eq("tenant_id", RIZODENT_TENANT_ID)
-          .eq("lead_id", lead.id)
-          .eq("scheduled_date", dataAg)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        const appt = appts?.[0];
-        if (!appt) { acc.sem_agendamento_crclin++; continue; }
-
-        let statusNovo = target;
-        let motivo = `Dontus ${idStatus}=${String(ag?.descricaoStatus || "")}`;
-        if (idStatus === 6) {
-          const pagou = await leadTemPagamentoQueConta(admin, lead.id);
-          if (pagou) {
-            statusNovo = "contracted";
-            motivo += " + pagamento que conta";
+        for (const ag of (Array.isArray(rows) ? rows : [])) {
+          const dataAg = String(ag?.dataAgendamento || "").slice(0, 10);
+          if (!dataAg) continue;
+          const entry: DontusAg = {
+            idStatus: Number(ag?.idStatus),
+            descricao: String(ag?.descricaoStatus || ""),
+            nome: String(ag?.paciente || "").trim(),
+            clinica: clinicaNome,
+          };
+          for (const tel of agTelefones(ag)) {
+            const tail = tailPhone(tel);
+            if (!tail) continue;
+            const key = `${tail}|${dataAg}`;
+            const arr = idx.get(key) || [];
+            arr.push(entry);
+            idx.set(key, arr);
           }
         }
-        // Nunca REBAIXAR quem já está 'contracted'.
-        if (appt.status === "contracted" && statusNovo !== "contracted") {
-          acc.ja_corretos++;
-          continue;
-        }
-        if (appt.status === statusNovo) { acc.ja_corretos++; continue; }
-
-        if (idStatus === 6) acc.atendido_corrigido++;
-        else if (idStatus === 5) acc.faltou_corrigido++;
-        else if (idStatus === 7) acc.remarcado_corrigido++;
-
-        if (amostra.length < 25) {
-          amostra.push({
-            lead_nome: lead.name,
-            telefone: telefones[0] ?? null,
-            data: dataAg,
-            status_atual: appt.status,
-            status_novo: statusNovo,
-            motivo,
-          });
-        }
-
-        if (!dryRun) {
-          await admin.from("crm_appointments")
-            .update({ status: statusNovo, updated_at: new Date().toISOString() })
-            .eq("id", appt.id);
-        }
+        cursor = addDays(wFim, 1);
       }
     } catch (e: any) {
       errors.push({ id_clinica_dontus: idClinica, error: e?.message ?? String(e) });
     }
-
-    por_unidade.push(acc);
   }
 
+  // 3) Decide o novo status de cada pendente.
+  let gravados = 0;
+  for (const appt of pend) {
+    const lead = leadsById.get(appt.lead_id);
+    if (!lead) continue;
+    const tail = tailPhone(lead.phone);
+    const cand = tail ? (idx.get(`${tail}|${appt.scheduled_date}`) || []) : [];
+    // Guard anti-falso-positivo: exige nome compatível.
+    const dont = cand.find((c) => namesCompatible(lead.name, c.nome)) || null;
+    const unidade = dont?.clinica || appt.lead_cidade || lead.cidade || "Sem unidade";
+
+    let statusNovo: string | null = null;
+    let motivo = "";
+    let bucket = "";
+
+    const target = dont ? (DONTUS_STATUS_TARGET[dont.idStatus] ?? null) : null;
+    if (target === "not_contracted") {
+      const pagou = await leadTemPagamentoQueConta(admin, appt.lead_id);
+      statusNovo = pagou ? "contracted" : "not_contracted";
+      motivo = `Dontus Atendido${pagou ? " + pagamento que conta" : ""}`;
+      bucket = "compareceu";
+    } else if (target === "rescheduled") {
+      statusNovo = "rescheduled";
+      motivo = "Dontus Remarcado";
+      bucket = "rescheduled";
+    } else if (target === "no_show") {
+      statusNovo = "no_show";
+      motivo = "Dontus Faltou";
+      bucket = "no_show_por_dontus";
+    } else {
+      // Sem sinal de comparecimento no Dontus → regra por TEMPO.
+      if (!dont) bump(unidade, "sem_dontus");
+      const semHora = !appt.scheduled_time;
+      const passou = semHora
+        ? appt.scheduled_date < hoje
+        : bahiaMs(appt.scheduled_date, appt.scheduled_time) + NO_SHOW_GRACE_MIN * 60_000 <= agora;
+      if (!passou) {
+        bump(unidade, "ainda_pendentes");
+        continue;
+      }
+      // Segurança anti-remarcação: existe outro 'confirmed' posterior?
+      const atualMs = bahiaMs(appt.scheduled_date, appt.scheduled_time);
+      const temPosterior = (outrosPorLead.get(appt.lead_id) || []).some((o) =>
+        o.date > appt.scheduled_date ||
+        (o.date === appt.scheduled_date && bahiaMs(o.date, o.time) > atualMs)
+      );
+      if (temPosterior) {
+        statusNovo = "rescheduled";
+        motivo = "sem desfecho + existe agendamento posterior (remarcado)";
+        bucket = "rescheduled";
+      } else {
+        statusNovo = "no_show";
+        motivo = semHora
+          ? "sem desfecho + data já passou (sem horário marcado)"
+          : "sem desfecho + passou horário marcado + 3h";
+        bucket = "no_show_por_tempo";
+      }
+    }
+
+    if (!statusNovo || statusNovo === appt.status) {
+      bump(unidade, "ainda_pendentes");
+      continue;
+    }
+
+    bump(unidade, bucket);
+    if (amostra.length < 25) {
+      amostra.push({
+        lead: lead.name,
+        data: appt.scheduled_date,
+        hora: appt.scheduled_time ?? null,
+        de: appt.status,
+        para: statusNovo,
+        motivo,
+      });
+    }
+
+    if (!dryRun) {
+      const { error: upErr } = await admin.from("crm_appointments")
+        .update({ status: statusNovo, updated_at: new Date().toISOString() })
+        .eq("id", appt.id)
+        .eq("status", "confirmed"); // trava: só age em pendente
+      if (upErr) errors.push({ appointment_id: appt.id, error: upErr.message });
+      else gravados++;
+    }
+  }
+
+  const por_unidade = Object.values(unidades);
   const totais = por_unidade.reduce((t: any, u: any) => ({
-    atendido_corrigido: t.atendido_corrigido + u.atendido_corrigido,
-    faltou_corrigido: t.faltou_corrigido + u.faltou_corrigido,
-    remarcado_corrigido: t.remarcado_corrigido + u.remarcado_corrigido,
-    ja_corretos: t.ja_corretos + u.ja_corretos,
-    sem_match_lead: t.sem_match_lead + u.sem_match_lead,
-    sem_agendamento_crclin: t.sem_agendamento_crclin + u.sem_agendamento_crclin,
+    compareceu: t.compareceu + u.compareceu,
+    no_show_por_tempo: t.no_show_por_tempo + u.no_show_por_tempo,
+    no_show_por_dontus: t.no_show_por_dontus + u.no_show_por_dontus,
+    rescheduled: t.rescheduled + u.rescheduled,
+    ainda_pendentes: t.ainda_pendentes + u.ainda_pendentes,
+    sem_dontus: t.sem_dontus + u.sem_dontus,
   }), {
-    atendido_corrigido: 0, faltou_corrigido: 0, remarcado_corrigido: 0,
-    ja_corretos: 0, sem_match_lead: 0, sem_agendamento_crclin: 0,
+    compareceu: 0, no_show_por_tempo: 0, no_show_por_dontus: 0,
+    rescheduled: 0, ainda_pendentes: 0, sem_dontus: 0,
   });
 
   return {
     modo: "comparecimento",
     dry_run: dryRun,
+    go_live: GO_LIVE,
     periodo: { from: ini, to: fim },
+    pendentes_analisados: pend.length,
+    atualizados: dryRun ? 0 : gravados,
     por_unidade,
     totais,
     amostra,
     errors,
   };
 }
+
+/** Divide um array em blocos (para .in() com muitas chaves). */
+function chunkArr<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 
 
 
