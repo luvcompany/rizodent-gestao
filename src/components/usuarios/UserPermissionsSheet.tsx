@@ -74,9 +74,12 @@ interface Props {
   userId: string;
   userName: string;
   userRole: Role | null;
+  /** Obrigatório no painel do superadmin: ele opera sobre OUTRO cliente, e sem
+   *  escopo explícito as consultas trariam dados de todos os tenants. */
+  tenantId?: string | null;
 }
 
-export default function UserPermissionsSheet({ open, onOpenChange, userId, userName, userRole }: Props) {
+export default function UserPermissionsSheet({ open, onOpenChange, userId, userName, userRole, tenantId }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -91,15 +94,18 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     if (!open || !userId) return;
     (async () => {
       setLoading(true);
+      // Escopo explícito por cliente: no painel do superadmin a RLS não restringe
+      // ao tenant, então sem o filtro viriam funis/números de TODOS os clientes.
+      const scoped = <T,>(q: T): T => (tenantId ? (q as any).eq("tenant_id", tenantId) : q);
       const [{ data: pls }, { data: ovs }, { data: was }, { data: tmc }, { data: igs }] = await Promise.all([
-        supabase.from("crm_pipelines").select("id,name,color,allowed_roles").order("name"),
+        scoped(supabase.from("crm_pipelines").select("id,name,color,allowed_roles")).order("name"),
         supabase.from("user_permission_overrides").select("scope,resource_id,granted").eq("user_id", userId),
-        supabase.from("whatsapp_numbers" as any).select("id,phone_number_id,display_name,phone_e164,is_active").order("display_name"),
-        supabase
+        scoped(supabase.from("whatsapp_numbers" as any).select("id,phone_number_id,display_name,phone_e164,is_active")).order("display_name"),
+        scoped(supabase
           .from("tenant_meta_credentials" as any)
-          .select("tenant_id,whatsapp_phone_number_id,whatsapp_waba_id,whatsapp_enabled")
+          .select("tenant_id,whatsapp_phone_number_id,whatsapp_waba_id,whatsapp_enabled"))
           .maybeSingle(),
-        supabase.from("ig_accounts").select("id,username,ig_user_id").order("username"),
+        scoped(supabase.from("ig_accounts").select("id,username,ig_user_id")).order("username"),
       ]);
       setPipelines((pls || []) as Pipeline[]);
       // Merge per-number rows (whatsapp_numbers) with the tenant-level config (tenant_meta_credentials)
@@ -125,7 +131,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
       setDirty({});
       setLoading(false);
     })();
-  }, [open, userId]);
+  }, [open, userId, tenantId]);
 
   const isSuper = userRole === "crc" || userRole === "superadmin";
 

@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import UserPermissionsSheet from "@/components/usuarios/UserPermissionsSheet";
+import { TENANT_ROLES, roleLabel as roleLabelShared } from "@/lib/roles";
 import { BrandColorField } from "@/components/admin/BrandColorField";
 import { BrandPreview } from "@/components/admin/BrandPreview";
 import {
@@ -36,14 +38,9 @@ const getFunctionErrorMessage = async (data: unknown, error: unknown, fallback =
   return (error as any)?.message || fallback;
 };
 
-const ROLES: { value: string; label: string }[] = [
-  { value: "crc", label: "CRC" },
-  { value: "gerente", label: "Gerente" },
-  { value: "posvenda", label: "Pós-venda" },
-  { value: "recepcao", label: "Recepção" },
-];
-const roleLabel = (r: string | null | undefined) =>
-  ROLES.find((x) => x.value === r)?.label ?? (r || "—");
+// Fonte única em src/lib/roles.ts — papel novo entra lá e aparece em todo lugar.
+const ROLES = TENANT_ROLES;
+const roleLabel = roleLabelShared;
 
 const inputDark =
   "bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500";
@@ -225,6 +222,10 @@ function OverviewTab({ tenant }: { tenant: Tenant }) {
 }
 
 function UsersTab({ tenant }: { tenant: Tenant }) {
+  // Permissões por usuário (funil, número de WhatsApp, conta de Instagram):
+  // esta era a única tela que concedia acesso a um número específico — sem ela
+  // no painel, não haveria como dar a cada recepcionista a sua unidade.
+  const [permUser, setPermUser] = useState<{ id: string; nome: string; role: string | null } | null>(null);
   const [users, setUsers] = useState<Profile[]>([]);
   const [open, setOpen] = useState(false);
   const [reset, setReset] = useState<{ id: string; password: string } | null>(null);
@@ -287,6 +288,7 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
                 <td className="p-3">{u.is_blocked ? <Badge variant="destructive">Bloqueado</Badge> : <Badge>Ativo</Badge>}</td>
                 <td className="p-3 text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" title="Permissões (funis, números, contas)" onClick={() => setPermUser({ id: u.id, nome: u.nome, role: u.role })}><Shield size={14} /></Button>
                     <Button size="sm" variant="ghost" title="Trocar e-mail" onClick={() => setEmailEdit({ id: u.id, email: u.email })}><Mail size={14} /></Button>
                     <Button size="sm" variant="ghost" title="Redefinir senha" onClick={() => setReset({ id: u.id, password: "" })}><KeyRound size={14} /></Button>
                     {u.is_blocked
@@ -361,6 +363,17 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {permUser && (
+        <UserPermissionsSheet
+          open={!!permUser}
+          onOpenChange={(v) => !v && setPermUser(null)}
+          userId={permUser.id}
+          userName={permUser.nome}
+          userRole={(permUser.role ?? null) as any}
+          tenantId={tenant.id}
+        />
+      )}
     </div>
   );
 }

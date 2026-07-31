@@ -18,7 +18,6 @@ const navItems: Array<{ to: string; icon: any; label: string; roles?: string[] }
   { to: "/marketing", icon: Megaphone, label: "Marketing" },
   { to: "/crm", icon: Users, label: "CRM" },
   { to: "/procedimentos", icon: Stethoscope, label: "Procedimentos" },
-  { to: "/usuarios", icon: Shield, label: "Usuários" },
   { to: "/acessos", icon: ScrollText, label: "Logs de acesso", roles: ["crc", "gerente", "superadmin"] },
   { to: "/configuracoes", icon: Settings, label: "Configurações" },
 ];

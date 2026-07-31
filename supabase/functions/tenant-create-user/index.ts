@@ -32,8 +32,10 @@ Deno.serve(async (req) => {
       .select("role")
       .eq("user_id", requesterId);
     const isSuperadmin = (roles || []).some((r: any) => r.role === "superadmin");
-    const isAdmin = isSuperadmin || (roles || []).some((r: any) => r.role === "crc" || r.role === "gerente");
-    if (!isAdmin) return json({ error: "Forbidden — admin only" }, 403);
+    // A gestão de usuários passou a viver SÓ no painel do superadmin (a tela
+    // dentro do CRM foi removida). Manter esta função aberta a crc/gerente
+    // deixaria a porta de API aberta justamente para o que se quis centralizar.
+    if (!isSuperadmin) return json({ error: "Forbidden — gestão de usuários é feita no painel administrativo" }, 403);
 
     // Pega o tenant do solicitante
     const { data: requesterProfile } = await admin
