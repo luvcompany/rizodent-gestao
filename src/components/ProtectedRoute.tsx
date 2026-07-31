@@ -4,8 +4,19 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 
+// Rotas liberadas para o papel Recepção (chat + disparos + modelos + bots).
+// Qualquer outra rota redireciona para Conversas.
+const RECEPCAO_PREFIXES = [
+  "/crm/conversas",
+  "/crm/conversa",
+  "/crm/campanhas",
+  "/crm/modelos",
+  "/crm/respostas-rapidas",
+  "/crm/bots",
+];
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { session, loading, profile, signOut, user, userRole } = useAuth();
+  const { session, loading, profile, signOut, user, userRole, roleResolved } = useAuth();
   const { tenant, loading: tenantLoading } = useTenant();
   const location = useLocation();
 
@@ -49,6 +60,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/change-password" replace />;
   }
 
+  // Guards de papel só decidem com o papel resolvido (cache válido ou 1º fetch).
+  // Sem isso, um deep-link renderia (e consultaria dados de) uma rota proibida
+  // na janela entre o boot e a chegada do papel.
+  if (!roleResolved) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Carregando...</div>
+      </div>
+    );
+  }
+
   // Pós-venda só acessa o CRM
   if (
     userRole === "posvenda" &&
@@ -56,6 +78,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     location.pathname !== "/change-password"
   ) {
     return <Navigate to="/crm" replace />;
+  }
+
+  // Recepção só acessa Conversas/Transmissão/Modelos/Respostas Rápidas/Bots
+  if (userRole === "recepcao") {
+    const path = location.pathname;
+    const allowed =
+      path === "/change-password" ||
+      RECEPCAO_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
+    if (!allowed) {
+      return <Navigate to="/crm/conversas" replace />;
+    }
   }
 
   return <>{children}</>;

@@ -7,12 +7,16 @@ const corsHeaders = {
 };
 
 async function resolveCredentials(supabase: any, integrationKey?: string, tenantId?: string | null) {
-  // If an integration_key is provided, resolve from integrations table
-  if (integrationKey) {
+  // If an integration_key is provided, resolve from integrations table.
+  // SEMPRE filtrando pelo tenant do chamador: a key não é única globalmente
+  // (unique é por tenant) e o client roda com service role — sem o filtro,
+  // um usuário resolveria credenciais/WABA de outro tenant.
+  if (integrationKey && tenantId) {
     const { data: intg } = await supabase
       .from("integrations")
       .select("config")
       .eq("key", integrationKey)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
     if (intg?.config) {
       const cfg = intg.config as any;
@@ -41,12 +45,18 @@ async function resolveCredentials(supabase: any, integrationKey?: string, tenant
       if (token && wabaId) return { token, wabaId, appId: cfg.app_id || Deno.env.get("META_APP_ID") || "" };
     }
   }
-  // Fallback to env vars
-  return {
-    token: Deno.env.get("WHATSAPP_TOKEN") || "",
-    wabaId: Deno.env.get("WABA_ID") || "",
-    appId: Deno.env.get("META_APP_ID") || "",
-  };
+  // Fallback de env é legado v1 e vale SÓ para o tenant Rizodent. Para qualquer
+  // outro tenant sem integração própria, negar — senão o tenant listaria/criaria
+  // templates na WABA da Rizodent.
+  const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
+  if (tenantId === RIZODENT_TENANT_ID) {
+    return {
+      token: Deno.env.get("WHATSAPP_TOKEN") || "",
+      wabaId: Deno.env.get("WABA_ID") || "",
+      appId: Deno.env.get("META_APP_ID") || "",
+    };
+  }
+  return { token: "", wabaId: "", appId: "" };
 }
 
 // Upload resumable do Meta: devolve o `header_handle` exigido para criar template

@@ -27,19 +27,21 @@ type Profile = {
 
 type UserRole = {
   user_id: string;
-  role: "gerente" | "crc" | "posvenda";
+  role: "gerente" | "crc" | "posvenda" | "recepcao";
 };
 
 const roleLabels: Record<string, string> = {
   gerente: "Gerente",
   crc: "CRC",
   posvenda: "Pós-venda",
+  recepcao: "Recepção",
 };
 
 const roleBadgeClass: Record<string, string> = {
   gerente: "bg-primary/20 text-primary border-primary/30",
   crc: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   posvenda: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  recepcao: "bg-amber-500/20 text-amber-400 border-amber-500/30",
 };
 
 const Usuarios = () => {
@@ -85,15 +87,15 @@ const Usuarios = () => {
 
   const handleAssignRole = async () => {
     if (!selectedUserId || !selectedRole) return;
-    const existing = getUserRole(selectedUserId);
     try {
-      if (existing) {
-        const { error } = await supabase.from("user_roles").update({ role: selectedRole as any }).eq("user_id", selectedUserId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("user_roles").insert({ user_id: selectedUserId, role: selectedRole as any });
-        if (error) throw error;
-      }
+      // user_roles não tem policy permissiva de escrita — gravar direto era um
+      // no-op silencioso. A RPC SECURITY DEFINER aplica a mesma allowlist do
+      // tenant-create-user e faz delete+insert escopado ao tenant.
+      const { error } = await (supabase as any).rpc("tenant_set_user_role", {
+        _user_id: selectedUserId,
+        _role: selectedRole,
+      });
+      if (error) throw error;
       toast.success("Função atualizada!");
       fetchData();
       setRoleDialogOpen(false);
@@ -234,6 +236,7 @@ const Usuarios = () => {
                     <SelectItem value="crc">CRC</SelectItem>
                     {userRole === "superadmin" && <SelectItem value="gerente">Gerente</SelectItem>}
                     <SelectItem value="posvenda">Pós-venda</SelectItem>
+                    <SelectItem value="recepcao">Recepção</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -330,6 +333,7 @@ const Usuarios = () => {
                                         <SelectItem value="crc">CRC</SelectItem>
                                         {userRole === "superadmin" && <SelectItem value="gerente">Gerente</SelectItem>}
                                         <SelectItem value="posvenda">Pós-venda</SelectItem>
+                                        <SelectItem value="recepcao">Recepção</SelectItem>
                                       </SelectContent>
                                     </Select>
                                     <Button onClick={handleAssignRole} className="w-full gradient-orange text-primary-foreground">Salvar</Button>

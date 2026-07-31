@@ -62,7 +62,9 @@ const TenantLogin = () => {
       if (user) {
         const { data: roleRow } = await supabase
           .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
-        if ((roleRow as any)?.role === "posvenda") target = "/crm";
+        const roleName = (roleRow as any)?.role;
+        if (roleName === "posvenda") target = "/crm";
+        else if (roleName === "recepcao") target = "/crm/conversas";
       }
       // If arrived from an OAuth consent flow (or any protected page), honor ?next=.
       const nextParam = new URLSearchParams(window.location.search).get("next");
@@ -107,7 +109,9 @@ const TenantLogin = () => {
           if (user) {
             const { data: roleRow } = await supabase
               .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
-            if ((roleRow as any)?.role === "posvenda") target = "/crm";
+            const roleName = (roleRow as any)?.role;
+        if (roleName === "posvenda") target = "/crm";
+        else if (roleName === "recepcao") target = "/crm/conversas";
           }
           if (target === "/dashboard") await dashboardWarmup;
           navigate(target);

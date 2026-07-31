@@ -829,10 +829,31 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     };
   }, [leads]);
 
+  // Overrides de pipeline do próprio usuário (user_permission_overrides, scope
+  // "pipeline") — sem eles o filtro defensivo abaixo esconderia leads que o
+  // backend CONCEDEU por override (caso recepcao), deixando a lista vazia.
+  const [pipelineOverrides, setPipelineOverrides] = useState<Map<string, boolean>>(new Map());
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    supabase
+      .from("user_permission_overrides")
+      .select("resource_id, granted")
+      .eq("user_id", user.id)
+      .eq("scope", "pipeline")
+      .then(({ data }) => {
+        if (!cancelled) {
+          setPipelineOverrides(new Map((data ?? []).map((o: any) => [o.resource_id, o.granted])));
+        }
+      });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
   // Defensive: compute pipelines that this user's role should NOT see.
   // Mirrors backend can_access_pipeline() so the UI never leaks Pós-Venda leads
   // into CRC's Conversas list even if RLS is misconfigured or cache is stale.
-  // Rule: pipeline is accessible if
+  // Rule (same COALESCE semantics as the backend): explicit override wins;
+  // otherwise pipeline is accessible if
   //   - user is superadmin, OR
   //   - pipeline.allowed_roles is NULL/empty AND user is crc/gerente, OR
   //   - user's role is in pipeline.allowed_roles
@@ -845,11 +866,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       const isOpen = !roles || roles.length === 0;
       const userInRoles = roles?.includes(role);
       const crcDefaults = isOpen && (role === "crc" || role === "gerente");
-      const accessible = crcDefaults || userInRoles;
+      const override = pipelineOverrides.get(p.id);
+      const accessible = override !== undefined ? override : (crcDefaults || userInRoles);
       if (!accessible) blocked.add(p.id);
     }
     return blocked;
-  }, [pipelines, userRole]);
+  }, [pipelines, userRole, pipelineOverrides]);
 
   // Apply filters
   const filtered = useMemo(() => {

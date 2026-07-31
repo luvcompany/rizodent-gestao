@@ -12,6 +12,8 @@
 //   if (!check.ok) return jsonResponse({ error: check.error }, 403);
 
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 // Comparação de tempo constante para segredos/API keys. Evita timing attacks
 // que revelam prefixos corretos por diferença de tempo entre === curto e longo.
 export function safeEqual(a: string, b: string): boolean {
@@ -98,6 +100,28 @@ export async function assertLeadInTenant(
     return { ok: false, status: 403, error: "Recurso de outro tenant" };
   }
   return { ok: true, tenantId: data.tenant_id };
+}
+
+// Visibilidade por número (papel recepcao): checa se o CHAMADOR pode agir pelo
+// número de WhatsApp dado, reusando a RPC can_access_whatsapp_number com o JWT
+// do usuário — fonte única de verdade com a RLS. NULL (lead sem carimbo — caso
+// Rizodent hoje) e papéis privilegiados liberam; zero regressão.
+export async function assertNumberAccess(
+  req: Request,
+  whatsappNumberId: string | null,
+  ctx: CallerContext,
+): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  if (ctx.isServiceRole || ctx.isSuperadmin || !whatsappNumberId) return { ok: true };
+  const authHeader = req.headers.get("Authorization") || req.headers.get("authorization") || "";
+  const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const url = (globalThis as any).Deno?.env?.get?.("SUPABASE_URL") || "";
+  const anon = (globalThis as any).Deno?.env?.get?.("SUPABASE_ANON_KEY") || "";
+  if (!jwt || !url || !anon) return { ok: false, status: 401, error: "Unauthorized" };
+  const asUser = createClient(url, anon, { global: { headers: { Authorization: `Bearer ${jwt}` } } });
+  const { data, error } = await asUser.rpc("can_access_whatsapp_number", { _number_id: whatsappNumberId });
+  if (error) return { ok: false, status: 500, error: error.message };
+  if (data !== true) return { ok: false, status: 403, error: "Sem acesso a este número de WhatsApp" };
+  return { ok: true };
 }
 
 export async function assertMessageInTenant(

@@ -155,6 +155,25 @@ Deno.serve(async (req) => {
         });
       }
       console.log(`[wa-call-signaling] connect resolved phone_number_id=${phoneNumberId} tenant=${tenantId}`);
+
+      // Visibilidade por número (papel recepcao): barra uso de número não
+      // concedido ao usuário. Número sem cadastro em whatsapp_numbers (legado
+      // via integrations) não tem o que checar — segue o comportamento atual.
+      const { data: waRowGuard } = await supabase
+        .from("whatsapp_numbers")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("phone_number_id", phoneNumberId)
+        .maybeSingle();
+      if (waRowGuard?.id) {
+        const { data: allowedNum } = await userClient.rpc("can_access_whatsapp_number", { _number_id: waRowGuard.id });
+        if (allowedNum !== true) {
+          return new Response(JSON.stringify({ error: "forbidden" }), {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
     } else {
       // Carrega a chamada existente
       const { data: call, error: callErr } = await supabase

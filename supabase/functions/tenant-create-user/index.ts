@@ -48,11 +48,11 @@ Deno.serve(async (req) => {
     if (!email || !password || !nome) return json({ error: "Campos obrigatórios faltando" }, 400);
 
     // Allowlist de roles — bloqueia escalada de privilégio.
-    // - crc/gerente só podem criar: crc, posvenda
-    // - superadmin pode criar: crc, posvenda, gerente, superadmin
+    // - crc/gerente só podem criar: crc, posvenda, recepcao
+    // - superadmin pode criar: crc, posvenda, recepcao, gerente, superadmin
     const requestedRole = role || "crc";
-    const allowedForAdmin = new Set(["crc", "posvenda"]);
-    const allowedForSuperadmin = new Set(["crc", "posvenda", "gerente", "superadmin"]);
+    const allowedForAdmin = new Set(["crc", "posvenda", "recepcao"]);
+    const allowedForSuperadmin = new Set(["crc", "posvenda", "recepcao", "gerente", "superadmin"]);
     const allowed = isSuperadmin ? allowedForSuperadmin : allowedForAdmin;
     if (!allowed.has(requestedRole)) {
       return json({ error: `Role '${requestedRole}' não permitida para este usuário` }, 403);
