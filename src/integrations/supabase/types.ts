@@ -3417,6 +3417,7 @@ export type Database = {
           deleted_at: string | null
           direction: string
           error_reason: string | null
+          from_device: boolean
           id: string
           instagram_account_id: string | null
           instagram_comment_id: string | null
@@ -3451,6 +3452,7 @@ export type Database = {
           deleted_at?: string | null
           direction?: string
           error_reason?: string | null
+          from_device?: boolean
           id?: string
           instagram_account_id?: string | null
           instagram_comment_id?: string | null
@@ -3485,6 +3487,7 @@ export type Database = {
           deleted_at?: string | null
           direction?: string
           error_reason?: string | null
+          from_device?: boolean
           id?: string
           instagram_account_id?: string | null
           instagram_comment_id?: string | null
@@ -4487,6 +4490,7 @@ export type Database = {
           display_name: string | null
           id: string
           is_active: boolean
+          is_coexistence: boolean
           is_default: boolean
           phone_e164: string | null
           phone_number_id: string
@@ -4503,6 +4507,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_active?: boolean
+          is_coexistence?: boolean
           is_default?: boolean
           phone_e164?: string | null
           phone_number_id: string
@@ -4519,6 +4524,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_active?: boolean
+          is_coexistence?: boolean
           is_default?: boolean
           phone_e164?: string | null
           phone_number_id?: string
@@ -4532,6 +4538,7 @@ export type Database = {
       }
       whatsapp_oauth_states: {
         Row: {
+          coexistence: boolean
           created_at: string
           expires_at: string
           state: string
@@ -4539,6 +4546,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          coexistence?: boolean
           created_at?: string
           expires_at?: string
           state?: string
@@ -4546,6 +4554,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          coexistence?: boolean
           created_at?: string
           expires_at?: string
           state?: string
