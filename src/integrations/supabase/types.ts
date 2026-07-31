@@ -5074,6 +5074,7 @@ export type Database = {
           p_to: string
         }
         Returns: {
+          ad_ids: string[]
           ads_no_grupo: number
           ads_no_periodo: number
           atribuido: boolean
