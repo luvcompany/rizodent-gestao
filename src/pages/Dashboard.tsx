@@ -198,9 +198,6 @@ const Dashboard = () => {
   const [pagamentos, setPagamentos] = useState<any[]>([]);
   const [tratamentos, setTratamentos] = useState<any[]>([]);
   const [pacientes, setPacientes] = useState<any[]>([]);
-  const [crmLeads, setCrmLeads] = useState<any[]>([]);
-  const [crmAppointments, setCrmAppointments] = useState<any[]>([]);
-  const [adIdMapping, setAdIdMapping] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateRangeFilterValue>({ preset: "this_month" });
