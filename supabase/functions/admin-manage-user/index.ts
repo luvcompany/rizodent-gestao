@@ -9,7 +9,7 @@ const corsHeaders = {
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 // Papéis atribuíveis a usuários de um cliente (superadmin é da plataforma, não do tenant).
-const TENANT_ROLES = new Set(["crc", "gerente", "posvenda"]);
+const TENANT_ROLES = new Set(["crc", "gerente", "posvenda", "recepcao"]);
 const BAN_FOREVER = "876000h"; // ~100 anos
 
 async function ensureProfile(admin: any, user: any, tenantId: string, nome?: string, cargo?: string | null, mustChangePassword = true) {

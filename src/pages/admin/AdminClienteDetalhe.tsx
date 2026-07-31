@@ -40,6 +40,7 @@ const ROLES: { value: string; label: string }[] = [
   { value: "crc", label: "CRC" },
   { value: "gerente", label: "Gerente" },
   { value: "posvenda", label: "Pós-venda" },
+  { value: "recepcao", label: "Recepção" },
 ];
 const roleLabel = (r: string | null | undefined) =>
   ROLES.find((x) => x.value === r)?.label ?? (r || "—");
