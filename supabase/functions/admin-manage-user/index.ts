@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { assertTenantRole, TENANT_ROLES as SHARED_TENANT_ROLES } from "../_shared/roles.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,8 +9,8 @@ const corsHeaders = {
 };
 const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-// Papéis atribuíveis a usuários de um cliente (superadmin é da plataforma, não do tenant).
-const TENANT_ROLES = new Set(["crc", "gerente", "posvenda", "recepcao"]);
+// Papéis atribuíveis a usuários de um cliente — fonte única em _shared/roles.ts.
+const TENANT_ROLES = new Set<string>(SHARED_TENANT_ROLES);
 const BAN_FOREVER = "876000h"; // ~100 anos
 
 async function ensureProfile(admin: any, user: any, tenantId: string, nome?: string, cargo?: string | null, mustChangePassword = true) {
@@ -48,7 +49,11 @@ Deno.serve(async (req) => {
 
     if (action === "create") {
       if (!tenant_id || !email || !password) return json({ error: "missing fields" }, 400);
-      const wantRole = TENANT_ROLES.has(role) ? role : "crc";
+      // NUNCA rebaixar em silêncio: antes, papel desconhecido virava "crc" —
+      // criando um ADMIN da clínica quando se pediu "recepcao", sem erro algum.
+      const roleCheck = assertTenantRole(role ?? "crc");
+      if (!roleCheck.ok) return json({ error: roleCheck.error }, 400);
+      const wantRole = roleCheck.role;
       const { data: created, error } = await admin.auth.admin.createUser({
         email, password, email_confirm: true,
         user_metadata: { nome: nome || email, tenant_id, must_change_password: true },
@@ -94,14 +99,15 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
     if (action === "set_role") {
-      if (!TENANT_ROLES.has(role)) return json({ error: "Papel inválido." }, 400);
+      const setRoleCheck = assertTenantRole(role);
+      if (!setRoleCheck.ok) return json({ error: setRoleCheck.error }, 400);
       if (!targetTenant) return json({ error: "Usuário sem tenant." }, 400);
       // Um usuário tem um papel: remove os antigos e define o novo.
       await admin.from("user_roles").delete().eq("user_id", user_id);
-      const { error } = await admin.from("user_roles").upsert({ user_id, role, tenant_id: targetTenant }, { onConflict: "user_id,role" });
+      const { error } = await admin.from("user_roles").upsert({ user_id, role: setRoleCheck.role, tenant_id: targetTenant }, { onConflict: "user_id,role" });
       if (error) return json({ error: error.message }, 400);
       await admin.from("access_logs").insert({ user_id: userId, tenant_id: targetTenant, context: "admin", event: "user_set_role", metadata: { target: user_id, role } });
-      return json({ ok: true, role });
+      return json({ ok: true, role: setRoleCheck.role });
     }
     if (action === "set_email") {
       if (!email) return json({ error: "email required" }, 400);
