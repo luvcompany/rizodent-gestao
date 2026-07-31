@@ -32,6 +32,12 @@ UPDATE public.instagram_messages m
   FROM public.crm_leads l
  WHERE m.tenant_id IS NULL AND l.id = m.lead_id;
 
+-- 1b) Tabelas com tenant_id que NÃO têm trigger nem default para preenchê-lo:
+--     sem isto o WITH CHECK abaixo avaliaria NULL = uuid → NULL → nega, e criar
+--     etiqueta deixaria de funcionar para crc, gerente, posvenda e recepção.
+--     (useLeadLabels.tsx insere sem tenant_id.)
+ALTER TABLE public.crm_user_labels ALTER COLUMN tenant_id SET DEFAULT public.current_tenant_id();
+
 -- 2) A trava estrutural.
 DO $$
 DECLARE
@@ -57,12 +63,16 @@ BEGIN
     -- USING vale para SELECT/UPDATE/DELETE; WITH CHECK impede gravar em cliente
     -- alheio. Linha com tenant_id nulo fica invisível de propósito: dado sem
     -- dono não pertence a ninguém.
+    -- (SELECT ...) é obrigatório aqui: sem ele o OR impede o uso do índice de
+    -- tenant_id e a função passa a ser chamada por linha — medido na `messages`
+    -- (159 mil linhas): 0,17 ms com InitPlan contra 2.799 ms sem. Afetaria
+    -- TODOS os papéis em todas as tabelas.
     EXECUTE format(
       'CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR ALL TO authenticated '
-      || 'USING (tenant_id = public.current_tenant_id() '
-      || '       OR public.has_role(auth.uid(), ''superadmin''::app_role)) '
-      || 'WITH CHECK (tenant_id = public.current_tenant_id() '
-      || '       OR public.has_role(auth.uid(), ''superadmin''::app_role))',
+      || 'USING (tenant_id = (SELECT public.current_tenant_id()) '
+      || '       OR (SELECT public.has_role(auth.uid(), ''superadmin''::app_role))) '
+      || 'WITH CHECK (tenant_id = (SELECT public.current_tenant_id()) '
+      || '       OR (SELECT public.has_role(auth.uid(), ''superadmin''::app_role)))',
       pol, r.table_name);
   END LOOP;
 END $$;
@@ -75,15 +85,19 @@ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns
               WHERE table_schema='public' AND table_name='ig_accounts' AND column_name='access_token') THEN
     EXECUTE 'REVOKE SELECT ON public.ig_accounts FROM anon, authenticated';
-    EXECUTE 'GRANT SELECT (id, tenant_id, ig_user_id, username, created_at, updated_at) ON public.ig_accounts TO authenticated';
+    -- `active` e `cidade` são lidas pelo chat e pela tela de Integrações: sem elas
+    -- no GRANT, a lista de contas do Instagram quebra com erro 42501 para crc,
+    -- gerente e pós-venda. Só o access_token e o token_expires_at ficam de fora.
+    EXECUTE 'GRANT SELECT (id, tenant_id, ig_user_id, username, active, cidade, created_at, updated_at) ON public.ig_accounts TO authenticated';
   END IF;
 END $$;
 
 --    (b) integrations guarda access_token da Meta em `config` (jsonb) — não dá
 --        para esconder por coluna. A tabela inteira sai do alcance do app:
---        quem precisa dela são as edge functions (service_role) e o painel do
---        superadmin. A tela de Integrações do cliente segue funcionando por
---        edge function, que é como ela já lê os dados hoje.
+--        quem precisa dela são as edge functions (service_role) e o crc. A tela
+--        de Integrações lê a tabela direto e continua funcionando para o crc —
+--        gerente e pós-venda já hoje a abrem vazia, porque as policies
+--        permissivas atuais já exigem crc. Não há regressão.
 DROP POLICY IF EXISTS integrations_sem_segredo_no_app ON public.integrations;
 CREATE POLICY integrations_sem_segredo_no_app ON public.integrations
   AS RESTRICTIVE FOR SELECT TO authenticated

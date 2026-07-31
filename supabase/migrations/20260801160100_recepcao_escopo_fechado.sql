@@ -48,14 +48,29 @@ BEGIN
      WHERE c.column_name = 'lead_id' AND c.table_schema = 'public'
        -- messages tem regra própria (mais abaixo), com INSERT/UPDATE também.
        AND c.table_name <> 'messages'
+       -- Escritas só por service_role/gatilhos SECURITY DEFINER, que ignoram
+       -- RLS: a policy aqui seria custo por linha sem proteger nada. E as da
+       -- lista `bloqueadas` já são negadas por inteiro logo abaixo.
+       AND c.table_name NOT IN (
+         'crm_automation_queue', 'bot_executions', 'ai_reply_suggestions',
+         'crm_funil_cleanup_log', 'deleted_leads_backup', 'api4com_calls',
+         'instagram_messages', 'whatsapp_calls', 'whatsapp_call_permissions',
+         'ai_good_examples', 'ai_conversation_analysis'
+       )
   LOOP
     pol := 'recepcao_escopo_numero_' || r.table_name;
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', r.table_name);
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol, r.table_name);
     EXECUTE format(
       'CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR ALL TO authenticated '
-      || 'USING (public.recepcao_pode_ver_lead(lead_id)) '
-      || 'WITH CHECK (public.recepcao_pode_ver_lead(lead_id))',
+      -- (SELECT ...) vira InitPlan: avaliado UMA vez por consulta. Sem isso a
+      -- função SECURITY DEFINER roda por linha e uma varredura de 45 mil linhas
+      -- passa de 9ms para 380ms — para TODOS os papéis, inclusive quem nem é
+      -- recepção.
+      || 'USING ((SELECT NOT public.has_role(auth.uid(), ''recepcao''::app_role)) '
+      || '       OR public.recepcao_pode_ver_lead(lead_id)) '
+      || 'WITH CHECK ((SELECT NOT public.has_role(auth.uid(), ''recepcao''::app_role)) '
+      || '            OR public.recepcao_pode_ver_lead(lead_id))',
       pol, r.table_name);
   END LOOP;
 END $$;
@@ -95,8 +110,8 @@ BEGIN
       EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'recepcao_sem_acesso_' || t, t);
       EXECUTE format(
         'CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR ALL TO authenticated '
-        || 'USING (NOT public.has_role(auth.uid(), ''recepcao''::app_role)) '
-        || 'WITH CHECK (NOT public.has_role(auth.uid(), ''recepcao''::app_role))',
+        || 'USING ((SELECT NOT public.has_role(auth.uid(), ''recepcao''::app_role))) '
+        || 'WITH CHECK ((SELECT NOT public.has_role(auth.uid(), ''recepcao''::app_role)))',
         'recepcao_sem_acesso_' || t, t);
     END IF;
   END LOOP;
@@ -110,17 +125,19 @@ END $$;
 DROP POLICY IF EXISTS recepcao_number_scope_messages_update ON public.messages;
 CREATE POLICY recepcao_number_scope_messages_update ON public.messages
   AS RESTRICTIVE FOR UPDATE TO authenticated
-  USING (public.recepcao_pode_ver_lead(lead_id));
+  USING ((SELECT NOT public.has_role(auth.uid(), 'recepcao'::app_role))
+         OR public.recepcao_pode_ver_lead(lead_id));
 
 DROP POLICY IF EXISTS recepcao_number_scope_messages_insert ON public.messages;
 CREATE POLICY recepcao_number_scope_messages_insert ON public.messages
   AS RESTRICTIVE FOR INSERT TO authenticated
-  WITH CHECK (public.recepcao_pode_ver_lead(lead_id));
+  WITH CHECK ((SELECT NOT public.has_role(auth.uid(), 'recepcao'::app_role))
+              OR public.recepcao_pode_ver_lead(lead_id));
 
 DROP POLICY IF EXISTS recepcao_sem_delete_messages ON public.messages;
 CREATE POLICY recepcao_sem_delete_messages ON public.messages
   AS RESTRICTIVE FOR DELETE TO authenticated
-  USING (NOT public.has_role(auth.uid(), 'recepcao'::app_role));
+  USING ((SELECT NOT public.has_role(auth.uid(), 'recepcao'::app_role)));
 
 -- ---------------------------------------------------------------------------
 -- 4) Relatórios e faturamento: toda a família rpt_* resolve o cliente por
@@ -128,16 +145,50 @@ CREATE POLICY recepcao_sem_delete_messages ON public.messages
 --    as demais de uma vez — em vez de alterar uma a uma e esquecer alguma.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.rpt_resolve_tenant()
-RETURNS uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
-DECLARE v_tenant uuid;
+RETURNS uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $fn$
+DECLARE
+  v_tenant     uuid;
+  v_jwt_role   text;
+  v_guc_tenant text;
+  v_ativos     int;
 BEGIN
+  -- ÚNICA mudança em relação à versão anterior: a Recepção não vê relatório.
+  -- Todo o resto do corpo é preservado — inclusive os caminhos de service_role,
+  -- do GUC app.tenant_id e do usuário de leitura para análise via SQL.
   IF auth.uid() IS NOT NULL AND public.has_role(auth.uid(), 'recepcao'::app_role) THEN
     RAISE EXCEPTION 'Acesso negado: relatórios não fazem parte do perfil Recepção'
       USING ERRCODE = '42501';
   END IF;
-  SELECT p.tenant_id INTO v_tenant FROM public.profiles p WHERE p.id = auth.uid();
-  RETURN v_tenant;
-END $$;
+
+  IF auth.uid() IS NOT NULL THEN
+    SELECT p.tenant_id INTO v_tenant FROM public.profiles p WHERE p.id = auth.uid();
+    IF v_tenant IS NULL THEN
+      RAISE EXCEPTION 'Usuário sem tenant associado';
+    END IF;
+    RETURN v_tenant;
+  END IF;
+
+  v_jwt_role := COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role', '');
+  IF v_jwt_role = 'service_role'
+     OR session_user IN ('postgres', 'supabase_admin', 'supabase_read_only_user') THEN
+
+    v_guc_tenant := NULLIF(current_setting('app.tenant_id', true), '');
+    IF v_guc_tenant IS NOT NULL THEN
+      RETURN v_guc_tenant::uuid;
+    END IF;
+
+    SELECT count(*) INTO v_ativos FROM public.tenants t WHERE t.status = 'active';
+    IF v_ativos = 1 THEN
+      SELECT t.id INTO v_tenant FROM public.tenants t WHERE t.status = 'active';
+      RETURN v_tenant;
+    END IF;
+
+    RAISE EXCEPTION 'Há % tenants ativos; defina o tenant com SET app.tenant_id = ''<uuid>''', v_ativos;
+  END IF;
+
+  RAISE EXCEPTION 'Não autenticado';
+END;
+$fn$;
 
 -- ---------------------------------------------------------------------------
 -- 5) Integrações: a Recepção precisa CONECTAR o WhatsApp da unidade, mas a
@@ -258,7 +309,7 @@ BEGIN
       EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', 'recepcao_so_itens_do_perfil_' || t, t);
       EXECUTE format(
         'CREATE POLICY %I ON public.%I AS RESTRICTIVE FOR SELECT TO authenticated '
-        || 'USING ( NOT public.has_role(auth.uid(), ''recepcao''::app_role) '
+        || 'USING ( (SELECT NOT public.has_role(auth.uid(), ''recepcao''::app_role)) '
         || '        OR owner_role = ''recepcao''::app_role '
         || '        OR ''recepcao''::app_role = ANY(COALESCE(shared_roles, ''{}''::app_role[])) )',
         'recepcao_so_itens_do_perfil_' || t, t);
