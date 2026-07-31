@@ -968,87 +968,8 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Leads Novos KPI */}
-      <Card className="gradient-card border-border shadow-card">
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Leads Novos no Período</CardTitle>
-          <div className="rounded-lg bg-primary/10 p-2">
-            <Users size={18} className="text-primary" />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{totalLeadsNoPeriodo}</div>
-          <p className="text-xs text-muted-foreground mt-0.5">Leads de anúncio criados no CRM no período (dia local da Bahia)</p>
-        </CardContent>
-      </Card>
 
-      {/* Gráfico Leads Novos Diário */}
-      <Card className="gradient-card border-border shadow-card">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Leads Novos por Dia</CardTitle>
-          <p className="text-xs text-muted-foreground">Leads de anúncio do CRM por dia de criação (todos os dias contam; com uma clínica selecionada, entram só os leads com cidade identificada)</p>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={leadsDiario} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={ct.gridColor} />
-              <XAxis dataKey="dia" stroke={ct.axisColor} fontSize={10} interval={0} angle={-45} textAnchor="end" height={50} tick={{ fill: ct.axisColor }} />
-              <YAxis stroke={ct.axisColor} fontSize={11} allowDecimals={false} width={40} tick={{ fill: ct.axisColor }} />
-              <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Leads"]} />
-              <Bar dataKey="leads" fill="hsl(200,70%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} label={renderBarLabel} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
 
-      {/* KPIs do CRM (puxados automaticamente) — abaixo do gráfico de Leads Novos por Dia */}
-      <Card className="gradient-card border-border shadow-card">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Users size={16} className="text-primary" />
-            CRM — Leads & Agendamentos {cidadeFiltro && <span className="text-xs text-muted-foreground font-normal">({cidadeFiltro})</span>}
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">"Leads que chegaram" = total bruto (todas as origens). "Origem anúncio" segue a mesma regra do gráfico acima (classificação canônica de origem).</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0">
-              <p className="text-2xl font-bold text-primary leading-tight truncate">{crmLeadsCount}</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-tight">Leads que chegaram</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0" title="Mesma regra do gráfico: classificação canônica de origem (ad_id ou source de anúncio)">
-              <p className="text-2xl font-bold text-blue-500 leading-tight truncate">{totalLeadsNoPeriodo}</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-tight">Origem anúncio</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0" title="Leads distintos com pelo menos uma consulta (não reagendada) no período">
-              <p className="text-2xl font-bold text-foreground leading-tight truncate">{crmAgendados}</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-tight">Leads agendados</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0" title="Consultas (não leads) com presença registrada">
-              <p className="text-2xl font-bold text-green-600 leading-tight truncate">{crmCompareceram}</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-tight">Compareceram</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0" title="Consultas (não leads) com falta registrada">
-              <p className="text-2xl font-bold text-red-500 leading-tight truncate">{crmFaltaram}</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-tight">Faltaram</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center min-w-0">
-              <p className="text-2xl font-bold text-emerald-600 leading-tight truncate">{novosContratados}</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-tight">Novos contratados</p>
-            </div>
-            <div className="bg-secondary/40 rounded-lg p-3 text-center border-2 border-primary/30 min-w-0">
-              <p className="text-2xl font-bold text-primary leading-tight truncate">{taxaConversao.toFixed(1)}%</p>
-              <p className="text-xs text-muted-foreground mt-1 leading-tight">Conversão (Agendados → Contrato)</p>
-            </div>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-3 italic">
-            ✓ Novos contratados = {novosContratadosCanonico
-              ? "pacientes cujo PRIMEIRO pagamento cai no período (fonte canônica rpt_contratados — quem já pagou antes não reconta)."
-              : "pacientes distintos com pagamento tipo \"primeiro\" no período (cálculo local; a fonte canônica não está disponível)."}{" "}
-            Conversão = leads agendados no período que contrataram ÷ leads agendados (coorte fechada, máximo 100%; fonte: status das consultas do CRM). Compareceram/Faltaram contam consultas. Taxa de presença: {taxaPresenca.toFixed(0)}%.
-          </p>
-        </CardContent>
-      </Card>
 
       {/* Funil de Atendimentos removido a pedido do usuário */}
 
