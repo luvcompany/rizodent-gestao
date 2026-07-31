@@ -344,7 +344,6 @@ const Dashboard = () => {
   // (ou se a migração ainda não criou as funções) caímos no cálculo local, com
   // rótulo honesto na UI.
   const rpcFiltersOk = canalFiltro === "todos" && dateFilter.preset !== "multi";
-  const [rpcContratadosCount, setRpcContratadosCount] = useState<number | null>(null);
   // Faturamento por origem canônica (mesma fonte da aba Origem & Conversão) —
   // caixa do período por origem do lead do paciente. Reconcilia com o total.
   const [rpcCanalOrigem, setRpcCanalOrigem] = useState<FaturamentoOrigemRow[] | null>(null);
@@ -352,15 +351,6 @@ const Dashboard = () => {
   const [criativoErro, setCriativoErro] = useState<string | null>(null);
 
 
-  useEffect(() => {
-    let cancelled = false;
-    setRpcContratadosCount(null);
-    if (!rpcFiltersOk || !rangeReady) return;
-    rptContratados(dateFrom, dateTo, clinicaFiltro === "todas" ? null : clinicaFiltro)
-      .then((rows) => { if (!cancelled) setRpcContratadosCount(rows.length); })
-      .catch((e) => console.warn("[Dashboard] rpt_contratados indisponível; usando cálculo local:", e));
-    return () => { cancelled = true; };
-  }, [rpcFiltersOk, dateFrom, dateTo, clinicaFiltro, rangeReady]);
 
   useEffect(() => {
     let cancelled = false;
