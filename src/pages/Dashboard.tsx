@@ -270,10 +270,8 @@ const Dashboard = () => {
     setTratamentos(payload.tratamentos || []);
     setPacientes(payload.pacientes || []);
     setHolidays((payload.holidays || []) as Holiday[]);
-    setCrmLeads(payload.crmLeads || []);
-    setCrmAppointments(payload.crmAppointments || []);
-    setAdIdMapping(payload.adIdMapping || []);
   };
+
 
   const fetchAll = async (showLoading = true, force = false) => {
     const key = dashboardCacheKey(dateFrom, dateTo, isAllPeriod);
