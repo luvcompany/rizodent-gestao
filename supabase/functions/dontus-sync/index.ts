@@ -2221,14 +2221,18 @@ Deno.serve(async (req) => {
 
   // Passada NOVA e independente: comparecimento (não roda o sync de pagamentos).
   if (String(body.mode || "") === "comparecimento") {
-    const hoje = new Date().toISOString().slice(0, 10);
-    const to = String(body.to || addDays(hoje, -1));
-    const from = String(body.from || addDays(to, -30));
-    const out = await syncComparecimento(admin, teamToken, from, to, dryRun, clinicas);
+    const hojeBahia = todayBahia();
+    const to = String(body.to || hojeBahia);
+    const from = String(body.from || addDays(to, -1));
+    const clinicasComp: number[] = Array.isArray(body.clinicas) && body.clinicas.length
+      ? body.clinicas.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n))
+      : [2, 3, 4, 5, 6];
+    const out = await syncComparecimento(admin, teamToken, from, to, dryRun, clinicasComp);
     return new Response(JSON.stringify(out, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
 
 
   const results: any[] = [];
