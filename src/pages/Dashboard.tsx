@@ -287,15 +287,12 @@ const Dashboard = () => {
     if (showLoading) setLoading(true);
     const bounded = !isAllPeriod;
     const bahia = rangeBahia(dateFrom, dateTo);
-    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: hd }, cLeads, { data: cAppts }, { data: adMap }] = await Promise.all([
+    const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: hd }] = await Promise.all([
     supabase.from("clinicas").select(CLINICAS_SELECT).eq("ativa", true),
     (bounded ? supabase.from("pagamentos").select(PAGAMENTOS_SELECT).gte("data_pagamento", dateFrom).lte("data_pagamento", dateTo) : supabase.from("pagamentos").select(PAGAMENTOS_SELECT)).limit(50000),
     (bounded ? supabase.from("tratamentos").select(TRATAMENTOS_SELECT).gte("created_at", bahia.gteIso).lte("created_at", bahia.lteIso) : supabase.from("tratamentos").select(TRATAMENTOS_SELECT)).limit(20000),
     supabase.from("pacientes").select(PACIENTES_SELECT).limit(20000),
-    (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id"),
-    fetchAllCrmLeads(bounded ? dateFrom : undefined, bounded ? dateTo : undefined),
-    (bounded ? supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)").gte("scheduled_date", dateFrom).lte("scheduled_date", dateTo) : supabase.from("crm_appointments").select("id, lead_id, scheduled_date, status, is_rescheduled, created_at, crm_leads(cidade)")).limit(10000),
-    (supabase as any).from("ad_id_mapping").select("ad_id, ad_account_name, cidade").limit(5000)]
+    (supabase as any).from("dashboard_holidays").select("id, data, descricao, clinica_id")]
     );
     const payload: DashboardPayload = {
       clinicas: cl || [],
@@ -303,10 +300,8 @@ const Dashboard = () => {
       tratamentos: tr || [],
       pacientes: pc || [],
       holidays: (hd || []) as Holiday[],
-      crmLeads: cLeads || [],
-      crmAppointments: cAppts || [],
-      adIdMapping: adMap || [],
     };
+
     writeDashboardCache(key, payload);
     applyDashboardData(payload);
     if (showLoading) setLoading(false);
