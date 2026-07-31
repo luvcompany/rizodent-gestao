@@ -13,13 +13,17 @@ Deno.serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const isServiceRole = auth === `Bearer ${serviceRoleKey}`;
 
+  // Guarda o usuário para conferir, adiante, que a transmissão é do cliente dele.
+  // Antes bastava um JWT válido de QUALQUER cliente para disparar a transmissão
+  // de QUALQUER outro (o broadcast era buscado só pelo id).
+  let callerUserId: string | null = null;
   if (!isServiceRole) {
-    // Validate user JWT
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: auth } } });
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    callerUserId = user.id;
   }
 
 
@@ -34,6 +38,17 @@ Deno.serve(async (req) => {
     // Get broadcast + template
     const { data: bc } = await supabase.from("crm_broadcasts").select("*, crm_whatsapp_templates(*)").eq("id", broadcast_id).single();
     if (!bc) return new Response(JSON.stringify({ error: "Broadcast not found" }), { status: 404, headers: corsHeaders });
+
+    // A transmissão precisa ser do cliente de quem chamou.
+    if (callerUserId) {
+      const { data: prof } = await supabase.from("profiles").select("tenant_id").eq("id", callerUserId).maybeSingle();
+      const { data: superRow } = await supabase.from("user_roles").select("role")
+        .eq("user_id", callerUserId).eq("role", "superadmin").maybeSingle();
+      if (!superRow && (bc as any).tenant_id !== prof?.tenant_id) {
+        console.warn(`[broadcast-engine] bloqueado: usuário ${callerUserId} tentou disparar broadcast de outro cliente (${(bc as any).tenant_id})`);
+        return new Response(JSON.stringify({ error: "Transmissão de outro cliente" }), { status: 403, headers: corsHeaders });
+      }
+    }
 
     const template = (bc as any).crm_whatsapp_templates;
     if (!template) return new Response(JSON.stringify({ error: "Template not found" }), { status: 404, headers: corsHeaders });

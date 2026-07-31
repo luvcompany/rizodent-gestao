@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { resolveCaller } from '../_shared/authz.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,6 +14,19 @@ interface ReplyBody {
   comment_id?: string
   reply_text: string
   event_type: 'dm' | 'comments' | 'comment'
+}
+
+/** A conta de Instagram informada pertence ao cliente de quem chamou? */
+async function contaPertenceAoTenant(
+  supabase: any, igAccountId: string, tenantId: string | null,
+): Promise<boolean> {
+  if (!tenantId) return false
+  const { data: a } = await supabase
+    .from('ig_accounts').select('id').eq('ig_user_id', igAccountId).eq('tenant_id', tenantId).maybeSingle()
+  if (a) return true
+  const { data: b } = await supabase
+    .from('instagram_accounts').select('id').eq('instagram_account_id', igAccountId).eq('tenant_id', tenantId).maybeSingle()
+  return !!b
 }
 
 async function lookupAccountToken(
@@ -51,6 +65,17 @@ Deno.serve(async (req: Request) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
 
+  // AUTENTICAÇÃO: esta função respondia DMs e comentários usando service role
+  // com o ig_account_id vindo do corpo da requisição, sem identificar o
+  // chamador — qualquer pessoa com a URL publicava em nome de qualquer conta
+  // de Instagram de qualquer cliente.
+  const caller = await resolveCaller(req, supabase)
+  if (!caller.ok) {
+    return new Response(JSON.stringify({ error: caller.error }), {
+      status: caller.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   let body: ReplyBody
   try {
     body = (await req.json()) as ReplyBody
@@ -68,6 +93,17 @@ Deno.serve(async (req: Request) => {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+  }
+
+  // A conta precisa ser do cliente de quem chamou (service_role e superadmin
+  // seguem livres — é como os webhooks internos operam).
+  if (!caller.isServiceRole && !caller.isSuperadmin) {
+    const ok = await contaPertenceAoTenant(supabase, ig_account_id, caller.tenantId)
+    if (!ok) {
+      return new Response(JSON.stringify({ error: 'Conta de Instagram de outro cliente' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
   }
 
   const account = await lookupAccountToken(supabase, ig_account_id)
