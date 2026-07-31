@@ -64,7 +64,7 @@ const TenantLogin = () => {
           .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
         const roleName = (roleRow as any)?.role;
         if (roleName === "posvenda") target = "/crm";
-        else if (roleName === "recepcao") target = "/crm/conversas";
+        else if (roleName === "recepcao") target = "/crm/recepcao";
       }
       // If arrived from an OAuth consent flow (or any protected page), honor ?next=.
       const nextParam = new URLSearchParams(window.location.search).get("next");
@@ -111,7 +111,7 @@ const TenantLogin = () => {
               .from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
             const roleName = (roleRow as any)?.role;
         if (roleName === "posvenda") target = "/crm";
-        else if (roleName === "recepcao") target = "/crm/conversas";
+        else if (roleName === "recepcao") target = "/crm/recepcao";
           }
           if (target === "/dashboard") await dashboardWarmup;
           navigate(target);
