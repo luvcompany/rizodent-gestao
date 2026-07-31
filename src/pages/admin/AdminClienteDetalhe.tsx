@@ -247,6 +247,13 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
     if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error)); return false; }
     return true;
   };
+  /** Igual ao `call`, mas devolve o corpo da resposta — usado para conferir o
+   *  papel EFETIVO com que o usuário foi criado. */
+  const callRaw = async (body: any): Promise<any | null> => {
+    const { data, error } = await supabase.functions.invoke("admin-manage-user", { body });
+    if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error)); return null; }
+    return data ?? {};
+  };
 
   return (
     <div className="space-y-3">
@@ -324,7 +331,15 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={async () => {
-              if (await call({ action: "create", tenant_id: tenant.id, ...form })) {
+              const created = await callRaw({ action: "create", tenant_id: tenant.id, ...form });
+              if (created) {
+                // Confere o papel EFETIVO: se a API devolver papel diferente do
+                // pedido (versão antiga em produção, allowlist divergente), o
+                // usuário PRECISA saber — antes isso passava calado e criava um
+                // admin da clínica no lugar de uma recepcionista.
+                if (created.role && created.role !== form.role) {
+                  toast.error(`Atenção: o usuário foi criado como "${roleLabel(created.role)}", não como "${roleLabel(form.role)}". Corrija o papel na lista.`);
+                }
                 toast.success("Usuário criado"); setOpen(false); setForm({ nome: "", email: "", password: "", role: "crc" }); load();
               }
             }}>Criar</Button>
