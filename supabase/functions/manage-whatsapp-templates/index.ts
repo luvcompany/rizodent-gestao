@@ -293,7 +293,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === "create") {
-      const { name, language, category, header_type, header_content, body_text, footer_text, buttons } = body;
+      const { name, language, category, header_type, header_content, body_text, footer_text, buttons,
+              // Amostras reais de cada {{N}} — ver comentário abaixo.
+              body_examples } = body;
 
       if (!name || !body_text) {
         return new Response(
@@ -332,8 +334,20 @@ Deno.serve(async (req) => {
       const variables = body_text.match(/\{\{\d+\}\}/g) || [];
       const bodyComponent: any = { type: "BODY", text: body_text };
       if (variables.length > 0) {
+        // A Meta lê estes valores como amostra do que a mensagem vai dizer.
+        // Mandar "exemplo1"/"exemplo2" faz o revisor ver "consulta: exemplo2, na
+        // unidade exemplo3" — amostra não representativa é causa clássica de
+        // rejeição, e ainda enfraquece a evidência de que a mensagem é
+        // transacional (o que decide a categoria UTILITY x MARKETING).
+        const amostras = Array.isArray(body_examples) && body_examples.length === variables.length
+          ? body_examples.map((v: unknown) => String(v ?? "").trim()).filter(Boolean)
+          : [];
         bodyComponent.example = {
-          body_text: [variables.map((_: string, i: number) => `exemplo${i + 1}`)],
+          body_text: [
+            amostras.length === variables.length
+              ? amostras
+              : variables.map((_: string, i: number) => `exemplo${i + 1}`),
+          ],
         };
       }
       components.push(bodyComponent);
