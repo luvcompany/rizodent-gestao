@@ -367,8 +367,8 @@ const Dashboard = () => {
   // tratamento (sem orto anterior no Dontus) entra normalmente.
   // Além da recorrência de orto, exclui pagamentos com a marca gravada
   // nao_marketing (definida só na entrada do pagamento, nunca retroativa).
-  const pagamentosFat = filtered.pagamentos.filter(
   const pagamentosFat = filtered.pagamentos.filter(contaComoFaturamento);
+
 
 
   const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);
