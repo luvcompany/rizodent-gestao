@@ -128,12 +128,25 @@ async function ensurePublicTemplateMediaLink(
   if (!originalValue) return null;
   if (!isHttpUrl(originalValue)) return originalValue;
   // Já é uma URL do nosso Storage (público ou assinado) — Meta consegue baixar.
-  if (
-    originalValue.includes("/storage/v1/object/public/") ||
-    originalValue.includes("/storage/v1/object/sign/")
-  ) {
-    return originalValue;
+  if (originalValue.includes("/storage/v1/object/public/")) {
+    return originalValue; // pública não expira
   }
+  if (originalValue.includes("/storage/v1/object/sign/")) {
+    // Não confiar na assinatura guardada: ela expira e derruba todos os
+    // templates de uma vez. Assina de novo, curto, a cada envio.
+    const depois = originalValue.split("/storage/v1/object/sign/")[1] || "";
+    const semQuery = depois.split("?")[0];
+    const partes = semQuery.split("/");
+    const bucket = partes.shift()!;
+    const caminho = decodeURIComponent(partes.join("/"));
+    const { data, error } = await supabase.storage.from(bucket)
+      .createSignedUrl(caminho, 60 * 60 * 24); // 24h basta: a Meta baixa na hora
+    if (error || !data?.signedUrl) {
+      throw new Error(`Não consegui assinar a mídia do template (${caminho}): ${error?.message ?? "sem URL"}`);
+    }
+    return data.signedUrl;
+  }
+
 
   const response = await fetch(originalValue);
   if (!response.ok) {
