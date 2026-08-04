@@ -14,6 +14,8 @@ import { HolidaysManager, type Holiday } from "@/components/HolidaysManager";
 import { businessDaysBetween } from "@/lib/businessDays";
 import {
   dayKeyBahia,
+  contaComoFaturamento,
+
   rangeBahia,
   rptFaturamentoOrigem,
   rptFaturamentoCriativo,
