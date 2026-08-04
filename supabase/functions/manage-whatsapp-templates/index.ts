@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
