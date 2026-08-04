@@ -103,13 +103,16 @@ const Relatorios = () => {
     return () => { cancelled = true; };
   }, [dateFrom, dateTo, clinicaFiltro]);
 
+  // Base de faturamento: aplica a MESMA regra do Dashboard (exclui manutenção
+  // de ortodontia e pagamentos marcados como não-marketing).
   const filteredPagamentos = useMemo(() => {
     return pagamentos.filter((p) => {
       const inClinica = clinicaFiltro === "todas" || p.clinica_id === clinicaFiltro;
       const inDate = p.data_pagamento >= dateFrom && p.data_pagamento <= dateTo;
-      return inClinica && inDate;
+      return inClinica && inDate && contaComoFaturamento(p);
     });
   }, [pagamentos, clinicaFiltro, dateFrom, dateTo]);
+
 
   const filteredTratamentos = useMemo(() => {
     return tratamentos.filter((t) => {
