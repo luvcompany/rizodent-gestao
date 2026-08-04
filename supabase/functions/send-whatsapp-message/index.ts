@@ -12,7 +12,7 @@ const corsHeaders = {
 // Geramos uma signed URL de longa duração para o Meta baixar a mídia no envio.
 const PUBLIC_TEMPLATE_MEDIA_BUCKET = "chat-media";
 const PUBLIC_TEMPLATE_MEDIA_PREFIX = "whatsapp-template-media";
-const TEMPLATE_MEDIA_SIGNED_TTL = 60 * 60 * 24 * 365; // 1 ano
+const TEMPLATE_MEDIA_SIGNED_TTL = 60 * 60 * 24 * 30; // 30 dias (o envio reassina)
 
 const isHttpUrl = (value: string | null | undefined) => Boolean(value && /^https?:\/\//i.test(value));
 
