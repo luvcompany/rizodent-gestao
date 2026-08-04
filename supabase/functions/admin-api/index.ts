@@ -1180,7 +1180,8 @@ async function templatesUploadMedia(tenantId: string, body: any) {
   if (body.template_name) {
     const { error: updErr } = await admin.from("crm_whatsapp_templates")
       .update({ header_content: mediaUrl, updated_at: new Date().toISOString() })
-      .eq("name", body.template_name);
+      .eq("name", body.template_name)
+      .eq("tenant_id", tenantId);
     patched = !updErr;
   }
   return json({ media_url: mediaUrl, size: bytes!.length, mime, patched });
