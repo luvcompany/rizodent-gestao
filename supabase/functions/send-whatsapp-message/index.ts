@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
+import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -154,6 +155,12 @@ async function ensurePublicTemplateMediaLink(
     throw new Error(`Mídia do template veio vazia ou inválida (${recebido} bytes).`);
   }
   const contentType = mediaBlob.type || (headerType === "VIDEO" ? "video/mp4" : headerType === "DOCUMENT" ? "application/pdf" : "image/jpeg");
+  // 2ª camada: validação ESTRUTURAL (fonte pode declarar e entregar o mesmo
+  // valor truncado, passando pela checagem de Content-Length).
+  const motivo = motivoMidiaIncompleta(new Uint8Array(await mediaBlob.arrayBuffer()), contentType);
+  if (motivo) {
+    throw new Error(`${motivo}. Nada foi cacheado — reenvie o arquivo original por /templates/upload-media com file_b64.`);
+  }
   const extension = extensionFromMime(contentType);
   const filePath = `${PUBLIC_TEMPLATE_MEDIA_PREFIX}/${sanitizePathSegment(templateName)}-${Date.now()}.${extension}`;
 

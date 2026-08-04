@@ -8,6 +8,7 @@
 // cujo PRIMEIRO pagamento cai no período (nunca crm_leads.value/updated_at).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { safeEqual } from "../_shared/authz.ts";
+import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import {
   BAHIA_TZ,
   addDays,
@@ -1165,6 +1166,14 @@ async function templatesUploadMedia(tenantId: string, body: any) {
     name = body.file_name || (String(body.media_url).split("?")[0].split("/").pop() || name);
   } else {
     return json({ error: "envie file_b64 (base64) ou media_url." }, 400);
+  }
+  // 2ª camada: validação ESTRUTURAL (Content-Length não pega fonte que declara
+  // e entrega o mesmo valor truncado). Vale para media_url e file_b64.
+  const motivo = motivoMidiaIncompleta(bytes!, mime);
+  if (motivo) {
+    return json({
+      error: `${motivo}. Nada foi cacheado — reenvie o arquivo original com file_b64.`,
+    }, 400);
   }
   // header_content precisa ser URL (o ENVIO baixa a mídia). Cacheia no bucket
   // privado chat-media e gera signed URL de 1 ano (mesmo padrão do envio).
