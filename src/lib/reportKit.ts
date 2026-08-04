@@ -536,3 +536,12 @@ export async function rptTicketMedio(from: Date | string, to: Date | string): Pr
     num_pacientes: num(r.num_pacientes),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Regra única de faturamento de marketing
+// ---------------------------------------------------------------------------
+
+/** Faturamento de marketing: exclui manutenção de ortodontia e pagamentos
+ *  marcados como não-marketing. Mesma regra do SQL `pagamento_conta_marketing`. */
+export const contaComoFaturamento = (p: { recorrencia_orto?: boolean | null; nao_marketing?: boolean | null }) =>
+  p.recorrencia_orto !== true && p.nao_marketing !== true;
