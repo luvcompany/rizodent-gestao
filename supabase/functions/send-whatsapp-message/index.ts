@@ -783,6 +783,9 @@ Deno.serve(async (req) => {
       } else if (metaError.includes("spam") || metaError.includes("blocked")) {
         friendlyError = "Mensagem bloqueada pela META (possível spam ou bloqueio do contato).";
       }
+      if (String(metaErrorCode) === "131053" || metaError.includes("Media upload error")) {
+        friendlyError = "131053 — a Meta não conseguiu processar o vídeo do template (arquivo pode estar corrompido ou incompleto no Storage)";
+      }
 
       // Still insert the message as failed so user can see it in chat
       const dbContent = (caller.isServiceRole ? log_content : null) || (type === "template" ? `📋 Template: ${sentTemplateName || "template"}` : type === "interactive" ? (body || message || "[menu]") : (message || null));
