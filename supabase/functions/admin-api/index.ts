@@ -8,6 +8,7 @@
 // cujo PRIMEIRO pagamento cai no período (nunca crm_leads.value/updated_at).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { safeEqual } from "../_shared/authz.ts";
+import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import {
   BAHIA_TZ,
   addDays,
