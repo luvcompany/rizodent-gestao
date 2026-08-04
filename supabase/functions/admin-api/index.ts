@@ -1167,6 +1167,14 @@ async function templatesUploadMedia(tenantId: string, body: any) {
   } else {
     return json({ error: "envie file_b64 (base64) ou media_url." }, 400);
   }
+  // 2ª camada: validação ESTRUTURAL (Content-Length não pega fonte que declara
+  // e entrega o mesmo valor truncado). Vale para media_url e file_b64.
+  const motivo = motivoMidiaIncompleta(bytes!, mime);
+  if (motivo) {
+    return json({
+      error: `${motivo}. Nada foi cacheado — reenvie o arquivo original com file_b64.`,
+    }, 400);
+  }
   // header_content precisa ser URL (o ENVIO baixa a mídia). Cacheia no bucket
   // privado chat-media e gera signed URL de 1 ano (mesmo padrão do envio).
   const safe = String(name).replace(/[^a-z0-9._-]+/gi, "-");
