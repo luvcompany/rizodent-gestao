@@ -140,6 +140,19 @@ async function ensurePublicTemplateMediaLink(
   }
 
   const mediaBlob = await response.blob();
+  // NUNCA cachear download parcial: arquivo truncado fica no bucket, o envio
+  // falha sempre (Meta 131053) e a auto-cura não conserta (URL já é do Storage).
+  const esperado = Number(response.headers.get("content-length") || 0);
+  const recebido = mediaBlob.size;
+  if (esperado > 0 && recebido !== esperado) {
+    throw new Error(
+      `Download incompleto da mídia do template: recebido ${recebido} de ${esperado} bytes. ` +
+      `Nada foi cacheado — envie o arquivo original por /templates/upload-media com file_b64.`
+    );
+  }
+  if (recebido < 1024) {
+    throw new Error(`Mídia do template veio vazia ou inválida (${recebido} bytes).`);
+  }
   const contentType = mediaBlob.type || (headerType === "VIDEO" ? "video/mp4" : headerType === "DOCUMENT" ? "application/pdf" : "image/jpeg");
   const extension = extensionFromMime(contentType);
   const filePath = `${PUBLIC_TEMPLATE_MEDIA_PREFIX}/${sanitizePathSegment(templateName)}-${Date.now()}.${extension}`;
@@ -769,6 +782,9 @@ Deno.serve(async (req) => {
         friendlyError = "Limite de envio atingido. Tente novamente em alguns minutos.";
       } else if (metaError.includes("spam") || metaError.includes("blocked")) {
         friendlyError = "Mensagem bloqueada pela META (possível spam ou bloqueio do contato).";
+      }
+      if (String(metaErrorCode) === "131053" || metaError.includes("Media upload error")) {
+        friendlyError = "131053 — a Meta não conseguiu processar o vídeo do template (arquivo pode estar corrompido ou incompleto no Storage)";
       }
 
       // Still insert the message as failed so user can see it in chat

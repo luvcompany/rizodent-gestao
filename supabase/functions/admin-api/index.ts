@@ -1149,6 +1149,18 @@ async function templatesUploadMedia(tenantId: string, body: any) {
     const r = await fetch(body.media_url);
     if (!r.ok) return json({ error: `não consegui baixar media_url (HTTP ${r.status}).` }, 400);
     bytes = new Uint8Array(await r.arrayBuffer());
+    // Nunca cachear download parcial (causa Meta 131053 no envio do template).
+    const esperado = Number(r.headers.get("content-length") || 0);
+    const recebido = bytes.length;
+    if (esperado > 0 && recebido !== esperado) {
+      return json({
+        error: `Download incompleto da mídia do template: recebido ${recebido} de ${esperado} bytes. ` +
+          `Nada foi cacheado — envie o arquivo original por /templates/upload-media com file_b64.`,
+      }, 400);
+    }
+    if (recebido < 1024) {
+      return json({ error: `Mídia do template veio vazia ou inválida (${recebido} bytes).` }, 400);
+    }
     mime = body.file_type || r.headers.get("content-type") || mime;
     name = body.file_name || (String(body.media_url).split("?")[0].split("/").pop() || name);
   } else {
@@ -1168,7 +1180,8 @@ async function templatesUploadMedia(tenantId: string, body: any) {
   if (body.template_name) {
     const { error: updErr } = await admin.from("crm_whatsapp_templates")
       .update({ header_content: mediaUrl, updated_at: new Date().toISOString() })
-      .eq("name", body.template_name);
+      .eq("name", body.template_name)
+      .eq("tenant_id", tenantId);
     patched = !updErr;
   }
   return json({ media_url: mediaUrl, size: bytes!.length, mime, patched });
