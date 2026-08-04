@@ -1257,12 +1257,21 @@ async function templatesList(tenantId: string, p: URLSearchParams) {
   if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
   const nameFilter = p.get("name");
   let out: any[] = [];
-  let next: string | null = `https://graph.facebook.com/v25.0/${creds.wabaId}/message_templates?limit=100`;
+  let next: string | null = `https://graph.facebook.com/v25.0/${creds.wabaId}/message_templates?fields=name,status,category,language,quality_score,rejected_reason,sub_category&limit=100`;
   while (next) {
     const r: Response = await fetch(next, { headers: { Authorization: `Bearer ${creds.token}` } });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return json({ error: "Erro ao listar na Meta", details: d }, r.status);
-    out = out.concat(((d as any).data || []).map((t: any) => ({ name: t.name, status: t.status, category: t.category, language: t.language })));
+    out = out.concat(((d as any).data || []).map((t: any) => ({
+      name: t.name,
+      status: t.status,
+      category: t.category,
+      language: t.language,
+      quality_score: t.quality_score?.score ?? null,
+      quality_reasons: t.quality_score?.reasons ?? null,
+      rejected_reason: t.rejected_reason ?? null,
+      sub_category: t.sub_category ?? null,
+    })));
     next = (d as any).paging?.next || null;
   }
   if (nameFilter) out = out.filter((t) => t.name === nameFilter);
