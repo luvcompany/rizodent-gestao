@@ -1158,6 +1158,12 @@ const Relatorios = () => {
                 </div>
               </div>
 
+              <p className="text-xs text-muted-foreground">
+                Não entram manutenções de ortodontia nem pagamentos marcados como não-marketing.
+              </p>
+
+
+
               <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                 <Table>
                   <TableHeader>
