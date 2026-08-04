@@ -282,6 +282,14 @@ Deno.serve(async (req) => {
       }
       const bytes = new Uint8Array(await mediaRes.arrayBuffer());
       const mime = file_type || mediaRes.headers.get("content-type") || "video/mp4";
+      // Validação estrutural: fonte pode devolver 200 com arquivo cortado.
+      const motivoMidia = motivoMidiaIncompleta(bytes, mime);
+      if (motivoMidia) {
+        return new Response(JSON.stringify({
+          error: `${motivoMidia}. Nada foi enviado à Meta — reenvie o arquivo original.`,
+        }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       const name = file_name || (media_url.split("?")[0].split("/").pop() || "midia");
       const up = await uploadMediaToMeta(META_APP_ID, WHATSAPP_TOKEN, bytes, name, mime);
       if (up.error) {
