@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { businessDaysBetween } from "@/lib/businessDays";
-import { fetchAllPaged, dayKeyBahia, classifyOrigemCanonica, rptContratados, type ContratadoRow } from "@/lib/reportKit";
+import { fetchAllPaged, dayKeyBahia, classifyOrigemCanonica, contaComoFaturamento, rptContratados, type ContratadoRow } from "@/lib/reportKit";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -103,13 +103,16 @@ const Relatorios = () => {
     return () => { cancelled = true; };
   }, [dateFrom, dateTo, clinicaFiltro]);
 
+  // Base de faturamento: aplica a MESMA regra do Dashboard (exclui manutenção
+  // de ortodontia e pagamentos marcados como não-marketing).
   const filteredPagamentos = useMemo(() => {
     return pagamentos.filter((p) => {
       const inClinica = clinicaFiltro === "todas" || p.clinica_id === clinicaFiltro;
       const inDate = p.data_pagamento >= dateFrom && p.data_pagamento <= dateTo;
-      return inClinica && inDate;
+      return inClinica && inDate && contaComoFaturamento(p);
     });
   }, [pagamentos, clinicaFiltro, dateFrom, dateTo]);
+
 
   const filteredTratamentos = useMemo(() => {
     return tratamentos.filter((t) => {
@@ -1154,6 +1157,12 @@ const Relatorios = () => {
                   <p className="text-xl font-bold text-accent-foreground">{formatCurrency(totalValor)}</p>
                 </div>
               </div>
+
+              <p className="text-xs text-muted-foreground">
+                Não entram manutenções de ortodontia nem pagamentos marcados como não-marketing.
+              </p>
+
+
 
               <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                 <Table>
