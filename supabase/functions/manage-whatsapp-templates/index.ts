@@ -331,6 +331,14 @@ Deno.serve(async (req) => {
             }
             const mbytes = new Uint8Array(await mres.arrayBuffer());
             const mmime = header_type === "VIDEO" ? "video/mp4" : header_type === "IMAGE" ? "image/jpeg" : "application/pdf";
+            // Validação estrutural antes de mandar para a Meta.
+            const motivoHeader = motivoMidiaIncompleta(mbytes, mres.headers.get("content-type") || mmime);
+            if (motivoHeader) {
+              return new Response(JSON.stringify({
+                error: `${motivoHeader}. Nada foi enviado à Meta — reenvie o arquivo original.`,
+              }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
             const up = await uploadMediaToMeta(META_APP_ID, WHATSAPP_TOKEN, mbytes, name, mmime);
             if (up.error) {
               return new Response(JSON.stringify({ error: up.error }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
