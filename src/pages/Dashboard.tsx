@@ -368,8 +368,8 @@ const Dashboard = () => {
   // Além da recorrência de orto, exclui pagamentos com a marca gravada
   // nao_marketing (definida só na entrada do pagamento, nunca retroativa).
   const pagamentosFat = filtered.pagamentos.filter(
-    (p) => p.recorrencia_orto !== true && p.nao_marketing !== true,
-  );
+  const pagamentosFat = filtered.pagamentos.filter(contaComoFaturamento);
+
 
   const fatTotal = pagamentosFat.reduce((s, p) => s + Number(p.valor), 0);
   const fatNovos = pagamentosFat.filter((p) => p.tipo === "primeiro").reduce((s, p) => s + Number(p.valor), 0);
