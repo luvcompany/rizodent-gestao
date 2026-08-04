@@ -1182,7 +1182,7 @@ async function templatesUploadMedia(tenantId: string, body: any) {
   const blob = new Blob([bytes!], { type: mime });
   const { error: upErr } = await admin.storage.from("chat-media").upload(path, blob, { contentType: mime, upsert: true });
   if (upErr) return json({ error: `falha ao cachear no storage: ${upErr.message}` }, 500);
-  const { data: signed, error: signErr } = await admin.storage.from("chat-media").createSignedUrl(path, 60 * 60 * 24 * 365);
+  const { data: signed, error: signErr } = await admin.storage.from("chat-media").createSignedUrl(path, 60 * 60 * 24 * 30);
   if (signErr || !signed?.signedUrl) return json({ error: `falha ao assinar URL: ${signErr?.message || "?"}` }, 500);
   const mediaUrl = signed.signedUrl;
   let patched = false;

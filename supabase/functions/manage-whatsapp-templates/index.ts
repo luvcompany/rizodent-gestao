@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -280,6 +282,14 @@ Deno.serve(async (req) => {
       }
       const bytes = new Uint8Array(await mediaRes.arrayBuffer());
       const mime = file_type || mediaRes.headers.get("content-type") || "video/mp4";
+      // Validação estrutural: fonte pode devolver 200 com arquivo cortado.
+      const motivoMidia = motivoMidiaIncompleta(bytes, mime);
+      if (motivoMidia) {
+        return new Response(JSON.stringify({
+          error: `${motivoMidia}. Nada foi enviado à Meta — reenvie o arquivo original.`,
+        }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       const name = file_name || (media_url.split("?")[0].split("/").pop() || "midia");
       const up = await uploadMediaToMeta(META_APP_ID, WHATSAPP_TOKEN, bytes, name, mime);
       if (up.error) {
@@ -321,6 +331,14 @@ Deno.serve(async (req) => {
             }
             const mbytes = new Uint8Array(await mres.arrayBuffer());
             const mmime = header_type === "VIDEO" ? "video/mp4" : header_type === "IMAGE" ? "image/jpeg" : "application/pdf";
+            // Validação estrutural antes de mandar para a Meta.
+            const motivoHeader = motivoMidiaIncompleta(mbytes, mres.headers.get("content-type") || mmime);
+            if (motivoHeader) {
+              return new Response(JSON.stringify({
+                error: `${motivoHeader}. Nada foi enviado à Meta — reenvie o arquivo original.`,
+              }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+
             const up = await uploadMediaToMeta(META_APP_ID, WHATSAPP_TOKEN, mbytes, name, mmime);
             if (up.error) {
               return new Response(JSON.stringify({ error: up.error }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
