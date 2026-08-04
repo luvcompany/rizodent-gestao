@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { businessDaysBetween } from "@/lib/businessDays";
-import { fetchAllPaged, dayKeyBahia, classifyOrigemCanonica, rptContratados, type ContratadoRow } from "@/lib/reportKit";
+import { fetchAllPaged, dayKeyBahia, classifyOrigemCanonica, contaComoFaturamento, rptContratados, type ContratadoRow } from "@/lib/reportKit";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
