@@ -177,19 +177,27 @@ export async function moveLeadToStageCrossPipeline(
 
 /**
  * Aplica o desfecho de um agendamento:
- * - atualiza status da appointment
+ * - atualiza status da appointment (com trava de concorrência em `confirmed`)
  * - move o lead para a etapa adequada
  * - posta mensagem de sistema
  * - dispara automações de etapa
+ *
+ * Retorna false quando o agendamento já havia recebido desfecho (0 linhas afetadas).
  */
 export async function applyAppointmentOutcome(args: {
   leadId: string;
   appointmentId: string;
   outcome: AppointmentOutcome;
-}): Promise<void> {
-  const { leadId, appointmentId, outcome } = args;
+  /** default true — só age se o agendamento ainda estiver 'confirmed' */
+  requireConfirmed?: boolean;
+}): Promise<boolean> {
+  const { leadId, appointmentId, outcome, requireConfirmed = true } = args;
 
-  await supabase.from("crm_appointments").update({ status: outcome }).eq("id", appointmentId);
+  let q = supabase.from("crm_appointments").update({ status: outcome }).eq("id", appointmentId);
+  if (requireConfirmed) q = q.eq("status", "confirmed");
+  const { data: upd, error: updErr } = await q.select("id");
+  if (updErr) throw updErr;
+  if (requireConfirmed && (!upd || upd.length === 0)) return false;
 
   let movedStageId: string | null = null;
   let label = "";
