@@ -714,8 +714,10 @@ export default function CrmRelatorios() {
               <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram} color="#6366f1" />
               <FunnelRow label="Agendamentos criados" hint="Ação da equipe — appts criados no período" value={atividadePeriodo.agendamentosCriados} color="#f59e0b" />
               <FunnelRow label="Agendamentos do período" hint="Data marcada para o período (= calendário)" value={calendario.total} color="#3b82f6" />
-              <FunnelRow label="Compareceram" hint="Contratados + Não contratados + Reagendaram" value={calendario.compareceram} color="#10b981" />
+              <FunnelRow label="Compareceram" hint="Contratados + Não contratados (remarcados não contam)" value={calendario.compareceram} color="#10b981" />
               <FunnelRow label="Contratos na consulta" hint="Status final: contracted" value={calendario.contrataram} color="#059669" />
+              <FunnelRow label="Reagendados" hint="Novos agendamentos nascidos de remarcação (is_rescheduled)" value={calendario.reagendaram} color="#6366f1" />
+              <FunnelRow label="Remarcados (substituídos)" hint="Informativo — agendamentos trocados por outro, nunca somados ao comparecimento" value={calendario.remarcadosSubstituidos} color="#94a3b8" />
             </div>
 
             <div className="mt-6 border-t pt-4">
