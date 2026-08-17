@@ -327,28 +327,41 @@ export default function CrmRelatorios() {
     () => leads.filter(l => inRange(l.created_at)),
     [leads, range]
   );
-  // ============= MÉTRICAS DO CALENDÁRIO (regra de ouro) =============
+  // ============= MÉTRICAS DO CALENDÁRIO (régua canônica) =============
   // Tudo contado por APPOINTMENT, não por lead. Buckets EXAUSTIVOS e
-  // DISJUNTOS (mesma regra da RPC rpt_kpis_agendamentos): os 5 status
-  // nomeados + "pendentes" como catch-all — o total fecha sem resíduo.
+  // DISJUNTOS (mesma regra da RPC rpt_kpis_agendamentos). A fórmula de
+  // comparecimento vem de kpiAgendamentos (reportKit) — 'rescheduled' NÃO
+  // conta como comparecimento.
   const calendario = useMemo(() => {
     const total = apptsPeriodo.length;
     const contrataram = apptsPeriodo.filter(a => a.status === "contracted").length;
     const naoContrataram = apptsPeriodo.filter(a => a.status === "not_contracted").length;
     const faltas = apptsPeriodo.filter(a => a.status === "no_show").length;
-    const reagendaram = apptsPeriodo.filter(a => a.status === "rescheduled").length;
+    const remarcadosSubstituidos = apptsPeriodo.filter(a => a.status === "rescheduled").length;
     const cancelados = apptsPeriodo.filter(a => a.status === "cancelled").length;
     // Catch-all: 'confirmed' (estado inicial do app) e qualquer status desconhecido.
     const NOMEADOS = new Set(["contracted", "not_contracted", "no_show", "rescheduled", "cancelled"]);
     const pendentes = apptsPeriodo.filter(a => !NOMEADOS.has(a.status)).length;
-    // 'rescheduled' = compareceu e saiu com novo agendamento → conta como comparecimento.
-    const compareceram = contrataram + naoContrataram + reagendaram;
-    const desfecho = compareceram + faltas; // appts com decisão (excluindo pendentes/cancelados)
+    const reagendados = apptsPeriodo.filter(a => (a as any).is_rescheduled === true).length;
+    const k = kpiAgendamentos({
+      contracted: contrataram,
+      not_contracted: naoContrataram,
+      no_show: faltas,
+      rescheduled: remarcadosSubstituidos,
+      cancelled: cancelados,
+      pending: pendentes,
+      pending_vencidos: 0,
+      total,
+      reagendados_flag: reagendados,
+    });
     return {
-      total, contrataram, naoContrataram, faltas, reagendaram, pendentes, cancelados,
-      compareceram, desfecho,
-      taxaComparecimento: desfecho > 0 ? (compareceram / desfecho) * 100 : 0,
-      taxaContratacao: compareceram > 0 ? (contrataram / compareceram) * 100 : 0,
+      total, contrataram, naoContrataram, faltas, pendentes, cancelados,
+      reagendaram: k.reagendados,
+      remarcadosSubstituidos,
+      compareceram: k.compareceram,
+      desfecho: k.compareceram + k.faltas,
+      taxaComparecimento: k.taxaComparecimento * 100,
+      taxaContratacao: k.taxaContratacao * 100,
     };
   }, [apptsPeriodo]);
 
