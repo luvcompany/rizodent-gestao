@@ -210,12 +210,20 @@ export default function CrmCalendario() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleteApptConfirm, setDeleteApptConfirm] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-  const [apptResultStatus, setApptResultStatus] = useState("");
   const [apptMoveStageId, setApptMoveStageId] = useState("");
   const [crmStages, setCrmStages] = useState<Stage[]>(() => (_sameUserModuleCache && calendarCache.stages) || _lsInit?.stages || []);
   const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>(() => (_sameUserModuleCache && calendarCache.pipelines) || _lsInit?.pipelines || []);
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
   const [tenantCities, setTenantCities] = useState<string[]>([]);
+  // Desfecho / remarcação / cancelamento do agendamento
+  const [apptStep, setApptStep] = useState<"init" | "compareceu" | "reschedule">("init");
+  const [apptBusy, setApptBusy] = useState(false);
+  const [apptNewDate, setApptNewDate] = useState("");
+  const [apptNewTime, setApptNewTime] = useState("09:00");
+  const [cancelApptFor, setCancelApptFor] = useState<Appointment | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+
+  const isManager = userRole === "gerente" || userRole === "superadmin";
 
   useEffect(() => {
     (async () => {
