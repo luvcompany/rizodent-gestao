@@ -899,6 +899,11 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
       por_status: porStatus,
       remarcados,
       por_clinica: aptPorClinica,
+      // Régua canônica (17/08/2026): 'rescheduled' NÃO é comparecimento — é o
+      // agendamento substituído. Comparecimento = contracted + not_contracted.
+      compareceram: kpiCompareceram,
+      taxa_comparecimento: kpiTaxaComparecimento,
+      reagendados: remarcados,
     },
   });
 }
