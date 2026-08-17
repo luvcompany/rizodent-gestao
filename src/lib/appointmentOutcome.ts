@@ -239,4 +239,6 @@ export async function applyAppointmentOutcome(args: {
       triggerTypes: ["on_enter"],
     }).catch((e) => console.error("[AppointmentOutcome] Automation error:", e));
   }
+
+  return true;
 }
