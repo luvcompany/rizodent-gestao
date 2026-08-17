@@ -20,6 +20,10 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+import { cancelAppointment, rescheduleAppointment, toastDbError } from "@/lib/appointmentActions";
 
 type Task = {
   id: string;
