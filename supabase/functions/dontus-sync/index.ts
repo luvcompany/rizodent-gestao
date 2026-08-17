@@ -2137,7 +2137,7 @@ async function syncComparecimento(
 
     if (!dryRun) {
       const { error: upErr } = await admin.from("crm_appointments")
-        .update({ status: statusNovo, updated_at: new Date().toISOString() })
+        .update({ status: statusNovo, outcome_source: "dontus-sync", updated_at: new Date().toISOString() })
         .eq("id", appt.id)
         .eq("status", "confirmed"); // trava: só age em pendente
       if (upErr) errors.push({ appointment_id: appt.id, error: upErr.message });
