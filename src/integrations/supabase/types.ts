@@ -1059,6 +1059,7 @@ export type Database = {
       }
       crm_appointments: {
         Row: {
+          cancelled_reason: string | null
           confirmed_at: string | null
           confirmed_by: string | null
           created_at: string
@@ -1068,7 +1069,11 @@ export type Database = {
           lead_id: string
           lead_name: string | null
           notes: string | null
+          outcome_at: string | null
+          outcome_by: string | null
+          outcome_source: string | null
           owner_role: Database["public"]["Enums"]["app_role"] | null
+          rescheduled_from_id: string | null
           scheduled_date: string
           scheduled_time: string
           status: string
@@ -1077,6 +1082,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cancelled_reason?: string | null
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
@@ -1086,7 +1092,11 @@ export type Database = {
           lead_id: string
           lead_name?: string | null
           notes?: string | null
+          outcome_at?: string | null
+          outcome_by?: string | null
+          outcome_source?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          rescheduled_from_id?: string | null
           scheduled_date: string
           scheduled_time: string
           status?: string
@@ -1095,6 +1105,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cancelled_reason?: string | null
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
@@ -1104,7 +1115,11 @@ export type Database = {
           lead_id?: string
           lead_name?: string | null
           notes?: string | null
+          outcome_at?: string | null
+          outcome_by?: string | null
+          outcome_source?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          rescheduled_from_id?: string | null
           scheduled_date?: string
           scheduled_time?: string
           status?: string
@@ -1142,6 +1157,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      crm_appointments_audit: {
+        Row: {
+          action: string
+          appointment_id: string
+          changed_at: string
+          changed_by: string | null
+          id: number
+          new_row: Json | null
+          old_row: Json | null
+          tenant_id: string | null
+        }
+        Insert: {
+          action: string
+          appointment_id: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: number
+          new_row?: Json | null
+          old_row?: Json | null
+          tenant_id?: string | null
+        }
+        Update: {
+          action?: string
+          appointment_id?: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: number
+          new_row?: Json | null
+          old_row?: Json | null
+          tenant_id?: string | null
+        }
+        Relationships: []
       }
       crm_automation_executions: {
         Row: {
