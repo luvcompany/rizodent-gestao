@@ -5182,6 +5182,7 @@ export type Database = {
           not_contracted: number
           pending: number
           pending_vencidos: number
+          reagendados_flag: number
           rescheduled: number
           total: number
         }[]

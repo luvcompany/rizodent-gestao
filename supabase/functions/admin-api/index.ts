@@ -800,6 +800,12 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     porStatus[s] = (porStatus[s] || 0) + 1;
   });
   const remarcados = appointmentsScope.filter((a) => a.is_rescheduled === true).length;
+  // Régua canônica (17/08/2026): comparecimento = contracted + not_contracted.
+  // 'rescheduled' (agendamento substituído por outro) NÃO conta como comparecimento.
+  const kpiCompareceram = (porStatus["contracted"] || 0) + (porStatus["not_contracted"] || 0);
+  const kpiFaltas = porStatus["no_show"] || 0;
+  const kpiTaxaComparecimento =
+    kpiCompareceram + kpiFaltas > 0 ? kpiCompareceram / (kpiCompareceram + kpiFaltas) : 0;
 
   const aptClinMap = new Map<string, { total: number; por_status: Record<string, number> }>();
   appointmentsScope.forEach((a: any) => {
@@ -899,6 +905,11 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
       por_status: porStatus,
       remarcados,
       por_clinica: aptPorClinica,
+      // Régua canônica (17/08/2026): 'rescheduled' NÃO é comparecimento — é o
+      // agendamento substituído. Comparecimento = contracted + not_contracted.
+      compareceram: kpiCompareceram,
+      taxa_comparecimento: kpiTaxaComparecimento,
+      reagendados: remarcados,
     },
   });
 }

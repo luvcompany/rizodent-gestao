@@ -275,7 +275,30 @@ export interface KpisAgendamentos {
   pending: number;
   pending_vencidos: number; // subconjunto informativo de pending (não soma no total)
   total: number;
+  reagendados_flag: number; // agendamentos NOVOS nascidos de remarcação (is_rescheduled)
 }
+
+/**
+ * Régua canônica de agendamentos (aprovada pelo dono em 17/08/2026).
+ * Sempre por DATA AGENDADA. 'rescheduled' (agendamento substituído) NÃO é
+ * comparecimento — é apenas informativo.
+ */
+export const kpiAgendamentos = (k: KpisAgendamentos) => {
+  const compareceram = k.contracted + k.not_contracted; // 'rescheduled' NÃO conta
+  const faltas = k.no_show;
+  return {
+    agendamentos: k.total - k.cancelled,
+    compareceram,
+    faltas,
+    taxaComparecimento: compareceram + faltas > 0 ? compareceram / (compareceram + faltas) : 0,
+    taxaContratacao: compareceram > 0 ? k.contracted / compareceram : 0,
+    reagendados: k.reagendados_flag,
+    remarcadosSubstituidos: k.rescheduled, // informativo
+    semDesfecho:
+      k.pending +
+      (k.total - k.cancelled - compareceram - faltas - k.rescheduled - k.pending),
+  };
+};
 
 export interface LeadsInativos {
   mais_7_dias: number;
@@ -507,6 +530,7 @@ export async function rptKpisAgendamentos(from: Date | string, to: Date | string
     pending: num(r.pending),
     pending_vencidos: num(r.pending_vencidos),
     total: num(r.total),
+    reagendados_flag: num(r.reagendados_flag),
   };
 }
 

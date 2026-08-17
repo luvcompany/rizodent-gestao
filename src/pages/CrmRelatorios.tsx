@@ -24,6 +24,7 @@ import {
   asDateParam,
   normalizeCidade,
   rptKpisAgendamentos,
+  kpiAgendamentos,
   rptContratados,
   rptLeadsInativos,
   type KpisAgendamentos,
@@ -327,28 +328,41 @@ export default function CrmRelatorios() {
     () => leads.filter(l => inRange(l.created_at)),
     [leads, range]
   );
-  // ============= MÉTRICAS DO CALENDÁRIO (regra de ouro) =============
+  // ============= MÉTRICAS DO CALENDÁRIO (régua canônica) =============
   // Tudo contado por APPOINTMENT, não por lead. Buckets EXAUSTIVOS e
-  // DISJUNTOS (mesma regra da RPC rpt_kpis_agendamentos): os 5 status
-  // nomeados + "pendentes" como catch-all — o total fecha sem resíduo.
+  // DISJUNTOS (mesma regra da RPC rpt_kpis_agendamentos). A fórmula de
+  // comparecimento vem de kpiAgendamentos (reportKit) — 'rescheduled' NÃO
+  // conta como comparecimento.
   const calendario = useMemo(() => {
     const total = apptsPeriodo.length;
     const contrataram = apptsPeriodo.filter(a => a.status === "contracted").length;
     const naoContrataram = apptsPeriodo.filter(a => a.status === "not_contracted").length;
     const faltas = apptsPeriodo.filter(a => a.status === "no_show").length;
-    const reagendaram = apptsPeriodo.filter(a => a.status === "rescheduled").length;
+    const remarcadosSubstituidos = apptsPeriodo.filter(a => a.status === "rescheduled").length;
     const cancelados = apptsPeriodo.filter(a => a.status === "cancelled").length;
     // Catch-all: 'confirmed' (estado inicial do app) e qualquer status desconhecido.
     const NOMEADOS = new Set(["contracted", "not_contracted", "no_show", "rescheduled", "cancelled"]);
     const pendentes = apptsPeriodo.filter(a => !NOMEADOS.has(a.status)).length;
-    // 'rescheduled' = compareceu e saiu com novo agendamento → conta como comparecimento.
-    const compareceram = contrataram + naoContrataram + reagendaram;
-    const desfecho = compareceram + faltas; // appts com decisão (excluindo pendentes/cancelados)
+    const reagendados = apptsPeriodo.filter(a => (a as any).is_rescheduled === true).length;
+    const k = kpiAgendamentos({
+      contracted: contrataram,
+      not_contracted: naoContrataram,
+      no_show: faltas,
+      rescheduled: remarcadosSubstituidos,
+      cancelled: cancelados,
+      pending: pendentes,
+      pending_vencidos: 0,
+      total,
+      reagendados_flag: reagendados,
+    });
     return {
-      total, contrataram, naoContrataram, faltas, reagendaram, pendentes, cancelados,
-      compareceram, desfecho,
-      taxaComparecimento: desfecho > 0 ? (compareceram / desfecho) * 100 : 0,
-      taxaContratacao: compareceram > 0 ? (contrataram / compareceram) * 100 : 0,
+      total, contrataram, naoContrataram, faltas, pendentes, cancelados,
+      reagendaram: k.reagendados,
+      remarcadosSubstituidos,
+      compareceram: k.compareceram,
+      desfecho: k.compareceram + k.faltas,
+      taxaComparecimento: k.taxaComparecimento * 100,
+      taxaContratacao: k.taxaContratacao * 100,
     };
   }, [apptsPeriodo]);
 
@@ -614,22 +628,22 @@ export default function CrmRelatorios() {
             />
           ) : (() => {
             const k = kpisState.data;
-            const compareceram = k.contracted + k.not_contracted + k.rescheduled;
-            const desfecho = compareceram + k.no_show;
-            const taxaComparecimento = desfecho > 0 ? (compareceram / desfecho) * 100 : 0;
-            const taxaContratacao = compareceram > 0 ? (k.contracted / compareceram) * 100 : 0;
+            const m = kpiAgendamentos(k);
+            const desfecho = m.compareceram + m.faltas;
+            const taxaComparecimento = m.taxaComparecimento * 100;
+            const taxaContratacao = m.taxaContratacao * 100;
             return (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-                <KpiCard icon={Calendar} label="Agendamentos" value={k.total} accent="blue"
-                  hint="Com data marcada no período (= calendário)" />
-                <KpiCard icon={CheckCircle2} label="Compareceram" value={compareceram} accent="green"
+                <KpiCard icon={Calendar} label="Agendamentos" value={m.agendamentos} accent="blue"
+                  hint="Com data marcada no período, exceto cancelados" />
+                <KpiCard icon={CheckCircle2} label="Compareceram" value={m.compareceram} accent="green"
                   hint={`${taxaComparecimento.toFixed(0)}% de ${desfecho} com desfecho`} />
                 <KpiCard icon={Target} label="Contratos na consulta" value={k.contracted} accent="emerald"
                   hint={`${taxaContratacao.toFixed(0)}% dos que compareceram`} />
                 <KpiCard icon={XCircle} label="Não contrataram" value={k.not_contracted} accent="amber" />
-                <KpiCard icon={CalendarIcon} label="Reagendaram" value={k.rescheduled} accent="indigo"
-                  hint="Compareceram e saíram com novo agendamento" />
-                <KpiCard icon={Ghost} label="Faltas" value={k.no_show} accent="red"
+                <KpiCard icon={CalendarIcon} label="Reagendados" value={m.reagendados} accent="indigo"
+                  hint={`Novos agendamentos nascidos de remarcação · ${m.remarcadosSubstituidos} substituídos`} />
+                <KpiCard icon={Ghost} label="Faltas" value={m.faltas} accent="red"
                   hint="Status: no_show" />
                 <KpiCard icon={Clock} label="Pendentes" value={k.pending} accent="indigo"
                   hint={k.pending_vencidos > 0 ? `⚠ ${k.pending_vencidos} com data já vencida` : "Sem desfecho ainda"} />
@@ -700,8 +714,10 @@ export default function CrmRelatorios() {
               <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram} color="#6366f1" />
               <FunnelRow label="Agendamentos criados" hint="Ação da equipe — appts criados no período" value={atividadePeriodo.agendamentosCriados} color="#f59e0b" />
               <FunnelRow label="Agendamentos do período" hint="Data marcada para o período (= calendário)" value={calendario.total} color="#3b82f6" />
-              <FunnelRow label="Compareceram" hint="Contratados + Não contratados + Reagendaram" value={calendario.compareceram} color="#10b981" />
+              <FunnelRow label="Compareceram" hint="Contratados + Não contratados (remarcados não contam)" value={calendario.compareceram} color="#10b981" />
               <FunnelRow label="Contratos na consulta" hint="Status final: contracted" value={calendario.contrataram} color="#059669" />
+              <FunnelRow label="Reagendados" hint="Novos agendamentos nascidos de remarcação (is_rescheduled)" value={calendario.reagendaram} color="#6366f1" />
+              <FunnelRow label="Remarcados (substituídos)" hint="Informativo — agendamentos trocados por outro, nunca somados ao comparecimento" value={calendario.remarcadosSubstituidos} color="#94a3b8" />
             </div>
 
             <div className="mt-6 border-t pt-4">
