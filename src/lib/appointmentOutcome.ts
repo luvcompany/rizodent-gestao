@@ -111,7 +111,7 @@ export type AppointmentOutcome = "no_show" | "contracted" | "not_contracted" | "
  * Move o lead para uma etapa cujo nome combine com `matcher`, procurando
  * primeiro no pipeline atual e, se não achar, no "Funil Principal" do tenant.
  */
-async function moveLeadToStageCrossPipeline(
+export async function moveLeadToStageCrossPipeline(
   leadId: string,
   matcher: (n: string) => boolean,
 ): Promise<string | null> {
