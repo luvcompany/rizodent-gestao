@@ -339,6 +339,88 @@ export default function CrmCalendario() {
     setDeleteApptConfirm(null);
   };
 
+  const refreshAppt = (apptId: string, status: string) => {
+    setAppointments((prev) => prev.map((a) => a.id === apptId ? { ...a, status } : a));
+  };
+
+  const handleApptOutcome = async (appt: Appointment, outcome: "contracted" | "not_contracted" | "no_show") => {
+    setApptBusy(true);
+    try {
+      const ok = await applyAppointmentOutcome({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
+      if (!ok) { toast.error("Este agendamento já recebeu desfecho — recarregando"); await fetchTasks(); return; }
+      refreshAppt(appt.id, outcome);
+      toast.success("Desfecho registrado");
+      setSelectedAppointment(null);
+    } catch (e) {
+      toastDbError(e, "Erro ao registrar desfecho");
+    } finally {
+      setApptBusy(false);
+      setApptStep("init");
+    }
+  };
+
+  const handleApptReschedule = async (appt: Appointment) => {
+    if (!apptNewDate) { toast.error("Selecione a nova data"); return; }
+    setApptBusy(true);
+    try {
+      const ok = await rescheduleAppointment({
+        leadId: appt.lead_id,
+        old: { id: appt.id, scheduled_date: appt.scheduled_date, scheduled_time: appt.scheduled_time },
+        newDate: apptNewDate,
+        newTime: apptNewTime,
+      });
+      if (ok) { setSelectedAppointment(null); await fetchTasks(); }
+    } catch (e) {
+      toastDbError(e, "Erro ao remarcar agendamento");
+    } finally {
+      setApptBusy(false);
+      setApptStep("init");
+    }
+  };
+
+  const handleApptCancel = async () => {
+    if (!cancelApptFor) return;
+    setApptBusy(true);
+    try {
+      const ok = await cancelAppointment({ leadId: cancelApptFor.lead_id, appointmentId: cancelApptFor.id, reason: cancelReason });
+      if (ok) {
+        refreshAppt(cancelApptFor.id, "cancelled");
+        setCancelApptFor(null);
+        setCancelReason("");
+        setSelectedAppointment(null);
+      }
+    } catch (e) {
+      toastDbError(e, "Erro ao cancelar agendamento");
+    } finally {
+      setApptBusy(false);
+    }
+  };
+
+  const handleApptReopen = async (appt: Appointment) => {
+    setApptBusy(true);
+    const { error } = await supabase.from("crm_appointments").update({ status: "confirmed" }).eq("id", appt.id);
+    setApptBusy(false);
+    if (error) { toastDbError(error, "Erro ao reabrir agendamento"); return; }
+    refreshAppt(appt.id, "confirmed");
+    toast.success("Agendamento reaberto");
+    setSelectedAppointment(null);
+  };
+
+  const handleApptMoveStage = async (appt: Appointment) => {
+    if (!apptMoveStageId) return;
+    await supabase.from("crm_lead_stage_history")
+      .update({ exited_at: new Date().toISOString() })
+      .eq("lead_id", appt.lead_id)
+      .is("exited_at", null);
+    await supabase.from("crm_lead_stage_history").insert({ lead_id: appt.lead_id, stage_id: apptMoveStageId });
+    const { error } = await supabase.from("crm_leads")
+      .update({ stage_id: apptMoveStageId, pipeline_id: apptMovePipelineId })
+      .eq("id", appt.lead_id);
+    if (error) { toastDbError(error, "Erro ao mover o lead"); return; }
+    toast.success("Lead movido de etapa");
+    setSelectedAppointment(null);
+  };
+
   const filtered = useMemo(() => {
     const isPrivileged = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
     return tasks.filter((t) => {
