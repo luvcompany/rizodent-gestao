@@ -607,13 +607,22 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         setGhostLeadIds(inboundIds);
       }
       if (urlAppointmentStatus) {
-        const statuses = urlAppointmentStatus === "rescheduled" ? ["rescheduled"]
-          : urlAppointmentStatus === "missed" ? ["missed", "faltou"]
-          : urlAppointmentStatus === "attended" ? ["completed", "contratou", "nao_contratou"]
-          : [urlAppointmentStatus];
-        const apts = await fetchAll<{ lead_id: string }>((f, t) =>
-          supabase.from("crm_appointments").select("lead_id").in("status", statuses).range(f, t)
-        );
+        // Régua canônica (reportKit.kpiAgendamentos): compareceram =
+        // contracted + not_contracted; faltaram = no_show; reagendados =
+        // is_rescheduled (agendamento NOVO nascido de remarcação).
+        const apts = await fetchAll<{ lead_id: string }>((f, t) => {
+          const q = supabase.from("crm_appointments").select("lead_id");
+          if (urlAppointmentStatus === "rescheduled" || urlAppointmentStatus === "reagendados") {
+            return q.eq("is_rescheduled", true).range(f, t);
+          }
+          if (urlAppointmentStatus === "missed" || urlAppointmentStatus === "no_show") {
+            return q.eq("status", "no_show").range(f, t);
+          }
+          if (urlAppointmentStatus === "attended" || urlAppointmentStatus === "compareceram") {
+            return q.in("status", ["contracted", "not_contracted"]).range(f, t);
+          }
+          return q.eq("status", urlAppointmentStatus).range(f, t);
+        });
         setAppointmentLeadIds(new Set(apts.map((a) => a.lead_id)));
       }
     };
