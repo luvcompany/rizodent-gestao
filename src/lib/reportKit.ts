@@ -530,6 +530,7 @@ export async function rptKpisAgendamentos(from: Date | string, to: Date | string
     pending: num(r.pending),
     pending_vencidos: num(r.pending_vencidos),
     total: num(r.total),
+    reagendados_flag: num(r.reagendados_flag),
   };
 }
 
