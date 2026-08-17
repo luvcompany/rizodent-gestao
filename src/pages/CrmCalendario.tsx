@@ -795,7 +795,7 @@ export default function CrmCalendario() {
                                 className={cn("text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm", statusStyle)}
                                 onClick={() => {
                                   setSelectedAppointment(appt);
-                                  setApptResultStatus(appt.status);
+                                  setApptStep("init");
                                   setApptMoveStageId("");
                                   setApptMovePipelineId("");
                                 }}
