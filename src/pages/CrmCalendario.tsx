@@ -993,80 +993,130 @@ export default function CrmCalendario() {
       </Dialog>
 
       {/* Appointment result dialog */}
-      <Dialog open={!!selectedAppointment} onOpenChange={(o) => { if (!o) setSelectedAppointment(null); }}>
+      <Dialog open={!!selectedAppointment && !cancelApptFor} onOpenChange={(o) => { if (!o) { setSelectedAppointment(null); setApptStep("init"); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Resultado do Agendamento</DialogTitle></DialogHeader>
-          {selectedAppointment && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium">{selectedAppointment.lead_name}</p>
-                <p className="text-xs text-muted-foreground">{selectedAppointment.scheduled_date} às {selectedAppointment.scheduled_time?.slice(0, 5)}</p>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold">Status do agendamento</Label>
-                <Select value={apptResultStatus} onValueChange={setApptResultStatus}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="confirmed">✅ Confirmado</SelectItem>
-                    <SelectItem value="contracted">🤝 Contratado</SelectItem>
-                    <SelectItem value="not_contracted">❌ Não contratou</SelectItem>
-                    <SelectItem value="no_show">🚫 Não compareceu</SelectItem>
-                    <SelectItem value="cancelled">🗑️ Cancelado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold">Mover lead para (opcional)</Label>
-                <Select value={apptMovePipelineId} onValueChange={(v) => { setApptMovePipelineId(v); setApptMoveStageId(""); }}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Funil..." /></SelectTrigger>
-                  <SelectContent>
-                    {crmPipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                {apptMovePipelineId && (
-                  <Select value={apptMoveStageId} onValueChange={setApptMoveStageId}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Etapa..." /></SelectTrigger>
+          {selectedAppointment && (() => {
+            const appt = selectedAppointment;
+            const isOpen = appt.status === "confirmed";
+            return (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium">{appt.lead_name}</p>
+                  <p className="text-xs text-muted-foreground">{appt.scheduled_date} às {appt.scheduled_time?.slice(0, 5)}</p>
+                </div>
+
+                {isOpen && apptStep === "init" && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={apptBusy} onClick={() => setApptStep("compareceu")}>
+                        <CheckCircle2 size={14} className="mr-1" /> Compareceu
+                      </Button>
+                      <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "no_show")}>
+                        Não compareceu
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button size="sm" variant="outline" disabled={apptBusy} onClick={() => { setApptStep("reschedule"); setApptNewDate(""); setApptNewTime("09:00"); }}>
+                        Reagendar
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={apptBusy} onClick={() => { setCancelApptFor(appt); setCancelReason(""); }}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {isOpen && apptStep === "compareceu" && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Resultado da avaliação</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button size="sm" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "contracted")}>Contratou</Button>
+                      <Button size="sm" variant="outline" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "not_contracted")}>Não contratou</Button>
+                    </div>
+                    <Button size="sm" variant="ghost" className="w-full text-xs" onClick={() => setApptStep("init")}>← Voltar</Button>
+                  </div>
+                )}
+
+                {isOpen && apptStep === "reschedule" && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Novo horário</Label>
+                    <Input type="date" value={apptNewDate} onChange={(e) => setApptNewDate(e.target.value)} className="h-8 text-xs" />
+                    <Input type="time" value={apptNewTime} onChange={(e) => setApptNewTime(e.target.value)} className="h-8 text-xs" />
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setApptStep("init")}>Voltar</Button>
+                      <Button size="sm" className="flex-1" disabled={apptBusy} onClick={() => handleApptReschedule(appt)}>Remarcar</Button>
+                    </div>
+                  </div>
+                )}
+
+                {!isOpen && (
+                  <p className="text-xs text-muted-foreground">Desfecho já registrado.</p>
+                )}
+
+                <div>
+                  <Label className="text-xs font-semibold">Mover lead para (opcional)</Label>
+                  <Select value={apptMovePipelineId} onValueChange={(v) => { setApptMovePipelineId(v); setApptMoveStageId(""); }}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Funil..." /></SelectTrigger>
                     <SelectContent>
-                      {crmStages.filter(s => s.pipeline_id === apptMovePipelineId).map(s => (
-                        <SelectItem key={s.id} value={s.id}>
-                          <span className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                            {s.name}
-                          </span>
-                        </SelectItem>
-                      ))}
+                      {crmPipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  {apptMovePipelineId && (
+                    <Select value={apptMoveStageId} onValueChange={setApptMoveStageId}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Etapa..." /></SelectTrigger>
+                      <SelectContent>
+                        {crmStages.filter(s => s.pipeline_id === apptMovePipelineId).map(s => (
+                          <SelectItem key={s.id} value={s.id}>
+                            <span className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                              {s.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {apptMoveStageId && (
+                    <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => handleApptMoveStage(appt)}>Mover lead</Button>
+                  )}
+                </div>
+
+                <Button variant="outline" size="sm" className="w-full" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>Ir para conversa</Button>
+
+                {!isOpen && isManager && (
+                  <Button variant="outline" size="sm" className="w-full" disabled={apptBusy} onClick={() => handleApptReopen(appt)}>Reabrir</Button>
                 )}
+
+                {isManager ? (
+                  <Button variant="destructive" size="sm" className="w-full" onClick={() => { setDeleteApptConfirm(appt.id); setSelectedAppointment(null); }}>
+                    <Trash2 size={14} className="mr-1" /> Excluir agendamento
+                  </Button>
+                ) : isOpen ? (
+                  <Button variant="destructive" size="sm" className="w-full" onClick={() => { setCancelApptFor(appt); setCancelReason(""); }}>
+                    Cancelar agendamento
+                  </Button>
+                ) : null}
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => navigate(`/crm/conversa/${selectedAppointment.lead_id}`)}>Ir para conversa</Button>
-                <Button className="flex-1" onClick={async () => {
-                  await supabase.from("crm_appointments").update({ status: apptResultStatus }).eq("id", selectedAppointment.id);
-                  if (apptMoveStageId) {
-                    // Close current stage history entry
-                    await supabase.from("crm_lead_stage_history")
-                      .update({ exited_at: new Date().toISOString() })
-                      .eq("lead_id", selectedAppointment.lead_id)
-                      .is("exited_at", null);
-                    // Create new stage history entry
-                    await supabase.from("crm_lead_stage_history").insert({
-                      lead_id: selectedAppointment.lead_id,
-                      stage_id: apptMoveStageId,
-                    });
-                    // Update lead
-                    await supabase.from("crm_leads").update({ stage_id: apptMoveStageId, pipeline_id: apptMovePipelineId }).eq("id", selectedAppointment.lead_id);
-                  }
-                  toast.success("Agendamento atualizado");
-                  setAppointments(prev => prev.map(a => a.id === selectedAppointment.id ? { ...a, status: apptResultStatus } : a));
-                  setSelectedAppointment(null);
-                }}>Salvar</Button>
-              </div>
-              <Button variant="destructive" size="sm" className="w-full" onClick={() => { setDeleteApptConfirm(selectedAppointment.id); setSelectedAppointment(null); }}>
-                <Trash2 size={14} className="mr-1" /> Excluir agendamento
-              </Button>
-            </div>
-          )}
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancelar agendamento com motivo */}
+      <Dialog open={!!cancelApptFor} onOpenChange={(o) => { if (!o) { setCancelApptFor(null); setCancelReason(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Cancelar agendamento</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            {cancelApptFor && `${cancelApptFor.scheduled_date} às ${cancelApptFor.scheduled_time?.slice(0, 5)}`}
+          </p>
+          <Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Motivo do cancelamento (obrigatório)" className="text-sm" />
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => { setCancelApptFor(null); setCancelReason(""); }}>Voltar</Button>
+            <Button variant="destructive" size="sm" disabled={apptBusy || cancelReason.trim().length < 3} onClick={handleApptCancel}>
+              {apptBusy ? "Cancelando..." : "Cancelar agendamento"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
