@@ -628,22 +628,22 @@ export default function CrmRelatorios() {
             />
           ) : (() => {
             const k = kpisState.data;
-            const compareceram = k.contracted + k.not_contracted + k.rescheduled;
-            const desfecho = compareceram + k.no_show;
-            const taxaComparecimento = desfecho > 0 ? (compareceram / desfecho) * 100 : 0;
-            const taxaContratacao = compareceram > 0 ? (k.contracted / compareceram) * 100 : 0;
+            const m = kpiAgendamentos(k);
+            const desfecho = m.compareceram + m.faltas;
+            const taxaComparecimento = m.taxaComparecimento * 100;
+            const taxaContratacao = m.taxaContratacao * 100;
             return (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-                <KpiCard icon={Calendar} label="Agendamentos" value={k.total} accent="blue"
-                  hint="Com data marcada no período (= calendário)" />
-                <KpiCard icon={CheckCircle2} label="Compareceram" value={compareceram} accent="green"
+                <KpiCard icon={Calendar} label="Agendamentos" value={m.agendamentos} accent="blue"
+                  hint="Com data marcada no período, exceto cancelados" />
+                <KpiCard icon={CheckCircle2} label="Compareceram" value={m.compareceram} accent="green"
                   hint={`${taxaComparecimento.toFixed(0)}% de ${desfecho} com desfecho`} />
                 <KpiCard icon={Target} label="Contratos na consulta" value={k.contracted} accent="emerald"
                   hint={`${taxaContratacao.toFixed(0)}% dos que compareceram`} />
                 <KpiCard icon={XCircle} label="Não contrataram" value={k.not_contracted} accent="amber" />
-                <KpiCard icon={CalendarIcon} label="Reagendaram" value={k.rescheduled} accent="indigo"
-                  hint="Compareceram e saíram com novo agendamento" />
-                <KpiCard icon={Ghost} label="Faltas" value={k.no_show} accent="red"
+                <KpiCard icon={CalendarIcon} label="Reagendados" value={m.reagendados} accent="indigo"
+                  hint={`Novos agendamentos nascidos de remarcação · ${m.remarcadosSubstituidos} substituídos`} />
+                <KpiCard icon={Ghost} label="Faltas" value={m.faltas} accent="red"
                   hint="Status: no_show" />
                 <KpiCard icon={Clock} label="Pendentes" value={k.pending} accent="indigo"
                   hint={k.pending_vencidos > 0 ? `⚠ ${k.pending_vencidos} com data já vencida` : "Sem desfecho ainda"} />
