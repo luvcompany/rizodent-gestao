@@ -24,6 +24,7 @@ import {
   asDateParam,
   normalizeCidade,
   rptKpisAgendamentos,
+  kpiAgendamentos,
   rptContratados,
   rptLeadsInativos,
   type KpisAgendamentos,
