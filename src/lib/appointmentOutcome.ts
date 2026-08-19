@@ -110,6 +110,7 @@ export type AppointmentOutcome = "no_show" | "contracted" | "not_contracted" | "
 /**
  * Move o lead para uma etapa cujo nome combine com `matcher`, procurando
  * primeiro no pipeline atual e, se não achar, no "Funil Principal" do tenant.
+ * Retorna null quando nenhuma etapa combina (tenant sem a etapa).
  */
 export async function moveLeadToStageCrossPipeline(
   leadId: string,
@@ -147,7 +148,8 @@ export async function moveLeadToStageCrossPipeline(
     }
   }
 
-  if (!target || target.id === lead.stage_id) return lead.stage_id;
+  if (!target) return null;
+  if (target.id === lead.stage_id) return lead.stage_id;
 
   const nowIso = new Date().toISOString();
   const crossPipeline = target.pipeline_id !== lead.pipeline_id;

@@ -104,6 +104,25 @@ export async function cancelAppointment(args: {
 }
 
 /**
+ * Passo 1 do reagendamento em duas etapas: o lead pediu para remarcar mas ainda
+ * não deu o novo horário. Move para a etapa de espera "Reagendar" (sem mexer no
+ * agendamento, que segue 'confirmed'). Ali ele não recebe lembretes de
+ * confirmação; se o dia terminar sem novo horário, a varredura noturna marca
+ * falta (no_show) e move para "Não compareceu".
+ * Retorna false quando o tenant não tem a etapa "Reagendar" (chamador decide o fallback).
+ */
+export async function iniciarReagendamento(leadId: string): Promise<boolean> {
+  const movedStageId = await moveLeadToStageCrossPipeline(leadId, (n) => n === "reagendar");
+  if (!movedStageId) return false;
+  await systemMessage(
+    leadId,
+    "🔁 Aguardando reagendamento — sem novo horário até o fim do expediente, vira falta (Não compareceu)",
+  );
+  toast.success("Lead movido para Reagendar — registre o novo horário quando ele responder");
+  return true;
+}
+
+/**
  * Remarca um agendamento:
  * 1. desfecho no antigo (`no_show` após horário+3h, senão `rescheduled`) com trava
  * 2. cria o novo vinculado por `rescheduled_from_id`
@@ -140,7 +159,8 @@ export async function rescheduleAppointment(args: {
   } as any);
   if (insErr) { toastDbError(insErr, "Erro ao criar o novo agendamento"); return false; }
 
-  const movedStageId = await moveLeadToStageCrossPipeline(leadId, (n) => n.includes("reagend"));
+  // "reagendado" exato: não pode cair na etapa de espera "Reagendar"
+  const movedStageId = await moveLeadToStageCrossPipeline(leadId, (n) => n.startsWith("reagendado"));
 
   const antigo = `${old.scheduled_date.split("-").reverse().join("/")} às ${(old.scheduled_time || "").slice(0, 5)}`;
   const novo = `${newDate.split("-").reverse().join("/")} às ${newTime}`;

@@ -1968,7 +1968,7 @@ async function syncComparecimento(
   const bump = (uni: string, key: string) => {
     const u = (unidades[uni] ||= {
       unidade: uni, compareceu: 0, no_show_por_tempo: 0, no_show_por_dontus: 0,
-      rescheduled: 0, ainda_pendentes: 0, sem_dontus: 0,
+      rescheduled: 0, ainda_pendentes: 0, sem_dontus: 0, aguardando_reagendamento: 0,
     });
     u[key]++;
   };
@@ -1992,16 +1992,28 @@ async function syncComparecimento(
   if (apptErr) throw new Error(`crm_appointments: ${apptErr.message}`);
   const pend = (pendentes || []).filter((a: any) => a.lead_id);
 
-  // Leads dos pendentes (nome + telefone) em blocos.
+  // Leads dos pendentes (nome + telefone + etapa) em blocos.
   const leadIds = [...new Set(pend.map((a: any) => a.lead_id))] as string[];
-  const leadsById = new Map<string, { name: string; phone: string | null; cidade: string | null }>();
+  const leadsById = new Map<string, { name: string; phone: string | null; cidade: string | null; stage_id: string | null }>();
   for (const bloco of chunkArr(leadIds, 200)) {
     const { data } = await admin.from("crm_leads")
-      .select("id, name, phone, cidade")
+      .select("id, name, phone, cidade, stage_id")
       .eq("tenant_id", RIZODENT_TENANT_ID)
       .in("id", bloco);
     for (const l of (data || [])) {
-      leadsById.set(l.id, { name: String(l.name || ""), phone: l.phone ?? null, cidade: l.cidade ?? null });
+      leadsById.set(l.id, { name: String(l.name || ""), phone: l.phone ?? null, cidade: l.cidade ?? null, stage_id: l.stage_id ?? null });
+    }
+  }
+
+  // Leads na etapa de espera "Reagendar": a regra por tempo não se aplica a
+  // eles — a decisão fica para a varredura de fim de expediente
+  // (mode=reagendar_expirado), que marca falta ou completa a remarcação.
+  const stageIds = [...new Set([...leadsById.values()].map((l) => l.stage_id).filter(Boolean))] as string[];
+  const aguardandoStageIds = new Set<string>();
+  if (stageIds.length) {
+    const { data: sts } = await admin.from("crm_stages").select("id, name").in("id", stageIds);
+    for (const s of (sts || [])) {
+      if (normStage(s.name) === "reagendar") aguardandoStageIds.add(s.id);
     }
   }
 
@@ -2091,6 +2103,10 @@ async function syncComparecimento(
     } else {
       // Sem sinal de comparecimento no Dontus → regra por TEMPO.
       if (!dont) bump(unidade, "sem_dontus");
+      if (lead.stage_id && aguardandoStageIds.has(lead.stage_id)) {
+        bump(unidade, "aguardando_reagendamento");
+        continue;
+      }
       const semHora = !appt.scheduled_time;
       const passou = semHora
         ? appt.scheduled_date < hoje
@@ -2153,9 +2169,10 @@ async function syncComparecimento(
     rescheduled: t.rescheduled + u.rescheduled,
     ainda_pendentes: t.ainda_pendentes + u.ainda_pendentes,
     sem_dontus: t.sem_dontus + u.sem_dontus,
+    aguardando_reagendamento: t.aguardando_reagendamento + u.aguardando_reagendamento,
   }), {
     compareceu: 0, no_show_por_tempo: 0, no_show_por_dontus: 0,
-    rescheduled: 0, ainda_pendentes: 0, sem_dontus: 0,
+    rescheduled: 0, ainda_pendentes: 0, sem_dontus: 0, aguardando_reagendamento: 0,
   });
 
   return {
@@ -2170,6 +2187,159 @@ async function syncComparecimento(
     amostra,
     errors,
   };
+}
+
+// ===========================================================================
+// VARREDURA DE FIM DE EXPEDIENTE: etapa de espera "Reagendar"
+// O lead entra nela pelo botão Reagendar do chat quando pede remarcação sem
+// dar o novo horário (ali não recebe lembretes de confirmação). No fim do
+// expediente, quem continua sem agendamento novo vira falta (no_show) e vai
+// para "Não compareceu"; quem ganhou agendamento novo vai para "Reagendado".
+// ===========================================================================
+
+/** Nome de etapa normalizado: minúsculo, sem acento, sem espaços nas pontas. */
+function normStage(s: string | null | undefined): string {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
+/**
+ * Move o lead para a etapa cujo nome (normalizado) casa com `matcher` —
+ * pipeline atual primeiro, senão Funil Principal do tenant — e posta mensagem
+ * de sistema. Histórico, pipeline_id e automações on_enter ficam por conta dos
+ * gatilhos do banco. Retorna o nome da etapa ou null se não existir.
+ */
+async function moveLeadStageServer(
+  admin: any,
+  lead: { id: string; pipeline_id: string | null; tenant_id: string },
+  matcher: (n: string) => boolean,
+  msg: string,
+): Promise<string | null> {
+  let target: any = null;
+  if (lead.pipeline_id) {
+    const { data: stages } = await admin.from("crm_stages")
+      .select("id, name").eq("pipeline_id", lead.pipeline_id).order("position");
+    target = (stages || []).find((s: any) => matcher(normStage(s.name)));
+  }
+  if (!target) {
+    const { data: pipelines } = await admin.from("crm_pipelines")
+      .select("id, name").eq("tenant_id", lead.tenant_id);
+    const principal = (pipelines || []).find((p: any) => /funil principal/i.test(p.name));
+    if (principal) {
+      const { data: fp } = await admin.from("crm_stages")
+        .select("id, name").eq("pipeline_id", principal.id).order("position");
+      target = (fp || []).find((s: any) => matcher(normStage(s.name)));
+    }
+  }
+  if (!target) return null;
+
+  const { error } = await admin.from("crm_leads")
+    .update({ stage_id: target.id, updated_at: new Date().toISOString() })
+    .eq("id", lead.id);
+  if (error) throw new Error(`mover etapa: ${error.message}`);
+
+  await admin.from("messages").insert({
+    lead_id: lead.id, direction: "outbound", type: "system", content: msg, status: "system",
+  });
+  return target.name;
+}
+
+async function sweepReagendarExpirado(admin: any, dryRun: boolean): Promise<any> {
+  const { data: allStages } = await admin.from("crm_stages")
+    .select("id, name")
+    .eq("tenant_id", RIZODENT_TENANT_ID);
+  const waitingIds = (allStages || [])
+    .filter((s: any) => normStage(s.name) === "reagendar")
+    .map((s: any) => s.id);
+
+  const resumo: any = {
+    modo: "reagendar_expirado", dry_run: dryRun, analisados: 0,
+    virou_falta: 0, ja_remarcado: 0, falta_ja_registrada: 0, pulados: 0,
+    amostra: [], errors: [],
+  };
+  if (!waitingIds.length) {
+    resumo.nota = "Nenhuma etapa 'Reagendar' encontrada.";
+    return resumo;
+  }
+
+  const { data: leads } = await admin.from("crm_leads")
+    .select("id, name, pipeline_id, tenant_id, stage_id")
+    .eq("tenant_id", RIZODENT_TENANT_ID)
+    .in("stage_id", waitingIds);
+  resumo.analisados = (leads || []).length;
+
+  for (const lead of (leads || [])) {
+    try {
+      // Momento em que entrou na espera: separa agendamento NOVO (remarcação
+      // feita por outro caminho) do ANTIGO (a consulta que ele pediu p/ remarcar).
+      const { data: hist } = await admin.from("crm_lead_stage_history")
+        .select("entered_at")
+        .eq("lead_id", lead.id)
+        .eq("stage_id", lead.stage_id)
+        .is("exited_at", null)
+        .order("entered_at", { ascending: false })
+        .limit(1);
+      const enteredAt: string | null = hist?.[0]?.entered_at ?? null;
+
+      const { data: appts } = await admin.from("crm_appointments")
+        .select("id, scheduled_date, scheduled_time, status, created_at, updated_at")
+        .eq("lead_id", lead.id)
+        .gte("scheduled_date", GO_LIVE);
+
+      const confirmed = (appts || []).filter((a: any) => a.status === "confirmed");
+      const novos = enteredAt ? confirmed.filter((a: any) => String(a.created_at) >= enteredAt) : [];
+      const antigos = confirmed.filter((a: any) => !novos.includes(a));
+
+      let acao: string;
+      if (novos.length > 0) {
+        acao = "ja_remarcado";
+        if (!dryRun) {
+          for (const a of antigos) {
+            await admin.from("crm_appointments")
+              .update({ status: "rescheduled", outcome_source: "auto_reagendar_expirado", updated_at: new Date().toISOString() })
+              .eq("id", a.id).eq("status", "confirmed");
+          }
+          await moveLeadStageServer(admin, lead, (n) => n.startsWith("reagendado"),
+            "🔁 Novo agendamento registrado — movido para Reagendado");
+        }
+      } else if (antigos.length > 0) {
+        acao = "virou_falta";
+        if (!dryRun) {
+          for (const a of antigos) {
+            await admin.from("crm_appointments")
+              .update({ status: "no_show", outcome_source: "auto_reagendar_expirado", updated_at: new Date().toISOString() })
+              .eq("id", a.id).eq("status", "confirmed");
+          }
+          await moveLeadStageServer(admin, lead, (n) => n.includes("nao compar"),
+            "⏰ Fim do expediente sem novo horário — falta registrada (Não compareceu)");
+        }
+      } else {
+        // Sem consulta pendente: desfecho já registrado por outro caminho
+        // (Dontus, recepção). Move conforme o último desfecho conhecido.
+        const ultimo = (appts || []).slice()
+          .sort((a: any, b: any) => String(a.updated_at).localeCompare(String(b.updated_at)))
+          .pop();
+        if (ultimo?.status === "no_show") {
+          acao = "falta_ja_registrada";
+          if (!dryRun) await moveLeadStageServer(admin, lead, (n) => n.includes("nao compar"),
+            "⏰ Fim do expediente sem novo horário — movido para Não compareceu (falta já registrada)");
+        } else if (ultimo?.status === "rescheduled") {
+          acao = "ja_remarcado";
+          if (!dryRun) await moveLeadStageServer(admin, lead, (n) => n.startsWith("reagendado"),
+            "🔁 Remarcação registrada — movido para Reagendado");
+        } else {
+          // contracted/not_contracted/cancelled/sem agendamento: decisão manual
+          acao = "pulados";
+        }
+      }
+      resumo[acao]++;
+      if (resumo.amostra.length < 25) {
+        resumo.amostra.push({ lead: lead.name, acao, antigos: antigos.length, novos: novos.length });
+      }
+    } catch (e: any) {
+      resumo.errors.push({ lead_id: lead.id, error: e?.message ?? String(e) });
+    }
+  }
+  return resumo;
 }
 
 /** Divide um array em blocos (para .in() com muitas chaves). */
@@ -2204,15 +2374,23 @@ Deno.serve(async (req) => {
     if (!isSuper) return unauthorizedResponse(corsHeaders);
   }
 
+  let body: any = {};
+  try { body = await req.json(); } catch { body = {}; }
+
+  // Varredura de fim de expediente da etapa "Reagendar" (não consulta o Dontus).
+  if (String(body.mode || "") === "reagendar_expirado") {
+    const out = await sweepReagendarExpirado(admin, body.dry_run !== false);
+    return new Response(JSON.stringify(out, null, 2), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const teamToken = Deno.env.get("DONTUS_TEAM_TOKEN");
   if (!teamToken) {
     return new Response(JSON.stringify({
       error: "DONTUS_TEAM_TOKEN não configurado. Adicione em Project Settings → Secrets.",
     }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
-
-  let body: any = {};
-  try { body = await req.json(); } catch { body = {}; }
   const date: string = String(body.date || new Date().toISOString().slice(0, 10));
   const dryRun: boolean = body.dry_run !== false; // padrão: TRUE (dry-run) para segurança
   const clinicas: number[] = Array.isArray(body.clinicas) && body.clinicas.length

@@ -1501,6 +1501,7 @@ Deno.serve(async (req) => {
           "GET /templates?name=  (lista status dos templates na Meta)",
           "POST /templates/upload-media  { file_b64 | media_url, file_name, file_type }  → { handle }",
           "POST /sync-comparecimento  { from, to, dryRun (default true) }  → resumo por unidade",
+          "POST /sync-reagendar-expirado  { dryRun (default true) }  → fim de expediente da etapa Reagendar",
           "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
 
         ],
@@ -1576,6 +1577,24 @@ Deno.serve(async (req) => {
           to: (body as any)?.to,
           dry_run: (body as any)?.dryRun !== false && (body as any)?.dry_run !== false,
           clinicas: (body as any)?.clinicas,
+        }),
+      });
+      const txt = await res.text();
+      return new Response(txt, { status: res.status, headers: { ...cors, "Content-Type": "application/json" } });
+    }
+    if (parts[0] === "sync-reagendar-expirado" && req.method === "POST") {
+      // Fim de expediente da etapa "Reagendar": sem novo horário vira falta. Dry-run por padrão.
+      if (tenantId !== RIZODENT_TENANT_ID) return json({ error: "forbidden" }, 403);
+      const urlR = `${Deno.env.get("SUPABASE_URL")}/functions/v1/dontus-sync`;
+      const res = await fetch(urlR, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({
+          mode: "reagendar_expirado",
+          dry_run: (body as any)?.dryRun !== false && (body as any)?.dry_run !== false,
         }),
       });
       const txt = await res.text();

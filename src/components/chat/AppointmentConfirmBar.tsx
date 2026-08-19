@@ -15,7 +15,7 @@ import { executeStageAutomations } from "@/lib/automationUtils";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 import {
   cancelAppointment, rescheduleAppointment, compareceuEAgendou,
-  isBeforeScheduled, formatBahiaLabel, toastDbError,
+  iniciarReagendamento, isBeforeScheduled, formatBahiaLabel, toastDbError,
 } from "@/lib/appointmentActions";
 
 type Task = {
@@ -61,6 +61,8 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   const [editSaving, setEditSaving] = useState(false);
 
   const [isRescheduleMode, setIsRescheduleMode] = useState(false);
+  // Lead está na etapa de espera "Reagendar" (pediu remarcação, ainda sem novo horário)
+  const [isAwaitingReschedule, setIsAwaitingReschedule] = useState(false);
 
   // Novo horário (remarcação ou "compareceu e agendou")
   const [picker, setPicker] = useState<{ apptId: string; mode: PickerMode } | null>(null);
@@ -109,7 +111,9 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     if (leadData?.stage_id) {
       const { data: stageData } = await supabase.from("crm_stages").select("name").eq("id", leadData.stage_id).single();
       const sn = stageData?.name?.toLowerCase() || "";
+      const snNorm = sn.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
       setIsRescheduleMode(sn.includes("não compareceu") || sn.includes("reagend") || false);
+      setIsAwaitingReschedule(snNorm === "reagendar");
     }
   }, [leadId]);
 
@@ -154,6 +158,24 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     setPickerDate(undefined);
     setPickerTime("09:00");
     setPickerNotes("");
+  };
+
+  const [startingReschedule, setStartingReschedule] = useState(false);
+
+  /** Passo 1 do reagendar: move para a etapa de espera "Reagendar" (o novo
+   *  horário é registrado depois, quando o lead responder). Tenant sem a
+   *  etapa cai no fluxo antigo: seletor de data direto. */
+  const handleStartReschedule = async (appt: Appointment) => {
+    setStartingReschedule(true);
+    try {
+      const ok = await iniciarReagendamento(leadId);
+      if (!ok) { openPicker(appt, "reschedule"); return; }
+      await checkRescheduleMode();
+    } catch (e) {
+      toastDbError(e, "Erro ao mover para Reagendar");
+    } finally {
+      setStartingReschedule(false);
+    }
   };
 
   const handlePickerSubmit = async (appt: Appointment) => {
@@ -232,7 +254,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       if (!stages) return undefined;
       let found;
       if (isRescheduleMode) {
-        found = stages.find((s) => normalize(s.name).startsWith("reagend"));
+        found = stages.find((s) => normalize(s.name).startsWith("reagendado"));
         if (found) return found;
       }
       found = stages.find((s) => {
@@ -378,6 +400,30 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
 
   const handleManualSchedule = async () => {
     if (!manualDate) { toast.error("Selecione a data do agendamento"); return; }
+
+    // Em modo reagendamento com consulta ainda pendente, remarcar de verdade
+    // (desfecho no antigo + vínculo) — nunca deixar duas consultas 'confirmed'.
+    if (isRescheduleMode && confirmedAppointments.length > 0) {
+      const old = confirmedAppointments[0];
+      setManualSaving(true);
+      try {
+        const ok = await rescheduleAppointment({
+          leadId,
+          old: { id: old.id, scheduled_date: old.scheduled_date, scheduled_time: old.scheduled_time },
+          newDate: format(manualDate, "yyyy-MM-dd"),
+          newTime: manualTime,
+          notes: manualNotes || null,
+        });
+        if (ok) { setManualOpen(false); setManualDate(undefined); setManualTime("09:00"); setManualNotes(""); }
+        await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+      } catch (e) {
+        toastDbError(e);
+      } finally {
+        setManualSaving(false);
+      }
+      return;
+    }
+
     setManualSaving(true);
 
     const { error: apptError } = await supabase.from("crm_appointments").insert({
@@ -608,6 +654,11 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
               renderPicker(appt, picker!.mode)
             ) : step === "init" ? (
               <div className="space-y-2">
+                {isAwaitingReschedule && (
+                  <p className="text-[11px] text-blue-600">
+                    Aguardando novo horário — sem reagendamento até o fim do expediente, vira falta.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
@@ -632,10 +683,10 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                     size="sm"
                     variant="outline"
                     className="h-8 text-xs gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
-                    disabled={busy}
-                    onClick={() => openPicker(appt, "reschedule")}
+                    disabled={busy || startingReschedule}
+                    onClick={() => (isAwaitingReschedule ? openPicker(appt, "reschedule") : handleStartReschedule(appt))}
                   >
-                    <Repeat size={12} /> Reagendar
+                    <Repeat size={12} /> {isAwaitingReschedule ? "Novo horário" : "Reagendar"}
                   </Button>
                   <Button
                     size="sm"
