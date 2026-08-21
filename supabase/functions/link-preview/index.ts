@@ -50,25 +50,84 @@ function absolutize(base: string, maybe: string | null): string | null {
   }
 }
 
-// ===== Anti-SSRF =====
-function isBlockedIp(ip: string): boolean {
-  const v4mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  if (v4mapped) ip = v4mapped[1];
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-    const [a, b] = ip.split(".").map(Number);
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true; // link-local / metadata
-    if (a >= 224) return true; // multicast / reserved
-    return false;
+// Expande um IPv6 textual (qualquer grafia, incl. "::", hex e cauda IPv4) em
+// 16 bytes. Retorna null quando não é um IPv6 válido.
+function ipv6Bytes(input: string): number[] | null {
+  let s = input.toLowerCase().replace(/^\[|\]$/g, "").split("%")[0];
+  if (!s.includes(":")) return null;
+  let tail: number[] = [];
+  const v4 = s.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4) {
+    const parts = v4[1].split(".").map(Number);
+    if (parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+    tail = parts;
+    s = s.slice(0, s.length - v4[1].length).replace(/:$/, ":");
+    if (!s.endsWith(":")) return null;
+    s = s.slice(0, -1) + (s.endsWith("::") ? ":" : "");
   }
-  const low = ip.toLowerCase();
-  if (low === "::1" || low === "::" ) return true;
-  if (/^f[cd][0-9a-f]{2}:/.test(low)) return true; // fc00::/7
-  if (low.startsWith("fe80:")) return true; // link-local
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const toGroups = (chunk: string) =>
+    chunk.split(":").filter((g) => g !== "").map((g) => {
+      if (!/^[0-9a-f]{1,4}$/.test(g)) return NaN;
+      return parseInt(g, 16);
+    });
+  const head = toGroups(halves[0] || "");
+  const back = toGroups(halves[1] ?? "");
+  if ([...head, ...back].some((n) => Number.isNaN(n))) return null;
+  const bytesFrom = (groups: number[]) => groups.flatMap((g) => [(g >> 8) & 0xff, g & 0xff]);
+  const headBytes = bytesFrom(head);
+  const backBytes = bytesFrom(back);
+  const fixed = headBytes.length + backBytes.length + tail.length;
+  if (fixed > 16) return null;
+  if (halves.length === 1) {
+    if (fixed !== 16) return null;
+    return [...headBytes, ...tail];
+  }
+  return [...headBytes, ...new Array(16 - fixed).fill(0), ...backBytes, ...tail];
+}
+
+function isBlockedIpv4(ip: string): boolean {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+  const [a, b] = parts;
+  if (a === 10 || a === 127 || a === 0) return true; // privado / loopback / 0.0.0.0/8
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true; // link-local / metadata AWS/GCP
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT / metadata Alibaba
+  if (a === 192 && b === 0) return true; // 192.0.0.0/24 (e 192.0.2.0/24 test-net)
+  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmark
+  if (a >= 224) return true; // multicast / reserved
   return false;
 }
+
+// ===== Anti-SSRF =====
+function isBlockedIp(ip: string): boolean {
+  const raw = ip.trim().replace(/^\[|\]$/g, "");
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(raw)) return isBlockedIpv4(raw);
+
+  const bytes = ipv6Bytes(raw);
+  if (!bytes) return true; // formato desconhecido → bloqueia (fail-closed)
+
+  // IPv4-mapped (::ffff:0:0/96) em QUALQUER grafia — pontilhada ou hex
+  // (`::ffff:7f00:1`) — e NAT64 (64:ff9b::/96) embutem um IPv4: aplique as
+  // regras IPv4 aos 4 últimos bytes.
+  const isV4Mapped = bytes.slice(0, 10).every((b) => b === 0) && bytes[10] === 0xff && bytes[11] === 0xff;
+  const isNat64 = bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b &&
+    bytes.slice(4, 12).every((b) => b === 0);
+  if (isV4Mapped || isNat64) {
+    return isBlockedIpv4(bytes.slice(12).join("."));
+  }
+
+  if (bytes.every((b) => b === 0)) return true; // ::
+  if (bytes.slice(0, 15).every((b) => b === 0) && bytes[15] === 1) return true; // ::1
+  if ((bytes[0] & 0xfe) === 0xfc) return true; // fc00::/7 (ULA)
+  if (bytes[0] === 0xfe && (bytes[1] & 0xc0) === 0x80) return true; // fe80::/10 link-local
+  if (bytes[0] === 0xff) return true; // ff00::/8 multicast
+  return false;
+}
+
 
 async function assertPublicTarget(raw: string): Promise<URL> {
   let u: URL;

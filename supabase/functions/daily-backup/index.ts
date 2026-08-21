@@ -201,6 +201,17 @@ Deno.serve(async (req) => {
   }
   const action = String(body.action || "run");
 
+  // O dump é GLOBAL (todas as clínicas). Só `run` (cron/service/UI "Backup
+  // agora") é aberto a crc/gerente; TODAS as outras actions leem, assinam URLs
+  // ou ESCREVEM linhas de qualquer tenant → exclusivas do superadmin/service.
+  if (action !== "run" && !callerIsSuperadmin) {
+    return new Response(JSON.stringify({ error: "Forbidden: superadmin required" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+
   try {
     await supabase.storage.createBucket(BUCKET, { public: false });
   } catch (_) {

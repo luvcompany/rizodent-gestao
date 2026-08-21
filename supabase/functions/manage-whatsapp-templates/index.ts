@@ -395,7 +395,17 @@ Deno.serve(async (req) => {
       // Resolve tenant for logging
       const { data: profile } = await supabase
         .from("profiles").select("tenant_id").eq("id", user.id).maybeSingle();
-      const tenantId = (profile as any)?.tenant_id || null;
+      const tenantId = (profile as any)?.tenant_id || callerTenantId || (typeof body.tenant_id === "string" ? body.tenant_id : null);
+
+      // Sem tenant resolvido o insert cairia no COALESCE da trigger (tenant
+      // padrão Rizodent) e vazaria o template para outra clínica.
+      if (!tenantId) {
+        return new Response(
+          JSON.stringify({ error: "tenant_id é obrigatório (não foi possível resolver o tenant do usuário)" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
 
       // Log REQUEST before fetch
       await supabase.from("whatsapp_template_logs").insert({
@@ -458,6 +468,7 @@ Deno.serve(async (req) => {
       }
 
       const { error: dbError } = await supabase.from("crm_whatsapp_templates").insert({
+        tenant_id: tenantId,
         name,
         language,
         category,
