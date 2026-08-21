@@ -212,6 +212,12 @@ Deno.serve(async (req: Request) => {
   if (!account || !account.is_active || !account.page_access_token) {
     return jsonResponse({ error: "Instagram account not found, inactive, or missing access token", debug: { instagram_account_id, leadId, comment_id, recipient_id } }, 404);
   }
+  // Conta precisa ser do tenant do chamador.
+  if (!caller.isServiceRole && !caller.isSuperadmin) {
+    if (!account.tenant_id || account.tenant_id !== caller.tenantId) {
+      return jsonResponse({ error: "Instagram account not found" }, 404);
+    }
+  }
   instagram_account_id = account.instagram_account_id;
 
   // IGSIDs (sender_id) are SCOPED PER BUSINESS ACCOUNT. The same end user has a
@@ -307,7 +313,7 @@ Deno.serve(async (req: Request) => {
         }),
       });
     } else {
-      const url = `${apiBase}/${comment_id}/replies?access_token=${encodeURIComponent(token)}`;
+      const url = `${apiBase}/${comment_id}/replies`;
       metaResponse = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
