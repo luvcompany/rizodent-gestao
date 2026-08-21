@@ -208,6 +208,7 @@ Deno.serve(async (req) => {
           .from("crm_whatsapp_templates")
           .select("id")
           .eq("meta_template_id", tmpl.meta_template_id)
+          .eq("tenant_id", callerTenantId)
           .limit(1);
         const existing = existingRows && existingRows[0];
 
@@ -229,17 +230,19 @@ Deno.serve(async (req) => {
         } else {
           await supabase.from("crm_whatsapp_templates").insert({
             ...tmpl,
+            tenant_id: callerTenantId,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
         }
       }
 
-      // Remove local templates that no longer exist on Meta
+      // Remove local templates that no longer exist on Meta (só do tenant do chamador)
       if (metaTemplateIds.length > 0) {
         const { data: localTemplates } = await supabase
           .from("crm_whatsapp_templates")
           .select("id, meta_template_id")
+          .eq("tenant_id", callerTenantId)
           .not("meta_template_id", "is", null);
 
         if (localTemplates) {
@@ -247,10 +250,11 @@ Deno.serve(async (req) => {
             (lt: any) => !metaTemplateIds.includes(lt.meta_template_id)
           );
           for (const d of toDelete) {
-            await supabase.from("crm_whatsapp_templates").delete().eq("id", d.id);
+            await supabase.from("crm_whatsapp_templates").delete().eq("id", d.id).eq("tenant_id", callerTenantId);
           }
         }
       }
+
 
       return new Response(
         JSON.stringify({ success: true, count: templates.length, templates }),
