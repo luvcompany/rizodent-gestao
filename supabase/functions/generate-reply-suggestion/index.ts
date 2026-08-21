@@ -232,10 +232,41 @@ Deno.serve(async (req) => {
     // Load lead first (needed to scope config by tenant)
     const { data: lead } = await supabase
       .from("crm_leads")
-      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
+      .select("id, tenant_id, whatsapp_number_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
       .eq("id", leadId)
       .maybeSingle();
     if (!lead) return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    // Usuário logado: lead precisa ser do tenant dele (e do número dele, para
+    // recepção/closer). Cron/service seguem pelo authorizeInternal.
+    if (auth.via === "user_jwt") {
+      const ctx = await resolveCaller(req, supabase);
+      if (!ctx.ok) {
+        return new Response(JSON.stringify({ error: ctx.error }), { status: ctx.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (!ctx.isServiceRole) {
+        const leadCheck = await assertLeadInTenant(supabase, leadId, ctx);
+        if (!leadCheck.ok) {
+          return new Response(JSON.stringify({ error: leadCheck.error }), { status: leadCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const numCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, ctx);
+        if (!numCheck.ok) {
+          return new Response(JSON.stringify({ error: numCheck.error }), { status: numCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (triggerMsgId) {
+          const msgCheck = await assertMessageInTenant(supabase, triggerMsgId, ctx);
+          if (!msgCheck.ok) {
+            return new Response(JSON.stringify({ error: msgCheck.error }), { status: msgCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+          const { data: msgRow } = await supabase
+            .from("messages").select("lead_id").eq("id", triggerMsgId).maybeSingle();
+          if ((msgRow as any)?.lead_id !== leadId) {
+            return new Response(JSON.stringify({ error: "trigger_message_id não pertence ao lead" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+        }
+      }
+    }
+
 
     // Load active config SCOPED TO THE LEAD'S TENANT (never fall back to another tenant's config)
     if (!lead.tenant_id) return new Response(JSON.stringify({ skipped: "no_config" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
