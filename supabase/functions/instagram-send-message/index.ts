@@ -316,9 +316,13 @@ Deno.serve(async (req: Request) => {
       const url = `${apiBase}/${comment_id}/replies`;
       metaResponse = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ message }),
       });
+
     }
     metaJson = await metaResponse.json().catch(() => ({}));
   } catch (err) {
