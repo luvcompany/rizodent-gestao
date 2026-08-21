@@ -42,7 +42,7 @@ export function OwnerRoleBadge({ ownerRole }: { ownerRole: OwnerRole }) {
   );
 }
 
-const SHAREABLE_ROLES: Array<Exclude<OwnerRole, null | "superadmin">> = ["crc", "posvenda", "gerente", "recepcao"];
+const SHAREABLE_ROLES: Array<Exclude<OwnerRole, null | "superadmin">> = ["crc", "posvenda", "gerente", "recepcao", "closer"];
 
 export default function ShareRoleDialog({ open, onOpenChange, table, rowId, currentOwnerRole, currentSharedRoles, itemLabel = "item", onSaved }: Props) {
   const initialSelected = (): Set<string> => {
