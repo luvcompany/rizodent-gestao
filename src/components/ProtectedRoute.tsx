@@ -15,9 +15,22 @@ const RECEPCAO_PREFIXES = [
   "/crm/respostas-rapidas",
   "/crm/bots",
   "/crm/conexoes",
+  "/crm/automacoes",
 ];
 /** O Kanban é rota exata "/crm" — prefixo liberaria o CRM inteiro. */
 const RECEPCAO_ROTAS_EXATAS = ["/crm"];
+
+// Closer: espelho da recepção, mas sem Instagram e sem tela de Conexões.
+const CLOSER_PREFIXES = [
+  "/crm/conversas",
+  "/crm/conversa",
+  "/crm/campanhas",
+  "/crm/modelos",
+  "/crm/respostas-rapidas",
+  "/crm/bots",
+  "/crm/automacoes",
+];
+const CLOSER_ROTAS_EXATAS = ["/crm"];
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading, profile, signOut, user, userRole, roleResolved } = useAuth();
@@ -95,6 +108,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       return <Navigate to="/crm/recepcao" replace />;
     }
   }
+
+  // Closer: mesmo escopo da recepção, home no Funil ("/crm")
+  if (userRole === "closer") {
+    const path = location.pathname;
+    const allowed =
+      path === "/change-password" ||
+      CLOSER_ROTAS_EXATAS.includes(path) ||
+      CLOSER_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
+    if (!allowed) return <Navigate to="/crm" replace />;
+  }
+
 
   return <>{children}</>;
 };

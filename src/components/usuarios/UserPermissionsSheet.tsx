@@ -10,7 +10,7 @@ import { Loader2, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-type Role = "gerente" | "crc" | "posvenda" | "recepcao" | "superadmin";
+type Role = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "superadmin";
 
 type Pipeline = {
   id: string;
@@ -138,15 +138,15 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
   const defaultForPipeline = (p: Pipeline) => {
     if (!userRole) return false;
     if (isSuper || userRole === "gerente") return true;
-    // recepcao é deny-by-default (espelha can_access_pipeline: NULL não libera)
-    if (userRole === "recepcao") return p.allowed_roles?.includes("recepcao") ?? false;
+    // recepcao/closer são deny-by-default (espelha can_access_pipeline: NULL não libera)
+    if (userRole === "recepcao" || userRole === "closer") return p.allowed_roles?.includes(userRole) ?? false;
     return !p.allowed_roles || p.allowed_roles.includes(userRole);
   };
 
   // WA numbers / IG accounts: default "liberado para todos do tenant" — EXCETO
-  // recepcao, que espelha o deny-by-default de can_access_whatsapp_number /
+  // recepcao/closer, que espelham o deny-by-default de can_access_whatsapp_number /
   // can_access_instagram_account (só vê com override granted=true).
-  const defaultForChannel = () => userRole !== "recepcao";
+  const defaultForChannel = () => userRole !== "recepcao" && userRole !== "closer";
 
   const defaultForRole = (allowed: Role[]) => userRole ? allowed.includes(userRole) : false;
 

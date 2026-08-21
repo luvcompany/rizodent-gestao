@@ -5,7 +5,7 @@ import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
   Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
-  Activity, Phone,
+  Activity, Phone, Zap,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
@@ -38,6 +38,25 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
 }
 
 const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
+  // Closer: espelho da recepção sem Início e sem Conexões (não tem Instagram).
+  // O guard correspondente fica em ProtectedRoute (CLOSER_PREFIXES).
+  if (role === "closer") {
+    return [
+      { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
+      { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
+      {
+        label: "Ferramentas",
+        icon: Bot,
+        children: [
+          { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
+          { to: "/crm/modelos", icon: FileText, label: "Modelos" },
+          { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
+          { to: "/crm/bots", icon: Bot, label: "Bots" },
+          { to: "/crm/automacoes", icon: Zap, label: "Automatize" },
+        ],
+      },
+    ];
+  }
   // Recepção: menu enxuto — sem Kanban/Dashboard/Relatórios/Integrações/Config.
   // O guard correspondente fica em ProtectedRoute (RECEPCAO_PREFIXES).
   if (role === "recepcao") {
@@ -56,6 +75,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
           { to: "/crm/bots", icon: Bot, label: "Bots" },
+          { to: "/crm/automacoes", icon: Zap, label: "Automatize" },
         ],
       },
       { to: "/crm/conexoes", icon: Link2, label: "Conexões" },
@@ -288,7 +308,7 @@ const CrmLayout = () => {
             <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
             <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
           </div>
-          {userRole !== "posvenda" && userRole !== "recepcao" && (
+          {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && (
             <button
               onClick={() => navigate("/dashboard")}
               className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
