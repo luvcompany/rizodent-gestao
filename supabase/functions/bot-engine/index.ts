@@ -1,6 +1,8 @@
 // bot-engine v2 - skipMarkAsRead scope fix
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
