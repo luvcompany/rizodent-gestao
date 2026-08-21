@@ -20,7 +20,8 @@ const RECEPCAO_PREFIXES = [
 /** O Kanban é rota exata "/crm" — prefixo liberaria o CRM inteiro. */
 const RECEPCAO_ROTAS_EXATAS = ["/crm"];
 
-// Closer: espelho da recepção, mas sem Instagram e sem tela de Conexões.
+// Closer: espelho da recepção, mas sem Instagram. Tem Conexões porque conecta
+// o próprio número de WhatsApp.
 const CLOSER_PREFIXES = [
   "/crm/conversas",
   "/crm/conversa",
@@ -29,6 +30,7 @@ const CLOSER_PREFIXES = [
   "/crm/respostas-rapidas",
   "/crm/bots",
   "/crm/automacoes",
+  "/crm/conexoes",
 ];
 const CLOSER_ROTAS_EXATAS = ["/crm"];
 
