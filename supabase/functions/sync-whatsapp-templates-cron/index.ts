@@ -10,6 +10,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,21 +27,9 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  // Autenticação por x-cron-secret (valor em _internal_secrets.sync_templates_cron_token)
-  const provided = req.headers.get("x-cron-secret") || "";
-  const { data: secretRow } = await supabase
-    .from("_internal_secrets")
-    .select("value")
-    .eq("name", "sync_templates_cron_token")
-    .maybeSingle();
-  const expected = (secretRow as any)?.value || "";
-  if (!expected || provided !== expected) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
+  // Autenticação: cron secret / service role (comparação segura no helper).
+  const auth = await authorizeInternal(req, supabase, { cronSecretName: "sync_templates_cron_token" });
+  if (!auth.ok) return unauthorizedResponse(corsHeaders);
 
   // Busca todas as integrações WhatsApp conectadas (todos os tenants)
   const { data: integrations, error: intgErr } = await supabase
@@ -119,6 +108,7 @@ Deno.serve(async (req) => {
           .from("crm_whatsapp_templates")
           .select("id")
           .eq("meta_template_id", t.id)
+          .eq("tenant_id", intg.tenant_id)
           .limit(1);
         const existing = existingRows && existingRows[0];
 
@@ -148,6 +138,7 @@ Deno.serve(async (req) => {
         } else {
           await supabase.from("crm_whatsapp_templates").insert({
             ...payload,
+            tenant_id: intg.tenant_id,
             created_at: new Date().toISOString(),
           });
         }
@@ -160,11 +151,16 @@ Deno.serve(async (req) => {
       if (metaIds.length > 0) {
         const { data: localWithMeta } = await supabase
           .from("crm_whatsapp_templates")
-          .select("id, meta_template_id");
+          .select("id, meta_template_id")
+          .eq("tenant_id", intg.tenant_id);
 
         for (const local of (localWithMeta || [])) {
           if (local.meta_template_id && !metaIds.includes(local.meta_template_id)) {
-            await supabase.from("crm_whatsapp_templates").delete().eq("id", local.id);
+            await supabase
+              .from("crm_whatsapp_templates")
+              .delete()
+              .eq("id", local.id)
+              .eq("tenant_id", intg.tenant_id);
           }
         }
       }

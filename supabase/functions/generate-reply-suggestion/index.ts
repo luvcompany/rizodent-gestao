@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal } from "../_shared/internalAuth.ts";
+import { resolveCaller, assertLeadInTenant, assertMessageInTenant, assertNumberAccess } from "../_shared/authz.ts";
 import { localParts, resolveTz } from "../_shared/tz.ts";
 
 const corsHeaders = {
@@ -232,10 +233,41 @@ Deno.serve(async (req) => {
     // Load lead first (needed to scope config by tenant)
     const { data: lead } = await supabase
       .from("crm_leads")
-      .select("id, tenant_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
+      .select("id, tenant_id, whatsapp_number_id, name, phone, source, tags, cidade, servico_interesse, value, notes, stage_id, titulo_anuncio, descricao_anuncio, nome_anuncio, instagram_user_id")
       .eq("id", leadId)
       .maybeSingle();
     if (!lead) return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    // Usuário logado: lead precisa ser do tenant dele (e do número dele, para
+    // recepção/closer). Cron/service seguem pelo authorizeInternal.
+    if (auth.via === "user_jwt") {
+      const ctx = await resolveCaller(req, supabase);
+      if (!ctx.ok) {
+        return new Response(JSON.stringify({ error: ctx.error }), { status: ctx.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (!ctx.isServiceRole) {
+        const leadCheck = await assertLeadInTenant(supabase, leadId, ctx);
+        if (!leadCheck.ok) {
+          return new Response(JSON.stringify({ error: leadCheck.error }), { status: leadCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const numCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, ctx);
+        if (!numCheck.ok) {
+          return new Response(JSON.stringify({ error: numCheck.error }), { status: numCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (triggerMsgId) {
+          const msgCheck = await assertMessageInTenant(supabase, triggerMsgId, ctx);
+          if (!msgCheck.ok) {
+            return new Response(JSON.stringify({ error: msgCheck.error }), { status: msgCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+          const { data: msgRow } = await supabase
+            .from("messages").select("lead_id").eq("id", triggerMsgId).maybeSingle();
+          if ((msgRow as any)?.lead_id !== leadId) {
+            return new Response(JSON.stringify({ error: "trigger_message_id não pertence ao lead" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+        }
+      }
+    }
+
 
     // Load active config SCOPED TO THE LEAD'S TENANT (never fall back to another tenant's config)
     if (!lead.tenant_id) return new Response(JSON.stringify({ skipped: "no_config" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -813,7 +845,8 @@ Responda SOMENTE com JSON válido (uma linha):
     }
 
     if (!parsed || !parsed.reply.trim()) {
-      return new Response(JSON.stringify({ error: "empty_response", model: usedModel, raw: aiText }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.error("[generate-reply-suggestion] empty_response raw:", aiText);
+      return new Response(JSON.stringify({ error: "empty_response", model: usedModel }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
 

@@ -158,6 +158,11 @@ Deno.serve(async (req) => {
         return json({ error: `Preencha: ${faltando.join(", ")}` }, 400);
       }
 
+      // 1b) IDs precisam ser numéricos (vão para a URL da Graph API).
+      if (!/^\d{5,20}$/.test(String(phone_number_id)) || !/^\d{5,20}$/.test(String(waba_id))) {
+        return json({ error: "Phone Number ID e WABA ID devem conter apenas números" }, 400);
+      }
+
       // 2) Valida o token no SERVIDOR contra a Graph API.
       const metaRes = await fetch(
         `https://graph.facebook.com/${API_VERSION}/${phone_number_id}?fields=display_phone_number,verified_name`,
@@ -180,9 +185,21 @@ Deno.serve(async (req) => {
       // 3) Número já em uso por OUTRA clínica?
       const { data: outras } = await admin
         .from("integrations")
-        .select("id, tenant_id, config")
-        .neq("tenant_id", tenantId);
-      if ((outras ?? []).some((i: any) => (i.config as any)?.phone_number_id === phone_number_id)) {
+        .select("id")
+        .eq("config->>phone_number_id", phone_number_id)
+        .neq("tenant_id", tenantId)
+        .limit(1);
+      if ((outras ?? []).length > 0) {
+        return json({ error: "Número já conectado em outra conta" }, 409);
+      }
+
+      // 3b) Número já cadastrado em whatsapp_numbers de outro tenant?
+      const { data: numeroExistente } = await admin
+        .from("whatsapp_numbers")
+        .select("id, tenant_id")
+        .eq("phone_number_id", phone_number_id)
+        .maybeSingle();
+      if (numeroExistente && numeroExistente.tenant_id !== tenantId) {
         return json({ error: "Número já conectado em outra conta" }, 409);
       }
 
@@ -234,25 +251,37 @@ Deno.serve(async (req) => {
         integrationId = nova.id;
       }
 
-      // 5) Upsert do número por phone_number_id.
-      const { data: numero, error: erroNumero } = await admin
-        .from("whatsapp_numbers")
-        .upsert(
-          {
-            tenant_id: tenantId,
-            phone_number_id,
-            display_name: display_name ?? meta.verified_name ?? null,
-            phone_e164: toE164BR(meta.display_phone_number),
-            waba_id,
-            app_id: app_id ?? null,
-            is_active: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "phone_number_id" },
-        )
-        .select("id")
-        .single();
-      if (erroNumero) return json({ error: erroNumero.message }, 500);
+      // 5) Upsert do número por phone_number_id — NUNCA sobrescreve tenant_id.
+      const dadosNumero = {
+        display_name: display_name ?? meta.verified_name ?? null,
+        phone_e164: toE164BR(meta.display_phone_number),
+        waba_id,
+        app_id: app_id ?? null,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      };
+      let numero: { id: string } | null = null;
+      let erroNumero: any = null;
+      if (numeroExistente) {
+        const r = await admin
+          .from("whatsapp_numbers")
+          .update(dadosNumero)
+          .eq("id", numeroExistente.id)
+          .eq("tenant_id", tenantId)
+          .select("id")
+          .single();
+        numero = r.data as any;
+        erroNumero = r.error;
+      } else {
+        const r = await admin
+          .from("whatsapp_numbers")
+          .insert({ tenant_id: tenantId, phone_number_id, ...dadosNumero })
+          .select("id")
+          .single();
+        numero = r.data as any;
+        erroNumero = r.error;
+      }
+      if (erroNumero || !numero) return json({ error: erroNumero?.message ?? "Falha ao salvar o número" }, 500);
 
       // 6) Override de visibilidade para o PRÓPRIO usuário.
       const { error: erroOverride } = await admin.from("user_permission_overrides").upsert(

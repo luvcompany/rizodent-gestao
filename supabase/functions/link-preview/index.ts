@@ -1,6 +1,9 @@
 // Edge function: link-preview
 // Faz fetch da URL e extrai Open Graph / meta tags para exibir um card de preview.
-// Requer JWT (usuário autenticado).
+// Requer JWT (usuário autenticado). Protegido contra SSRF.
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { resolveCaller } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,23 +50,86 @@ function absolutize(base: string, maybe: string | null): string | null {
   }
 }
 
+// ===== Anti-SSRF =====
+function isBlockedIp(ip: string): boolean {
+  const v4mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (v4mapped) ip = v4mapped[1];
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+    const [a, b] = ip.split(".").map(Number);
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true; // link-local / metadata
+    if (a >= 224) return true; // multicast / reserved
+    return false;
+  }
+  const low = ip.toLowerCase();
+  if (low === "::1" || low === "::" ) return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(low)) return true; // fc00::/7
+  if (low.startsWith("fe80:")) return true; // link-local
+  return false;
+}
+
+async function assertPublicTarget(raw: string): Promise<URL> {
+  let u: URL;
+  try { u = new URL(raw); } catch { throw new Error("invalid_url"); }
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("blocked_scheme");
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) {
+    throw new Error("blocked_host");
+  }
+  if (/^[\d.]+$/.test(host) || host.includes(":")) {
+    if (isBlockedIp(host)) throw new Error("blocked_host");
+    return u;
+  }
+  const records: string[] = [];
+  for (const type of ["A", "AAAA"] as const) {
+    try {
+      const r = await (Deno as any).resolveDns(host, type);
+      if (Array.isArray(r)) records.push(...r);
+    } catch { /* noop */ }
+  }
+  if (records.length === 0) throw new Error("dns_failed");
+  if (records.some((ip) => isBlockedIp(ip))) throw new Error("blocked_host");
+  return u;
+}
+
+async function safeFetch(rawUrl: string): Promise<Response> {
+  let target = await assertPublicTarget(rawUrl);
+  for (let hop = 0; hop <= 3; hop++) {
+    const res = await fetch(target.toString(), {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; RizoDentBot/1.0; +https://rizodent-gestao.lovable.app)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      try { await res.body?.cancel(); } catch { /* noop */ }
+      if (!loc || hop === 3) throw new Error("too_many_redirects");
+      target = await assertPublicTarget(new URL(loc, target).toString());
+      continue;
+    }
+    return res;
+  }
+  throw new Error("too_many_redirects");
+}
+
 async function fetchPreview(url: string): Promise<Preview> {
-  const res = await fetch(url, {
-    method: "GET",
-    redirect: "follow",
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (compatible; RizoDentBot/1.0; +https://rizodent-gestao.lovable.app)",
-      Accept: "text/html,application/xhtml+xml",
-    },
-  });
+  const res = await safeFetch(url);
 
   const finalUrl = res.url || url;
   const host = new URL(finalUrl).host;
 
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("text/html") && !contentType.includes("xhtml")) {
-    // Ex.: link direto para imagem/PDF
+    // Ex.: link direto para imagem/PDF — não lemos o corpo.
+    try { await res.body?.cancel(); } catch { /* noop */ }
+
     return {
       url: finalUrl,
       title: null,
@@ -144,6 +210,19 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    // Requer usuário autenticado (JWT válido).
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const caller = await resolveCaller(req, supabase);
+    if (!caller.ok) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: caller.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const preview = await fetchPreview(url);
     return new Response(JSON.stringify(preview), {
       status: 200,
@@ -156,7 +235,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("[link-preview] error:", e);
     return new Response(
-      JSON.stringify({ error: "fetch_failed", detail: String(e) }),
+      JSON.stringify({ error: "fetch_failed" }),
       {
         status: 200, // 200 para não estourar toast no cliente
         headers: { ...corsHeaders, "Content-Type": "application/json" },

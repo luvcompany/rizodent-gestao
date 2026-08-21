@@ -1,6 +1,8 @@
 // bot-engine v2 - skipMarkAsRead scope fix
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -313,13 +315,61 @@ Deno.serve(async (req) => {
 
     // authHeader used for downstream service calls (send-whatsapp-message, etc.)
     const authHeader = req.headers.get("Authorization") || `Bearer ${serviceKey}`;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const isUserCall = auth.via === "user_jwt";
+    // Chamada iniciada por usuário logado NÃO deve virar service_role nas
+    // functions downstream — usa a anon key e repassa o JWT original.
+    const downstreamApiKey = isUserCall ? anonKey : serviceKey;
 
     const body = await req.json();
-    const { leadId, botId, trigger, executionId, replyText, replyOptionId } = body;
+    const { botId, trigger, executionId, replyText, replyOptionId } = body;
+    let leadId: string = body.leadId;
 
     if (!leadId || !trigger) {
       return json({ error: "Missing leadId or trigger" }, 400);
     }
+
+    // ===== Isolamento de tenant para chamadas de usuário logado =====
+    if (isUserCall) {
+      const ctx = await resolveCaller(req, supabase);
+      if (!ctx.ok) return json({ error: ctx.error }, ctx.status);
+
+      if (!ctx.isServiceRole) {
+        // Para continue/timeout o lead vem da EXECUÇÃO (ignora o do corpo).
+        if (executionId && (trigger === "continue" || trigger === "timeout")) {
+          const { data: execRow } = await supabase
+            .from("bot_executions")
+            .select("lead_id, bots(tenant_id)")
+            .eq("id", executionId)
+            .maybeSingle();
+          if (!execRow) return json({ error: "Execução não encontrada" }, 404);
+          const execTenant = (execRow as any).bots?.tenant_id ?? null;
+          if (!ctx.isSuperadmin && execTenant !== ctx.tenantId) {
+            return json({ error: "Recurso de outro tenant" }, 403);
+          }
+          leadId = (execRow as any).lead_id;
+        }
+
+        const leadCheck = await assertLeadInTenant(supabase, leadId, ctx);
+        if (!leadCheck.ok) return json({ error: leadCheck.error }, leadCheck.status);
+
+        if (botId) {
+          const { data: botRow } = await supabase
+            .from("bots").select("tenant_id").eq("id", botId).maybeSingle();
+          if (!botRow) return json({ error: "Bot não encontrado" }, 404);
+          if (!ctx.isSuperadmin && (botRow as any).tenant_id !== ctx.tenantId) {
+            return json({ error: "Bot de outro tenant" }, 403);
+          }
+        }
+
+        // Papéis recepção/closer só agem nos leads do número deles.
+        const { data: leadNum } = await supabase
+          .from("crm_leads").select("whatsapp_number_id").eq("id", leadId).maybeSingle();
+        const numCheck = await assertNumberAccess(req, (leadNum as any)?.whatsapp_number_id ?? null, ctx);
+        if (!numCheck.ok) return json({ error: numCheck.error }, numCheck.status);
+      }
+    }
+
 
     // ===== MANUAL START or AUTOMATION =====
     if (trigger === "manual_start" || trigger === "automation" || trigger === "automation_bulk") {
@@ -384,12 +434,22 @@ Deno.serve(async (req) => {
       // Get published bot version
       const { data: bot } = await supabase
         .from("bots")
-        .select("id, flow_json, current_version")
+        .select("id, flow_json, current_version, tenant_id")
         .eq("id", botId)
         .eq("status", "published")
         .single();
 
       if (!bot) return json({ error: "Bot not published" }, 404);
+
+      // bot e lead precisam ser do MESMO tenant (vale também para service_role).
+      {
+        const { data: leadT } = await supabase.from("crm_leads").select("tenant_id").eq("id", leadId).maybeSingle();
+        if (!leadT) return json({ error: "Lead não encontrado" }, 404);
+        if ((bot as any).tenant_id && leadT.tenant_id && (bot as any).tenant_id !== leadT.tenant_id) {
+          return json({ error: "bot e lead de tenants diferentes" }, 400);
+        }
+      }
+
 
       // Get version
       let flowJson = bot.flow_json as any;
@@ -429,7 +489,7 @@ Deno.serve(async (req) => {
       if (execError) return json({ error: execError.message }, 500);
 
       // Execute from start node
-      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, startNode.id, leadId, {});
+      const result = await executeFlow(supabase, supabaseUrl, downstreamApiKey, authHeader, execution.id, flowJson, startNode.id, leadId, {});
       return json({ success: true, executionId: execution.id, ...result });
     }
 
@@ -439,12 +499,21 @@ Deno.serve(async (req) => {
 
       const { data: execution } = await supabase
         .from("bot_executions")
-        .select("*, bots(flow_json, current_version)")
+        .select("*, bots(flow_json, current_version, tenant_id)")
         .eq("id", executionId)
         .eq("status", "waiting_reply")
         .single();
 
       if (!execution) return json({ skipped: true, reason: "no_waiting_execution" });
+
+      // bot e lead precisam ser do MESMO tenant (vale também para service_role).
+      {
+        const { data: leadT } = await supabase.from("crm_leads").select("tenant_id").eq("id", execution.lead_id).maybeSingle();
+        const botTenant = (execution as any).bots?.tenant_id ?? null;
+        if (botTenant && leadT?.tenant_id && botTenant !== leadT.tenant_id) {
+          return json({ error: "bot e lead de tenants diferentes" }, 400);
+        }
+      }
 
       // Get the flow
       let flowJson = (execution as any).bots?.flow_json;
@@ -490,7 +559,7 @@ Deno.serve(async (req) => {
       }).eq("id", executionId);
 
       const result = await executeFlow(
-        supabase, supabaseUrl, serviceKey, authHeader,
+        supabase, supabaseUrl, downstreamApiKey, authHeader,
         executionId, flowJson, timeoutEdge.target, execution.lead_id,
         (execution.variables as any) || {}
       );
@@ -505,7 +574,7 @@ Deno.serve(async (req) => {
       // Find active execution waiting for reply
       let query = supabase
         .from("bot_executions")
-        .select("*, bots(flow_json, current_version, mark_as_read)")
+        .select("*, bots(flow_json, current_version, mark_as_read, tenant_id)")
         .eq("status", "waiting_reply");
 
       if (executionId) {
@@ -516,6 +585,16 @@ Deno.serve(async (req) => {
 
       const { data: execution } = await query.order("started_at", { ascending: false }).limit(1).single();
       if (!execution) return json({ skipped: true, reason: "no_waiting_execution" });
+
+      // bot e lead precisam ser do MESMO tenant (vale também para service_role).
+      {
+        const { data: leadT } = await supabase.from("crm_leads").select("tenant_id").eq("id", execution.lead_id).maybeSingle();
+        const botTenant = (execution as any).bots?.tenant_id ?? null;
+        if (botTenant && leadT?.tenant_id && botTenant !== leadT.tenant_id) {
+          return json({ error: "bot e lead de tenants diferentes" }, 400);
+        }
+      }
+
 
       // Get the flow
       let flowJson = (execution as any).bots?.flow_json;
@@ -605,7 +684,7 @@ Deno.serve(async (req) => {
           console.log(`[bot-engine] No edge for reply "${replyText}" at node ${execution.current_node_id}, re-sending menu`);
           if (lead?.phone) {
             const skipMark = (execution as any).bots?.mark_as_read === false;
-            await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+            await sendViaWhatsApp(supabaseUrl, downstreamApiKey, authHeader, {
               lead_id: leadId,
               to: lead.phone,
               type: "text",
@@ -672,7 +751,7 @@ Deno.serve(async (req) => {
         return json({ completed: true, reason: "flow_completed_after_reply" });
       }
 
-      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, nextTargetNodeId, leadId, nextVariables);
+      const result = await executeFlow(supabase, supabaseUrl, downstreamApiKey, authHeader, execution.id, flowJson, nextTargetNodeId, leadId, nextVariables);
       return json({ success: true, ...result });
     }
 
@@ -1390,9 +1469,11 @@ async function executeNode(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceKey}`,
+            // Repassa a credencial ORIGINAL (não promove para service_role).
+            Authorization: authHeader,
             apikey: serviceKey,
           },
+
           body: JSON.stringify({
             leadId: lead.id,
             botId: data.botId,
