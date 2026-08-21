@@ -1060,15 +1060,19 @@ async function sendAction(
     switch (actionType) {
       case "send_template":
         if (config.template_id && phone) {
-          let tplQuery = supabase
-            .from("crm_whatsapp_templates")
-            .select("name, language")
-            .eq("id", config.template_id);
-          if (leadTenant) tplQuery = tplQuery.eq("tenant_id", leadTenant);
-          const { data: tpl } = await tplQuery.maybeSingle();
-          if (!tpl) {
-            console.warn(`[AUTOMATION-ENGINE] template ${config.template_id} fora do tenant do lead ${leadId} — ação pulada`);
-          }
+          // Fail-closed: sem tenant no lead, não resolve template nenhum.
+          const tplOk = leadTenant
+            ? await belongsToLeadTenant("crm_whatsapp_templates", config.template_id)
+            : (console.warn(`[AUTOMATION-ENGINE] lead ${leadId} sem tenant — send_template pulado`), false);
+          const { data: tpl } = tplOk
+            ? await supabase
+              .from("crm_whatsapp_templates")
+              .select("name, language")
+              .eq("id", config.template_id)
+              .eq("tenant_id", leadTenant)
+              .maybeSingle()
+            : { data: null };
+
           if (tpl) {
             const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
               method: "POST",
