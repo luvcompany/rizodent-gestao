@@ -278,7 +278,7 @@ Deno.serve(async (req: Request) => {
           app_id: META_APP_ID,
           api_version: API_VERSION,
           display_name,
-          webhook_verify_token: WHATSAPP_VERIFY_TOKEN,
+          ...(tenantVerifyToken ? { webhook_verify_token: tenantVerifyToken } : {}),
           source: "embedded_signup",
         };
 
@@ -325,7 +325,7 @@ Deno.serve(async (req: Request) => {
               waba_id,
               token: access_token,
               app_id: META_APP_ID,
-              verify_token: WHATSAPP_VERIFY_TOKEN,
+              ...(tenantVerifyToken ? { verify_token: tenantVerifyToken } : {}),
               is_active: true,
               is_coexistence: true,
             };
