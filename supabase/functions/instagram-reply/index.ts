@@ -106,7 +106,24 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // O evento (instagram_messages.event_id) também precisa ser do cliente do chamador.
+  if (!caller.isServiceRole && !caller.isSuperadmin) {
+    const { data: evt } = await supabase
+      .from('instagram_messages').select('tenant_id').eq('id', event_id).maybeSingle()
+    if (!evt) {
+      return new Response(JSON.stringify({ error: 'Evento não encontrado' }), {
+        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (evt.tenant_id !== caller.tenantId) {
+      return new Response(JSON.stringify({ error: 'Recurso de outro cliente' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+  }
+
   const account = await lookupAccountToken(supabase, ig_account_id)
+
   if (!account) {
     return new Response(JSON.stringify({ error: 'Conta Instagram não encontrada' }), {
       status: 404,

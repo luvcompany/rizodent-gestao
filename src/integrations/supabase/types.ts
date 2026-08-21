@@ -4129,6 +4129,7 @@ export type Database = {
           deleted_at: string | null
           favicon_url: string | null
           id: string
+          lead_webhook_secret: string | null
           logo_dark_url: string | null
           logo_url: string | null
           meta_app_version: string
@@ -4149,6 +4150,7 @@ export type Database = {
           deleted_at?: string | null
           favicon_url?: string | null
           id?: string
+          lead_webhook_secret?: string | null
           logo_dark_url?: string | null
           logo_url?: string | null
           meta_app_version?: string
@@ -4169,6 +4171,7 @@ export type Database = {
           deleted_at?: string | null
           favicon_url?: string | null
           id?: string
+          lead_webhook_secret?: string | null
           logo_dark_url?: string | null
           logo_url?: string | null
           meta_app_version?: string

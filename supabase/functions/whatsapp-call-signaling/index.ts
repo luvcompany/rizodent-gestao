@@ -110,6 +110,20 @@ Deno.serve(async (req) => {
     }
     tenantId = profile.tenant_id;
 
+    // lead_id vinha do corpo sem validação: confirma que o lead é do mesmo cliente.
+    if ((action === "connect" || action === "request_permission") && body.lead_id) {
+      const { data: leadRow } = await supabase
+        .from("crm_leads").select("tenant_id").eq("id", body.lead_id).maybeSingle();
+      if (!leadRow || leadRow.tenant_id !== tenantId) {
+        return new Response(JSON.stringify({ error: "lead de outro cliente" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+
+
     if (action === "connect" || action === "request_permission") {
       const toPhone = (body.to_phone || "").replace(/\D/g, "");
       if (!toPhone) {
@@ -305,7 +319,7 @@ Deno.serve(async (req) => {
           last_message: "📞 Solicitação de permissão de ligação",
           last_message_at: new Date().toISOString(),
           last_outbound_at: new Date().toISOString(),
-        }).eq("id", body.lead_id);
+        }).eq("id", body.lead_id).eq("tenant_id", tenantId);
       }
 
       console.log(`[wa-call-signaling] permission request sent to ${toPhone} by user=${userId}`);
@@ -434,7 +448,7 @@ Deno.serve(async (req) => {
           last_message: "📞 Chamada de voz",
           last_message_at: new Date().toISOString(),
           last_outbound_at: new Date().toISOString(),
-        }).eq("id", body.lead_id);
+        }).eq("id", body.lead_id).eq("tenant_id", tenantId);
       }
 
       console.log(`[wa-call-signaling] connect OK wa_call_id=${returnedWaCallId} by user=${userId}`);

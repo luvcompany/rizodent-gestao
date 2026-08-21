@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCaller } from "../_shared/authz.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,47 +14,45 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Validate authenticated user
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!);
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(authHeader.replace("Bearer ", ""));
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Identifica o chamador e o tenant dele (template/integração eram lidos só por nome).
+    const ctx = await resolveCaller(req, supabaseAdmin);
+    if (!ctx.ok) {
+      return new Response(JSON.stringify({ error: ctx.error }), {
+        status: ctx.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // Verify admin role server-side
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: roleRow } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .in("role", ["crc", "gerente"])
-      .maybeSingle();
-    if (!roleRow) {
-      return new Response(JSON.stringify({ error: "Forbidden: admin or manager role required" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!ctx.isServiceRole && !ctx.isSuperadmin) {
+      const { data: roleRow } = await supabaseAdmin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", ctx.userId)
+        .in("role", ["crc", "gerente"])
+        .maybeSingle();
+      if (!roleRow) {
+        return new Response(JSON.stringify({ error: "Forbidden: admin or manager role required" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN");
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = supabaseAdmin;
+    const callerTenantId = ctx.tenantId;
 
-    // Get WABA_ID from integrations table
-    const { data: integration } = await supabase
+    // Get WABA_ID from integrations table (escopado ao tenant do chamador)
+    let integQuery = supabase
       .from("integrations")
       .select("config")
-      .eq("key", "whatsapp_config")
-      .maybeSingle();
+      .eq("key", "whatsapp_config");
+    if (callerTenantId) integQuery = integQuery.eq("tenant_id", callerTenantId);
+    const { data: integration } = await integQuery.maybeSingle();
 
     const config = integration?.config as Record<string, string> | null;
     const WABA_ID = config?.waba_id || Deno.env.get("WABA_ID");
@@ -72,11 +72,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { data: template, error: fetchErr } = await supabase
+    let tplQuery = supabase
       .from("crm_whatsapp_templates")
       .select("*")
-      .eq("name", template_name)
-      .single();
+      .eq("name", template_name);
+    if (callerTenantId) tplQuery = tplQuery.eq("tenant_id", callerTenantId);
+    const { data: template, error: fetchErr } = await tplQuery.maybeSingle();
+
 
     if (fetchErr || !template) {
       return new Response(
