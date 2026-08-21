@@ -98,7 +98,14 @@ export default function MinhasConexoes() {
       .from("crm_pipelines")
       .select("id, name")
       .order("created_at")
-      .then(({ data }) => setPipelines((data ?? []) as Pipeline[]));
+      .then(({ data }) => {
+        const lista = (data ?? []) as Pipeline[];
+        setPipelines(lista);
+        // Com um único funil visível não há escolha a fazer: já vem selecionado.
+        if (lista.length === 1) {
+          setForm((f) => (f.pipeline_id ? f : { ...f, pipeline_id: lista[0].id }));
+        }
+      });
   }, [carregar]);
 
   const copiar = (texto: string) => {
