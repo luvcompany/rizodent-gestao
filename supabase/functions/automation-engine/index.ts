@@ -374,7 +374,12 @@ Deno.serve(async (req) => {
           .eq("automation_id", auto.id);
         const leadIds = (execs || []).map((e: any) => e.lead_id);
 
-        if (leadIds.length) {
+        // O bot vindo de action_config precisa ser do MESMO tenant da automação,
+        // senão o cancelamento tocaria execuções de bot de outra clínica.
+        const autoTenant: string | null = (auto as any).tenant_id ?? null;
+        const botOk = await idNoTenant(supabase, "bots", botId, autoTenant, `time_window auto ${auto.id}`);
+        if (leadIds.length && botOk) {
+
           const { data: cancelled, error: cancelErr } = await supabase
             .from("bot_executions")
             .update({ status: "cancelled", completed_at: nowIso })
