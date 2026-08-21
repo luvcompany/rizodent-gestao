@@ -110,6 +110,20 @@ Deno.serve(async (req) => {
     }
     tenantId = profile.tenant_id;
 
+    // lead_id vinha do corpo sem validação: confirma que o lead é do mesmo cliente.
+    if ((action === "connect" || action === "request_permission") && body.lead_id) {
+      const { data: leadRow } = await admin
+        .from("crm_leads").select("tenant_id").eq("id", body.lead_id).maybeSingle();
+      if (!leadRow || leadRow.tenant_id !== tenantId) {
+        return new Response(JSON.stringify({ error: "lead de outro cliente" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+
+
     if (action === "connect" || action === "request_permission") {
       const toPhone = (body.to_phone || "").replace(/\D/g, "");
       if (!toPhone) {
