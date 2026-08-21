@@ -391,6 +391,16 @@ Deno.serve(async (req) => {
 
       if (!bot) return json({ error: "Bot not published" }, 404);
 
+      // bot e lead precisam ser do MESMO tenant (vale também para service_role).
+      {
+        const { data: leadT } = await supabase.from("crm_leads").select("tenant_id").eq("id", leadId).maybeSingle();
+        if (!leadT) return json({ error: "Lead não encontrado" }, 404);
+        if ((bot as any).tenant_id && leadT.tenant_id && (bot as any).tenant_id !== leadT.tenant_id) {
+          return json({ error: "bot e lead de tenants diferentes" }, 400);
+        }
+      }
+
+
       // Get version
       let flowJson = bot.flow_json as any;
       let versionId = null;
