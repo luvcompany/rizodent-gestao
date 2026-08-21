@@ -1253,6 +1253,7 @@ async function templatesCreate(tenantId: string, body: any) {
   await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "create_response", template_name: name, waba_id: creds.wabaId, response_body: metaData, http_status: metaRes.status });
   if (!metaRes.ok) return json({ error: "Erro na API da Meta", details: metaData, waba_id: creds.wabaId }, metaRes.status);
   await admin.from("crm_whatsapp_templates").insert({
+    tenant_id: tenantId,
     name, language: lang, category: cat,
     header_type: header_type || null, header_content: header_content || null,
     body_text, footer_text: footer_text || null,
