@@ -308,7 +308,7 @@ const CrmLayout = () => {
             <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
             <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
           </div>
-          {userRole !== "posvenda" && userRole !== "recepcao" && (
+          {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && (
             <button
               onClick={() => navigate("/dashboard")}
               className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
