@@ -110,6 +110,21 @@ Deno.serve(async (req: Request) => {
   const tenantId: string = stateRow.tenant_id;
   const isCoexistence: boolean = (stateRow as any)?.coexistence === true;
 
+  // Verify token POR TENANT: nunca copiar o global do ambiente para dados do
+  // cliente (quem lê a integração de um tenant passaria a poder validar o
+  // webhook de qualquer outro). O whatsapp-webhook continua aceitando o global.
+  let tenantVerifyToken = "";
+  {
+    const { data: cred } = await supabase
+      .from("tenant_meta_credentials")
+      .select("whatsapp_verify_token")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    tenantVerifyToken = String((cred as any)?.whatsapp_verify_token || "");
+  }
+
+
+
 
   try {
     // 1) Troca code por access_token
