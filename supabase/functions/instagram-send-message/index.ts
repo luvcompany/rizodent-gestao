@@ -61,6 +61,7 @@ type ResolvedAccount = {
   is_active: boolean;
   instagram_account_id: string;
   name: string | null;
+  tenant_id?: string | null;
 };
 
 async function lookupByIgUserId(igUserId: string, tenantId?: string | null): Promise<ResolvedAccount | null> {
@@ -77,6 +78,7 @@ async function lookupByIgUserId(igUserId: string, tenantId?: string | null): Pro
       is_active: lite.active,
       instagram_account_id: lite.ig_user_id,
       name: lite.username,
+      tenant_id: (lite as any).tenant_id ?? null,
     };
   }
 
@@ -91,10 +93,11 @@ async function lookupByIgUserId(igUserId: string, tenantId?: string | null): Pro
   return null;
 }
 
-async function resolveAccount(input: { instagram_account_id?: string; lead_id?: string; comment_id?: string }): Promise<ResolvedAccount | null> {
+async function resolveAccount(input: { instagram_account_id?: string; lead_id?: string; comment_id?: string; caller_tenant_id?: string | null }): Promise<ResolvedAccount | null> {
   // Resolve tenant do lead (se houver) — TODA busca de conta deve ser
   // restrita ao mesmo cliente, sem fallbacks cross-tenant.
-  let tenantId: string | null = null;
+  // Sem lead_id, o escopo é o tenant do chamador (nunca global).
+  let tenantId: string | null = input.caller_tenant_id ?? null;
   if (input.lead_id) {
     const { data: lead } = await supabase
       .from("crm_leads").select("tenant_id").eq("id", input.lead_id).maybeSingle();
@@ -132,13 +135,14 @@ async function resolveAccount(input: { instagram_account_id?: string; lead_id?: 
   }
 
   if (input.comment_id) {
-    const { data: c } = await supabase
+    let cq = supabase
       .from("instagram_messages")
-      .select("instagram_account_id, instagram_account_config_id, lead_id")
+      .select("instagram_account_id, instagram_account_config_id, lead_id, tenant_id")
       .eq("comment_id", input.comment_id)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    if (tenantId) cq = cq.eq("tenant_id", tenantId);
+    const { data: c } = await cq.maybeSingle();
     if (c?.instagram_account_id) {
       const found = await lookupByIgUserId(c.instagram_account_id, tenantId);
       if (found?.page_access_token) return found;
@@ -202,7 +206,8 @@ Deno.serve(async (req: Request) => {
   }
 
   console.log("[instagram-send-message] resolving account", { instagram_account_id, leadId, comment_id, recipient_id, message_type });
-  const account = await resolveAccount({ instagram_account_id, lead_id: leadId ?? undefined, comment_id });
+  const callerTenantId = (!caller.isServiceRole && !caller.isSuperadmin) ? caller.tenantId : null;
+  const account = await resolveAccount({ instagram_account_id, lead_id: leadId ?? undefined, comment_id, caller_tenant_id: callerTenantId });
   console.log("[instagram-send-message] resolved account:", account ? { id: account.id, name: account.name, is_active: account.is_active, hasToken: !!account.page_access_token } : null);
   if (!account || !account.is_active || !account.page_access_token) {
     return jsonResponse({ error: "Instagram account not found, inactive, or missing access token", debug: { instagram_account_id, leadId, comment_id, recipient_id } }, 404);
