@@ -38,6 +38,25 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
 }
 
 const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
+  // Closer: espelho da recepção sem Início e sem Conexões (não tem Instagram).
+  // O guard correspondente fica em ProtectedRoute (CLOSER_PREFIXES).
+  if (role === "closer") {
+    return [
+      { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
+      { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
+      {
+        label: "Ferramentas",
+        icon: Bot,
+        children: [
+          { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
+          { to: "/crm/modelos", icon: FileText, label: "Modelos" },
+          { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
+          { to: "/crm/bots", icon: Bot, label: "Bots" },
+          { to: "/crm/automacoes", icon: Zap, label: "Automatize" },
+        ],
+      },
+    ];
+  }
   // Recepção: menu enxuto — sem Kanban/Dashboard/Relatórios/Integrações/Config.
   // O guard correspondente fica em ProtectedRoute (RECEPCAO_PREFIXES).
   if (role === "recepcao") {
@@ -56,6 +75,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
           { to: "/crm/bots", icon: Bot, label: "Bots" },
+          { to: "/crm/automacoes", icon: Zap, label: "Automatize" },
         ],
       },
       { to: "/crm/conexoes", icon: Link2, label: "Conexões" },
