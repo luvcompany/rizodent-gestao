@@ -68,23 +68,48 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Valida state
-  const { data: stateRow, error: stateErr } = await supabase
+  // Valida state — consumo ATÔMICO (delete ... returning)
+  const { data: stateRows, error: stateErr } = await supabase
     .from("whatsapp_oauth_states")
-    .select("tenant_id, user_id, expires_at, coexistence")
+    .delete()
     .eq("state", state)
-    .maybeSingle();
+    .select("tenant_id, user_id, expires_at, coexistence");
+  const stateRow = (stateRows || [])[0];
   if (stateErr || !stateRow) {
     console.warn("[wa-oauth-callback] invalid state:", state, stateErr);
     return popupResponse("whatsapp", "error");
   }
   if (new Date(stateRow.expires_at).getTime() < Date.now()) {
-    await supabase.from("whatsapp_oauth_states").delete().eq("state", state);
     return popupResponse("whatsapp", "error");
   }
+
+  // NÃO confia no tenant_id gravado pelo front: confere com o profile do usuário
+  // e exige papel crc/gerente/superadmin.
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("tenant_id")
+    .eq("id", stateRow.user_id)
+    .maybeSingle();
+  const { data: roles } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", stateRow.user_id);
+  const roleList = (roles || []).map((r: any) => r.role);
+  const isSuperadmin = roleList.includes("superadmin");
+  if (!isSuperadmin) {
+    if (!prof?.tenant_id || prof.tenant_id !== stateRow.tenant_id) {
+      console.warn("[wa-oauth-callback] tenant mismatch para user", stateRow.user_id);
+      return popupResponse("whatsapp", "error");
+    }
+    if (!roleList.some((r: string) => r === "crc" || r === "gerente")) {
+      console.warn("[wa-oauth-callback] papel sem permissão:", roleList);
+      return popupResponse("whatsapp", "error");
+    }
+  }
+
   const tenantId: string = stateRow.tenant_id;
   const isCoexistence: boolean = (stateRow as any)?.coexistence === true;
-  await supabase.from("whatsapp_oauth_states").delete().eq("state", state);
+
 
   try {
     // 1) Troca code por access_token
