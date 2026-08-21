@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     // Fetch pending reply suggestions (limit batch)
     const { data: pending } = await supabase
       .from("ai_reply_suggestions")
-      .select("id, lead_id, suggested_text, action, created_at")
+      .select("id, lead_id, tenant_id, suggested_text, action, created_at")
       .eq("status", "pending")
       .eq("action", "reply")
       .order("created_at", { ascending: true })
@@ -71,6 +71,13 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (!lead || !lead.phone || lead.instagram_user_id) {
           processed.push({ id: s.id, skipped: "no_phone_or_instagram" });
+          continue;
+        }
+
+        // Sugestão carimbada com outro tenant que o do lead: nunca enviar.
+        if ((s as any).tenant_id && (s as any).tenant_id !== lead.tenant_id) {
+          await supabase.from("ai_reply_suggestions").update({ status: "discarded" }).eq("id", s.id);
+          processed.push({ id: s.id, skipped: "tenant_mismatch" });
           continue;
         }
 

@@ -45,8 +45,11 @@ async function registerWebhook(apiToken: string, supaUrl: string, tenantId: stri
         body: JSON.stringify(variants[i]),
       });
       if (res.ok) return { ok: true, status: res.status, detail: null as string | null, gateway };
+      // Nunca persistir/devolver corpo bruto do upstream (pode conter dados de
+      // conta/token). Resumo no retorno, detalhe apenas no log da function.
       const body = await res.text().catch(() => "");
-      errors.push(`v${i}: HTTP ${res.status}: ${body.slice(0, 180)}`);
+      console.error(`[api4com-connect] PATCH /integrations v${i} HTTP ${res.status}: ${body.slice(0, 500)}`);
+      errors.push(`v${i}: HTTP ${res.status}`);
     } catch (e: any) {
       errors.push(`v${i}: fetch error: ${String(e?.message ?? e).slice(0, 180)}`);
     }
@@ -57,7 +60,8 @@ async function registerWebhook(apiToken: string, supaUrl: string, tenantId: stri
   try {
     const g = await fetch(`${API4COM_BASE}/integrations`, { headers: { Authorization: apiToken } });
     const gb = await g.text().catch(() => "");
-    errors.push(`GET /integrations -> HTTP ${g.status}: ${gb.slice(0, 300)}`);
+    console.error(`[api4com-connect] GET /integrations HTTP ${g.status}: ${gb.slice(0, 500)}`);
+    errors.push(`GET /integrations -> HTTP ${g.status}`);
   } catch (e: any) {
     errors.push(`GET /integrations fetch error: ${String(e?.message ?? e).slice(0, 120)}`);
   }

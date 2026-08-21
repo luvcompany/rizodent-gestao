@@ -58,11 +58,9 @@ Deno.serve(async (req) => {
         const calls = Array.isArray(jr?.data) ? jr.data : (Array.isArray(jr) ? jr : []);
         stats.fetched += calls.length;
 
-        // Amostra ÚNICA para diagnóstico dos nomes de campo reais (uma vez só).
-        try {
-          const { count } = await admin.from("api4com_webhook_log").select("id", { count: "exact", head: true }).eq("note", "cdr-poll-sample");
-          if (!count && calls.length) await admin.from("api4com_webhook_log").insert({ method: "POLL", note: "cdr-poll-sample", body: calls[0] });
-        } catch (_) { /* ignore */ }
+        // Amostra de diagnóstico removida: `api4com_webhook_log` não tem coluna
+        // de tenant, então gravar o payload de um tenant ali seria vazamento
+        // cross-tenant. O diagnóstico fica só no log da function.
 
         for (const c of calls) {
           const callId = c.id ?? c.uuid ?? null;

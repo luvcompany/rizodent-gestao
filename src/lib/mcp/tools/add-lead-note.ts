@@ -24,6 +24,16 @@ export default defineTool({
       return { content: [{ type: "text", text: "Não autenticado." }], isError: true };
     }
     const sb = supabaseForUser(ctx);
+    // Confirma a visibilidade do lead com o CLIENTE DO USUÁRIO (respeita RLS)
+    // antes de inserir: sem isso, um lead_id de outro tenant seria aceito.
+    const { data: visible } = await sb
+      .from("crm_leads")
+      .select("id")
+      .eq("id", lead_id)
+      .maybeSingle();
+    if (!visible) {
+      return { content: [{ type: "text", text: "Lead não encontrado." }], isError: true };
+    }
     const { data, error } = await sb
       .from("crm_conversation_notes")
       .insert({ lead_id, content: note, author_id: ctx.getUserId() })

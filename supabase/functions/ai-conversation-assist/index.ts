@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
+import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,7 +53,10 @@ async function transcribeAudio(
     bytes = new Uint8Array(await data.arrayBuffer());
     mime = (data as Blob).type || mime;
   } else {
-    const r = await fetch(mediaUrl);
+    // SSRF de segunda ordem: media_url vem do banco. Só hosts allowlistados.
+    const guard = assertAllowedMediaUrl(mediaUrl);
+    if (!guard.ok) throw new Error(`media_url bloqueada: ${guard.error}`);
+    const r = await fetch(guard.url, { redirect: "error", signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw new Error(`external fetch failed: ${r.status}`);
     bytes = new Uint8Array(await r.arrayBuffer());
     mime = r.headers.get("content-type") || mime;

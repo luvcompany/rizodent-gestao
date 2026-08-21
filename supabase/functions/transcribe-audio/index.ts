@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { resolveCaller, assertMessageInTenant } from "../_shared/authz.ts";
+import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -194,6 +195,8 @@ Deno.serve(async (req) => {
 
     let agentUrl: string | null = null;
     let leadUrl: string | null = null;
+    // Tenant do RECURSO (não do chamador): usado para ler a config de IA certa.
+    let tenantId: string | null = null;
 
     if (messageId) {
       const tenantCheck = await assertMessageInTenant(admin, messageId, caller);
@@ -210,6 +213,7 @@ Deno.serve(async (req) => {
       mediaUrl = msg.media_url;
       existingTranscription = msg.transcription;
       sourceId = msg.id;
+      tenantId = tenantCheck.tenantId;
     } else if (callId) {
       const { data: call, error: callErr } = await admin
         .from("whatsapp_calls")
@@ -222,6 +226,7 @@ Deno.serve(async (req) => {
       agentUrl = (call as any).recording_url_agent || null;
       leadUrl = (call as any).recording_url_lead || null;
       existingTranscription = call.transcription;
+      tenantId = (call as any).tenant_id ?? null;
       sourceTable = "whatsapp_calls";
       sourceId = call.id;
     } else if (api4comCallId) {
@@ -236,6 +241,7 @@ Deno.serve(async (req) => {
       }
       mediaUrl = call.recording_url;
       existingTranscription = call.transcription;
+      tenantId = (call as any).tenant_id ?? null;
       sourceTable = "api4com_calls";
       sourceId = call.id;
     }
@@ -262,20 +268,29 @@ Deno.serve(async (req) => {
       audioBytes = new Uint8Array(await fileData.arrayBuffer());
       mime = fileData.type || mime;
     } else {
-      const r = await fetch(mediaUrl);
+      // SSRF de segunda ordem: mediaUrl vem do banco. Só hosts allowlistados.
+      const guard = assertAllowedMediaUrl(mediaUrl);
+      if (!guard.ok) return json({ error: `media_url bloqueada: ${guard.error}` }, 400);
+      const r = await fetch(guard.url, { redirect: "error", signal: AbortSignal.timeout(20000) });
       if (!r.ok) return json({ error: "Falha ao baixar áudio externo" }, 500);
       audioBytes = new Uint8Array(await r.arrayBuffer());
       mime = r.headers.get("content-type") || mime;
     }
 
     // Read configured transcription model
-    const { data: cfg } = await admin
-      .from("ai_assistant_config")
-      .select("transcription_model")
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Config do PRÓPRIO tenant; sem config própria => default do sistema.
+    let cfg: any = null;
+    if (tenantId) {
+      const { data } = await admin
+        .from("ai_assistant_config")
+        .select("transcription_model")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      cfg = data;
+    }
     const transcriptionModel: string = (cfg as any)?.transcription_model || "google/gemini-2.5-flash";
 
     let text = "";
@@ -289,7 +304,9 @@ Deno.serve(async (req) => {
           if (error || !data) return null;
           return { bytes: new Uint8Array(await data.arrayBuffer()), mime: data.type || "audio/webm" };
         }
-        const r = await fetch(url);
+        const guard = assertAllowedMediaUrl(url);
+        if (!guard.ok) { console.warn("[transcribe] track bloqueada:", guard.error); return null; }
+        const r = await fetch(guard.url, { redirect: "error", signal: AbortSignal.timeout(20000) });
         if (!r.ok) return null;
         return { bytes: new Uint8Array(await r.arrayBuffer()), mime: r.headers.get("content-type") || "audio/webm" };
       } catch { return null; }

@@ -73,9 +73,22 @@ Deno.serve(async (req) => {
 
     if (!user_id) return json({ error: "user_id required" }, 400);
 
-    // tenant do alvo (para logs e escopo de papel)
+    // Nunca agir sobre si mesmo por esta porta (auto-bloqueio/auto-delete/escalada).
+    if (user_id === userId) return json({ error: "Não é possível executar esta ação sobre a própria conta." }, 400);
+
+    // tenant do alvo: SEMPRE do profile. Se vier tenant_id no corpo e divergir,
+    // é tentativa de mover/registrar o usuário em outro cliente => 400.
     const { data: targetProfile } = await admin.from("profiles").select("tenant_id").eq("id", user_id).maybeSingle();
-    const targetTenant = tenant_id || targetProfile?.tenant_id || null;
+    const targetTenant = targetProfile?.tenant_id || null;
+    if (tenant_id && targetTenant && tenant_id !== targetTenant) {
+      return json({ error: "tenant_id divergente do usuário alvo." }, 400);
+    }
+
+    // Alvo superadmin da plataforma é intocável por esta função.
+    const { data: targetRoles } = await admin.from("user_roles").select("role").eq("user_id", user_id);
+    if ((targetRoles || []).some((r: any) => r.role === "superadmin")) {
+      return json({ error: "Este usuário é administrador da plataforma e não pode ser alterado aqui." }, 403);
+    }
 
     if (action === "block") {
       // Revoga a sessão de verdade (ban no auth) + marca no perfil.
@@ -103,7 +116,12 @@ Deno.serve(async (req) => {
       if (!setRoleCheck.ok) return json({ error: setRoleCheck.error }, 400);
       if (!targetTenant) return json({ error: "Usuário sem tenant." }, 400);
       // Um usuário tem um papel: remove os antigos e define o novo.
-      await admin.from("user_roles").delete().eq("user_id", user_id);
+      // IMPORTANTE: apaga só papéis de tenant — nunca `superadmin`.
+      await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", user_id)
+        .in("role", [...SHARED_TENANT_ROLES]);
       const { error } = await admin.from("user_roles").upsert({ user_id, role: setRoleCheck.role, tenant_id: targetTenant }, { onConflict: "user_id,role" });
       if (error) return json({ error: error.message }, 400);
       await admin.from("access_logs").insert({ user_id: userId, tenant_id: targetTenant, context: "admin", event: "user_set_role", metadata: { target: user_id, role } });
