@@ -783,8 +783,12 @@ Deno.serve(async (req) => {
         }
 
         if (config.target_stage_id) {
-          await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+          const tenantLead = await tenantDoLead(supabase, lead.id);
+          if (await idNoTenant(supabase, "crm_stages", config.target_stage_id, tenantLead, `no_show lead ${lead.id}`)) {
+            await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+          }
         }
+
 
         results.no_show++;
       }
