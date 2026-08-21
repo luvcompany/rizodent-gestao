@@ -10,7 +10,7 @@ import { Loader2, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-type Role = "gerente" | "crc" | "posvenda" | "recepcao" | "superadmin";
+type Role = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "superadmin";
 
 type Pipeline = {
   id: string;
