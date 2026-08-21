@@ -395,7 +395,28 @@ async function appointments(tenantId: string, method: string, p: URLSearchParams
     return json(data, 201);
   }
   if (method === "PATCH" && id) {
-    const { data, error } = await admin.from("crm_appointments").update(body)
+    // Isolamento/anti-fraude: o filtro .eq só escolhe a linha; o SET precisa ser
+    // saneado. Descartamos identidade/tenant, carimbos de criação e TODAS as
+    // colunas que o trigger stamp_appointment_update (migration 20260817144537)
+    // trata como carimbo/imutável — como a API roda com service_role
+    // (auth.uid() NULL ⇒ is_service = true), o trigger não as protege aqui.
+    const {
+      tenant_id: _t, id: _i, created_at: _ca, created_by: _cb, updated_at: _ua,
+      // carimbos do trigger stamp_appointment_update:
+      outcome_at: _oa, outcome_by: _ob, outcome_source: _os,
+      confirmed_at: _cfa, confirmed_by: _cfb,
+      rescheduled_from_id: _rfi, is_rescheduled: _isr,
+      lead_id: bodyLeadId,
+      ...safe
+    } = (body || {}) as Record<string, unknown>;
+    if (bodyLeadId !== undefined) {
+      const { data: okLead } = await admin.from("crm_leads")
+        .select("id").eq("tenant_id", tenantId).eq("id", bodyLeadId as string).maybeSingle();
+      if (!okLead) return json({ error: "lead_id inválido para esta clínica" }, 400);
+      (safe as Record<string, unknown>).lead_id = bodyLeadId;
+    }
+    if (!Object.keys(safe).length) return json({ error: "nenhum campo permitido" }, 400);
+    const { data, error } = await admin.from("crm_appointments").update(safe)
       .eq("tenant_id", tenantId).eq("id", id).select().maybeSingle();
     if (error) return json({ error: error.message }, 400);
     return json(data);
