@@ -686,8 +686,12 @@ Deno.serve(async (req) => {
         await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
 
         if (config.target_stage_id) {
-          await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+          const tenantLead = await tenantDoLead(supabase, lead.id);
+          if (await idNoTenant(supabase, "crm_stages", config.target_stage_id, tenantLead, `lead_stale lead ${lead.id}`)) {
+            await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+          }
         }
+
 
         await supabase.from("crm_automation_queue").insert({
           automation_id: auto.id,
