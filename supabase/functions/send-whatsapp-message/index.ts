@@ -159,12 +159,26 @@ async function ensurePublicTemplateMediaLink(
   }
 
 
-  const response = await fetch(originalValue);
+  // (SSRF) `header_content` vem do banco e é editável por quem gerencia
+  // templates: valida contra a allowlist antes de qualquer fetch.
+  const guardHeader = assertAllowedMediaUrl(originalValue);
+  if (!guardHeader.ok) {
+    throw new Error(`Mídia do template não permitida: ${guardHeader.error}`);
+  }
+  const response = await fetch(guardHeader.url, { redirect: "error", signal: AbortSignal.timeout(30000) });
   if (!response.ok) {
     throw new Error(`Failed to download template media (${response.status})`);
   }
+  const declaredHeaderLen = Number(response.headers.get("content-length") || 0);
+  if (declaredHeaderLen && declaredHeaderLen > MAX_MEDIA_BYTES) {
+    throw new Error("Mídia do template maior que o limite de 16 MB.");
+  }
 
   const mediaBlob = await response.blob();
+  if (mediaBlob.size > MAX_MEDIA_BYTES) {
+    throw new Error("Mídia do template maior que o limite de 16 MB.");
+  }
+
   // NUNCA cachear download parcial: arquivo truncado fica no bucket, o envio
   // falha sempre (Meta 131053) e a auto-cura não conserta (URL já é do Storage).
   const esperado = Number(response.headers.get("content-length") || 0);
