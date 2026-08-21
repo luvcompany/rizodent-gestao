@@ -3,6 +3,8 @@
 //
 // Auth: requires service role bearer or any authenticated user (admin-like).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +32,14 @@ async function fetchPostInfo(postId: string, accessToken: string) {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Rota interna: itera tokens de TODAS as contas → só service_role ou cron.
+  const auth = await authorizeInternal(req, supabase, {
+    cronSecretName: "automation_cron_token",
+    allowUserJwt: false,
+  });
+  if (!auth.ok) return unauthorizedResponse(corsHeaders);
+
 
   // Load all ig_accounts once: ig_user_id -> token
   const { data: igAccs } = await supabase
