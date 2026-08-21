@@ -127,7 +127,9 @@ async function fetchPreview(url: string): Promise<Preview> {
 
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("text/html") && !contentType.includes("xhtml")) {
-    // Ex.: link direto para imagem/PDF
+    // Ex.: link direto para imagem/PDF — não lemos o corpo.
+    try { await res.body?.cancel(); } catch { /* noop */ }
+
     return {
       url: finalUrl,
       title: null,
