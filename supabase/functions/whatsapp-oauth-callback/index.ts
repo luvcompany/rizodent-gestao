@@ -16,7 +16,6 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const REDIRECT_URI = Deno.env.get("WHATSAPP_REDIRECT_URI") ?? "";
-const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL") ?? "https://crclin.com.br";
 const API_VERSION = "v21.0";
 // Coexistência entrou depois da v21 — as chamadas específicas dela (status do
@@ -109,6 +108,21 @@ Deno.serve(async (req: Request) => {
 
   const tenantId: string = stateRow.tenant_id;
   const isCoexistence: boolean = (stateRow as any)?.coexistence === true;
+
+  // Verify token POR TENANT: nunca copiar o global do ambiente para dados do
+  // cliente (quem lê a integração de um tenant passaria a poder validar o
+  // webhook de qualquer outro). O whatsapp-webhook continua aceitando o global.
+  let tenantVerifyToken = "";
+  {
+    const { data: cred } = await supabase
+      .from("tenant_meta_credentials")
+      .select("whatsapp_verify_token")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    tenantVerifyToken = String((cred as any)?.whatsapp_verify_token || "");
+  }
+
+
 
 
   try {
@@ -263,7 +277,7 @@ Deno.serve(async (req: Request) => {
           app_id: META_APP_ID,
           api_version: API_VERSION,
           display_name,
-          webhook_verify_token: WHATSAPP_VERIFY_TOKEN,
+          ...(tenantVerifyToken ? { webhook_verify_token: tenantVerifyToken } : {}),
           source: "embedded_signup",
         };
 
@@ -310,7 +324,7 @@ Deno.serve(async (req: Request) => {
               waba_id,
               token: access_token,
               app_id: META_APP_ID,
-              verify_token: WHATSAPP_VERIFY_TOKEN,
+              ...(tenantVerifyToken ? { verify_token: tenantVerifyToken } : {}),
               is_active: true,
               is_coexistence: true,
             };

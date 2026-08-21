@@ -10,21 +10,63 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveCaller } from "../_shared/authz.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// CORS com a MESMA allowlist do tenant-login (nada de "*" numa rota que devolve
+// credenciais de integração).
+const ALLOWED_ORIGINS = [
+  "https://crclin.com.br",
+  "https://www.crclin.com.br",
+  "https://app.crclin.com.br",
+  "https://rizodent-gestao.lovable.app",
+];
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/[a-z0-9-]+\.lovable\.app$/i,
+  /^https:\/\/[a-z0-9-]+\.lovableproject\.com$/i,
+  /^https:\/\/[a-z0-9-]+\.lovable\.dev$/i,
+];
+function buildCors(req: Request) {
+  const origin = req.headers.get("origin") || "";
+  const isAllowed = ALLOWED_ORIGINS.includes(origin) ||
+    ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
+  return {
+    "Access-Control-Allow-Origin": isAllowed ? origin : ALLOWED_ORIGINS[0],
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  };
+}
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+// Comparação em tempo constante (evita distinguir tokens por timing).
+function safeEqual(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// Defesa em profundidade: se o token gravado no tenant for (ainda) igual a um
+// token GLOBAL do ambiente, não devolvemos nada.
+function isGlobalToken(value: string): boolean {
+  const globais = [
+    Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "",
+    Deno.env.get("WHATSAPP_VERIFY_TOKEN_V2") || "",
+    Deno.env.get("INSTAGRAM_VERIFY_TOKEN") || "",
+    Deno.env.get("INSTAGRAM_VERIFY_TOKEN_V2") || "",
+  ];
+  return globais.some((g) => safeEqual(value, g));
+}
 
 const ALLOWED_ROLES = new Set(["crc", "gerente", "superadmin"]);
 
+
 Deno.serve(async (req) => {
+  const corsHeaders = buildCors(req);
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -69,10 +111,18 @@ Deno.serve(async (req) => {
     for (const i of integrations || []) {
       if (!String((i as any).key || "").startsWith(key)) continue;
       const t = ((i as any).config || {})?.webhook_verify_token;
-      if (t) return String(t);
+      if (!t) continue;
+      const value = String(t);
+      // Nunca devolver um token GLOBAL, mesmo se ele estiver gravado na linha.
+      if (isGlobalToken(value)) {
+        console.warn(`[tenant-meta-info] token global detectado em integrations (${key}) do tenant ${tenantId} — omitido`);
+        continue;
+      }
+      return value;
     }
     return "";
   };
+
 
   const payload = {
     tenant_id: tenantId,

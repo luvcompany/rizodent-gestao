@@ -374,7 +374,12 @@ Deno.serve(async (req) => {
           .eq("automation_id", auto.id);
         const leadIds = (execs || []).map((e: any) => e.lead_id);
 
-        if (leadIds.length) {
+        // O bot vindo de action_config precisa ser do MESMO tenant da automação,
+        // senão o cancelamento tocaria execuções de bot de outra clínica.
+        const autoTenant: string | null = (auto as any).tenant_id ?? null;
+        const botOk = await idNoTenant(supabase, "bots", botId, autoTenant, `time_window auto ${auto.id}`);
+        if (leadIds.length && botOk) {
+
           const { data: cancelled, error: cancelErr } = await supabase
             .from("bot_executions")
             .update({ status: "cancelled", completed_at: nowIso })
@@ -686,8 +691,12 @@ Deno.serve(async (req) => {
         await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
 
         if (config.target_stage_id) {
-          await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+          const tenantLead = await tenantDoLead(supabase, lead.id);
+          if (await idNoTenant(supabase, "crm_stages", config.target_stage_id, tenantLead, `lead_stale lead ${lead.id}`)) {
+            await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+          }
         }
+
 
         await supabase.from("crm_automation_queue").insert({
           automation_id: auto.id,
@@ -779,8 +788,12 @@ Deno.serve(async (req) => {
         }
 
         if (config.target_stage_id) {
-          await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+          const tenantLead = await tenantDoLead(supabase, lead.id);
+          if (await idNoTenant(supabase, "crm_stages", config.target_stage_id, tenantLead, `no_show lead ${lead.id}`)) {
+            await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+          }
         }
+
 
         results.no_show++;
       }
@@ -1014,6 +1027,32 @@ function getNextValidWindow(startHour: number, allowedDays: number[]): Date {
   return next;
 }
 
+// Tenant de um lead (null quando o lead não existe / não tem carimbo).
+async function tenantDoLead(supabase: any, leadId: string): Promise<string | null> {
+  const { data } = await supabase.from("crm_leads").select("tenant_id").eq("id", leadId).maybeSingle();
+  return (data as any)?.tenant_id ?? null;
+}
+
+// Fail-closed: sem tenant conhecido, NENHUM id de action_config é aceito.
+async function idNoTenant(
+  supabase: any,
+  table: string,
+  id: string,
+  tenantId: string | null,
+  contexto: string,
+): Promise<boolean> {
+  if (!tenantId) {
+    console.warn(`[AUTOMATION-ENGINE] lead sem tenant (${contexto}) — ação com ${table} ${id} pulada`);
+    return false;
+  }
+  const { data } = await supabase.from(table).select("id").eq("id", id).eq("tenant_id", tenantId).maybeSingle();
+  if (!data) {
+    console.warn(`[AUTOMATION-ENGINE] ${table} ${id} não pertence ao tenant ${tenantId} (${contexto}) — ação pulada`);
+    return false;
+  }
+  return true;
+}
+
 async function sendAction(
   supabase: any,
   supabaseUrl: string,
@@ -1026,31 +1065,27 @@ async function sendAction(
   try {
     // Tenant do LEAD: qualquer id vindo de action_config (template, bot, etapa)
     // precisa pertencer a ele. Ids de outro tenant => ação pulada com log.
-    const { data: leadTenantRow } = await supabase
-      .from("crm_leads").select("tenant_id").eq("id", leadId).maybeSingle();
-    const leadTenant: string | null = (leadTenantRow as any)?.tenant_id ?? null;
-    const belongsToLeadTenant = async (table: string, id: string): Promise<boolean> => {
-      if (!leadTenant) return true; // leads sem carimbo (legado) mantêm comportamento
-      const { data } = await supabase.from(table).select("id").eq("id", id).eq("tenant_id", leadTenant).maybeSingle();
-      if (!data) {
-        console.warn(`[AUTOMATION-ENGINE] ${table} ${id} não pertence ao tenant do lead ${leadId} — ação pulada`);
-        return false;
-      }
-      return true;
-    };
+    const leadTenant: string | null = await tenantDoLead(supabase, leadId);
+    const belongsToLeadTenant = (table: string, id: string): Promise<boolean> =>
+      idNoTenant(supabase, table, id, leadTenant, `lead ${leadId}`);
+
 
     switch (actionType) {
       case "send_template":
         if (config.template_id && phone) {
-          let tplQuery = supabase
-            .from("crm_whatsapp_templates")
-            .select("name, language")
-            .eq("id", config.template_id);
-          if (leadTenant) tplQuery = tplQuery.eq("tenant_id", leadTenant);
-          const { data: tpl } = await tplQuery.maybeSingle();
-          if (!tpl) {
-            console.warn(`[AUTOMATION-ENGINE] template ${config.template_id} fora do tenant do lead ${leadId} — ação pulada`);
-          }
+          // Fail-closed: sem tenant no lead, não resolve template nenhum.
+          const tplOk = leadTenant
+            ? await belongsToLeadTenant("crm_whatsapp_templates", config.template_id)
+            : (console.warn(`[AUTOMATION-ENGINE] lead ${leadId} sem tenant — send_template pulado`), false);
+          const { data: tpl } = tplOk
+            ? await supabase
+              .from("crm_whatsapp_templates")
+              .select("name, language")
+              .eq("id", config.template_id)
+              .eq("tenant_id", leadTenant)
+              .maybeSingle()
+            : { data: null };
+
           if (tpl) {
             const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
               method: "POST",
