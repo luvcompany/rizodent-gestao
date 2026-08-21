@@ -517,6 +517,16 @@ Deno.serve(async (req) => {
       const { data: execution } = await query.order("started_at", { ascending: false }).limit(1).single();
       if (!execution) return json({ skipped: true, reason: "no_waiting_execution" });
 
+      // bot e lead precisam ser do MESMO tenant (vale também para service_role).
+      {
+        const { data: leadT } = await supabase.from("crm_leads").select("tenant_id").eq("id", execution.lead_id).maybeSingle();
+        const botTenant = (execution as any).bots?.tenant_id ?? null;
+        if (botTenant && leadT?.tenant_id && botTenant !== leadT.tenant_id) {
+          return json({ error: "bot e lead de tenants diferentes" }, 400);
+        }
+      }
+
+
       // Get the flow
       let flowJson = (execution as any).bots?.flow_json;
       if (execution.bot_version_id) {
