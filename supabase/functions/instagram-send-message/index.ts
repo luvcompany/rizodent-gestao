@@ -210,7 +210,8 @@ Deno.serve(async (req: Request) => {
   const account = await resolveAccount({ instagram_account_id, lead_id: leadId ?? undefined, comment_id, caller_tenant_id: callerTenantId });
   console.log("[instagram-send-message] resolved account:", account ? { id: account.id, name: account.name, is_active: account.is_active, hasToken: !!account.page_access_token } : null);
   if (!account || !account.is_active || !account.page_access_token) {
-    return jsonResponse({ error: "Instagram account not found, inactive, or missing access token", debug: { instagram_account_id, leadId, comment_id, recipient_id } }, 404);
+    // Sem objeto `debug`: ecoar ids permitia sondar existência de recursos.
+    return jsonResponse({ error: "Instagram account not found, inactive, or missing access token" }, 404);
   }
   // Conta precisa ser do tenant do chamador.
   if (!caller.isServiceRole && !caller.isSuperadmin) {

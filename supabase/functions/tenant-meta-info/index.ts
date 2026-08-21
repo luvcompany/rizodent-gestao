@@ -1,55 +1,49 @@
-// Returns the Meta App credentials info that the current tenant needs to
-// configure in Meta Developers (callback URLs + verify tokens). Verify tokens
-// are env secrets, so we expose them only to authenticated users of that
-// tenant.
+// Returns the Meta App info that the current tenant needs to configure in Meta
+// Developers (callback URLs + app id). Restrito a crc/gerente/superadmin.
+//
+// SEGURANÇA: esta função NÃO devolve mais os verify tokens GLOBAIS do ambiente
+// (WHATSAPP_VERIFY_TOKEN / INSTAGRAM_VERIFY_TOKEN e variantes _V2) — eles são
+// compartilhados entre tenants e vazá-los permitiria a um cliente assinar/
+// validar webhooks de outro. Devolvemos apenas o verify token gravado na
+// integração DO PRÓPRIO tenant (config.webhook_verify_token), quando existir.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveCaller } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+const ALLOWED_ROLES = new Set(["crc", "gerente", "superadmin"]);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-  const authHeader = req.headers.get("Authorization") || "";
-  if (!authHeader.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-  const token = authHeader.replace("Bearer ", "");
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
-  const userId = claimsData?.claims?.sub as string | undefined;
-  if (claimsErr || !userId) {
-    return new Response(JSON.stringify({ error: "unauthorized", detail: claimsErr?.message }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("tenant_id")
-    .eq("id", userId)
-    .maybeSingle();
-  const tenantId = (profile as any)?.tenant_id;
-  if (!tenantId) {
-    return new Response(JSON.stringify({ error: "no_tenant" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+
+  const caller = await resolveCaller(req, admin);
+  if (!caller.ok) return json({ error: caller.error }, caller.status);
+  if (caller.isServiceRole) return json({ error: "forbidden" }, 403);
+
+  // Somente papéis administrativos do tenant veem as credenciais de integração.
+  const { data: roleRows } = await admin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", caller.userId);
+  const hasRole = (roleRows || []).some((r: any) => ALLOWED_ROLES.has(String(r.role)));
+  if (!hasRole) return json({ error: "forbidden" }, 403);
+
+  const tenantId = caller.tenantId;
+  if (!tenantId) return json({ error: "no_tenant" }, 400);
 
   const { data: tenant } = await admin
     .from("tenants")
@@ -66,31 +60,42 @@ Deno.serve(async (req) => {
   // the bare URL with no suffix.
   const suffix = version === "v2" ? "/crclin" : "";
 
+  // Verify token do PRÓPRIO tenant (nunca o global do ambiente).
+  const { data: integrations } = await admin
+    .from("integrations")
+    .select("key, config")
+    .eq("tenant_id", tenantId);
+  const ownVerifyToken = (key: string): string => {
+    for (const i of integrations || []) {
+      if (!String((i as any).key || "").startsWith(key)) continue;
+      const t = ((i as any).config || {})?.webhook_verify_token;
+      if (t) return String(t);
+    }
+    return "";
+  };
+
   const payload = {
     tenant_id: tenantId,
     tenant_slug: slug,
     meta_app_version: version,
     whatsapp: {
       callback_url: `${base}/functions/v1/whatsapp-webhook${suffix}`,
-      verify_token: version === "v2"
-        ? Deno.env.get("WHATSAPP_VERIFY_TOKEN_V2") || ""
-        : Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "",
+      verify_token: ownVerifyToken("whatsapp"),
     },
     instagram: {
       callback_url: `${base}/functions/v1/instagram-lite-webhook${suffix}`,
       oauth_redirect_uri: version === "v2"
         ? (Deno.env.get("INSTAGRAM_REDIRECT_URI_V2") || `${base}/functions/v1/instagram-oauth-callback`)
         : (Deno.env.get("INSTAGRAM_REDIRECT_URI") || `${base}/functions/v1/instagram-oauth-callback${suffix}`),
-      verify_token: version === "v2"
-        ? Deno.env.get("INSTAGRAM_VERIFY_TOKEN_V2") || ""
-        : Deno.env.get("INSTAGRAM_VERIFY_TOKEN") || Deno.env.get("INSTAGRAM_LITE_VERIFY_TOKEN") || "",
+      verify_token: ownVerifyToken("instagram"),
       app_id: version === "v2"
         ? Deno.env.get("META_APP_ID_V2") || ""
         : Deno.env.get("META_APP_ID") || "",
+      config_id: version === "v2"
+        ? Deno.env.get("META_CONFIG_ID_V2") || ""
+        : Deno.env.get("META_CONFIG_ID") || "",
     },
   };
 
-  return new Response(JSON.stringify(payload), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return json(payload);
 });

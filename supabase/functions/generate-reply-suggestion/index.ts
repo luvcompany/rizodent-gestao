@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal } from "../_shared/internalAuth.ts";
 import { resolveCaller, assertLeadInTenant, assertMessageInTenant, assertNumberAccess } from "../_shared/authz.ts";
 import { localParts, resolveTz } from "../_shared/tz.ts";
+import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,7 +47,10 @@ async function transcribeAudio(mediaUrl: string, supabase: any, apiKey: string):
     bytes = new Uint8Array(await data.arrayBuffer());
     mime = (data as Blob).type || mime;
   } else {
-    const r = await fetch(mediaUrl);
+    // SSRF de segunda ordem: media_url vem do banco. Só hosts allowlistados.
+    const guard = assertAllowedMediaUrl(mediaUrl);
+    if (!guard.ok) { console.warn("[suggestion] media_url bloqueada:", guard.error); return null; }
+    const r = await fetch(guard.url, { redirect: "error", signal: AbortSignal.timeout(15000) });
     if (!r.ok) return null;
     bytes = new Uint8Array(await r.arrayBuffer());
     mime = r.headers.get("content-type") || mime;

@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
+import { resolveCaller, assertLeadInTenant, assertNumberAccess, assertMessageInTenant } from "../_shared/authz.ts";
+import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
+
+// Teto de mídia aceito pela Meta (16 MB no maior tipo).
+const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 
 const corsHeaders = {
@@ -38,7 +42,7 @@ const extensionFromMime = (mimeType: string) => {
   return mimeMap[mimeType.toLowerCase()] || "bin";
 };
 
-const TEMPLATE_SELECT = "name, body_text, header_type, header_content, status, updated_at, created_at";
+const TEMPLATE_SELECT = "id, name, body_text, header_type, header_content, status, updated_at, created_at";
 
 const cleanTemplateName = (name: string) => name.replace(/_[a-z0-9]{4,10}$/i, "");
 
@@ -59,23 +63,30 @@ const getTemplatePlaceholderIndexes = (content: string | null | undefined): numb
 const hasOfficialTemplatePlaceholders = (content: string | null | undefined) =>
   getTemplatePlaceholderIndexes(content).length > 0;
 
-async function resolveTemplateForSend(supabase: any, templateName: string) {
-  const { data: exactTemplate } = await supabase
-    .from("crm_whatsapp_templates")
-    .select(TEMPLATE_SELECT)
-    .eq("name", templateName)
-    .maybeSingle();
+// Sempre escopado ao tenant do lead: nomes de template não são globais, então
+// buscar só por `name` podia devolver (e enviar) o template de outro tenant.
+async function resolveTemplateForSend(supabase: any, templateName: string, tenantId: string | null) {
+  const withTenant = (q: any) => (tenantId ? q.eq("tenant_id", tenantId) : q);
+
+  const { data: exactTemplate } = await withTenant(
+    supabase
+      .from("crm_whatsapp_templates")
+      .select(TEMPLATE_SELECT)
+      .eq("name", templateName),
+  ).maybeSingle();
 
   if (exactTemplate?.body_text && hasOfficialTemplatePlaceholders(exactTemplate.body_text)) {
     return exactTemplate;
   }
 
   const baseName = cleanTemplateName(templateName);
-  const { data: relatedTemplates } = await supabase
-    .from("crm_whatsapp_templates")
-    .select(TEMPLATE_SELECT)
-    .eq("status", "APPROVED")
-    .like("name", `${baseName}_%`)
+  const { data: relatedTemplates } = await withTenant(
+    supabase
+      .from("crm_whatsapp_templates")
+      .select(TEMPLATE_SELECT)
+      .eq("status", "APPROVED")
+      .like("name", `${baseName}_%`),
+  )
     .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -391,6 +402,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    // (IDOR) Todo id de mensagem vindo do corpo tem de ser do MESMO lead/tenant
+    // do envio — senão dava para ler/reagir a mensagens de outra conversa.
+    const assertBodyMessage = async (messageId: string) => {
+      const check = await assertMessageInTenant(supabase, messageId, caller);
+      if (!check.ok) return check;
+      const { data: row } = await supabase.from("messages").select("lead_id").eq("id", messageId).maybeSingle();
+      if (!row || row.lead_id !== lead_id) {
+        return { ok: false as const, status: 403, error: "Mensagem não pertence a esta conversa" };
+      }
+      return { ok: true as const };
+    };
+    for (const mid of [reply_to_message_id, reaction_to_message_id].filter(Boolean) as string[]) {
+      const c = await assertBodyMessage(mid);
+      if (!c.ok) {
+        console.warn(`[send-whatsapp-message] message guard: ${c.error} msg=${mid} lead=${lead_id}`);
+        return new Response(JSON.stringify({ error: c.error }), {
+          status: c.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     let resolvedWamid = reply_to_wamid || null;
     if (!resolvedWamid && reply_to_message_id) {
       const { data: origMsg } = await supabase
@@ -521,7 +553,7 @@ Deno.serve(async (req) => {
 
       if (template_name) {
         const [tplRow, tplLead, nextAppt] = await Promise.all([
-          resolveTemplateForSend(supabase, template_name),
+          resolveTemplateForSend(supabase, template_name, leadTenantId),
           supabase
             .from("crm_leads")
             .select("name, phone, source, servico_interesse")
@@ -571,10 +603,12 @@ Deno.serve(async (req) => {
               );
 
               if (stableHeaderLink && stableHeaderLink !== tplRow.header_content) {
+                // Update pela PK da linha resolvida (não por `name`, que se
+                // repete entre tenants).
                 await supabase
                   .from("crm_whatsapp_templates")
                   .update({ header_content: stableHeaderLink, updated_at: new Date().toISOString() })
-                  .eq("name", resolvedTemplateName);
+                  .eq("id", tplRow.id);
               }
             } catch (mediaErr) {
               console.warn(
@@ -647,6 +681,32 @@ Deno.serve(async (req) => {
         const pathMatch = media_url.match(/chat-media\/(.+?)(?:\?|$)/);
         const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
 
+        // (IDOR) Chamador humano só pode enviar objeto do chat-media que ele
+        // mesmo subiu ou que já está numa mensagem do PRÓPRIO tenant. Sem isso,
+        // bastava adivinhar/copiar um path para exfiltrar mídia de outra clínica.
+        if (storagePath && !caller.isServiceRole && !caller.isSuperadmin) {
+          const [{ data: obj }, { data: msgWithMedia }] = await Promise.all([
+            supabase.schema("storage").from("objects")
+              .select("id, owner")
+              .eq("bucket_id", "chat-media")
+              .eq("name", storagePath)
+              .maybeSingle(),
+            supabase.from("messages")
+              .select("id")
+              .eq("tenant_id", leadTenantId)
+              .like("media_url", `%${storagePath}%`)
+              .limit(1)
+              .maybeSingle(),
+          ]);
+          const ownedByCaller = !!obj && (obj as any).owner && (obj as any).owner === caller.userId;
+          if (!ownedByCaller && !msgWithMedia) {
+            console.warn(`[send-whatsapp-message] media guard: path fora do tenant path=${storagePath} lead=${lead_id}`);
+            return new Response(JSON.stringify({ error: "Mídia não pertence a esta clínica" }), {
+              status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+
         if (storagePath) {
           console.log(`[send-whatsapp] Downloading from private bucket, path: ${storagePath}`);
           const { data: fileData, error: downloadError } = await supabase.storage
@@ -671,14 +731,34 @@ Deno.serve(async (req) => {
           fileBlob = await fileResponse.blob();
         }
       } else {
-        const fileResponse = await fetch(media_url);
+        // (SSRF) URL externa: só https em host allowlistado (Storage do projeto
+        // ou CDN da Meta), sem redirect para fora, com timeout e teto de 16 MB.
+        const guard = assertAllowedMediaUrl(media_url);
+        if (!guard.ok) {
+          console.warn(`[send-whatsapp-message] media_url bloqueada: ${guard.error}`);
+          return new Response(JSON.stringify({ error: `media_url não permitida: ${guard.error}` }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const fileResponse = await fetch(guard.url, { redirect: "error", signal: AbortSignal.timeout(30000) });
         if (!fileResponse.ok) {
           console.error(`[send-whatsapp] Failed to download file: ${fileResponse.status}`);
           return new Response(JSON.stringify({ error: "Failed to download file from storage", status: fileResponse.status }), {
             status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
+        const declaredLen = Number(fileResponse.headers.get("content-length") || 0);
+        if (declaredLen && declaredLen > MAX_MEDIA_BYTES) {
+          return new Response(JSON.stringify({ error: "Mídia maior que o limite de 16 MB." }), {
+            status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         fileBlob = await fileResponse.blob();
+        if (fileBlob.size > MAX_MEDIA_BYTES) {
+          return new Response(JSON.stringify({ error: "Mídia maior que o limite de 16 MB." }), {
+            status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
 
       let filename = "file";

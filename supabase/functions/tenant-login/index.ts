@@ -48,21 +48,42 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    // Rate limit: bloqueia se houver 10+ falhas de login para este e-mail nos últimos 15 min.
-    // Limite alto o suficiente para nunca travar um usuário legítimo; apenas falhas contam.
+    const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null;
+    const ua = req.headers.get("user-agent") ?? null;
+
+    // Resposta genérica: nunca revelar se o e-mail existe, se pertence a outro
+    // cliente ou se está bloqueado. O motivo real vai só para access_logs.
+    const GENERIC = "E-mail ou senha inválidos.";
+
+    // Rate limit: falhas E bloqueios contam, por e-mail E por IP.
+    // Fail-CLOSED: se a consulta de logs falhar, recusamos (antes era fail-open,
+    // o que permitia derrubar o limite provocando erro na leitura dos logs).
     try {
       const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const { count: failCount } = await admin
-        .from("access_logs")
-        .select("id", { count: "exact", head: true })
-        .eq("email", email)
-        .eq("event", "login_failed")
-        .gte("created_at", since);
-      if ((failCount ?? 0) >= 10) {
+      const events = ["login_failed", "login_blocked"];
+      const [{ count: emailCount, error: e1 }, ipRes] = await Promise.all([
+        admin
+          .from("access_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("email", email)
+          .in("event", events)
+          .gte("created_at", since),
+        ip
+          ? admin
+              .from("access_logs")
+              .select("id", { count: "exact", head: true })
+              .eq("ip", ip)
+              .in("event", events)
+              .gte("created_at", since)
+          : Promise.resolve({ count: 0, error: null } as any),
+      ]);
+      if (e1 || ipRes?.error) throw e1 || ipRes.error;
+      if ((emailCount ?? 0) >= 10 || (ipRes?.count ?? 0) >= 30) {
         return json({ error: "Muitas tentativas. Tente novamente em alguns minutos." }, 429);
       }
-    } catch (_e) { /* fail-open: nunca travar login por erro de log */ }
-
+    } catch (_e) {
+      return json({ error: "Muitas tentativas. Tente novamente em alguns minutos." }, 429);
+    }
 
     // 1) Resolver tenant pelo slug
     const { data: tenant, error: tErr } = await admin
@@ -70,12 +91,18 @@ Deno.serve(async (req) => {
       .select("id, status")
       .eq("slug", slug)
       .maybeSingle();
-    if (tErr || !tenant) return json({ error: "Cliente não encontrado." }, 404);
+    // Slug inexistente => resposta genérica (não enumera clientes).
+    if (tErr || !tenant) {
+      try {
+        await admin.from("access_logs").insert({
+          user_id: null, email, tenant_id: null, context: "client",
+          event: "login_failed", ip, user_agent: ua, metadata: { reason: "no_tenant", slug },
+        });
+      } catch (_e) { /* swallow */ }
+      return json({ error: GENERIC }, 401);
+    }
     if (tenant.status === "paused") return json({ error: "O acesso deste cliente está pausado." }, 403);
     if (tenant.status === "deleted") return json({ error: "Cliente desativado." }, 403);
-
-    const ip = req.headers.get("x-forwarded-for") ?? null;
-    const ua = req.headers.get("user-agent") ?? null;
 
     const logAttempt = async (event: string, userId: string | null, extra?: any) => {
       try {
@@ -99,20 +126,21 @@ Deno.serve(async (req) => {
       .eq("email", email)
       .maybeSingle();
 
+    // Respostas UNIFICADAS: no_profile / tenant_mismatch / user_blocked devolvem
+    // sempre 401 genérico. O motivo real fica apenas no access_logs.
     if (!prof) {
       await logAttempt("login_failed", null, { reason: "no_profile" });
-      return json({ error: "E-mail ou senha inválidos." }, 401);
+      return json({ error: GENERIC }, 401);
     }
 
     if (prof.tenant_id !== tenant.id) {
-      // tentativa cross-tenant — log explícito para auditoria
       await logAttempt("login_blocked", prof.id, { reason: "tenant_mismatch", attempted_tenant: tenant.id });
-      return json({ error: "Esta conta não pertence a este cliente." }, 403);
+      return json({ error: GENERIC }, 401);
     }
 
     if (prof.is_blocked) {
       await logAttempt("login_blocked", prof.id, { reason: "user_blocked" });
-      return json({ error: "Seu acesso foi bloqueado pelo administrador." }, 403);
+      return json({ error: GENERIC }, 401);
     }
 
     // 3) Autentica via cliente anônimo (gera sessão real)
@@ -120,7 +148,7 @@ Deno.serve(async (req) => {
     const { data: signInData, error: signInErr } = await userClient.auth.signInWithPassword({ email, password });
     if (signInErr || !signInData.session) {
       await logAttempt("login_failed", prof.id, { reason: "bad_password" });
-      return json({ error: "E-mail ou senha inválidos." }, 401);
+      return json({ error: GENERIC }, 401);
     }
 
     await logAttempt("login", prof.id);

@@ -1024,14 +1024,33 @@ async function sendAction(
   phone: string | null,
 ) {
   try {
+    // Tenant do LEAD: qualquer id vindo de action_config (template, bot, etapa)
+    // precisa pertencer a ele. Ids de outro tenant => ação pulada com log.
+    const { data: leadTenantRow } = await supabase
+      .from("crm_leads").select("tenant_id").eq("id", leadId).maybeSingle();
+    const leadTenant: string | null = (leadTenantRow as any)?.tenant_id ?? null;
+    const belongsToLeadTenant = async (table: string, id: string): Promise<boolean> => {
+      if (!leadTenant) return true; // leads sem carimbo (legado) mantêm comportamento
+      const { data } = await supabase.from(table).select("id").eq("id", id).eq("tenant_id", leadTenant).maybeSingle();
+      if (!data) {
+        console.warn(`[AUTOMATION-ENGINE] ${table} ${id} não pertence ao tenant do lead ${leadId} — ação pulada`);
+        return false;
+      }
+      return true;
+    };
+
     switch (actionType) {
       case "send_template":
         if (config.template_id && phone) {
-          const { data: tpl } = await supabase
+          let tplQuery = supabase
             .from("crm_whatsapp_templates")
             .select("name, language")
-            .eq("id", config.template_id)
-            .single();
+            .eq("id", config.template_id);
+          if (leadTenant) tplQuery = tplQuery.eq("tenant_id", leadTenant);
+          const { data: tpl } = await tplQuery.maybeSingle();
+          if (!tpl) {
+            console.warn(`[AUTOMATION-ENGINE] template ${config.template_id} fora do tenant do lead ${leadId} — ação pulada`);
+          }
           if (tpl) {
             const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
               method: "POST",
@@ -1056,6 +1075,7 @@ async function sendAction(
 
       case "send_bot":
         if (config.bot_id) {
+          if (!(await belongsToLeadTenant("bots", config.bot_id))) break;
           const resp = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
@@ -1129,6 +1149,7 @@ async function sendAction(
 
       case "move_stage":
         if (config.target_stage_id) {
+          if (!(await belongsToLeadTenant("crm_stages", config.target_stage_id))) break;
           // Get current stage before moving
           const { data: currentLead } = await supabase.from("crm_leads").select("stage_id").eq("id", leadId).single();
           const previousStageId = currentLead?.stage_id;

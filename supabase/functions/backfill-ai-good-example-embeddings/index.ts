@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-    const auth = await authorizeInternal(req, supabase, { allowUserJwt: true });
+    const auth = await authorizeInternal(req, supabase, { cronSecretName: "automation_cron_token" });
     if (!auth.ok) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }

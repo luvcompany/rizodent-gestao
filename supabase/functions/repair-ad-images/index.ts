@@ -1,28 +1,32 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeInternal } from "../_shared/internalAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const auth = req.headers.get("authorization") || "";
-  const expected = `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`;
-  if (auth !== expected) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
 
+  // Job de batch: cron ou chamada interna com service role (comparação em tempo
+  // constante dentro de authorizeInternal — substitui o `auth !== expected`).
+  const gate = await authorizeInternal(req, supabase, { cronSecretName: "automation_cron_token" });
+  if (!gate.ok) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Find leads with ad_id but missing imagem_origem
     const { data: leads, error } = await supabase
       .from("crm_leads")
-      .select("id, ad_id, link_anuncio, pipeline_id")
+      .select("id, ad_id, link_anuncio, pipeline_id, tenant_id")
       .not("ad_id", "is", null)
       .is("imagem_origem", null)
       .limit(50);
@@ -34,31 +38,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get integrations for tokens
-    const { data: integrations } = await supabase.from("integrations").select("key, config, status");
+    // Get integrations for tokens (com tenant — o fallback NUNCA cruza tenants)
+    const { data: integrations } = await supabase
+      .from("integrations")
+      .select("key, config, status, tenant_id");
     const whatsappIntegrations = (integrations || []).filter(
       (i: any) => i.key.startsWith("whatsapp") && i.status === "connected"
     );
 
-    const getToken = (pipelineId: string): string => {
-      // Try pipeline-specific integration first
-      for (const integ of whatsappIntegrations) {
+    // Token só do MESMO tenant do lead. Sem integração própria => pula o lead
+    // (antes o fallback usava o token de qualquer tenant conectado).
+    const getToken = (pipelineId: string, tenantId: string | null): string => {
+      if (!tenantId) return "";
+      const ofTenant = whatsappIntegrations.filter((i: any) => i.tenant_id === tenantId);
+      for (const integ of ofTenant) {
         const cfg = integ.config as any;
         if (cfg?.pipeline_id === pipelineId && cfg?.access_token) return cfg.access_token;
       }
-      // Fallback to any connected integration
-      for (const integ of whatsappIntegrations) {
+      for (const integ of ofTenant) {
         const cfg = integ.config as any;
         if (cfg?.access_token) return cfg.access_token;
       }
-      return Deno.env.get("WHATSAPP_TOKEN") || "";
+      return "";
     };
 
     let repaired = 0;
 
     for (const lead of leads) {
       const adSourceId = lead.ad_id;
-      const token = getToken(lead.pipeline_id);
+      const token = getToken(lead.pipeline_id, (lead as any).tenant_id ?? null);
       if (!token || !adSourceId) continue;
 
       let imageUrl: string | null = null;
@@ -66,7 +74,7 @@ Deno.serve(async (req) => {
       // Method 1: Ad creative endpoint
       try {
         const adRes = await fetch(
-          `https://graph.facebook.com/v25.0/${adSourceId}?fields=creative{thumbnail_url,image_url,object_story_spec}&access_token=${token}`
+          `https://graph.facebook.com/v25.0/${encodeURIComponent(adSourceId)}?fields=creative{thumbnail_url,image_url,object_story_spec}&access_token=${token}`
         );
         if (adRes.ok) {
           const adData = await adRes.json();
@@ -86,7 +94,7 @@ Deno.serve(async (req) => {
       if (!imageUrl) {
         try {
           const crRes = await fetch(
-            `https://graph.facebook.com/v25.0/${adSourceId}/adcreatives?fields=thumbnail_url,image_url,effective_object_story_id&access_token=${token}`
+            `https://graph.facebook.com/v25.0/${encodeURIComponent(adSourceId)}/adcreatives?fields=thumbnail_url,image_url,effective_object_story_id&access_token=${token}`
           );
           if (crRes.ok) {
             const crData = await crRes.json();
@@ -97,7 +105,7 @@ Deno.serve(async (req) => {
               if (!imageUrl && storyId) {
                 try {
                   const postRes = await fetch(
-                    `https://graph.facebook.com/v25.0/${storyId}?fields=full_picture,picture&access_token=${token}`
+                    `https://graph.facebook.com/v25.0/${encodeURIComponent(storyId)}?fields=full_picture,picture&access_token=${token}`
                   );
                   if (postRes.ok) {
                     const postData = await postRes.json();

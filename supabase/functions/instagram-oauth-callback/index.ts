@@ -178,6 +178,20 @@ Deno.serve(async (req: Request) => {
         || igJson?.instagram_business_account?.name
         || page.name;
 
+      // Conta já conectada em OUTRO workspace: nunca reatribuir o tenant_id
+      // (senão qualquer tenant "roubaria" a conta ao reconectar).
+      const { data: existingAcc } = await supabase
+        .from("instagram_accounts")
+        .select("id, tenant_id")
+        .eq("instagram_account_id", igId)
+        .maybeSingle();
+      if (existingAcc && (existingAcc as any).tenant_id && (existingAcc as any).tenant_id !== tenantId) {
+        const reason = "conta já conectada em outro workspace";
+        skipped.push({ page: page.name, reason });
+        console.warn(`[instagram-oauth-callback] ${igId}: ${reason}`);
+        continue;
+      }
+
       const { error: upErr } = await supabase
         .from("instagram_accounts")
         .upsert(

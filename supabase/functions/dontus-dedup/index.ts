@@ -123,10 +123,48 @@ Deno.serve(async (req) => {
   };
 
   try {
+    // 0) Escopo do tenant: só clínicas da Rizodent entram no dedup.
+    const { data: clinicasRows, error: clinErr } = await supabase
+      .from("clinicas")
+      .select("id")
+      .eq("tenant_id", RIZODENT_TENANT_ID);
+    if (clinErr) throw clinErr;
+    const clinicaIds = (clinicasRows || []).map((c: any) => c.id);
+    if (!clinicaIds.length) {
+      return new Response(JSON.stringify({ ...summary, skipped: "tenant sem clínicas" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Admins do tenant: destinatários das notificações (crm_notifications exige user_id).
+    const { data: adminRows } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("tenant_id", RIZODENT_TENANT_ID);
+    const tenantUserIds: string[] = (adminRows || []).map((p: any) => p.id);
+    let notifyUserIds: string[] = [];
+    if (tenantUserIds.length) {
+      const { data: roleRows } = await supabase
+        .from("user_roles")
+        .select("user_id, role")
+        .in("user_id", tenantUserIds)
+        .in("role", ["crc", "gerente"]);
+      notifyUserIds = Array.from(new Set((roleRows || []).map((r: any) => r.user_id)));
+    }
+
+    async function notify(payload: Record<string, unknown>): Promise<string | null> {
+      if (!notifyUserIds.length) return null;
+      const rows = notifyUserIds.map((uid) => ({ ...payload, user_id: uid }));
+      const { error } = await supabase.from("crm_notifications").insert(rows);
+      if (error && !/duplicate|unique/i.test(error.message || "")) return error.message;
+      return null;
+    }
+
     // 1) Carrega todos os pagamentos do período do tenant Rizodent.
     const { data: pagsRaw, error: pagsErr } = await supabase
       .from("pagamentos")
       .select("id, paciente_id, clinica_id, data_pagamento, valor, dontus_key, recorrencia_orto, tipo, especialidade")
+      .in("clinica_id", clinicaIds)
       .gte("data_pagamento", date_de)
       .lte("data_pagamento", date_ate);
     if (pagsErr) throw pagsErr;
@@ -148,7 +186,11 @@ Deno.serve(async (req) => {
     const pacMap = new Map<string, { id: string; nome: string; telefone: string | null }>();
     for (let i = 0; i < pacIds.length; i += 500) {
       const chunk = pacIds.slice(i, i + 500);
-      const { data } = await supabase.from("pacientes").select("id, nome, telefone").in("id", chunk);
+      const { data } = await supabase
+        .from("pacientes")
+        .select("id, nome, telefone")
+        .eq("tenant_id", RIZODENT_TENANT_ID)
+        .in("id", chunk);
       for (const p of data || []) pacMap.set(p.id, p as any);
     }
 
@@ -293,16 +335,13 @@ Deno.serve(async (req) => {
               supabase.from("crm_lead_pacientes").select("lead_id", { count: "exact", head: true }).eq("paciente_id", s.paciente_id),
             ]);
             if ((pagCount || 0) === 0 && (vincCount || 0) === 0) {
-              await supabase.from("crm_notifications").insert({
+              const nErr = await notify({
                 title: "Paciente órfão pós-dedup",
                 body: `Paciente ${pacMap.get(s.paciente_id)?.nome || s.paciente_id} ficou sem pagamentos/vínculos após dedup do pagamento ${r.id}.`,
                 type: "dontus_dedup",
                 dedupe_key: `dedup:orphan:${s.paciente_id}`,
-              }).then(({ error }) => {
-                if (error && !/duplicate|unique/i.test(error.message || "")) {
-                  summary.erros_det.push({ orphan: s.paciente_id, error: error.message });
-                }
               });
+              if (nErr) summary.erros_det.push({ orphan: s.paciente_id, error: nErr });
             }
           }
         } catch (e: any) {
@@ -315,7 +354,7 @@ Deno.serve(async (req) => {
       for (const pair of weakPairs) {
         try {
           const dk = `dedup:ambig:${pair.sync.id}:${pair.rec.id}`;
-          const { error } = await supabase.from("crm_notifications").insert({
+          const nErr = await notify({
             title: "Possível pagamento duplicado — conferir manualmente",
             body: `Clínica ${pair.sync.clinica_id} · ${pair.sync.data_pagamento} · R$${Number(pair.sync.valor).toFixed(2)}. ` +
                   `Sync: ${pacMap.get(pair.sync.paciente_id)?.nome} (pag ${pair.sync.id}). ` +
@@ -323,7 +362,7 @@ Deno.serve(async (req) => {
             type: "dontus_dedup",
             dedupe_key: dk,
           });
-          if (error && !/duplicate|unique/i.test(error.message || "")) throw error;
+          if (nErr) throw new Error(nErr);
         } catch (e: any) {
           summary.erros++;
           summary.erros_det.push({ ambiguous: { sync: pair.sync.id, rec: pair.rec.id }, error: e?.message || String(e) });

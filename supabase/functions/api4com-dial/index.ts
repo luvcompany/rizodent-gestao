@@ -4,6 +4,7 @@
 // desligar, o webhook chega em tempo real já com o lead exato (metadata.leadId).
 // O token da conta fica no servidor — nunca vai ao frontend.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { assertNumberAccess } from "../_shared/authz.ts";
 
 const API4COM_BASE = "https://api.api4com.com/api/v1";
 const corsHeaders = {
@@ -42,7 +43,16 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const leadId = body.lead_id as string | undefined;
-    let phone = String(body.phone || "");
+    let phone = "";
+
+    // Discagem avulsa (sem lead) só para papéis privilegiados: evita usar a
+    // telefonia do tenant como discador arbitrário.
+    if (!leadId) {
+      const { data: roles } = await admin.from("user_roles").select("role").eq("user_id", uid);
+      const privileged = (roles || []).some((r: any) => ["crc", "gerente", "superadmin"].includes(r.role));
+      if (!privileged) return json({ error: "Informe o lead para discar." }, 400);
+      phone = String(body.phone || "");
+    }
 
     // Config da telefonia (token + ramal) — só via service role.
     const { data: cfg } = await admin.from("api4com_config")
@@ -52,9 +62,19 @@ Deno.serve(async (req) => {
 
     // Resolve o telefone do lead (valida que o lead é do tenant).
     if (leadId) {
-      const { data: lead } = await admin.from("crm_leads").select("id, phone").eq("id", leadId).eq("tenant_id", tenantId).maybeSingle();
+      const { data: lead } = await admin
+        .from("crm_leads")
+        .select("id, phone, whatsapp_number_id")
+        .eq("id", leadId).eq("tenant_id", tenantId).maybeSingle();
       if (!lead) return json({ error: "Lead não encontrado nesta clínica." }, 404);
-      if (!phone) phone = lead.phone || "";
+      // Visibilidade por número (papel recepcao).
+      const numberCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, {
+        ok: true, userId: uid, tenantId, isServiceRole: false, isSuperadmin: false,
+      } as any);
+      if (!numberCheck.ok) return json({ error: numberCheck.error }, numberCheck.status);
+      // Telefone SEMPRE do lead: body.phone não pode redirecionar a ligação.
+      phone = lead.phone || "";
+      if (!phone) return json({ error: "Lead sem telefone cadastrado." }, 400);
     }
     const e164 = toE164(phone);
     if (!e164 || e164.replace(/\D/g, "").length < 12) return json({ error: "Número de telefone inválido." }, 400);

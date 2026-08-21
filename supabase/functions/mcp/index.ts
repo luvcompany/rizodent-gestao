@@ -109,6 +109,10 @@ var add_lead_note_default = defineTool3({
       return { content: [{ type: "text", text: "N\xE3o autenticado." }], isError: true };
     }
     const sb = supabaseForUser3(ctx);
+    const { data: visible } = await sb.from("crm_leads").select("id").eq("id", lead_id).maybeSingle();
+    if (!visible) {
+      return { content: [{ type: "text", text: "Lead n\xE3o encontrado." }], isError: true };
+    }
     const { data, error } = await sb.from("crm_conversation_notes").insert({ lead_id, content: note, author_id: ctx.getUserId() }).select().maybeSingle();
     if (error) {
       return { content: [{ type: "text", text: error.message }], isError: true };

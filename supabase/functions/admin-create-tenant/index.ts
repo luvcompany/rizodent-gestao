@@ -24,7 +24,7 @@ async function findUserByEmail(admin: any, email: string) {
   return null;
 }
 
-async function ensureEmailAvailable(admin: any, email: string) {
+async function ensureEmailAvailable(admin: any, email: string, actorId: string | null) {
   const existingUser = await findUserByEmail(admin, email);
   if (!existingUser) return;
 
@@ -35,21 +35,47 @@ async function ensureEmailAvailable(admin: any, email: string) {
     .maybeSingle();
   const existingTenantId = existingProfile?.tenant_id ?? existingUser.user_metadata?.tenant_id ?? null;
 
-  if (existingTenantId) {
-    const { data: existingTenant } = await admin
-      .from("tenants")
-      .select("status")
-      .eq("id", existingTenantId)
-      .maybeSingle();
+  // Um superadmin da plataforma NUNCA pode ser reciclado como primeiro usuário
+  // de um cliente novo (seria apagar a conta de administração da plataforma).
+  const { data: existingRoles } = await admin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", existingUser.id);
+  if ((existingRoles || []).some((r: any) => r.role === "superadmin")) {
+    return json({ error: "Este e-mail pertence a um administrador da plataforma e não pode ser reutilizado." }, 409);
+  }
 
-    if (existingTenant?.status === "active") {
-      return json({ error: "Este e-mail já pertence a um cliente ativo. Use outro e-mail para o primeiro usuário." }, 409);
-    }
+  // Sem tenant => conta órfã/indeterminada. Não apagamos às cegas.
+  if (!existingTenantId) {
+    return json({ error: "Este e-mail já existe na plataforma. Use outro e-mail para o primeiro usuário." }, 409);
+  }
+
+  const { data: existingTenant } = await admin
+    .from("tenants")
+    .select("status")
+    .eq("id", existingTenantId)
+    .maybeSingle();
+
+  // Só reaproveitamos o e-mail quando o cliente anterior está na lixeira.
+  if (existingTenant?.status !== "deleted") {
+    return json({ error: "Este e-mail já pertence a um cliente ativo. Use outro e-mail para o primeiro usuário." }, 409);
   }
 
   await admin.from("profiles").delete().eq("id", existingUser.id);
   const { error: deleteErr } = await admin.auth.admin.deleteUser(existingUser.id);
   if (deleteErr) throw deleteErr;
+
+  // Auditoria da exclusão de conta durante o reaproveitamento de e-mail.
+  try {
+    await admin.from("access_logs").insert({
+      user_id: actorId,
+      email,
+      tenant_id: null,
+      context: "admin",
+      event: "user_delete_email_reuse",
+      metadata: { deleted_user_id: existingUser.id, previous_tenant_id: existingTenantId },
+    });
+  } catch (_e) { /* best effort */ }
 }
 
 async function cleanupFailedTenant(admin: any, tenantId: string | null, userId: string | null) {
@@ -118,7 +144,7 @@ Deno.serve(async (req) => {
       return json({ error: "A senha temporária precisa ter pelo menos 6 caracteres." }, 400);
     }
 
-    const emailAvailability = await ensureEmailAvailable(admin, cleanEmail);
+    const emailAvailability = await ensureEmailAvailable(admin, cleanEmail, userId);
     if (emailAvailability) return emailAvailability;
 
     // Free up slug if it belongs to a previously deleted tenant

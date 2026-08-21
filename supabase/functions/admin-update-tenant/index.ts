@@ -33,6 +33,13 @@ Deno.serve(async (req) => {
 
     const { tenant_id, action, patch, confirm_name } = await req.json();
     if (!tenant_id || !action) return json({ error: "tenant_id and action required" }, 400);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(tenant_id))) {
+      return json({ error: "tenant_id inválido" }, 400);
+    }
+    {
+      const { data: tExists } = await admin.from("tenants").select("id").eq("id", tenant_id).maybeSingle();
+      if (!tExists) return json({ error: "Cliente não encontrado." }, 404);
+    }
 
     // -------- EDITAR --------
     if (action === "update") {
@@ -56,17 +63,31 @@ Deno.serve(async (req) => {
 
     // -------- UPLOAD DE LOGO/FAVICON (via service role — ignora RLS do Storage) --------
     if (action === "upload_logo") {
+      const ALLOWED_KINDS = new Set(["logo", "logo_dark", "favicon"]);
+      const ALLOWED_EXT = new Set(["png", "jpg", "jpeg", "webp", "svg", "ico", "gif"]);
+      const ALLOWED_TYPES = new Set([
+        "image/png", "image/jpeg", "image/jpg", "image/webp",
+        "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon", "image/gif",
+      ]);
       const kind = String(patch?.kind ?? "logo");
+      if (!ALLOWED_KINDS.has(kind)) return json({ error: "kind inválido" }, 400);
       const ext = (String(patch?.ext ?? "png").replace(/[^a-z0-9]/gi, "").toLowerCase()) || "png";
+      if (!ALLOWED_EXT.has(ext)) return json({ error: "Extensão de imagem não permitida" }, 400);
       const b64 = String(patch?.data_base64 ?? "");
-      const contentType = String(patch?.content_type ?? "image/png");
+      const contentType = String(patch?.content_type ?? "image/png").toLowerCase().split(";")[0].trim();
+      if (!ALLOWED_TYPES.has(contentType)) return json({ error: "Tipo de arquivo não permitido (só imagem)" }, 400);
       if (!b64) return json({ error: "Sem dados de imagem." }, 400);
+      // base64 => ~3/4 do tamanho em bytes. Limite de 2 MB.
+      if (b64.length > Math.ceil((2 * 1024 * 1024) / 3) * 4 + 8) {
+        return json({ error: "Imagem muito grande (máx. 2 MB)." }, 400);
+      }
       let bytes: Uint8Array;
       try {
         bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
       } catch (_) {
         return json({ error: "Imagem inválida (base64)." }, 400);
       }
+      if (bytes.byteLength > 2 * 1024 * 1024) return json({ error: "Imagem muito grande (máx. 2 MB)." }, 400);
       const path = `${tenant_id}/${kind}-${Date.now()}.${ext}`;
       const { error: upErr } = await admin.storage.from("tenant-logos").upload(path, bytes, { upsert: true, contentType });
       if (upErr) return json({ error: upErr.message }, 400);

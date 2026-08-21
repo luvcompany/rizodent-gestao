@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
+import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,40 +18,39 @@ Deno.serve(async (req) => {
     });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "Missing authorization header" }, 401);
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const anonClient = createClient(supabaseUrl, anonKey);
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await anonClient.auth.getUser(token);
-    if (authError || !user) return json({ error: "Unauthorized" }, 401);
-
     const supabase = createClient(supabaseUrl, serviceKey);
+
+    // Gate central: mesma checagem de tenant/papel usada nas outras functions.
+    const ctx = await resolveCaller(req, supabase);
+    if (!ctx.ok) return json({ error: ctx.error }, ctx.status);
+    if (!ctx.userId) return json({ error: "Chamada de usuário obrigatória" }, 401);
+    const user = { id: ctx.userId };
+
     const { leadId, newUserId } = await req.json();
 
     if (!leadId || !newUserId) {
       return json({ error: "leadId and newUserId are required" }, 400);
     }
 
-    const [{ data: lead }, { data: roleRow }, { data: requesterProfile }] = await Promise.all([
-      supabase.from("crm_leads").select("id, name, assigned_to, tenant_id, pipeline_id, stage_id").eq("id", leadId).maybeSingle(),
+    const leadCheck = await assertLeadInTenant(supabase, leadId, ctx);
+    if (!leadCheck.ok) return json({ error: leadCheck.error }, leadCheck.status);
+
+    const [{ data: lead }, { data: roleRow }] = await Promise.all([
+      supabase.from("crm_leads").select("id, name, assigned_to, tenant_id, pipeline_id, stage_id, whatsapp_number_id").eq("id", leadId).maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
-      supabase.from("profiles").select("tenant_id").eq("id", user.id).maybeSingle(),
     ]);
 
     if (!lead) return json({ error: "Lead not found" }, 404);
 
-    // Tenant cross-check: requester, lead, and target user must all belong to the same tenant.
-    const requesterTenant = (requesterProfile as any)?.tenant_id;
-    const isSuperadmin = roleRow?.role === "superadmin";
+    // Visibilidade por número (papel recepcao).
+    const numberCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, ctx);
+    if (!numberCheck.ok) return json({ error: numberCheck.error }, numberCheck.status);
+
+    const requesterTenant = ctx.tenantId;
+    const isSuperadmin = ctx.isSuperadmin || roleRow?.role === "superadmin";
     if (!isSuperadmin) {
-      if (!requesterTenant || requesterTenant !== (lead as any).tenant_id) {
-        return json({ error: "Forbidden: cross-tenant" }, 403);
-      }
       const { data: targetProfile } = await supabase
         .from("profiles").select("tenant_id").eq("id", newUserId).maybeSingle();
       if (!targetProfile || (targetProfile as any).tenant_id !== requesterTenant) {
@@ -98,11 +98,12 @@ Deno.serve(async (req) => {
       const { data: pipelines } = await supabase
         .from("crm_pipelines")
         .select("id, name, allowed_roles, tenant_id")
+        .eq("tenant_id", (lead as any).tenant_id)
         .contains("allowed_roles", ["posvenda"]);
 
-      const pipeline =
-        pipelines?.find((p: any) => p.tenant_id === (lead as any).tenant_id) ||
-        pipelines?.[0];
+      // Sem funil de pós-venda NO TENANT do lead: apenas troca de responsável.
+      // (Nunca cair no funil de outro tenant.)
+      const pipeline = pipelines?.[0] || null;
 
       if (pipeline) {
         const { data: firstStage } = await supabase

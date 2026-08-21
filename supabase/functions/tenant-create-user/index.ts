@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { resolveCaller } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,46 +17,42 @@ Deno.serve(async (req) => {
     const SR = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-    const token = auth.replace("Bearer ", "");
-    const userClient = createClient(URL, ANON, { global: { headers: { Authorization: auth } } });
-    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
-    if (claimsErr || !claimsData?.claims) return json({ error: "Unauthorized" }, 401);
-    const requesterId = claimsData.claims.sub;
-
     const admin = createClient(URL, SR);
 
-    // Verifica se o solicitante é admin/superadmin
-    const { data: roles } = await admin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", requesterId);
-    const isSuperadmin = (roles || []).some((r: any) => r.role === "superadmin");
-    // A gestão de usuários passou a viver SÓ no painel do superadmin (a tela
-    // dentro do CRM foi removida). Manter esta função aberta a crc/gerente
-    // deixaria a porta de API aberta justamente para o que se quis centralizar.
-    if (!isSuperadmin) return json({ error: "Forbidden — gestão de usuários é feita no painel administrativo" }, 403);
+    // Gate único via helper compartilhado. Gestão de usuários vive SÓ no painel
+    // do superadmin — crc/gerente não têm acesso a esta função.
+    const ctx = await resolveCaller(req, admin);
+    if (!ctx.ok) return json({ error: ctx.error }, ctx.status);
+    if (!ctx.isSuperadmin) {
+      return json({ error: "Forbidden — gestão de usuários é feita no painel administrativo" }, 403);
+    }
+    const requesterId = ctx.userId;
 
-    // Pega o tenant do solicitante
-    const { data: requesterProfile } = await admin
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", requesterId)
-      .maybeSingle();
-    const tenantId = requesterProfile?.tenant_id;
+    const body = await req.json().catch(() => ({}));
+    const { email, password, nome, cargo, role } = body as any;
+
+    // tenant_id no corpo só para superadmin (que é o único caller permitido) e
+    // precisa existir de fato. Sem tenant_id no corpo => tenant do solicitante.
+    let tenantId: string | null = null;
+    if (body?.tenant_id) {
+      const { data: t } = await admin.from("tenants").select("id").eq("id", body.tenant_id).maybeSingle();
+      if (!t) return json({ error: "Tenant inválido" }, 400);
+      tenantId = t.id;
+    } else {
+      const { data: requesterProfile } = await admin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", requesterId)
+        .maybeSingle();
+      tenantId = requesterProfile?.tenant_id ?? null;
+    }
     if (!tenantId) return json({ error: "Tenant não encontrado" }, 400);
 
-    const { email, password, nome, cargo, role } = await req.json();
     if (!email || !password || !nome) return json({ error: "Campos obrigatórios faltando" }, 400);
 
     // Allowlist de roles — bloqueia escalada de privilégio.
-    // - crc/gerente só podem criar: crc, posvenda, recepcao
-    // - superadmin pode criar: crc, posvenda, recepcao, gerente, superadmin
     const requestedRole = role || "crc";
-    const allowedForAdmin = new Set(["crc", "posvenda", "recepcao"]);
-    const allowedForSuperadmin = new Set(["crc", "posvenda", "recepcao", "gerente", "superadmin"]);
-    const allowed = isSuperadmin ? allowedForSuperadmin : allowedForAdmin;
+    const allowed = new Set(["crc", "posvenda", "recepcao", "gerente", "closer", "superadmin"]);
     if (!allowed.has(requestedRole)) {
       return json({ error: `Role '${requestedRole}' não permitida para este usuário` }, 403);
     }
