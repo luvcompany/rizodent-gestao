@@ -1390,9 +1390,11 @@ async function executeNode(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${serviceKey}`,
+            // Repassa a credencial ORIGINAL (não promove para service_role).
+            Authorization: authHeader,
             apikey: serviceKey,
           },
+
           body: JSON.stringify({
             leadId: lead.id,
             botId: data.botId,
