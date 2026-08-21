@@ -183,12 +183,15 @@ Deno.serve(async (req) => {
 
   const auth = await authorizeInternal(req, supabase, { cronSecretName: "automation_cron_token", allowUserJwt: true });
   if (!auth.ok) return unauthorizedResponse(corsHeaders);
+  let callerIsSuperadmin = auth.via !== "user_jwt"; // service_role/cron são confiáveis
   if (auth.via === "user_jwt") {
-    const { data: role } = await supabase
+    const { data: roles } = await supabase
       .from("user_roles").select("role").eq("user_id", auth.userId)
-      .in("role", ["crc", "gerente", "superadmin"]).maybeSingle();
-    if (!role) return unauthorizedResponse(corsHeaders);
+      .in("role", ["crc", "gerente", "superadmin"]);
+    if (!roles || roles.length === 0) return unauthorizedResponse(corsHeaders);
+    callerIsSuperadmin = roles.some((r: any) => r.role === "superadmin");
   }
+
 
   let body: Record<string, any> = {};
   try {
