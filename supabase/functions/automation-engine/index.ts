@@ -1014,6 +1014,32 @@ function getNextValidWindow(startHour: number, allowedDays: number[]): Date {
   return next;
 }
 
+// Tenant de um lead (null quando o lead não existe / não tem carimbo).
+async function tenantDoLead(supabase: any, leadId: string): Promise<string | null> {
+  const { data } = await supabase.from("crm_leads").select("tenant_id").eq("id", leadId).maybeSingle();
+  return (data as any)?.tenant_id ?? null;
+}
+
+// Fail-closed: sem tenant conhecido, NENHUM id de action_config é aceito.
+async function idNoTenant(
+  supabase: any,
+  table: string,
+  id: string,
+  tenantId: string | null,
+  contexto: string,
+): Promise<boolean> {
+  if (!tenantId) {
+    console.warn(`[AUTOMATION-ENGINE] lead sem tenant (${contexto}) — ação com ${table} ${id} pulada`);
+    return false;
+  }
+  const { data } = await supabase.from(table).select("id").eq("id", id).eq("tenant_id", tenantId).maybeSingle();
+  if (!data) {
+    console.warn(`[AUTOMATION-ENGINE] ${table} ${id} não pertence ao tenant ${tenantId} (${contexto}) — ação pulada`);
+    return false;
+  }
+  return true;
+}
+
 async function sendAction(
   supabase: any,
   supabaseUrl: string,
@@ -1026,18 +1052,10 @@ async function sendAction(
   try {
     // Tenant do LEAD: qualquer id vindo de action_config (template, bot, etapa)
     // precisa pertencer a ele. Ids de outro tenant => ação pulada com log.
-    const { data: leadTenantRow } = await supabase
-      .from("crm_leads").select("tenant_id").eq("id", leadId).maybeSingle();
-    const leadTenant: string | null = (leadTenantRow as any)?.tenant_id ?? null;
-    const belongsToLeadTenant = async (table: string, id: string): Promise<boolean> => {
-      if (!leadTenant) return true; // leads sem carimbo (legado) mantêm comportamento
-      const { data } = await supabase.from(table).select("id").eq("id", id).eq("tenant_id", leadTenant).maybeSingle();
-      if (!data) {
-        console.warn(`[AUTOMATION-ENGINE] ${table} ${id} não pertence ao tenant do lead ${leadId} — ação pulada`);
-        return false;
-      }
-      return true;
-    };
+    const leadTenant: string | null = await tenantDoLead(supabase, leadId);
+    const belongsToLeadTenant = (table: string, id: string): Promise<boolean> =>
+      idNoTenant(supabase, table, id, leadTenant, `lead ${leadId}`);
+
 
     switch (actionType) {
       case "send_template":
