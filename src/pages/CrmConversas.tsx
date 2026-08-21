@@ -1805,6 +1805,10 @@ function useChannelUnreadCount(channel: "whatsapp" | "instagram") {
 export default function CrmConversas() {
   const whatsappUnread = useChannelUnreadCount("whatsapp");
   const instagramUnread = useChannelUnreadCount("instagram");
+  // Recepção e closer atendem só WhatsApp — os hooks acima ficam incondicionais
+  // (regra de hooks); apenas a aba deixa de ser renderizada.
+  const { userRole } = useAuth();
+  const hideInstagram = userRole === "recepcao" || userRole === "closer";
 
   return (
     <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
