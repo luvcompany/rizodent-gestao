@@ -712,12 +712,14 @@ Deno.serve(async (req) => {
           // `%` e `_` são metacaracteres do LIKE: sem escape, um path parecido
           // liberaria outro objeto.
           const likeSafePath = storagePath.replace(/([\\%_])/g, "\\$1");
-          const [{ data: obj }, { data: msgWithMedia }] = await Promise.all([
-            supabase.schema("storage").from("objects")
-              .select("id, owner")
-              .eq("bucket_id", "chat-media")
-              .eq("name", storagePath)
-              .maybeSingle(),
+          // O schema `storage` NÃO é exposto pela Data API (PGRST106), então a
+          // dona do objeto é checada por RPC security-definer, que compara tanto
+          // `owner_id` (text, coluna atual) quanto `owner` (uuid, legada).
+          const [{ data: ownedRpc }, { data: msgWithMedia }] = await Promise.all([
+            supabase.rpc("chat_media_object_owned_by", {
+              _name: storagePath,
+              _user_id: caller.userId,
+            }),
             supabase.from("messages")
               .select("id")
               .eq("tenant_id", leadTenantId)
@@ -725,7 +727,7 @@ Deno.serve(async (req) => {
               .limit(1)
               .maybeSingle(),
           ]);
-          const ownedByCaller = !!obj && (obj as any).owner && (obj as any).owner === caller.userId;
+          const ownedByCaller = ownedRpc === true;
           if (!ownedByCaller && !msgWithMedia) {
             console.warn(`[send-whatsapp-message] media guard: path fora do tenant path=${storagePath} lead=${lead_id}`);
             return new Response(JSON.stringify({ error: "Mídia não pertence a esta clínica" }), {
