@@ -714,7 +714,7 @@ Deno.serve(async (req) => {
           const likeSafePath = storagePath.replace(/([\\%_])/g, "\\$1");
           const [{ data: obj }, { data: msgWithMedia }] = await Promise.all([
             supabase.schema("storage").from("objects")
-              .select("id, owner")
+              .select("id, owner, owner_id")
               .eq("bucket_id", "chat-media")
               .eq("name", storagePath)
               .maybeSingle(),
@@ -725,7 +725,12 @@ Deno.serve(async (req) => {
               .limit(1)
               .maybeSingle(),
           ]);
-          const ownedByCaller = !!obj && (obj as any).owner && (obj as any).owner === caller.userId;
+          // `owner` é a coluna LEGADA (uuid) e hoje o Storage grava o dono em
+          // `owner_id` (text) — checar as duas, senão todo upload recente é 403.
+          const ownedByCaller = !!obj && !!caller.userId && (
+            String((obj as any).owner_id ?? "") === String(caller.userId) ||
+            String((obj as any).owner ?? "") === String(caller.userId)
+          );
           if (!ownedByCaller && !msgWithMedia) {
             console.warn(`[send-whatsapp-message] media guard: path fora do tenant path=${storagePath} lead=${lead_id}`);
             return new Response(JSON.stringify({ error: "Mídia não pertence a esta clínica" }), {
