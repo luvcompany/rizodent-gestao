@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal } from "../_shared/internalAuth.ts";
+import { resolveCaller, assertLeadInTenant, assertMessageInTenant, assertNumberAccess } from "../_shared/authz.ts";
 import { localParts, resolveTz } from "../_shared/tz.ts";
 
 const corsHeaders = {
@@ -844,7 +845,8 @@ Responda SOMENTE com JSON válido (uma linha):
     }
 
     if (!parsed || !parsed.reply.trim()) {
-      return new Response(JSON.stringify({ error: "empty_response", model: usedModel, raw: aiText }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.error("[generate-reply-suggestion] empty_response raw:", aiText);
+      return new Response(JSON.stringify({ error: "empty_response", model: usedModel }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
 
