@@ -72,27 +72,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Validate authenticated user
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims?.sub) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const whatsappToken = Deno.env.get("WHATSAPP_TOKEN");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -104,7 +84,30 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    // Identifica o chamador (tenant + papel) — antes qualquer usuário logado
+    // tornava pública a mídia de todos os clientes.
+    const ctx = await resolveCaller(req, supabase);
+    if (!ctx.ok) {
+      return new Response(JSON.stringify({ error: ctx.error }), {
+        status: ctx.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { leadId } = await req.json().catch(() => ({ leadId: null }));
+
+    if (leadId) {
+      const check = await assertLeadInTenant(supabase, leadId, ctx);
+      if (!check.ok) {
+        return new Response(JSON.stringify({ error: check.error }), {
+          status: check.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else if (!ctx.isSuperadmin && !ctx.isServiceRole) {
+      return new Response(JSON.stringify({ error: "Forbidden: modo em massa exige superadmin" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     let query = supabase
       .from("messages")
@@ -114,7 +117,10 @@ Deno.serve(async (req) => {
 
     if (leadId) {
       query = query.eq("lead_id", leadId);
+    } else if (ctx.tenantId) {
+      query = query.eq("tenant_id", ctx.tenantId);
     }
+
 
     const { data, error } = await query;
 
