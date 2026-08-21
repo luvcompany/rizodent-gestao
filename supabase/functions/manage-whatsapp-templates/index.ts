@@ -505,7 +505,9 @@ Deno.serve(async (req) => {
           .from("crm_whatsapp_templates")
           .select("created_by_user_id")
           .eq("name", template_name)
+          .eq("tenant_id", callerTenantId)
           .maybeSingle();
+
         if (!ownerRow || (ownerRow as any).created_by_user_id !== user.id) {
           return new Response(
             JSON.stringify({ error: "Forbidden: only the template owner or an admin can delete this template" }),
