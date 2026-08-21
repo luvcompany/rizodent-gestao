@@ -265,7 +265,7 @@ Deno.serve(async (req) => {
       const nowIso = new Date(nowMs).toISOString();
       const { data: expiredWindows } = await supabase
         .from("crm_automations")
-        .select("id, action_type, action_config, is_active")
+        .select("id, tenant_id, action_type, action_config, is_active")
         .eq("trigger_type", "time_window")
         .eq("action_type", "send_bot");
 
