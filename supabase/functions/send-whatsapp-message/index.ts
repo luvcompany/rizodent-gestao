@@ -695,60 +695,31 @@ Deno.serve(async (req) => {
         const pathMatch = media_url.match(/chat-media\/(.+?)(?:\?|$)/);
         const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : null;
 
-        // (SSRF) URL que "parece" chat-media mas não tem path extraível é
-        // recusada: antes caía num fetch da URL CRUA (ex.
-        // http://10.0.0.5/x?y=/storage/v1/object/chat-media).
-        if (!storagePath) {
-          console.warn(`[send-whatsapp-message] media_url com marcador chat-media sem path válido`);
-          return new Response(JSON.stringify({ error: "media_url de chat-media inválida" }), {
-            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
+        if (storagePath) {
+          console.log(`[send-whatsapp] Downloading from private bucket, path: ${storagePath}`);
+          const { data: fileData, error: downloadError } = await supabase.storage
+            .from("chat-media")
+            .download(storagePath);
 
-        // (IDOR) Chamador humano só pode enviar objeto do chat-media que ele
-        // mesmo subiu ou que já está numa mensagem do PRÓPRIO tenant. Sem isso,
-        // bastava adivinhar/copiar um path para exfiltrar mídia de outra clínica.
-        if (!caller.isServiceRole && !caller.isSuperadmin) {
-          // `%` e `_` são metacaracteres do LIKE: sem escape, um path parecido
-          // liberaria outro objeto.
-          const likeSafePath = storagePath.replace(/([\\%_])/g, "\\$1");
-          // O schema `storage` NÃO é exposto pela Data API (PGRST106), então a
-          // dona do objeto é checada por RPC security-definer, que compara tanto
-          // `owner_id` (text, coluna atual) quanto `owner` (uuid, legada).
-          const [{ data: ownedRpc }, { data: msgWithMedia }] = await Promise.all([
-            supabase.rpc("chat_media_object_owned_by", {
-              _name: storagePath,
-              _user_id: caller.userId,
-            }),
-            supabase.from("messages")
-              .select("id")
-              .eq("tenant_id", leadTenantId)
-              .like("media_url", `%${likeSafePath}%`)
-              .limit(1)
-              .maybeSingle(),
-          ]);
-          const ownedByCaller = ownedRpc === true;
-          if (!ownedByCaller && !msgWithMedia) {
-            console.warn(`[send-whatsapp-message] media guard: path fora do tenant path=${storagePath} lead=${lead_id}`);
-            return new Response(JSON.stringify({ error: "Mídia não pertence a esta clínica" }), {
-              status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          if (downloadError || !fileData) {
+            console.error(`[send-whatsapp] Failed to download from storage: ${JSON.stringify(downloadError)}`);
+            return new Response(JSON.stringify({ error: "Failed to download file from storage", details: downloadError }), {
+              status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
           }
+          fileBlob = fileData;
+        } else {
+          const { data: signedData } = await supabase.storage.from("chat-media").createSignedUrl(media_url, 300);
+          const fileResponse = await fetch(signedData?.signedUrl || media_url);
+          if (!fileResponse.ok) {
+            return new Response(JSON.stringify({ error: "Failed to download file from storage", status: fileResponse.status }), {
+              status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          fileBlob = await fileResponse.blob();
         }
-
-        console.log(`[send-whatsapp] Downloading from private bucket, path: ${storagePath}`);
-        const { data: fileData, error: downloadError } = await supabase.storage
-          .from("chat-media")
-          .download(storagePath);
-
-        if (downloadError || !fileData) {
-          console.error(`[send-whatsapp] Failed to download from storage: ${JSON.stringify(downloadError)}`);
-          return new Response(JSON.stringify({ error: "Failed to download file from storage", details: downloadError }), {
-            status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        fileBlob = fileData;
       } else {
+
 
         // (SSRF) URL externa: só https em host allowlistado (Storage do projeto
         // ou CDN da Meta), sem redirect para fora, com timeout e teto de 16 MB.
