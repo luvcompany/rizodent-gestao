@@ -63,10 +63,10 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceKey);
 
     // Resolução do tenant:
-    //   1) ?tenant=<slug> na URL OU header x-tenant-slug -> resolve via RPC get_tenant_by_slug.
-    //   2) Fallback LEGADO Rizodent: sem slug, mantém o comportamento antigo
-    //      (tenant derivado do perfil do usuário fixo `assignedTo`). Novos
-    //      clientes devem SEMPRE chamar com `?tenant=<slug>`.
+    //   1) Segredo por tenant (tenants.lead_webhook_secret) ou segredo legado
+    //      -> tenant IMPOSTO pelo segredo; `?tenant=` é ignorado.
+    //   2) Chamada service_role: aceita ?tenant=<slug>; sem slug, fallback
+    //      legado Rizodent (tenant derivado do perfil fixo `assignedTo`).
     const RIZODENT_ASSIGNED_TO = "d9b27aa3-049e-4ec9-9ae3-fb160a9544fa";
     const slugFromUrl = new URL(req.url).searchParams.get("tenant");
     const slugFromHeader = req.headers.get("x-tenant-slug");
@@ -75,7 +75,12 @@ Deno.serve(async (req) => {
     let tenantId: string | undefined;
     let assignedTo: string | null = null;
 
-    if (tenantSlug) {
+    if (tenantFromSecret) {
+      tenantId = tenantFromSecret;
+      if (tenantId === "00000000-0000-0000-0000-000000000010") {
+        assignedTo = RIZODENT_ASSIGNED_TO;
+      }
+    } else if (tenantSlug) {
       const { data: slugRes } = await supabase.rpc("get_tenant_by_slug", { _slug: tenantSlug });
       const row = Array.isArray(slugRes) ? slugRes[0] : slugRes;
       tenantId = row?.id;
@@ -96,6 +101,7 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: "assigned user has no tenant" }), { status: 500, headers: corsHeaders });
       }
     }
+
 
 
 
