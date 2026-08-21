@@ -326,6 +326,8 @@ async function sendAction(
     }
     case "send_bot": {
       if (!config.bot_id) throw new Error("missing bot_id");
+      await assertIdNoTenant(supabase, "bots", config.bot_id, leadId);
+
       const resp = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
         method: "POST",
         headers: {
@@ -410,6 +412,8 @@ async function sendAction(
     }
     case "move_stage": {
       if (!config.target_stage_id) return;
+      await assertIdNoTenant(supabase, "crm_stages", config.target_stage_id, leadId);
+
       await supabase
         .from("crm_leads")
         .update({ stage_id: config.target_stage_id, updated_at: new Date().toISOString() })
