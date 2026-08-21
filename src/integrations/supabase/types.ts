@@ -4898,6 +4898,13 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: string
       }
+      ensure_role_default_pipeline: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _tenant_id: string
+        }
+        Returns: string
+      }
       generate_tenant_invoices: { Args: never; Returns: number }
       get_conversation_leads: {
         Args: { p_limit?: number; p_tenant_id?: string }
