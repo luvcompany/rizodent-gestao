@@ -16,7 +16,6 @@ const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const REDIRECT_URI = Deno.env.get("WHATSAPP_REDIRECT_URI") ?? "";
-const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") ?? "";
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL") ?? "https://crclin.com.br";
 const API_VERSION = "v21.0";
 // Coexistência entrou depois da v21 — as chamadas específicas dela (status do
