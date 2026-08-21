@@ -4737,6 +4737,10 @@ export type Database = {
         Args: { _object_name: string }
         Returns: boolean
       }
+      chat_media_object_owned_by: {
+        Args: { _name: string; _user_id: string }
+        Returns: boolean
+      }
       check_duplicate_phone: {
         Args: { p_phone: string }
         Returns: {
