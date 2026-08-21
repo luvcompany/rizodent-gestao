@@ -14,8 +14,6 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    // Rota admin/temporária: sem verificação de JWT (é invocada manualmente).
-
     const url = new URL(req.url);
     const tenantId = url.searchParams.get("tenant_id");
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "500", 10), 2000);
@@ -25,13 +23,28 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Coleta tokens: mesma fonte do whatsapp-webhook enrichment
+    // Rota interna: só service_role ou cron (nunca aberta — lê tokens da Meta).
+    const auth = await authorizeInternal(req, supabase, {
+      cronSecretName: "automation_cron_token",
+      allowUserJwt: false,
+    });
+    if (!auth.ok) return unauthorizedResponse(corsHeaders);
+
+    if (!tenantId) {
+      return new Response(JSON.stringify({ error: "tenant_id é obrigatório" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Coleta tokens: mesma fonte do whatsapp-webhook enrichment, escopada ao tenant.
     const tokens: string[] = [];
     try {
       const { data: integs } = await supabase
         .from("integrations")
         .select("config")
-        .like("key", "whatsapp_%");
+        .like("key", "whatsapp_%")
+        .eq("tenant_id", tenantId);
+
       for (const i of integs || []) {
         const t = (i.config as any)?.access_token;
         if (t && !tokens.includes(t)) tokens.push(t);
