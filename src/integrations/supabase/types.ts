@@ -4745,6 +4745,7 @@ export type Database = {
         }[]
       }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
+      closer_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
       crm_cleanup_contratado_sem_pagamento: {
         Args: { p_tenant_id: string }
         Returns: {
