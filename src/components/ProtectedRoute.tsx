@@ -109,6 +109,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     }
   }
 
+  // Closer: mesmo escopo da recepção, home no Funil ("/crm")
+  if (userRole === "closer") {
+    const path = location.pathname;
+    const allowed =
+      path === "/change-password" ||
+      CLOSER_ROTAS_EXATAS.includes(path) ||
+      CLOSER_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
+    if (!allowed) return <Navigate to="/crm" replace />;
+  }
+
+
   return <>{children}</>;
 };
 
