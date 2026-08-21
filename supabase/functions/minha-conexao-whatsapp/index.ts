@@ -145,8 +145,25 @@ Deno.serve(async (req) => {
         waba_id,
         app_id,
         webhook_verify_token,
-        pipeline_id,
       } = body as Record<string, string | undefined>;
+      let pipeline_id = (body as Record<string, string | undefined>).pipeline_id;
+
+      // Sem funil escolhido, recepção/closer caem no funil PADRÃO do seu papel
+      // (criado pela RPC se ainda não existir) — nunca no funil do crc.
+      if (!pipeline_id) {
+        const papelPadrao = papeis.find((p) => p === "closer" || p === "recepcao");
+        if (papelPadrao) {
+          const { data: defId, error: erroDef } = await admin.rpc("ensure_role_default_pipeline", {
+            _tenant_id: tenantId,
+            _role: papelPadrao,
+          });
+          if (erroDef) {
+            console.error(`[minha-conexao-whatsapp] funil padrão: ${erroDef.message}`);
+          } else if (defId) {
+            pipeline_id = defId as string;
+          }
+        }
+      }
 
       const faltando = [
         !display_name && "Nome de exibição",
