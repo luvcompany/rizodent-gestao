@@ -42,7 +42,6 @@ export async function resolveCaller(
   admin: any,
 ): Promise<CallerContext | CallerError> {
   const authHeader = req.headers.get("Authorization") || req.headers.get("authorization") || "";
-  const apiKeyHeader = req.headers.get("apikey") || "";
   const serviceRoleKey = (globalThis as any).Deno?.env?.get?.("SUPABASE_SERVICE_ROLE_KEY") || "";
 
   if (!authHeader.startsWith("Bearer ")) {
@@ -51,7 +50,10 @@ export async function resolveCaller(
   const token = authHeader.slice("Bearer ".length).trim();
 
   // Service-role calls (internal cron / edge -> edge) are trusted.
-  if (serviceRoleKey && (token === serviceRoleKey || apiKeyHeader === serviceRoleKey)) {
+  // Apenas Bearer <service_role> conta como service_role. O atalho pelo header
+  // `apikey` foi removido: chamadas com JWT de usuário + apikey de serviço
+  // burlavam as checagens de tenant.
+  if (serviceRoleKey && token === serviceRoleKey) {
     return { ok: true, userId: null, tenantId: null, isServiceRole: true, isSuperadmin: false };
   }
 
