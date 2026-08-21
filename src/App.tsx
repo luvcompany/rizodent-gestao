@@ -258,6 +258,8 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/dashboard" element={withRouteSuspense(<CrmDashboard />)} />
               <Route path="/crm/posvenda" element={withRouteSuspense(<CrmPosVendaDashboard />)} />
               <Route path="/crm/recepcao" element={withRouteSuspense(<RecepcaoHome />)} />
+              {/* Closer usa a MESMA tela inicial da recepção (componente compartilhado). */}
+              <Route path="/crm/closer" element={withRouteSuspense(<RecepcaoHome />)} />
               <Route path="/crm/conexoes" element={withRouteSuspense(<RecepcaoConexoes />)} />
               <Route path="/crm/conversas" element={withRouteSuspense(<CrmConversas />)} />
               <Route path="/crm/conversa/:id" element={withRouteSuspense(<CrmConversa />)} />

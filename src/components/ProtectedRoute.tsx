@@ -23,6 +23,7 @@ const RECEPCAO_ROTAS_EXATAS = ["/crm"];
 // Closer: espelho da recepção, mas sem Instagram. Tem Conexões porque conecta
 // o próprio número de WhatsApp.
 const CLOSER_PREFIXES = [
+  "/crm/closer",
   "/crm/conversas",
   "/crm/conversa",
   "/crm/campanhas",
@@ -111,14 +112,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     }
   }
 
-  // Closer: mesmo escopo da recepção, home no Funil ("/crm")
+  // Closer: mesmo escopo da recepção, home na tela inicial ("/crm/closer")
   if (userRole === "closer") {
     const path = location.pathname;
     const allowed =
       path === "/change-password" ||
       CLOSER_ROTAS_EXATAS.includes(path) ||
       CLOSER_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
-    if (!allowed) return <Navigate to="/crm" replace />;
+    if (!allowed) return <Navigate to="/crm/closer" replace />;
   }
 
 
