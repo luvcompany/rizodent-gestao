@@ -1846,9 +1846,11 @@ export default function CrmConversas() {
         <TabsContent value="whatsapp" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
           <WhatsAppConversations channelFilter="whatsapp" channel="whatsapp" />
         </TabsContent>
-        <TabsContent value="instagram" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <WhatsAppConversations channelFilter="instagram" channel="instagram" />
-        </TabsContent>
+        {!hideInstagram && (
+          <TabsContent value="instagram" className="flex-1 overflow-hidden mt-0 data-[state=active]:flex data-[state=active]:flex-col">
+            <WhatsAppConversations channelFilter="instagram" channel="instagram" />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
