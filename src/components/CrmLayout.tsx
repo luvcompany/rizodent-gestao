@@ -38,7 +38,8 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
 }
 
 const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
-  // Closer: espelho da recepção sem Início e sem Conexões (não tem Instagram).
+  // Closer: espelho da recepção sem Início e sem Instagram, mas com Conexões —
+  // cada closer conecta o próprio número de WhatsApp.
   // O guard correspondente fica em ProtectedRoute (CLOSER_PREFIXES).
   if (role === "closer") {
     return [
@@ -55,6 +56,7 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
           { to: "/crm/automacoes", icon: Zap, label: "Automatize" },
         ],
       },
+      { to: "/crm/conexoes", icon: Link2, label: "Conexões" },
     ];
   }
   // Recepção: menu enxuto — sem Kanban/Dashboard/Relatórios/Integrações/Config.
