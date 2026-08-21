@@ -111,10 +111,18 @@ Deno.serve(async (req) => {
     for (const i of integrations || []) {
       if (!String((i as any).key || "").startsWith(key)) continue;
       const t = ((i as any).config || {})?.webhook_verify_token;
-      if (t) return String(t);
+      if (!t) continue;
+      const value = String(t);
+      // Nunca devolver um token GLOBAL, mesmo se ele estiver gravado na linha.
+      if (isGlobalToken(value)) {
+        console.warn(`[tenant-meta-info] token global detectado em integrations (${key}) do tenant ${tenantId} — omitido`);
+        continue;
+      }
+      return value;
     }
     return "";
   };
+
 
   const payload = {
     tenant_id: tenantId,
