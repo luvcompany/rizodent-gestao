@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal } from "../_shared/internalAuth.ts";
+import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,24 +70,45 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Isolamento de tenant para chamadas de usuário logado.
+    let effectiveTenantId: string | null = lead.tenant_id ?? null;
+    let scopeTenantId: string | null = null;
+    if (auth.via === "user_jwt") {
+      const ctx = await resolveCaller(req, supabase);
+      if (!ctx.ok) {
+        return new Response(JSON.stringify({ error: ctx.error }), { status: ctx.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (!ctx.isServiceRole) {
+        const check = await assertLeadInTenant(supabase, lead_id, ctx);
+        if (!check.ok) {
+          // 404 genérico: não revela existência de lead de outro tenant.
+          return new Response(JSON.stringify({ error: "Lead não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        effectiveTenantId = check.tenantId ?? lead.tenant_id ?? null;
+        scopeTenantId = ctx.isSuperadmin ? null : ctx.tenantId;
+      }
+    }
+
     let pendingSuggestion: any = null;
     if (source_suggestion_id) {
-      const { data } = await supabase
+      let q1 = supabase
         .from("ai_reply_suggestions")
         .select("id, suggested_text, status")
         .eq("id", source_suggestion_id)
-        .eq("lead_id", lead_id)
-        .maybeSingle();
+        .eq("lead_id", lead_id);
+      if (scopeTenantId) q1 = q1.eq("tenant_id", scopeTenantId);
+      const { data } = await q1.maybeSingle();
       pendingSuggestion = data || null;
     } else if (learn_from_pending) {
-      const { data } = await supabase
+      let q2 = supabase
         .from("ai_reply_suggestions")
         .select("id, suggested_text, status")
         .eq("lead_id", lead_id)
         .eq("status", "pending")
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+      if (scopeTenantId) q2 = q2.eq("tenant_id", scopeTenantId);
+      const { data } = await q2.maybeSingle();
       pendingSuggestion = data || null;
     }
 
@@ -135,7 +157,7 @@ Deno.serve(async (req) => {
     }
 
     const { error: insErr } = await supabase.from("ai_good_examples").insert({
-      tenant_id: lead.tenant_id,
+      tenant_id: effectiveTenantId,
       lead_id: lead.id,
       context,
       ideal_reply: cleanIdeal,
