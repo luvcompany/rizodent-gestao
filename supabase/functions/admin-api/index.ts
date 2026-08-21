@@ -441,7 +441,20 @@ async function tasks(tenantId: string, method: string, p: URLSearchParams, body:
     return json(data, 201);
   }
   if (method === "PATCH" && id) {
-    const { data, error } = await admin.from("crm_tasks").update(body)
+    // Sanitiza o SET: identidade/tenant e carimbos de criação nunca vêm do body.
+    const {
+      tenant_id: _t, id: _i, created_at: _ca, created_by: _cb, updated_at: _ua,
+      lead_id: bodyLeadId,
+      ...safe
+    } = (body || {}) as Record<string, unknown>;
+    if (bodyLeadId !== undefined) {
+      const { data: okLead } = await admin.from("crm_leads")
+        .select("id").eq("tenant_id", tenantId).eq("id", bodyLeadId as string).maybeSingle();
+      if (!okLead) return json({ error: "lead_id inválido para esta clínica" }, 400);
+      (safe as Record<string, unknown>).lead_id = bodyLeadId;
+    }
+    if (!Object.keys(safe).length) return json({ error: "nenhum campo permitido" }, 400);
+    const { data, error } = await admin.from("crm_tasks").update(safe)
       .eq("tenant_id", tenantId).eq("id", id).select().maybeSingle();
     if (error) return json({ error: error.message }, 400);
     return json(data);
