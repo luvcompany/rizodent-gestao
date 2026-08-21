@@ -2,6 +2,8 @@
 // whatsapp-webhook uses (integrations rows where key LIKE 'whatsapp_%' +
 // env WHATSAPP_TOKEN as last resort). Tolerant to per-ad failures.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
