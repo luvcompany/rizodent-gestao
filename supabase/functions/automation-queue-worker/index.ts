@@ -263,6 +263,27 @@ Deno.serve(async (req) => {
   }
 });
 
+// Tenant do LEAD + validação fail-closed dos ids vindos de action_config.
+// O worker executa o caminho DIFERIDO (crm_automation_queue), então precisa da
+// mesma trava de tenant do automation-engine: um action_config com id de outra
+// clínica não pode mover etapa, disparar bot nem enviar template.
+async function tenantDoLead(supabase: any, leadId: string): Promise<string | null> {
+  const { data } = await supabase.from("crm_leads").select("tenant_id").eq("id", leadId).maybeSingle();
+  return (data as any)?.tenant_id ?? null;
+}
+
+async function assertIdNoTenant(
+  supabase: any,
+  table: string,
+  id: string,
+  leadId: string,
+): Promise<void> {
+  const tenantId = await tenantDoLead(supabase, leadId);
+  if (!tenantId) throw new Error(`lead ${leadId} sem tenant — ação com ${table} ${id} bloqueada`);
+  const { data } = await supabase.from(table).select("id").eq("id", id).eq("tenant_id", tenantId).maybeSingle();
+  if (!data) throw new Error(`${table} ${id} não pertence ao tenant do lead ${leadId} — ação bloqueada`);
+}
+
 async function sendAction(
   supabase: any,
   supabaseUrl: string,
@@ -276,12 +297,14 @@ async function sendAction(
     case "send_template": {
       if (!config.template_id) throw new Error("missing template_id");
       if (!phone) throw new Error("lead has no phone");
+      await assertIdNoTenant(supabase, "crm_whatsapp_templates", config.template_id, leadId);
       const { data: tpl } = await supabase
         .from("crm_whatsapp_templates")
         .select("name, language")
         .eq("id", config.template_id)
         .maybeSingle();
       if (!tpl) throw new Error(`template ${config.template_id} not found`);
+
       const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
         method: "POST",
         headers: {
