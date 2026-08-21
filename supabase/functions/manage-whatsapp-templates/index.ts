@@ -468,6 +468,7 @@ Deno.serve(async (req) => {
       }
 
       const { error: dbError } = await supabase.from("crm_whatsapp_templates").insert({
+        tenant_id: tenantId,
         name,
         language,
         category,
