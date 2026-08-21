@@ -6,16 +6,17 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export type OwnerRole = "gerente" | "crc" | "posvenda" | "recepcao" | "superadmin" | null;
+export type OwnerRole = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "superadmin" | null;
 
 export const ROLE_LABEL: Record<string, string> = {
-  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", superadmin: "Superadmin",
+  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", closer: "Closer", superadmin: "Superadmin",
 };
 export const ROLE_BADGE_COLOR: Record<string, string> = {
   gerente: "bg-blue-900/30 text-blue-400",
   crc: "bg-purple-900/30 text-purple-400",
   posvenda: "bg-green-900/30 text-green-400",
   recepcao: "bg-amber-900/30 text-amber-400",
+  closer: "bg-amber-900/30 text-amber-400",
   superadmin: "bg-red-900/30 text-red-400",
 };
 
