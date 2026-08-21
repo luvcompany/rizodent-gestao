@@ -526,7 +526,7 @@ Deno.serve(async (req) => {
       const metaData = await metaRes.json();
 
       // Always delete locally, even if Meta API fails (e.g. permission issues)
-      await supabase.from("crm_whatsapp_templates").delete().eq("name", template_name);
+      await supabase.from("crm_whatsapp_templates").delete().eq("name", template_name).eq("tenant_id", callerTenantId);
 
       if (!metaRes.ok) {
         console.warn("[DELETE] Meta API error, deleted locally only:", JSON.stringify(metaData));
