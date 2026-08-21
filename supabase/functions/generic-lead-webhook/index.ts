@@ -10,9 +10,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "POST only" }), { status: 405, headers: corsHeaders });
 
-  // Require shared secret to prevent fake-lead flooding.
-  // Preferência: header `x-webhook-secret`.
-  // DEPRECATED: preferir header; query string vaza em logs/Referer.
+  // Segredo do webhook. Agora é POR TENANT (tenants.lead_webhook_secret).
+  // O env WEBHOOK_SECRET legado continua valendo, mas fica FIXO na Rizodent.
   const expectedSecret = Deno.env.get("WEBHOOK_SECRET");
   const headerSecret = req.headers.get("x-webhook-secret") || "";
   const querySecret = new URL(req.url).searchParams.get("secret") || "";
@@ -20,11 +19,30 @@ Deno.serve(async (req) => {
   const auth = req.headers.get("authorization") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const isServiceRole = serviceRoleKey ? safeEqual(auth, `Bearer ${serviceRoleKey}`) : false;
+
+  const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
+  // Tenant imposto pelo segredo (quando houver) — NUNCA pelo `?tenant=`.
+  let tenantFromSecret: string | null = null;
+
   if (!isServiceRole) {
-    if (!expectedSecret || !safeEqual(providedSecret, expectedSecret)) {
+    if (!providedSecret) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    }
+    const secretLookupClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: tenantRow } = await secretLookupClient
+      .from("tenants").select("id").eq("lead_webhook_secret", providedSecret).maybeSingle();
+    if (tenantRow?.id) {
+      tenantFromSecret = tenantRow.id as string;
+    } else if (expectedSecret && safeEqual(providedSecret, expectedSecret)) {
+      tenantFromSecret = RIZODENT_TENANT_ID;
+    } else {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
   }
+
 
 
   try {
