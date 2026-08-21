@@ -429,7 +429,7 @@ Deno.serve(async (req) => {
       if (execError) return json({ error: execError.message }, 500);
 
       // Execute from start node
-      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, startNode.id, leadId, {});
+      const result = await executeFlow(supabase, supabaseUrl, downstreamApiKey, authHeader, execution.id, flowJson, startNode.id, leadId, {});
       return json({ success: true, executionId: execution.id, ...result });
     }
 
@@ -490,7 +490,7 @@ Deno.serve(async (req) => {
       }).eq("id", executionId);
 
       const result = await executeFlow(
-        supabase, supabaseUrl, serviceKey, authHeader,
+        supabase, supabaseUrl, downstreamApiKey, authHeader,
         executionId, flowJson, timeoutEdge.target, execution.lead_id,
         (execution.variables as any) || {}
       );
@@ -605,7 +605,7 @@ Deno.serve(async (req) => {
           console.log(`[bot-engine] No edge for reply "${replyText}" at node ${execution.current_node_id}, re-sending menu`);
           if (lead?.phone) {
             const skipMark = (execution as any).bots?.mark_as_read === false;
-            await sendViaWhatsApp(supabaseUrl, serviceKey, authHeader, {
+            await sendViaWhatsApp(supabaseUrl, downstreamApiKey, authHeader, {
               lead_id: leadId,
               to: lead.phone,
               type: "text",
@@ -672,7 +672,7 @@ Deno.serve(async (req) => {
         return json({ completed: true, reason: "flow_completed_after_reply" });
       }
 
-      const result = await executeFlow(supabase, supabaseUrl, serviceKey, authHeader, execution.id, flowJson, nextTargetNodeId, leadId, nextVariables);
+      const result = await executeFlow(supabase, supabaseUrl, downstreamApiKey, authHeader, execution.id, flowJson, nextTargetNodeId, leadId, nextVariables);
       return json({ success: true, ...result });
     }
 
