@@ -275,7 +275,12 @@ async function sendMessage(tenantId: string, id: string, body: any) {
       "Authorization": `Bearer ${SR}`,
       "apikey": SR,
     },
-    body: JSON.stringify({ lead_id: id, ...body, to: (body?.to || (lead as any).phone) }),
+    // Spread PRIMEIRO e campos controlados DEPOIS: um `lead_id` no body não pode
+    // sobrescrever o id já validado no tenant (o proxy usa service_role).
+    body: JSON.stringify((() => {
+      const { lead_id: _ignLead, tenant_id: _ignTenant, log_content: _ignLog, ...safeBody } = body || {};
+      return { ...safeBody, lead_id: id, to: (body?.to || (lead as any).phone) };
+    })()),
   });
   const txt = await res.text();
   try { return json(JSON.parse(txt), res.status); } catch { return new Response(txt, { status: res.status, headers: cors }); }
