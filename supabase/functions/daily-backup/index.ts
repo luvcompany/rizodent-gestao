@@ -210,7 +210,10 @@ Deno.serve(async (req) => {
   const json = (obj: unknown, status = 200) =>
     new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+  // O dump é GLOBAL (todas as clínicas) → listar/baixar é exclusivo do superadmin.
   if (action === "list") {
+    if (!callerIsSuperadmin) return json({ error: "Forbidden: superadmin required" }, 403);
+
     const { data: folders } = await supabase.storage.from(BUCKET).list("", { limit: 1000 });
     const dates = (folders || [])
       .map((f: any) => f.name)
@@ -220,8 +223,10 @@ Deno.serve(async (req) => {
   }
 
   if (action === "download") {
+    if (!callerIsSuperadmin) return json({ error: "Forbidden: superadmin required" }, 403);
     const path = String(body.path || "");
     if (!path) return json({ error: "path obrigatório" }, 400);
+
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 30);
     if (error) return json({ error: error.message }, 400);
     return json({ ok: true, url: data.signedUrl });
