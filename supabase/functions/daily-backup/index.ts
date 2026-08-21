@@ -332,13 +332,17 @@ Deno.serve(async (req) => {
   // action === 'run'
   const start = Date.now();
   const now = new Date();
-  const stamp = typeof body.stamp === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.stamp)
+  // `stamp`/`only` do corpo só são aceitos de service_role/cron/superadmin (a
+  // cadeia interna os usa). Um crc/gerente poderia sobrescrever a pasta e o
+  // manifesto de um dia ANTERIOR com dados atuais → integridade do histórico.
+  const trustParams = callerIsSuperadmin;
+  const stamp = trustParams && typeof body.stamp === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.stamp)
     ? body.stamp
     : now.toISOString().slice(0, 10);
 
   // Lista de tabelas: `only` (encadeamento) ou tudo (primeira leva).
   let queue: TableInfo[];
-  const isChained = Array.isArray(body.only);
+  const isChained = trustParams && Array.isArray(body.only);
   if (isChained) {
     const all = await listTables(supabase);
     const byName = new Map(all.map((t) => [t.name, t]));
