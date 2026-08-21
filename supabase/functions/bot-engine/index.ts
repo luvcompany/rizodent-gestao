@@ -313,13 +313,61 @@ Deno.serve(async (req) => {
 
     // authHeader used for downstream service calls (send-whatsapp-message, etc.)
     const authHeader = req.headers.get("Authorization") || `Bearer ${serviceKey}`;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const isUserCall = auth.via === "user_jwt";
+    // Chamada iniciada por usuário logado NÃO deve virar service_role nas
+    // functions downstream — usa a anon key e repassa o JWT original.
+    const downstreamApiKey = isUserCall ? anonKey : serviceKey;
 
     const body = await req.json();
-    const { leadId, botId, trigger, executionId, replyText, replyOptionId } = body;
+    const { botId, trigger, executionId, replyText, replyOptionId } = body;
+    let leadId: string = body.leadId;
 
     if (!leadId || !trigger) {
       return json({ error: "Missing leadId or trigger" }, 400);
     }
+
+    // ===== Isolamento de tenant para chamadas de usuário logado =====
+    if (isUserCall) {
+      const ctx = await resolveCaller(req, supabase);
+      if (!ctx.ok) return json({ error: ctx.error }, ctx.status);
+
+      if (!ctx.isServiceRole) {
+        // Para continue/timeout o lead vem da EXECUÇÃO (ignora o do corpo).
+        if (executionId && (trigger === "continue" || trigger === "timeout")) {
+          const { data: execRow } = await supabase
+            .from("bot_executions")
+            .select("lead_id, bots(tenant_id)")
+            .eq("id", executionId)
+            .maybeSingle();
+          if (!execRow) return json({ error: "Execução não encontrada" }, 404);
+          const execTenant = (execRow as any).bots?.tenant_id ?? null;
+          if (!ctx.isSuperadmin && execTenant !== ctx.tenantId) {
+            return json({ error: "Recurso de outro tenant" }, 403);
+          }
+          leadId = (execRow as any).lead_id;
+        }
+
+        const leadCheck = await assertLeadInTenant(supabase, leadId, ctx);
+        if (!leadCheck.ok) return json({ error: leadCheck.error }, leadCheck.status);
+
+        if (botId) {
+          const { data: botRow } = await supabase
+            .from("bots").select("tenant_id").eq("id", botId).maybeSingle();
+          if (!botRow) return json({ error: "Bot não encontrado" }, 404);
+          if (!ctx.isSuperadmin && (botRow as any).tenant_id !== ctx.tenantId) {
+            return json({ error: "Bot de outro tenant" }, 403);
+          }
+        }
+
+        // Papéis recepção/closer só agem nos leads do número deles.
+        const { data: leadNum } = await supabase
+          .from("crm_leads").select("whatsapp_number_id").eq("id", leadId).maybeSingle();
+        const numCheck = await assertNumberAccess(req, (leadNum as any)?.whatsapp_number_id ?? null, ctx);
+        if (!numCheck.ok) return json({ error: numCheck.error }, numCheck.status);
+      }
+    }
+
 
     // ===== MANUAL START or AUTOMATION =====
     if (trigger === "manual_start" || trigger === "automation" || trigger === "automation_bulk") {
