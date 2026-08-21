@@ -6,7 +6,7 @@
 // nenhum erro visível. Papel novo entra AQUI e em src/lib/roles.ts.
 
 /** Papéis atribuíveis a usuários de um cliente (superadmin é da plataforma). */
-export const TENANT_ROLES = ["crc", "gerente", "posvenda", "recepcao"] as const;
+export const TENANT_ROLES = ["crc", "gerente", "posvenda", "recepcao", "closer"] as const;
 export type TenantRole = (typeof TENANT_ROLES)[number];
 
 const TENANT_ROLE_SET = new Set<string>(TENANT_ROLES);
