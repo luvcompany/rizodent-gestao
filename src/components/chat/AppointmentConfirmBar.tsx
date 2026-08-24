@@ -213,6 +213,86 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     }
   };
 
+  /**
+   * Ações do card de consulta terminal: mexem SÓ na etapa do lead.
+   * Não dão UPDATE na consulta — o trigger `stamp_appointment_update` proíbe
+   * alterar o status de uma consulta com desfecho para papéis não-gerente.
+   */
+  const moveLeadOnly = async (kind: "no_show" | "contracted" | "not_contracted") => {
+    setTerminalBusy(true);
+    try {
+      let movedStageId: string | null = null;
+      let label = "";
+      if (kind === "no_show") {
+        movedStageId = await moveLeadToStageInCurrentPipeline(leadId, (n) => n.includes("nao compar"));
+        label = "🚫 Marcado como Não compareceu";
+      } else if (kind === "contracted") {
+        movedStageId = await moveLeadToStageInCurrentPipeline(
+          leadId,
+          (n) => n === "contratado" || n === "contratados" || (n.includes("contrat") && !n.includes("nao contrat")),
+        );
+        label = "🤝 Marcado como Contratado";
+      } else {
+        movedStageId = await moveLeadToNaoContratadosPipeline(leadId);
+        label = "❌ Marcado como Não contratou — movido para etapa Não contratado";
+      }
+
+      await supabase.from("messages").insert({
+        lead_id: leadId, direction: "outbound", type: "system", content: label, status: "system",
+      });
+
+      const { data: lead } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
+      if (lead) {
+        executeStageAutomations({
+          leadId,
+          stageId: movedStageId || lead.stage_id,
+          leadPhone: lead.phone,
+          triggerTypes: ["on_enter"],
+        }).catch((e) => console.error("[TerminalCard] Automation error:", e));
+      }
+
+      toast.success(
+        kind === "no_show" ? "Lead movido para Não compareceu"
+          : kind === "contracted" ? "Lead movido para Contratado"
+          : "Lead movido para etapa Não contratado",
+      );
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+    } catch (e) {
+      toastDbError(e, "Erro ao mover o lead");
+    } finally {
+      setTerminalBusy(false);
+    }
+  };
+
+  /** Reagendar a partir do card terminal: passo 1 (etapa Reagendar) + agendamento novo. */
+  const handleTerminalReschedule = async () => {
+    setTerminalBusy(true);
+    try {
+      const ok = await iniciarReagendamento(leadId);
+      if (!ok) setManualOpen(true);
+      await checkRescheduleMode();
+    } catch (e) {
+      toastDbError(e, "Erro ao mover para Reagendar");
+    } finally {
+      setTerminalBusy(false);
+    }
+  };
+
+  /** Só gerente/superadmin: o trigger permite reabrir e limpa os carimbos. */
+  const handleReopenTerminal = async (t: TerminalAppointment) => {
+    if (!window.confirm("Reabrir esta consulta? O desfecho registrado será descartado.")) return;
+    setTerminalBusy(true);
+    try {
+      const { error } = await supabase.from("crm_appointments").update({ status: "confirmed" }).eq("id", t.id);
+      if (error) { toastDbError(error, "Erro ao reabrir consulta"); return; }
+      toast.success("Consulta reaberta");
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+    } finally {
+      setTerminalBusy(false);
+    }
+  };
+
+
   /** Roda a ação, pedindo confirmação extra se ainda não chegou o horário marcado. */
   const guardEarly = (appt: Appointment, run: () => void) => {
     if (isBeforeScheduled(appt.scheduled_date, appt.scheduled_time)) {
