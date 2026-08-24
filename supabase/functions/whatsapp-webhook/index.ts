@@ -63,6 +63,16 @@ async function handleMessageEchoes(supabase: any, value: any) {
   }
   const tenantId: string = matched.tenant_id;
 
+  // Cada número é um mundo: se o phone_number_id é cadastrado em whatsapp_numbers,
+  // o echo pertence ao lead DAQUELE número.
+  const { data: waNumberRow } = await supabase
+    .from("whatsapp_numbers")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  const waNumberId: string | null = waNumberRow?.id ?? null;
+
   for (const echo of echoes) {
     const wamid: string | null = echo?.id ?? null;
     const rawTo: string | undefined = echo?.to;
