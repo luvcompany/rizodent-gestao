@@ -12,7 +12,12 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { executeStageAutomations } from "@/lib/automationUtils";
-import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+import {
+  applyAppointmentOutcome,
+  moveLeadToStageInCurrentPipeline,
+  moveLeadToNaoContratadosPipeline,
+} from "@/lib/appointmentOutcome";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   cancelAppointment, rescheduleAppointment, compareceuEAgendou,
   iniciarReagendamento, isBeforeScheduled, formatBahiaLabel, toastDbError,
