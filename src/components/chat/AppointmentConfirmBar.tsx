@@ -12,7 +12,12 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { executeStageAutomations } from "@/lib/automationUtils";
-import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+import {
+  applyAppointmentOutcome,
+  moveLeadToStageInCurrentPipeline,
+  moveLeadToNaoContratadosPipeline,
+} from "@/lib/appointmentOutcome";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   cancelAppointment, rescheduleAppointment, compareceuEAgendou,
   iniciarReagendamento, isBeforeScheduled, formatBahiaLabel, toastDbError,
@@ -38,9 +43,55 @@ type Appointment = {
 
 type PickerMode = "reschedule" | "agendou";
 
+/** Consulta que já recebeu desfecho (terminal) — usada quando não há consulta ativa. */
+type TerminalAppointment = {
+  id: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  status: string;
+  notes: string | null;
+  outcome_source: string | null;
+  outcome_at: string | null;
+  outcome_by: string | null;
+};
+
+const TERMINAL_STATUSES = ["no_show", "rescheduled", "cancelled", "contracted", "not_contracted"];
+
+const TERMINAL_LABEL: Record<string, string> = {
+  no_show: "Falta",
+  rescheduled: "Remarcada",
+  cancelled: "Cancelada",
+  contracted: "Contratado",
+  not_contracted: "Não contratado",
+};
+
+const AUTO_SOURCES = ["dontus-sync", "auto_reagendar_expirado", "service"];
+
+/** "às 18:00" no fuso America/Bahia. */
+function bahiaHourLabel(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" });
+}
+
+function terminalSourceLabel(t: TerminalAppointment): string {
+  const hora = bahiaHourLabel(t.outcome_at);
+  const sufixo = hora ? ` às ${hora}` : "";
+  if (t.outcome_source && AUTO_SOURCES.includes(t.outcome_source)) {
+    return `definida automaticamente (sem confirmação no Dontus)${sufixo}`;
+  }
+  if (t.outcome_source === "ui") return `definida manualmente${sufixo}`;
+  return hora ? `desfecho registrado${sufixo}` : "";
+}
+
 export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
+  const { userRole } = useAuth();
+  const isManager = userRole === "gerente" || userRole === "superadmin";
   const [pendingTasks, setPendingTasks] = useState<Task[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [lastTerminal, setLastTerminal] = useState<TerminalAppointment | null>(null);
+  const [terminalBusy, setTerminalBusy] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [time, setTime] = useState("09:00");
@@ -97,7 +148,25 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       .eq("lead_id", leadId)
       .in("status", ["confirmed", "pending"])
       .order("scheduled_date", { ascending: true });
-    setAppointments((data as Appointment[]) || []);
+    const ativos = (data as Appointment[]) || [];
+    setAppointments(ativos);
+
+    // Sem consulta ativa: o cron de comparecimento pode ter fechado a última
+    // (no_show 3h depois). Mostramos a consulta terminal para não deixar o lead
+    // sem caminho de ação na etapa Agendado.
+    if (ativos.length === 0) {
+      const { data: term } = await supabase
+        .from("crm_appointments")
+        .select("id, scheduled_date, scheduled_time, status, notes, outcome_source, outcome_at, outcome_by")
+        .eq("lead_id", leadId)
+        .in("status", TERMINAL_STATUSES)
+        .order("scheduled_date", { ascending: false })
+        .order("scheduled_time", { ascending: false })
+        .limit(1);
+      setLastTerminal(((term as TerminalAppointment[]) || [])[0] || null);
+    } else {
+      setLastTerminal(null);
+    }
   }, [leadId]);
 
   const confirmedAppointments = appointments.filter((a) => a.status === "confirmed");
@@ -143,6 +212,86 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       setOutcomeSaving(null);
     }
   };
+
+  /**
+   * Ações do card de consulta terminal: mexem SÓ na etapa do lead.
+   * Não dão UPDATE na consulta — o trigger `stamp_appointment_update` proíbe
+   * alterar o status de uma consulta com desfecho para papéis não-gerente.
+   */
+  const moveLeadOnly = async (kind: "no_show" | "contracted" | "not_contracted") => {
+    setTerminalBusy(true);
+    try {
+      let movedStageId: string | null = null;
+      let label = "";
+      if (kind === "no_show") {
+        movedStageId = await moveLeadToStageInCurrentPipeline(leadId, (n) => n.includes("nao compar"));
+        label = "🚫 Marcado como Não compareceu";
+      } else if (kind === "contracted") {
+        movedStageId = await moveLeadToStageInCurrentPipeline(
+          leadId,
+          (n) => n === "contratado" || n === "contratados" || (n.includes("contrat") && !n.includes("nao contrat")),
+        );
+        label = "🤝 Marcado como Contratado";
+      } else {
+        movedStageId = await moveLeadToNaoContratadosPipeline(leadId);
+        label = "❌ Marcado como Não contratou — movido para etapa Não contratado";
+      }
+
+      await supabase.from("messages").insert({
+        lead_id: leadId, direction: "outbound", type: "system", content: label, status: "system",
+      });
+
+      const { data: lead } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
+      if (lead) {
+        executeStageAutomations({
+          leadId,
+          stageId: movedStageId || lead.stage_id,
+          leadPhone: lead.phone,
+          triggerTypes: ["on_enter"],
+        }).catch((e) => console.error("[TerminalCard] Automation error:", e));
+      }
+
+      toast.success(
+        kind === "no_show" ? "Lead movido para Não compareceu"
+          : kind === "contracted" ? "Lead movido para Contratado"
+          : "Lead movido para etapa Não contratado",
+      );
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+    } catch (e) {
+      toastDbError(e, "Erro ao mover o lead");
+    } finally {
+      setTerminalBusy(false);
+    }
+  };
+
+  /** Reagendar a partir do card terminal: passo 1 (etapa Reagendar) + agendamento novo. */
+  const handleTerminalReschedule = async () => {
+    setTerminalBusy(true);
+    try {
+      const ok = await iniciarReagendamento(leadId);
+      if (!ok) setManualOpen(true);
+      await checkRescheduleMode();
+    } catch (e) {
+      toastDbError(e, "Erro ao mover para Reagendar");
+    } finally {
+      setTerminalBusy(false);
+    }
+  };
+
+  /** Só gerente/superadmin: o trigger permite reabrir e limpa os carimbos. */
+  const handleReopenTerminal = async (t: TerminalAppointment) => {
+    if (!window.confirm("Reabrir esta consulta? O desfecho registrado será descartado.")) return;
+    setTerminalBusy(true);
+    try {
+      const { error } = await supabase.from("crm_appointments").update({ status: "confirmed" }).eq("id", t.id);
+      if (error) { toastDbError(error, "Erro ao reabrir consulta"); return; }
+      toast.success("Consulta reaberta");
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+    } finally {
+      setTerminalBusy(false);
+    }
+  };
+
 
   /** Roda a ação, pedindo confirmação extra se ainda não chegou o horário marcado. */
   const guardEarly = (appt: Appointment, run: () => void) => {
@@ -743,6 +892,80 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
           </div>
         );
       })}
+
+      {/* Última consulta com desfecho (sem consulta ativa) */}
+      {lastTerminal && (
+        <div className="mb-2 p-3 rounded-lg border border-muted-foreground/25 bg-muted/40 space-y-2">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              {lastTerminal.scheduled_date.split("-").reverse().join("/")} às {lastTerminal.scheduled_time?.slice(0, 5)}
+              {" · "}
+              <span className="text-destructive">{TERMINAL_LABEL[lastTerminal.status] || lastTerminal.status}</span>
+            </p>
+            {terminalSourceLabel(lastTerminal) && (
+              <p className="text-xs text-muted-foreground">{terminalSourceLabel(lastTerminal)}</p>
+            )}
+            {lastTerminal.notes && (
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">{lastTerminal.notes}</p>
+            )}
+          </div>
+
+          {(lastTerminal.status === "no_show" || lastTerminal.status === "cancelled") && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
+                  variant="outline"
+                  disabled={terminalBusy}
+                  onClick={handleTerminalReschedule}
+                >
+                  <Repeat size={12} /> Reagendar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                  disabled={terminalBusy}
+                  onClick={() => moveLeadOnly("no_show")}
+                >
+                  <XCircle size={12} /> Não compareceu
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                  disabled={terminalBusy}
+                  onClick={() => moveLeadOnly("contracted")}
+                >
+                  <Handshake size={12} /> Contratado
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={terminalBusy}
+                  onClick={() => moveLeadOnly("not_contracted")}
+                >
+                  Não contratado
+                </Button>
+              </div>
+              {isManager && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-[11px] w-full text-muted-foreground"
+                  disabled={terminalBusy}
+                  onClick={() => handleReopenTerminal(lastTerminal)}
+                >
+                  Reabrir consulta
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Manual scheduling button */}
       {!manualOpen ? (
