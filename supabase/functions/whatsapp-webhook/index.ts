@@ -1145,24 +1145,16 @@ Deno.serve(async (req) => {
 
             const LEAD_COLS = "id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id";
             let lead: any = null;
-            // Com vários números no mesmo tenant (as 4 recepções), casar só por
-            // telefone jogaria a resposta do paciente da unidade B no lead da
-            // unidade A — e a RLS por número o esconderia da recepção B.
-            // Prioridade: lead do MESMO número; depois lead sem carimbo (adota);
-            // nunca sequestra lead carimbado com número diferente.
+            // Cada número é um mundo: contato que escreve para um número cadastrado
+            // em whatsapp_numbers vira lead PRÓPRIO desse número, mesmo que a mesma
+            // pessoa já exista como lead de outro número (ou sem carimbo).
+            // Nunca adota lead de outro número nem lead sem carimbo.
             if (waNumberId) {
               const { data: mesmoNumero } = await supabase
                 .from("crm_leads").select(LEAD_COLS)
                 .eq("tenant_id", tenantId).eq("phone", from).eq("whatsapp_number_id", waNumberId)
                 .order("created_at", { ascending: true }).limit(1);
               lead = mesmoNumero?.[0] || null;
-              if (!lead) {
-                const { data: semCarimbo } = await supabase
-                  .from("crm_leads").select(LEAD_COLS)
-                  .eq("tenant_id", tenantId).eq("phone", from).is("whatsapp_number_id", null)
-                  .order("created_at", { ascending: true }).limit(1);
-                lead = semCarimbo?.[0] || null;
-              }
             } else {
               const { data: leadRows } = await supabase
                 .from("crm_leads").select(LEAD_COLS)
