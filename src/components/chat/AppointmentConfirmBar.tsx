@@ -43,9 +43,55 @@ type Appointment = {
 
 type PickerMode = "reschedule" | "agendou";
 
+/** Consulta que já recebeu desfecho (terminal) — usada quando não há consulta ativa. */
+type TerminalAppointment = {
+  id: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  status: string;
+  notes: string | null;
+  outcome_source: string | null;
+  outcome_at: string | null;
+  outcome_by: string | null;
+};
+
+const TERMINAL_STATUSES = ["no_show", "rescheduled", "cancelled", "contracted", "not_contracted"];
+
+const TERMINAL_LABEL: Record<string, string> = {
+  no_show: "Falta",
+  rescheduled: "Remarcada",
+  cancelled: "Cancelada",
+  contracted: "Contratado",
+  not_contracted: "Não contratado",
+};
+
+const AUTO_SOURCES = ["dontus-sync", "auto_reagendar_expirado", "service"];
+
+/** "às 18:00" no fuso America/Bahia. */
+function bahiaHourLabel(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" });
+}
+
+function terminalSourceLabel(t: TerminalAppointment): string {
+  const hora = bahiaHourLabel(t.outcome_at);
+  const sufixo = hora ? ` às ${hora}` : "";
+  if (t.outcome_source && AUTO_SOURCES.includes(t.outcome_source)) {
+    return `definida automaticamente (sem confirmação no Dontus)${sufixo}`;
+  }
+  if (t.outcome_source === "ui") return `definida manualmente${sufixo}`;
+  return hora ? `desfecho registrado${sufixo}` : "";
+}
+
 export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
+  const { userRole } = useAuth();
+  const isManager = userRole === "gerente" || userRole === "superadmin";
   const [pendingTasks, setPendingTasks] = useState<Task[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [lastTerminal, setLastTerminal] = useState<TerminalAppointment | null>(null);
+  const [terminalBusy, setTerminalBusy] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [time, setTime] = useState("09:00");
