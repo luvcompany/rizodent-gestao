@@ -63,6 +63,16 @@ async function handleMessageEchoes(supabase: any, value: any) {
   }
   const tenantId: string = matched.tenant_id;
 
+  // Cada número é um mundo: se o phone_number_id é cadastrado em whatsapp_numbers,
+  // o echo pertence ao lead DAQUELE número.
+  const { data: waNumberRow } = await supabase
+    .from("whatsapp_numbers")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("phone_number_id", phoneNumberId)
+    .maybeSingle();
+  const waNumberId: string | null = waNumberRow?.id ?? null;
+
   for (const echo of echoes) {
     const wamid: string | null = echo?.id ?? null;
     const rawTo: string | undefined = echo?.to;
@@ -81,11 +91,13 @@ async function handleMessageEchoes(supabase: any, value: any) {
       if (dup?.id) continue;
     }
 
-    const { data: leadRows } = await supabase
+    let leadQuery = supabase
       .from("crm_leads")
       .select("id, last_message_at")
       .eq("tenant_id", tenantId)
-      .eq("phone", toPhone)
+      .eq("phone", toPhone);
+    if (waNumberId) leadQuery = leadQuery.eq("whatsapp_number_id", waNumberId);
+    const { data: leadRows } = await leadQuery
       .order("created_at", { ascending: true })
       .limit(1);
     const lead = leadRows?.[0];
@@ -1145,24 +1157,16 @@ Deno.serve(async (req) => {
 
             const LEAD_COLS = "id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id";
             let lead: any = null;
-            // Com vários números no mesmo tenant (as 4 recepções), casar só por
-            // telefone jogaria a resposta do paciente da unidade B no lead da
-            // unidade A — e a RLS por número o esconderia da recepção B.
-            // Prioridade: lead do MESMO número; depois lead sem carimbo (adota);
-            // nunca sequestra lead carimbado com número diferente.
+            // Cada número é um mundo: contato que escreve para um número cadastrado
+            // em whatsapp_numbers vira lead PRÓPRIO desse número, mesmo que a mesma
+            // pessoa já exista como lead de outro número (ou sem carimbo).
+            // Nunca adota lead de outro número nem lead sem carimbo.
             if (waNumberId) {
               const { data: mesmoNumero } = await supabase
                 .from("crm_leads").select(LEAD_COLS)
                 .eq("tenant_id", tenantId).eq("phone", from).eq("whatsapp_number_id", waNumberId)
                 .order("created_at", { ascending: true }).limit(1);
               lead = mesmoNumero?.[0] || null;
-              if (!lead) {
-                const { data: semCarimbo } = await supabase
-                  .from("crm_leads").select(LEAD_COLS)
-                  .eq("tenant_id", tenantId).eq("phone", from).is("whatsapp_number_id", null)
-                  .order("created_at", { ascending: true }).limit(1);
-                lead = semCarimbo?.[0] || null;
-              }
             } else {
               const { data: leadRows } = await supabase
                 .from("crm_leads").select(LEAD_COLS)
@@ -1262,10 +1266,13 @@ Deno.serve(async (req) => {
 
                   if (insertLeadErr && (insertLeadErr as any).code === "23505") {
                     // Race: another webhook just created this lead. Reuse it.
-                    const { data: existing } = await supabase
+                    let raceQuery = supabase
                       .from("crm_leads")
                       .select("id, name, source")
-                      .eq("tenant_id", tenantId).eq("phone", from)
+                      .eq("tenant_id", tenantId).eq("phone", from);
+                    // Mesmo escopo da busca: por número quando o número é cadastrado.
+                    if (waNumberId) raceQuery = raceQuery.eq("whatsapp_number_id", waNumberId);
+                    const { data: existing } = await raceQuery
                       .order("created_at", { ascending: true }).limit(1).maybeSingle();
                     lead = existing as any;
                     console.log(`[WEBHOOK] Race avoided — reusing existing lead ${existing?.id} for ${from}`);
@@ -1337,10 +1344,6 @@ Deno.serve(async (req) => {
               const updates: any = {};
               if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
                 updates.name = contactName;
-              }
-              // Backfill do número de origem em leads antigos (só quando ainda não tem)
-              if (waNumberId && !lead.whatsapp_number_id) {
-                updates.whatsapp_number_id = waNumberId;
               }
               if (referral) {
                 if (adHeadline) {
