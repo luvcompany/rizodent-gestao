@@ -1254,10 +1254,13 @@ Deno.serve(async (req) => {
 
                   if (insertLeadErr && (insertLeadErr as any).code === "23505") {
                     // Race: another webhook just created this lead. Reuse it.
-                    const { data: existing } = await supabase
+                    let raceQuery = supabase
                       .from("crm_leads")
                       .select("id, name, source")
-                      .eq("tenant_id", tenantId).eq("phone", from)
+                      .eq("tenant_id", tenantId).eq("phone", from);
+                    // Mesmo escopo da busca: por número quando o número é cadastrado.
+                    if (waNumberId) raceQuery = raceQuery.eq("whatsapp_number_id", waNumberId);
+                    const { data: existing } = await raceQuery
                       .order("created_at", { ascending: true }).limit(1).maybeSingle();
                     lead = existing as any;
                     console.log(`[WEBHOOK] Race avoided — reusing existing lead ${existing?.id} for ${from}`);
