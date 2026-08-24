@@ -1333,10 +1333,6 @@ Deno.serve(async (req) => {
               if (contactName && lead.name.startsWith("Lead WhatsApp ")) {
                 updates.name = contactName;
               }
-              // Backfill do número de origem em leads antigos (só quando ainda não tem)
-              if (waNumberId && !lead.whatsapp_number_id) {
-                updates.whatsapp_number_id = waNumberId;
-              }
               if (referral) {
                 if (adHeadline) {
                   updates.titulo_anuncio = adHeadline;
