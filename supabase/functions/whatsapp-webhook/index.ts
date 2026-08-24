@@ -91,11 +91,13 @@ async function handleMessageEchoes(supabase: any, value: any) {
       if (dup?.id) continue;
     }
 
-    const { data: leadRows } = await supabase
+    let leadQuery = supabase
       .from("crm_leads")
       .select("id, last_message_at")
       .eq("tenant_id", tenantId)
-      .eq("phone", toPhone)
+      .eq("phone", toPhone);
+    if (waNumberId) leadQuery = leadQuery.eq("whatsapp_number_id", waNumberId);
+    const { data: leadRows } = await leadQuery
       .order("created_at", { ascending: true })
       .limit(1);
     const lead = leadRows?.[0];
