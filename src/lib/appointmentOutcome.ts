@@ -7,7 +7,7 @@ const norm = (s: string) =>
 /**
  * Move o lead para uma etapa do MESMO pipeline cujo nome combina com `match`.
  */
-async function moveLeadToStageInCurrentPipeline(
+export async function moveLeadToStageInCurrentPipeline(
   leadId: string,
   matcher: (n: string) => boolean,
 ): Promise<string | null> {
@@ -53,7 +53,7 @@ async function moveLeadToStageInCurrentPipeline(
 /**
  * Move o lead para o pipeline "Não Contratados" / "Recuperação", primeira etapa.
  */
-async function moveLeadToNaoContratadosPipeline(leadId: string): Promise<string | null> {
+export async function moveLeadToNaoContratadosPipeline(leadId: string): Promise<string | null> {
   const { data: lead } = await supabase
     .from("crm_leads")
     .select("stage_id, pipeline_id")
