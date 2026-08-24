@@ -148,7 +148,25 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       .eq("lead_id", leadId)
       .in("status", ["confirmed", "pending"])
       .order("scheduled_date", { ascending: true });
-    setAppointments((data as Appointment[]) || []);
+    const ativos = (data as Appointment[]) || [];
+    setAppointments(ativos);
+
+    // Sem consulta ativa: o cron de comparecimento pode ter fechado a última
+    // (no_show 3h depois). Mostramos a consulta terminal para não deixar o lead
+    // sem caminho de ação na etapa Agendado.
+    if (ativos.length === 0) {
+      const { data: term } = await supabase
+        .from("crm_appointments")
+        .select("id, scheduled_date, scheduled_time, status, notes, outcome_source, outcome_at, outcome_by")
+        .eq("lead_id", leadId)
+        .in("status", TERMINAL_STATUSES)
+        .order("scheduled_date", { ascending: false })
+        .order("scheduled_time", { ascending: false })
+        .limit(1);
+      setLastTerminal(((term as TerminalAppointment[]) || [])[0] || null);
+    } else {
+      setLastTerminal(null);
+    }
   }, [leadId]);
 
   const confirmedAppointments = appointments.filter((a) => a.status === "confirmed");
