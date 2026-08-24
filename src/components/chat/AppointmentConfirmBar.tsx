@@ -893,6 +893,80 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
         );
       })}
 
+      {/* Última consulta com desfecho (sem consulta ativa) */}
+      {lastTerminal && (
+        <div className="mb-2 p-3 rounded-lg border border-muted-foreground/25 bg-muted/40 space-y-2">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              {lastTerminal.scheduled_date.split("-").reverse().join("/")} às {lastTerminal.scheduled_time?.slice(0, 5)}
+              {" · "}
+              <span className="text-destructive">{TERMINAL_LABEL[lastTerminal.status] || lastTerminal.status}</span>
+            </p>
+            {terminalSourceLabel(lastTerminal) && (
+              <p className="text-xs text-muted-foreground">{terminalSourceLabel(lastTerminal)}</p>
+            )}
+            {lastTerminal.notes && (
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">{lastTerminal.notes}</p>
+            )}
+          </div>
+
+          {(lastTerminal.status === "no_show" || lastTerminal.status === "cancelled") && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
+                  variant="outline"
+                  disabled={terminalBusy}
+                  onClick={handleTerminalReschedule}
+                >
+                  <Repeat size={12} /> Reagendar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                  disabled={terminalBusy}
+                  onClick={() => moveLeadOnly("no_show")}
+                >
+                  <XCircle size={12} /> Não compareceu
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                  disabled={terminalBusy}
+                  onClick={() => moveLeadOnly("contracted")}
+                >
+                  <Handshake size={12} /> Contratado
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={terminalBusy}
+                  onClick={() => moveLeadOnly("not_contracted")}
+                >
+                  Não contratado
+                </Button>
+              </div>
+              {isManager && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-[11px] w-full text-muted-foreground"
+                  disabled={terminalBusy}
+                  onClick={() => handleReopenTerminal(lastTerminal)}
+                >
+                  Reabrir consulta
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Manual scheduling button */}
       {!manualOpen ? (
         <Button variant="outline" size="sm" className="w-full h-8 text-sm gap-1.5 mb-2" onClick={() => setManualOpen(true)}>
