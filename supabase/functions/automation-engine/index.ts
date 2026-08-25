@@ -682,16 +682,20 @@ Deno.serve(async (req) => {
       const staleDays = config.stale_days || 7;
       const cutoff = new Date(Date.now() - staleDays * 86400000).toISOString();
 
+      const mundoStale = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
       const leads = await fetchAllRows(() =>
-        supabase
-          .from("crm_leads")
-          .select("id, phone, updated_at, last_message_at")
-          .eq("stage_id", auto.stage_id)
-          .not("automation_paused", "is", true)
-          .eq("is_blocked", false)
-          .lt("updated_at", cutoff)
-          .order("id"),
+        filtrarMundo(
+          supabase
+            .from("crm_leads")
+            .select("id, phone, updated_at, last_message_at")
+            .eq("stage_id", auto.stage_id)
+            .not("automation_paused", "is", true)
+            .eq("is_blocked", false)
+            .lt("updated_at", cutoff),
+          mundoStale.numberId,
+        ).order("id"),
       );
+
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
