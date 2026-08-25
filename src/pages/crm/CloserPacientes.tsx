@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Plus, Search, Trash2, UserPlus, Wallet } from "lucide-react";
+import { centavosParaValor, mascaraMoeda } from "@/lib/moeda";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -184,7 +185,7 @@ export default function CloserPacientes() {
 
   const salvarPagamento = async () => {
     if (!pagamentoPara) return;
-    const valor = Number(String(formPag.valor).replace(/\./g, "").replace(",", "."));
+    const valor = centavosParaValor(formPag.valor);
     if (!valor || valor <= 0) {
       toast.error("Informe um valor válido");
       return;
@@ -384,10 +385,10 @@ export default function CloserPacientes() {
                 <Label htmlFor="valor">Valor</Label>
                 <Input
                   id="valor"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   placeholder="0,00"
                   value={formPag.valor}
-                  onChange={(e) => setFormPag({ ...formPag, valor: e.target.value })}
+                  onChange={(e) => setFormPag({ ...formPag, valor: mascaraMoeda(e.target.value) })}
                 />
               </div>
               <div className="space-y-1.5">

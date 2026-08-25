@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Plus, Search, UserPlus, Wallet, X } from "lucide-react";
+import { centavosParaValor, mascaraMoeda } from "@/lib/moeda";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,7 +78,12 @@ const semDDI = (tel: string | null) => {
   return d.startsWith("55") ? d.slice(2) : d;
 };
 
-const paraNumero = (v: string) => Number(String(v).replace(/\./g, "").replace(",", "."));
+/**
+ * Vírgula, parênteses e aspas têm significado na sintaxe de filtro do
+ * PostgREST: um nome como "Silva, João" quebraria a busca. Aqui eles são
+ * removidos do termo antes de montar o filtro.
+ */
+const termoBusca = (v: string) => v.replace(/[,().*"\\%]/g, " ").trim();
 
 export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
   const [paciente, setPaciente] = useState<Paciente | null>(null);
@@ -186,7 +192,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
   };
 
   const buscar = async () => {
-    const termo = busca.trim();
+    const termo = termoBusca(busca);
     if (!termo) return;
     setBuscando(true);
     const { data } = await (supabase as any)
@@ -225,8 +231,8 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       toast.error("Informe o nome do paciente");
       return;
     }
-    const valor = form.valor.trim() ? paraNumero(form.valor) : 0;
-    if (form.valor.trim() && (!valor || valor <= 0)) {
+    const valor = centavosParaValor(form.valor);
+    if (form.valor.trim() && valor <= 0) {
       toast.error("Informe um valor válido");
       return;
     }
@@ -452,10 +458,10 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
                   <Label htmlFor="valor" className="text-xs">Valor</Label>
                   <Input
                     id="valor"
-                    inputMode="decimal"
+                    inputMode="numeric"
                     placeholder="0,00"
                     value={form.valor}
-                    onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                    onChange={(e) => setForm({ ...form, valor: mascaraMoeda(e.target.value) })}
                   />
                 </div>
                 <div className="space-y-1.5">
