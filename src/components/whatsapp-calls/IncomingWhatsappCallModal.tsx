@@ -42,23 +42,38 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
         setResolvedLeadId((data as any)?.id ?? call.lead_id);
         return;
       }
-      // 2) Fallback: tenta casar pelo telefone normalizado
+      // 2) Fallback: casa pelo telefone DENTRO do mundo do número da ligação
+      // (tenant + whatsapp_number_id correspondente ao call.phone_number_id).
+      // Número sem linha em whatsapp_numbers = mundo legado (NULL).
       const digits = (call.from_phone || "").replace(/\D/g, "");
-      if (!digits) return;
-      const { data } = await supabase
+      if (!digits || !call.tenant_id) return;
+      let numberId: string | null = null;
+      if (call.phone_number_id) {
+        const { data: num } = await supabase
+          .from("whatsapp_numbers")
+          .select("id")
+          .eq("tenant_id", call.tenant_id)
+          .eq("phone_number_id", call.phone_number_id)
+          .limit(1);
+        numberId = (num as any[])?.[0]?.id ?? null;
+      }
+      let q = supabase
         .from("crm_leads")
         .select("id, name")
-        .eq("phone", digits)
-        .limit(1)
-        .maybeSingle();
+        .eq("tenant_id", call.tenant_id)
+        .eq("phone", digits);
+      q = numberId ? q.eq("whatsapp_number_id", numberId) : q.is("whatsapp_number_id", null);
+      const { data } = await q.limit(2);
       if (cancelled) return;
-      if (data) {
-        setLeadName((data as any).name ?? null);
-        setResolvedLeadId((data as any).id ?? null);
+      const rows = (data as any[]) || [];
+      // Ambíguo (2+): não resolve lead — mostra só o telefone.
+      if (rows.length === 1) {
+        setLeadName(rows[0].name ?? null);
+        setResolvedLeadId(rows[0].id ?? null);
       }
     })();
     return () => { cancelled = true; };
-  }, [call.lead_id, call.from_phone]);
+  }, [call.lead_id, call.from_phone, call.tenant_id, call.phone_number_id]);
 
   const displayName = leadName || formatPhone(call.from_phone);
   const initials = (leadName || "?").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();

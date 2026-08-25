@@ -177,10 +177,12 @@ const CrmLayout = () => {
   useEffect(() => {
     const fetchTodayTasks = async () => {
       const today = toLocalDateISO();
+      if (!user?.id) { setTodayTaskCount(0); return; }
       const { count } = await supabase
         .from("crm_tasks")
         .select("id", { count: "exact", head: true })
         .eq("status", "pending")
+        .eq("assigned_to", user.id)
         .lte("due_date", `${today}T23:59:59`);
       setTodayTaskCount(count || 0);
     };
@@ -189,7 +191,7 @@ const CrmLayout = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, fetchTodayTasks)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, []);
+  }, [user?.id]);
 
   const renderNavItem = (item: NavItem) => (
     <NavLink

@@ -25,23 +25,46 @@ export default function ForwardMessageDialog({ open, onOpenChange, messageConten
   const [leads, setLeads] = useState<Lead[]>([]);
   const [sending, setSending] = useState<string | null>(null);
 
+  // Cada número é um mundo: só é possível encaminhar para leads do MESMO
+  // tenant e da MESMA conexão (whatsapp_number_id) do lead de origem.
   useEffect(() => {
     if (!open) return;
-    const fetchLeads = async () => {
-      const { data } = await supabase
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      const { data: origem } = await supabase
+        .from("crm_leads")
+        .select("tenant_id, whatsapp_number_id")
+        .eq("id", fromLeadId)
+        .maybeSingle();
+      if (cancelled) return;
+      const tenantId = (origem as any)?.tenant_id ?? null;
+      const numberId = (origem as any)?.whatsapp_number_id ?? null;
+      if (!tenantId) { setLeads([]); return; }
+
+      let q = supabase
         .from("crm_leads")
         .select("id, name, phone")
-        .neq("id", fromLeadId)
-        .order("name")
-        .limit(50);
-      setLeads((data as Lead[]) || []);
-    };
-    fetchLeads();
-  }, [open, fromLeadId]);
+        .eq("tenant_id", tenantId)
+        .neq("id", fromLeadId);
+      q = numberId ? q.eq("whatsapp_number_id", numberId) : q.is("whatsapp_number_id", null);
 
-  const filtered = search
-    ? leads.filter((l) => l.name.toLowerCase().includes(search.toLowerCase()) || l.phone?.includes(search))
-    : leads;
+      // Busca server-side (nome ou telefone) em vez de 50 primeiros alfabéticos.
+      const term = search.trim();
+      if (term.length >= 2) {
+        const digits = term.replace(/\D/g, "");
+        const parts = [`name.ilike.%${term}%`];
+        if (digits.length >= 3) parts.push(`phone.ilike.%${digits}%`);
+        q = q.or(parts.join(","));
+      }
+
+      const { data } = await q.order("last_message_at", { ascending: false, nullsFirst: false }).limit(50);
+      if (cancelled) return;
+      setLeads((data as Lead[]) || []);
+    }, 300);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [open, fromLeadId, search]);
+
+  const filtered = leads;
 
   const handleForward = async (lead: Lead) => {
     if (!lead.phone) {

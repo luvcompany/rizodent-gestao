@@ -275,25 +275,46 @@ async function handleCallsChange(supabase: any, value: any) {
     let normalizedRemote: string | null = null;
     if (remotePhone) {
       normalizedRemote = String(remotePhone).replace(/\D/g, "");
-      const { data: leadRow } = await supabase
+      // Cada número é um mundo: a ligação só casa com lead do MESMO número.
+      // Número não cadastrado em whatsapp_numbers = mundo legado (whatsapp_number_id NULL).
+      let leadQuery = supabase
         .from("crm_leads")
         .select("id")
         .eq("tenant_id", tenantId)
-        .eq("phone", normalizedRemote)
-        .maybeSingle();
-      leadId = leadRow?.id ?? null;
+        .eq("phone", normalizedRemote);
+      leadQuery = whatsappNumberId
+        ? leadQuery.eq("whatsapp_number_id", whatsappNumberId)
+        : leadQuery.is("whatsapp_number_id", null);
+      const { data: leadRows } = await leadQuery
+        .order("created_at", { ascending: true })
+        .limit(1);
+      leadId = leadRows?.[0]?.id ?? null;
     }
 
     // Auto-criar lead para ligações recebidas de números fora do CRM
     if (!leadId && direction === "inbound" && normalizedRemote) {
-      const { data: pipe } = await supabase
-        .from("crm_pipelines")
-        .select("id")
+      // Funil do canal DAQUELE número (mesma resolução determinística do inbound):
+      // funnel_channels da integração → fallback is_default → mais antigo.
+      let pipelineId: string | null = null;
+      const { data: funnelChannels } = await supabase
+        .from("funnel_channels")
+        .select("pipeline_id, created_at")
         .eq("tenant_id", tenantId)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      const pipelineId: string | null = (pipe as any)?.id ?? null;
+        .eq("channel_type", "whatsapp")
+        .eq("channel_config->>integration_key", matched.key)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      pipelineId = funnelChannels?.[0]?.pipeline_id ?? null;
+      if (!pipelineId) {
+        const { data: pipes } = await supabase
+          .from("crm_pipelines")
+          .select("id, is_default, created_at")
+          .eq("tenant_id", tenantId)
+          .order("is_default", { ascending: false })
+          .order("created_at", { ascending: true })
+          .limit(1);
+        pipelineId = pipes?.[0]?.id ?? null;
+      }
 
       let stageId: string | null = null;
       if (pipelineId) {
@@ -332,6 +353,7 @@ async function handleCallsChange(supabase: any, value: any) {
             assigned_to: assignedTo,
             tenant_id: tenantId,
             tags: [],
+            whatsapp_number_id: whatsappNumberId,
           })
           .select("id")
           .single();

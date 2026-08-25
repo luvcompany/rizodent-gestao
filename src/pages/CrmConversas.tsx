@@ -156,7 +156,7 @@ const CONVERSATION_MAX_PAGES = 50; // teto de SEGURANÇA (loop para antes ao rec
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
 // Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
 // porque os filtros derivam opções deles).
-const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, is_blocked";
+const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, is_blocked, whatsapp_number_id";
 // Colunas completas p/ o lead selecionado (inclui notes/value).
 const LEAD_SELECT_COLS = LEAD_LIST_COLS + ", value, notes";
 
@@ -274,6 +274,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [_lsData] = useState<ConversasLSData | null>(() => canUseInitialCache || !cacheKey ? null : readConversasLS(cacheKey));
   const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
   const [search, setSearch] = useState("");
+  // Identificação do "mundo" (conexão de WhatsApp) na lista. Só aparece quando o
+  // tenant tem mais de um número ativo — com só o principal não poluímos a UI.
+  const [numberNames, setNumberNames] = useState<Record<string, string>>({});
+  const [multiNumberTenant, setMultiNumberTenant] = useState(false);
   const [loading, setLoading] = useState(!canUseInitialCache && !_lsData);
   const [fullyLoaded, setFullyLoaded] = useState<boolean>(canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -491,6 +495,27 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     fetchLeads();
   }, [tenant.id, cacheKey]);
 
+
+  // Conexões de WhatsApp visíveis (para o badge de "mundo" na lista)
+  useEffect(() => {
+    if (!tenant.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("whatsapp_numbers")
+        .select("id, display_name, phone_e164, is_active")
+        .eq("tenant_id", tenant.id)
+        .eq("is_active", true);
+      if (cancelled) return;
+      const rows = ((data as any[]) || []);
+      const map: Record<string, string> = {};
+      rows.forEach((n) => { map[n.id] = n.display_name || n.phone_e164 || "Conexão"; });
+      map["__legacy__"] = "Principal";
+      setNumberNames(map);
+      setMultiNumberTenant(rows.length > 1);
+    })();
+    return () => { cancelled = true; };
+  }, [tenant.id]);
 
   // Server-side search: when user types, fetch matching leads beyond the initial 500-row cache
   // so older conversations (sorted lower by last_message_at) are still findable.
@@ -1171,6 +1196,15 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                   <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 shrink-0" title="Lead bloqueado — só aparece na busca">Bloqueado</Badge>
                                 )}
                                 <span className="truncate">{lead.name}</span>
+                                {multiNumberTenant && numberNames[(lead as any).whatsapp_number_id ?? "__legacy__"] && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[9px] px-1 py-0 h-4 shrink-0 font-normal"
+                                    title="Conexão de WhatsApp desta conversa"
+                                  >
+                                    {numberNames[(lead as any).whatsapp_number_id ?? "__legacy__"]}
+                                  </Badge>
+                                )}
                               </span>
                               <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Última mensagem">
                                 {(() => {

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizePhone } from "@/lib/phoneUtils";
+import { useAuth } from "@/contexts/AuthContext";
+import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +26,7 @@ import {
    Importação em Massa
    ═══════════════════════════════════════════════════ */
 function ImportTab() {
+  const { profile, userRole } = useAuth();
   const [rows, setRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
@@ -71,6 +74,10 @@ function ImportTab() {
     if (!selectedPipeline || !selectedStage) return toast.error("Selecione funil e etapa");
     if (!mapping.name || !mapping.phone) return toast.error("Mapeie ao menos Nome e Telefone");
     setImporting(true);
+    // Cada número é um mundo: leads importados nascem carimbados com o número
+    // de quem importa (crc/gerente: NULL = mundo legado).
+    const myNumberId = await getMyWhatsappNumberId(userRole);
+    const tenantId = profile?.tenant_id ?? null;
     let imported = 0, skipped = 0;
     const nameIdx = headers.indexOf(mapping.name);
     const phoneIdx = headers.indexOf(mapping.phone);
@@ -83,16 +90,28 @@ function ImportTab() {
       if (!name || !rawPhone) { skipped++; continue; }
       const phone = normalizePhone(rawPhone);
 
-      const { data: existing } = await supabase.from("crm_leads").select("id").eq("phone", phone).limit(1);
+      // Duplicado só conta dentro do mesmo (tenant, número).
+      let dupQuery = supabase.from("crm_leads").select("id").eq("phone", phone);
+      if (tenantId) dupQuery = dupQuery.eq("tenant_id", tenantId);
+      dupQuery = myNumberId
+        ? dupQuery.eq("whatsapp_number_id", myNumberId)
+        : dupQuery.is("whatsapp_number_id", null);
+      const { data: existing } = await dupQuery.limit(1);
       if (existing && existing.length > 0) { skipped++; continue; }
 
       const tags = tagsIdx >= 0 ? row[tagsIdx]?.split(";").map(t => t.trim()).filter(Boolean) : [];
       const source = sourceIdx >= 0 ? row[sourceIdx]?.trim() : "import";
 
-      await supabase.from("crm_leads").insert({
+      const { error: insErr } = await supabase.from("crm_leads").insert({
         name, phone, pipeline_id: selectedPipeline, stage_id: selectedStage,
         tags, source: source || "import",
+        whatsapp_number_id: myNumberId,
       });
+      if (insErr) {
+        console.error("[Import] erro ao inserir lead:", phone, insErr);
+        skipped++;
+        continue;
+      }
       imported++;
     }
     setImporting(false);

@@ -109,12 +109,20 @@ Deno.serve(async (req) => {
     if (!leadId && leadNumber) {
       const l8 = last8(leadNumber);
       if (l8.length >= 8) {
-        // Busca candidatos que contenham os 8 dígitos e confirma no lado do servidor
-        // que o telefone (só dígitos) TERMINA com eles. Ambíguo (>1) => não atribui.
+        // Busca candidatos que TERMINAM com os 8 dígitos (sufixo, server-side) e
+        // confirma no código. Com 2+ candidatos (mesmo telefone em números
+        // diferentes) preferimos o MUNDO LEGADO — a telefonia é da operação
+        // principal. Ordenação explícita para ser determinístico.
         const { data: cands } = await admin.from("crm_leads")
-          .select("id, phone").eq("tenant_id", tenantId).ilike("phone", `%${l8}%`).limit(10);
+          .select("id, phone, whatsapp_number_id").eq("tenant_id", tenantId)
+          .ilike("phone", `%${l8}`)
+          .order("created_at", { ascending: true }).limit(20);
         const matches = (cands || []).filter((c: any) => onlyDigits(c.phone).endsWith(l8));
         if (matches.length === 1) leadId = matches[0].id;
+        else if (matches.length > 1) {
+          const legacy = matches.find((c: any) => c.whatsapp_number_id == null);
+          leadId = legacy ? legacy.id : null;
+        }
       }
     }
 

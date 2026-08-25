@@ -88,10 +88,18 @@ Deno.serve(async (req) => {
           if (!leadId) {
             const l8 = last8(leadNumber);
             if (l8.length >= 8) {
+              // Sufixo server-side + preferência pelo mundo legado quando o mesmo
+              // telefone existe em mais de um número (telefonia = operação principal).
               const { data: cands } = await admin.from("crm_leads")
-                .select("id, phone").eq("tenant_id", cfg.tenant_id).ilike("phone", `%${l8}%`).limit(10);
+                .select("id, phone, whatsapp_number_id").eq("tenant_id", cfg.tenant_id)
+                .ilike("phone", `%${l8}`)
+                .order("created_at", { ascending: true }).limit(20);
               const m = (cands || []).filter((x: any) => onlyDigits(x.phone).endsWith(l8));
               if (m.length === 1) leadId = m[0].id;
+              else if (m.length > 1) {
+                const legacy = m.find((x: any) => x.whatsapp_number_id == null);
+                leadId = legacy ? legacy.id : null;
+              }
             }
           }
           if (leadId) stats.matched++;

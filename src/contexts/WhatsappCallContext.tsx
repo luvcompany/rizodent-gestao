@@ -68,7 +68,7 @@ type SyncMsg = {
 };
 
 export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, userRole, loading: authLoading } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
   const isAuthed = !!user && !authLoading;
   const [state, setState] = useState<CallState>({ phase: "idle" });
@@ -101,6 +101,38 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const ringtoneRef = useRef<{ stop: () => void } | null>(null);
   const dialToneRef = useRef<{ stop: () => void } | null>(null);
 
+  // --- Números de WhatsApp acessíveis (cada número é um mundo).
+  // A lista vem filtrada por RLS (can_access_whatsapp_number). Número não
+  // cadastrado em whatsapp_numbers = mundo legado (número principal), visível
+  // apenas para crc/gerente/superadmin.
+  const allowedPhoneNumberIdsRef = useRef<Set<string> | null>(null);
+  const legacyVisible = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+  useEffect(() => {
+    if (!user || !tenantId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("whatsapp_numbers")
+        .select("phone_number_id")
+        .eq("tenant_id", tenantId);
+      if (cancelled) return;
+      allowedPhoneNumberIdsRef.current = new Set(
+        ((data as any[]) || []).map((n) => String(n.phone_number_id)).filter(Boolean),
+      );
+    })();
+    return () => { cancelled = true; };
+  }, [user, tenantId]);
+
+  const callIsVisible = useCallback((row: WhatsappCallRow) => {
+    const allowed = allowedPhoneNumberIdsRef.current;
+    if (!row.phone_number_id) return legacyVisible;
+    if (!allowed) return legacyVisible; // lista ainda não carregada: só privilegiado
+    if (allowed.has(String(row.phone_number_id))) return true;
+    // Número sem linha visível em whatsapp_numbers: tratado como mundo legado
+    // (número principal) — só crc/gerente/superadmin recebem o toque.
+    return legacyVisible;
+  }, [legacyVisible]);
+
   // --- Realtime: escuta whatsapp_calls do tenant
   useEffect(() => {
     if (!user || !tenantId) return;
@@ -112,6 +144,9 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
         (payload) => {
           const row = (payload.new || payload.old) as WhatsappCallRow;
           if (!row) return;
+          // Ignora chamadas de números que não pertencem ao mundo do usuário.
+          if (!callIsVisible(row)) return;
+
 
           setState((prev) => {
             // Ligação entrante: connect + inbound + sdp_offer
@@ -195,7 +230,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, tenantId]);
+  }, [user?.id, tenantId, callIsVisible]);
 
   // --- BroadcastChannel: sincroniza abas do mesmo navegador
   useEffect(() => {

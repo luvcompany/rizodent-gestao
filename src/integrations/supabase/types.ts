@@ -4805,16 +4805,27 @@ export type Database = {
         Args: { _name: string; _user_id: string }
         Returns: boolean
       }
-      check_duplicate_phone: {
-        Args: { p_phone: string }
-        Returns: {
-          assigned_to: string
-          lead_id: string
-          lead_name: string
-          pipeline_name: string
-          stage_name: string
-        }[]
-      }
+      check_duplicate_phone:
+        | {
+            Args: { p_phone: string }
+            Returns: {
+              assigned_to: string
+              lead_id: string
+              lead_name: string
+              pipeline_name: string
+              stage_name: string
+            }[]
+          }
+        | {
+            Args: { _whatsapp_number_id?: string; p_phone: string }
+            Returns: {
+              assigned_to: string
+              lead_id: string
+              lead_name: string
+              pipeline_name: string
+              stage_name: string
+            }[]
+          }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
       closer_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
       crm_cleanup_contratado_sem_pagamento: {
