@@ -355,6 +355,9 @@ Deno.serve(async (req) => {
         phone_e164: toE164BR(meta.display_phone_number),
         waba_id,
         app_id: app_id ?? null,
+        token,
+        verify_token: webhook_verify_token ?? null,
+        is_coexistence: isCoexistence,
         is_active: true,
         updated_at: new Date().toISOString(),
       };
@@ -394,13 +397,16 @@ Deno.serve(async (req) => {
       );
       if (erroOverride) return json({ error: erroOverride.message }, 500);
 
-      // 7b) Vincula o funil ao canal, igual à tela do crc.
+      // 7b) Vincula o funil ao canal. O delete é pela PRÓPRIA integration_key
+      // (em qualquer funil) — nunca por pipeline_id solto: reconectar com outro
+      // funil deixava 2 linhas com a mesma key e o webhook escolhia a errada.
       if (pipeline_id) {
         await admin
           .from("funnel_channels")
           .delete()
+          .eq("tenant_id", tenantId)
           .eq("channel_type", "whatsapp")
-          .eq("pipeline_id", pipeline_id);
+          .eq("channel_config->>integration_key", key);
         const { error: erroCanal } = await admin.from("funnel_channels").insert({
           pipeline_id,
           channel_type: "whatsapp",
@@ -412,7 +418,7 @@ Deno.serve(async (req) => {
 
       const itens = await listarMeusNumeros(admin, userId, tenantId);
       const item = itens.find((i) => i.number_id === numero.id) ?? null;
-      return json({ item, integration_key: key });
+      return json({ item, integration_key: key, avisos });
     }
 
     if (action === "disconnect") {
