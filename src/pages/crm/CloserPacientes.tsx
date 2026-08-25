@@ -51,6 +51,8 @@ type Pagamento = {
 
 type Clinica = { id: string; nome: string; cidade: string | null };
 
+const FORMAS = ["Pix", "Cartão de crédito", "Cartão de débito", "Dinheiro", "Boleto", "Financiamento"];
+
 const brl = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -69,6 +71,7 @@ export default function CloserPacientes() {
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [clinicas, setClinicas] = useState<Clinica[]>([]);
+  const [especialidades, setEspecialidades] = useState<string[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
 
@@ -87,7 +90,7 @@ export default function CloserPacientes() {
 
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const [pac, pag, cli] = await Promise.all([
+    const [pac, pag, cli, esp] = await Promise.all([
       (supabase as any)
         .from("closer_pacientes")
         .select("id, nome, telefone, cidade, observacoes, created_at, lead_id")
@@ -97,12 +100,14 @@ export default function CloserPacientes() {
         .select("id, paciente_id, valor, data_pagamento, forma_pagamento, especialidade, clinica_id")
         .order("data_pagamento", { ascending: false }),
       (supabase as any).rpc("closer_clinicas_do_tenant"),
+      (supabase as any).rpc("closer_especialidades_do_tenant"),
     ]);
 
     if (pac.error) toast.error(`Erro ao carregar pacientes: ${pac.error.message}`);
     setPacientes((pac.data as Paciente[]) || []);
     setPagamentos((pag.data as Pagamento[]) || []);
     setClinicas((cli.data as Clinica[]) || []);
+    setEspecialidades((((esp.data as { especialidade: string }[]) || []).map((e) => e.especialidade)).filter(Boolean));
     setCarregando(false);
   }, []);
 
@@ -141,6 +146,13 @@ export default function CloserPacientes() {
         (p.cidade || "").toLowerCase().includes(termo),
     );
   }, [busca, pacientes]);
+
+  /** Cidades vêm das clínicas do cliente — não é digitação livre. */
+  const cidades = useMemo(() => {
+    const set = new Set<string>();
+    clinicas.forEach((c) => c.cidade && set.add(c.cidade));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [clinicas]);
 
   const totalGeral = useMemo(
     () => pagamentos.reduce((s, p) => s + Number(p.valor), 0),
@@ -335,8 +347,14 @@ export default function CloserPacientes() {
                 <Input id="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cid">Cidade</Label>
-                <Input id="cid" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
+                <Label>Cidade</Label>
+                <Select value={form.cidade || "none"} onValueChange={(v) => setForm({ ...form, cidade: v === "none" ? "" : v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem localização</SelectItem>
+                    {cidades.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -403,22 +421,22 @@ export default function CloserPacientes() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="forma">Forma de pagamento</Label>
-                <Input
-                  id="forma"
-                  placeholder="Pix, cartão…"
-                  value={formPag.forma_pagamento}
-                  onChange={(e) => setFormPag({ ...formPag, forma_pagamento: e.target.value })}
-                />
+                <Label>Forma de pagamento</Label>
+                <Select value={formPag.forma_pagamento} onValueChange={(v) => setFormPag({ ...formPag, forma_pagamento: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {FORMAS.map((f) => (<SelectItem key={f} value={f}>{f}</SelectItem>))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="esp">Especialidade</Label>
-                <Input
-                  id="esp"
-                  placeholder="Implante, orto…"
-                  value={formPag.especialidade}
-                  onChange={(e) => setFormPag({ ...formPag, especialidade: e.target.value })}
-                />
+                <Label>Especialidade</Label>
+                <Select value={formPag.especialidade} onValueChange={(v) => setFormPag({ ...formPag, especialidade: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {especialidades.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>

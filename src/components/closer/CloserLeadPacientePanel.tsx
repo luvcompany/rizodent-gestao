@@ -22,13 +22,14 @@ import {
 } from "@/components/ui/select";
 
 /**
- * Painel de paciente do closer, dentro da conversa — mesmo lugar e mesmo papel
- * do LeadBudgetPanel do crc, porém sobre closer_pacientes/closer_pagamentos.
- * O painel do crc lê `pacientes`/`pagamentos`, que são bloqueadas para o closer
- * por policy: era por isso que o botão "Vincular Paciente" não funcionava.
+ * Paciente do closer dentro da conversa — mesmo lugar do LeadBudgetPanel do crc,
+ * porém sobre closer_pacientes/closer_pagamentos (o painel do crc lê tabelas
+ * bloqueadas para este perfil).
  *
- * Aqui o vínculo é manual e parte do lead: busca entre os pacientes que ele já
- * cadastrou ou cria um novo, com nome e telefone já preenchidos a partir do lead.
+ * O formato segue o do crc: um único formulário onde se preenche paciente e
+ * pagamento de uma vez. Nome, telefone e cidade vêm do lead; cidade,
+ * clínica e especialidade são listas — nada de digitar à mão o que o sistema
+ * já sabe.
  */
 
 type LeadMin = { id: string; name: string | null; phone: string | null; cidade?: string | null };
@@ -47,10 +48,15 @@ type Pagamento = {
   data_pagamento: string;
   forma_pagamento: string | null;
   especialidade: string | null;
+  tipo: string | null;
   clinica_id: string | null;
 };
 
 type Clinica = { id: string; nome: string; cidade: string | null };
+
+const SEM_CIDADE = "none";
+
+const FORMAS = ["Pix", "Cartão de crédito", "Cartão de débito", "Dinheiro", "Boleto", "Financiamento"];
 
 const brl = (v: number) =>
   Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -65,35 +71,43 @@ const hojeBahia = () => {
   return bahia.toISOString().slice(0, 10);
 };
 
-/** Tira o 55 do começo para exibir/preencher como a pessoa digitaria. */
+/** Tira o 55 para exibir como a pessoa digitaria. */
 const semDDI = (tel: string | null) => {
   const d = (tel || "").replace(/\D/g, "");
   return d.startsWith("55") ? d.slice(2) : d;
 };
 
+const paraNumero = (v: string) => Number(String(v).replace(/\./g, "").replace(",", "."));
+
 export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
   const [paciente, setPaciente] = useState<Paciente | null>(null);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [clinicas, setClinicas] = useState<Clinica[]>([]);
+  const [especialidades, setEspecialidades] = useState<string[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
 
-  const [vincularAberto, setVincularAberto] = useState(false);
+  const [formAberto, setFormAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState<Paciente[]>([]);
   const [buscando, setBuscando] = useState(false);
-  const [novoNome, setNovoNome] = useState("");
-  const [novoTelefone, setNovoTelefone] = useState("");
-  const [novaCidade, setNovaCidade] = useState("");
-  const [salvando, setSalvando] = useState(false);
 
-  const [pagamentoAberto, setPagamentoAberto] = useState(false);
-  const [formPag, setFormPag] = useState({
-    valor: "",
-    clinica_id: "",
-    forma_pagamento: "",
-    especialidade: "",
-    data_pagamento: hojeBahia(),
-  });
+  /** Um formulário só: dados do paciente + do primeiro pagamento. */
+  const vazio = useMemo(
+    () => ({
+      nome: "",
+      telefone: "",
+      cidade: SEM_CIDADE,
+      clinica_id: "",
+      valor: "",
+      data_pagamento: hojeBahia(),
+      tipo: "primeiro",
+      especialidade: "",
+      forma_pagamento: "",
+    }),
+    [],
+  );
+  const [form, setForm] = useState(vazio);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -108,7 +122,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     if (pac?.id) {
       const { data: pgs } = await (supabase as any)
         .from("closer_pagamentos")
-        .select("id, valor, data_pagamento, forma_pagamento, especialidade, clinica_id")
+        .select("id, valor, data_pagamento, forma_pagamento, especialidade, tipo, clinica_id")
         .eq("paciente_id", pac.id)
         .order("data_pagamento", { ascending: false });
       setPagamentos((pgs as Pagamento[]) || []);
@@ -118,34 +132,57 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     setCarregando(false);
   }, [lead.id]);
 
-  useEffect(() => {
-    void carregar();
-  }, [carregar]);
+  useEffect(() => { void carregar(); }, [carregar]);
 
   useEffect(() => {
     (async () => {
-      const { data } = await (supabase as any).rpc("closer_clinicas_do_tenant");
-      setClinicas((data as Clinica[]) || []);
+      const [{ data: cli }, { data: esp }] = await Promise.all([
+        (supabase as any).rpc("closer_clinicas_do_tenant"),
+        (supabase as any).rpc("closer_especialidades_do_tenant"),
+      ]);
+      setClinicas((cli as Clinica[]) || []);
+      setEspecialidades((((esp as { especialidade: string }[]) || []).map((e) => e.especialidade)).filter(Boolean));
     })();
   }, []);
 
-  const total = useMemo(
-    () => pagamentos.reduce((s, p) => s + Number(p.valor), 0),
-    [pagamentos],
-  );
+  /** Cidades vêm das clínicas do cliente — não é lista fixa nem digitação. */
+  const cidades = useMemo(() => {
+    const set = new Set<string>();
+    clinicas.forEach((c) => c.cidade && set.add(c.cidade));
+    if (lead.cidade) set.add(lead.cidade);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [clinicas, lead.cidade]);
+
+  const total = useMemo(() => pagamentos.reduce((s, p) => s + Number(p.valor), 0), [pagamentos]);
 
   const nomeClinica = useCallback(
     (id: string | null) => (id ? clinicas.find((c) => c.id === id)?.nome ?? "—" : "—"),
     [clinicas],
   );
 
-  const abrirVinculo = () => {
-    setBusca(semDDI(lead.phone) || lead.name || "");
-    setResultados([]);
-    setNovoNome(lead.name || "");
-    setNovoTelefone(semDDI(lead.phone));
-    setNovaCidade(lead.cidade || "");
-    setVincularAberto(true);
+  /** Abre já preenchido com o que o lead sabe — inclusive a cidade. */
+  const abrirFormulario = (paraPagamento = false) => {
+    if (paraPagamento && paciente) {
+      setForm({
+        ...vazio,
+        nome: paciente.nome,
+        telefone: paciente.telefone || "",
+        cidade: paciente.cidade || SEM_CIDADE,
+        // Repete a clínica do último lançamento: normalmente é a mesma.
+        clinica_id: pagamentos[0]?.clinica_id || "",
+        tipo: pagamentos.length > 0 ? "recorrente" : "primeiro",
+      });
+    } else {
+      setForm({
+        ...vazio,
+        nome: lead.name || "",
+        telefone: semDDI(lead.phone),
+        cidade: lead.cidade || SEM_CIDADE,
+      });
+      setBusca(semDDI(lead.phone) || lead.name || "");
+      setResultados([]);
+    }
+    setFormAberto(true);
   };
 
   const buscar = async () => {
@@ -161,7 +198,6 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     setBuscando(false);
   };
 
-  /** Liga um paciente já cadastrado a este lead. */
   const vincularExistente = async (id: string) => {
     setSalvando(true);
     const { error } = await (supabase as any)
@@ -178,34 +214,76 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       return;
     }
     toast.success("Paciente vinculado");
-    setVincularAberto(false);
+    setFormAberto(false);
     void carregar();
   };
 
-  const criarEVincular = async () => {
-    const nome = (novoNome || lead.name || "").trim();
+  /** Salva paciente e pagamento numa tacada — o valor é opcional. */
+  const salvar = async () => {
+    const nome = form.nome.trim() || lead.name?.trim() || "";
     if (!nome) {
       toast.error("Informe o nome do paciente");
       return;
     }
-    setSalvando(true);
-    const { error } = await (supabase as any).from("closer_pacientes").insert({
-      lead_id: lead.id,
-      nome,
-      telefone: novoTelefone.trim() || null,
-      cidade: novaCidade.trim() || null,
-    });
-    setSalvando(false);
-    if (error) {
-      toast.error(
-        error.code === "23505"
-          ? "Esta conversa já tem um paciente vinculado."
-          : `Não foi possível vincular: ${error.message}`,
-      );
+    const valor = form.valor.trim() ? paraNumero(form.valor) : 0;
+    if (form.valor.trim() && (!valor || valor <= 0)) {
+      toast.error("Informe um valor válido");
       return;
     }
-    toast.success("Paciente vinculado");
-    setVincularAberto(false);
+    if (valor > 0 && !form.clinica_id) {
+      toast.error("Escolha a clínica do pagamento");
+      return;
+    }
+
+    setSalvando(true);
+    let pacienteId = paciente?.id ?? null;
+
+    if (!pacienteId) {
+      const { data, error } = await (supabase as any)
+        .from("closer_pacientes")
+        .insert({
+          lead_id: lead.id,
+          nome,
+          telefone: form.telefone.trim() || null,
+          cidade: form.cidade === SEM_CIDADE ? null : form.cidade,
+        })
+        .select("id")
+        .single();
+      if (error) {
+        setSalvando(false);
+        toast.error(
+          error.code === "23505"
+            ? "Esta conversa já tem um paciente vinculado."
+            : `Não foi possível vincular: ${error.message}`,
+        );
+        return;
+      }
+      pacienteId = data.id as string;
+    }
+
+    if (valor > 0 && pacienteId) {
+      const { error } = await (supabase as any).from("closer_pagamentos").insert({
+        paciente_id: pacienteId,
+        valor,
+        clinica_id: form.clinica_id || null,
+        forma_pagamento: form.forma_pagamento || null,
+        especialidade: form.especialidade || null,
+        tipo: form.tipo || null,
+        data_pagamento: form.data_pagamento,
+      });
+      if (error) {
+        setSalvando(false);
+        toast.error(`Paciente vinculado, mas o pagamento falhou: ${error.message}`);
+        setFormAberto(false);
+        void carregar();
+        return;
+      }
+    }
+
+    setSalvando(false);
+    toast.success(valor > 0 ? "Paciente vinculado e pagamento lançado" : "Paciente vinculado");
+    setFormAberto(false);
+    setForm(vazio);
     void carregar();
   };
 
@@ -220,33 +298,6 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       return;
     }
     toast.success("Vínculo removido — o paciente continua na sua aba Pacientes");
-    void carregar();
-  };
-
-  const lancarPagamento = async () => {
-    if (!paciente) return;
-    const valor = Number(String(formPag.valor).replace(/\./g, "").replace(",", "."));
-    if (!valor || valor <= 0) {
-      toast.error("Informe um valor válido");
-      return;
-    }
-    setSalvando(true);
-    const { error } = await (supabase as any).from("closer_pagamentos").insert({
-      paciente_id: paciente.id,
-      valor,
-      clinica_id: formPag.clinica_id || null,
-      forma_pagamento: formPag.forma_pagamento.trim() || null,
-      especialidade: formPag.especialidade.trim() || null,
-      data_pagamento: formPag.data_pagamento,
-    });
-    setSalvando(false);
-    if (error) {
-      toast.error(`Não foi possível lançar: ${error.message}`);
-      return;
-    }
-    toast.success("Pagamento lançado");
-    setPagamentoAberto(false);
-    setFormPag({ valor: "", clinica_id: "", forma_pagamento: "", especialidade: "", data_pagamento: hojeBahia() });
     void carregar();
   };
 
@@ -276,7 +327,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       {!paciente ? (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">Nenhum paciente vinculado</p>
-          <Button size="sm" variant="outline" className="w-full" onClick={abrirVinculo}>
+          <Button size="sm" variant="outline" className="w-full" onClick={() => abrirFormulario(false)}>
             <UserPlus size={14} className="mr-1" /> Vincular Paciente
           </Button>
         </div>
@@ -301,7 +352,9 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
                   <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
                     <Wallet size={12} className="shrink-0" />
                     <span className="tabular-nums">{dataBR(p.data_pagamento)}</span>
-                    <span className="truncate">{nomeClinica(p.clinica_id)}</span>
+                    <span className="truncate">
+                      {nomeClinica(p.clinica_id)}{p.especialidade ? ` · ${p.especialidade}` : ""}
+                    </span>
                   </span>
                   <span className="font-medium tabular-nums text-foreground">{brl(Number(p.valor))}</span>
                 </li>
@@ -309,157 +362,169 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
             </ul>
           )}
 
-          <Button size="sm" variant="outline" className="w-full" onClick={() => setPagamentoAberto(true)}>
+          <Button size="sm" variant="outline" className="w-full" onClick={() => abrirFormulario(true)}>
             <Plus size={14} className="mr-1" /> Lançar pagamento
           </Button>
         </div>
       )}
 
-      {/* Vincular: buscar existente ou criar a partir do lead */}
-      <Dialog open={vincularAberto} onOpenChange={setVincularAberto}>
-        <DialogContent className="max-w-md">
+      <Dialog open={formAberto} onOpenChange={setFormAberto}>
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Vincular Paciente</DialogTitle>
+            <DialogTitle>{paciente ? "Lançar pagamento" : "Vincular Paciente"}</DialogTitle>
             <DialogDescription>
-              Busque um paciente que você já cadastrou, ou crie um novo a partir desta conversa.
+              {paciente
+                ? paciente.nome
+                : "Preencha os dados do paciente e do pagamento. O que o lead já sabe vem preenchido."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar por nome ou telefone…"
-                onKeyDown={(e) => { if (e.key === "Enter") void buscar(); }}
-              />
-              <Button size="sm" onClick={buscar} disabled={buscando}>
-                {buscando ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-              </Button>
-            </div>
-
-            {resultados.length > 0 && (
-              <div className="max-h-48 space-y-1 overflow-y-auto">
-                {resultados.map((p) => {
-                  const ocupado = !!p.lead_id && p.lead_id !== lead.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => !ocupado && vincularExistente(p.id)}
-                      disabled={ocupado || salvando}
-                      className="w-full rounded p-2 text-left text-sm transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <span className="font-medium text-foreground">{p.nome}</span>
-                      <span className="ml-2 text-muted-foreground">{p.telefone}</span>
-                      {ocupado && <span className="ml-2 text-xs text-primary">(já vinculado)</span>}
-                    </button>
-                  );
-                })}
+            {/* Buscar alguém já cadastrado — só faz sentido antes de haver vínculo */}
+            {!paciente && (
+              <div className="space-y-2">
+                <Label className="text-xs">Já cadastrou este paciente antes?</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    placeholder="Buscar por nome ou telefone…"
+                    onKeyDown={(e) => { if (e.key === "Enter") void buscar(); }}
+                  />
+                  <Button size="sm" variant="outline" onClick={buscar} disabled={buscando}>
+                    {buscando ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  </Button>
+                </div>
+                {resultados.length > 0 && (
+                  <div className="max-h-32 space-y-1 overflow-y-auto rounded border border-border p-1">
+                    {resultados.map((p) => {
+                      const ocupado = !!p.lead_id && p.lead_id !== lead.id;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => !ocupado && vincularExistente(p.id)}
+                          disabled={ocupado || salvando}
+                          className="w-full rounded p-2 text-left text-sm transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <span className="font-medium text-foreground">{p.nome}</span>
+                          <span className="ml-2 text-muted-foreground">{p.telefone}</span>
+                          {ocupado && <span className="ml-2 text-xs text-primary">(já vinculado)</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
-            {resultados.length === 0 && busca && !buscando && (
-              <p className="text-center text-sm text-muted-foreground">Nenhum paciente encontrado.</p>
+            {!paciente && (
+              <div className="space-y-3 border-t border-border pt-3">
+                <Label className="text-xs font-semibold">Dados do paciente</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="nome" className="text-xs">Nome</Label>
+                  <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tel" className="text-xs">Telefone</Label>
+                    <Input id="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Cidade</Label>
+                    <Select value={form.cidade} onValueChange={(v) => setForm({ ...form, cidade: v })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SEM_CIDADE}>Sem localização</SelectItem>
+                        {cidades.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             )}
 
-            <div className="space-y-2 border-t border-border pt-3">
-              <Label className="text-xs font-medium">Ou criar a partir desta conversa</Label>
-              <Input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome" />
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  value={novoTelefone}
-                  onChange={(e) => setNovoTelefone(e.target.value)}
-                  placeholder="Telefone"
-                />
-                <Input
-                  value={novaCidade}
-                  onChange={(e) => setNovaCidade(e.target.value)}
-                  placeholder="Cidade"
-                />
+            <div className="space-y-3 border-t border-border pt-3">
+              <Label className="text-xs font-semibold">
+                Pagamento {!paciente && <span className="font-normal text-muted-foreground">(opcional agora)</span>}
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="valor" className="text-xs">Valor</Label>
+                  <Input
+                    id="valor"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={form.valor}
+                    onChange={(e) => setForm({ ...form, valor: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="data" className="text-xs">Data do pagamento</Label>
+                  <Input
+                    id="data"
+                    type="date"
+                    value={form.data_pagamento}
+                    onChange={(e) => setForm({ ...form, data_pagamento: e.target.value })}
+                  />
+                </div>
               </div>
-              <p className="text-[11px] italic text-muted-foreground">
-                Nome, telefone e cidade vieram do lead — ajuste se precisar.
-              </p>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Clínica</Label>
+                <Select value={form.clinica_id} onValueChange={(v) => setForm({ ...form, clinica_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
+                  <SelectContent>
+                    {clinicas.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}{c.cidade ? ` — ${c.cidade}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Tipo</Label>
+                  <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
+                      <SelectItem value="recorrente">Recorrente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Especialidade</Label>
+                  <Select value={form.especialidade} onValueChange={(v) => setForm({ ...form, especialidade: v })}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      {especialidades.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Forma de pagamento</Label>
+                <Select
+                  value={form.forma_pagamento}
+                  onValueChange={(v) => setForm({ ...form, forma_pagamento: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {FORMAS.map((f) => (<SelectItem key={f} value={f}>{f}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setVincularAberto(false)}>Cancelar</Button>
-            <Button onClick={criarEVincular} disabled={salvando}>
+            <Button variant="outline" onClick={() => setFormAberto(false)}>Cancelar</Button>
+            <Button onClick={salvar} disabled={salvando}>
               {salvando ? <Loader2 size={14} className="mr-1 animate-spin" /> : <UserPlus size={14} className="mr-1" />}
-              Criar e Vincular
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Lançar pagamento */}
-      <Dialog open={pagamentoAberto} onOpenChange={setPagamentoAberto}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Lançar pagamento</DialogTitle>
-            <DialogDescription>{paciente?.nome}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="v">Valor</Label>
-                <Input
-                  id="v"
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  value={formPag.valor}
-                  onChange={(e) => setFormPag({ ...formPag, valor: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="d">Data do pagamento</Label>
-                <Input
-                  id="d"
-                  type="date"
-                  value={formPag.data_pagamento}
-                  onChange={(e) => setFormPag({ ...formPag, data_pagamento: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Clínica</Label>
-              <Select value={formPag.clinica_id} onValueChange={(v) => setFormPag({ ...formPag, clinica_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
-                <SelectContent>
-                  {clinicas.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nome}{c.cidade ? ` — ${c.cidade}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="f">Forma de pagamento</Label>
-                <Input
-                  id="f"
-                  placeholder="Pix, cartão…"
-                  value={formPag.forma_pagamento}
-                  onChange={(e) => setFormPag({ ...formPag, forma_pagamento: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="e">Especialidade</Label>
-                <Input
-                  id="e"
-                  placeholder="Implante, orto…"
-                  value={formPag.especialidade}
-                  onChange={(e) => setFormPag({ ...formPag, especialidade: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPagamentoAberto(false)}>Cancelar</Button>
-            <Button onClick={lancarPagamento} disabled={salvando}>
-              {salvando && <Loader2 size={14} className="mr-1 animate-spin" />} Lançar
+              {paciente ? "Lançar" : "Vincular"}
             </Button>
           </DialogFooter>
         </DialogContent>
