@@ -4,6 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { executeStageAutomations } from "@/lib/automationUtils";
@@ -139,6 +140,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
   open, onOpenChange, pipelines, stages, defaultPipelineId, defaultStageId,
   profiles, userId, leadCountByStage, onCreated,
 }: NewLeadDialogProps) {
+  const { userRole } = useAuth();
   const emptyForm = { name: "", phone: "", stage_id: defaultStageId, source: "", tags: "", value: "", notes: "", pipeline_id: "" };
   const [form, setForm] = useState(emptyForm);
   const [duplicateInfo, setDuplicateInfo] = useState<{
@@ -172,13 +174,16 @@ const NewLeadDialog = memo(function NewLeadDialog({
       notes: currentForm.notes || null,
       position: leadCountByStage[currentForm.stage_id] || 0,
       assigned_to: userId || null,
+      // Cada número é um mundo: o lead nasce carimbado com o número de quem cria
+      // (closer/recepção: o número dele; crc/gerente: NULL = mundo legado).
+      whatsapp_number_id: await getMyWhatsappNumberId(userRole),
     }).select("id").single();
     if (error) {
       console.error("[Kanban] Erro ao criar lead:", error);
       const code = (error as any).code;
       // 23505 = unique violation. Quase certo que é o phone já existente.
       if (code === "23505" && /tenant_phone_uniq/i.test((error as any).message || "")) {
-        toast.error("Já existe um lead com esse telefone neste tenant. Procure pelo telefone no CRM para abrir a conversa existente.", { duration: 10000 });
+        toast.error("Já existe um lead com este telefone nesta conexão. Procure pelo telefone no CRM para abrir a conversa existente.", { duration: 10000 });
         return;
       }
       const detail = (error as any).message || (error as any).details || "Erro desconhecido";
@@ -202,7 +207,12 @@ const NewLeadDialog = memo(function NewLeadDialog({
     if (!form.name || !form.stage_id) { toast.error("Nome e etapa são obrigatórios"); return; }
     const normalizedPhone = form.phone ? normalizePhone(form.phone) : null;
     if (normalizedPhone) {
-      const { data: existing, error: dupErr } = await supabase.rpc("check_duplicate_phone", { p_phone: normalizedPhone });
+      // Duplicado é avaliado NO MESMO ESCOPO de número (mesma conexão).
+      const myNumberId = await getMyWhatsappNumberId(userRole);
+      const { data: existing, error: dupErr } = await supabase.rpc("check_duplicate_phone", {
+        p_phone: normalizedPhone,
+        _whatsapp_number_id: myNumberId,
+      } as any);
       if (dupErr) {
         // Loga mas não bloqueia. Se a função estiver inacessível, deixa o
         // UNIQUE constraint do banco proteger contra duplicação.
