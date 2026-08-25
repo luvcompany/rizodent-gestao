@@ -119,15 +119,10 @@ async function ensureLead(
     .eq("tenant_id", u.tenant_id).eq("phone", phone)
     .order("created_at", { ascending: true }).limit(5);
 
+  // Cada número é um mundo: NUNCA re-carimbar lead legado (whatsapp_number_id
+  // NULL = conversa do número principal). Antes o UPDATE roubava essa conversa
+  // do mundo principal; agora, sem lead do número da unidade, cria um novo.
   let lead = (cands || []).find((c: any) => c.whatsapp_number_id === u.whatsapp_number_id) || null;
-  if (!lead) {
-    // Lead sem carimbo: adota e carimba (evita duplicar conversa existente).
-    const semCarimbo = (cands || []).find((c: any) => !c.whatsapp_number_id);
-    if (semCarimbo && u.whatsapp_number_id) {
-      await admin.from("crm_leads").update({ whatsapp_number_id: u.whatsapp_number_id }).eq("id", semCarimbo.id);
-      lead = semCarimbo;
-    }
-  }
 
   if (!lead) {
     const { data: novo, error } = await admin.from("crm_leads").insert({
