@@ -230,7 +230,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, tenantId]);
+  }, [user?.id, tenantId, callIsVisible]);
 
   // --- BroadcastChannel: sincroniza abas do mesmo navegador
   useEffect(() => {
