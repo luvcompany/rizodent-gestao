@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Plus, Search, UserPlus, Wallet, X } from "lucide-react";
-import { centavosParaValor, mascaraMoeda } from "@/lib/moeda";
+import { centavosParaValor, hojeNaClinica, mascaraMoeda } from "@/lib/moeda";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +45,7 @@ type Paciente = {
 
 type Pagamento = {
   id: string;
+  paciente_id: string;
   valor: number;
   data_pagamento: string;
   forma_pagamento: string | null;
@@ -67,11 +68,6 @@ const dataBR = (iso: string) => {
   return `${d}/${m}/${a}`;
 };
 
-const hojeBahia = () => {
-  const bahia = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bahia" }));
-  return bahia.toISOString().slice(0, 10);
-};
-
 /** Tira o 55 para exibir como a pessoa digitaria. */
 const semDDI = (tel: string | null) => {
   const d = (tel || "").replace(/\D/g, "");
@@ -86,7 +82,9 @@ const semDDI = (tel: string | null) => {
 const termoBusca = (v: string) => v.replace(/[,().*"\\%]/g, " ").trim();
 
 export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
-  const [paciente, setPaciente] = useState<Paciente | null>(null);
+  const [pacientes, setPacientes] = useState<Paciente[]>([]);
+  /** Paciente cujo pagamento está sendo lançado (null = vinculando um novo). */
+  const [alvoPagamento, setAlvoPagamento] = useState<Paciente | null>(null);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [clinicas, setClinicas] = useState<Clinica[]>([]);
   const [especialidades, setEspecialidades] = useState<string[]>([]);
@@ -106,7 +104,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       cidade: SEM_CIDADE,
       clinica_id: "",
       valor: "",
-      data_pagamento: hojeBahia(),
+      data_pagamento: hojeNaClinica(),
       tipo: "primeiro",
       especialidade: "",
       forma_pagamento: "",
@@ -121,15 +119,16 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       .from("closer_pacientes")
       .select("id, nome, telefone, cidade, lead_id")
       .eq("lead_id", lead.id)
-      .maybeSingle();
+      .order("created_at", { ascending: true });
 
-    setPaciente((pac as Paciente) || null);
+    const lista = ((pac as Paciente[]) || []);
+    setPacientes(lista);
 
-    if (pac?.id) {
+    if (lista.length > 0) {
       const { data: pgs } = await (supabase as any)
         .from("closer_pagamentos")
-        .select("id, valor, data_pagamento, forma_pagamento, especialidade, tipo, clinica_id")
-        .eq("paciente_id", pac.id)
+        .select("id, paciente_id, valor, data_pagamento, forma_pagamento, especialidade, tipo, clinica_id")
+        .in("paciente_id", lista.map((p) => p.id))
         .order("data_pagamento", { ascending: false });
       setPagamentos((pgs as Pagamento[]) || []);
     } else {
@@ -166,17 +165,23 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     [clinicas],
   );
 
-  /** Abre já preenchido com o que o lead sabe — inclusive a cidade. */
-  const abrirFormulario = (paraPagamento = false) => {
-    if (paraPagamento && paciente) {
+  /**
+   * Abre o formulário. Com um paciente, é para lançar pagamento nele; sem
+   * paciente, é para vincular alguém novo a esta conversa — e aí nome,
+   * telefone e cidade já vêm do lead.
+   */
+  const abrirFormulario = (alvo: Paciente | null) => {
+    setAlvoPagamento(alvo);
+    if (alvo) {
+      const dele = pagamentos.filter((x) => x.paciente_id === alvo.id);
       setForm({
         ...vazio,
-        nome: paciente.nome,
-        telefone: paciente.telefone || "",
-        cidade: paciente.cidade || SEM_CIDADE,
+        nome: alvo.nome,
+        telefone: alvo.telefone || "",
+        cidade: alvo.cidade || SEM_CIDADE,
         // Repete a clínica do último lançamento: normalmente é a mesma.
-        clinica_id: pagamentos[0]?.clinica_id || "",
-        tipo: pagamentos.length > 0 ? "recorrente" : "primeiro",
+        clinica_id: dele[0]?.clinica_id || "",
+        tipo: dele.length > 0 ? "recorrente" : "primeiro",
       });
     } else {
       setForm({
@@ -224,52 +229,17 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     void carregar();
   };
 
-  /** Salva paciente e pagamento numa tacada — o valor é opcional. */
+  /** Vincula (e opcionalmente lança o pagamento) numa transação só. */
   const salvar = async () => {
     const nome = form.nome.trim() || lead.name?.trim() || "";
-    if (!nome) {
-      toast.error("Informe o nome do paciente");
-      return;
-    }
     const valor = centavosParaValor(form.valor);
-    if (form.valor.trim() && valor <= 0) {
-      toast.error("Informe um valor válido");
-      return;
-    }
-    if (valor > 0 && !form.clinica_id) {
-      toast.error("Escolha a clínica do pagamento");
-      return;
-    }
 
-    setSalvando(true);
-    let pacienteId = paciente?.id ?? null;
-
-    if (!pacienteId) {
-      const { data, error } = await (supabase as any)
-        .from("closer_pacientes")
-        .insert({
-          lead_id: lead.id,
-          nome,
-          telefone: form.telefone.trim() || null,
-          cidade: form.cidade === SEM_CIDADE ? null : form.cidade,
-        })
-        .select("id")
-        .single();
-      if (error) {
-        setSalvando(false);
-        toast.error(
-          error.code === "23505"
-            ? "Esta conversa já tem um paciente vinculado."
-            : `Não foi possível vincular: ${error.message}`,
-        );
-        return;
-      }
-      pacienteId = data.id as string;
-    }
-
-    if (valor > 0 && pacienteId) {
+    if (alvoPagamento) {
+      if (valor <= 0) { toast.error("Informe um valor válido"); return; }
+      if (!form.clinica_id) { toast.error("Escolha a clínica do pagamento"); return; }
+      setSalvando(true);
       const { error } = await (supabase as any).from("closer_pagamentos").insert({
-        paciente_id: pacienteId,
+        paciente_id: alvoPagamento.id,
         valor,
         clinica_id: form.clinica_id || null,
         forma_pagamento: form.forma_pagamento || null,
@@ -277,28 +247,45 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
         tipo: form.tipo || null,
         data_pagamento: form.data_pagamento,
       });
-      if (error) {
-        setSalvando(false);
-        toast.error(`Paciente vinculado, mas o pagamento falhou: ${error.message}`);
-        setFormAberto(false);
-        void carregar();
-        return;
-      }
+      setSalvando(false);
+      if (error) { toast.error(`Não foi possível lançar: ${error.message}`); return; }
+      toast.success("Pagamento lançado");
+      setFormAberto(false);
+      void carregar();
+      return;
     }
 
+    if (!nome) { toast.error("Informe o nome do paciente"); return; }
+    if (form.valor.trim() && valor <= 0) { toast.error("Informe um valor válido"); return; }
+    if (valor > 0 && !form.clinica_id) { toast.error("Escolha a clínica do pagamento"); return; }
+
+    setSalvando(true);
+    const { error } = await (supabase as any).rpc("closer_vincular_paciente", {
+      p_lead_id: lead.id,
+      p_nome: nome,
+      p_telefone: form.telefone.trim() || null,
+      p_cidade: form.cidade === SEM_CIDADE ? null : form.cidade,
+      p_valor: valor > 0 ? valor : null,
+      p_clinica_id: form.clinica_id || null,
+      p_data_pagamento: form.data_pagamento,
+      p_tipo: form.tipo || null,
+      p_especialidade: form.especialidade || null,
+      p_forma_pagamento: form.forma_pagamento || null,
+    });
     setSalvando(false);
+    if (error) { toast.error(`Não foi possível vincular: ${error.message}`); return; }
+
     toast.success(valor > 0 ? "Paciente vinculado e pagamento lançado" : "Paciente vinculado");
     setFormAberto(false);
     setForm(vazio);
     void carregar();
   };
 
-  const desvincular = async () => {
-    if (!paciente) return;
+  const desvincular = async (p: Paciente) => {
     const { error } = await (supabase as any)
       .from("closer_pacientes")
       .update({ lead_id: null })
-      .eq("id", paciente.id);
+      .eq("id", p.id);
     if (error) {
       toast.error(`Não foi possível desvincular: ${error.message}`);
       return;
@@ -315,61 +302,91 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     );
   }
 
+  const pagamentosDe = (pacienteId: string) => pagamentos.filter((p) => p.paciente_id === pacienteId);
+
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Paciente</span>
-        {paciente && (
-          <button
-            onClick={desvincular}
-            className="text-muted-foreground transition-colors hover:text-destructive"
-            title="Remover vínculo"
-          >
-            <X size={14} />
-          </button>
-        )}
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {pacientes.length > 1 ? `Pacientes (${pacientes.length})` : "Paciente"}
+        </span>
       </div>
 
-      {!paciente ? (
+      {pacientes.length === 0 ? (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">Nenhum paciente vinculado</p>
-          <Button size="sm" variant="outline" className="w-full" onClick={() => abrirFormulario(false)}>
+          <Button size="sm" variant="outline" className="w-full" onClick={() => abrirFormulario(null)}>
             <UserPlus size={14} className="mr-1" /> Vincular Paciente
           </Button>
         </div>
       ) : (
         <div className="space-y-3">
-          <div>
-            <p className="truncate font-medium text-foreground">{paciente.nome}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {[paciente.telefone, paciente.cidade].filter(Boolean).join(" · ") || "Sem contato"}
-            </p>
+          {pacientes.map((p) => {
+            const lista = pagamentosDe(p.id);
+            const somaP = lista.reduce((s, x) => s + Number(x.valor), 0);
+            return (
+              <div key={p.id} className="space-y-2 rounded-md border border-border/60 p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-foreground">{p.nome}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {[p.telefone, p.cidade].filter(Boolean).join(" · ") || "Sem contato"}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-sm font-semibold tabular-nums text-primary">{brl(somaP)}</span>
+                    <button
+                      onClick={() => desvincular(p)}
+                      className="text-muted-foreground transition-colors hover:text-destructive"
+                      title="Remover vínculo"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {lista.length > 0 && (
+                  <ul className="space-y-1">
+                    {lista.map((pg) => (
+                      <li key={pg.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                          <Wallet size={12} className="shrink-0" />
+                          <span className="tabular-nums">{dataBR(pg.data_pagamento)}</span>
+                          <span className="truncate">
+                            {nomeClinica(pg.clinica_id)}{pg.especialidade ? ` · ${pg.especialidade}` : ""}
+                          </span>
+                        </span>
+                        <span className="font-medium tabular-nums text-foreground">{brl(Number(pg.valor))}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-full text-xs text-muted-foreground hover:text-primary"
+                  onClick={() => abrirFormulario(p)}
+                >
+                  <Plus size={12} className="mr-1" /> Lançar pagamento
+                </Button>
+              </div>
+            );
+          })}
+
+          <div className="flex items-center justify-between border-t border-border pt-2">
+            <span className="text-xs text-muted-foreground">Total desta conversa</span>
+            <span className="text-lg font-bold text-primary">{brl(total)}</span>
           </div>
 
-          <div className="border-t border-border pt-2">
-            <span className="text-xs text-muted-foreground">Valor contratado (pago)</span>
-            <p className="text-lg font-bold text-primary">{brl(total)}</p>
-          </div>
-
-          {pagamentos.length > 0 && (
-            <ul className="space-y-1 border-t border-border pt-2">
-              {pagamentos.map((p) => (
-                <li key={p.id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-                    <Wallet size={12} className="shrink-0" />
-                    <span className="tabular-nums">{dataBR(p.data_pagamento)}</span>
-                    <span className="truncate">
-                      {nomeClinica(p.clinica_id)}{p.especialidade ? ` · ${p.especialidade}` : ""}
-                    </span>
-                  </span>
-                  <span className="font-medium tabular-nums text-foreground">{brl(Number(p.valor))}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <Button size="sm" variant="outline" className="w-full" onClick={() => abrirFormulario(true)}>
-            <Plus size={14} className="mr-1" /> Lançar pagamento
+          {/* Mesma ideia do crc: familiar que usa o mesmo telefone. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-full text-xs text-muted-foreground hover:text-primary"
+            onClick={() => abrirFormulario(null)}
+          >
+            <UserPlus size={12} className="mr-1" /> Vincular outra pessoa deste contato
           </Button>
         </div>
       )}
@@ -377,17 +394,17 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       <Dialog open={formAberto} onOpenChange={setFormAberto}>
         <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{paciente ? "Lançar pagamento" : "Vincular Paciente"}</DialogTitle>
+            <DialogTitle>{alvoPagamento ? "Lançar pagamento" : "Vincular Paciente"}</DialogTitle>
             <DialogDescription>
-              {paciente
-                ? paciente.nome
+              {alvoPagamento
+                ? alvoPagamento.nome
                 : "Preencha os dados do paciente e do pagamento. O que o lead já sabe vem preenchido."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Buscar alguém já cadastrado — só faz sentido antes de haver vínculo */}
-            {!paciente && (
+            {!alvoPagamento && (
               <div className="space-y-2">
                 <Label className="text-xs">Já cadastrou este paciente antes?</Label>
                 <div className="flex gap-2">
@@ -423,7 +440,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
               </div>
             )}
 
-            {!paciente && (
+            {!alvoPagamento && (
               <div className="space-y-3 border-t border-border pt-3">
                 <Label className="text-xs font-semibold">Dados do paciente</Label>
                 <div className="space-y-1.5">
@@ -451,7 +468,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
             <div className="space-y-3 border-t border-border pt-3">
               <Label className="text-xs font-semibold">
-                Pagamento {!paciente && <span className="font-normal text-muted-foreground">(opcional agora)</span>}
+                Pagamento {!alvoPagamento && <span className="font-normal text-muted-foreground">(opcional agora)</span>}
               </Label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -530,7 +547,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
             <Button variant="outline" onClick={() => setFormAberto(false)}>Cancelar</Button>
             <Button onClick={salvar} disabled={salvando}>
               {salvando ? <Loader2 size={14} className="mr-1 animate-spin" /> : <UserPlus size={14} className="mr-1" />}
-              {paciente ? "Lançar" : "Vincular"}
+              {alvoPagamento ? "Lançar" : "Vincular"}
             </Button>
           </DialogFooter>
         </DialogContent>

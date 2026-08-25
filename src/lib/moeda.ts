@@ -29,3 +29,21 @@ export function formatarMoeda(valor: number): string {
 export function mascaraMoeda(digitado: string): string {
   return formatarMoeda(centavosParaValor(digitado));
 }
+
+/**
+ * Data de hoje no fuso da clínica (America/Bahia), no formato do banco.
+ *
+ * O caminho intuitivo — new Date(toLocaleString(...)) e depois toISOString() —
+ * erra: a conversão para texto local é reinterpretada no fuso do navegador e o
+ * offset entra duas vezes. Perto da meia-noite isso grava o pagamento no dia
+ * seguinte, jogando o valor para o faturamento do dia errado. Intl com "en-CA"
+ * já devolve AAAA-MM-DD no fuso pedido, sem conversão intermediária.
+ */
+export function hojeNaClinica(agora: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bahia",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(agora);
+}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Plus, Search, Trash2, UserPlus, Wallet } from "lucide-react";
-import { centavosParaValor, mascaraMoeda } from "@/lib/moeda";
+import { centavosParaValor, hojeNaClinica, mascaraMoeda } from "@/lib/moeda";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,12 +62,6 @@ const dataBR = (iso: string) => {
   return `${d}/${m}/${a}`;
 };
 
-const hojeBahia = () => {
-  const agora = new Date();
-  const bahia = new Date(agora.toLocaleString("en-US", { timeZone: "America/Bahia" }));
-  return bahia.toISOString().slice(0, 10);
-};
-
 export default function CloserPacientes() {
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
@@ -86,7 +80,7 @@ export default function CloserPacientes() {
     clinica_id: "",
     forma_pagamento: "",
     especialidade: "",
-    data_pagamento: hojeBahia(),
+    data_pagamento: hojeNaClinica(),
   });
 
   const carregar = useCallback(async () => {
@@ -206,7 +200,7 @@ export default function CloserPacientes() {
     }
     toast.success("Pagamento lançado");
     setPagamentoPara(null);
-    setFormPag({ valor: "", clinica_id: "", forma_pagamento: "", especialidade: "", data_pagamento: hojeBahia() });
+    setFormPag({ valor: "", clinica_id: "", forma_pagamento: "", especialidade: "", data_pagamento: hojeNaClinica() });
     void carregar();
   };
 
