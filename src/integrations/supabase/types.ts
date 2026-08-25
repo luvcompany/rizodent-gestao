@@ -2853,6 +2853,44 @@ export type Database = {
         }
         Relationships: []
       }
+      dontus_credenciais: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          created_at: string
+          team_token: string | null
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          created_at?: string
+          team_token?: string | null
+          tenant_id: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          created_at?: string
+          team_token?: string | null
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dontus_credenciais_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dontus_dedup_runs: {
         Row: {
           ambiguos: number

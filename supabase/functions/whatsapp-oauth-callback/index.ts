@@ -4,6 +4,7 @@
 // e upsert em `integrations` com key `whatsapp_es_{phone_number_id}`.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { resolveWhatsAppCreds } from "../_shared/tenantCredentials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,13 +60,6 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-  if (!META_APP_ID || !META_APP_SECRET || !REDIRECT_URI) {
-    console.error("[wa-oauth-callback] Missing META/REDIRECT secrets");
-    return new Response(JSON.stringify({ error: "Server not configured" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
 
   // Valida state — consumo ATÔMICO (delete ... returning)
   const { data: stateRows, error: stateErr } = await supabase
@@ -109,6 +103,35 @@ Deno.serve(async (req: Request) => {
   const tenantId: string = stateRow.tenant_id;
   const isCoexistence: boolean = (stateRow as any)?.coexistence === true;
 
+  // APP META POR TENANT: cada cliente pode ter o seu app. Envs continuam como
+  // fallback (Rizodent inalterada). O app REALMENTE usado é gravado no config.
+  let appId = META_APP_ID;
+  let appSecret = META_APP_SECRET;
+  let redirectUri = REDIRECT_URI;
+  try {
+    const creds = await resolveWhatsAppCreds({ tenantId });
+    if (creds.app_id) appId = creds.app_id;
+    if (creds.app_secret) appSecret = creds.app_secret;
+  } catch (e) {
+    console.log("[wa-oauth-callback] creds por tenant indisponíveis, usando env:", (e as any)?.message);
+  }
+  {
+    const { data: integ } = await supabase
+      .from("integrations")
+      .select("config")
+      .eq("tenant_id", tenantId)
+      .eq("key", "whatsapp_config")
+      .maybeSingle();
+    const cfg = ((integ as any)?.config ?? {}) as Record<string, string>;
+    if (cfg.app_id) appId = cfg.app_id;
+    if (cfg.app_secret) appSecret = cfg.app_secret;
+    if (cfg.redirect_uri) redirectUri = cfg.redirect_uri;
+  }
+  if (!appId || !appSecret || !redirectUri) {
+    console.error("[wa-oauth-callback] tenant sem app_id/app_secret/redirect_uri configurados");
+    return popupResponse("whatsapp", "error");
+  }
+
   // Verify token POR TENANT: nunca copiar o global do ambiente para dados do
   // cliente (quem lê a integração de um tenant passaria a poder validar o
   // webhook de qualquer outro). O whatsapp-webhook continua aceitando o global.
@@ -128,9 +151,9 @@ Deno.serve(async (req: Request) => {
   try {
     // 1) Troca code por access_token
     const tokUrl = new URL(`https://graph.facebook.com/${API_VERSION}/oauth/access_token`);
-    tokUrl.searchParams.set("client_id", META_APP_ID);
-    tokUrl.searchParams.set("client_secret", META_APP_SECRET);
-    tokUrl.searchParams.set("redirect_uri", REDIRECT_URI);
+    tokUrl.searchParams.set("client_id", appId);
+    tokUrl.searchParams.set("client_secret", appSecret);
+    tokUrl.searchParams.set("redirect_uri", redirectUri);
     tokUrl.searchParams.set("code", code);
     const tokRes = await fetch(tokUrl.toString());
     const tokJson: any = await tokRes.json().catch(() => ({}));
@@ -141,7 +164,7 @@ Deno.serve(async (req: Request) => {
     const access_token: string = tokJson.access_token;
 
     // 2) Descobre WABAs via debug_token
-    const appAccessToken = `${META_APP_ID}|${META_APP_SECRET}`;
+    const appAccessToken = `${appId}|${appSecret}`;
     const dbgUrl = new URL(`https://graph.facebook.com/${API_VERSION}/debug_token`);
     dbgUrl.searchParams.set("input_token", access_token);
     dbgUrl.searchParams.set("access_token", appAccessToken);
@@ -225,12 +248,14 @@ Deno.serve(async (req: Request) => {
         // removido do app do celular — o oposto do que a recepção precisa.
         // Por isso o estado real vem da Meta antes de qualquer ação destrutiva.
         let numberOnBizApp = false;
+        let statusCheckOk = false;
         try {
           const stRes = await fetch(
             `https://graph.facebook.com/${COEX_API_VERSION}/${encodeURIComponent(phone_number_id)}?fields=is_on_biz_app,platform_type&access_token=${encodeURIComponent(access_token)}`,
           );
           const stJson: any = await stRes.json().catch(() => ({}));
           if (stRes.ok) {
+            statusCheckOk = true;
             numberOnBizApp = stJson?.is_on_biz_app === true;
             console.log(`[wa-oauth-callback] ${phone_number_id} is_on_biz_app=${numberOnBizApp} platform_type=${stJson?.platform_type ?? "?"}`);
           } else {
@@ -239,16 +264,20 @@ Deno.serve(async (req: Request) => {
         } catch (e) {
           console.warn(`[wa-oauth-callback] status check error for ${phone_number_id}:`, e);
         }
-        if (isCoexistence && !numberOnBizApp) {
-          console.error(`[wa-oauth-callback] ATENÇÃO: pedido coexistência para ${phone_number_id}, mas a Meta não reporta is_on_biz_app. Tratando como onboarding clássico.`);
+        if (isCoexistence && statusCheckOk && !numberOnBizApp) {
+          console.error(`[wa-oauth-callback] ATENÇÃO: pedido coexistência para ${phone_number_id}, mas a Meta reporta is_on_biz_app=false. Tratando como onboarding clássico.`);
         }
         // Coexistência REAL (confirmada pela Meta) manda pular o /register: o
         // número já está registrado pelo app e registrar de novo o derruba.
-        const skipRegister = numberOnBizApp;
+        // Se a CONSULTA falhou e o pedido era coexistência, NÃO registrar: um
+        // /register indevido derruba o número do app do celular. A conexão fica
+        // marcada como pendente de verificação.
+        const pendenteVerificacao = isCoexistence && !statusCheckOk;
+        const skipRegister = numberOnBizApp || pendenteVerificacao;
 
         // Register (best-effort).
         if (skipRegister) {
-          console.log(`[wa-oauth-callback] número no app do celular: pulando /register de ${phone_number_id}`);
+          console.log(`[wa-oauth-callback] pulando /register de ${phone_number_id} (onBizApp=${numberOnBizApp} pendente=${pendenteVerificacao})`);
         } else
         try {
           const regRes = await fetch(
@@ -274,10 +303,13 @@ Deno.serve(async (req: Request) => {
           token: access_token,
           phone_number_id,
           waba_id,
-          app_id: META_APP_ID,
+          app_id: appId,
           api_version: API_VERSION,
           display_name,
           ...(tenantVerifyToken ? { webhook_verify_token: tenantVerifyToken } : {}),
+          // A Meta não confirmou is_on_biz_app: o /register foi pulado por
+          // segurança e a coexistência precisa ser verificada manualmente.
+          ...(pendenteVerificacao ? { coexistence_pending_verification: true } : {}),
           source: "embedded_signup",
         };
 
@@ -323,7 +355,7 @@ Deno.serve(async (req: Request) => {
               phone_e164: num.display_phone_number ?? null,
               waba_id,
               token: access_token,
-              app_id: META_APP_ID,
+              app_id: appId,
               ...(tenantVerifyToken ? { verify_token: tenantVerifyToken } : {}),
               is_active: true,
               is_coexistence: true,

@@ -144,6 +144,7 @@ Deno.serve(async (req) => {
         phone_number_id,
         waba_id,
         app_id,
+        app_secret,
         webhook_verify_token,
       } = body as Record<string, string | undefined>;
       let pipeline_id = (body as Record<string, string | undefined>).pipeline_id;
@@ -318,6 +319,9 @@ Deno.serve(async (req) => {
         waba_id,
         app_id: app_id ?? "",
         api_version: API_VERSION,
+        // App secret do app Meta DESTE cliente (opcional). Usado só para
+        // validar a assinatura HMAC do webhook — nunca é devolvido em respostas.
+        app_secret: app_secret ?? "",
         webhook_verify_token: webhook_verify_token ?? "",
         display_name,
         pipeline_id: pipeline_id ?? "",
@@ -327,10 +331,16 @@ Deno.serve(async (req) => {
       // 4) Upsert manual em integrations (tenant_id + key não tem unique).
       const { data: existente } = await admin
         .from("integrations")
-        .select("id")
+        .select("id, config")
         .eq("tenant_id", tenantId)
         .eq("key", key)
         .maybeSingle();
+
+      // Reconectar sem informar app_secret não apaga o que já estava gravado.
+      if (!config.app_secret) {
+        const anterior = (existente?.config as any)?.app_secret;
+        if (typeof anterior === "string" && anterior) config.app_secret = anterior;
+      }
 
       let integrationId: string | null = existente?.id ?? null;
       if (integrationId) {
