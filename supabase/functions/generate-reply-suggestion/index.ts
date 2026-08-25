@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
         if (!leadCheck.ok) {
           return new Response(JSON.stringify({ error: leadCheck.error }), { status: leadCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
-        const numCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, ctx);
+        const numCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, ctx, leadId);
         if (!numCheck.ok) {
           return new Response(JSON.stringify({ error: numCheck.error }), { status: numCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveCidade } from "../_shared/resolveCidade.ts";
+import { mesmoMundo, mundoDaEtapa } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,32 +29,50 @@ async function hmacMatches(rawBody: string, sigHex: string, appSecret: string): 
   return mismatch === 0;
 }
 
-async function verifyMetaSignature(supabase: any, rawBody: string, signature: string | null): Promise<boolean> {
-  if (!signature || !signature.startsWith("sha256=")) return false;
+type SignatureCheck = { ok: boolean; matchedTenantIds: string[]; usedEnv: boolean; candidates: number };
+
+async function verifyMetaSignature(supabase: any, rawBody: string, signature: string | null): Promise<SignatureCheck> {
+  if (!signature || !signature.startsWith("sha256=")) return { ok: false, matchedTenantIds: [], usedEnv: false, candidates: 0 };
   const sigHex = signature.slice("sha256=".length);
 
-  const candidates: string[] = [...ENV_APP_SECRETS];
+  const candidates: Array<{ secret: string; tenantId: string | null }> = ENV_APP_SECRETS.map((secret) => ({ secret, tenantId: null }));
   try {
     const { data: integs } = await supabase
       .from("integrations")
-      .select("config")
+      .select("tenant_id, config")
       .like("key", "whatsapp_%");
     for (const it of integs || []) {
       const s = (it?.config as any)?.app_secret;
-      if (typeof s === "string" && s.length > 0 && !candidates.includes(s)) candidates.push(s);
+      if (typeof s === "string" && s.length > 0) candidates.push({ secret: s, tenantId: it.tenant_id ?? null });
     }
   } catch (e) {
     console.log("[WEBHOOK] Falha ao coletar app_secret das integrações:", (e as any)?.message);
   }
   if (candidates.length === 0) {
     console.error("[WEBHOOK] Nenhum app_secret configurado — rejeitando");
-    return false;
+    return { ok: false, matchedTenantIds: [], usedEnv: false, candidates: 0 };
   }
-  for (const secret of candidates) {
-    if (await hmacMatches(rawBody, sigHex, secret)) return true;
+  const matchedTenantIds = new Set<string>();
+  let usedEnv = false;
+  for (const candidate of candidates) {
+    if (await hmacMatches(rawBody, sigHex, candidate.secret)) {
+      if (candidate.tenantId) matchedTenantIds.add(candidate.tenantId);
+      else usedEnv = true;
+    }
   }
+  const ok = usedEnv || matchedTenantIds.size > 0;
+  if (ok) return { ok: true, matchedTenantIds: [...matchedTenantIds], usedEnv, candidates: candidates.length };
   console.warn(`[WEBHOOK] Assinatura inválida (testados ${candidates.length} secrets)`);
-  return false;
+  return { ok: false, matchedTenantIds: [], usedEnv: false, candidates: candidates.length };
+}
+
+function tenantSignatureAllowed(check: SignatureCheck, tenantId: string | null | undefined, integration: any): boolean {
+  if (!tenantId) return false;
+  const cfgSecret = (integration?.config as any)?.app_secret;
+  if (typeof cfgSecret === "string" && cfgSecret.length > 0) {
+    return check.matchedTenantIds.includes(tenantId);
+  }
+  return check.usedEnv || check.matchedTenantIds.includes(tenantId);
 }
 
 
@@ -80,7 +99,7 @@ function normalizeLeadPhone(raw: string): string | null {
   return "55" + digits;
 }
 
-async function handleMessageEchoes(supabase: any, value: any) {
+async function handleMessageEchoes(supabase: any, value: any, signatureCheck: SignatureCheck) {
   const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
   const echoes = value?.message_echoes || [];
   if (!phoneNumberId || echoes.length === 0) return;
@@ -97,6 +116,10 @@ async function handleMessageEchoes(supabase: any, value: any) {
     return;
   }
   const tenantId: string = matched.tenant_id;
+  if (!tenantSignatureAllowed(signatureCheck, tenantId, matched)) {
+    console.warn(`[WEBHOOK-ECHOES] assinatura não pertence ao tenant ${tenantId} (${phoneNumberId})`);
+    return;
+  }
 
   // Cada número é um mundo: se o phone_number_id é cadastrado em whatsapp_numbers,
   // o echo pertence ao lead DAQUELE número.
@@ -210,7 +233,7 @@ async function handleMessageEchoes(supabase: any, value: any) {
 
 // Meta envia eventos de chamada com field="calls".
 // value.calls: [{ id, from, to, event, timestamp, direction, status, session:{sdp_type,sdp}, start_time, duration }]
-async function handleCallsChange(supabase: any, value: any) {
+async function handleCallsChange(supabase: any, value: any, signatureCheck: SignatureCheck) {
   const phoneNumberId: string | undefined = value?.metadata?.phone_number_id;
   if (!phoneNumberId) {
     console.warn("[WEBHOOK-CALLS] payload sem phone_number_id, descartando");
@@ -232,6 +255,10 @@ async function handleCallsChange(supabase: any, value: any) {
     return;
   }
   const tenantId: string = matched.tenant_id;
+  if (!tenantSignatureAllowed(signatureCheck, tenantId, matched)) {
+    console.warn(`[WEBHOOK-CALLS] assinatura não pertence ao tenant ${tenantId} (${phoneNumberId})`);
+    return;
+  }
 
   // Resolver whatsapp_numbers.id para FK
   const { data: waNumRow } = await supabase
@@ -628,6 +655,12 @@ async function executeStageAutomationsForTriggers(
       .eq("is_active", true)
       .in("trigger_type", triggerTypes);
 
+    const { data: leadScope } = await supabase
+      .from("crm_leads")
+      .select("whatsapp_number_id")
+      .eq("id", leadId)
+      .maybeSingle();
+
     // Lazy-fetch lead data for condition evaluation
     let leadRow: any = null;
     const needsLead = (automations || []).some((a: any) => (a.action_config as any)?.conditions?.rules?.length);
@@ -644,6 +677,11 @@ async function executeStageAutomationsForTriggers(
 
     for (const auto of automations || []) {
       const config = (auto.action_config || {}) as Record<string, any>;
+      const mundo = await mundoDaEtapa(supabase, auto.stage_id ?? stageId);
+      if (!mesmoMundo((leadScope as any)?.whatsapp_number_id ?? null, mundo.numberId)) {
+        console.log(`[WEBHOOK] Skipping ${auto.id}: lead pertence a outro número de WhatsApp`);
+        continue;
+      }
       const conditions = config.conditions;
       if (conditions?.rules?.length && leadRow && !evaluateConditions(conditions, leadRow)) {
         console.log(`[WEBHOOK] Skipping ${auto.id} (${auto.trigger_type}): conditions not met`);
@@ -796,8 +834,8 @@ Deno.serve(async (req) => {
     try {
       const rawBody = await req.text();
       const signature = req.headers.get("x-hub-signature-256");
-      const valid = await verifyMetaSignature(supabase, rawBody, signature);
-      if (!valid) {
+      const signatureCheck = await verifyMetaSignature(supabase, rawBody, signature);
+      if (!signatureCheck.ok) {
         console.warn("[WEBHOOK] Invalid or missing x-hub-signature-256");
         return new Response("Forbidden", { status: 403, headers: corsHeaders });
       }
@@ -813,7 +851,7 @@ Deno.serve(async (req) => {
           // ============ CALLS FIELD (WhatsApp Business Calling API) ============
           if (change?.field === "calls") {
             try {
-              await handleCallsChange(supabase, value);
+              await handleCallsChange(supabase, value, signatureCheck);
             } catch (e) {
               console.error("[WEBHOOK-CALLS] error:", e);
             }
@@ -826,7 +864,7 @@ Deno.serve(async (req) => {
           // Sem isso, o CRM mostraria só metade da conversa.
           if (change?.field === "smb_message_echoes") {
             try {
-              await handleMessageEchoes(supabase, value);
+              await handleMessageEchoes(supabase, value, signatureCheck);
             } catch (e) {
               console.error("[WEBHOOK-ECHOES] error:", e);
             }
@@ -853,6 +891,11 @@ Deno.serve(async (req) => {
 
             if (!matchedIntegration) {
               console.log(`[WEBHOOK] Nenhuma integração encontrada para phone_number_id ${incomingPhoneNumberId}`);
+              continue;
+            }
+
+            if (!tenantSignatureAllowed(signatureCheck, matchedIntegration.tenant_id, matchedIntegration)) {
+              console.warn(`[WEBHOOK] assinatura não pertence ao tenant ${matchedIntegration.tenant_id} (${incomingPhoneNumberId})`);
               continue;
             }
 
@@ -1623,7 +1666,7 @@ Deno.serve(async (req) => {
               try {
                 const { data: currentLeadData } = await supabase
                   .from("crm_leads")
-                  .select("stage_id, phone, name, assigned_to")
+                    .select("stage_id, phone, name, assigned_to, whatsapp_number_id")
                   .eq("id", lead.id)
                   .single();
 
@@ -1650,6 +1693,11 @@ Deno.serve(async (req) => {
 
                   for (const ra of reactiveAutos || []) {
                     const raCfg = (ra.action_config || {}) as Record<string, any>;
+                    const mundo = await mundoDaEtapa(supabase, ra.stage_id ?? currentLeadData.stage_id);
+                    if (!mesmoMundo((currentLeadData as any)?.whatsapp_number_id ?? null, mundo.numberId)) {
+                      console.log(`[WEBHOOK] Reactive auto ${ra.id} skipped: lead pertence a outro número de WhatsApp`);
+                      continue;
+                    }
 
                     // Check optional conditions filter
                     if (raCfg.conditions?.rules?.length && reactiveLeadRow && !evalReactiveConditions(raCfg.conditions, reactiveLeadRow)) {

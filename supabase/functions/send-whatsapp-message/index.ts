@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
 
     const {
       lead_id,
-      to,
+      to: _ignored_to,
       message,
       type = "text",
       media_url,
@@ -296,8 +296,8 @@ Deno.serve(async (req) => {
       log_content,
     } = await req.json();
 
-    if (!lead_id || !to) {
-      return new Response(JSON.stringify({ error: "Missing lead_id or to" }), {
+    if (!lead_id) {
+      return new Response(JSON.stringify({ error: "Missing lead_id" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -319,14 +319,20 @@ Deno.serve(async (req) => {
 
     const { data: leadData } = await supabase
       .from("crm_leads")
-      .select("pipeline_id, tenant_id, whatsapp_number_id")
+      .select("pipeline_id, tenant_id, whatsapp_number_id, phone")
       .eq("id", lead_id)
       .maybeSingle();
     const leadTenantId: string | null = (leadData as any)?.tenant_id ?? null;
+    const to = String((leadData as any)?.phone || "").replace(/\D/g, "");
+    if (!to) {
+      return new Response(JSON.stringify({ error: "Lead sem telefone cadastrado" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Visibilidade por número (papel recepcao): quem não tem acesso ao número do
     // lead não envia por ele. Lead sem carimbo (NULL) libera — caso Rizodent hoje.
-    const numCheck = await assertNumberAccess(req, (leadData as any)?.whatsapp_number_id ?? null, caller);
+    const numCheck = await assertNumberAccess(req, (leadData as any)?.whatsapp_number_id ?? null, caller, lead_id);
     if (!numCheck.ok) {
       console.warn(`[send-whatsapp-message] number guard: ${numCheck.error} lead=${lead_id} user=${caller.userId ?? "service"}`);
       return new Response(JSON.stringify({ error: numCheck.error }), {

@@ -41,6 +41,47 @@ function popupResponse(
   return Response.redirect(`${base}/oauth-close?${qs.toString()}`, 302);
 }
 
+async function ensureRecepcaoChannelForNumber(
+  tenantId: string,
+  userId: string,
+  integrationKey: string,
+  numberId: string,
+) {
+  const { data: pipelineId, error: pipeErr } = await supabase.rpc("ensure_role_default_pipeline", {
+    _tenant_id: tenantId,
+    _role: "recepcao",
+  });
+  if (pipeErr || !pipelineId) {
+    console.warn(`[wa-oauth-callback] funil padrão recepção indisponível: ${pipeErr?.message ?? "sem id"}`);
+  } else {
+    await supabase
+      .from("funnel_channels")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("channel_type", "whatsapp")
+      .eq("channel_config->>integration_key", integrationKey);
+    const { error: channelErr } = await supabase.from("funnel_channels").insert({
+      pipeline_id: pipelineId,
+      channel_type: "whatsapp",
+      channel_config: { integration_key: integrationKey },
+      tenant_id: tenantId,
+    });
+    if (channelErr) console.warn(`[wa-oauth-callback] funnel_channels failed: ${channelErr.message}`);
+  }
+
+  const { error: overrideErr } = await supabase.from("user_permission_overrides").upsert(
+    {
+      user_id: userId,
+      scope: "whatsapp_number",
+      resource_id: numberId,
+      granted: true,
+      created_by: userId,
+    },
+    { onConflict: "user_id,scope,resource_id" },
+  );
+  if (overrideErr) console.warn(`[wa-oauth-callback] override failed: ${overrideErr.message}`);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -343,6 +384,7 @@ Deno.serve(async (req: Request) => {
         // Best-effort: falha aqui não invalida a conexão já gravada.
         if (numberOnBizApp) {
           try {
+            let connectedNumberId: string | null = null;
             const { data: existingNum } = await supabase
               .from("whatsapp_numbers")
               .select("id, tenant_id")
@@ -369,10 +411,15 @@ Deno.serve(async (req: Request) => {
                 const { error: updNumErr } = await supabase
                   .from("whatsapp_numbers").update(numRow).eq("id", existingNum.id);
                 if (updNumErr) console.error(`[wa-oauth-callback] whatsapp_numbers update failed for ${phone_number_id}:`, updNumErr.message);
+                else connectedNumberId = existingNum.id;
               }
             } else {
-              const { error: insNumErr } = await supabase.from("whatsapp_numbers").insert(numRow);
+              const { data: insertedNum, error: insNumErr } = await supabase.from("whatsapp_numbers").insert(numRow).select("id").single();
               if (insNumErr) console.error(`[wa-oauth-callback] whatsapp_numbers insert failed for ${phone_number_id}:`, insNumErr.message);
+              else connectedNumberId = insertedNum?.id ?? null;
+            }
+            if (connectedNumberId) {
+              await ensureRecepcaoChannelForNumber(tenantId, stateRow.user_id, key, connectedNumberId);
             }
           } catch (e) {
             console.warn(`[wa-oauth-callback] whatsapp_numbers upsert error for ${phone_number_id}:`, e);

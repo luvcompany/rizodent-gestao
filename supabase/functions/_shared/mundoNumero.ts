@@ -36,7 +36,13 @@ export async function numeroDoFunil(
   // Sem canal, ou canal apontando para a integração única antiga: mundo legado.
   if (!key || key === "whatsapp_config") return null;
 
-  const phoneNumberId = key.replace(/^whatsapp_/, "");
+  const { data: integration } = await admin
+    .from("integrations")
+    .select("config")
+    .eq("tenant_id", tenantId)
+    .eq("key", key)
+    .maybeSingle();
+  const phoneNumberId = String((integration as any)?.config?.phone_number_id || "");
   if (!phoneNumberId || !/^\d+$/.test(phoneNumberId)) return null;
 
   const { data: numero } = await admin
