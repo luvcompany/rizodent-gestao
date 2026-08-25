@@ -1161,7 +1161,7 @@ async function sendAction(
           const resp = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-            body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation" }),
+            body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation", automationId: automationId ?? null }),
           });
           const respText = await resp.text();
           if (!resp.ok) throw new Error(`send_bot failed (${resp.status}): ${respText.substring(0, 500)}`);
