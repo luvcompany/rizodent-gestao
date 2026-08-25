@@ -96,7 +96,10 @@ async function handleMessageEchoes(supabase: any, value: any) {
       .select("id, last_message_at")
       .eq("tenant_id", tenantId)
       .eq("phone", toPhone);
-    if (waNumberId) leadQuery = leadQuery.eq("whatsapp_number_id", waNumberId);
+    // Espelho: número principal (sem cadastro) só casa lead SEM carimbo.
+    leadQuery = waNumberId
+      ? leadQuery.eq("whatsapp_number_id", waNumberId)
+      : leadQuery.is("whatsapp_number_id", null);
     const { data: leadRows } = await leadQuery
       .order("created_at", { ascending: true })
       .limit(1);
@@ -709,18 +712,15 @@ Deno.serve(async (req) => {
     let matched = (token && (token === v1 || token === v2));
     if (!matched && token) {
       try {
+        // Busca a linha EXATA pelo verify token (antes varria só as 10 primeiras
+        // integrações — a partir da 11ª nenhum cliente novo verificava).
         const { data: integrations } = await supabase
           .from("integrations")
-          .select("config")
+          .select("id")
           .like("key", "whatsapp_%")
-          .limit(10);
-        for (const intg of (integrations || [])) {
-          const cfg = (intg as any).config || {};
-          if (cfg.webhook_verify_token && cfg.webhook_verify_token === token) {
-            matched = true;
-            break;
-          }
-        }
+          .eq("config->>webhook_verify_token", token)
+          .limit(1);
+        if ((integrations || []).length > 0) matched = true;
       } catch (e) {
         console.log("[WEBHOOK] Erro ao buscar verify token das integrações:", e);
       }
@@ -1168,9 +1168,11 @@ Deno.serve(async (req) => {
                 .order("created_at", { ascending: true }).limit(1);
               lead = mesmoNumero?.[0] || null;
             } else {
+              // Número principal (sem linha em whatsapp_numbers): só o mundo
+              // legado. Nunca casa lead carimbado de outro número.
               const { data: leadRows } = await supabase
                 .from("crm_leads").select(LEAD_COLS)
-                .eq("tenant_id", tenantId).eq("phone", from)
+                .eq("tenant_id", tenantId).eq("phone", from).is("whatsapp_number_id", null)
                 .order("created_at", { ascending: true }).limit(1);
               lead = leadRows?.[0] || null;
             }
@@ -1186,13 +1188,16 @@ Deno.serve(async (req) => {
 
               let pipelineId: string | null = null;
               if (matchedIntegration) {
-                const { data: funnelChannel } = await supabase
+                // Determinístico: se houver mais de uma linha (legado), usa a mais recente.
+                const { data: funnelChannels } = await supabase
                   .from("funnel_channels")
-                  .select("pipeline_id")
+                  .select("pipeline_id, created_at")
                   .eq("tenant_id", tenantId)
                   .eq("channel_type", "whatsapp")
                   .eq("channel_config->>integration_key", matchedIntegration.key)
-                  .maybeSingle();
+                  .order("created_at", { ascending: false })
+                  .limit(1);
+                const funnelChannel = funnelChannels?.[0];
                 if (funnelChannel) {
                   pipelineId = funnelChannel.pipeline_id;
                   console.log(`[WEBHOOK] Pipeline do funnel_channels: ${pipelineId}`);
@@ -1200,14 +1205,19 @@ Deno.serve(async (req) => {
               }
 
               if (!pipelineId) {
-                const { data: fallbackPipeline } = await supabase
+                console.warn(
+                  `[WEBHOOK] lead sem canal de funil para o número ${matchedIntegration?.key} — usando funil padrão do tenant.`,
+                );
+                const { data: fallbackPipelines } = await supabase
                   .from("crm_pipelines")
-                  .select("id")
+                  .select("id, is_default, created_at")
                   .eq("tenant_id", tenantId)
-                  .limit(1)
-                  .maybeSingle();
-                pipelineId = fallbackPipeline?.id || null;
+                  .order("is_default", { ascending: false })
+                  .order("created_at", { ascending: true })
+                  .limit(1);
+                pipelineId = fallbackPipelines?.[0]?.id || null;
               }
+
 
               if (pipelineId) {
                 const { data: stage } = await supabase
@@ -1270,8 +1280,11 @@ Deno.serve(async (req) => {
                       .from("crm_leads")
                       .select("id, name, source")
                       .eq("tenant_id", tenantId).eq("phone", from);
-                    // Mesmo escopo da busca: por número quando o número é cadastrado.
-                    if (waNumberId) raceQuery = raceQuery.eq("whatsapp_number_id", waNumberId);
+                    // Mesmo escopo da busca: por número quando cadastrado, mundo
+                    // legado (NULL) quando é o número principal.
+                    raceQuery = waNumberId
+                      ? raceQuery.eq("whatsapp_number_id", waNumberId)
+                      : raceQuery.is("whatsapp_number_id", null);
                     const { data: existing } = await raceQuery
                       .order("created_at", { ascending: true }).limit(1).maybeSingle();
                     lead = existing as any;
