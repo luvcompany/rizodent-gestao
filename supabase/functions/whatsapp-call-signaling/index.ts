@@ -23,6 +23,51 @@ interface Body {
   permission_text?: string; // texto opcional do pedido de permissão
 }
 
+type ResolutionRule = "body" | "lead_carimbado" | "lead_legado" | "papel" | "fallback";
+
+async function resolveLegacyPhoneNumberId(supabase: any, tenantId: string): Promise<string | null> {
+  const { data: legacy } = await supabase
+    .from("integrations")
+    .select("config, status")
+    .eq("tenant_id", tenantId)
+    .eq("key", "whatsapp_config")
+    .neq("status", "disabled")
+    .maybeSingle();
+  const cfg = (legacy?.config as any) || {};
+  return cfg.phone_number_id || null;
+}
+
+async function resolveGrantedPhoneNumberId(supabase: any, userId: string, tenantId: string): Promise<string | null> {
+  const { data: overrides } = await supabase
+    .from("user_permission_overrides")
+    .select("resource_id, created_at")
+    .eq("user_id", userId)
+    .eq("scope", "whatsapp_number")
+    .eq("granted", true)
+    .order("created_at", { ascending: true })
+    .limit(10);
+
+  const ids = ((overrides || []) as any[])
+    .map((row) => String(row.resource_id || ""))
+    .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+  if (ids.length === 0) return null;
+
+  const { data: numbers } = await supabase
+    .from("whatsapp_numbers")
+    .select("id, phone_number_id, created_at")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .in("id", ids)
+    .order("created_at", { ascending: true });
+
+  const byId = new Map(((numbers || []) as any[]).map((n) => [String(n.id), n.phone_number_id]));
+  for (const id of ids) {
+    const phoneNumberId = byId.get(id);
+    if (phoneNumberId) return String(phoneNumberId);
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -111,15 +156,17 @@ Deno.serve(async (req) => {
     tenantId = profile.tenant_id;
 
     // lead_id vinha do corpo sem validação: confirma que o lead é do mesmo cliente.
+    let bodyLead: { tenant_id?: string | null; whatsapp_number_id?: string | null } | null = null;
     if ((action === "connect" || action === "request_permission") && body.lead_id) {
       const { data: leadRow } = await supabase
-        .from("crm_leads").select("tenant_id").eq("id", body.lead_id).maybeSingle();
+        .from("crm_leads").select("tenant_id, whatsapp_number_id").eq("id", body.lead_id).maybeSingle();
       if (!leadRow || leadRow.tenant_id !== tenantId) {
         return new Response(JSON.stringify({ error: "lead de outro cliente" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      bodyLead = leadRow as any;
     }
 
 
@@ -132,20 +179,44 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // phone_number_id: usa o informado ou o default do tenant
+      let resolutionRule: ResolutionRule | null = null;
+
+      // phone_number_id: resolve pelo MUNDO. Nunca usar "primeiro whatsapp_numbers ativo"
+      // como default, pois o número principal legado vive em integrations/whatsapp_config.
       phoneNumberId = body.phone_number_id || null;
-      if (!phoneNumberId) {
-        const { data: def } = await supabase
-          .from("whatsapp_numbers")
-          .select("phone_number_id")
-          .eq("tenant_id", tenantId)
-          .eq("is_active", true)
-          .order("is_default", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        phoneNumberId = def?.phone_number_id || null;
+      if (phoneNumberId) {
+        resolutionRule = "body";
       }
-      // Fallback: procura em integrations
+
+      if (!phoneNumberId && bodyLead) {
+        if (bodyLead.whatsapp_number_id) {
+          const { data: leadNumber } = await supabase
+            .from("whatsapp_numbers")
+            .select("phone_number_id")
+            .eq("tenant_id", tenantId)
+            .eq("id", bodyLead.whatsapp_number_id)
+            .eq("is_active", true)
+            .maybeSingle();
+          phoneNumberId = leadNumber?.phone_number_id || null;
+          resolutionRule = "lead_carimbado";
+        } else {
+          phoneNumberId = await resolveLegacyPhoneNumberId(supabase, tenantId);
+          resolutionRule = "lead_legado";
+        }
+      }
+
+      if (!phoneNumberId) {
+        const { data: role } = await supabase.rpc("get_user_primary_role", { _user_id: userId });
+        const primaryRole = String(role || "");
+        if (primaryRole === "closer" || primaryRole === "recepcao") {
+          phoneNumberId = await resolveGrantedPhoneNumberId(supabase, userId, tenantId);
+        } else if (["crc", "gerente", "posvenda", "superadmin", "crc_legacy"].includes(primaryRole)) {
+          phoneNumberId = await resolveLegacyPhoneNumberId(supabase, tenantId);
+        }
+        if (phoneNumberId) resolutionRule = "papel";
+      }
+
+      // Fallback: procura em integrations (mantido). Não varre whatsapp_numbers ativo.
       if (!phoneNumberId) {
         const { data: integrations } = await supabase
           .from("integrations")
@@ -160,6 +231,7 @@ Deno.serve(async (req) => {
             break;
           }
         }
+        if (phoneNumberId) resolutionRule = "fallback";
       }
       if (!phoneNumberId) {
         console.error(`[wa-call-signaling] no phone_number_id for tenant=${tenantId}`);
@@ -168,7 +240,7 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      console.log(`[wa-call-signaling] connect resolved phone_number_id=${phoneNumberId} tenant=${tenantId}`);
+      console.log(`[wa-call-signaling] ${action} resolved phone_number_id=${phoneNumberId} tenant=${tenantId} rule=${resolutionRule ?? "none"}`);
 
       // Visibilidade por número (papel recepcao): barra uso de número não
       // concedido ao usuário. Número sem cadastro em whatsapp_numbers (legado
