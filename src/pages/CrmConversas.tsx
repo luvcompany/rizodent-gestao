@@ -139,6 +139,8 @@ const LeadServiceField = lazy(() => import("@/components/chat/LeadServiceField")
 const LeadStageTimeline = lazy(() => import("@/components/chat/LeadStageTimeline"));
 const LeadResponseTimes = lazy(() => import("@/components/chat/LeadResponseTimes"));
 const LeadBudgetPanel = lazy(() => import("@/components/chat/LeadBudgetPanel"));
+// O painel do crc lê tabelas bloqueadas para o closer; ele tem o equivalente próprio.
+const CloserLeadPacientePanel = lazy(() => import("@/components/closer/CloserLeadPacientePanel"));
 const InlineTagsEditor = lazy(() => import("@/components/chat/InlineTagsEditor"));
 const TaskPanel = lazy(() => import("@/components/chat/TaskPanel"));
 const AppointmentConfirmBar = lazy(() => import("@/components/chat/AppointmentConfirmBar"));
@@ -1710,13 +1712,17 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   }}
                 />
 
-                <LeadBudgetPanel
-                  lead={selectedLead as any}
-                  onLeadUpdated={(updates) => {
-                    setSelectedLead((prev) => prev ? { ...prev, ...updates } : prev);
-                    setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
-                  }}
-                />
+                {userRole === "closer" ? (
+                  <CloserLeadPacientePanel lead={selectedLead as any} />
+                ) : (
+                  <LeadBudgetPanel
+                    lead={selectedLead as any}
+                    onLeadUpdated={(updates) => {
+                      setSelectedLead((prev) => prev ? { ...prev, ...updates } : prev);
+                      setLeads((prev) => prev.map((l) => l.id === selectedLead.id ? { ...l, ...updates } as any : l));
+                    }}
+                  />
+                )}
 
                 <AppointmentConfirmBar leadId={selectedLead.id} />
 

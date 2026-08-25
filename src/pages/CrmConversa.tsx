@@ -72,6 +72,8 @@ const LeadServiceField = lazy(() => import("@/components/chat/LeadServiceField")
 const LeadStageTimeline = lazy(() => import("@/components/chat/LeadStageTimeline"));
 const LeadResponseTimes = lazy(() => import("@/components/chat/LeadResponseTimes"));
 const LeadBudgetPanel = lazy(() => import("@/components/chat/LeadBudgetPanel"));
+// O painel do crc lê tabelas bloqueadas para o closer; ele tem o equivalente próprio.
+const CloserLeadPacientePanel = lazy(() => import("@/components/closer/CloserLeadPacientePanel"));
 const InlineTagsEditor = lazy(() => import("@/components/chat/InlineTagsEditor"));
 const LeadFollowUpPanel = lazy(() => import("@/components/chat/LeadFollowUpPanel"));
 const TaskPanel = lazy(() => import("@/components/chat/TaskPanel"));
@@ -87,7 +89,7 @@ const SidePanelFallback = () => (
 );
 
 export default function CrmConversa() {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [lead, setLead] = useState<Lead | null>(null);
@@ -673,10 +675,14 @@ export default function CrmConversa() {
         />
 
         {/* Budget Panel */}
-        <LeadBudgetPanel
-          lead={lead as any}
-          onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
-        />
+        {userRole === "closer" ? (
+          <CloserLeadPacientePanel lead={lead as any} />
+        ) : (
+          <LeadBudgetPanel
+            lead={lead as any}
+            onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}
+          />
+        )}
 
         {/* Appointment Confirmation */}
         <AppointmentConfirmBar leadId={lead.id} />
