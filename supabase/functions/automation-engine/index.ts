@@ -970,20 +970,25 @@ Deno.serve(async (req) => {
 
       // Check tasks
       if (scheduledType === "task" || scheduledType === "both") {
-        const tasks = await fetchAllRows(() =>
-          supabase.from("crm_tasks").select("id, lead_id, due_date, title").eq("status", "pending").order("id"),
-        );
+        const tasks = await fetchAllRows(() => {
+          let q = supabase.from("crm_tasks").select("id, lead_id, due_date, title").eq("status", "pending");
+          if (tenantBefore) q = q.eq("tenant_id", tenantBefore);
+          return q.order("id");
+        });
 
         console.log(`[BEFORE_SCHEDULED] Checking ${tasks?.length || 0} pending tasks, beforeMs=${beforeMs}`);
 
         for (const task of tasks || []) {
-          const { data: lead } = await supabase
-            .from("crm_leads")
-            .select("id, phone, stage_id")
-            .eq("id", task.lead_id)
-            .eq("stage_id", auto.stage_id)
-            .eq("is_blocked", false)
-            .maybeSingle();
+          const { data: lead } = await filtrarMundo(
+            supabase
+              .from("crm_leads")
+              .select("id, phone, stage_id")
+              .eq("id", task.lead_id)
+              .eq("stage_id", auto.stage_id)
+              .eq("is_blocked", false),
+            mundoBefore.numberId,
+          ).maybeSingle();
+
           if (!lead) continue;
           if (!(await passesConditions(supabase, lead.id, config))) continue;
 
