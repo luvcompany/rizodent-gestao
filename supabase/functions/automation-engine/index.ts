@@ -101,6 +101,10 @@ Deno.serve(async (req) => {
   }
   const pendingBatchLimit = Math.min(Math.max(Number(requestBody.pending_batch_limit) || 250, 1), 500);
 
+  // Mundo (número de WhatsApp) de cada etapa, resolvido uma vez por tick.
+  const mundoCache = new Map<string, MundoDaEtapa>();
+
+
   const results: Record<string, number> = {
     progressive_reengagement: 0,
     lead_stale: 0,
