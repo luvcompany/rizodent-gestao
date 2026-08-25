@@ -96,7 +96,10 @@ async function handleMessageEchoes(supabase: any, value: any) {
       .select("id, last_message_at")
       .eq("tenant_id", tenantId)
       .eq("phone", toPhone);
-    if (waNumberId) leadQuery = leadQuery.eq("whatsapp_number_id", waNumberId);
+    // Espelho: número principal (sem cadastro) só casa lead SEM carimbo.
+    leadQuery = waNumberId
+      ? leadQuery.eq("whatsapp_number_id", waNumberId)
+      : leadQuery.is("whatsapp_number_id", null);
     const { data: leadRows } = await leadQuery
       .order("created_at", { ascending: true })
       .limit(1);
@@ -709,18 +712,15 @@ Deno.serve(async (req) => {
     let matched = (token && (token === v1 || token === v2));
     if (!matched && token) {
       try {
+        // Busca a linha EXATA pelo verify token (antes varria só as 10 primeiras
+        // integrações — a partir da 11ª nenhum cliente novo verificava).
         const { data: integrations } = await supabase
           .from("integrations")
-          .select("config")
+          .select("id")
           .like("key", "whatsapp_%")
-          .limit(10);
-        for (const intg of (integrations || [])) {
-          const cfg = (intg as any).config || {};
-          if (cfg.webhook_verify_token && cfg.webhook_verify_token === token) {
-            matched = true;
-            break;
-          }
-        }
+          .eq("config->>webhook_verify_token", token)
+          .limit(1);
+        if ((integrations || []).length > 0) matched = true;
       } catch (e) {
         console.log("[WEBHOOK] Erro ao buscar verify token das integrações:", e);
       }
