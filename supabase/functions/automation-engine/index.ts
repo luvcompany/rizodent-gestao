@@ -746,23 +746,32 @@ Deno.serve(async (req) => {
       const hoursAfter = config.hours_after || 2;
       const cutoffTime = new Date(Date.now() - hoursAfter * 3600000).toISOString();
 
-      const appointments = await fetchAllRows(() =>
-        supabase
+      // Escopo: agendamentos do TENANT da automação (a varredura era global) e
+      // leads do MUNDO da etapa (número do funil) — nunca de outro número.
+      const mundoNoShow = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
+      const tenantNoShow = mundoNoShow.tenantId ?? (auto as any).tenant_id ?? null;
+
+      const appointments = await fetchAllRows(() => {
+        let q = supabase
           .from("crm_appointments")
           .select("id, lead_id, scheduled_date, scheduled_time, status")
           .eq("status", "confirmed")
-          .lt("scheduled_date", new Date().toISOString().split("T")[0])
-          .order("id"),
-      );
+          .lt("scheduled_date", new Date().toISOString().split("T")[0]);
+        if (tenantNoShow) q = q.eq("tenant_id", tenantNoShow);
+        return q.order("id");
+      });
 
       for (const appt of appointments || []) {
-        const { data: lead } = await supabase
-          .from("crm_leads")
-          .select("id, phone, stage_id")
-          .eq("id", appt.lead_id)
-          .eq("stage_id", auto.stage_id)
-          .eq("is_blocked", false)
-          .maybeSingle();
+        const { data: lead } = await filtrarMundo(
+          supabase
+            .from("crm_leads")
+            .select("id, phone, stage_id")
+            .eq("id", appt.lead_id)
+            .eq("stage_id", auto.stage_id)
+            .eq("is_blocked", false),
+          mundoNoShow.numberId,
+        ).maybeSingle();
+
 
         if (!lead) continue;
         if (!(await passesConditions(supabase, lead.id, config))) continue;
