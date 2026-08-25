@@ -2302,9 +2302,13 @@ async function sweepReagendarExpirado(admin: any, dryRun: boolean): Promise<any>
     return resumo;
   }
 
+  // O Dontus é a operação do MUNDO LEGADO — mesma regra já aplicada no modo
+  // comparecimento. Sem isso a varredura viraria "faltou" em lead do closer,
+  // que tem agenda própria e não passa pelo Dontus.
   const { data: leads } = await admin.from("crm_leads")
     .select("id, name, pipeline_id, tenant_id, stage_id")
     .eq("tenant_id", RIZODENT_TENANT_ID)
+    .is("whatsapp_number_id", null)
     .in("stage_id", waitingIds);
   resumo.analisados = (leads || []).length;
 
