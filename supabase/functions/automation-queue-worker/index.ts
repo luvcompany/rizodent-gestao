@@ -4,6 +4,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { mesmoMundo, mundoDaEtapa, type MundoDaEtapa } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -74,6 +75,9 @@ Deno.serve(async (req) => {
     return unauthorizedResponse(corsHeaders);
   }
 
+
+  // Mundo (número de WhatsApp) de cada etapa, resolvido uma vez por execução.
+  const mundoCache = new Map<string, MundoDaEtapa>();
 
   const stats = { processed: 0, sent: 0, failed: 0, skipped: 0, deferred: 0, window_closed: 0, cancelled: 0, retried: 0 };
 
