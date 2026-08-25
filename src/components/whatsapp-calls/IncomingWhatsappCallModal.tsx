@@ -73,7 +73,7 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
       }
     })();
     return () => { cancelled = true; };
-  }, [call.lead_id, call.from_phone]);
+  }, [call.lead_id, call.from_phone, call.tenant_id, call.phone_number_id]);
 
   const displayName = leadName || formatPhone(call.from_phone);
   const initials = (leadName || "?").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
