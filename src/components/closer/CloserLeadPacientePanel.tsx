@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Plus, Search, UserPlus, Wallet, X } from "lucide-react";
-import { centavosParaValor, hojeNaClinica, mascaraMoeda } from "@/lib/moeda";
+import { Loader2, Pencil, Plus, Search, UserPlus, Wallet, X } from "lucide-react";
+import { centavosParaValor, formatarMoeda, hojeNaClinica, mascaraMoeda } from "@/lib/moeda";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,6 +85,8 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   /** Paciente cujo pagamento está sendo lançado (null = vinculando um novo). */
   const [alvoPagamento, setAlvoPagamento] = useState<Paciente | null>(null);
+  /** Pagamento em edição — corrige preenchimento sem apagar e relançar. */
+  const [editando, setEditando] = useState<Pagamento | null>(null);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [clinicas, setClinicas] = useState<Clinica[]>([]);
   const [especialidades, setEspecialidades] = useState<string[]>([]);
@@ -196,6 +198,45 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       setResultados([]);
     }
     setFormAberto(true);
+  };
+
+  const abrirEdicao = (pg: Pagamento) => {
+    setEditando(pg);
+    setAlvoPagamento(null);
+    setForm({
+      ...formVazio(),
+      valor: formatarMoeda(Number(pg.valor)),
+      clinica_id: pg.clinica_id || "",
+      forma_pagamento: pg.forma_pagamento || "",
+      especialidade: pg.especialidade || "",
+      tipo: pg.tipo || "primeiro",
+      data_pagamento: pg.data_pagamento.slice(0, 10),
+    });
+    setFormAberto(true);
+  };
+
+  const salvarEdicao = async () => {
+    if (!editando) return;
+    const valor = centavosParaValor(form.valor);
+    if (valor <= 0) { toast.error("Informe um valor válido"); return; }
+    setSalvando(true);
+    const { error } = await (supabase as any)
+      .from("closer_pagamentos")
+      .update({
+        valor,
+        clinica_id: form.clinica_id || null,
+        forma_pagamento: form.forma_pagamento || null,
+        especialidade: form.especialidade || null,
+        tipo: form.tipo || null,
+        data_pagamento: form.data_pagamento,
+      })
+      .eq("id", editando.id);
+    setSalvando(false);
+    if (error) { toast.error(`Não foi possível salvar: ${error.message}`); return; }
+    toast.success("Pagamento atualizado");
+    setEditando(null);
+    setFormAberto(false);
+    void carregar();
   };
 
   const buscar = async () => {
@@ -358,7 +399,17 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
                             {nomeClinica(pg.clinica_id)}{pg.especialidade ? ` · ${pg.especialidade}` : ""}
                           </span>
                         </span>
-                        <span className="font-medium tabular-nums text-foreground">{brl(Number(pg.valor))}</span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="font-medium tabular-nums text-foreground">{brl(Number(pg.valor))}</span>
+                          <button
+                            type="button"
+                            onClick={() => abrirEdicao(pg)}
+                            className="text-muted-foreground transition-colors hover:text-primary"
+                            aria-label="Editar pagamento"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -393,10 +444,10 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
         </div>
       )}
 
-      <Dialog open={formAberto} onOpenChange={setFormAberto}>
+      <Dialog open={formAberto} onOpenChange={(o) => { setFormAberto(o); if (!o) setEditando(null); }}>
         <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{alvoPagamento ? "Lançar pagamento" : "Vincular Paciente"}</DialogTitle>
+            <DialogTitle>{editando ? "Editar pagamento" : alvoPagamento ? "Lançar pagamento" : "Vincular Paciente"}</DialogTitle>
             <DialogDescription>
               {alvoPagamento
                 ? alvoPagamento.nome
@@ -406,7 +457,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
           <div className="space-y-4">
             {/* Buscar alguém já cadastrado — só faz sentido antes de haver vínculo */}
-            {!alvoPagamento && (
+            {!alvoPagamento && !editando && (
               <div className="space-y-2">
                 <Label className="text-xs">Já cadastrou este paciente antes?</Label>
                 <div className="flex gap-2">
@@ -442,7 +493,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
               </div>
             )}
 
-            {!alvoPagamento && (
+            {!alvoPagamento && !editando && (
               <div className="space-y-3 border-t border-border pt-3">
                 <Label className="text-xs font-semibold">Dados do paciente</Label>
                 <div className="space-y-1.5">
@@ -547,9 +598,9 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormAberto(false)}>Cancelar</Button>
-            <Button onClick={salvar} disabled={salvando}>
+            <Button onClick={editando ? salvarEdicao : salvar} disabled={salvando}>
               {salvando ? <Loader2 size={14} className="mr-1 animate-spin" /> : <UserPlus size={14} className="mr-1" />}
-              {alvoPagamento ? "Lançar" : "Vincular"}
+              {editando ? "Salvar" : alvoPagamento ? "Lançar" : "Vincular"}
             </Button>
           </DialogFooter>
         </DialogContent>

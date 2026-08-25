@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Plus, Search, Trash2, UserPlus, Wallet } from "lucide-react";
-import { centavosParaValor, hojeNaClinica, mascaraMoeda } from "@/lib/moeda";
+import { Loader2, Pencil, Plus, Search, Trash2, UserPlus, Wallet } from "lucide-react";
+import { centavosParaValor, formatarMoeda, hojeNaClinica, mascaraMoeda } from "@/lib/moeda";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,6 +75,8 @@ export default function CloserPacientes() {
   const [form, setForm] = useState({ nome: "", telefone: "", cidade: "", observacoes: "" });
 
   const [pagamentoPara, setPagamentoPara] = useState<Paciente | null>(null);
+  /** Pagamento em edição — corrigir preenchimento sem precisar apagar e relançar. */
+  const [editando, setEditando] = useState<Pagamento | null>(null);
   const [formPag, setFormPag] = useState({
     valor: "",
     clinica_id: "",
@@ -204,8 +206,48 @@ export default function CloserPacientes() {
     void carregar();
   };
 
+  const abrirEdicao = (pg: Pagamento) => {
+    setEditando(pg);
+    setFormPag({
+      valor: formatarMoeda(Number(pg.valor)),
+      clinica_id: pg.clinica_id || "",
+      forma_pagamento: pg.forma_pagamento || "",
+      especialidade: pg.especialidade || "",
+      data_pagamento: pg.data_pagamento.slice(0, 10),
+    });
+  };
+
+  const salvarEdicao = async () => {
+    if (!editando) return;
+    const valor = centavosParaValor(formPag.valor);
+    if (!valor || valor <= 0) {
+      toast.error("Informe um valor válido");
+      return;
+    }
+    setSalvando(true);
+    const { error } = await (supabase as any)
+      .from("closer_pagamentos")
+      .update({
+        valor,
+        clinica_id: formPag.clinica_id || null,
+        forma_pagamento: formPag.forma_pagamento || null,
+        especialidade: formPag.especialidade || null,
+        data_pagamento: formPag.data_pagamento,
+      })
+      .eq("id", editando.id);
+    setSalvando(false);
+    if (error) {
+      toast.error(`Não foi possível salvar: ${error.message}`);
+      return;
+    }
+    toast.success("Pagamento atualizado");
+    setEditando(null);
+    void carregar();
+  };
+
   /**
-   * Apagar é a única forma de corrigir um lançamento errado, então o botão
+   * Apagar é a última saída — com a edição disponível, o caminho normal para
+   * corrigir um valor é editar. O botão
    * fica no caminho de quem quer consertar — e não pode disparar num toque
    * torto: confirma citando valor e data.
    */
@@ -314,6 +356,14 @@ export default function CloserPacientes() {
                           <span className="font-medium tabular-nums text-foreground">{brl(Number(pg.valor))}</span>
                           <button
                             type="button"
+                            onClick={() => abrirEdicao(pg)}
+                            className="text-muted-foreground transition-colors hover:text-primary"
+                            aria-label="Editar pagamento"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => apagarPagamento(pg)}
                             className="text-muted-foreground transition-colors hover:text-destructive"
                             aria-label="Remover pagamento"
@@ -376,11 +426,18 @@ export default function CloserPacientes() {
       </Dialog>
 
       {/* Lançar pagamento */}
-      <Dialog open={!!pagamentoPara} onOpenChange={(o) => !o && setPagamentoPara(null)}>
+      <Dialog
+        open={!!pagamentoPara || !!editando}
+        onOpenChange={(o) => { if (!o) { setPagamentoPara(null); setEditando(null); } }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Lançar pagamento</DialogTitle>
-            <DialogDescription>{pagamentoPara?.nome}</DialogDescription>
+            <DialogTitle>{editando ? "Editar pagamento" : "Lançar pagamento"}</DialogTitle>
+            <DialogDescription>
+              {editando
+                ? pacientes.find((p) => p.id === editando.paciente_id)?.nome
+                : pagamentoPara?.nome}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -445,9 +502,12 @@ export default function CloserPacientes() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPagamentoPara(null)}>Cancelar</Button>
-            <Button onClick={salvarPagamento} disabled={salvando}>
-              {salvando && <Loader2 size={16} className="mr-1.5 animate-spin" />} Lançar
+            <Button variant="ghost" onClick={() => { setPagamentoPara(null); setEditando(null); }}>
+              Cancelar
+            </Button>
+            <Button onClick={editando ? salvarEdicao : salvarPagamento} disabled={salvando}>
+              {salvando && <Loader2 size={16} className="mr-1.5 animate-spin" />}
+              {editando ? "Salvar" : "Lançar"}
             </Button>
           </DialogFooter>
         </DialogContent>
